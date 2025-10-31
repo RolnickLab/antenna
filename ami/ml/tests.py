@@ -44,6 +44,11 @@ class TestProcessingServiceAPI(APITestCase):
     """
 
     def setUp(self):
+        """
+        Prepare test fixtures for Processing Service API tests.
+        
+        Creates a test Project, a staff superuser user for authenticating requests, and an APIRequestFactory instance and stores them on the test case as `self.project`, `self.user`, and `self.factory` respectively.
+        """
         self.project = Project.objects.create(name="Processing Service Test Project")
 
         self.user = User.objects.create_user(  # type: ignore

@@ -5,6 +5,11 @@ logger = logging.getLogger(__name__)
 
 
 def forwards(apps, schema_editor):
+    """
+    Assigns the "AuthorizedUser" group (with the "create_project" permission) to every existing User.
+    
+    Ensures the ContentType for the main.Project model exists, creates or reuses a Permission with codename "create_project" and a Group named "AuthorizedUser", grants that permission to the group, and then adds the group to all User records. If the Project ContentType is missing the migration aborts without modifying users.
+    """
     logger.info("Starting migration: Assigning 'AuthorizedUser' role to all users...")
 
     User = apps.get_model("users", "User")
@@ -50,6 +55,11 @@ def forwards(apps, schema_editor):
 
 
 def backwards(apps, schema_editor):
+    """
+    Remove the "AuthorizedUser" group from every user in the database.
+    
+    If the ContentType for main.Project or the "AuthorizedUser" group does not exist, the operation is aborted without changes. Iterates over all users and removes the group from each account.
+    """
     logger.info("Reversing migration: Removing 'AuthorizedUser' role from users...")
 
     User = apps.get_model("users", "User")

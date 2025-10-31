@@ -120,7 +120,11 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
     def perform_create(self, serializer):
         """
-        If the ``start_now`` parameter is passed, enqueue the job immediately.
+        Create and save a Job instance, optionally enqueuing it immediately when requested.
+        
+        Constructs a Job from the provided serializer data and checks object-level permissions before saving.
+        If the request includes the "start_now" parameter and the user has permission to run the job, the job is enqueued.
+        If "start_now" is requested but the user lacks run permission, raises PermissionDenied.
         """
         # All jobs created from the Jobs UI are ML jobs.
         # @TODO Remove this when the UI is updated pass a job type

@@ -32,8 +32,21 @@ def create_roles(sender, **kwargs):
 @receiver(m2m_changed, sender=Group.user_set.through)
 def manage_project_membership(sender, instance, action, reverse, model, pk_set, **kwargs):
     """
-    When a user is added/removed from a permissions group, update project members accordingly.
-
+    Synchronize a Project's members when a User is added to or removed from a permission Group.
+    
+    Handles m2m_changed signals from Group.user_set.through and processes only the "post_add" and "post_remove" actions. For each affected Group, the handler extracts a project ID from the group's name (expected format "{project_id}_{project_name}_{Role}"), resolves the corresponding Project, and then:
+    - on "post_add": adds the user to project.members if not already present;
+    - on "post_remove": removes the user from project.members only if the user has no remaining roles in that project.
+    
+    Updates are performed inside a transaction, the handler temporarily disconnects itself to avoid recursive signal calls, and Groups with invalid names or missing Projects are skipped.
+    
+    Parameters:
+        sender: The signal sender (ignored by this handler).
+        instance: The User instance being added/removed.
+        action (str): The m2m_changed action; only "post_add" and "post_remove" are handled.
+        reverse: Boolean indicating signal direction (ignored by this handler).
+        model: The through-model class (ignored by this handler).
+        pk_set (set[int]): Set of primary keys of Groups affected by the change.
     """
     if action not in ["post_add", "post_remove"]:
         return  # Only handle add and remove actions
@@ -76,6 +89,17 @@ def manage_project_membership(sender, instance, action, reverse, model, pk_set, 
 
 @receiver(post_save, sender=User)
 def assign_authenticated_users_group(sender, instance, created, **kwargs):
+    """
+    Assigns the AuthorizedUser role to newly created User instances.
+    
+    When a User is created (created is True), logs the assignment and calls AuthorizedUser.assign_user(instance).
+    
+    Parameters:
+        sender (type): The model class that sent the signal.
+        instance (ami.users.models.User): The User instance that was saved.
+        created (bool): `True` if the instance was created, `False` if updated.
+        **kwargs: Additional signal keyword arguments.
+    """
     if created:
         logger.info(f"Assigning AuthorizedUser role to new user {instance.email}")
         AuthorizedUser.assign_user(instance)

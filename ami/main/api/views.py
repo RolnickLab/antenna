@@ -163,7 +163,10 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
 
     def get_serializer_class(self):
         """
-        Return different serializers for list and detail views.
+        Selects the serializer class appropriate for the current action.
+        
+        Returns:
+            serializer_class: The serializer class to use for the request — `ProjectListSerializer` when the action is "list", otherwise `ProjectSerializer`.
         """
         if self.action == "list":
             return ProjectListSerializer
@@ -172,6 +175,15 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
 
     def perform_create(self, serializer):
         # Check if user is authenticated
+        """
+        Ensure the requesting user is authenticated and save the serializer with the request user assigned as the project's owner.
+        
+        Parameters:
+            serializer: Project serializer instance to be saved; will be saved with owner set to request.user.
+        
+        Raises:
+            PermissionDenied: If the request has no authenticated user.
+        """
         if not self.request.user or not self.request.user.is_authenticated:
             raise PermissionDenied("You must be authenticated to create a project.")
 

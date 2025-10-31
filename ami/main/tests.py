@@ -1281,6 +1281,19 @@ class TestProjectRoleBasedPermissions(APITestCase):
 
     def setUp(self):
         # Create users with various roles
+        """
+        Prepare test users, assign project roles, and create a test project and API endpoint used by role-based permission tests.
+        
+        Sets up the following instance attributes for use in tests:
+        - owner: project owner user
+        - project_manager: user assigned the ProjectManager role
+        - basic_member: user assigned the BasicMember role
+        - identifier: user assigned the Identifier role
+        - regular_user: a standard user with no project role
+        - superuser: a Django superuser
+        - project: a newly created test project with owner set to `owner`
+        - endpoint: base API endpoint for project-related requests
+        """
         self.owner = User.objects.create_user(email="owner@insectai.org")
         self.project_manager = User.objects.create_user(email="pm@insectai.org")
         self.basic_member = User.objects.create_user(email="basic@insectai.org")
@@ -1307,11 +1320,31 @@ class TestProjectRoleBasedPermissions(APITestCase):
         return self.client.get(url)
 
     def _get_project_list(self):
-        """Fetch all projects for the current user."""
+        """
+        Retrieve the project list using the authenticated test client.
+        
+        Returns:
+            HTTP response: The response returned by performing a GET request on the projects endpoint.
+        """
         return self.client.get(self.endpoint)
 
     def _assert_permissions_match_api(self, user, expected_model_perms):
-        """Compare backend guardian perms with API user_permissions."""
+        """
+        Assert that the API-reported `user_permissions` for the project list and detail endpoints match the provided expected model-level permissions.
+        
+        Parameters:
+            user (User): The user to authenticate for API requests.
+            expected_model_perms (dict): Mapping of permission names to booleans indicating expected availability.
+                Expected keys: "create", "update", "delete". A truthy value means the permission should appear
+                in the corresponding API `user_permissions` list.
+        
+        Notes:
+            - Authenticates the test client as `user`.
+            - Calls the project list (collection) and project detail (object) endpoints and asserts HTTP 200.
+            - Verifies that "create" appears in collection `user_permissions` iff `expected_model_perms["create"]` is truthy.
+            - Verifies that "update" and "delete" appear in object `user_permissions` iff their corresponding
+              entries in `expected_model_perms` are truthy.
+        """
         self.client.force_authenticate(user=user)
         # Collection-level (list endpoint)
         list_resp = self._get_project_list()
@@ -1392,6 +1425,19 @@ class TestProjectRoleBasedPermissions(APITestCase):
 class TestRolePermissions(APITestCase):
     # Create users
     def setUp(self) -> None:
+        """
+        Prepare test users, roles, project, job, and expected permission maps for role-based permission tests.
+        
+        Creates a superuser, a project manager, a basic member, an identifier, and a regular user; creates a project for the project manager, assigns project roles, creates a job fixture, and populates self.PERMISSIONS_MAPS with the expected API-permission boolean matrix used by tests.
+        
+        Attributes:
+            super_user (User): Superuser with staff and superuser flags.
+            project_manager (User): User assigned the ProjectManager role and owner/manager of a test project.
+            basic_member (User): User assigned the BasicMember role.
+            identifier (User): User assigned the Identifier role.
+            regular_user (User): User with no role in the project.
+            PERMISSIONS_MAPS (dict): Mapping of role names to expected endpoint/action permission booleans used by assertions.
+        """
         self.super_user = User.objects.create_user(email="super_user@insectai.org", is_staff=True, is_superuser=True)
         self.project_manager = User.objects.create_user(email="project_manager@insectai.org", is_staff=False)
         self._create_project(self.project_manager)
@@ -1540,7 +1586,21 @@ class TestRolePermissions(APITestCase):
         )
 
     def _test_role_permissions(self, role_class, user, permissions_map):
-        """Generic function to test role-based permissions based on an entity permission map."""
+        """
+        Run a comprehensive end-to-end check of role-based API permissions for a given role and user.
+        
+        This method exercises list, create, update, object-level user_permissions, custom actions (job run/retry/cancel, collection populate),
+        capture star/unstar, role unassignment (verifies permissions revoked) and role reassignment (verifies delete allowed when expected)
+        against a set of entities defined by permissions_map.
+        
+        Parameters:
+            role_class (class | None): Role class providing assign_user/unassign_user. If None, role assignment steps are skipped.
+            user (django.contrib.auth.models.User): The user to test permission behavior for.
+            permissions_map (dict): Mapping of entity names to permission action booleans. Keys are entity identifiers
+                (e.g., "collection", "site", "device", "storage", "job", "identification", "capture") and values are dicts
+                of actions (e.g., "create", "update", "delete", "run", "retry", "cancel", "populate", "star", "unstar")
+                indicating whether the action should be permitted for the role.
+        """
         self._create_project(owner=self.project_manager)
         self._assign_roles()
         capture_id = self.project.occurrences.first().detections.first().source_image.pk
@@ -1731,6 +1791,18 @@ class TestRolePermissions(APITestCase):
                     self.assertEqual(response.status_code, expected_status, f"Delete permission failed for {entity}")
 
     def _test_sourceimageupload_permissions(self, user, permission_map):
+        """
+        Exercise CRUD permissions for the SourceImageUpload API endpoints for a given user.
+        
+        Creates a project and authenticates as the specified user, then attempts to create a SourceImageUpload via the upload endpoint (uses an actual multipart upload when the `permission_map["create"]` flag is true; otherwise uses an existing upload). Verifies the user can retrieve the upload, and that update and delete operations succeed or fail according to `permission_map["update"]` and `permission_map["delete"]`.
+        
+        Parameters:
+            user (django.contrib.auth.models.User): The user to authenticate for each request.
+            permission_map (dict): Mapping of permission checks with boolean values for keys:
+                - "create": whether the user is expected to be allowed to create uploads.
+                - "update": whether the user is expected to be allowed to patch uploads.
+                - "delete": whether the user is expected to be allowed to delete uploads.
+        """
         self._create_project(owner=self.project_manager)
         self.client.force_authenticate(user=self.super_user)
         list_url = "/api/v2/captures/upload/"
@@ -1843,7 +1915,11 @@ class TestRolePermissions(APITestCase):
         )
 
     def test_project_manager_permissions_(self):
-        """Test Project Manager role permissions."""
+        """
+        Verify a ProjectManager user has the expected object-level permissions and that those permissions apply to related resources.
+        
+        Asserts the project manager's object-level permissions match ProjectManager.object_level_permissions, runs the shared role permission checks, and validates source image and source image upload permissions according to the ProjectManager permission map.
+        """
         expected_permissions = ProjectManager.object_level_permissions
         assigned_permissions = set(get_perms(self.project_manager, self.project))
         self.assertEqual(assigned_permissions, expected_permissions)
@@ -3485,6 +3561,18 @@ class BasePermissionTestCase(APITestCase):
     def _assign_user_permission_and_reset_caches(
         self, user, perm_codename: str, app_label: str = "main", model_name: str = "project"
     ):
+        """
+        Assigns a model-level permission to a user, ensures the Permission exists, clears the user's permission caches, and refreshes the user from the database.
+        
+        Parameters:
+            user (User): The Django user to receive the permission.
+            perm_codename (str): The permission codename (e.g., "change_project", "add_taxon").
+            app_label (str): The Django app label that owns the model the permission applies to (default "main").
+            model_name (str): The lowercased model name the permission targets (default "project").
+        
+        Returns:
+            Permission: The Permission instance that was created or retrieved and assigned to the user.
+        """
         ct = ContentType.objects.get(app_label=app_label, model=model_name)
         perm, _ = Permission.objects.get_or_create(
             codename=perm_codename,
@@ -3505,6 +3593,20 @@ class BasePermissionTestCase(APITestCase):
     def _remove_user_permission_and_reset_cache(
         self, user, perm_codename: str, app_label: str = "main", model_name: str = "project"
     ):
+        """
+        Remove a specific model permission from a user and clear the user's permission caches.
+        
+        Attempts to remove the Permission identified by `perm_codename` for the given `app_label` and `model_name` from `user`, deletes any cached permission attributes on the user, and refreshes the user instance from the database.
+        
+        Parameters:
+            user: The User instance to modify.
+            perm_codename (str): The permission codename to remove (e.g., "change_project").
+            app_label (str): The Django app label containing the model (default "main").
+            model_name (str): The model name for the permission's content type (default "project").
+        
+        Returns:
+            bool: `True` if the permission was found and removed, `False` if the permission did not exist.
+        """
         try:
             ct = ContentType.objects.get(app_label=app_label, model=model_name)
             perm = Permission.objects.get(codename=perm_codename, content_type=ct)
@@ -3529,6 +3631,11 @@ class TestProcessingServiceModelLevelPermissions(BasePermissionTestCase):
     """
 
     def setUp(self):
+        """
+        Prepare test fixtures for ProcessingService permission tests.
+        
+        Creates a non-staff, non-superuser test user; builds a fresh test project; authenticates the test API client as that user; and sets the default API endpoint and payload used to create ProcessingService instances in permission tests.
+        """
         self.user = User.objects.create_user(
             email="perm_tester@insectai.org",
             is_staff=False,
@@ -3546,7 +3653,13 @@ class TestProcessingServiceModelLevelPermissions(BasePermissionTestCase):
         }
 
     def test_create_requires_model_level_permission(self):
-        """User cannot create ProcessingService without model-level create permission."""
+        """
+        Verify that creating a ProcessingService requires and respects the model-level create permission.
+        
+        Asserts that a POST to the ProcessingService endpoint returns HTTP 403 when the user lacks the
+        `create_processingservice` model-level permission, and returns HTTP 201 after the permission is
+        granted.
+        """
         response = self.client.post(self.endpoint, self.payload, format="json")
         self.assertEqual(
             response.status_code,
@@ -3707,6 +3820,11 @@ class TestTaxonModelLevelPermissions(BasePermissionTestCase):
     """
 
     def setUp(self):
+        """
+        Prepare common test fixtures for permission-related Taxon API tests.
+        
+        Creates a non-staff user, a fresh test project, and authenticates the test client as that user; sets the Taxa API endpoint, creates a parent Taxon (rank GENUS), and prepares a sample payload for creating a species-level taxon associated with the project and parent taxon.
+        """
         self.user = User.objects.create_user(
             email="perm_tester@insectai.org",
             is_staff=False,
@@ -3727,6 +3845,12 @@ class TestTaxonModelLevelPermissions(BasePermissionTestCase):
 
     # ---------- helpers ----------
     def _add_taxon_to_project(self, taxon_id: int):
+        """
+        Add the Taxon with the given primary key to this test case's project.
+        
+        Parameters:
+            taxon_id (int): Primary key of the Taxon to associate with self.project.
+        """
         taxon = Taxon.objects.get(pk=taxon_id)
         taxon.projects.add(self.project)
         taxon.save()

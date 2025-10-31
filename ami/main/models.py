@@ -317,19 +317,28 @@ class Project(ProjectSettingsMixin, BaseModel):
             deployment.update_calculated_fields(save=True)
 
     def save(self, *args, **kwargs):
+        """
+        Save the project instance and ensure the project's owner is included in its members.
+        
+        This calls the base model save behavior and then enforces owner membership by adding
+        the owner to the project's members if not already present.
+        """
         super().save(*args, **kwargs)
         # Add owner to members
         self.ensure_owner_membership()
 
     def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
         """
-        Override BaseModel.check_permission for Project.
-
-        Project has no project accessor,
-        so its permissions are handled  differently:
-        - The "create" action is treated as a model-level permission (since there is
-        no associated project to check object-level permissions against).
-        - All other actions fall back to  object-level permission checks.
+        Determine whether a user is permitted to perform the given action on this project.
+        
+        The "create" action is evaluated as a model-level permission because it has no associated project instance; all other actions are evaluated as object-level permissions.
+        
+        Parameters:
+            user (AbstractUser | AnonymousUser): The user for whom permission is being checked.
+            action (str): The action permission codename to check (e.g., "create", "view", "update", "delete").
+        
+        Returns:
+            bool: `True` if the user has the requested permission, `False` otherwise.
         """
         logger.debug(f"Project.check_permission action: {action}")
         if action == "create":
@@ -337,6 +346,12 @@ class Project(ProjectSettingsMixin, BaseModel):
         return super().check_object_level_permission(user, action)
 
     def get_permissions(self, user: AbstractUser | AnonymousUser) -> list[str]:
+        """
+        Retrieve object-level permission codenames the given user has for this project.
+        
+        Returns:
+            A list of permission codename strings that the user has for this project.
+        """
         return self.get_object_level_permissions(user)
 
     @classmethod
@@ -344,6 +359,16 @@ class Project(ProjectSettingsMixin, BaseModel):
         cls, user: AbstractUser | AnonymousUser, project: "Project | None" = None
     ) -> list[str]:
         # Use model-level permissions for project collection-level actions
+        """
+        Return collection-level permissions available to the user for the Project model.
+        
+        Parameters:
+            user (AbstractUser | AnonymousUser): User whose permissions will be checked.
+            project (Project | None): Optional project instance; currently not used by this check.
+        
+        Returns:
+            list[str]: `['create']` if the user has the `main.create_project` permission, otherwise an empty list.
+        """
         return ["create"] if user.has_perm("main.create_project") else []
 
     class Permissions:
@@ -1863,16 +1888,44 @@ class SourceImage(BaseModel):
             self.save(update_calculated_fields=False)
 
     def save(self, update_calculated_fields=True, *args, **kwargs):
+        """
+        Save the model instance and, optionally, recompute and persist its derived/calculated fields.
+        
+        Parameters:
+            update_calculated_fields (bool): If True, recompute the instance's derived/calculated fields and persist those changes after the instance is saved. Default is True.
+        """
         super().save(*args, **kwargs)
         if update_calculated_fields:
             self.update_calculated_fields(save=True)
 
     def check_custom_object_level_permission(self, user, action: str) -> bool:
+        """
+        Determine whether a user is allowed to perform a custom object-level action on this SourceImage.
+        
+        Parameters:
+            user: The user or anonymous user to check permissions for.
+            action (str): The custom action to check (e.g., "star", "unstar").
+        
+        Returns:
+            bool: `True` if the action is "star" or "unstar" and the user has the `STAR_SOURCE_IMAGE`
+            permission for the image's project (uses `get_project()` if available), `False` otherwise.
+        """
         project = self.get_project() if hasattr(self, "get_project") else None
         if action in ["star", "unstar"]:
             return user.has_perm(Project.Permissions.STAR_SOURCE_IMAGE, project)
 
     def get_custom_object_level_permissions(self, user) -> list[str]:
+        """
+        Return the custom object-level permission actions the given user has for this SourceImage's project.
+        
+        Only permissions scoped to the image's project and specific to SourceImage are considered; standard CRUD actions ("view", "create", "update", "delete") are excluded. If the SourceImage is not associated with a project, an empty list is returned.
+        
+        Parameters:
+            user: The user (or anonymous user) whose permissions will be checked.
+        
+        Returns:
+            A list of permission action strings that the user has for this SourceImage (e.g., `"process_single_image"`, or the special `Project.Permissions.RUN_SINGLE_IMAGE_JOB`).
+        """
         project = self.get_project()
         if not project:
             return []

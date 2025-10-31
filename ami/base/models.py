@@ -168,8 +168,12 @@ class BaseModel(models.Model):
 
     def _get_object_perms(self, user):
         """
-        Get the object-level permissions for the user on this instance.
-        This method retrieves permissions like `update_modelname`, `create_modelname`, etc.
+        Retrieve project-scoped object permission codenames for the given user.
+        
+        If the instance is linked to a Project, returns permission strings on that project that target this model (those ending with "_<model_name>"). If the instance has no related Project, returns an empty list.
+        
+        Returns:
+            list[str]: Permission codenames for this instance (e.g., "update_modelname", "delete_modelname"), or an empty list if no project is associated.
         """
         project = self.get_project()
         if not project:
@@ -181,6 +185,16 @@ class BaseModel(models.Model):
         return object_perms
 
     def check_model_level_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
+        """
+        Determine whether the user has the specified model-level permission for this model. Always allows the "retrieve" (view) action for all users.
+        
+        Parameters:
+            user (AbstractUser | AnonymousUser): The user whose permissions are being checked.
+            action (str): The action name (e.g., "create", "update", "destroy", "retrieve", or a custom action).
+        
+        Returns:
+            bool: `True` if the user has the permission for the action on this model, `False` otherwise.
+        """
         model = self._meta.model_name
         app_label = "main"  # Assume all model level permissions are in 'main' app
 
@@ -199,8 +213,10 @@ class BaseModel(models.Model):
 
     def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
         """
-        Entry point for all permission checks.
-        Decides whether to perform model-level or object-level permission check.
+        Choose and perform the appropriate permission check (model-level or object-level) for the given action.
+        
+        Returns:
+            `true` if the user is permitted to perform the action, `false` otherwise.
         """
         # Get related project accessor
         accessor = self.get_project_accessor()
@@ -213,10 +229,16 @@ class BaseModel(models.Model):
 
     def check_object_level_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
         """
-        Check if the user has permission to perform the action
-        on this instance.
-        This method is used to determine if the user can perform
-        CRUD operations or custom actions on the model instance.
+        Determine whether the given user is permitted to perform the specified action on this model instance.
+        
+        If the instance is not associated with a specific Project, falls back to model-level permission checks. For a "retrieve" action, allows access for non-draft projects; for draft projects, allows access only to project members, the project owner, or superusers. Maps CRUD actions ("create", "update", "partial_update", "destroy") to their corresponding project-scoped permissions and checks them against the related Project. Any other action is delegated to the instance's custom object-level permission check.
+        
+        Parameters:
+            user (AbstractUser | AnonymousUser): The user for whom the permission is evaluated.
+            action (str): The action name to check (e.g., "retrieve", "create", "update", "partial_update", "destroy", or a custom action).
+        
+        Returns:
+            bool: `True` if the user is allowed to perform the action on this instance, `False` otherwise.
         """
         from ami.users.roles import BasicMember
 
@@ -245,8 +267,15 @@ class BaseModel(models.Model):
         return self.check_custom_object_level_permission(user, action)
 
     def check_custom_object_level_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
-        """Check custom object level permissions for the user on this instance.
-        This is used for actions that are not standard CRUD operations.
+        """
+        Check a non-CRUD, object-scoped permission for the given user on this instance.
+        
+        Parameters:
+            user (AbstractUser | AnonymousUser): The user whose permission is being checked.
+            action (str): Permission action prefix to check (e.g., "approve" -> checks "approve_<modelname>").
+        
+        Returns:
+            bool: `True` if the user has the `<action>_<modelname>` permission for this instance's project (or for `None` if the instance has no project), `False` otherwise.
         """
         assert self._meta.model_name is not None, "Model must have a model_name defined in Meta class."
         model_name = self._meta.model_name.lower()
@@ -257,8 +286,12 @@ class BaseModel(models.Model):
 
     def get_permissions(self, user: AbstractUser | AnonymousUser) -> list[str]:
         """
-        Entry point for retrieving user permissions on this instance.
-        Decides whether to return model-level or object-level permissions.
+        Return the allowed action names the user may perform on this instance.
+        
+        Determines whether permissions should be evaluated at the model (collection) level or the object (instance) level and returns the corresponding set of actions.
+        
+        Returns:
+        	allowed_actions (list[str]): A list of permission action names (e.g., "view", "update", "delete", custom actions) that the user is allowed to perform on this instance.
         """
         accessor = self.get_project_accessor()
 
@@ -271,8 +304,10 @@ class BaseModel(models.Model):
 
     def get_model_level_permissions(self, user: AbstractUser | AnonymousUser) -> list[str]:
         """
-        Retrieve model-level permissions for the given user.
-        Returns a list of allowed actions such as ["create", "update", "delete"].
+        Return the model-level actions the given user is allowed to perform on this model.
+        
+        Returns:
+            allowed_actions (list[str]): List of action names (e.g. "update", "delete", "view") the user has permission for on this model, plus any custom model-level actions.
         """
         if user.is_superuser:
             # Superusers get all possible actions
@@ -295,9 +330,15 @@ class BaseModel(models.Model):
 
     def get_custom_model_level_permissions(self, user: AbstractUser | AnonymousUser) -> list[str]:
         """
-        Retrieve custom (non-CRUD) model-level permissions for the given user.
-        Custom permissions follow the pattern: <app_label>.<custom_action>_<model_name>
-        Example: "main.register_pipelines_processingservice"
+        Collect custom model-level permission actions the user has for this model.
+        
+        Custom permissions are expected in the form "<app_label>.<action>_<model_name>" (for example, "main.register_pipelines_processingservice"). This method returns the distinct set of custom action names granted to the user for this model, excluding the standard CRUD actions.
+        
+        Parameters:
+            user (AbstractUser | AnonymousUser): The user whose permissions will be inspected.
+        
+        Returns:
+            list[str]: List of custom permission action names the user has for this model (e.g., ["register", "approve"]). 
         """
         model = self._meta.model_name
         app_label = "main"
@@ -319,7 +360,13 @@ class BaseModel(models.Model):
 
     def get_object_level_permissions(self, user: AbstractUser | AnonymousUser) -> list[str]:
         """
-        Retrieve object-level permissions (including custom ones) for this instance.
+        Return the object-level action names the given user is allowed to perform on this instance.
+        
+        Parameters:
+            user (AbstractUser | AnonymousUser): The user whose permissions will be evaluated.
+        
+        Returns:
+            list[str]: A list of allowed object-level action names (e.g. "update", "delete") plus any custom object-level actions. If the instance is not associated with a project, this falls back to the model-level permissions for the user. Superusers always get "update" and "delete" in addition to custom object-level permissions.
         """
 
         if user.is_superuser:
@@ -340,7 +387,14 @@ class BaseModel(models.Model):
 
     def get_custom_object_level_permissions(self, user: AbstractUser | AnonymousUser) -> list[str]:
         """
-        Retrieve custom (non-CRUD) permissions for this instance.
+        List custom object-level permission actions the user has for this instance.
+        
+        Parameters:
+            user (AbstractUser | AnonymousUser): The user whose object-level permissions will be evaluated.
+        
+        Returns:
+            list[str]: A list of custom permission action names (permission prefixes) the user has for this instance,
+            excluding the standard actions "view", "create", "update", and "delete".
         """
         object_perms = self._get_object_perms(user)
         custom_perms = {
@@ -353,7 +407,14 @@ class BaseModel(models.Model):
     @classmethod
     def get_collection_level_permissions(cls, user: AbstractUser | AnonymousUser, project) -> list[str]:
         """
-        Retrieve collection-level permissions for the given user.
+        Determine collection-level permissions for a user on this model within an optional project context.
+        
+        Parameters:
+            user (AbstractUser | AnonymousUser): The user whose permissions are being evaluated.
+            project (Project | None): Optional Project instance to use for project-scoped permission checks.
+        
+        Returns:
+            list[str]: `["create"]` if the user is allowed to create instances in this collection (either globally or on the given project), otherwise an empty list.
         """
         app_label = "main"
         if user.is_superuser:
