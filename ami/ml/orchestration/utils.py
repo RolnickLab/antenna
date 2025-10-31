@@ -5,7 +5,7 @@ import typing
 logger = logging.getLogger(__name__)
 
 
-def _run_in_async_loop(func: typing.Callable, error_msg: str) -> typing.Any:
+def run_in_async_loop(func: typing.Callable, error_msg: str) -> typing.Any:
     # helper to use new_event_loop() to ensure we're not mixing with Django's async context
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)

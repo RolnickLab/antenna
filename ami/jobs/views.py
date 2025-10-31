@@ -236,7 +236,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             raise ValidationError("This job does not have a pipeline configured")
 
         # Get tasks from NATS JetStream
-        from ami.utils.nats_queue import TaskQueueManager
+        from ami.ml.orchestration.nats_queue import TaskQueueManager
 
         async def get_tasks():
             tasks = []
