@@ -373,6 +373,78 @@ class TestJobStatusChecking(TestCase):
         job.check_status(force=True, save=True)
         self.assertIsNotNone(job.last_checked_at)
 
+    def test_enqueue_syncs_status(self):
+        """Test that enqueue() keeps status in sync."""
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test Job - Enqueue Sync",
+        )
+
+        # Enqueue the job
+        job.enqueue()
+
+        # Status and progress should be in sync
+        self.assertEqual(job.status, job.progress.summary.status)
+
+    def test_retry_syncs_status(self):
+        """Test that retry() keeps status in sync."""
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            pipeline=self.pipeline,
+            name="Test Job - Retry Sync",
+            status=JobState.FAILURE,
+        )
+
+        job.retry(async_task=True)
+
+        # Refresh to get latest status after retry() method completes
+        job.refresh_from_db()
+
+        # Status should have been updated and should be in sync
+        # After retry() with async_task=True, it calls enqueue() which sets status to PENDING
+        self.assertEqual(job.status, job.progress.summary.status)
+
+    def test_cancel_syncs_status(self):
+        """Test that cancel() keeps status in sync."""
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test Job - Cancel Sync",
+            status=JobState.STARTED,
+        )
+
+        # Cancel the job (without task_id, so it goes to REVOKED)
+        job.cancel()
+
+        # Status should be REVOKED and in sync
+        self.assertEqual(job.status, JobState.REVOKED)
+        self.assertEqual(job.progress.summary.status, JobState.REVOKED)
+
+    def test_status_checker_syncs_status(self):
+        """Test that status checker keeps status in sync when marking as FAILURE."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test Job - Checker Sync",
+            status=JobState.STARTED,
+            started_at=timezone.now() - timedelta(days=8),  # Exceeds max runtime
+            task_id="some-task",
+        )
+
+        # Check status - should mark as FAILURE
+        status_changed = job.check_status(force=True, save=True)
+
+        # Both should now be FAILURE and synced
+        self.assertTrue(status_changed)
+        self.assertEqual(job.status, JobState.FAILURE)
+        self.assertEqual(job.progress.summary.status, JobState.FAILURE)
+
 
 class TestCheckIncompleteJobsTask(TestCase):
     """
@@ -434,8 +506,8 @@ class TestCheckIncompleteJobsTask(TestCase):
         result = check_incomplete_jobs()
 
         self.assertEqual(result["status"], "success")
-        self.assertGreaterEqual(result["checked"], 2)  # Should check jobs 1 and 3
-        self.assertGreaterEqual(result["updated"], 2)  # Should update both to FAILURE
+        self.assertGreaterEqual(int(result["checked"]), 2)  # Should check jobs 1 and 3
+        self.assertGreaterEqual(int(result["updated"]), 2)  # Should update both to FAILURE
 
     def test_check_incomplete_jobs_lock(self):
         """Test that concurrent executions are prevented by locking."""

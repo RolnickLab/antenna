@@ -71,7 +71,7 @@ def update_job_failure(sender, task_id, exception, *args, **kwargs):
 
 
 @celery_app.task(soft_time_limit=300, time_limit=360)
-def check_incomplete_jobs():
+def check_incomplete_jobs() -> dict[str, int | str]:
     """
     Periodic task to check status of all incomplete jobs.
 
