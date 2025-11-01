@@ -107,7 +107,7 @@ def check_job_status(job, force: bool = False, save: bool = True) -> bool:
                 f"Job exceeded maximum runtime of {job.MAX_JOB_RUNTIME_SECONDS}s "
                 f"(running for {runtime:.0f}s). Marking as FAILURE."
             )
-            job.status = JobState.FAILURE
+            job.update_status(JobState.FAILURE, save=False)
             status_changed = True
             if save:
                 job.save(update_progress=False)
@@ -121,7 +121,7 @@ def check_job_status(job, force: bool = False, save: bool = True) -> bool:
                 job.logger.error(
                     f"Job scheduled {time_waiting:.0f}s ago but never got a task_id. " f"Marking as FAILURE."
                 )
-                job.status = JobState.FAILURE
+                job.update_status(JobState.FAILURE, save=False)
                 status_changed = True
                 if save:
                     job.save(update_progress=False)
@@ -143,7 +143,7 @@ def check_job_status(job, force: bool = False, save: bool = True) -> bool:
                             f"Task {job.task_id} disappeared from Celery "
                             f"(started {time_since_start:.0f}s ago). Marking as FAILURE."
                         )
-                        job.status = JobState.FAILURE
+                        job.update_status(JobState.FAILURE, save=False)
                         status_changed = True
 
             # Scenario 5: Resurrection

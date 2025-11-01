@@ -824,7 +824,7 @@ class Job(BaseModel):
         self.started_at = None
         self.finished_at = None
         self.scheduled_at = datetime.datetime.now()
-        self.status = AsyncResult(task_id).status
+        self.update_status(AsyncResult(task_id).status, save=False)
         self.update_progress(save=False)
         self.save()
 
@@ -873,7 +873,7 @@ class Job(BaseModel):
         self.logger.info(f"Re-running job {self}")
         self.finished_at = None
         self.progress.reset()
-        self.status = JobState.RETRY
+        self.update_status(JobState.RETRY, save=False)
         self.save()
         if async_task:
             self.enqueue()
@@ -884,7 +884,7 @@ class Job(BaseModel):
         """
         Terminate the celery task.
         """
-        self.status = JobState.CANCELING
+        self.update_status(JobState.CANCELING, save=False)
         self.save()
         if self.task_id:
             task = run_job.AsyncResult(self.task_id)
@@ -892,7 +892,7 @@ class Job(BaseModel):
                 task.revoke(terminate=True)
                 self.save()
         else:
-            self.status = JobState.REVOKED
+            self.update_status(JobState.REVOKED, save=False)
             self.save()
 
     def update_status(self, status=None, save=True):
@@ -920,6 +920,7 @@ class Job(BaseModel):
     def update_progress(self, save=True):
         """
         Update the total aggregate progress from the progress of each stage.
+        Also ensure the displayed progress.summary.status is in sync with job.status.
         """
         if not len(self.progress.stages):
             # Need at least one stage to calculate progress
@@ -938,6 +939,10 @@ class Job(BaseModel):
             total_progress = sum([stage.progress for stage in self.progress.stages]) / len(self.progress.stages)
 
         self.progress.summary.progress = total_progress
+        try:
+            self.progress.summary.status = JobState(self.status)
+        except ValueError:
+            self.progress.summary.status = JobState.UNKNOWN
 
         if save:
             self.save(update_progress=False)
