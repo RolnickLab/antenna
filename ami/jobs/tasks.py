@@ -71,9 +71,9 @@ def update_job_failure(sender, task_id, exception, *args, **kwargs):
 
 
 @celery_app.task(soft_time_limit=300, time_limit=360)
-def check_unfinished_jobs():
+def check_incomplete_jobs():
     """
-    Periodic task to check status of all unfinished jobs.
+    Periodic task to check status of all incomplete jobs.
 
     This task identifies jobs stuck in non-final states and verifies their
     Celery tasks still exist. If tasks have disappeared or jobs have exceeded
@@ -92,20 +92,20 @@ def check_unfinished_jobs():
     MIN_CHECK_INTERVAL_MINUTES = 2
 
     # Use cache-based locking to prevent duplicates
-    lock_id = "check_unfinished_jobs_lock"
+    lock_id = "check_incomplete_jobs_lock"
 
     if not cache.add(lock_id, "locked", LOCK_TIMEOUT_SECONDS):
-        task_logger.info("check_unfinished_jobs already running, skipping")
+        task_logger.info("check_incomplete_jobs already running, skipping")
         return {"status": "skipped", "reason": "already_running"}
 
     try:
-        task_logger.info("Starting check_unfinished_jobs task")
+        task_logger.info("Starting check_incomplete_jobs task")
 
-        # Get all unfinished jobs
-        unfinished_jobs = Job.objects.filter(status__in=JobState.running_states()).order_by("scheduled_at")
+        # Get all incomplete jobs
+        incomplete_jobs = Job.objects.filter(status__in=JobState.running_states()).order_by("scheduled_at")
 
-        total_jobs = unfinished_jobs.count()
-        task_logger.info(f"Found {total_jobs} unfinished jobs")
+        total_jobs = incomplete_jobs.count()
+        task_logger.info(f"Found {total_jobs} incomplete jobs")
 
         if total_jobs == 0:
             return {"status": "success", "checked": 0, "updated": 0}
@@ -113,14 +113,14 @@ def check_unfinished_jobs():
         # Limit to avoid overwhelming the system
         if total_jobs > MAX_JOBS_PER_RUN:
             task_logger.warning(f"Limiting to {MAX_JOBS_PER_RUN} jobs")
-            unfinished_jobs = unfinished_jobs[:MAX_JOBS_PER_RUN]
+            incomplete_jobs = incomplete_jobs[:MAX_JOBS_PER_RUN]
 
         # Filter to jobs not checked recently
         now = timezone.now()
         min_check_interval = datetime.timedelta(minutes=MIN_CHECK_INTERVAL_MINUTES)
 
         jobs_to_check = []
-        for job in unfinished_jobs:
+        for job in incomplete_jobs:
             if job.last_checked_at is None:
                 jobs_to_check.append(job)
             elif (now - job.last_checked_at) >= min_check_interval:
@@ -145,12 +145,12 @@ def check_unfinished_jobs():
 
         result = {
             "status": "success",
-            "total_unfinished": total_jobs,
+            "total_incomplete": total_jobs,
             "checked": checked_count,
             "updated": updated_count,
             "errors": error_count,
         }
-        task_logger.info(f"Completed check_unfinished_jobs: {result}")
+        task_logger.info(f"Completed check_incomplete_jobs: {result}")
         return result
 
     finally:

@@ -14,9 +14,9 @@ def create_periodic_task(apps, schema_editor):
         )
 
         PeriodicTask.objects.get_or_create(
-            name="jobs.check_unfinished_jobs",
+            name="jobs.check_incomplete_jobs",
             defaults={
-                "task": "ami.jobs.tasks.check_unfinished_jobs",
+                "task": "ami.jobs.tasks.check_incomplete_jobs",
                 "interval": interval_schedule,
                 "enabled": True,
                 "description": "Check status of unfinished jobs and update if tasks disappeared",
@@ -32,7 +32,7 @@ def delete_periodic_task(apps, schema_editor):
     try:
         from django_celery_beat.models import PeriodicTask
 
-        PeriodicTask.objects.filter(name="jobs.check_unfinished_jobs").delete()
+        PeriodicTask.objects.filter(name="jobs.check_incomplete_jobs").delete()
     except Exception as e:
         print(f"Warning: Could not delete periodic task: {e}")
 

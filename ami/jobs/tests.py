@@ -374,7 +374,7 @@ class TestJobStatusChecking(TestCase):
         self.assertIsNotNone(job.last_checked_at)
 
 
-class TestCheckUnfinishedJobsTask(TestCase):
+class TestCheckIncompleteJobsTask(TestCase):
     """
     Test the periodic task that checks all unfinished jobs.
     """
@@ -383,7 +383,7 @@ class TestCheckUnfinishedJobsTask(TestCase):
         from django.core.cache import cache
 
         # Clear the lock before each test
-        cache.delete("check_unfinished_jobs_lock")
+        cache.delete("check_incomplete_jobs_lock")
 
         self.project = Project.objects.create(name="Periodic Check Test Project")
         self.pipeline = Pipeline.objects.create(
@@ -396,15 +396,15 @@ class TestCheckUnfinishedJobsTask(TestCase):
         from django.core.cache import cache
 
         # Clear the lock after each test
-        cache.delete("check_unfinished_jobs_lock")
+        cache.delete("check_incomplete_jobs_lock")
 
-    def test_check_unfinished_jobs_task(self):
+    def test_check_incomplete_jobs_task(self):
         """Test the periodic task runs successfully."""
         from datetime import timedelta
 
         from django.utils import timezone
 
-        from ami.jobs.tasks import check_unfinished_jobs
+        from ami.jobs.tasks import check_incomplete_jobs
 
         # Create some test jobs in various states
         Job.objects.create(
@@ -431,31 +431,31 @@ class TestCheckUnfinishedJobsTask(TestCase):
             task_id=None,
         )
 
-        result = check_unfinished_jobs()
+        result = check_incomplete_jobs()
 
         self.assertEqual(result["status"], "success")
         self.assertGreaterEqual(result["checked"], 2)  # Should check jobs 1 and 3
         self.assertGreaterEqual(result["updated"], 2)  # Should update both to FAILURE
 
-    def test_check_unfinished_jobs_lock(self):
+    def test_check_incomplete_jobs_lock(self):
         """Test that concurrent executions are prevented by locking."""
         from django.core.cache import cache
 
-        from ami.jobs.tasks import check_unfinished_jobs
+        from ami.jobs.tasks import check_incomplete_jobs
 
         # Set the lock manually
-        cache.set("check_unfinished_jobs_lock", "locked", 300)
+        cache.set("check_incomplete_jobs_lock", "locked", 300)
 
-        result = check_unfinished_jobs()
+        result = check_incomplete_jobs()
 
         self.assertEqual(result["status"], "skipped")
         self.assertEqual(result["reason"], "already_running")
 
-    def test_check_unfinished_jobs_no_jobs(self):
+    def test_check_incomplete_jobs_no_jobs(self):
         """Test the task handles empty job list gracefully."""
-        from ami.jobs.tasks import check_unfinished_jobs
+        from ami.jobs.tasks import check_incomplete_jobs
 
-        result = check_unfinished_jobs()
+        result = check_incomplete_jobs()
 
         self.assertEqual(result["status"], "success")
         self.assertEqual(result["checked"], 0)
@@ -469,7 +469,7 @@ class TestWorkerAvailability(TestCase):
 
     def test_check_celery_workers_available(self):
         """Test that worker availability check returns a tuple."""
-        from ami.jobs.status_checker import check_celery_workers_available
+        from ami.jobs.status import check_celery_workers_available
 
         workers_available, worker_count = check_celery_workers_available()
 
@@ -480,7 +480,7 @@ class TestWorkerAvailability(TestCase):
         """Test that cached version returns same result as uncached."""
         import time
 
-        from ami.jobs.status_checker import check_celery_workers_available, check_celery_workers_available_cached
+        from ami.jobs.status import check_celery_workers_available, check_celery_workers_available_cached
 
         # Clear cache
         check_celery_workers_available_cached.cache_clear()

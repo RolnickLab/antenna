@@ -596,6 +596,7 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
 
     list_display = ("name", "image_count", "method", "kwargs", "created_at", "updated_at")
     list_filter = ("project",)
+    search_fields = ("name",)
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         return super().get_queryset(request).annotate(image_count=models.Count("images"))

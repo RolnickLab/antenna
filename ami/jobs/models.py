@@ -973,7 +973,7 @@ class Job(BaseModel):
         Returns:
             bool: True if job status was changed, False otherwise
         """
-        from ami.jobs.status_checker import check_job_status
+        from ami.jobs.status import check_job_status
 
         return check_job_status(self, force=force, save=save)
 
