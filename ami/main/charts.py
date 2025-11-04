@@ -429,10 +429,14 @@ def average_occurrences_per_month(project_pk: int, taxon_pk: int | None = None, 
     Occurrence = apps.get_model("main", "Occurrence")
     Project = apps.get_model("main", "Project")
     project = Project.objects.get(pk=project_pk)
-    qs = Occurrence.objects.apply_default_filters(project=project, request=request).filter(project=project)
 
     if taxon_pk:
+        # Only apply the score threshold filter for taxon details view
+        qs = Occurrence.objects.filter_by_score_threshold(project=project, request=request).filter(project=project)
         qs = qs.filter(determination_id=taxon_pk)
+    else:
+        # Apply default filters if taxon_pk is not provided
+        qs = Occurrence.objects.apply_default_filters(project=project, request=request).filter(project=project)
 
     occurrences_per_month = (
         qs.values_list("event__start__month")
@@ -465,10 +469,14 @@ def average_occurrences_per_day(project_pk: int, taxon_pk: int | None = None, re
     Occurrence = apps.get_model("main", "Occurrence")
     Project = apps.get_model("main", "Project")
     project = Project.objects.get(pk=project_pk)
-    # Apply default filters
-    qs = Occurrence.objects.apply_default_filters(project=project, request=request).filter(project=project)
+
     if taxon_pk:
+        # Only apply the score threshold filter for taxon details view
+        qs = Occurrence.objects.filter_by_score_threshold(project=project, request=request).filter(project=project)
         qs = qs.filter(determination_id=taxon_pk)
+    else:
+        # Apply default filters if taxon_pk is not provided
+        qs = Occurrence.objects.apply_default_filters(project=project, request=request).filter(project=project)
 
     occurrences_per_day = (
         qs.values_list("event__start__date")
