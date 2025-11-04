@@ -141,6 +141,11 @@ def check_ml_job_status(ml_job_id: int):
         job.update_status(JobState.FAILURE)
         job.finished_at = datetime.datetime.now()
         job.save()
+
+        # Remove remaining tasks from the queue
+        for ml_task_record in job.ml_task_records.all():
+            ml_task_record.kill_task()
+
         raise Exception(error_msg)
 
 
@@ -171,5 +176,8 @@ def check_dangling_ml_jobs():
             job.update_status(JobState.REVOKED)
             job.finished_at = datetime.datetime.now()
             job.save()
+
+            for ml_task_record in job.ml_task_records.all():
+                ml_task_record.kill_task()
         else:
             logger.info(f"Job {job.pk} is active. Last checked at {last_checked}.")

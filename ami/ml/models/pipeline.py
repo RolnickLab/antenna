@@ -15,7 +15,6 @@ import uuid
 from urllib.parse import urljoin
 
 import requests
-from celery.result import AsyncResult
 from django.db import models, transaction
 from django.utils.text import slugify
 from django.utils.timezone import now
@@ -355,7 +354,7 @@ def handle_async_process_images(
             )
             ml_task_record.source_images.set(source_image_batches[idx])
             ml_task_record.save()
-            task_logger.info(f"Created MLTaskRecord {ml_task_record} for task {task_id}")
+            task_logger.debug(f"Created MLTaskRecord {ml_task_record} for task {task_id}")
         else:
             task_logger.warning("No job ID provided, MLTaskRecord will not be created.")
 
@@ -1272,7 +1271,6 @@ class Pipeline(BaseModel):
     def save_results_async(self, results: PipelineResultsResponse, job_id: int | None = None):
         # Returns an AsyncResult
         results_json = results.json()
-        logger.info("Submitting save results task...")
         return save_results.delay(results_json=results_json, job_id=job_id)
 
     def save(self, *args, **kwargs):
@@ -1282,79 +1280,3 @@ class Pipeline(BaseModel):
             unique_suffix = str(uuid.uuid4())[:8]
             self.slug = f"{slugify(self.name)}-v{self.version}-{unique_suffix}"
         return super().save(*args, **kwargs)
-
-    def watch_single_batch_task(
-        self,
-        task_id: str,
-        task_logger: logging.Logger | None = None,
-    ) -> PipelineResultsResponse | None:
-        """
-        Helper function to watch a single batch process task and return the result.
-        """
-        task_logger = task_logger or logger
-
-        result = AsyncResult(task_id)
-        if result.ready():
-            task_logger.info(f"Task {task_id} completed with status: {result.status}")
-            if result.successful():
-                task_logger.info(f"Task {task_id} completed successfully with result: {result.result}")
-                task_logger.warning(f"Task {task_id} result: {result.result}")
-                return PipelineResultsResponse(**result.result)
-            else:
-                task_logger.error(f"Task {task_id} failed with result: {result.result}")
-                return PipelineResultsResponse(
-                    pipeline="",
-                    algorithms={},
-                    total_time=0.0,
-                    source_images=[],
-                    detections=[],
-                    errors=f"Task {task_id} failed with result: {result.result}",
-                )
-        else:
-            task_logger.warning(f"Task {task_id} is not ready yet.")
-            return None
-
-    def watch_batch_tasks(
-        self,
-        task_ids: list[str],
-        timeout: int = 300,
-        poll_interval: int = 5,
-        task_logger: logging.Logger | None = None,
-    ) -> PipelineResultsResponse:
-        """
-        Helper function to watch batch process tasks and aggregate results into a single PipelineResultsResponse.
-
-        @TODO: this is only used by the test_process view, keep this as just a useful helper
-        function for that view? or can we somehow use it in the ML job too?
-        """
-        task_logger = task_logger or logger
-        start_time = time.time()
-        remaining = set(task_ids)
-
-        results = None
-        while remaining and (time.time() - start_time) < timeout:
-            for task_id in list(remaining):
-                result = self.watch_single_batch_task(task_id, task_logger=task_logger)
-                if result is not None:
-                    if not results:
-                        results = result
-                    else:
-                        results.combine_with([result])
-                    remaining.remove(task_id)
-            time.sleep(poll_interval)
-
-        if remaining and logger:
-            logger.error(f"Timeout reached. The following tasks didn't finish: {remaining}")
-
-        if results:
-            results.total_time = time.time() - start_time
-            return results
-        else:
-            return PipelineResultsResponse(
-                pipeline="",
-                algorithms={},
-                total_time=0.0,
-                source_images=[],
-                detections=[],
-                errors="No tasks completed successfully.",
-            )
