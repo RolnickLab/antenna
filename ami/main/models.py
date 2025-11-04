@@ -473,15 +473,15 @@ class Project(ProjectSettingsMixin, BaseModel):
             # Project permissions
             ("create_project", "Can create a project"),
             # ProcessingService permissions
-            ("create_processingservice", "Can create processing service"),
-            ("delete_processingservice", "Can delete processing service"),
-            ("update_processingservice", "Can update processing service"),
-            ("register_pipelines_processingservice", "Can register pipelines for processing service"),
+            ("create_processingservice", "Can create processing service globally"),
+            ("delete_processingservice", "Can delete processing service globally"),
+            ("update_processingservice", "Can update processing service globally"),
+            ("register_pipelines_processingservice", "Can register pipelines for processing service globally"),
             # Taxon permissions
-            ("create_taxon", "Can create taxon"),
-            ("update_taxon", "Can update taxon"),
-            ("delete_taxon", "Can delete taxon"),
-            ("assign_tags_taxon", "Can assign tags to taxon"),
+            ("create_taxon", "Can create taxon globally"),
+            ("update_taxon", "Can update taxon globally"),
+            ("delete_taxon", "Can delete taxon globally"),
+            ("assign_tags_taxon", "Can assign tags to taxon globally"),
         ]
 
 
