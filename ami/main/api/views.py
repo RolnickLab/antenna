@@ -1412,21 +1412,21 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             qs = self.attach_tags_by_project(qs, project)
 
         if project:
-            # Apply default taxa filtering (respects apply_defaults flag)
-            qs = qs.filter_by_project_default_taxa(project, self.request)  # type: ignore
-
             # Allow showing detail views for unobserved taxa
             include_unobserved = True
             if self.action == "list":
                 include_unobserved = self.request.query_params.get("include_unobserved", False)
-            qs = self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)
+                # Apply default taxa filtering (respects apply_defaults flag)
+                qs = qs.filter_by_project_default_taxa(project, self.request)  # type: ignore
+                qs = self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)
             if self.action == "retrieve":
+                qs = self.get_taxa_observed(
+                    qs, project, include_unobserved=include_unobserved, apply_default_filters=False
+                )
                 qs = qs.prefetch_related(
                     Prefetch(
                         "occurrences",
-                        queryset=Occurrence.objects.apply_default_filters(  # type: ignore
-                            project, self.request
-                        ).filter(self.get_occurrence_filters(project))[:1],
+                        queryset=Occurrence.objects.filter(self.get_occurrence_filters(project))[:1],
                         to_attr="example_occurrences",
                     )
                 )
@@ -1438,7 +1438,9 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             qs = qs.annotate(events_count=models.Value(None, output_field=models.IntegerField()))
         return qs
 
-    def get_taxa_observed(self, qs: QuerySet, project: Project, include_unobserved=False) -> QuerySet:
+    def get_taxa_observed(
+        self, qs: QuerySet, project: Project, include_unobserved=False, apply_default_filters=True
+    ) -> QuerySet:
         """
         If a project is passed, only return taxa that have been observed.
         Also add the number of occurrences and the last time it was detected.
@@ -1458,13 +1460,12 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         default_filters_q = build_occurrence_default_filters_q(project, self.request, occurrence_accessor="")
 
         # Combine base occurrence filters with default filters
-        base_filter = (
-            models.Q(
-                occurrence_filters,
-                determination_id=models.OuterRef("id"),
-            )
-            & default_filters_q
+        base_filter = models.Q(
+            occurrence_filters,
+            determination_id=models.OuterRef("id"),
         )
+        if apply_default_filters:
+            base_filter = base_filter & default_filters_q
 
         # Count occurrences - uses composite index (determination_id, project_id, event_id, determination_score)
         occurrences_count_subquery = models.Subquery(
