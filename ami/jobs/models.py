@@ -398,7 +398,6 @@ class MLJob(JobType):
         job.save()
 
         if job.project.feature_flags.async_pipeline_workers:
-        if job.project.feature_flags.async_pipeline_workers:
             queued = queue_images_to_nats(job, images)
             if not queued:
                 job.logger.error("Aborting job %s because images could not be queued to NATS", job.pk)
