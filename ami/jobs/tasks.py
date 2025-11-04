@@ -1,7 +1,11 @@
+import functools
 import logging
+import time
+from collections.abc import Callable
 
 from celery.result import AsyncResult
 from celery.signals import task_failure, task_postrun, task_prerun
+from django.db import transaction
 
 from ami.ml.orchestration.nats_queue import TaskQueueManager
 from ami.ml.orchestration.task_state import TaskStateManager
@@ -60,50 +64,54 @@ def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject:
     Returns:
         dict with status information
     """
-    from ami.jobs.models import Job, JobState  # avoid circular import
+    from ami.jobs.models import Job  # avoid circular import
+
+    _, t = log_time()
+    error = result_data.get("error")
+    pipeline_result = None
+    if not error:
+        pipeline_result = PipelineResultsResponse(**result_data)
+        processed_image_ids = {str(img.id) for img in pipeline_result.source_images}
+    else:
+        processed_image_ids = set()
+        image_id = result_data.get("image_id")
+        logger.error(f"Pipeline returned error for job {job_id}, image {image_id}: {error}")
+
+    state_manager = TaskStateManager(job_id)
+
+    progress_info = state_manager.update_state(processed_image_ids, stage="process", request_id=self.request.id)
+    if not progress_info:
+        logger.warning(
+            f"Another task is already processing results for job {job_id}. "
+            f"Retrying task {self.request.id} in 5 seconds..."
+        )
+        raise self.retry(countdown=5, max_retries=10)
 
     try:
+        _update_job_progress(job_id, "process", progress_info.percentage)
+
+        _, t = t(f"TIME: Updated job {job_id} progress in PROCESS stage progress to {progress_info.percentage*100}%")
         job = Job.objects.get(pk=job_id)
         job.logger.info(f"Processing pipeline result for job {job_id}, reply_subject: {reply_subject}")
+        job.logger.info(
+            f" Job {job_id} progress: {progress_info.processed}/{progress_info.total} images processed "
+            f"({progress_info.percentage*100}%), {progress_info.remaining} remaining, {len(processed_image_ids)} just "
+            "processed"
+        )
 
         # Save to database (this is the slow operation)
         if not job.pipeline:
             job.logger.warning(f"Job {job_id} has no pipeline, skipping save_results")
             return
 
-        job.logger.info(f"Successfully saved results for job {job_id}")
+        if pipeline_result:
+            job.pipeline.save_results(results=pipeline_result, job_id=job.pk)
+            job.logger.info(f"Successfully saved results for job {job_id}")
 
-        # Deserialize the result
-        pipeline_result = PipelineResultsResponse(**result_data)
-
-        # Update progress tracking in Redis
-        state_manager = TaskStateManager(job.pk)
-        processed_image_ids = {str(img.id) for img in pipeline_result.source_images}
-        state_manager.mark_images_processed(processed_image_ids)
-
-        progress_info = state_manager.get_progress()
-        progress_percentage = 0.0
-
-        if progress_info is not None:
-            # Get updated progress
-            progress_percentage = progress_info.percentage
-
-            job.logger.info(
-                f"Job {job_id} progress: {progress_info.processed}/{progress_info.total} images processed "
-                f"({progress_percentage*100}%), {progress_info.remaining} remaining"
+            _, t = t(
+                f"Saved pipeline results to database with {len(pipeline_result.detections)} detections"
+                f", percentage: {progress_info.percentage*100}%"
             )
-        else:
-            job.logger.warning(f"No pending images found in Redis for job {job_id}, setting progress to 100%")
-            progress_percentage = 1.0
-
-        job.progress.update_stage(
-            "process",
-            status=JobState.SUCCESS if progress_percentage >= 1.0 else JobState.STARTED,
-            progress=progress_percentage,
-        )
-        job.save()
-
-        job.pipeline.save_results(results=pipeline_result, job_id=job.pk)
         # Acknowledge the task via NATS
         try:
 
@@ -122,12 +130,15 @@ def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject:
             # Don't fail the task if ACK fails - data is already saved
 
         # Update job stage with calculated progress
-        job.progress.update_stage(
-            "results",
-            status=JobState.STARTED if progress_percentage < 1.0 else JobState.SUCCESS,
-            progress=progress_percentage,
-        )
-        job.save()
+        progress_info = state_manager.update_state(processed_image_ids, stage="results", request_id=self.request.id)
+
+        if not progress_info:
+            logger.warning(
+                f"Another task is already processing results for job {job_id}. "
+                f"Retrying task {self.request.id} in 5 seconds..."
+            )
+            raise self.retry(countdown=5, max_retries=10)
+        _update_job_progress(job_id, "results", progress_info.percentage)
 
     except Job.DoesNotExist:
         logger.error(f"Job {job_id} not found")
@@ -136,6 +147,20 @@ def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject:
         logger.error(f"Failed to process pipeline result for job {job_id}: {e}")
         # Celery will automatically retry based on autoretry_for
         raise
+
+
+def _update_job_progress(job_id: int, stage: str, progress_percentage: float) -> None:
+    from ami.jobs.models import Job, JobState  # avoid circular import
+
+    with transaction.atomic():
+        job = Job.objects.select_for_update().get(pk=job_id)
+        job.progress.update_stage(
+            stage,
+            status=JobState.SUCCESS if progress_percentage >= 1.0 else JobState.STARTED,
+            progress=progress_percentage,
+        )
+        job.logger.info(f"Updated job {job_id} progress in stage '{stage}' to {progress_percentage*100}%")
+        job.save()
 
 
 @task_postrun.connect(sender=run_job)
@@ -171,3 +196,28 @@ def update_job_failure(sender, task_id, exception, *args, **kwargs):
     job.logger.error(f'Job #{job.pk} "{job.name}" failed: {exception}')
 
     job.save()
+
+
+def log_time(start: float = 0, msg: str | None = None) -> tuple[float, Callable]:
+    """
+    Small helper to measure time between calls.
+
+    Returns: elapsed time since the last call, and a partial function to measure from the current call
+    Usage:
+
+    _, tlog = log_time()
+    # do something
+    _, tlog = tlog("Did something") # will log the time taken by 'something'
+    # do something else
+    t, tlog = tlog("Did something else") # will log the time taken by 'something else', returned as 't'
+    """
+
+    end = time.perf_counter()
+    if start == 0:
+        dur = 0.0
+    else:
+        dur = end - start
+    if msg and start > 0:
+        logger.info(f"{msg}: {dur:.3f}s")
+    new_start = time.perf_counter()
+    return dur, functools.partial(log_time, new_start)

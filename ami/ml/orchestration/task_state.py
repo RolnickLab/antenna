@@ -35,32 +35,55 @@ class TaskStateManager:
         self._pending_key = f"job:{job_id}:pending_images"  # noqa E231
         self._total_key = f"job:{job_id}:pending_images_total"  # noqa E231
 
-    def initialize_job(self, image_ids: list[str]) -> None:
+    def initialize_job(self, image_ids: list[str], stages: list[str]) -> None:
         """
         Initialize job tracking with a list of image IDs to process.
 
         Args:
             image_ids: List of image IDs that need to be processed
+            stages: List of stages to track for each image
         """
-        cache.set(self._pending_key, image_ids, timeout=self.TIMEOUT)
+        self.stages = stages
+        for stage in stages:
+            cache.set(self._get_pending_key(stage), image_ids, timeout=self.TIMEOUT)
+
         cache.set(self._total_key, len(image_ids), timeout=self.TIMEOUT)
 
-    def mark_images_processed(self, processed_image_ids: set[str]) -> None:
+    def _get_pending_key(self, stage: str) -> str:
+        return f"{self._pending_key}:{stage}"  # noqa E231
+
+    def update_state(
+        self,
+        processed_image_ids: set[str],
+        stage: str,
+        request_id: str,
+    ) -> None | TaskProgress:
         """
-        Mark a set of images as processed by removing them from pending list.
+        Update the task state with newly processed images.
 
         Args:
-            processed_image_ids: Set of image IDs that have been processed
+            processed_image_ids: Set of image IDs that have just been processed
         """
-        pending_images = cache.get(self._pending_key)
-        if pending_images is None:
-            return
+        # Create a unique lock key for this job
+        lock_key = f"job:{self.job_id}:process_results_lock"
+        lock_timeout = 360  # 6 minutes (matches task time_limit)
+        lock_acquired = cache.add(lock_key, request_id, timeout=lock_timeout)
+        if not lock_acquired:
+            return None
 
-        remaining_images = [img_id for img_id in pending_images if img_id not in processed_image_ids]
+        try:
+            # Update progress tracking in Redis
+            progress_info = self._get_progress(processed_image_ids, stage)
+            return progress_info
+        finally:
+            # Always release the lock when done
+            current_lock_value = cache.get(lock_key)
+            # Only delete if we still own the lock (prevents race condition)
+            if current_lock_value == request_id:
+                cache.delete(lock_key)
+                logger.debug(f"Released lock for job {self.job_id}, task {request_id}")
 
-        cache.set(self._pending_key, remaining_images, timeout=self.TIMEOUT)
-
-    def get_progress(self) -> TaskProgress | None:
+    def _get_progress(self, processed_image_ids: set[str], stage: str) -> TaskProgress | None:
         """
         Get current progress information for the job.
 
@@ -71,16 +94,21 @@ class TaskStateManager:
                 - processed: Number of images processed (or None if not tracked)
                 - percentage: Progress as float 0.0-1.0 (or None if not tracked)
         """
-        pending_images = cache.get(self._pending_key)
+        pending_images = cache.get(self._get_pending_key(stage))
         total_images = cache.get(self._total_key)
-
         if pending_images is None or total_images is None:
             return None
+        remaining_images = [img_id for img_id in pending_images if img_id not in processed_image_ids]
+        assert len(pending_images) >= len(remaining_images)
+        cache.set(self._get_pending_key(stage), remaining_images, timeout=self.TIMEOUT)
 
-        remaining = len(pending_images)
+        remaining = len(remaining_images)
         processed = total_images - remaining
         percentage = float(processed) / total_images if total_images > 0 else 1.0
-        logger.info(f"Pending images from Redis for job {self.job_id}: " f"{remaining}/{total_images}")
+        logger.info(
+            f"Pending images from Redis for job {self.job_id} {stage}: "
+            f"{remaining}/{total_images}: {percentage*100}%"
+        )
 
         return TaskProgress(
             remaining=remaining,
@@ -93,5 +121,6 @@ class TaskStateManager:
         """
         Delete all Redis keys associated with this job.
         """
-        cache.delete(self._pending_key)
+        for stage in self.stages:
+            cache.delete(self._get_pending_key(stage))
         cache.delete(self._total_key)
