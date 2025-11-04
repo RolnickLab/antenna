@@ -23,7 +23,9 @@ import itertools
 
 from django.apps import apps
 from django.db import models
+from rest_framework.request import Request
 
+from ami.main.models_future.filters import build_occurrence_default_filters_q
 from ami.utils.dates import shift_to_nighttime
 
 
@@ -191,13 +193,19 @@ def events_per_month(project_pk: int):
     }
 
 
-def detections_per_hour(project_pk: int):
+def detections_per_hour(project_pk: int, request: Request | None = None):
     # Average detections per hour across all days
     Detection = apps.get_model("main", "Detection")
-
-    # First get detections per hour per day
+    Project = apps.get_model("main", "Project")
+    project = Project.objects.get(pk=project_pk)
+    Occurrence = apps.get_model("main", "Occurrence")
+    # Apply default filters
+    filtered_occurrences = Occurrence.objects.filter(project=project).apply_default_filters(
+        project=project, request=request
+    )
+    # Get detections per hour per day
     detections_by_day_hour = (
-        Detection.objects.filter(occurrence__project=project_pk)
+        Detection.objects.filter(occurrence_id__in=filtered_occurrences)
         .exclude(source_image__timestamp=None)
         .values("source_image__timestamp__date", "source_image__timestamp__hour")
         .annotate(count=models.Count("id"))
@@ -244,13 +252,18 @@ def detections_per_hour(project_pk: int):
     }
 
 
-def occurrences_accumulated(project_pk: int):
+def occurrences_accumulated(project_pk: int, request: Request | None = None):
     # Line chart of the accumulated number of occurrences over time throughout the season
 
     Occurrence = apps.get_model("main", "Occurrence")
+    Project = apps.get_model("main", "Project")
+    project = Project.objects.get(pk=project_pk)
+    # Apply default filters
+    filtered_occurrences = Occurrence.objects.apply_default_filters(project=project, request=request).filter(
+        project=project
+    )
     occurrences_per_day = (
-        Occurrence.objects.filter(project=project_pk)
-        .values_list("event__start")
+        filtered_occurrences.values_list("event__start")
         .exclude(event=None)
         .exclude(event__start=None)
         .exclude(detections=None)
@@ -258,8 +271,7 @@ def occurrences_accumulated(project_pk: int):
         .order_by("event__start")
     )
 
-    occurrences_exist = Occurrence.objects.filter(project=project_pk).exists()
-    if occurrences_exist:
+    if filtered_occurrences.exists():
         days, counts = list(zip(*occurrences_per_day))
         # Accumulate the counts
         counts = list(itertools.accumulate(counts))
@@ -277,11 +289,20 @@ def occurrences_accumulated(project_pk: int):
     }
 
 
-def event_detections_per_hour(event_pk: int):
+def event_detections_per_hour(event_pk: int, request: Request | None = None):
     # Detections per hour
     Detection = apps.get_model("main", "Detection")
+    Occurrence = apps.get_model("main", "Occurrence")
+    Event = apps.get_model("main", "Event")
+
+    # Get the event and its project
+    event = Event.objects.get(pk=event_pk)
+    project = event.project if event else None
+    filtered_occurrences = Occurrence.objects.apply_default_filters(project=project, request=request).filter(
+        event=event
+    )
     detections_per_hour = (
-        Detection.objects.filter(source_image__event=event_pk)
+        Detection.objects.filter(occurrence_id__in=filtered_occurrences)
         .values("source_image__timestamp__hour")
         .annotate(num_detections=models.Count("id"))
         .order_by("source_image__timestamp__hour")
@@ -308,11 +329,19 @@ def event_detections_per_hour(event_pk: int):
     }
 
 
-def event_top_taxa(event_pk: int, top_n: int = 10):
+def event_top_taxa(event_pk: int, top_n: int = 10, request: Request | None = None):
     # Horizontal bar chart of top taxa
     Taxon = apps.get_model("main", "Taxon")
+    Occurrence = apps.get_model("main", "Occurrence")
+    Event = apps.get_model("main", "Event")
+    event = Event.objects.get(pk=event_pk)
+    project = event.project if event else None
+    # Apply default filters
+    filtered_occurrences = Occurrence.objects.apply_default_filters(project=project, request=request).filter(
+        event=event
+    )
     top_taxa = (
-        Taxon.objects.filter(occurrences__event=event_pk)
+        Taxon.objects.filter(occurrences__in=filtered_occurrences)
         .values("name")
         # .annotate(num_detections=models.Count("occurrences__detections"))
         .annotate(num_detections=models.Count("occurrences"))
@@ -334,11 +363,15 @@ def event_top_taxa(event_pk: int, top_n: int = 10):
     }
 
 
-def project_top_taxa(project_pk: int, top_n: int = 10):
+def project_top_taxa(project_pk: int, top_n: int = 10, request: Request | None = None):
     Taxon = apps.get_model("main", "Taxon")
+    Project = apps.get_model("main", "Project")
+    project = Project.objects.get(pk=project_pk)
+    filter_q = build_occurrence_default_filters_q(project=project, request=request, occurrence_accessor="occurrences")
+
     top_taxa = (
-        Taxon.objects.all()
-        .with_occurrence_counts(project=project_pk)  # type: ignore
+        Taxon.objects.filter(occurrences__project=project)
+        .annotate(occurrence_count=models.Count("occurrences", filter=filter_q, distinct=True))
         .order_by("-occurrence_count")[:top_n]
     )
 
@@ -355,12 +388,18 @@ def project_top_taxa(project_pk: int, top_n: int = 10):
     }
 
 
-def unique_species_per_month(project_pk: int):
+def unique_species_per_month(project_pk: int, request: Request | None = None):
     # Unique species per month
     Occurrence = apps.get_model("main", "Occurrence")
+    Project = apps.get_model("main", "Project")
+    project = Project.objects.get(pk=project_pk)
+
+    filtered_occurrences = Occurrence.objects.apply_default_filters(project=project, request=request).filter(
+        project=project
+    )
+
     unique_species_per_month = (
-        Occurrence.objects.filter(project=project_pk)
-        .values_list("event__start__month")
+        filtered_occurrences.values_list("event__start__month")
         .annotate(num_species=models.Count("determination_id", distinct=True))
         .order_by("event__start__month")
     )
@@ -385,11 +424,12 @@ def unique_species_per_month(project_pk: int):
     }
 
 
-def average_occurrences_per_month(project_pk: int, taxon_pk: int | None = None):
+def average_occurrences_per_month(project_pk: int, taxon_pk: int | None = None, request=None):
     # Average occurrences per month
     Occurrence = apps.get_model("main", "Occurrence")
-
-    qs = Occurrence.objects.filter(project=project_pk)
+    Project = apps.get_model("main", "Project")
+    project = Project.objects.get(pk=project_pk)
+    qs = Occurrence.objects.apply_default_filters(project=project, request=request).filter(project=project)
 
     if taxon_pk:
         qs = qs.filter(determination_id=taxon_pk)
@@ -420,12 +460,13 @@ def average_occurrences_per_month(project_pk: int, taxon_pk: int | None = None):
     }
 
 
-def average_occurrences_per_day(project_pk: int, taxon_pk: int | None = None):
+def average_occurrences_per_day(project_pk: int, taxon_pk: int | None = None, request=None):
     # Average occurrences per day
     Occurrence = apps.get_model("main", "Occurrence")
-
-    qs = Occurrence.objects.filter(project=project_pk)
-
+    Project = apps.get_model("main", "Project")
+    project = Project.objects.get(pk=project_pk)
+    # Apply default filters
+    qs = Occurrence.objects.apply_default_filters(project=project, request=request).filter(project=project)
     if taxon_pk:
         qs = qs.filter(determination_id=taxon_pk)
 
@@ -464,13 +505,17 @@ def average_occurrences_per_day(project_pk: int, taxon_pk: int | None = None):
     }
 
 
-def relative_occurrences_per_month(project_pk: int, taxon_pk: int):
+def relative_occurrences_per_month(project_pk: int, taxon_pk: int, request=None):
     Occurrence = apps.get_model("main", "Occurrence")
-
+    Project = apps.get_model("main", "Project")
+    project = Project.objects.get(pk=project_pk)
+    # Apply default filters
+    filtered_occurrences = Occurrence.objects.apply_default_filters(project=project, request=request).filter(
+        project=project
+    )
     # Single query to get total occurrences and taxon-specific occurrences per month
     occurrences_per_month = (
-        Occurrence.objects.filter(project=project_pk)
-        .values("event__start__month")
+        filtered_occurrences.values("event__start__month")
         .annotate(
             total_occurrences=models.Count("id"),
             taxon_occurrences=models.Count("id", filter=models.Q(determination_id=taxon_pk)),
