@@ -238,7 +238,13 @@ class ProjectManager(Role):
 class AuthorizedUser(GlobalRole):
     """A role that grants project create permission to all authenticated users."""
 
-    model_level_permissions = {Project.Permissions.CREATE_PROJECT}
+    model_level_permissions = {
+        "create_project",
+        "create_processingservice",
+        "register_pipelines_processingservice",
+        "create_taxon",
+        "assign_tags_taxon",
+    }
 
 
 def create_roles_for_project(project):
