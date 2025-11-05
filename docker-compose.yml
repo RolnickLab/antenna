@@ -10,7 +10,6 @@ volumes:
     driver: local
   node_modules:
 
-
 services:
   django: &django
     build:
@@ -33,7 +32,10 @@ services:
         required: false
     ports:
       - "8000:8000"
+      - "5679:5679"
     command: /start
+    # for debugging with debugpy:
+    # command: python -m debugpy --listen 0.0.0.0:5679 -m django runserver 0.0.0.0:8000
     networks:
       - default
       - antenna_network
@@ -123,7 +125,7 @@ services:
     ports:
       - "9001:9001"
     healthcheck:
-      test: [ "CMD", "mc", "ready", "local" ]
+      test: ["CMD", "mc", "ready", "local"]
       interval: 5s
       timeout: 5s
       retries: 5
