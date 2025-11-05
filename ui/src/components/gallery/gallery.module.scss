@@ -8,7 +8,7 @@
   grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
   gap: 16px;
   width: 100%;
-  padding-top: 24px;
+  padding-top: 16px;
 
   &.loading {
     margin: 0;
@@ -42,6 +42,5 @@
 @media only screen and (max-width: $small-screen-breakpoint) {
   .gallery {
     grid-template-columns: 1fr !important;
-    padding-top: 16px;
   }
 }
