@@ -51,6 +51,10 @@ class Command(BaseCommand):
         # Validate image exists
         try:
             image = SourceImage.objects.select_related("deployment__project").get(pk=image_id)
+            if not image.deployment or not image.deployment.project:
+                raise CommandError(
+                    f"SourceImage with id {image_id} is not attached to a deployment/project, cannot submit job"
+                )
             self.stdout.write(self.style.SUCCESS(f"✓ Found image: {image.path}"))
             self.stdout.write(f"  Project: {image.deployment.project.name}")
             self.stdout.write(f"  Deployment: {image.deployment.name}")
@@ -71,6 +75,7 @@ class Command(BaseCommand):
         try:
             job = submit_single_image_job(
                 image_id=image_id,
+                project_id=image.deployment.project_id,
                 pipeline_id=pipeline_id,
                 job_name=job_name,
             )
@@ -104,7 +109,10 @@ class Command(BaseCommand):
 
             while True:
                 job.refresh_from_db()
-                progress = job.progress.summary.progress * 100
+                if job.progress and job.progress.summary and job.progress.summary.progress is not None:
+                    progress = job.progress.summary.progress * 100
+                else:
+                    progress = 0.0
                 status = job.status
 
                 # Only update display if something changed
@@ -153,13 +161,6 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f"✗ Job failed after {elapsed_total:.1f}s"))
             self.stdout.write("\nCheck job logs for details:")
             self.stdout.write(f"  Job.objects.get(pk={job.pk}).logs")
-
-            # Show any error messages
-            if job.progress.errors:
-                self.stdout.write("\nErrors:")
-                for error in job.progress.errors[-5:]:  # Last 5 errors
-                    self.stdout.write(f"  - {error}")  # noqa: E221
-
         else:
             self.stdout.write(self.style.WARNING(f"⚠ Job ended with status: {job.status}"))
 

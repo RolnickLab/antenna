@@ -37,7 +37,6 @@ media/
 staticfiles/     # collected static files (use collectstatic inside container)
 
 # Node / UI dependencies (if using React/Vue in your UI service)
-node_modules/
 npm-debug.log
 yarn-error.log
 .pnpm-debug.log
@@ -54,7 +53,6 @@ yarn-error.log
 
 # IDE / editor
 .vscode/
-.idea/
 *.iml
 
 # OS cruft

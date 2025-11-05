@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 def submit_single_image_job(
     image_id: int,
     pipeline_id: int,
-    project_id: int | None = None,
+    project_id: int,
     job_name: str | None = None,
 ) -> Job:
     """
@@ -47,11 +47,7 @@ def submit_single_image_job(
         logger.error(f"Pipeline with id {pipeline_id} does not exist")
         raise
 
-    # Infer project from image if not provided
-    if project_id is None:
-        project = image.deployment.project
-    else:
-        project = Project.objects.get(pk=project_id)
+    project = Project.objects.get(pk=project_id)
 
     # Generate job name if not provided
     if job_name is None:
@@ -66,9 +62,7 @@ def submit_single_image_job(
         source_image_single=image,
     )
 
-    logger.info(
-        f"Created job {job.pk} for single image {image_id} " f"with pipeline {pipeline.name} (id: {pipeline_id})"
-    )
+    logger.info(f"Created job {job.pk} for single image {image_id} with pipeline {pipeline.name} (id: {pipeline_id})")
 
     # Enqueue the job (starts the Celery task)
     job.enqueue()
