@@ -80,7 +80,7 @@ def manage_project_membership(sender, instance, action, reverse, model, pk_set, 
 
 
 @receiver(post_save, sender=User)
-def assign_authenticated_users_group(sender, instance, created, **kwargs):
+def assign_authorized_user_group(sender, instance, created, **kwargs):
     if created:
         logger.info(f"Assigning AuthorizedUser role to new user {instance.email}")
         AuthorizedUser.assign_user(instance)
