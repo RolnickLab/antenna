@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class Role:
-    """Base class for all roles."""
+    """Base class for project-based object level roles."""
 
     display_name = ""
     description = ""
@@ -129,6 +129,37 @@ class GlobalRole:
             logger.info(f"Assigning model-level permission {perm_codename} to group {group.name}")
             group.permissions.add(perm)
 
+    @classmethod
+    def sync_group_permissions(cls) -> None:
+        """Synchronize the group's permissions with the current model_level_permissions list.
+
+        Ensures that:
+        - New permissions are added automatically
+        - Removed permissions are revoked
+        """
+        group, created = Group.objects.get_or_create(name=cls.get_group_name())
+        ct = ContentType.objects.get_for_model(Project)
+
+        current_perms = set(group.permissions.filter(content_type=ct).values_list("codename", flat=True))
+        desired_perms = set(cls.model_level_permissions)
+
+        # Add missing permissions
+        for perm_codename in desired_perms - current_perms:
+            perm, _ = Permission.objects.get_or_create(
+                codename=perm_codename,
+                content_type=ct,
+                defaults={"name": f"Can {perm_codename.replace('_', ' ')}"},
+            )
+            group.permissions.add(perm)
+            logger.info(f"Added missing permission {perm_codename} to {group.name}")
+
+        # Remove obsolete permissions
+        for perm_codename in current_perms - desired_perms:
+            perm = Permission.objects.filter(codename=perm_codename, content_type=ct).first()
+            if perm:
+                group.permissions.remove(perm)
+                logger.info(f"Removed outdated permission {perm_codename} from {group.name}")
+
 
 class BasicMember(Role):
     display_name = "Basic member"
@@ -236,7 +267,7 @@ class ProjectManager(Role):
 
 
 class AuthorizedUser(GlobalRole):
-    """A role that grants project create permission to all authenticated users."""
+    """A role that grants project create permission to all authorized users."""
 
     model_level_permissions = {
         "create_project",

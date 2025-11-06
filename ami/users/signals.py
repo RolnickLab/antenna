@@ -7,13 +7,13 @@ from django.dispatch import receiver
 
 from ami.main.models import Project, UserProjectMembership
 from ami.users.models import User
-from ami.users.roles import AuthorizedUser, Role, create_roles_for_project
+from ami.users.roles import AuthorizedUser, GlobalRole, Role, create_roles_for_project
 
 logger = logging.getLogger(__name__)
 
 
-def create_roles(sender, **kwargs):
-    """Creates predefined roles with specific permissions ."""
+def create_project_based_roles(sender, **kwargs):
+    """Creates predefined project based roles with specific permissions ."""
 
     logger.info("Creating roles for all projects")
     try:
@@ -27,6 +27,25 @@ def create_roles(sender, **kwargs):
         logger.warning(
             f"Failed to create roles during migration: {e}. This can be run manually via management command."
         )
+
+
+def create_global_roles(sender, **kwargs):
+    """
+    Create or update all global role groups and synchronize their permissions.
+
+    This function iterates through every subclass of `GlobalRole` (e.g. AuthorizedUser),
+    ensures each role group exists, and syncs its assigned permissions according to
+    the `model_level_permissions` list defined on the role class.
+    """
+    logger.info("Ensuring all global role groups and permissions are up to date")
+
+    for role_cls in GlobalRole.__subclasses__():
+        try:
+            group, created = Group.objects.get_or_create(name=role_cls.get_group_name())
+            role_cls.sync_group_permissions()
+            logger.info(f"Synchronized global role: {role_cls.__name__} ({group.name})")
+        except Exception as e:
+            logger.warning(f"Failed to sync global role {role_cls.__name__}: {e}")
 
 
 @receiver(m2m_changed, sender=Group.user_set.through)
