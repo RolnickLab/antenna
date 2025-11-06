@@ -1585,14 +1585,25 @@ class SourceImageQuerySet(BaseQuerySet):
         filtered by default filters (score threshold and taxa inclusion/exclusion).
 
         Note: classification_threshold parameter is deprecated, use project default filters instead.
+
+        Uses a subquery to avoid GROUP BY in the pagination count query, which may
+        improve performance for large datasets.
         """
-        filter_q = build_occurrence_default_filters_q(project, None, "detections__occurrence")
+        from ami.main.models_future.filters import build_occurrence_default_filters_q
+
+        filter_q = build_occurrence_default_filters_q(project, None, "")
+
+        # Use a subquery instead of Count with joins to avoid GROUP BY
+        occurrences_subquery = (
+            Occurrence.objects.filter(detections__source_image_id=models.OuterRef("pk"))
+            .filter(filter_q)
+            .values("detections__source_image_id")
+            .annotate(count=models.Count("id", distinct=True))
+            .values("count")
+        )
+
         return self.annotate(
-            occurrences_count=models.Count(
-                "detections__occurrence",
-                filter=filter_q,
-                distinct=True,
-            )
+            occurrences_count=models.Subquery(occurrences_subquery, output_field=models.IntegerField())
         )
 
     def with_taxa_count(self, classification_threshold: float = 0, project: Project | None = None):
@@ -1601,16 +1612,24 @@ class SourceImageQuerySet(BaseQuerySet):
         filtered by default filters (score threshold and taxa inclusion/exclusion).
 
         Note: classification_threshold parameter is deprecated, use project default filters instead.
-        """
-        filter_q = build_occurrence_default_filters_q(project, None, "detections__occurrence")
 
-        return self.annotate(
-            taxa_count=models.Count(
-                "detections__occurrence__determination",
-                filter=filter_q,
-                distinct=True,
-            )
+        Uses a subquery to avoid GROUP BY in the pagination count query, which may
+        improve performance for large datasets.
+        """
+        from ami.main.models_future.filters import build_occurrence_default_filters_q
+
+        filter_q = build_occurrence_default_filters_q(project, None, "")
+
+        # Use a subquery instead of Count with joins to avoid GROUP BY
+        taxa_subquery = (
+            Occurrence.objects.filter(detections__source_image_id=models.OuterRef("pk"))
+            .filter(filter_q)
+            .values("detections__source_image_id")
+            .annotate(count=models.Count("determination_id", distinct=True))
+            .values("count")
         )
+
+        return self.annotate(taxa_count=models.Subquery(taxa_subquery, output_field=models.IntegerField()))
 
 
 class SourceImageManager(models.Manager.from_queryset(SourceImageQuerySet)):
