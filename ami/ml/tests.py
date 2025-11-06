@@ -118,6 +118,40 @@ class TestProcessingServiceAPI(APITestCase):
 
 
 class TestPipelineWithProcessingService(TestCase):
+    def test_run_pipeline_with_errors_from_processing_service(self):
+        """
+        Run a real pipeline and verify that if an error occurs for one image, the error is logged in job.logs.stderr.
+        """
+        from ami.jobs.models import Job
+
+        # Setup test project, images, and job
+        project, deployment = setup_test_project()
+        captures = create_captures_from_files(deployment, skip_existing=False)
+        test_images = [image for image, frame in captures]
+        processing_service_instance = create_processing_service(project)
+        pipeline = processing_service_instance.pipelines.all().get(slug="constant")
+        job = Job.objects.create(project=project, name="Test Job Real Pipeline Error Handling", pipeline=pipeline)
+
+        # Simulate an error by passing an invalid image (e.g., missing file or corrupt)
+        # Here, we manually set the path of one image to a non-existent file
+        error_image = test_images[0]
+        error_image.path = "/tmp/nonexistent_image.jpg"
+        error_image.save()
+        images = [error_image] + test_images[1:2]  # Only two images for brevity
+
+        # Run the pipeline and catch any error
+        try:
+            pipeline.process_images(images, job_id=job.pk, project_id=project.pk)
+        except Exception:
+            pass  # Expected if the backend raises
+
+        job.refresh_from_db()
+        stderr_logs = job.logs.stderr
+        # Check that an error message mentioning the failed image is present
+        assert any(
+            "Failed to process" in log for log in stderr_logs
+        ), f"Expected error message in job.logs.stderr, got: {stderr_logs}"
+
     def setUp(self):
         self.project, self.deployment = setup_test_project()
         self.captures = create_captures_from_files(self.deployment, skip_existing=False)
