@@ -3,7 +3,7 @@ import logging
 import typing
 from io import BytesIO
 
-from django.contrib.auth.models import AnonymousUser, Permission
+from django.contrib.auth.models import AnonymousUser, Group, Permission
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection, models
@@ -42,7 +42,7 @@ from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 from ami.tests.fixtures.storage import populate_bucket
 from ami.users.models import User
-from ami.users.roles import BasicMember, Identifier, ProjectManager
+from ami.users.roles import AuthorizedUser, BasicMember, Identifier, ProjectManager
 
 logger = logging.getLogger(__name__)
 
@@ -3971,3 +3971,42 @@ class TestTaxonModelLevelPermissions(BasePermissionTestCase):
             found_obj.get("user_permissions", []),
             "Custom permission 'assign_tags' should appear in object-level user_permissions after granting it.",
         )
+
+
+class TestAuthorizedUserGlobalRole(TestCase):
+    """
+    Tests that a newly created user is automatically added to the AuthorizedUser group
+    and inherits all model-level permissions defined in the AuthorizedUser global role.
+    """
+
+    def setUp(self):
+        self.AuthorizedUser = AuthorizedUser
+        self.group_name = AuthorizedUser.get_group_name()
+        self.group, _ = Group.objects.get_or_create(name=self.group_name)
+
+    def test_new_user_added_to_authorized_user_group_and_permissions(self):
+        """Verify that a new user is assigned to the AuthorizedUser group and gets all defined permissions."""
+
+        # Create a new user (this should trigger the post_save signal) ---
+        user = User.objects.create_user(email="newuser@insectai.org")
+
+        # Ensure user is added to AuthorizedUser group
+        self.assertTrue(
+            user.groups.filter(name=self.group_name).exists(),
+            f"New user should be added to the '{self.group_name}' group automatically.",
+        )
+
+        # Verify that the group has all permissions defined in the AuthorizedUser role ---
+        group_perms = set(self.group.permissions.values_list("codename", flat=True))
+        expected_perms = set(AuthorizedUser.model_level_permissions)
+        self.assertTrue(
+            expected_perms.issubset(group_perms),
+            f"AuthorizedUser group should have all defined permissions: missing {expected_perms - group_perms}",
+        )
+
+        # Verify that the user actually has these permissions ---
+        user_perms = set(user.get_all_permissions())
+        for perm in expected_perms:
+            self.assertIn(
+                f"main.{perm}", user_perms, f"User should inherit '{perm}' permission from AuthorizedUser group."
+            )
