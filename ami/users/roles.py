@@ -124,7 +124,7 @@ class GlobalRole:
             perm, _ = Permission.objects.get_or_create(
                 codename=perm_codename,
                 content_type=ct,
-                defaults={"name": f"Can {perm_codename.replace('_', ' ')}"},
+                defaults={"name": f"Can {perm_codename.replace('_', ' ')} globally"},
             )
             logger.info(f"Assigning model-level permission {perm_codename} to group {group.name}")
             group.permissions.add(perm)
@@ -148,7 +148,7 @@ class GlobalRole:
             perm, _ = Permission.objects.get_or_create(
                 codename=perm_codename,
                 content_type=ct,
-                defaults={"name": f"Can {perm_codename.replace('_', ' ')}"},
+                defaults={"name": f"Can {perm_codename.replace('_', ' ')} globally"},
             )
             group.permissions.add(perm)
             logger.info(f"Added missing permission {perm_codename} to {group.name}")
