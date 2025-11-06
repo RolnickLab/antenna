@@ -3582,7 +3582,19 @@ class BasePermissionTestCase(APITestCase):
                 delattr(user, attr)
         user.refresh_from_db()
 
-        return True
+    def _remove_user_from_authorized_group(self, user):
+        """
+        Removes the given user from the AuthorizedUser group if present
+        and resets permission caches to ensure accurate permission checks.
+        """
+        from django.contrib.auth.models import Group
+
+        group_name = "AuthorizedUser"
+        group = Group.objects.get(name=group_name)
+        if group in user.groups.all():
+            user.groups.remove(group)
+            user.user_permissions.clear()
+            user.refresh_from_db()
 
 
 class TestProcessingServiceModelLevelPermissions(BasePermissionTestCase):
@@ -3600,6 +3612,8 @@ class TestProcessingServiceModelLevelPermissions(BasePermissionTestCase):
         )
         self.project, _ = setup_test_project(reuse=False)
         self.client.force_authenticate(user=self.user)
+        # Remove the user from the AuthorizedUsers group to avoid inherited permissions
+        self._remove_user_from_authorized_group(self.user)
 
         self.endpoint = "/api/v2/ml/processing_services/"
         self.payload = {
@@ -3776,6 +3790,8 @@ class TestTaxonModelLevelPermissions(BasePermissionTestCase):
             is_staff=False,
             is_superuser=False,
         )
+        # Remove the user from the AuthorizedUsers group to avoid inherited permissions
+        self._remove_user_from_authorized_group(self.user)
         self.project, _ = setup_test_project(reuse=False)
         self.client.force_authenticate(user=self.user)
 
@@ -3785,8 +3801,8 @@ class TestTaxonModelLevelPermissions(BasePermissionTestCase):
         self.payload = {
             "name": "Test Taxon",
             "rank": "SPECIES",
-            "parent_id": self.parent_taxon.id,
-            "project": self.project.id,
+            "parent_id": self.parent_taxon.pk,
+            "project": self.project.pk,
         }
 
     # ---------- helpers ----------
