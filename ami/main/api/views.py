@@ -500,24 +500,18 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
 
         classification_threshold = get_default_classification_threshold(project, self.request)
 
-        if self.action == "list":
-            queryset = queryset.select_related(
-                "event",
-                "deployment",
-            ).order_by("timestamp")
+        queryset = queryset.select_related(
+            "event",
+            "deployment",
+        ).order_by("timestamp")
 
+        if self.action == "list":
             # It's cumbersome to override the default list view, so customize the queryset here
             queryset = self.filter_by_has_detections(queryset)
 
         elif self.action == "retrieve":
             # For detail view, include storage info and additional prefetches
             with_counts_default = True
-            queryset = queryset.select_related(
-                "event",
-                "deployment",
-                "deployment__storage",
-            ).order_by("timestamp")
-
             queryset = queryset.prefetch_related("jobs", "collections")
             queryset = self.add_adjacent_captures(queryset)
             with_detections_default = True
