@@ -463,6 +463,8 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         "updated_at",
         "timestamp",
         "size",
+        "width",
+        "height",
         "detections_count",
         "occurrences_count",
         "taxa_count",
