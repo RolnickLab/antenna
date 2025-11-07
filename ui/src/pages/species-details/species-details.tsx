@@ -176,6 +176,19 @@ export const SpeciesDetails = ({
                         <ExternalLinkIcon className="w-4 h-4" />
                       </Link>
                     ) : null}
+                    {species.iNaturalistUrl ? (
+                      <Link
+                        className={buttonVariants({
+                          size: 'small',
+                          variant: 'outline',
+                        })}
+                        to={species.iNaturalistUrl}
+                        target="_blank"
+                      >
+                        <span>iNaturalist</span>
+                        <ExternalLinkIcon className="w-4 h-4" />
+                      </Link>
+                    ) : null}
                   </div>
                 </InfoBlockField>
               </div>

@@ -31,6 +31,16 @@ export class Species extends Taxon {
     })
   }
 
+  get iNaturalistId(): string | null {
+    return this._species.inat_taxon_id || null
+  }
+
+  get iNaturalistUrl(): string | undefined {
+    return this.iNaturalistId
+      ? `https://www.inaturalist.org/taxa/${this.iNaturalistId}`
+      : undefined
+  }
+
   get lastSeenLabel() {
     if (!this._species.last_detected) {
       return undefined
