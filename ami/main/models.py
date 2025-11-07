@@ -20,6 +20,7 @@ from django.core.files.storage import default_storage
 from django.db import IntegrityError, models, transaction
 from django.db.models import Exists, OuterRef, Q
 from django.db.models.fields.files import ImageFieldFile
+from django.db.models.functions import Coalesce
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from django.template.defaultfilters import filesizeformat
@@ -1593,9 +1594,8 @@ class SourceImageQuerySet(BaseQuerySet):
 
         # Use a subquery instead of Count with joins to avoid GROUP BY in pagination count query
         # The subquery counts distinct occurrences for each source image
-        # We use Coalesce to return 0 when the subquery returns NULL (no matching rows)
-        from django.db.models.functions import Coalesce
-
+        # Use Coalesce to return 0 when the subquery returns NULL (no matching rows)
+        # @TODO update the SourceImageCollectionQuerySet to use the same approach
         occurrences_subquery = (
             Occurrence.objects.filter(detections__source_image_id=models.OuterRef("pk"))
             .filter(filter_q)
@@ -1622,9 +1622,8 @@ class SourceImageQuerySet(BaseQuerySet):
 
         # Use a subquery instead of Count with joins to avoid GROUP BY in pagination count query
         # The subquery counts distinct taxa for each source image
-        # We use Coalesce to return 0 when the subquery returns NULL (no matching rows)
-        from django.db.models.functions import Coalesce
-
+        # Use Coalesce to return 0 when the subquery returns NULL (no matching rows)
+        # @TODO update the SourceImageCollectionQuerySet to use the same approach
         taxa_subquery = (
             Occurrence.objects.filter(detections__source_image_id=models.OuterRef("pk"))
             .filter(filter_q)
