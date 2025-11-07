@@ -11,7 +11,7 @@ import {
 } from 'design-system/components/info-block/info-block'
 import Plot from 'design-system/components/plot/plot'
 import * as Tabs from 'design-system/components/tabs/tabs'
-import { ExternalLinkIcon } from 'lucide-react'
+import { ExternalLinkIcon, LockIcon } from 'lucide-react'
 import { buttonVariants, TaxonDetails } from 'nova-ui-kit'
 import { Helmet } from 'react-helmet-async'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -61,6 +61,21 @@ export const SpeciesDetails = ({
           size="lg"
           taxon={species}
         />
+        {canUpdate ? (
+          <div className="absolute bottom-6 right-6">
+            <Link
+              className={buttonVariants({
+                size: 'small',
+                variant: 'outline',
+              })}
+              to={species.adminUrl}
+              target="_blank"
+            >
+              <LockIcon className="w-4 h-4" />
+              <span>Admin</span>
+            </Link>
+          </div>
+        ) : null}
       </div>
       <div className={styles.content}>
         <div className={styles.info}>

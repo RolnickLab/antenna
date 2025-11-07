@@ -14,6 +14,10 @@ export class Species extends Taxon {
     this._species = species
   }
 
+  get adminUrl(): string {
+    return `https://api.antenna.insectai.org/bereich/main/taxon/${this.id}` // TODO: Use dynamic admin URL based on environment?
+  }
+
   get coverImage(): { url: string; caption?: string } | undefined {
     if (!this._species.cover_image_url) {
       return undefined
