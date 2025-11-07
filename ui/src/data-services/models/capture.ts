@@ -69,12 +69,15 @@ export class Capture {
       )
     }
   }
-  get canStar(): boolean {
-    const hasPermission = this._capture.user_permissions.includes(
-      UserPermission.Star
-    )
-    return hasPermission
+
+  get canDelete(): boolean {
+    return this._capture.user_permissions.includes(UserPermission.Delete)
   }
+
+  get canStar(): boolean {
+    return this._capture.user_permissions.includes(UserPermission.Star)
+  }
+
   get dateTimeLabel(): string {
     return getFormatedDateTimeString({
       date: new Date(this._capture.timestamp),

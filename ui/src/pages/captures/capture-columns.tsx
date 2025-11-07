@@ -1,3 +1,4 @@
+import { API_ROUTES } from 'data-services/constants'
 import { Capture } from 'data-services/models/capture'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
@@ -7,6 +8,7 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
+import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -158,5 +160,28 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Capture) => <BasicTableCell value={item.numTaxa} />,
+  },
+  {
+    id: 'actions',
+    name: '',
+    styles: {
+      padding: '16px',
+      width: '100%',
+    },
+    renderCell: (item: Capture) => {
+      if (!item.canDelete) {
+        return <></>
+      }
+
+      return (
+        <div className="flex items-center justify-end gap-2 p-4">
+          <DeleteEntityDialog
+            collection={API_ROUTES.CAPTURES}
+            id={item.id}
+            type="capture"
+          />
+        </div>
+      )
+    },
   },
 ]
