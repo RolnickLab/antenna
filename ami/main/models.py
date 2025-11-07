@@ -322,6 +322,31 @@ class Project(ProjectSettingsMixin, BaseModel):
         # Add owner to members
         self.ensure_owner_membership()
 
+    def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
+        """
+        Override BaseModel.check_permission for Project.
+
+        Project has no project accessor,
+        so its permissions are handled  differently:
+        - The "create" action is treated as a model-level permission (since there is
+        no associated project to check object-level permissions against).
+        - All other actions fall back to  object-level permission checks.
+        """
+        logger.debug(f"Project.check_permission action: {action}")
+        if action == "create":
+            return self.check_model_level_permission(user, action)
+        return super().check_object_level_permission(user, action)
+
+    def get_permissions(self, user: AbstractUser | AnonymousUser) -> list[str]:
+        return self.get_object_level_permissions(user)
+
+    @classmethod
+    def get_collection_level_permissions(
+        cls, user: AbstractUser | AnonymousUser, project: "Project | None" = None
+    ) -> list[str]:
+        # Use model-level permissions for project collection-level actions
+        return ["create"] if user.has_perm("main.create_project") else []
+
     class Permissions:
         """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
         `delete_<model>`, `view_<model>`"""
@@ -445,6 +470,19 @@ class Project(ProjectSettingsMixin, BaseModel):
             # Other permissions
             ("view_private_data", "Can view private data"),
             ("trigger_exports", "Can trigger data exports"),
+            # Model-level permission
+            # Project permissions
+            ("create_project", "Can create a project"),
+            # ProcessingService permissions
+            ("create_processingservice", "Can create processing service globally"),
+            ("delete_processingservice", "Can delete processing service globally"),
+            ("update_processingservice", "Can update processing service globally"),
+            ("register_pipelines_processingservice", "Can register pipelines for processing service globally"),
+            # Taxon permissions
+            ("create_taxon", "Can create taxon globally"),
+            ("update_taxon", "Can update taxon globally"),
+            ("delete_taxon", "Can delete taxon globally"),
+            ("assign_tags_taxon", "Can assign tags to taxon globally"),
         ]
 
 
@@ -1853,12 +1891,12 @@ class SourceImage(BaseModel):
         if update_calculated_fields:
             self.update_calculated_fields(save=True)
 
-    def check_custom_permission(self, user, action: str) -> bool:
+    def check_custom_object_level_permission(self, user, action: str) -> bool:
         project = self.get_project() if hasattr(self, "get_project") else None
         if action in ["star", "unstar"]:
             return user.has_perm(Project.Permissions.STAR_SOURCE_IMAGE, project)
 
-    def get_custom_user_permissions(self, user) -> list[str]:
+    def get_custom_object_level_permissions(self, user) -> list[str]:
         project = self.get_project()
         if not project:
             return []
