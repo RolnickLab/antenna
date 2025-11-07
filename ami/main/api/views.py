@@ -486,18 +486,17 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     def get_queryset(self) -> QuerySet:
         queryset = super().get_queryset()
         with_detections_default = False
-        # If this is a retrieve request or with detections is explicitly requested, require project
-        if self.action == "retrieve" or "with_detections" in self.request.query_params:
+        with_counts_default = False
+        # If this is a retrieve request or with detections or counts are explicitly requested, require project
+        if (
+            self.action == "retrieve"
+            or "with_detections" in self.request.query_params
+            or "with_counts" in self.request.query_params
+        ):
             self.require_project = True
         project = self.get_active_project()
 
         classification_threshold = get_default_classification_threshold(project, self.request)
-
-        queryset = queryset.with_occurrences_count(  # type: ignore
-            classification_threshold=classification_threshold, project=project
-        ).with_taxa_count(  # type: ignore
-            classification_threshold=classification_threshold, project=project
-        )
 
         if self.action == "list":
             queryset = queryset.select_related(
@@ -510,6 +509,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
 
         elif self.action == "retrieve":
             # For detail view, include storage info and additional prefetches
+            with_counts_default = True
             queryset = queryset.select_related(
                 "event",
                 "deployment",
@@ -527,6 +527,17 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
 
         if with_detections:
             queryset = self.prefetch_detections(queryset, project)
+
+        with_counts = self.request.query_params.get("with_counts", with_counts_default)
+        if with_counts is not None:
+            with_counts = BooleanField(required=False).clean(with_counts)
+
+        if with_counts:
+            queryset = queryset.with_occurrences_count(  # type: ignore
+                classification_threshold=classification_threshold, project=project
+            ).with_taxa_count(  # type: ignore
+                classification_threshold=classification_threshold, project=project
+            )
 
         return queryset
 
