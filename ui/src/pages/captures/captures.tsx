@@ -49,7 +49,7 @@ export const Captures = () => {
       sort,
       pagination,
       filters,
-      withCounts: countColumnVisible || sortByCountActive, // Only fetch counts if needed since counts will slow down the repsonse
+      withCounts: countColumnVisible || sortByCountActive, // Only fetch counts if needed since counts will slow down the response
     })
   const showUpload = userPermissions?.includes(UserPermission.Create)
 
