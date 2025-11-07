@@ -115,19 +115,22 @@ class GlobalRole:
         user.groups.remove(group)
 
     @classmethod
+    def _get_or_update_permission(cls, perm_codename: str, ct) -> Permission:
+        """
+        Retrieve or create (and update if exists) a permission with consistent naming.
+        """
+        perm, _ = Permission.objects.update_or_create(codename=perm_codename, content_type=ct)
+        return perm
+
+    @classmethod
     def assign_model_level_permissions(cls, group):
         from django.contrib.contenttypes.models import ContentType
 
         ct = ContentType.objects.get_for_model(Project)
         for perm_codename in cls.model_level_permissions:
-            perm_codename = f"{perm_codename}"
-            perm, _ = Permission.objects.get_or_create(
-                codename=perm_codename,
-                content_type=ct,
-                defaults={"name": f"Can {perm_codename.replace('_', ' ')} globally"},
-            )
-            logger.info(f"Assigning model-level permission {perm_codename} to group {group.name}")
+            perm = cls._get_or_update_permission(perm_codename, ct)
             group.permissions.add(perm)
+            logger.info(f"Assigned model-level permission {perm_codename} to group {group.name}")
 
     @classmethod
     def sync_group_permissions(cls) -> None:
@@ -145,11 +148,7 @@ class GlobalRole:
 
         # Add missing permissions
         for perm_codename in desired_perms - current_perms:
-            perm, _ = Permission.objects.get_or_create(
-                codename=perm_codename,
-                content_type=ct,
-                defaults={"name": f"Can {perm_codename.replace('_', ' ')} globally"},
-            )
+            perm = cls._get_or_update_permission(perm_codename, ct)
             group.permissions.add(perm)
             logger.info(f"Added missing permission {perm_codename} to {group.name}")
 
