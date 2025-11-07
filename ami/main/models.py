@@ -1853,13 +1853,18 @@ class SourceImage(BaseModel):
         if action in ["star", "unstar"]:
             return user.has_perm(Project.Permissions.STAR_SOURCE_IMAGE, project)
 
-    def get_custom_user_permissions(self, user) -> list[str]:
+    def get_custom_user_permissions(self, user, cached_project_perms: set[str] | None = None) -> list[str]:
         project = self.get_project()
         if not project:
             return []
 
         custom_perms = set()
-        perms = get_perms(user, project)
+        # Use cached permissions if available, otherwise fetch from DB
+        if cached_project_perms is not None:
+            perms = cached_project_perms
+        else:
+            perms = get_perms(user, project)
+
         for perm in perms:
             # permissions are in the format "action_modelname"
             if perm.endswith("_sourceimage"):

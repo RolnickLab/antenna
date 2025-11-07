@@ -481,7 +481,21 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             return SourceImageSerializer
 
     def get_serializer_context(self):
-        return {"request": self.request}
+        """
+        Add project permissions to context to avoid N+1 queries during serialization.
+        """
+        context = super().get_serializer_context()
+
+        # Fetch permissions once for the whole request to avoid N+1 during serialization
+        project = self.get_active_project() if hasattr(self, "get_active_project") else None
+        if project and self.request.user.is_authenticated:
+            from guardian.shortcuts import get_perms
+
+            context["project_permissions"] = set(get_perms(self.request.user, project))
+        else:
+            context["project_permissions"] = set()
+
+        return context
 
     def get_queryset(self) -> QuerySet:
         queryset = super().get_queryset()

@@ -961,14 +961,19 @@ class Job(BaseModel):
         project = self.get_project() if hasattr(self, "get_project") else None
         return user.has_perm(permission_codename, project)
 
-    def get_custom_user_permissions(self, user) -> list[str]:
+    def get_custom_user_permissions(self, user, cached_project_perms: set[str] | None = None) -> list[str]:
         project = self.get_project()
         if not project:
             return []
 
         custom_perms = set()
         model_name = "job"
-        perms = get_perms(user, project)
+        # Use cached permissions if available, otherwise fetch from DB
+        if cached_project_perms is not None:
+            perms = cached_project_perms
+        else:
+            perms = get_perms(user, project)
+
         job_type = self.job_type_key.lower()
         for perm in perms:
             # permissions are in the format "action_modelname"

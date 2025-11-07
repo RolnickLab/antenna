@@ -166,17 +166,27 @@ class BaseModel(models.Model):
         """Update calculated fields specific to each model."""
         pass
 
-    def _get_object_perms(self, user):
+    def _get_object_perms(self, user, cached_project_perms: set[str] | None = None):
         """
         Get the object-level permissions for the user on this instance.
         This method retrieves permissions like `update_modelname`, `create_modelname`, etc.
+
+        Args:
+            user: The user to check permissions for
+            cached_project_perms: Optional pre-fetched project permissions to avoid N+1 queries
         """
         project = self.get_project()
         if not project:
             return []
 
         model_name = self._meta.model_name
-        all_perms = get_perms(user, project)
+
+        # Use cached permissions if available, otherwise fetch them
+        if cached_project_perms is not None:
+            all_perms = cached_project_perms
+        else:
+            all_perms = get_perms(user, project)
+
         object_perms = [perm for perm in all_perms if perm.endswith(f"_{model_name}")]
         return object_perms
 
@@ -222,17 +232,21 @@ class BaseModel(models.Model):
 
         return user.has_perm(permission_codename, project)
 
-    def get_user_object_permissions(self, user) -> list[str]:
+    def get_user_object_permissions(self, user, cached_project_perms: set[str] | None = None) -> list[str]:
         """
         Returns a list of object-level permissions the user has on this instance.
         This is used by frontend to determine what actions the user can perform.
+
+        Args:
+            user: The user to check permissions for
+            cached_project_perms: Optional pre-fetched project permissions to avoid N+1 queries
         """
         # Return all permissions for superusers
         if user.is_superuser:
-            allowed_custom_actions = self.get_custom_user_permissions(user)
+            allowed_custom_actions = self.get_custom_user_permissions(user, cached_project_perms)
             return ["update", "delete"] + allowed_custom_actions
 
-        object_perms = self._get_object_perms(user)
+        object_perms = self._get_object_perms(user, cached_project_perms)
         # Check for update and delete permissions
         allowed_actions = set()
         for perm in object_perms:
@@ -240,15 +254,21 @@ class BaseModel(models.Model):
             if action in {"update", "delete"}:
                 allowed_actions.add(action)
 
-        allowed_custom_actions = self.get_custom_user_permissions(user)
+        allowed_custom_actions = self.get_custom_user_permissions(user, cached_project_perms)
         allowed_actions.update(set(allowed_custom_actions))
         return list(allowed_actions)
 
-    def get_custom_user_permissions(self, user: AbstractUser | AnonymousUser) -> list[str]:
+    def get_custom_user_permissions(
+        self, user: AbstractUser | AnonymousUser, cached_project_perms: set[str] | None = None
+    ) -> list[str]:
         """
         Returns a list of custom permissions (not standard CRUD actions) that the user has on this instance.
+
+        Args:
+            user: The user to check permissions for
+            cached_project_perms: Optional pre-fetched project permissions to avoid N+1 queries
         """
-        object_perms = self._get_object_perms(user)
+        object_perms = self._get_object_perms(user, cached_project_perms)
         custom_perms = set()
         # Extract custom permissions that are not standard CRUD actions
         for perm in object_perms:

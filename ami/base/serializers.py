@@ -47,10 +47,14 @@ class DefaultSerializer(serializers.HyperlinkedModelSerializer):
         request: Request = self.context["request"]
         user = request.user
 
+        # Pass cached project permissions from context to avoid N+1 queries
+        cached_project_perms = self.context.get("project_permissions")
+
         return add_object_level_permissions(
             user=user,
             instance=instance,
             response_data=instance_data,
+            cached_project_perms=cached_project_perms,
         )
 
     def to_representation(self, instance):
