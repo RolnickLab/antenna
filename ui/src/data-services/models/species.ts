@@ -25,10 +25,32 @@ export class Species extends Taxon {
     }
   }
 
+  get coverImageCredit(): string | null {
+    return this._species.cover_image_credit || null
+  }
+
+  get coverImageUrl(): string | null {
+    return this._species.cover_image_url || null
+  }
+
   get createdAt(): string {
     return getFormatedDateTimeString({
       date: new Date(this._species.created_at),
     })
+  }
+
+  get fieldguideId(): string | null {
+    return this._species.fieldguide_id || null
+  }
+
+  get fieldguideUrl(): string | undefined {
+    return this.fieldguideId
+      ? `https://leps.fieldguide.ai/categories?category=${this.fieldguideId}`
+      : undefined
+  }
+
+  get gbifUrl(): string {
+    return `https://www.gbif.org/occurrence/gallery?advanced=1&verbatim_scientific_name=${this.name}`
   }
 
   get iNaturalistId(): string | null {
@@ -57,27 +79,6 @@ export class Species extends Taxon {
 
   get numOccurrences(): number {
     return this._species.occurrences_count ?? 0
-  }
-
-  get gbifUrl(): string {
-    return `https://www.gbif.org/occurrence/gallery?advanced=1&verbatim_scientific_name=${this.name}`
-  }
-
-  get fieldguideId(): string | null {
-    return this._species.fieldguide_id || null
-  }
-
-  get fieldguideUrl(): string | undefined {
-    if (!this.fieldguideId) return undefined
-    return `https://leps.fieldguide.ai/categories?category=${this.fieldguideId}`
-  }
-
-  get coverImageUrl(): string | null {
-    return this._species.cover_image_url || null
-  }
-
-  get coverImageCredit(): string | null {
-    return this._species.cover_image_credit || null
   }
 
   get score(): number | undefined {
