@@ -40,12 +40,16 @@ export const Captures = () => {
     order: 'desc',
   })
   const { pagination, setPage } = usePagination()
+  const countColumnVisible = columnSettings.occurrences || columnSettings.taxa
+  const sortByCountActive =
+    sort?.field === 'occurrences_count' || sort?.field === 'taxa_count'
   const { captures, userPermissions, total, isLoading, isFetching, error } =
     useCaptures({
       projectId,
       sort,
       pagination,
       filters,
+      withCounts: countColumnVisible || sortByCountActive, // Only fetch counts if needed since counts will slow down the repsonse
     })
   const showUpload = userPermissions?.includes(UserPermission.Create)
 

@@ -120,9 +120,6 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
     id: 'size',
     name: translate(STRING.FIELD_LABEL_FILE_SIZE),
     sortField: 'size',
-    styles: {
-      textAlign: TextAlign.Right,
-    },
     renderCell: (item: Capture) => (
       <BasicTableCell value={item.fileSizeDisplay} />
     ),
@@ -134,5 +131,32 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
     renderCell: (item: Capture) => (
       <BasicTableCell value={item.dimensionsLabel} />
     ),
+  },
+  {
+    id: 'occurrences',
+    name: translate(STRING.FIELD_LABEL_OCCURRENCES),
+    sortField: 'occurrences_count',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Capture) => (
+      <Link
+        to={getAppRoute({
+          to: APP_ROUTES.OCCURRENCES({ projectId }),
+          filters: { detections__source_image: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
+      </Link>
+    ),
+  },
+  {
+    id: 'taxa',
+    name: translate(STRING.FIELD_LABEL_TAXA),
+    sortField: 'taxa_count',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Capture) => <BasicTableCell value={item.numTaxa} />,
   },
 ]
