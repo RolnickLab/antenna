@@ -824,6 +824,7 @@ class TaxonSerializer(DefaultSerializer):
             "cover_image_url",
             "cover_image_credit",
             "summary_data",
+            "common_name_en",
         ]
 
 

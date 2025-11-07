@@ -100,6 +100,11 @@ export const SpeciesDetails = ({
                     </div>
                   </InfoBlockField>
                 ) : null}
+                {species.commonNameLabel ? (
+                  <InfoBlockField label="Common name (EN)">
+                    <InfoBlockFieldValue value={species.commonNameLabel} />
+                  </InfoBlockField>
+                ) : null}
                 <InfoBlockField label="Last seen">
                   <InfoBlockFieldValue value={species.lastSeenLabel} />
                 </InfoBlockField>
