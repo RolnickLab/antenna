@@ -25,7 +25,7 @@ from rest_framework.views import APIView
 
 from ami.base.filters import NullsLastOrderingFilter, ThresholdFilter
 from ami.base.models import BaseQuerySet
-from ami.base.pagination import LimitOffsetPaginationWithPermissions
+from ami.base.pagination import CountlessLimitOffsetPagination, LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
@@ -436,6 +436,15 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
 
+class SourceImagePaginator(CountlessLimitOffsetPagination):
+    """
+    Paginator for SourceImage that skips expensive COUNT queries.
+    Uses limit/offset pagination without returning total count.
+    """
+
+    pass
+
+
 class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows captures from monitoring sessions to be viewed or edited.
@@ -450,6 +459,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     queryset = SourceImage.objects.all()
 
     serializer_class = SourceImageSerializer
+    pagination_class = SourceImagePaginator
     filterset_fields = [
         "event",
         "deployment",
