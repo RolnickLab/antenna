@@ -498,8 +498,6 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             self.require_project = True
         project = self.get_active_project()
 
-        classification_threshold = get_default_classification_threshold(project, self.request)
-
         queryset = queryset.select_related(
             "event",
             "deployment",
@@ -530,9 +528,9 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
 
         if with_counts:
             queryset = queryset.with_occurrences_count(  # type: ignore
-                classification_threshold=classification_threshold, project=project
+                project=project, request=self.request
             ).with_taxa_count(  # type: ignore
-                classification_threshold=classification_threshold, project=project
+                project=project, request=self.request
             )
 
         return queryset
@@ -704,9 +702,9 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         if project:
             query_set = query_set.filter(project=project)
         queryset = query_set.with_occurrences_count(  # type: ignore
-            classification_threshold=classification_threshold, project=project
+            classification_threshold=classification_threshold, project=project, request=self.request
         ).with_taxa_count(  # type: ignore
-            classification_threshold=classification_threshold, project=project
+            classification_threshold=classification_threshold, project=project, request=self.request
         )
         return queryset
 

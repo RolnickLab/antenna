@@ -2441,7 +2441,7 @@ class TestProjectDefaultThresholdFilter(APITestCase):
     # SourceImageViewSet tests
     def test_source_image_counts_respect_threshold(self):
         """occurrences_count and taxa_count should exclude low-score occurrences (per-capture assertions)."""
-        url = f"/api/v2/captures/?project_id={self.project.pk}"
+        url = f"/api/v2/captures/?project_id={self.project.pk}&with_counts=true"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
@@ -2934,7 +2934,7 @@ class TestProjectDefaultTaxaFilter(APITestCase):
         """
         Helper to fetch list of (capture_id, occurrences_count, taxa_count) from SourceImageViewSet
         """
-        url = f"/api/v2/captures/?project_id={self.project.pk}"
+        url = f"/api/v2/captures/?project_id={self.project.pk}&with_counts=true"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         return [(c["id"], c["occurrences_count"], c["taxa_count"]) for c in res.json()["results"]]

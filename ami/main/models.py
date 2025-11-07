@@ -1579,7 +1579,7 @@ def delete_source_image(sender, instance, **kwargs):
 
 
 class SourceImageQuerySet(BaseQuerySet):
-    def with_occurrences_count(self, classification_threshold: float = 0, project: Project | None = None):
+    def with_occurrences_count(self, project: Project | None = None, request=None):
         """
         Annotate each source image with the number of occurrences,
         filtered by default filters (score threshold and taxa inclusion/exclusion).
@@ -1589,24 +1589,26 @@ class SourceImageQuerySet(BaseQuerySet):
         Uses a subquery to avoid GROUP BY in the pagination count query, which may
         improve performance for large datasets.
         """
-        from ami.main.models_future.filters import build_occurrence_default_filters_q
+        filter_q = build_occurrence_default_filters_q(project, request, "")
 
-        filter_q = build_occurrence_default_filters_q(project, None, "")
+        # Use a subquery instead of Count with joins to avoid GROUP BY in pagination count query
+        # The subquery counts distinct occurrences for each source image
+        # We use Coalesce to return 0 when the subquery returns NULL (no matching rows)
+        from django.db.models.functions import Coalesce
 
-        # Use a subquery instead of Count with joins to avoid GROUP BY
         occurrences_subquery = (
             Occurrence.objects.filter(detections__source_image_id=models.OuterRef("pk"))
             .filter(filter_q)
-            .values("detections__source_image_id")
+            .values("detections__source_image_id")  # Group by source_image_id to get one row per source_image
             .annotate(count=models.Count("id", distinct=True))
             .values("count")
         )
 
         return self.annotate(
-            occurrences_count=models.Subquery(occurrences_subquery, output_field=models.IntegerField())
+            occurrences_count=Coalesce(models.Subquery(occurrences_subquery, output_field=models.IntegerField()), 0)
         )
 
-    def with_taxa_count(self, classification_threshold: float = 0, project: Project | None = None):
+    def with_taxa_count(self, project: Project | None = None, request=None):
         """
         Annotate each source image with the number of distinct taxa,
         filtered by default filters (score threshold and taxa inclusion/exclusion).
@@ -1616,20 +1618,24 @@ class SourceImageQuerySet(BaseQuerySet):
         Uses a subquery to avoid GROUP BY in the pagination count query, which may
         improve performance for large datasets.
         """
-        from ami.main.models_future.filters import build_occurrence_default_filters_q
+        filter_q = build_occurrence_default_filters_q(project, request, "")
 
-        filter_q = build_occurrence_default_filters_q(project, None, "")
+        # Use a subquery instead of Count with joins to avoid GROUP BY in pagination count query
+        # The subquery counts distinct taxa for each source image
+        # We use Coalesce to return 0 when the subquery returns NULL (no matching rows)
+        from django.db.models.functions import Coalesce
 
-        # Use a subquery instead of Count with joins to avoid GROUP BY
         taxa_subquery = (
             Occurrence.objects.filter(detections__source_image_id=models.OuterRef("pk"))
             .filter(filter_q)
-            .values("detections__source_image_id")
+            .values("detections__source_image_id")  # Group by source_image_id to get one row per source_image
             .annotate(count=models.Count("determination_id", distinct=True))
             .values("count")
         )
 
-        return self.annotate(taxa_count=models.Subquery(taxa_subquery, output_field=models.IntegerField()))
+        return self.annotate(
+            taxa_count=Coalesce(models.Subquery(taxa_subquery, output_field=models.IntegerField()), 0)
+        )
 
 
 class SourceImageManager(models.Manager.from_queryset(SourceImageQuerySet)):
@@ -3591,14 +3597,16 @@ class SourceImageCollectionQuerySet(BaseQuerySet):
             )
         )
 
-    def with_occurrences_count(self, classification_threshold: float = 0, project: Project | None = None):
+    def with_occurrences_count(
+        self, classification_threshold: float = 0, project: Project | None = None, request=None
+    ):
         """
         Annotate each collection with the number of occurrences,
         filtered by default filters (score threshold and taxa inclusion/exclusion).
 
         Note: classification_threshold parameter is deprecated, use project default filters instead.
         """
-        filter_q = build_occurrence_default_filters_q(project, None, "images__detections__occurrence")
+        filter_q = build_occurrence_default_filters_q(project, request, "images__detections__occurrence")
         return self.annotate(
             occurrences_count=models.Count(
                 "images__detections__occurrence",
@@ -3607,14 +3615,14 @@ class SourceImageCollectionQuerySet(BaseQuerySet):
             )
         )
 
-    def with_taxa_count(self, classification_threshold: float = 0, project: Project | None = None):
+    def with_taxa_count(self, classification_threshold: float = 0, project: Project | None = None, request=None):
         """
         Annotate each collection with the number of distinct taxa,
         filtered by default filters (score threshold and taxa inclusion/exclusion).
 
         Note: classification_threshold parameter is deprecated, use project default filters instead.
         """
-        filter_q = build_occurrence_default_filters_q(project, None, "images__detections__occurrence")
+        filter_q = build_occurrence_default_filters_q(project, request, "images__detections__occurrence")
         return self.annotate(
             taxa_count=models.Count(
                 "images__detections__occurrence__determination",
