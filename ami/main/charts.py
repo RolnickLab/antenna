@@ -198,14 +198,16 @@ def detections_per_hour(project_pk: int, request: Request | None = None):
     Detection = apps.get_model("main", "Detection")
     Project = apps.get_model("main", "Project")
     project = Project.objects.get(pk=project_pk)
-    Occurrence = apps.get_model("main", "Occurrence")
     # Apply default filters
-    filtered_occurrences = Occurrence.objects.filter(project=project).apply_default_filters(
-        project=project, request=request
+    filters_q = build_occurrence_default_filters_q(
+        project=project,
+        request=request,
+        occurrence_accessor="occurrence",
     )
     # Get detections per hour per day
     detections_by_day_hour = (
-        Detection.objects.filter(occurrence_id__in=filtered_occurrences)
+        Detection.objects.filter(filters_q)
+        .filter(occurrence__project=project)
         .exclude(source_image__timestamp=None)
         .values("source_image__timestamp__date", "source_image__timestamp__hour")
         .annotate(count=models.Count("id"))
@@ -292,17 +294,22 @@ def occurrences_accumulated(project_pk: int, request: Request | None = None):
 def event_detections_per_hour(event_pk: int, request: Request | None = None):
     # Detections per hour
     Detection = apps.get_model("main", "Detection")
-    Occurrence = apps.get_model("main", "Occurrence")
     Event = apps.get_model("main", "Event")
 
     # Get the event and its project
     event = Event.objects.get(pk=event_pk)
     project = event.project if event else None
-    filtered_occurrences = Occurrence.objects.apply_default_filters(project=project, request=request).filter(
-        event=event
+    filters_q = build_occurrence_default_filters_q(
+        project=project,
+        request=request,
+        occurrence_accessor="occurrence",
     )
     detections_per_hour = (
-        Detection.objects.filter(occurrence_id__in=filtered_occurrences)
+        Detection.objects.filter(filters_q)
+        .filter(
+            occurrence__project=project,
+            occurrence__event=event,
+        )
         .values("source_image__timestamp__hour")
         .annotate(num_detections=models.Count("id"))
         .order_by("source_image__timestamp__hour")
@@ -332,19 +339,20 @@ def event_detections_per_hour(event_pk: int, request: Request | None = None):
 def event_top_taxa(event_pk: int, top_n: int = 10, request: Request | None = None):
     # Horizontal bar chart of top taxa
     Taxon = apps.get_model("main", "Taxon")
-    Occurrence = apps.get_model("main", "Occurrence")
     Event = apps.get_model("main", "Event")
     event = Event.objects.get(pk=event_pk)
     project = event.project if event else None
-    # Apply default filters
-    filtered_occurrences = Occurrence.objects.apply_default_filters(project=project, request=request).filter(
-        event=event
+    filter_q = build_occurrence_default_filters_q(
+        project=project,
+        request=request,
+        occurrence_accessor="occurrences",
     )
+    # Apply default filters
     top_taxa = (
-        Taxon.objects.filter(occurrences__in=filtered_occurrences)
+        Taxon.objects.filter(occurrences__project=project, occurrences__event=event)
         .values("name")
         # .annotate(num_detections=models.Count("occurrences__detections"))
-        .annotate(num_detections=models.Count("occurrences"))
+        .annotate(num_detections=models.Count("occurrences", filter=filter_q, distinct=True))
         .order_by("-num_detections")[:top_n]
     )
 
