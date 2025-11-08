@@ -439,8 +439,8 @@ class TestStaleMLJob(TransactionTestCase):
         connection.commit()
         job.refresh_from_db()
 
-        # Simulate last_checked being older than 5 minutes
-        job.last_checked = datetime.datetime.now() - datetime.timedelta(minutes=10)
+        # Simulate last_checked being older than 24 hours
+        job.last_checked = datetime.datetime.now() - datetime.timedelta(hours=25)
         job.save(update_fields=["last_checked"])
 
         # Run the dangling job checker

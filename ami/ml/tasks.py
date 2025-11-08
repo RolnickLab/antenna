@@ -164,15 +164,20 @@ def check_dangling_ml_jobs():
 
     for job in inprogress_jobs:
         last_checked = job.last_checked
-        if (
-            last_checked is None
-            or (
-                datetime.datetime.now(datetime.timezone.utc) - last_checked.replace(tzinfo=datetime.timezone.utc)
-            ).total_seconds()
-            > 5 * 60  # 5 minutes
-        ):
-            logger.warning(f"Job {job.pk} appears to be dangling. Marking as failed.")
-            job.logger.error(f"Job {job.pk} appears to be dangling. Marking as failed.")
+        if not last_checked:
+            logger.warning(f"Job {job.pk} has no last_checked time. Marking as dangling.")
+            seconds_since_checked = float("inf")
+        else:
+            seconds_since_checked = (datetime.datetime.now() - last_checked).total_seconds()
+        if last_checked is None or seconds_since_checked > 24 * 60 * 60:  # 24 hours
+            logger.warning(
+                f"Job {job.pk} appears to be dangling since {last_checked} "
+                f"was {seconds_since_checked} ago. Marking as failed."
+            )
+            job.logger.error(
+                f"Job {job.pk} appears to be dangling since {last_checked} "
+                f"was {seconds_since_checked} ago. Marking as failed."
+            )
             job.update_status(JobState.REVOKED)
             job.finished_at = datetime.datetime.now()
             job.save()
