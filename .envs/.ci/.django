@@ -22,6 +22,6 @@ DEFAULT_PROCESSING_SERVICE_ENDPOINT=http://ml_backend:2000
 
 # RabbitMQ
 # ------------------------------------------------------------------------------
-CELERY_BROKER_URL=amqp://rabbituser:rabbitpass@rabbitmq:5672
+CELERY_BROKER_URL=amqp://rabbituser:rabbitpass@rabbitmq:5672/
 RABBITMQ_DEFAULT_USER=rabbituser
 RABBITMQ_DEFAULT_PASS=rabbitpass

@@ -74,8 +74,6 @@ services:
   ml_backend:
     build:
       context: ./processing_services/minimal
-    depends_on:
-      - rabbitmq
     volumes:
       - ./processing_services/minimal/:/app
     networks:

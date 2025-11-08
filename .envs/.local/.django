@@ -17,7 +17,7 @@ CELERY_FLOWER_USER=QSocnxapfMvzLqJXSsXtnEZqRkBtsmKT
 CELERY_FLOWER_PASSWORD=BEQgmCtgyrFieKNoGTsux9YIye0I7P5Q7vEgfJD2C4jxmtHDetFaE2jhS7K7rxaf
 
 # RabbitMQ
-CELERY_BROKER_URL=amqp://rabbituser:rabbitpass@rabbitmq:5672
+CELERY_BROKER_URL=amqp://rabbituser:rabbitpass@rabbitmq:5672/
 RABBITMQ_DEFAULT_USER=rabbituser
 RABBITMQ_DEFAULT_PASS=rabbitpass
 
