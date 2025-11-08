@@ -83,9 +83,10 @@ if env("USE_DOCKER") == "yes":
 # ------------------------------------------------------------------------------
 # https://django-extensions.readthedocs.io/en/latest/installation_instructions.html#configuration
 INSTALLED_APPS += ["django_extensions"]  # noqa: F405
-
 # Celery
 # ------------------------------------------------------------------------------
-CELERY_TASK_DEFAULT_QUEUE = "antenna"
+
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-eager-propagates
 CELERY_TASK_EAGER_PROPAGATES = True
+# Your stuff...
+# ------------------------------------------------------------------------------
