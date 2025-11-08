@@ -3573,17 +3573,38 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
 
 class SourceImageCollectionQuerySet(BaseQuerySet):
     def with_source_images_count(self):
+        """
+        Annotate collections with the number of source images using a correlated
+        subquery to avoid large JOIN + GROUP BY when listing collections.
+        """
+
+        images_subquery = (
+            SourceImage.objects.filter(collections=models.OuterRef("pk"))
+            .values("collections")
+            .annotate(count=models.Count("id", distinct=True))
+            .values("count")
+        )
+
         return self.annotate(
-            source_images_count=models.Count(
-                "images",
-                distinct=True,
-            )
+            source_images_count=Coalesce(models.Subquery(images_subquery, output_field=models.IntegerField()), 0)
         )
 
     def with_source_images_with_detections_count(self):
+        """
+        Annotate collections with the number of distinct source images that have
+        detections, using a correlated subquery to avoid JOIN + GROUP BY.
+        """
+
+        images_with_detections_subquery = (
+            SourceImage.objects.filter(collections=models.OuterRef("pk"), detections__isnull=False)
+            .values("collections")
+            .annotate(count=models.Count("id", distinct=True))
+            .values("count")
+        )
+
         return self.annotate(
-            source_images_with_detections_count=models.Count(
-                "images", filter=models.Q(images__detections__isnull=False), distinct=True
+            source_images_with_detections_count=Coalesce(
+                models.Subquery(images_with_detections_subquery, output_field=models.IntegerField()), 0
             )
         )
 
@@ -3604,14 +3625,26 @@ class SourceImageCollectionQuerySet(BaseQuerySet):
         filtered by default filters (score threshold and taxa inclusion/exclusion).
 
         Note: classification_threshold parameter is deprecated, use project default filters instead.
+
+        Uses a subquery to avoid GROUP BY in the pagination count query, which may
+        improve performance for large datasets.
         """
-        filter_q = build_occurrence_default_filters_q(project, request, "images__detections__occurrence")
+        filter_q = build_occurrence_default_filters_q(project, request, "")
+
+        # Use a subquery instead of Count with joins to avoid GROUP BY in pagination count query
+        # We use Coalesce to return 0 when the subquery returns NULL (no matching rows)
+        from django.db.models.functions import Coalesce
+
+        occurrences_subquery = (
+            Occurrence.objects.filter(detections__source_image__collections=models.OuterRef("pk"))
+            .filter(filter_q)
+            .values("detections__source_image__collections")
+            .annotate(count=models.Count("id", distinct=True))
+            .values("count")
+        )
+
         return self.annotate(
-            occurrences_count=models.Count(
-                "images__detections__occurrence",
-                filter=filter_q,
-                distinct=True,
-            )
+            occurrences_count=Coalesce(models.Subquery(occurrences_subquery, output_field=models.IntegerField()), 0)
         )
 
     def with_taxa_count(self, classification_threshold: float = 0, project: Project | None = None, request=None):
@@ -3620,14 +3653,26 @@ class SourceImageCollectionQuerySet(BaseQuerySet):
         filtered by default filters (score threshold and taxa inclusion/exclusion).
 
         Note: classification_threshold parameter is deprecated, use project default filters instead.
+
+        Uses a subquery to avoid GROUP BY in the pagination count query, which may
+        improve performance for large datasets.
         """
-        filter_q = build_occurrence_default_filters_q(project, request, "images__detections__occurrence")
+        filter_q = build_occurrence_default_filters_q(project, request, "")
+
+        # Use a subquery instead of Count with joins to avoid GROUP BY in pagination count query
+        # We use Coalesce to return 0 when the subquery returns NULL (no matching rows)
+        from django.db.models.functions import Coalesce
+
+        taxa_subquery = (
+            Occurrence.objects.filter(detections__source_image__collections=models.OuterRef("pk"))
+            .filter(filter_q)
+            .values("detections__source_image__collections")
+            .annotate(count=models.Count("determination_id", distinct=True))
+            .values("count")
+        )
+
         return self.annotate(
-            taxa_count=models.Count(
-                "images__detections__occurrence__determination",
-                filter=filter_q,
-                distinct=True,
-            )
+            taxa_count=Coalesce(models.Subquery(taxa_subquery, output_field=models.IntegerField()), 0)
         )
 
 
