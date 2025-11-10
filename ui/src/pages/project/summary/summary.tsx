@@ -1,3 +1,4 @@
+import { ErrorState } from 'components/error-state/error-state'
 import { useProjectCharts } from 'data-services/hooks/projects/useProjectCharts'
 import { useStatus } from 'data-services/hooks/useStatus'
 import { ProjectDetails } from 'data-services/models/project-details'
@@ -48,7 +49,7 @@ export const Summary = () => {
 }
 
 const ProjectCharts = ({ projectId }: { projectId: string }) => {
-  const { projectCharts, isLoading } = useProjectCharts(projectId)
+  const { projectCharts, isLoading, error } = useProjectCharts(projectId)
 
   if (isLoading) {
     return (
@@ -56,6 +57,10 @@ const ProjectCharts = ({ projectId }: { projectId: string }) => {
         <LoadingSpinner />
       </div>
     )
+  }
+
+  if (error) {
+    return <ErrorState error={error} />
   }
 
   if (!projectCharts?.length) {
