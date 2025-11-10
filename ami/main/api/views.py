@@ -197,6 +197,14 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
         # Add current user as project owner
         serializer.save(owner=self.request.user)
 
+    @action(detail=True, methods=["get"], name="charts")
+    def charts(self, request, pk=None):
+        """
+        Get chart data for a project.
+        """
+        project = self.get_object()
+        return Response({"summary_data": project.summary_data()})
+
     @extend_schema(
         parameters=[
             OpenApiParameter(
