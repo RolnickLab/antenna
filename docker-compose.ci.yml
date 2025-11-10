@@ -12,7 +12,10 @@ services:
     build:
       context: .
       dockerfile: ./compose/local/django/Dockerfile
-    image: ami_ci_django
+    volumes:
+      - .:/app:z
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - postgres
       - redis
@@ -38,7 +41,6 @@ services:
 
   celeryworker:
     <<: *django
-    image: ami_ci_celeryworker
     depends_on:
       - rabbitmq
     command: python -m celery -A config.celery_app worker --queues=antenna -l INFO
@@ -66,7 +68,8 @@ services:
     env_file:
       - ./.envs/.ci/.django
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
     volumes:
       - ./compose/local/minio/init.sh:/etc/minio/init.sh
     entrypoint: /etc/minio/init.sh
