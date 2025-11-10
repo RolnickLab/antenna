@@ -170,6 +170,24 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
         else:
             return ProjectSerializer
 
+    def get_serializer_context(self):
+        """
+        Add with_charts flag to serializer context.
+        """
+        context = super().get_serializer_context()
+        with_charts_default = False
+
+        # For detail view, include charts by default
+        if self.action == "retrieve":
+            with_charts_default = True
+
+        with_charts = self.request.query_params.get("with_charts", with_charts_default)
+        if with_charts is not None:
+            with_charts = BooleanField(required=False).clean(with_charts)
+
+        context["with_charts"] = with_charts
+        return context
+
     def perform_create(self, serializer):
         super().perform_create(serializer)
         # Check if user is authenticated

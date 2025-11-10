@@ -329,6 +329,13 @@ class ProjectSerializer(DefaultSerializer):
     owner = UserNestedSerializer(read_only=True)
     settings = ProjectSettingsSerializer(source="*", required=False)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Remove summary_data field if with_charts is False
+        context = kwargs.get("context", {})
+        if not context.get("with_charts", True):
+            self.fields.pop("summary_data", None)
+
     def get_feature_flags(self, obj):
         if obj.feature_flags:
             return obj.feature_flags.dict()
@@ -338,7 +345,7 @@ class ProjectSerializer(DefaultSerializer):
         model = Project
         fields = ProjectListSerializer.Meta.fields + [
             "deployments",
-            "summary_data",  # @TODO move to a 2nd request, it's too slow
+            "summary_data",  # Conditionally included based on with_charts query param
             "owner",
             "feature_flags",
             "settings",
