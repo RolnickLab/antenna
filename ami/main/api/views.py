@@ -697,16 +697,32 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
+        with_counts_default = False
+        # If with_counts is explicitly requested, require project
+        if "with_counts" in self.request.query_params:
+            self.require_project = True
         project = self.get_active_project()
-        classification_threshold = get_default_classification_threshold(project, self.request)
+
         if project:
             query_set = query_set.filter(project=project)
-        queryset = query_set.with_occurrences_count(  # type: ignore
-            classification_threshold=classification_threshold, project=project, request=self.request
-        ).with_taxa_count(  # type: ignore
-            classification_threshold=classification_threshold, project=project, request=self.request
-        )
-        return queryset
+
+        if self.action == "retrieve":
+            # For detail view, include counts by default
+            with_counts_default = True
+
+        with_counts = self.request.query_params.get("with_counts", with_counts_default)
+        if with_counts is not None:
+            with_counts = BooleanField(required=False).clean(with_counts)
+
+        if with_counts:
+            classification_threshold = get_default_classification_threshold(project, self.request)
+            query_set = query_set.with_occurrences_count(  # type: ignore
+                classification_threshold=classification_threshold, project=project, request=self.request
+            ).with_taxa_count(  # type: ignore
+                classification_threshold=classification_threshold, project=project, request=self.request
+            )
+
+        return query_set
 
     @action(detail=True, methods=["post"], name="populate")
     def populate(self, request, pk=None):
