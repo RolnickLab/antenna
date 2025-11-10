@@ -3379,3 +3379,20 @@ class TestProjectDefaultTaxaFilter(APITestCase):
             expected_taxa_count,
             "Collection taxa_count should respect threshold + exclude filters",
         )
+
+    def test_taxon_detail_visible_when_excluded_from_list(self):
+        """
+        Taxon excluded by default project taxa filter should not appear in list,
+        but should still be accessible via detail view.
+        """
+        excluded_taxon = self.exclude_taxa[0]
+        self.project.default_filters_exclude_taxa.set([excluded_taxon])
+
+        # Taxon should NOT appear in list view
+        list_ids = self._get_taxon_ids()
+        self.assertNotIn(excluded_taxon.id, list_ids)
+
+        # Taxon detail endpoint should still return 200
+        detail_url = f"/api/v2/taxa/{excluded_taxon.id}/?project_id={self.project.pk}"
+        res = self.client.get(detail_url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)

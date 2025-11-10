@@ -3629,7 +3629,8 @@ class SourceImageCollectionQuerySet(BaseQuerySet):
         Uses a subquery to avoid GROUP BY in the pagination count query, which may
         improve performance for large datasets.
         """
-        filter_q = build_occurrence_default_filters_q(project, request, "")
+        # filter_q = build_occurrence_default_filters_q(project, request, "")
+        filter_q = build_occurrence_default_filters_q(project, request, "images__detections__occurrence")
 
         # Use a subquery instead of Count with joins to avoid GROUP BY in pagination count query
         # We use Coalesce to return 0 when the subquery returns NULL (no matching rows)
@@ -3657,7 +3658,8 @@ class SourceImageCollectionQuerySet(BaseQuerySet):
         Uses a subquery to avoid GROUP BY in the pagination count query, which may
         improve performance for large datasets.
         """
-        filter_q = build_occurrence_default_filters_q(project, request, "")
+        # filter_q = build_occurrence_default_filters_q(project, request, "")
+        filter_q = build_occurrence_default_filters_q(project, request, "images__detections__occurrence")
 
         # Use a subquery instead of Count with joins to avoid GROUP BY in pagination count query
         # We use Coalesce to return 0 when the subquery returns NULL (no matching rows)
