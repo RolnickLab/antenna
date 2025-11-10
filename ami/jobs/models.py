@@ -77,7 +77,7 @@ def get_status_label(status: JobState, progress: float) -> str:
     if status in [JobState.CREATED, JobState.PENDING, JobState.RECEIVED]:
         return "Waiting to start"
     elif status in [JobState.STARTED, JobState.RETRY, JobState.SUCCESS]:
-        return f"{progress:.0%} complete"
+        return f"{progress: .0%} complete"
     else:
         return f"{status.name}"
 
@@ -138,14 +138,14 @@ class JobProgress(pydantic.BaseModel):
         for stage in self.stages:
             if stage.key == stage_key:
                 return stage
-        raise ValueError(f"Job stage with key '{stage_key}' not found in progress")
+        raise ValueError(f"Job stage with key '{stage_key}' not in progress")
 
     def get_stage_param(self, stage_key: str, param_key: str) -> ConfigurableStageParam:
         stage = self.get_stage(stage_key)
         for param in stage.params:
             if param.key == param_key:
                 return param
-        raise ValueError(f"Job stage parameter with key '{param_key}' not found in stage '{stage_key}'")
+        raise ValueError(f"Job stage parameter with key '{param_key}' not in stage '{stage_key}'")
 
     def add_stage_param(self, stage_key: str, param_name: str, value: typing.Any = None) -> ConfigurableStageParam:
         stage = self.get_stage(stage_key)
@@ -416,7 +416,32 @@ class MLJob(JobType):
 
                 results_dict = task.result
                 if task_name == MLSubtaskNames.process_pipeline_request.name:
-                    results = PipelineResultsResponse(**results_dict)
+                    try:
+                        results = PipelineResultsResponse(**results_dict)
+
+                    except Exception as e:
+                        error_msg = (
+                            f"Subtask {task_name} ({task_id}) failed since it received "
+                            f"an invalid PipelineResultsResponse.\n"
+                            f"Error: {e}\n"
+                            f"Raw result: {results_dict}"
+                        )
+                        job.logger.error(error_msg)
+                        inprogress_subtask.status = MLSubtaskState.FAIL.name
+                        inprogress_subtask.raw_traceback = error_msg
+                        continue
+
+                    if results.errors:
+                        error_detail = results.errors if isinstance(results.errors, str) else f"{results.errors}"
+                        error_msg = (
+                            f"Subtask {task_name} ({task_id}) failed since the "
+                            f"PipelineResultsResponse contains errors: {error_detail}"
+                        )
+                        job.logger.error(error_msg)
+                        inprogress_subtask.status = MLSubtaskState.FAIL.name
+                        inprogress_subtask.raw_traceback = error_msg
+                        continue
+
                     num_captures = len(results.source_images)
                     num_detections = len(results.detections)
                     num_classifications = len([c for d in results.detections for c in d.classifications])
@@ -749,7 +774,7 @@ class MLJob(JobType):
             job.logger.info(
                 "Submitted batch image processing tasks "
                 f"(task_name={MLSubtaskNames.process_pipeline_request.name}) in "
-                f"{time.time() - request_sent:.2f}s"
+                f"{time.time() - request_sent: .2f}s"
             )
 
         except Exception as e:

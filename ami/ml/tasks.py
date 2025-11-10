@@ -54,7 +54,7 @@ def create_detection_images(source_image_ids: list[int]):
             logger.error(f"Error creating detection images for SourceImage {source_image.pk}: {str(e)}")
 
     total_time = time.time() - start_time
-    logger.info(f"Created detection images for {len(source_image_ids)} capture(s) in {total_time:.2f} seconds")
+    logger.info(f"Created detection images for {len(source_image_ids)} capture(s) in {total_time: .2f} seconds")
 
 
 @celery_app.task(soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
@@ -174,7 +174,7 @@ def check_dangling_ml_jobs():
                 f"Job {job.pk} appears to be dangling since {last_checked} "
                 f"was {seconds_since_checked} ago. Marking as failed."
             )
-            job.logger.error(
+            job.logger.warning(
                 f"Job {job.pk} appears to be dangling since {last_checked} "
                 f"was {seconds_since_checked} ago. Marking as failed."
             )
