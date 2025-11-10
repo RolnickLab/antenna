@@ -9,7 +9,7 @@ import {
   InfoBlockField,
   InfoBlockFieldValue,
 } from 'design-system/components/info-block/info-block'
-import Plot from 'design-system/components/plot/plot'
+import { Plot } from 'design-system/components/plot/lazy-plot'
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { ExternalLinkIcon } from 'lucide-react'
 import { buttonVariants, TaxonDetails } from 'nova-ui-kit'
