@@ -332,8 +332,7 @@ class ProjectSerializer(DefaultSerializer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Remove summary_data field if with_charts is False
-        context = kwargs.get("context", {})
-        if not context.get("with_charts", True):
+        if not self.context.get("with_charts", True):
             self.fields.pop("summary_data", None)
 
     def get_feature_flags(self, obj):
