@@ -4,10 +4,10 @@ import logging
 import time
 
 from django.core.management.base import BaseCommand, CommandError
-from ml.orchestration.processing import process_single_source_image
 
 from ami.main.models import Detection, SourceImage
 from ami.ml.models import Pipeline
+from ami.ml.orchestration.processing import process_single_source_image
 
 logger = logging.getLogger(__name__)
 
