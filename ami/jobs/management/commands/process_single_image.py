@@ -4,8 +4,8 @@ import logging
 import time
 
 from django.core.management.base import BaseCommand, CommandError
+from ml.orchestration.processing import process_single_source_image
 
-from ami.jobs.utils import submit_single_image_job
 from ami.main.models import Detection, SourceImage
 from ami.ml.models import Pipeline
 
@@ -24,30 +24,16 @@ class Command(BaseCommand):
             help="Pipeline ID to use for processing",
         )
         parser.add_argument(
-            "--name",
-            type=str,
-            default=None,
-            help="Custom job name (optional)",
-        )
-        parser.add_argument(
             "--wait",
             action="store_true",
             help="Wait for the job to complete and show results",
-        )
-        parser.add_argument(
-            "--poll-interval",
-            type=int,
-            default=2,
-            help="Polling interval in seconds when using --wait (default: 2)",
         )
 
     def handle(self, *args, **options):
         image_id = options["image_id"]
         pipeline_id = options["pipeline"]
-        job_name = options["name"]
         wait = options["wait"]
-        poll_interval = options["poll_interval"]
-
+        poll_interval = 2.0  # seconds
         # Validate image exists
         try:
             image = SourceImage.objects.select_related("deployment__project").get(pk=image_id)
@@ -73,11 +59,11 @@ class Command(BaseCommand):
         self.stdout.write(self.style.WARNING("Submitting job..."))
 
         try:
-            job = submit_single_image_job(
-                image_id=image_id,
-                project_id=image.deployment.project_id,
-                pipeline_id=pipeline_id,
-                job_name=job_name,
+            image = SourceImage.objects.get(pk=image_id)
+            job = process_single_source_image(
+                source_image=image,
+                pipeline=pipeline,
+                run_async=not wait,
             )
         except Exception as e:
             raise CommandError(f"Failed to submit job: {str(e)}")
