@@ -37,7 +37,6 @@ class JobFilterSet(filters.FilterSet):
             "source_image_collection",
             "source_image_single",
             "pipeline",
-            "pipeline__name",
             "pipeline__slug",
             "job_type_key",
         ]
