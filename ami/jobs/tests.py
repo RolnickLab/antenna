@@ -201,3 +201,297 @@ class TestJobView(APITestCase):
         # This cannot be tested until we have a way to cancel jobs
         # and a way to run async tasks in tests.
         pass
+
+    def test_list_jobs_with_ids_only(self):
+        """Test the ids_only parameter returns only job IDs."""
+        # Create additional jobs
+        Job.objects.create(
+            job_type_key=SourceImageCollectionPopulateJob.key,
+            project=self.project,
+            name="Test job 2",
+            source_image_collection=self.source_image_collection,
+        )
+        Job.objects.create(
+            job_type_key=SourceImageCollectionPopulateJob.key,
+            project=self.project,
+            name="Test job 3",
+            source_image_collection=self.source_image_collection,
+        )
+
+        self.client.force_authenticate(user=self.user)
+        jobs_list_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk, "ids_only": True})
+        resp = self.client.get(jobs_list_url)
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("job_ids", data)
+        self.assertIn("count", data)
+        self.assertEqual(data["count"], 3)
+        self.assertEqual(len(data["job_ids"]), 3)
+        # Verify these are actually IDs
+        self.assertTrue(all(isinstance(job_id, int) for job_id in data["job_ids"]))
+        # Verify we don't get the full results structure
+        self.assertNotIn("results", data)
+
+    def test_list_jobs_with_incomplete_only(self):
+        """Test the incomplete_only parameter filters jobs correctly."""
+        # Create a job and mark it as complete by setting results stage to SUCCESS
+        completed_job = Job.objects.create(
+            job_type_key=SourceImageCollectionPopulateJob.key,
+            project=self.project,
+            name="Completed job",
+            source_image_collection=self.source_image_collection,
+        )
+        completed_job.progress.add_stage("results")
+        completed_job.progress.update_stage("results", progress=1.0, status=JobState.SUCCESS)
+        completed_job.save()
+
+        # Create an incomplete job
+        incomplete_job = Job.objects.create(
+            job_type_key=SourceImageCollectionPopulateJob.key,
+            project=self.project,
+            name="Incomplete job",
+            source_image_collection=self.source_image_collection,
+        )
+        incomplete_job.progress.add_stage("results")
+        incomplete_job.progress.update_stage("results", progress=0.5, status=JobState.STARTED)
+        incomplete_job.save()
+
+        self.client.force_authenticate(user=self.user)
+        jobs_list_url = reverse_with_params(
+            "api:job-list", params={"project_id": self.project.pk, "incomplete_only": True}
+        )
+        resp = self.client.get(jobs_list_url)
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        # Should only return the incomplete job and the original test job (which has no results stage)
+        returned_ids = [job["id"] for job in data["results"]]
+        self.assertIn(incomplete_job.pk, returned_ids)
+        self.assertIn(self.job.pk, returned_ids)  # Original job has no results stage
+        self.assertNotIn(completed_job.pk, returned_ids)
+
+    def test_filter_by_pipeline_slug(self):
+        """Test filtering jobs by pipeline__slug."""
+        pipeline = Pipeline.objects.create(
+            name="Test Pipeline",
+            slug="test-pipeline",
+            description="Test pipeline for filtering",
+        )
+        pipeline.projects.add(self.project)
+
+        # Create jobs with and without pipeline
+        job_with_pipeline = Job.objects.create(
+            job_type_key="ml",
+            project=self.project,
+            name="Job with pipeline",
+            pipeline=pipeline,
+            source_image_collection=self.source_image_collection,
+        )
+
+        self.client.force_authenticate(user=self.user)
+        jobs_list_url = reverse_with_params(
+            "api:job-list", params={"project_id": self.project.pk, "pipeline__slug": "test-pipeline"}
+        )
+        resp = self.client.get(jobs_list_url)
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["results"][0]["id"], job_with_pipeline.pk)
+
+    def test_search_jobs(self):
+        """Test searching jobs by name and pipeline name."""
+        pipeline = Pipeline.objects.create(
+            name="SearchablePipeline",
+            slug="searchable-pipeline",
+            description="Pipeline for search testing",
+        )
+        pipeline.projects.add(self.project)
+
+        Job.objects.create(
+            job_type_key="ml",
+            project=self.project,
+            name="Find me job",
+            pipeline=pipeline,
+            source_image_collection=self.source_image_collection,
+        )
+        Job.objects.create(
+            job_type_key=SourceImageCollectionPopulateJob.key,
+            project=self.project,
+            name="Other job",
+            source_image_collection=self.source_image_collection,
+        )
+
+        self.client.force_authenticate(user=self.user)
+
+        # Search by job name
+        jobs_list_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk, "search": "Find"})
+        resp = self.client.get(jobs_list_url)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["count"], 1)
+        self.assertIn("Find me", data["results"][0]["name"])
+
+        # Search by pipeline name
+        jobs_list_url = reverse_with_params(
+            "api:job-list", params={"project_id": self.project.pk, "search": "Searchable"}
+        )
+        resp = self.client.get(jobs_list_url)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["results"][0]["pipeline"]["name"], "SearchablePipeline")
+
+    def test_tasks_endpoint_stub(self):
+        """Test the tasks endpoint returns stub response (awaiting NATS integration)."""
+        pipeline = Pipeline.objects.create(
+            name="Test Pipeline",
+            slug="test-pipeline",
+            description="Test pipeline",
+        )
+        pipeline.projects.add(self.project)
+
+        job = Job.objects.create(
+            job_type_key="ml",
+            project=self.project,
+            name="Job for tasks test",
+            pipeline=pipeline,
+            source_image_collection=self.source_image_collection,
+        )
+
+        self.client.force_authenticate(user=self.user)
+        tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+        resp = self.client.get(tasks_url)
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("tasks", data)
+        self.assertIn("message", data)
+        self.assertEqual(data["tasks"], [])  # Stubbed, should return empty
+        self.assertIn("not yet available", data["message"].lower())
+
+    def test_tasks_endpoint_with_batch(self):
+        """Test the tasks endpoint respects the batch parameter."""
+        pipeline = Pipeline.objects.create(
+            name="Test Pipeline",
+            slug="test-pipeline",
+            description="Test pipeline",
+        )
+        pipeline.projects.add(self.project)
+
+        job = Job.objects.create(
+            job_type_key="ml",
+            project=self.project,
+            name="Job for batch test",
+            pipeline=pipeline,
+            source_image_collection=self.source_image_collection,
+        )
+
+        self.client.force_authenticate(user=self.user)
+        tasks_url = reverse_with_params(
+            "api:job-tasks", args=[job.pk], params={"project_id": self.project.pk, "batch": 5}
+        )
+        resp = self.client.get(tasks_url)
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["batch_requested"], 5)
+
+    def test_tasks_endpoint_without_pipeline(self):
+        """Test the tasks endpoint returns error when job has no pipeline."""
+        job_without_pipeline = Job.objects.create(
+            job_type_key=SourceImageCollectionPopulateJob.key,
+            project=self.project,
+            name="Job without pipeline",
+            source_image_collection=self.source_image_collection,
+        )
+
+        self.client.force_authenticate(user=self.user)
+        tasks_url = reverse_with_params(
+            "api:job-tasks", args=[job_without_pipeline.pk], params={"project_id": self.project.pk}
+        )
+        resp = self.client.get(tasks_url)
+
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("pipeline", resp.json()[0].lower())
+
+    def test_result_endpoint_stub(self):
+        """Test the result endpoint accepts results (stubbed implementation)."""
+        pipeline = Pipeline.objects.create(
+            name="Test Pipeline",
+            slug="test-pipeline",
+            description="Test pipeline",
+        )
+        pipeline.projects.add(self.project)
+
+        job = Job.objects.create(
+            job_type_key="ml",
+            project=self.project,
+            name="Job for results test",
+            pipeline=pipeline,
+            source_image_collection=self.source_image_collection,
+        )
+
+        self.client.force_authenticate(user=self.user)
+        result_url = reverse_with_params("api:job-result", args=[job.pk], params={"project_id": self.project.pk})
+
+        result_data = [
+            {
+                "reply_subject": "test.reply.1",
+                "result": {
+                    "pipeline": "test-pipeline",
+                    "algorithms": {},
+                    "total_time": 1.5,
+                    "source_images": [],
+                    "detections": [],
+                    "errors": None,
+                },
+            }
+        ]
+
+        resp = self.client.post(result_url, result_data, format="json")
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["status"], "received")
+        self.assertEqual(data["job_id"], job.pk)
+        self.assertEqual(data["results_received"], 1)
+        self.assertIn("message", data)
+
+    def test_result_endpoint_validation(self):
+        """Test the result endpoint validates request data."""
+        pipeline = Pipeline.objects.create(
+            name="Test Pipeline",
+            slug="test-pipeline",
+            description="Test pipeline",
+        )
+        pipeline.projects.add(self.project)
+
+        job = Job.objects.create(
+            job_type_key="ml",
+            project=self.project,
+            name="Job for validation test",
+            pipeline=pipeline,
+            source_image_collection=self.source_image_collection,
+        )
+
+        self.client.force_authenticate(user=self.user)
+        result_url = reverse_with_params("api:job-result", args=[job.pk], params={"project_id": self.project.pk})
+
+        # Test with non-list data
+        resp = self.client.post(result_url, {"invalid": "data"}, format="json")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("list", resp.json()[0].lower())
+
+        # Test with missing reply_subject
+        invalid_data = [{"result": {"pipeline": "test"}}]
+        resp = self.client.post(result_url, invalid_data, format="json")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("reply_subject", resp.json()[0].lower())
+
+        # Test with missing result
+        invalid_data = [{"reply_subject": "test.reply"}]
+        resp = self.client.post(result_url, invalid_data, format="json")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("result", resp.json()[0].lower())
