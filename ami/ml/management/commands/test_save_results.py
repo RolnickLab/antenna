@@ -2,11 +2,10 @@
 Management command to test Pipeline.save_results() with JSON input.
 
 Usage:
-    python manage.py test_save_results <pipeline_id> <json_file> [--job-id=123]
+    python manage.py test_save_results <pipeline_id> <json_file> <project_id>
 
 Example:
-    python manage.py test_save_results 42 results.json
-    python manage.py test_save_results 42 results.json --job-id=456
+    python manage.py test_save_results 42 results.json 1
 """
 
 import json
@@ -75,7 +74,10 @@ class Command(BaseCommand):
             )
         )
 
-        project = Project.objects.get(pk=project_id)
+        try:
+            project = Project.objects.get(pk=project_id)
+        except Project.DoesNotExist:
+            raise CommandError(f"Project with ID {project_id} does not exist")
 
         # Create a minimal test job
         job = Job.objects.create(
