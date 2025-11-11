@@ -18,6 +18,10 @@ export class SpeciesDetails extends Species {
     super(species)
   }
 
+  get commonNameLabel(): string | undefined {
+    return this._species.common_name_en ?? undefined
+  }
+
   get exampleOccurrence() {
     const occurrence = this._species.occurrences?.[0]
 
