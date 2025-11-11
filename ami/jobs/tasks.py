@@ -1,8 +1,16 @@
+import functools
 import logging
+import time
+from collections.abc import Callable
 
 from celery.result import AsyncResult
 from celery.signals import task_failure, task_postrun, task_prerun
+from django.db import transaction
 
+from ami.ml.orchestration.nats_queue import TaskQueueManager
+from ami.ml.orchestration.task_state import TaskStateManager
+from ami.ml.orchestration.utils import run_in_async_loop
+from ami.ml.schemas import PipelineResultsResponse
 from ami.tasks import default_soft_time_limit, default_time_limit
 from config import celery_app
 
@@ -28,6 +36,131 @@ def run_job(self, job_id: int) -> None:
         else:
             job.refresh_from_db()
             job.logger.info(f"Finished job {job}")
+
+
+@celery_app.task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+    autoretry_for=(Exception,),
+    soft_time_limit=300,  # 5 minutes
+    time_limit=360,  # 6 minutes
+)
+def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject: str) -> None:
+    """
+    Process a single pipeline result asynchronously.
+
+    This task:
+    1. Deserializes the pipeline result
+    2. Saves it to the database
+    3. Updates progress by removing processed image IDs from Redis
+    4. Acknowledges the task via NATS
+
+    Args:
+        job_id: The job ID
+        result_data: Dictionary containing the pipeline result
+        reply_subject: NATS reply subject for acknowledgment
+
+    Returns:
+        dict with status information
+    """
+    from ami.jobs.models import Job  # avoid circular import
+
+    _, t = log_time()
+    error = result_data.get("error")
+    pipeline_result = None
+    if not error:
+        pipeline_result = PipelineResultsResponse(**result_data)
+        processed_image_ids = {str(img.id) for img in pipeline_result.source_images}
+    else:
+        processed_image_ids = set()
+        image_id = result_data.get("image_id")
+        logger.error(f"Pipeline returned error for job {job_id}, image {image_id}: {error}")
+
+    state_manager = TaskStateManager(job_id)
+
+    progress_info = state_manager.update_state(processed_image_ids, stage="process", request_id=self.request.id)
+    if not progress_info:
+        logger.warning(
+            f"Another task is already processing results for job {job_id}. "
+            f"Retrying task {self.request.id} in 5 seconds..."
+        )
+        raise self.retry(countdown=5, max_retries=10)
+
+    try:
+        _update_job_progress(job_id, "process", progress_info.percentage)
+
+        _, t = t(f"TIME: Updated job {job_id} progress in PROCESS stage progress to {progress_info.percentage*100}%")
+        job = Job.objects.get(pk=job_id)
+        job.logger.info(f"Processing pipeline result for job {job_id}, reply_subject: {reply_subject}")
+        job.logger.info(
+            f" Job {job_id} progress: {progress_info.processed}/{progress_info.total} images processed "
+            f"({progress_info.percentage*100}%), {progress_info.remaining} remaining, {len(processed_image_ids)} just "
+            "processed"
+        )
+
+        # Save to database (this is the slow operation)
+        if not job.pipeline:
+            job.logger.warning(f"Job {job_id} has no pipeline, skipping save_results")
+            return
+
+        if pipeline_result:
+            job.pipeline.save_results(results=pipeline_result, job_id=job.pk)
+            job.logger.info(f"Successfully saved results for job {job_id}")
+
+            _, t = t(
+                f"Saved pipeline results to database with {len(pipeline_result.detections)} detections"
+                f", percentage: {progress_info.percentage*100}%"
+            )
+        # Acknowledge the task via NATS
+        try:
+
+            async def ack_task():
+                async with TaskQueueManager() as manager:
+                    return await manager.acknowledge_task(reply_subject)
+
+            ack_success = run_in_async_loop(ack_task, f"acknowledging job {job.pk} via NATS")
+
+            if ack_success:
+                job.logger.info(f"Successfully acknowledged task via NATS: {reply_subject}")
+            else:
+                job.logger.warning(f"Failed to acknowledge task via NATS: {reply_subject}")
+        except Exception as ack_error:
+            job.logger.error(f"Error acknowledging task via NATS: {ack_error}")
+            # Don't fail the task if ACK fails - data is already saved
+
+        # Update job stage with calculated progress
+        progress_info = state_manager.update_state(processed_image_ids, stage="results", request_id=self.request.id)
+
+        if not progress_info:
+            logger.warning(
+                f"Another task is already processing results for job {job_id}. "
+                f"Retrying task {self.request.id} in 5 seconds..."
+            )
+            raise self.retry(countdown=5, max_retries=10)
+        _update_job_progress(job_id, "results", progress_info.percentage)
+
+    except Job.DoesNotExist:
+        logger.error(f"Job {job_id} not found")
+        raise
+    except Exception as e:
+        logger.error(f"Failed to process pipeline result for job {job_id}: {e}")
+        # Celery will automatically retry based on autoretry_for
+        raise
+
+
+def _update_job_progress(job_id: int, stage: str, progress_percentage: float) -> None:
+    from ami.jobs.models import Job, JobState  # avoid circular import
+
+    with transaction.atomic():
+        job = Job.objects.select_for_update().get(pk=job_id)
+        job.progress.update_stage(
+            stage,
+            status=JobState.SUCCESS if progress_percentage >= 1.0 else JobState.STARTED,
+            progress=progress_percentage,
+        )
+        job.logger.info(f"Updated job {job_id} progress in stage '{stage}' to {progress_percentage*100}%")
+        job.save()
 
 
 @task_postrun.connect(sender=run_job)
@@ -63,3 +196,28 @@ def update_job_failure(sender, task_id, exception, *args, **kwargs):
     job.logger.error(f'Job #{job.pk} "{job.name}" failed: {exception}')
 
     job.save()
+
+
+def log_time(start: float = 0, msg: str | None = None) -> tuple[float, Callable]:
+    """
+    Small helper to measure time between calls.
+
+    Returns: elapsed time since the last call, and a partial function to measure from the current call
+    Usage:
+
+    _, tlog = log_time()
+    # do something
+    _, tlog = tlog("Did something") # will log the time taken by 'something'
+    # do something else
+    t, tlog = tlog("Did something else") # will log the time taken by 'something else', returned as 't'
+    """
+
+    end = time.perf_counter()
+    if start == 0:
+        dur = 0.0
+    else:
+        dur = end - start
+    if msg and start > 0:
+        logger.info(f"{msg}: {dur:.3f}s")
+    new_start = time.perf_counter()
+    return dur, functools.partial(log_time, new_start)

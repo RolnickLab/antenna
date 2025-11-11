@@ -72,7 +72,7 @@ def get_status_label(status: JobState, progress: float) -> str:
     if status in [JobState.CREATED, JobState.PENDING, JobState.RECEIVED]:
         return "Waiting to start"
     elif status in [JobState.STARTED, JobState.RETRY, JobState.SUCCESS]:
-        return f"{progress:.0%} complete"
+        return f"{progress:.0%} complete"  # noqa E231
     else:
         return f"{status.name}"
 
@@ -133,14 +133,14 @@ class JobProgress(pydantic.BaseModel):
         for stage in self.stages:
             if stage.key == stage_key:
                 return stage
-        raise ValueError(f"Job stage with key '{stage_key}' not found in progress")
+        raise ValueError(f"Job stage with key '{stage_key}' not found in progress")  # noqa E713
 
     def get_stage_param(self, stage_key: str, param_key: str) -> ConfigurableStageParam:
         stage = self.get_stage(stage_key)
         for param in stage.params:
             if param.key == param_key:
                 return param
-        raise ValueError(f"Job stage parameter with key '{param_key}' not found in stage '{stage_key}'")
+        raise ValueError(f"Job stage parameter with key '{param_key}' not found in stage '{stage_key}'")  # noqa E713
 
     def add_stage_param(self, stage_key: str, param_name: str, value: typing.Any = None) -> ConfigurableStageParam:
         stage = self.get_stage(stage_key)
@@ -322,14 +322,12 @@ class MLJob(JobType):
         """
         Procedure for an ML pipeline as a job.
         """
+        from ami.ml.orchestration.jobs import queue_images_to_nats
+
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
         job.save()
-
-        # Keep track of sub-tasks for saving results, pair with batch number
-        save_tasks: list[tuple[int, AsyncResult]] = []
-        save_tasks_completed: list[tuple[int, AsyncResult]] = []
 
         if job.delay:
             update_interval_seconds = 2
@@ -365,7 +363,7 @@ class MLJob(JobType):
             progress=0,
         )
 
-        images = list(
+        images: list[SourceImage] = list(
             # @TODO return generator plus image count
             # @TODO pass to celery group chain?
             job.pipeline.collect_images(
@@ -389,8 +387,6 @@ class MLJob(JobType):
             images = images[: job.limit]
             image_count = len(images)
             job.progress.add_stage_param("collect", "Limit", image_count)
-        else:
-            image_count = source_image_count
 
         job.progress.update_stage(
             "collect",
@@ -401,6 +397,24 @@ class MLJob(JobType):
         # End image collection stage
         job.save()
 
+        if job.project.feature_flags.async_pipeline_workers:
+            queued = queue_images_to_nats(job, images)
+            if not queued:
+                job.logger.error("Aborting job %s because images could not be queued to NATS", job.pk)
+                job.progress.update_stage("collect", status=JobState.FAILURE)
+                job.update_status(JobState.FAILURE)
+                job.finished_at = datetime.datetime.now()
+                job.save()
+                return
+        else:
+            cls.process_images(job, images)
+
+    @classmethod
+    def process_images(cls, job, images):
+        image_count = len(images)
+        # Keep track of sub-tasks for saving results, pair with batch number
+        save_tasks: list[tuple[int, AsyncResult]] = []
+        save_tasks_completed: list[tuple[int, AsyncResult]] = []
         total_captures = 0
         total_detections = 0
         total_classifications = 0
@@ -420,7 +434,7 @@ class MLJob(JobType):
                     job_id=job.pk,
                     project_id=job.project.pk,
                 )
-                job.logger.info(f"Processed image batch {i+1} in {time.time() - request_sent:.2f}s")
+                job.logger.info(f"Processed image batch {i+1} in {time.time() - request_sent:.2f}s")  # noqa E231
             except Exception as e:
                 # Log error about image batch and continue
                 job.logger.error(f"Failed to process image batch {i+1}: {e}")
@@ -472,7 +486,7 @@ class MLJob(JobType):
 
         if image_count:
             percent_successful = 1 - len(request_failed_images) / image_count if image_count else 0
-            job.logger.info(f"Processed {percent_successful:.0%} of images successfully.")
+            job.logger.info(f"Processed {percent_successful:.0%} of images successfully.")  # noqa E231
 
         # Check all Celery sub-tasks if they have completed saving results
         save_tasks_remaining = set(save_tasks) - set(save_tasks_completed)

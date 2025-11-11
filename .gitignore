@@ -277,5 +277,7 @@ sandbox/
 # Other
 flower
 
+# huggingface cache
+huggingface_cache/
 # Temporary files in current work session
 .agents/todo
