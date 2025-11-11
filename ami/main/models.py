@@ -150,6 +150,17 @@ def get_or_create_default_collection(project: "Project") -> "SourceImageCollecti
     return collection
 
 
+def get_project_default_filters():
+    """
+    Read default taxa names from Django settings
+    and return corresponding Taxon objects.
+    """
+    include_taxa = list(Taxon.objects.filter(name__in=settings.DEFAULT_INCLUDE_TAXA))
+    exclude_taxa = list(Taxon.objects.filter(name__in=settings.DEFAULT_EXCLUDE_TAXA))
+
+    return {"default_include_taxa": include_taxa, "default_exclude_taxa": exclude_taxa}
+
+
 def get_or_create_default_project(user: User) -> "Project":
     """
     Create a default project for a user.
@@ -158,8 +169,20 @@ def get_or_create_default_project(user: User) -> "Project":
     when the project is saved for the first time.
     If the project already exists, it will be returned without modification.
     """
-    project, _created = Project.objects.get_or_create(name="Scratch Project", owner=user, create_defaults=True)
-    logger.info(f"Created default project for user {user}")
+    project, created = Project.objects.get_or_create(name="Scratch Project", owner=user)
+    if created:
+        logger.info(f"Created default project for user {user}")
+        defaults = get_project_default_filters()
+
+        if defaults["default_include_taxa"]:
+            project.default_filters_include_taxa.set(defaults["default_include_taxa"])
+            logger.info(f"Set {len(defaults['default_include_taxa'])} default include taxa for project {project}")
+        if defaults["default_exclude_taxa"]:
+            project.default_filters_exclude_taxa.set(defaults["default_exclude_taxa"])
+            logger.info(f"Set {len(defaults['default_exclude_taxa'])} default exclude taxa for project {project}")
+        project.save()
+    else:
+        logger.info(f"Loaded existing default project for user {user}")
     return project
 
 
