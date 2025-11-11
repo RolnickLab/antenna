@@ -1,6 +1,7 @@
 import datetime
 import logging
 import typing
+from statistics import mean
 
 import pydantic
 
@@ -212,6 +213,41 @@ class PipelineResultsResponse(pydantic.BaseModel):
     source_images: list[SourceImageResponse]
     detections: list[DetectionResponse]
     errors: list | str | None = None
+
+    def combine_with(self, others: list["PipelineResultsResponse"]) -> "PipelineResultsResponse":
+        """
+        Combine this PipelineResultsResponse with others.
+        Returns a new combined PipelineResultsResponse.
+        """
+        if not others:
+            return self
+
+        all_responses = [self] + others
+
+        pipelines = {r.pipeline for r in all_responses}
+        if len(pipelines) != 1:
+            raise AssertionError(f"Inconsistent pipelines: {pipelines}")
+
+        algorithms_list = [r.algorithms for r in all_responses]
+        if not all(a == algorithms_list[0] for a in algorithms_list):
+            raise AssertionError("Algorithm configurations differ among responses.")
+
+        errors_found = [r.errors for r in all_responses if r.errors]
+        if errors_found:
+            raise AssertionError(f"Some responses contain errors: {errors_found}")
+
+        combined_source_images = [img for r in all_responses for img in r.source_images]
+        combined_detections = [det for r in all_responses for det in r.detections]
+        avg_total_time = mean(r.total_time for r in all_responses)
+
+        return PipelineResultsResponse(
+            pipeline=self.pipeline,
+            algorithms=self.algorithms,
+            total_time=avg_total_time,
+            source_images=combined_source_images,
+            detections=combined_detections,
+            errors=None,
+        )
 
 
 class PipelineStageParam(pydantic.BaseModel):

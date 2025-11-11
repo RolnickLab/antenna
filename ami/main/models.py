@@ -904,7 +904,9 @@ class Deployment(BaseModel):
             if deployment_events_need_update(self):
                 logger.info(f"Deployment {self} has events that need to be regrouped")
                 if regroup_async:
-                    ami.tasks.regroup_events.delay(self.pk)
+                    transaction.on_commit(
+                        lambda: ami.tasks.regroup_events.delay(self.pk)
+                    )  # enqueue the task only after the DB commit completes
                 else:
                     group_images_into_events(self)
             self.update_calculated_fields(save=True)

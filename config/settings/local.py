@@ -88,5 +88,7 @@ INSTALLED_APPS += ["django_extensions"]  # noqa: F405
 
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-eager-propagates
 CELERY_TASK_EAGER_PROPAGATES = True
+CELERY_TASK_DEFAULT_QUEUE = "antenna"
+
 # Your stuff...
 # ------------------------------------------------------------------------------
