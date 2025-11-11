@@ -181,7 +181,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         ids_only = url_boolean_param(request, "ids_only", default=False)
 
         # Check if incomplete_only parameter is set
-        incomplete_only = request.query_params.get("incomplete_only", "false").lower() in ["true", "1", "yes"]
+        incomplete_only = url_boolean_param(request, "incomplete_only", default=False)
 
         # Get the base queryset
         queryset = self.filter_queryset(self.get_queryset())
