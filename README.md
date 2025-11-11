@@ -179,6 +179,12 @@ source venv/bin/activate
 pip install -r requirements/local.txt
 ```
 
+##### Build the frontend assets through Docker
+
+```bash
+docker compose run --rm ui yarn build
+```
+
 ##### Generate OpenAPI schema
 
 ```bash
