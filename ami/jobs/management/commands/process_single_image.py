@@ -35,6 +35,7 @@ class Command(BaseCommand):
         wait = options["wait"]
         poll_interval = 2.0  # seconds
         # Validate image exists
+        image: SourceImage
         try:
             image = SourceImage.objects.select_related("deployment__project").get(pk=image_id)
             if not image.deployment or not image.deployment.project:
@@ -59,7 +60,6 @@ class Command(BaseCommand):
         self.stdout.write(self.style.WARNING("Submitting job..."))
 
         try:
-            image = SourceImage.objects.get(pk=image_id)
             job = process_single_source_image(
                 source_image=image,
                 pipeline=pipeline,
