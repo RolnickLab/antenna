@@ -299,10 +299,8 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         available in main. Implementation coming from PR #987.
         """
 
-        job_id = pk if pk else self.kwargs.get("pk")
-        if not job_id:
-            raise ValidationError("Job ID is required")
-        job_id = int(job_id)
+        job = self.get_object()
+        job_id = job.pk
 
         # Validate request data is a list
         if not isinstance(request.data, list):
