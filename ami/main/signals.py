@@ -1,13 +1,15 @@
 import logging
 
 from django.contrib.auth.models import Group
+from django.db import transaction
 from django.db.models.signals import m2m_changed, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from guardian.shortcuts import assign_perm
 
+from ami.main.models import Deployment, Event, Project
 from ami.users.roles import BasicMember, ProjectManager, create_roles_for_project
 
-from .models import Project, User
+from .models import User
 
 logger = logging.getLogger(__name__)
 
@@ -110,3 +112,70 @@ def delete_project_groups(sender, instance, **kwargs):
     prefix = f"{instance.pk}_"
     # Find and delete all groups that start with {project_id}_
     Group.objects.filter(name__startswith=prefix).delete()
+
+
+# ============================================================================
+# Project Default Filters Update Signals
+# ============================================================================
+# These signals handle efficient updates to calculated fields for project-related
+# objects (such as Deployments and Events) whenever a project's default filter
+# values change.
+#
+# Specifically, they trigger recalculation of cached counts when:
+#   - The project's default score threshold is updated
+#   - The project's default include taxa are modified
+#   - The project's default exclude taxa are modified
+#
+# This ensures that cached counts (e.g., occurrences_count, taxa_count) remain
+# accurate and consistent with the active filter configuration for each project.
+# ============================================================================
+def refresh_cached_counts_for_project(project: Project):
+    """
+    Refresh cached counts for Deployments and Events belonging to a project.
+    """
+    logger.info(f"Refreshing cached counts for project {project.pk}")
+
+    with transaction.atomic():
+        deployments = Deployment.objects.filter(project=project)
+        for dep in deployments.iterator():
+            dep.update_calculated_fields(save=True)
+
+        events = Event.objects.filter(project=project)
+        for ev in events.iterator():
+            ev.update_calculated_fields(save=True)
+
+    logger.info(
+        f"Recomputed cached counts for {deployments.count()} deployments "
+        f"and {events.count()} events in project {project.pk}."
+    )
+
+
+@receiver(pre_save, sender=Project)
+def project_threshold_updated(sender, instance: Project, **kwargs):
+    """Refresh cached counts when the project's default score threshold changes."""
+    if not instance.pk:
+        return  # skip new projects
+
+    old = Project.objects.get(pk=instance.pk)
+    if old.default_filters_score_threshold != instance.default_filters_score_threshold:
+        logger.info(
+            f"Default score threshold changed for project {instance.pk}: "
+            f"{old.default_filters_score_threshold} => {instance.default_filters_score_threshold}"
+        )
+        refresh_cached_counts_for_project(instance)
+
+
+@receiver(m2m_changed, sender=Project.default_filters_include_taxa.through)
+def include_taxa_updated(sender, instance: Project, action, **kwargs):
+    """Refresh cached counts when include taxa are modified."""
+    if action in ["post_add", "post_remove", "post_clear"]:
+        logger.info(f"Include taxa updated for project {instance.pk} (action={action})")
+        refresh_cached_counts_for_project(instance)
+
+
+@receiver(m2m_changed, sender=Project.default_filters_exclude_taxa.through)
+def exclude_taxa_updated(sender, instance: Project, action, **kwargs):
+    """Refresh cached counts when exclude taxa are modified."""
+    if action in ["post_add", "post_remove", "post_clear"]:
+        logger.info(f"Exclude taxa updated for project {instance.pk} (action={action})")
+        refresh_cached_counts_for_project(instance)
