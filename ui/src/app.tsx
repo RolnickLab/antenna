@@ -31,6 +31,7 @@ import { Exports } from 'pages/project/exports/exports'
 import { General } from 'pages/project/general/general'
 import { Pipelines } from 'pages/project/pipelines/pipelines'
 import { ProcessingServices } from 'pages/project/processing-services/processing-services'
+import { Processing } from 'pages/project/processing/processing'
 import Project from 'pages/project/project'
 import { Storage } from 'pages/project/storage/storage'
 import { Summary } from 'pages/project/summary/summary'
@@ -122,6 +123,7 @@ export const App = () => (
             <Route path="general" element={<General />} />
             <Route path="default-filters" element={<DefaultFilters />} />
             <Route path="storage" element={<Storage />} />
+            <Route path="processing" element={<Processing />} />
           </Route>
           <Route path="jobs/:id?" element={<Jobs />} />
           <Route path="deployments/:id?" element={<Deployments />} />

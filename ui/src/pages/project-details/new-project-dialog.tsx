@@ -1,5 +1,4 @@
 import { useCreateProject } from 'data-services/hooks/projects/useCreateProject'
-import { Project } from 'data-services/models/project'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { PlusIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
@@ -8,14 +7,10 @@ import { useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
-import { ProjectDetailsForm } from './project-details-form'
+import { NewProjectForm } from './new-project-form'
 import styles from './styles.module.scss'
 
 const CLOSE_TIMEOUT = 1000
-
-const newProject = new Project({
-  id: 'new-project',
-})
 
 export const NewProjectDialog = ({
   buttonSize = 'small',
@@ -40,11 +35,10 @@ export const NewProjectDialog = ({
           <span>{label}</span>
         </Button>
       </Dialog.Trigger>
-      <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
+      <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)} isCompact>
         <Dialog.Header title={label} />
         <div className={styles.content}>
-          <ProjectDetailsForm
-            project={newProject}
+          <NewProjectForm
             error={error}
             isLoading={isLoading}
             isSuccess={isSuccess}

@@ -1,13 +1,24 @@
 import datetime
+import pathlib
 import unittest
+import uuid
 
 from django.test import TestCase
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
-from ami.main.models import Classification, Detection, Project, SourceImage, SourceImageCollection
+from ami.main.models import (
+    Classification,
+    Detection,
+    Project,
+    SourceImage,
+    SourceImageCollection,
+    Taxon,
+    group_images_into_events,
+)
 from ami.ml.models import Algorithm, Pipeline, ProcessingService
 from ami.ml.models.pipeline import collect_images, get_or_create_algorithm_and_category_map, save_results
+from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
     AlgorithmReference,
@@ -17,7 +28,12 @@ from ami.ml.schemas import (
     PipelineResultsResponse,
     SourceImageResponse,
 )
-from ami.tests.fixtures.main import create_captures_from_files, create_processing_service, setup_test_project
+from ami.tests.fixtures.main import (
+    create_captures_from_files,
+    create_processing_service,
+    create_taxa,
+    setup_test_project,
+)
 from ami.tests.fixtures.ml import ALGORITHM_CHOICES
 from ami.users.models import User
 
@@ -101,6 +117,40 @@ class TestProcessingServiceAPI(APITestCase):
 
 
 class TestPipelineWithProcessingService(TestCase):
+    def test_run_pipeline_with_errors_from_processing_service(self):
+        """
+        Run a real pipeline and verify that if an error occurs for one image, the error is logged in job.logs.stderr.
+        """
+        from ami.jobs.models import Job
+
+        # Setup test project, images, and job
+        project, deployment = setup_test_project()
+        captures = create_captures_from_files(deployment, skip_existing=False)
+        test_images = [image for image, frame in captures]
+        processing_service_instance = create_processing_service(project)
+        pipeline = processing_service_instance.pipelines.all().get(slug="constant")
+        job = Job.objects.create(project=project, name="Test Job Real Pipeline Error Handling", pipeline=pipeline)
+
+        # Simulate an error by passing an invalid image (e.g., missing file or corrupt)
+        # Here, we manually set the path of one image to a non-existent file
+        error_image = test_images[0]
+        error_image.path = "/tmp/nonexistent_image.jpg"
+        error_image.save()
+        images = [error_image] + test_images[1:2]  # Only two images for brevity
+
+        # Run the pipeline and catch any error
+        try:
+            pipeline.process_images(images, job_id=job.pk, project_id=project.pk)
+        except Exception:
+            pass  # Expected if the backend raises
+
+        job.refresh_from_db()
+        stderr_logs = job.logs.stderr
+        # Check that an error message mentioning the failed image is present
+        assert any(
+            "Failed to process" in log for log in stderr_logs
+        ), f"Expected error message in job.logs.stderr, got: {stderr_logs}"
+
     def setUp(self):
         self.project, self.deployment = setup_test_project()
         self.captures = create_captures_from_files(self.deployment, skip_existing=False)
@@ -155,6 +205,39 @@ class TestPipelineWithProcessingService(TestCase):
             # Check the occurrence determination taxon
             assert detection.occurrence
             assert detection.occurrence.determination in classification_taxa
+
+    def test_missing_category_map(self):
+        # Test that an exception is raised if a classification algorithm is missing a category map
+        from ami.ml.exceptions import PipelineNotConfigured
+
+        # Get the response from the /info endpoint
+        pipeline_configs = self.processing_service.get_pipeline_configs()
+
+        # Assert that there is a least one classification algorithm with a category map
+        self.assertTrue(
+            any(
+                algo.task_type in Algorithm.classification_task_types and algo.category_map is not None
+                for pipeline in pipeline_configs
+                for algo in pipeline.algorithms
+            ),
+            "Expected pipeline to have at least one classification algorithm with a category map",
+        )
+
+        # Remove the category map from one of the classification algorithms
+        for pipeline_config in pipeline_configs:
+            for algorithm in pipeline_config.algorithms:
+                if algorithm.task_type in Algorithm.classification_task_types and algorithm.category_map is not None:
+                    algorithm.category_map = None
+                    # Change the key to ensure it's treated as a new algorithm
+                    algorithm.key = "missing-category-map-classifier"
+                    algorithm.name = "Classifier with Missing Category Map"
+                    break
+
+        with self.assertRaises(
+            PipelineNotConfigured,
+            msg="Expected an exception to be raised if a classification algorithm is missing a category map",
+        ):
+            self.processing_service.create_pipelines(pipeline_configs=pipeline_configs)
 
     def test_alignment_of_predictions_and_category_map(self):
         # Ensure that the scores and labels are aligned
@@ -481,6 +564,13 @@ class TestPipeline(TestCase):
         pass
 
     def test_unknown_algorithm_returned_by_processing_service(self):
+        """
+        Test that unknown algorithms returned by the processing service are handled correctly.
+
+        Previously we allowed unknown algorithms to be returned by the pipeline,
+        now all algorithms must be registered first from the processing service's /info
+        endpoint.
+        """
         fake_results = self.fake_pipeline_results(self.test_images, self.pipeline)
 
         new_detector = AlgorithmConfigResponse(
@@ -501,92 +591,18 @@ class TestPipeline(TestCase):
 
         current_total_algorithm_count = Algorithm.objects.count()
 
-        # @TODO assert a warning was logged
-        save_results(fake_results)
+        # Ensure an exception is raised that a new algorithm was not
+        # pre-registered from the /info endpoint
+        from ami.ml.exceptions import PipelineNotConfigured
 
-        # Ensure new algorithms were added to the database
+        with self.assertRaises(PipelineNotConfigured):
+            save_results(fake_results)
+
+        # Ensure no new algorithms were added to the database
         new_algorithm_count = Algorithm.objects.count()
-        self.assertEqual(new_algorithm_count, current_total_algorithm_count + 2)
+        self.assertEqual(new_algorithm_count, current_total_algorithm_count)
 
         # Ensure new algorithms were also added to the pipeline
-        self.assertTrue(self.pipeline.algorithms.filter(name=new_detector.name, key=new_detector.key).exists())
-        self.assertTrue(self.pipeline.algorithms.filter(name=new_classifier.name, key=new_classifier.key).exists())
-
-    @unittest.skip("Not implemented yet")
-    def test_reprocessing_after_unknown_algorithm_added(self):
-        # @TODO fix issue with "None" algorithm on some detections
-
-        images = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
-
-        save_results(self.fake_pipeline_results(images, self.pipeline))
-
-        new_detector = AlgorithmConfigResponse(
-            name="Unknown Detector 5.1b-mobile", key="unknown-detector", task_type="detection"
-        )
-        new_classifier = AlgorithmConfigResponse(
-            name="Unknown Classifier 3.0b-mega", key="unknown-classifier", task_type="classification"
-        )
-
-        fake_results = self.fake_pipeline_results(images, self.pipeline)
-
-        # Change the algorithm names to unknown ones
-        for detection in fake_results.detections:
-            detection.algorithm = AlgorithmReference(name=new_detector.name, key=new_detector.key)
-
-            for classification in detection.classifications:
-                classification.algorithm = AlgorithmReference(name=new_classifier.name, key=new_classifier.key)
-
-        fake_results.algorithms[new_detector.key] = new_detector
-        fake_results.algorithms[new_classifier.key] = new_classifier
-
-        # print("FAKE RESULTS")
-        # print(fake_results)
-        # print("END FAKE RESULTS")
-
-        saved_objects = save_results(fake_results, return_created=True)
-        assert saved_objects is not None
-        saved_detections = saved_objects.detections
-        saved_classifications = saved_objects.classifications
-
-        for obj in saved_detections:
-            assert obj.detection_algorithm  # For type checker, not the test
-
-            # Ensure the new detector was used for the detection
-            self.assertEqual(obj.detection_algorithm.name, new_detector.name)
-
-            # Ensure each detection has classification objects
-            self.assertTrue(obj.classifications.exists())
-
-            # Ensure detection has a correct classification object
-            for classification in obj.classifications.all():
-                self.assertIn(classification, saved_classifications)
-
-        for obj in saved_classifications:
-            assert obj.algorithm  # For type checker, not the test
-
-            # Ensure the new classifier was used for the classification
-            self.assertEqual(obj.algorithm.name, new_classifier.name)
-
-            # Ensure each classification has the correct detection object
-            self.assertIn(obj.detection, saved_detections, "Wrong detection object for classification object.")
-
-        # Ensure new algorithms were added to the pipeline
-        self.assertTrue(self.pipeline.algorithms.filter(name=new_detector.name).exists())
-        self.assertTrue(self.pipeline.algorithms.filter(name=new_classifier.name).exists())
-
-        detection_algos_used = Detection.objects.all().values_list("detection_algorithm__name", flat=True).distinct()
-        self.assertTrue(new_detector.name in detection_algos_used)
-        # Ensure None is not in the list
-        self.assertFalse(None in detection_algos_used)
-        classification_algos_used = Classification.objects.all().values_list("algorithm__name", flat=True)
-        self.assertTrue(new_classifier.name in classification_algos_used)
-        # Ensure None is not in the list
-        self.assertFalse(None in classification_algos_used)
-
-        # The algorithms are new, but they were registered to the pipeline, so the images should be skipped.
-        images_again = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
-        remaining_images_to_process = len(images_again)
-        self.assertEqual(remaining_images_to_process, 0)
 
     def test_yes_reprocess_if_new_terminal_algorithm_same_intermediate(self):
         """
@@ -701,3 +717,141 @@ class TestAlgorithmCategoryMaps(TestCase):
             # Ensure the full labels in the data match the simple, ordered list of labels
             sorted_data = sorted(algorithm.category_map.data, key=lambda x: x["index"])
             assert [category["label"] for category in sorted_data] == algorithm.category_map.labels
+
+    def test_labels_hash_auto_generation(self):
+        """Test that labels_hash is automatically generated when creating AlgorithmCategoryMap instances."""
+        from ami.ml.models import AlgorithmCategoryMap
+
+        # Test data
+        test_data = [
+            {"index": 0, "label": "coleoptera"},
+            {"index": 1, "label": "diptera"},
+            {"index": 2, "label": "lepidoptera"},
+        ]
+        test_labels = AlgorithmCategoryMap.labels_from_data(test_data)
+
+        # Create instance using objects.create()
+        category_map = AlgorithmCategoryMap.objects.create(labels=test_labels, data=test_data, version="test-v1")
+
+        # Verify labels_hash was automatically generated
+        self.assertIsNotNone(category_map.labels_hash)
+
+        # Verify the hash matches what make_labels_hash would produce
+        expected_hash = AlgorithmCategoryMap.make_labels_hash(test_labels)
+        self.assertEqual(category_map.labels_hash, expected_hash)
+
+        # Test that creating another instance with same labels produces same hash
+        category_map2 = AlgorithmCategoryMap.objects.create(labels=test_labels, data=test_data, version="test-v2")
+
+        self.assertEqual(category_map.labels_hash, category_map2.labels_hash)
+
+    def test_labels_data_conversion_methods(self):
+        from ami.ml.models import AlgorithmCategoryMap
+
+        # Test data
+        test_data = [
+            {"index": 0, "label": "coleoptera"},
+            {"index": 1, "label": "diptera"},
+            {"index": 2, "label": "lepidoptera"},
+        ]
+        test_labels = AlgorithmCategoryMap.labels_from_data(test_data)
+
+        # Convert labels to data and back
+        converted_data = AlgorithmCategoryMap.data_from_labels(test_labels)
+        converted_labels = AlgorithmCategoryMap.labels_from_data(converted_data)
+
+        # Verify conversions are correct
+        self.assertEqual(test_data, converted_data)
+        self.assertEqual(test_labels, converted_labels)
+
+
+class TestPostProcessingTasks(TestCase):
+    def setUp(self):
+        # Create test project, deployment, and default setup
+        self.project, self.deployment = setup_test_project()
+        create_taxa(project=self.project)
+        self._create_images_with_dimensions(deployment=self.deployment)
+        group_images_into_events(deployment=self.deployment)
+
+        # Create a simple SourceImageCollection for testing
+        self.collection = SourceImageCollection.objects.create(
+            name="Test PostProcessing Collection",
+            project=self.project,
+            method="manual",
+            kwargs={"image_ids": list(self.deployment.captures.values_list("pk", flat=True))},
+        )
+        self.collection.populate_sample()
+
+    def _create_images_with_dimensions(
+        self,
+        deployment,
+        num_images: int = 5,
+        width: int = 640,
+        height: int = 480,
+        update_deployment: bool = True,
+    ):
+        """
+        Create SourceImages for a deployment with specified width and height.
+        """
+
+        created = []
+        base_time = datetime.datetime.now(datetime.timezone.utc)
+
+        for i in range(num_images):
+            random_prefix = uuid.uuid4().hex[:8]
+            path = pathlib.Path("test") / f"{random_prefix}_{i}.jpg"
+
+            image = SourceImage.objects.create(
+                deployment=deployment,
+                project=deployment.project,
+                timestamp=base_time + datetime.timedelta(minutes=i * 5),
+                path=path,
+                width=width,
+                height=height,
+            )
+            created.append(image)
+
+        if update_deployment:
+            deployment.save(update_calculated_fields=True, regroup_async=False)
+
+    def test_small_size_filter_assigns_not_identifiable(self):
+        """
+        Test that SmallSizeFilterTask correctly assigns 'Not identifiable'
+        to detections below the configured minimum size.
+        """
+        # Create small detections on the collection images
+        for image in self.collection.images.all():
+            Detection.objects.create(
+                source_image=image,
+                bbox=[0, 0, 10, 10],  # small detection
+                created_at=datetime.datetime.now(datetime.timezone.utc),
+            ).associate_new_occurrence()
+
+        # Prepare the task configuration
+        task = SmallSizeFilterTask(
+            source_image_collection_id=self.collection.pk,
+            size_threshold=0.01,
+        )
+
+        task.run()
+
+        # Verify that all small detections are now classified as "Not identifiable"
+        not_identifiable_taxon = Taxon.objects.get(name="Not identifiable")
+        detections = Detection.objects.filter(source_image__in=self.collection.images.all())
+
+        for det in detections:
+            latest_classification = Classification.objects.filter(detection=det).order_by("-created_at").first()
+            self.assertIsNotNone(latest_classification, "Each detection should have a classification.")
+            self.assertEqual(
+                latest_classification.taxon,
+                not_identifiable_taxon,
+                f"Detection {det.pk} should be classified as 'Not identifiable'",
+            )
+            occurrence = det.occurrence
+            self.assertIsNotNone(occurrence, f"Detection {det.pk} should belong to an occurrence.")
+            occurrence.refresh_from_db()
+            self.assertEqual(
+                occurrence.determination,
+                not_identifiable_taxon,
+                f"Occurrence {occurrence.pk} should have its determination set to 'Not identifiable'.",
+            )

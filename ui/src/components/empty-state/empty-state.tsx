@@ -4,14 +4,13 @@ import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
 
-export const EmptyState = () => {
+export const EmptyState = ({ children }: { children?: ReactNode }) => {
   const { filters, activeFilters, clearFilter } = useFilters()
   const { pagination, resetPage } = usePagination()
 
   if (pagination.page) {
     return (
-      <Container>
-        <p>{translate(STRING.MESSAGE_NO_RESULTS_FOR_PAGE)}</p>
+      <Container message={translate(STRING.MESSAGE_NO_RESULTS_FOR_PAGE)}>
         <Button onClick={() => resetPage()}>
           {translate(STRING.RESET_PAGE)}
         </Button>
@@ -21,8 +20,7 @@ export const EmptyState = () => {
 
   if (activeFilters.length) {
     return (
-      <Container>
-        <p>{translate(STRING.MESSAGE_NO_RESULTS_FOR_FILTERING)}</p>
+      <Container message={translate(STRING.MESSAGE_NO_RESULTS_FOR_FILTERING)}>
         <Button
           onClick={() => filters.map((filter) => clearFilter(filter.field))}
         >
@@ -33,12 +31,22 @@ export const EmptyState = () => {
   }
 
   return (
-    <Container>
-      <p>{translate(STRING.MESSAGE_NO_RESULTS)}</p>
+    <Container message={translate(STRING.MESSAGE_NO_RESULTS_TO_SHOW)}>
+      {children}
     </Container>
   )
 }
 
-const Container = ({ children }: { children: ReactNode }) => (
-  <div className="flex flex-col gap-6 items-center py-24">{children}</div>
+const Container = ({
+  message,
+  children,
+}: {
+  message: string
+  children: ReactNode
+}) => (
+  <div className="flex flex-col items-center pt-32">
+    <h1 className="mb-8 heading-large">No results</h1>
+    <p className="text-center body-large mb-16">{message}</p>
+    <div className="flex flex-col items-center gap-8">{children}</div>
+  </div>
 )

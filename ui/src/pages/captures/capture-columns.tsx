@@ -1,3 +1,4 @@
+import { API_ROUTES } from 'data-services/constants'
 import { Capture } from 'data-services/models/capture'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
@@ -7,6 +8,7 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
+import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -44,9 +46,32 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
     id: 'timestamp',
     name: translate(STRING.FIELD_LABEL_TIMESTAMP),
     sortField: 'timestamp',
-    renderCell: (item: Capture) => (
-      <BasicTableCell value={item.dateTimeLabel} />
-    ),
+    renderCell: (item: Capture) => {
+      const detailsRoute = item.sessionId
+        ? getAppRoute({
+            to: APP_ROUTES.SESSION_DETAILS({
+              projectId: projectId,
+              sessionId: item.sessionId,
+            }),
+            filters: {
+              capture: item.id,
+            },
+          })
+        : undefined
+
+      if (detailsRoute) {
+        return (
+          <Link to={detailsRoute}>
+            <BasicTableCell
+              value={item.dateTimeLabel}
+              theme={CellTheme.Primary}
+            />
+          </Link>
+        )
+      }
+
+      return <BasicTableCell value={item.dateTimeLabel} />
+    },
   },
   {
     id: 'deployment',
@@ -94,8 +119,24 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
     },
   },
   {
+    id: 'size',
+    name: translate(STRING.FIELD_LABEL_FILE_SIZE),
+    sortField: 'size',
+    renderCell: (item: Capture) => (
+      <BasicTableCell value={item.fileSizeDisplay} />
+    ),
+  },
+  {
+    id: 'dimensions',
+    name: translate(STRING.FIELD_LABEL_RESOLUTION),
+    sortField: 'width',
+    renderCell: (item: Capture) => (
+      <BasicTableCell value={item.dimensionsLabel} />
+    ),
+  },
+  {
     id: 'occurrences',
-    name: 'Occurrences',
+    name: translate(STRING.FIELD_LABEL_OCCURRENCES),
     sortField: 'occurrences_count',
     styles: {
       textAlign: TextAlign.Right,
@@ -113,11 +154,34 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
   },
   {
     id: 'taxa',
-    name: 'Taxa',
+    name: translate(STRING.FIELD_LABEL_TAXA),
     sortField: 'taxa_count',
     styles: {
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Capture) => <BasicTableCell value={item.numTaxa} />,
+  },
+  {
+    id: 'actions',
+    name: '',
+    styles: {
+      padding: '16px',
+      width: '100%',
+    },
+    renderCell: (item: Capture) => {
+      if (!item.canDelete) {
+        return <></>
+      }
+
+      return (
+        <div className="flex items-center justify-end gap-2 p-4">
+          <DeleteEntityDialog
+            collection={API_ROUTES.CAPTURES}
+            id={item.id}
+            type="capture"
+          />
+        </div>
+      )
+    },
   },
 ]

@@ -4,11 +4,14 @@ import { Tag } from 'components/taxon-tags/tag'
 import { TagsForm } from 'components/taxon-tags/tags-form'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { SpeciesDetails as Species } from 'data-services/models/species-details'
+import { Box } from 'design-system/components/box/box'
 import {
   InfoBlockField,
   InfoBlockFieldValue,
 } from 'design-system/components/info-block/info-block'
-import { ExternalLinkIcon } from 'lucide-react'
+import Plot from 'design-system/components/plot/plot'
+import * as Tabs from 'design-system/components/tabs/tabs'
+import { ExternalLinkIcon, LockIcon } from 'lucide-react'
 import { buttonVariants, TaxonDetails } from 'nova-ui-kit'
 import { Helmet } from 'react-helmet-async'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -18,7 +21,20 @@ import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
 import styles from './species-details.module.scss'
 
-export const SpeciesDetails = ({ species }: { species: Species }) => {
+export const TABS = {
+  FIELDS: 'fields',
+  CHARTS: 'charts',
+}
+
+export const SpeciesDetails = ({
+  species,
+  selectedTab,
+  setSelectedTab,
+}: {
+  species: Species
+  selectedTab?: string
+  setSelectedTab: (selectedTab?: string) => void
+}) => {
   const { projectId } = useParams()
   const navigate = useNavigate()
   const { project } = useProjectDetails(projectId as string, true)
@@ -45,110 +61,175 @@ export const SpeciesDetails = ({ species }: { species: Species }) => {
           size="lg"
           taxon={species}
         />
+        {canUpdate ? (
+          <div className="absolute bottom-6 right-6">
+            <Link
+              className={buttonVariants({
+                size: 'small',
+                variant: 'outline',
+              })}
+              to={species.adminUrl}
+              target="_blank"
+            >
+              <LockIcon className="w-4 h-4" />
+              <span>Admin</span>
+            </Link>
+          </div>
+        ) : null}
       </div>
       <div className={styles.content}>
         <div className={styles.info}>
-          <div className="grid gap-6">
-            {project?.featureFlags.tags ? (
-              <InfoBlockField
-                label={translate(STRING.FIELD_LABEL_TAGS)}
-                className="relative"
-              >
-                <div className="flex flex-col items-start gap-2 no-print">
-                  {species.tags.length ? (
-                    <div className="flex flex-wrap gap-1">
-                      {species.tags.map((tag) => (
-                        <Tag key={tag.id} name={tag.name} />
-                      ))}
-                    </div>
-                  ) : (
-                    <span>n/a</span>
-                  )}
-                  {canUpdate ? (
-                    <div className="absolute top-[-9px] right-0">
-                      <TagsForm species={species} />
-                    </div>
-                  ) : null}
-                </div>
-              </InfoBlockField>
-            ) : null}
-            <InfoBlockField label="Last seen">
-              <InfoBlockFieldValue value={species.lastSeenLabel} />
-            </InfoBlockField>
-            {hasChildren ? (
-              <InfoBlockField label="Child taxa">
-                <InfoBlockFieldValue
-                  value="View all"
-                  to={getAppRoute({
-                    to: APP_ROUTES.TAXA({
-                      projectId: projectId as string,
-                    }),
-                    filters: { taxon: species.id },
-                  })}
-                />
-              </InfoBlockField>
-            ) : null}
-            <InfoBlockField label="Occurrences">
-              <InfoBlockFieldValue
-                value={`Direct: ${species.numOccurrences ?? 0}`}
+          <Tabs.Root value={selectedTab} onValueChange={setSelectedTab}>
+            <Tabs.List>
+              <Tabs.Trigger
+                value={TABS.FIELDS}
+                label={translate(STRING.TAB_ITEM_FIELDS)}
               />
-              <InfoBlockFieldValue
-                value="View all"
-                to={getAppRoute({
-                  to: APP_ROUTES.OCCURRENCES({
-                    projectId: projectId as string,
-                  }),
-                  filters: { taxon: species.id },
-                })}
+              <Tabs.Trigger
+                value={TABS.CHARTS}
+                label={translate(STRING.TAB_ITEM_CHARTS)}
               />
-            </InfoBlockField>
-            <InfoBlockField label={translate(STRING.FIELD_LABEL_BEST_SCORE)}>
-              <div>
-                <DeterminationScore
-                  score={species.score}
-                  scoreLabel={species.scoreLabel}
-                  tooltip={
-                    species.score
-                      ? translate(STRING.MACHINE_PREDICTION_SCORE, {
-                          score: `${species.score}`,
-                        })
-                      : undefined
-                  }
-                />
-              </div>
-            </InfoBlockField>
-            <InfoBlockField
-              className="no-print"
-              label={translate(STRING.EXTERNAL_RESOURCES)}
-            >
-              <div className="py-1 flex items-center gap-3">
-                <Link
-                  className={buttonVariants({
-                    size: 'small',
-                    variant: 'outline',
-                  })}
-                  to={species.gbifUrl}
-                  target="_blank"
-                >
-                  <span>GBIF</span>
-                  <ExternalLinkIcon className="w-4 h-4" />
-                </Link>
-                {species.fieldguideUrl ? (
-                  <Link
-                    className={buttonVariants({
-                      size: 'small',
-                      variant: 'outline',
-                    })}
-                    to={species.fieldguideUrl}
-                    target="_blank"
+            </Tabs.List>
+            <Tabs.Content value={TABS.FIELDS}>
+              <div className="grid gap-6">
+                {project?.featureFlags.tags ? (
+                  <InfoBlockField
+                    label={translate(STRING.FIELD_LABEL_TAGS)}
+                    className="relative"
                   >
-                    <span>Fieldguide</span>
-                    <ExternalLinkIcon className="w-4 h-4" />
-                  </Link>
+                    <div className="flex flex-col items-start gap-2 no-print">
+                      {species.tags.length ? (
+                        <div className="flex flex-wrap gap-1">
+                          {species.tags.map((tag) => (
+                            <Tag key={tag.id} name={tag.name} />
+                          ))}
+                        </div>
+                      ) : (
+                        <span>n/a</span>
+                      )}
+                      {canUpdate ? (
+                        <div className="absolute top-[-9px] right-0">
+                          <TagsForm species={species} />
+                        </div>
+                      ) : null}
+                    </div>
+                  </InfoBlockField>
                 ) : null}
+                {species.commonNameLabel ? (
+                  <InfoBlockField label="Common name (EN)">
+                    <InfoBlockFieldValue value={species.commonNameLabel} />
+                  </InfoBlockField>
+                ) : null}
+                <InfoBlockField label="Last seen">
+                  <InfoBlockFieldValue value={species.lastSeenLabel} />
+                </InfoBlockField>
+                {hasChildren ? (
+                  <InfoBlockField label="Child taxa">
+                    <InfoBlockFieldValue
+                      value="View all"
+                      to={getAppRoute({
+                        to: APP_ROUTES.TAXA({
+                          projectId: projectId as string,
+                        }),
+                        filters: { taxon: species.id },
+                      })}
+                    />
+                  </InfoBlockField>
+                ) : null}
+                <InfoBlockField label="Occurrences">
+                  <InfoBlockFieldValue
+                    value={`Direct: ${species.numOccurrences ?? 0}`}
+                  />
+                  <InfoBlockFieldValue
+                    value="View all"
+                    to={getAppRoute({
+                      to: APP_ROUTES.OCCURRENCES({
+                        projectId: projectId as string,
+                      }),
+                      filters: { taxon: species.id },
+                    })}
+                  />
+                </InfoBlockField>
+                <InfoBlockField
+                  label={translate(STRING.FIELD_LABEL_BEST_SCORE)}
+                >
+                  <div>
+                    <DeterminationScore
+                      score={species.score}
+                      scoreLabel={species.scoreLabel}
+                      tooltip={
+                        species.score
+                          ? translate(STRING.MACHINE_PREDICTION_SCORE, {
+                              score: `${species.score}`,
+                            })
+                          : undefined
+                      }
+                    />
+                  </div>
+                </InfoBlockField>
+                <InfoBlockField
+                  className="no-print"
+                  label={translate(STRING.EXTERNAL_RESOURCES)}
+                >
+                  <div className="py-1 flex items-center gap-3">
+                    <Link
+                      className={buttonVariants({
+                        size: 'small',
+                        variant: 'outline',
+                      })}
+                      to={species.gbifUrl}
+                      target="_blank"
+                    >
+                      <span>GBIF</span>
+                      <ExternalLinkIcon className="w-4 h-4" />
+                    </Link>
+                    {species.fieldguideUrl ? (
+                      <Link
+                        className={buttonVariants({
+                          size: 'small',
+                          variant: 'outline',
+                        })}
+                        to={species.fieldguideUrl}
+                        target="_blank"
+                      >
+                        <span>Fieldguide</span>
+                        <ExternalLinkIcon className="w-4 h-4" />
+                      </Link>
+                    ) : null}
+                    {species.iNaturalistUrl ? (
+                      <Link
+                        className={buttonVariants({
+                          size: 'small',
+                          variant: 'outline',
+                        })}
+                        to={species.iNaturalistUrl}
+                        target="_blank"
+                      >
+                        <span>iNaturalist</span>
+                        <ExternalLinkIcon className="w-4 h-4" />
+                      </Link>
+                    ) : null}
+                  </div>
+                </InfoBlockField>
               </div>
-            </InfoBlockField>
-          </div>
+            </Tabs.Content>
+            <Tabs.Content value={TABS.CHARTS}>
+              {species.summaryData.length ? (
+                <div className="grid gap-6">
+                  {species.summaryData.map((summary, index) => (
+                    <Box key={index}>
+                      <Plot
+                        data={summary.data}
+                        orientation={summary.orientation}
+                        title={summary.title}
+                        type={summary.type}
+                      />
+                    </Box>
+                  ))}
+                </div>
+              ) : null}
+            </Tabs.Content>
+          </Tabs.Root>
         </div>
         <div className={styles.blueprintWrapper}>
           <div className={styles.blueprintContainer}>

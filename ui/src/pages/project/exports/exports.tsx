@@ -1,3 +1,4 @@
+import { EmptyState } from 'components/empty-state/empty-state'
 import { API_ROUTES } from 'data-services/constants'
 import { useExports } from 'data-services/hooks/exports/useExports'
 import { PageHeader } from 'design-system/components/page-header/page-header'
@@ -59,15 +60,27 @@ export const Exports = () => {
           />
         )}
       </PageHeader>
-      <Table
-        columns={columns(projectId as string)}
-        error={error}
-        isLoading={isLoading}
-        items={exports}
-        onSortSettingsChange={setSort}
-        sortable
-        sortSettings={sort}
-      />
+      {exports && exports.length === 0 && canCreate ? (
+        <EmptyState>
+          <NewEntityDialog
+            buttonSize="default"
+            buttonVariant="success"
+            collection={API_ROUTES.EXPORTS}
+            isCompact
+            type="export"
+          />
+        </EmptyState>
+      ) : (
+        <Table
+          columns={columns(projectId as string)}
+          error={error}
+          isLoading={isLoading}
+          items={exports}
+          onSortSettingsChange={setSort}
+          sortable
+          sortSettings={sort}
+        />
+      )}
       {exports?.length ? (
         <PaginationBar
           compact

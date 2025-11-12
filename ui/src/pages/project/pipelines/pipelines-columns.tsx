@@ -4,9 +4,14 @@ import { CellTheme, TableColumn } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
+import { DefaultPipelineBadge } from './default-pipeline-badge'
 
-export const columns: (projectId: string) => TableColumn<Pipeline>[] = (
-  projectId: string
+export const columns: (
+  projectId: string,
+  defaultProcessingPipelineId?: string
+) => TableColumn<Pipeline>[] = (
+  projectId: string,
+  defaultProcessingPipelineId?: string
 ) => [
   {
     id: 'id',
@@ -25,6 +30,18 @@ export const columns: (projectId: string) => TableColumn<Pipeline>[] = (
         <BasicTableCell value={item.name} theme={CellTheme.Primary} />
       </Link>
     ),
+  },
+  {
+    id: 'default',
+    name: '',
+    renderCell: (item: Pipeline) =>
+      item.id === defaultProcessingPipelineId ? (
+        <BasicTableCell>
+          <DefaultPipelineBadge projectId={projectId} />
+        </BasicTableCell>
+      ) : (
+        <></>
+      ),
   },
   {
     id: 'processing-services-online',

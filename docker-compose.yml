@@ -23,6 +23,7 @@ services:
       - postgres
       - redis
       - minio-init
+      - ml_backend
     volumes:
       - .:/app:z
     env_file:

@@ -5,7 +5,6 @@ export interface UserPreferences {
     label: string
     value: string
   }[]
-  scoreThreshold: number
   termsMessageSeen?: boolean
 }
 
