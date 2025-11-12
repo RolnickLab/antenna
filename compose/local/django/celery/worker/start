@@ -3,5 +3,26 @@
 set -o errexit
 set -o nounset
 
+# Local development with auto-reload and optional debugging
+#
+# CELERY_DEBUG=1 - Enable debugpy for remote debugging on port 5678
+# CELERY_NO_RELOAD=1 - Disable watchfiles auto-reload
+#
+# Worker protections (same as production):
+# --max-tasks-per-child=50 - Restart after 50 tasks (prevents memory leaks)
+# --max-memory-per-child=4000000 - Restart if memory exceeds 4GB
 
-exec watchfiles --filter python celery.__main__.main --args '-A config.celery_app worker -l INFO'
+# Check if debugging is enabled
+if [ "${CELERY_DEBUG:-0}" = "1" ]; then
+    echo "Starting Celery worker with debugpy on port 5678..."
+    exec python -m debugpy --listen 0.0.0.0:5678 -m celery -A config.celery_app worker -l INFO --max-tasks-per-child=50 --max-memory-per-child=4000000
+fi
+
+# Check if auto-reload should be disabled
+if [ "${CELERY_NO_RELOAD:-0}" = "1" ]; then
+    echo "Starting Celery worker without auto-reload..."
+    exec celery -A config.celery_app worker -l INFO --max-tasks-per-child=50 --max-memory-per-child=4000000
+else
+    echo "Starting Celery worker with watchfiles auto-reload..."
+    exec watchfiles --filter python celery.__main__.main --args '-A config.celery_app worker -l INFO --max-tasks-per-child=50 --max-memory-per-child=4000000'
+fi
