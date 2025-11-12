@@ -152,7 +152,7 @@ def get_or_create_default_collection(project: "Project") -> "SourceImageCollecti
 
 def get_project_default_filters():
     """
-    Read default taxa names from Django settings
+    Read default taxa names from Django settings (read from environment variables)
     and return corresponding Taxon objects.
     """
     include_taxa = list(Taxon.objects.filter(name__in=settings.DEFAULT_INCLUDE_TAXA))
