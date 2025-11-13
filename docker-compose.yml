@@ -119,9 +119,8 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: rabbituser
-      RABBITMQ_DEFAULT_PASS: rabbitpass
+    env_file:
+      - ./.envs/.local/.django
     networks:
       - antenna_network
 
