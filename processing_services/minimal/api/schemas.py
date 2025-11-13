@@ -203,7 +203,7 @@ class AlgorithmConfigResponse(pydantic.BaseModel):
         extra = "ignore"
 
 
-PipelineChoice = typing.Literal["random", "constant", "random-detection-random-species"]
+PipelineChoice = typing.Literal["constant", "random-detection-random-species"]
 
 
 class PipelineRequest(pydantic.BaseModel):
@@ -216,7 +216,7 @@ class PipelineRequest(pydantic.BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "pipeline": "random",
+                "pipeline": "constant",
                 "source_images": [
                     {
                         "id": "123",
@@ -241,6 +241,7 @@ class PipelineResultsResponse(pydantic.BaseModel):
     )
     source_images: list[SourceImageResponse]
     detections: list[DetectionResponse]
+    errors: str | None = None
 
 
 class PipelineStageParam(pydantic.BaseModel):
