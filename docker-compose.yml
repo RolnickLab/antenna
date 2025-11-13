@@ -95,7 +95,9 @@ services:
     # Also make sure to install debugpy in your requirements/local.txt
     ports:
       - "5678:5678"
-    command: python -m debugpy --listen 0.0.0.0:5678 -m celery -A config.celery_app worker --queues=antenna -l INFO
+    environment:
+      - CELERY_DEBUG=1
+    command: /start-celeryworker
     depends_on:
       - rabbitmq
 

@@ -43,7 +43,7 @@ services:
     <<: *django
     depends_on:
       - rabbitmq
-    command: python -m celery -A config.celery_app worker --queues=antenna -l INFO
+    command: /start-celeryworker
 
   rabbitmq:
     image: rabbitmq:3-management
