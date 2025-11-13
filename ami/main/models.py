@@ -322,6 +322,24 @@ class Project(ProjectSettingsMixin, BaseModel):
         # Add owner to members
         self.ensure_owner_membership()
 
+    def check_custom_permission(self, user, action: str) -> bool:
+        """
+        Check custom permissions for actions like 'charts'.
+        Charts is treated as a read-only operation, so it follows the same
+        permission logic as 'retrieve'.
+        """
+        from ami.users.roles import BasicMember
+
+        if action == "charts":
+            # Same permission logic as retrieve action
+            if self.draft:
+                # Allow view permission for members and owners of draft projects
+                return BasicMember.has_role(user, self) or user == self.owner or user.is_superuser
+            return True
+
+        # Fall back to default permission checking for other actions
+        return super().check_custom_permission(user, action)
+
     class Permissions:
         """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
         `delete_<model>`, `view_<model>`"""

@@ -170,6 +170,24 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
         else:
             return ProjectSerializer
 
+    def get_serializer_context(self):
+        """
+        Add with_charts flag to serializer context.
+        """
+        context = super().get_serializer_context()
+        with_charts_default = False
+
+        # For detail view, include charts by default
+        if self.action == "retrieve":
+            with_charts_default = True
+
+        with_charts = self.request.query_params.get("with_charts", with_charts_default)
+        if with_charts is not None:
+            with_charts = BooleanField(required=False).clean(with_charts)
+
+        context["with_charts"] = with_charts
+        return context
+
     def perform_create(self, serializer):
         super().perform_create(serializer)
         # Check if user is authenticated
@@ -178,6 +196,14 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
 
         # Add current user as project owner
         serializer.save(owner=self.request.user)
+
+    @action(detail=True, methods=["get"], name="charts")
+    def charts(self, request, pk=None):
+        """
+        Get chart data for a project.
+        """
+        project = self.get_object()
+        return Response({"summary_data": project.summary_data()})
 
     @extend_schema(
         parameters=[
@@ -697,16 +723,32 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
+        with_counts_default = False
+        # If with_counts is explicitly requested, require project
+        if "with_counts" in self.request.query_params:
+            self.require_project = True
         project = self.get_active_project()
-        classification_threshold = get_default_classification_threshold(project, self.request)
+
         if project:
             query_set = query_set.filter(project=project)
-        queryset = query_set.with_occurrences_count(  # type: ignore
-            classification_threshold=classification_threshold, project=project, request=self.request
-        ).with_taxa_count(  # type: ignore
-            classification_threshold=classification_threshold, project=project, request=self.request
-        )
-        return queryset
+
+        if self.action == "retrieve":
+            # For detail view, include counts by default
+            with_counts_default = True
+
+        with_counts = self.request.query_params.get("with_counts", with_counts_default)
+        if with_counts is not None:
+            with_counts = BooleanField(required=False).clean(with_counts)
+
+        if with_counts:
+            classification_threshold = get_default_classification_threshold(project, self.request)
+            query_set = query_set.with_occurrences_count(  # type: ignore
+                classification_threshold=classification_threshold, project=project, request=self.request
+            ).with_taxa_count(  # type: ignore
+                classification_threshold=classification_threshold, project=project, request=self.request
+            )
+
+        return query_set
 
     @action(detail=True, methods=["post"], name="populate")
     def populate(self, request, pk=None):
