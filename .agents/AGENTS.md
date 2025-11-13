@@ -13,6 +13,16 @@ Every call to the AI model API incurs a cost and requires electricity. Be smart 
 - Always prefer command line tools to avoid expensive API requests (e.g., use git and jq instead of reading whole files)
 - Use bulk operations and prefetch patterns to minimize database queries
 
+**Performance Optimization:**
+- django-cachalot handles automatic query caching - don't add manual caching layers on top
+- Focus on optimizing cold queries first before adding caching
+- When ordering by annotated fields, pagination COUNT queries include those annotations - use `.values('pk')` to strip them
+- For large tables (>10k rows), consider fuzzy counting using PostgreSQL's pg_class.reltuples
+
+**Git Commit Guidelines:**
+- Do NOT include "Generated with Claude Code" in commit messages
+- ALWAYS include "Co-Authored-By: Claude <noreply@anthropic.com>" at the end of commit messages
+
 ## Project Overview
 
 Antenna is an Automated Monitoring of Insects ML Platform. It's a collaborative platform for processing and reviewing images from automated insect monitoring stations, maintaining metadata, and orchestrating multiple machine learning pipelines for analysis.
@@ -64,6 +74,35 @@ docker compose logs -f django celeryworker ui
 Stop all services:
 ```bash
 docker compose down
+```
+
+### Debugging with VS Code
+
+Enable remote debugging with debugpy for Django and Celery services:
+
+```bash
+# One-time setup: copy the override example file
+cp docker-compose.override.yml.example docker-compose.override.yml
+
+# Start services (debugpy will be enabled automatically)
+docker compose up
+
+# In VS Code, attach debugger:
+# - "Attach: Django" for web server debugging (port 5678)
+# - "Attach: Celeryworker" for task debugging (port 5679)
+# - "Attach: Django + Celery" for simultaneous debugging
+```
+
+**How it works:**
+- The `docker-compose.override.yml` file sets `DEBUGGER=1` environment variable
+- Start scripts (`compose/local/django/start` and `compose/local/django/celery/worker/start`) detect this and launch with debugpy
+- VS Code launch configurations in `.vscode/launch.json` connect to the exposed ports
+- The override file is git-ignored for local customization
+
+**Disable debugging:**
+```bash
+rm docker-compose.override.yml
+docker compose restart django celeryworker
 ```
 
 ### Backend (Django)
