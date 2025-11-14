@@ -23,6 +23,7 @@ services:
       - redis
       - minio-init
       - ml_backend
+      - rabbitmq
     volumes:
       - .:/app:z
     env_file:
@@ -91,6 +92,8 @@ services:
     scale: 1
     ports: []
     command: /start-celeryworker
+    depends_on:
+      - rabbitmq
 
   celerybeat:
     <<: *django
@@ -106,6 +109,16 @@ services:
     command: /start-flower
     volumes:
       - ./data/flower/:/data/
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    env_file:
+      - ./.envs/.local/.django
+    networks:
+      - antenna_network
 
   minio:
     image: minio/minio:RELEASE.2024-11-07T00-52-20Z

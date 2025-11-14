@@ -13,6 +13,16 @@ Every call to the AI model API incurs a cost and requires electricity. Be smart 
 - Always prefer command line tools to avoid expensive API requests (e.g., use git and jq instead of reading whole files)
 - Use bulk operations and prefetch patterns to minimize database queries
 
+**Performance Optimization:**
+- django-cachalot handles automatic query caching - don't add manual caching layers on top
+- Focus on optimizing cold queries first before adding caching
+- When ordering by annotated fields, pagination COUNT queries include those annotations - use `.values('pk')` to strip them
+- For large tables (>10k rows), consider fuzzy counting using PostgreSQL's pg_class.reltuples
+
+**Git Commit Guidelines:**
+- Do NOT include "Generated with Claude Code" in commit messages
+- ALWAYS include "Co-Authored-By: Claude <noreply@anthropic.com>" at the end of commit messages
+
 ## Project Overview
 
 Antenna is an Automated Monitoring of Insects ML Platform. It's a collaborative platform for processing and reviewing images from automated insect monitoring stations, maintaining metadata, and orchestrating multiple machine learning pipelines for analysis.
@@ -273,7 +283,7 @@ Location: `processing_services/` directory contains example implementations
 
 ### Celery Task Queue
 
-**Broker & Result Backend:** Redis
+**Broker & Result Backend:** RabbitMQ
 
 **Key Tasks:**
 - `ami.jobs.tasks.run_job` - Main ML processing workflow

@@ -260,6 +260,7 @@ CACHES = {
         },
     }
 }
+REDIS_URL = env("REDIS_URL", default=None)
 
 # ADMIN
 # ------------------------------------------------------------------------------
@@ -299,6 +300,8 @@ LOGGING = {
 if USE_TZ:
     # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-timezone
     CELERY_TIMEZONE = TIME_ZONE
+
+CELERY_TASK_DEFAULT_QUEUE = "antenna"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-broker_url
 CELERY_BROKER_URL = env("CELERY_BROKER_URL")
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-result_backend
