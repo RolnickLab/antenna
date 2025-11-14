@@ -283,7 +283,7 @@ Location: `processing_services/` directory contains example implementations
 
 ### Celery Task Queue
 
-**Broker & Result Backend:** Redis
+**Broker & Result Backend:** RabbitMQ
 
 **Key Tasks:**
 - `ami.jobs.tasks.run_job` - Main ML processing workflow
