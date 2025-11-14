@@ -18,7 +18,7 @@ services:
       - "5678:5678"
     volumes:
       # allow modifying the start script without rebuilding the image
-      - ./compose/local/django/start:/start:ro
+      - ./compose/local/django/start:/start
 
   celeryworker:
     environment:
