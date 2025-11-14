@@ -1,6 +1,5 @@
 import { isBefore, isValid } from 'date-fns'
 import { useSearchParams } from 'react-router-dom'
-import { STRING, translate } from './language'
 import { SEARCH_PARAM_KEY_PAGE } from './usePagination'
 
 export const AVAILABLE_FILTERS: {
@@ -16,16 +15,16 @@ export const AVAILABLE_FILTERS: {
     field: 'algorithm',
   },
   {
-    label: translate(STRING.FIELD_LABEL_SCORE_THRESHOLD),
-    field: 'classification_threshold',
-  },
-  {
     label: 'Collection',
     field: 'collection', // This is for viewing Occurrences by collection
   },
   {
     label: 'Collection',
     field: 'source_image_collection', // This is for viewing Jobs by collection. @TODO: Can we update this key to "collection" to streamline?
+  },
+  {
+    label: 'Collection',
+    field: 'collections', // This is for viewing Captures by collection @TODO: Can we update this key to "collection" to streamline?
   },
   {
     label: 'Station',
@@ -98,8 +97,12 @@ export const AVAILABLE_FILTERS: {
     field: 'taxon',
   },
   {
-    label: 'Taxa list',
+    label: 'Include taxa in list',
     field: 'taxa_list_id',
+  },
+  {
+    label: 'Exclude taxa from list',
+    field: 'not_taxa_list_id',
   },
   {
     label: 'Source image',
@@ -126,8 +129,8 @@ export const AVAILABLE_FILTERS: {
     field: 'include_unobserved',
   },
   {
-    label: 'Best score threshold',
-    field: 'best_determination_score',
+    label: 'Default filters',
+    field: 'apply_defaults',
   },
 ]
 

@@ -26,18 +26,23 @@ export const Collections = () => {
       id: true,
       name: true,
       settings: true,
+      captures: true,
       'captures-with-detections': true,
       status: true,
     }
   )
   const { pagination, setPage } = usePagination()
   const [poll, setPoll] = useState(false)
+  const countColumnVisible = columnSettings.occurrences || columnSettings.taxa
+  const sortByCountActive =
+    sort?.field === 'occurrences_count' || sort?.field === 'taxa_count'
   const { collections, userPermissions, total, isLoading, isFetching, error } =
     useCollections(
       {
         projectId,
         pagination,
         sort,
+        withCounts: countColumnVisible || sortByCountActive, // Only fetch counts if needed since counts will slow down the response
       },
       poll
     )

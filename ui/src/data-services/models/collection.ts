@@ -80,7 +80,8 @@ export class Collection extends Entity {
       this.numImagesWithDetections && this.numImages
         ? (this.numImagesWithDetections / this.numImages) * 100
         : 0
-    return `${this.numImagesWithDetections?.toLocaleString()} / ${this.numImages?.toLocaleString()} (${pct.toFixed(
+
+    return `${this.numImagesWithDetections?.toLocaleString()} (${pct.toFixed(
       0
     )}%)`
   }
@@ -89,12 +90,12 @@ export class Collection extends Entity {
     return this._data.jobs?.length
   }
 
-  get numOccurrences(): number {
-    return this._data.occurrences_count
+  get numOccurrences(): number | undefined {
+    return this._data.occurrences_count ?? undefined
   }
 
-  get numTaxa(): number {
-    return this._data.taxa_count
+  get numTaxa(): number | undefined {
+    return this._data.taxa_count ?? undefined
   }
 
   get settingsDisplay(): string {

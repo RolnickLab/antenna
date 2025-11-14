@@ -27,10 +27,10 @@ import { UserPermission } from 'utils/user/types'
 import { useUser } from 'utils/user/userContext'
 import { useUserInfo } from 'utils/user/userInfoContext'
 import { Agree } from './agree/agree'
+import { IdQuickActions } from './id-quick-actions/id-quick-actions'
 import { HumanIdentification } from './identification-card/human-identification'
 import { MachinePrediction } from './identification-card/machine-prediction'
 import styles from './occurrence-details.module.scss'
-import { IdQuickActions } from './reject-id/id-quick-actions'
 import { StatusLabel } from './status-label/status-label'
 import { SuggestId } from './suggest-id/suggest-id'
 
@@ -96,7 +96,12 @@ export const OccurrenceDetails = ({
     {
       label: translate(STRING.FIELD_LABEL_DEPLOYMENT),
       value: occurrence.deploymentLabel,
-      to: APP_ROUTES.DEPLOYMENTS({ projectId: projectId as string }),
+      to: occurrence.deploymentId
+        ? APP_ROUTES.DEPLOYMENT_DETAILS({
+            projectId: projectId as string,
+            deploymentId: occurrence.deploymentId,
+          })
+        : undefined,
     },
     {
       label: translate(STRING.FIELD_LABEL_SESSION),
@@ -190,7 +195,7 @@ export const OccurrenceDetails = ({
               <IdQuickActions
                 containerRef={containerRef}
                 occurrenceIds={[occurrence.id]}
-                occurrenceTaxons={[occurrence.determinationTaxon]}
+                occurrenceTaxa={[occurrence.determinationTaxon]}
               />
             </>
           )}

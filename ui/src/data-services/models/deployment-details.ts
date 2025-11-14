@@ -50,12 +50,6 @@ export class DeploymentDetails extends Deployment {
     }
   }
 
-  get device(): Entity | undefined {
-    if (this._deployment.device) {
-      return new Entity(this._deployment.device)
-    }
-  }
-
   get description(): string {
     return this._deployment.description
   }

@@ -265,9 +265,10 @@ class Command(BaseCommand):
             taxon_data = fix_values(taxon_data)
             logger.debug(f"Parsed taxon data: {taxon_data}")
             if taxon_data:
-                created_taxa, updated_taxa = self.create_taxon(taxon_data, root_taxon_parent)
+                created_taxa, updated_taxa, specific_taxon = self.create_taxon(taxon_data, root_taxon_parent)
                 taxa_to_refresh.update(created_taxa)
                 taxa_to_refresh.update(updated_taxa)
+                taxalist.taxa.add(specific_taxon)
                 if created_taxa:
                     logger.debug(f"Created {len(created_taxa)} taxa from incoming row {i}")
                     taxalist.taxa.add(*created_taxa)
@@ -282,6 +283,7 @@ class Command(BaseCommand):
         logger.info("SUMMARY:")
         logger.info(f"Created {total_created_taxa} total taxa")
         logger.info(f"Updated {total_updated_taxa} total taxa")
+        logger.info(f"Total taxa in list {taxalist}: {taxalist.taxa.count()}")
 
         # Ensure the root taxon still exists and has no parent
         root = Taxon.objects.root()
@@ -293,7 +295,7 @@ class Command(BaseCommand):
         for taxon in tqdm(taxa_to_refresh):
             taxon.save(update_calculated_fields=True)
 
-    def create_taxon(self, taxon_data: dict, root_taxon_parent: Taxon) -> tuple[set[Taxon], set[Taxon]]:
+    def create_taxon(self, taxon_data: dict, root_taxon_parent: Taxon) -> tuple[set[Taxon], set[Taxon], Taxon]:
         taxa_in_row = []
         created_taxa = set()
         updated_taxa = set()
@@ -309,24 +311,32 @@ class Command(BaseCommand):
             # Assume ranks are in order of rank
             if rank.name.lower() in taxon_data.keys() and taxon_data[rank.name.lower()]:
                 name = taxon_data[rank.name.lower()]
+                gbif_taxon_key = taxon_data.get("gbif_taxon_key", None)
                 rank = rank.name.upper()
-                logger.debug(f"Taxon found in incoming row {i}: {rank} {name}")
-                try:
-                    taxon, created = Taxon.objects.get_or_create(name=name, defaults={"rank": rank})
-                except (Taxon.MultipleObjectsReturned, Exception) as e:
-                    logger.error(f"Error creating taxon {name} {rank}: {e}")
-                    raise
+                logger.debug(f"Taxon found in incoming row {i}: {rank} {name} (GBIF: {gbif_taxon_key})")
 
+                # Look up existing taxon by name only, since names must be unique.
+                # If the taxon already exists, use it and maybe update it
+                taxon, created = Taxon.objects.get_or_create(
+                    name=name,
+                    defaults=dict(
+                        rank=rank,
+                        gbif_taxon_key=gbif_taxon_key,
+                        parent=parent_taxon,
+                    ),
+                )
                 taxa_in_row.append(taxon)
 
                 if created:
                     logger.debug(f"Created new taxon #{taxon.id} {taxon} ({taxon.rank})")
                     created_taxa.add(taxon)
+                else:
+                    logger.debug(f"Using existing taxon #{taxon.id} {taxon} ({taxon.rank})")
 
                 # Add or update the rank of the taxon based on incoming data
                 if not taxon.rank or taxon.rank != rank:
                     if not created:
-                        logger.warn(f"Rank of existing {taxon} is {taxon.rank}, changing to {rank}")
+                        logger.warning(f"Rank of existing {taxon} is changing from {taxon.rank} to {rank}")
                     taxon.rank = rank
                     taxon.save(update_calculated_fields=False)
                     if not created:
@@ -377,6 +387,9 @@ class Command(BaseCommand):
             "common_name_en",
             "notes",
             "sort_phylogeny",
+            "fieldguide_id",
+            "cover_image_url",
+            "cover_image_credit",
         ]
 
         is_new = specific_taxon in created_taxa
@@ -386,6 +399,11 @@ class Command(BaseCommand):
                 existing_value = getattr(specific_taxon, column)
                 incoming_value = taxon_data[column]
                 if existing_value != incoming_value:
+                    if incoming_value is None:
+                        # Don't overwrite existing values with None.
+                        # This could potentially be a command line option to allow users to clear values.
+                        logger.debug(f"Not changing {column} of {specific_taxon} from {existing_value} to None")
+                        continue
                     if not is_new:
                         logger.info(
                             f"Changing {column} of {specific_taxon} to from {existing_value} to {incoming_value}"
@@ -396,7 +414,7 @@ class Command(BaseCommand):
             specific_taxon.save(update_calculated_fields=False)
             if not is_new:
                 # raise ValueError(f"TAXON DATA CHANGED for {specific_taxon}")
-                logger.warn(f"TAXON DATA CHANGED for existing {specific_taxon} ({specific_taxon.id})")
+                logger.warning(f"TAXON DATA CHANGED for existing {specific_taxon} ({specific_taxon.id})")
                 updated_taxa.add(specific_taxon)
 
         if accepted_name:
@@ -417,4 +435,4 @@ class Command(BaseCommand):
 
         #
 
-        return created_taxa, updated_taxa
+        return created_taxa, updated_taxa, specific_taxon

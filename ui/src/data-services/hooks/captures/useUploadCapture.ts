@@ -5,16 +5,17 @@ import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
 
 interface UploadCaptureFieldValues {
-  projectId: string
   deploymentId: string
   file: File
+  processNow?: boolean
+  projectId: string
 }
 
 export const useUploadCapture = (onSuccess?: (id: string) => void) => {
   const { user } = useUser()
   const queryClient = useQueryClient()
 
-  const { mutate, isLoading, error, isSuccess } = useMutation({
+  const { mutateAsync, isLoading, error, isSuccess, reset } = useMutation({
     mutationFn: (fieldValues: UploadCaptureFieldValues) => {
       const data = new FormData()
       if (fieldValues.projectId) {
@@ -30,7 +31,9 @@ export const useUploadCapture = (onSuccess?: (id: string) => void) => {
       }
 
       return axios.post<{ source_image: { id: number } }>(
-        `${API_URL}/${API_ROUTES.CAPTURES}/upload/`,
+        `${API_URL}/${API_ROUTES.CAPTURES}/upload/?process_now=${
+          fieldValues.processNow ? 'True' : 'False'
+        }`,
         data,
         {
           headers: {
@@ -41,10 +44,12 @@ export const useUploadCapture = (onSuccess?: (id: string) => void) => {
       )
     },
     onSuccess: ({ data }) => {
+      queryClient.invalidateQueries([API_ROUTES.CAPTURES])
       queryClient.invalidateQueries([API_ROUTES.DEPLOYMENTS])
+      queryClient.invalidateQueries([API_ROUTES.SUMMARY])
       onSuccess?.(`${data.source_image.id}`)
     },
   })
 
-  return { uploadCapture: mutate, isLoading, error, isSuccess }
+  return { uploadCapture: mutateAsync, isLoading, error, isSuccess, reset }
 }

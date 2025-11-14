@@ -25,10 +25,6 @@ const getSidebarSections = (
         id: 'collections',
         title: translate(STRING.NAV_ITEM_COLLECTIONS),
         path: APP_ROUTES.COLLECTIONS({ projectId: project.id }),
-        matchPath: APP_ROUTES.COLLECTION_DETAILS({
-          projectId: ':projectId',
-          collectionId: '*',
-        }),
       },
       {
         id: 'exports',
@@ -96,7 +92,7 @@ const getSidebarSections = (
             },
           ]
         : []),
-      ...(project.canUpdate && project.featureFlags.default_filters
+      ...(project.canUpdate
         ? [
             {
               id: 'default-filters',
@@ -110,6 +106,15 @@ const getSidebarSections = (
         title: translate(STRING.NAV_ITEM_STORAGE),
         path: APP_ROUTES.STORAGE({ projectId: project.id }),
       },
+      ...(project.canUpdate
+        ? [
+            {
+              id: 'processing',
+              title: translate(STRING.NAV_ITEM_PROCESSING),
+              path: APP_ROUTES.PROCESSING({ projectId: project.id }),
+            },
+          ]
+        : []),
     ],
   },
 ]

@@ -6,6 +6,7 @@ import * as Dialog from 'design-system/components/dialog/dialog'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
 import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
+import { SortControl } from 'design-system/components/sort-control'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import _ from 'lodash'
@@ -67,16 +68,21 @@ export const Jobs = () => {
           isFetching={isFetching}
           tooltip={translate(STRING.TOOLTIP_JOB)}
         >
+          <SortControl
+            columns={columns(projectId as string)}
+            setSort={setSort}
+            sort={sort}
+          />
+          {canCreate ? <NewJobDialog /> : null}
           <ColumnSettings
             columns={columns(projectId as string)}
             columnSettings={columnSettings}
             onColumnSettingsChange={setColumnSettings}
           />
-          {canCreate ? <NewJobDialog /> : null}
         </PageHeader>
         <Table
           columns={columns(projectId as string).filter(
-            (column) => !!columnSettings[column.id]
+            (column) => column.id === 'actions' || !!columnSettings[column.id]
           )}
           error={error}
           items={jobs}

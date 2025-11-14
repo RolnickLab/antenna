@@ -1,9 +1,14 @@
+import typing
+
 import requests
-from django.forms import FloatField
+from django.forms import BooleanField, FloatField
 from drf_spectacular.utils import OpenApiParameter
 from requests.adapters import HTTPAdapter
 from rest_framework.request import Request
 from urllib3.util import Retry
+
+if typing.TYPE_CHECKING:
+    from ami.main.models import Project
 
 
 def create_session(
@@ -36,6 +41,47 @@ def create_session(
     return session
 
 
+def extract_error_message_from_response(resp: requests.Response) -> str:
+    """
+    Extract detailed error information from an HTTP response.
+
+    Prioritizes the "detail" field from JSON responses (FastAPI standard),
+    falls back to other fields, text content, or raw bytes.
+
+    Args:
+        resp: The HTTP response object
+
+    Returns:
+        A formatted error message string
+    """
+    error_details = [f"HTTP {resp.status_code}: {resp.reason}"]
+
+    try:
+        # Try to parse JSON response
+        resp_json = resp.json()
+        if isinstance(resp_json, dict):
+            # Check for the standard "detail" field first
+            if "detail" in resp_json:
+                error_details.append(f"Detail: {resp_json['detail']}")
+            else:
+                # Fallback: add all fields from the error response
+                for key, value in resp_json.items():
+                    error_details.append(f"{key}: {value}")
+        else:
+            error_details.append(f"Response: {resp_json}")
+    except (ValueError, KeyError):
+        # If JSON parsing fails, try to get text content
+        try:
+            content_text = resp.text
+            if content_text:
+                error_details.append(f"Response text: {content_text[:500]}")  # Limit to first 500 chars
+        except Exception:
+            # Last resort: raw content
+            error_details.append(f"Response content: {resp.content[:500]}")
+
+    return " | ".join(error_details)
+
+
 def get_active_classification_threshold(request: Request) -> float:
     """
     Get the active classification threshold from request parameters.
@@ -54,6 +100,49 @@ def get_active_classification_threshold(request: Request) -> float:
     else:
         classification_threshold = 0
     return classification_threshold
+
+
+def get_apply_default_filters_flag(request: Request | None = None) -> bool:
+    """
+    Get the apply_default_filters parameter from request parameters.
+
+    Args:
+        request: The incoming request object
+    Returns:
+        The apply_default_filters value, defaulting to True if not specified
+    """
+    default = True
+
+    if request is None:
+        return default
+
+    apply_default_filters = request.query_params.get("apply_defaults") or default
+    apply_default_filters = BooleanField(required=False).clean(apply_default_filters)
+    return apply_default_filters
+
+
+def get_default_classification_threshold(project: "Project | None" = None, request: Request | None = None) -> float:
+    """
+    Get the classification threshold from project settings by default,
+    or from request query parameters if `apply_defaults=false` is set in the request.
+
+    Args:
+        project: A Project instance.
+        request: The incoming request object (optional).
+
+    Returns:
+        The classification threshold value from project settings by default,
+        or from request if `apply_defaults=false` is provided.
+    """
+    default_threshold = 0.0
+
+    if get_apply_default_filters_flag(request) is False:
+        return get_active_classification_threshold(request)
+
+    if project:
+        return project.default_filters_score_threshold
+    else:
+        return default_threshold
 
 
 project_id_doc_param = OpenApiParameter(

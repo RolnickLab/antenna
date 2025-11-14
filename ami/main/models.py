@@ -18,24 +18,32 @@ from django.contrib.postgres.fields import ArrayField
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, models, transaction
-from django.db.models import Q
+from django.db.models import Exists, OuterRef, Q
 from django.db.models.fields.files import ImageFieldFile
+from django.db.models.functions import Coalesce
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from django.template.defaultfilters import filesizeformat
 from django.utils import timezone
 from django_pydantic_field import SchemaField
 from guardian.shortcuts import get_perms
+from rest_framework.request import Request
 
 import ami.tasks
 import ami.utils
 from ami.base.fields import DateStringField
-from ami.base.models import BaseModel
+from ami.base.models import BaseModel, BaseQuerySet
 from ami.main import charts
+from ami.main.models_future.filters import (
+    build_occurrence_default_filters_q,
+    build_occurrence_score_threshold_q,
+    build_taxa_recursive_filter_q,
+)
 from ami.main.models_future.projects import ProjectSettingsMixin
 from ami.ml.schemas import BoundingBox
 from ami.users.models import User
 from ami.utils.media import calculate_file_checksum, extract_timestamp
+from ami.utils.requests import get_apply_default_filters_flag, get_default_classification_threshold
 from ami.utils.schemas import OrderedEnum
 
 if typing.TYPE_CHECKING:
@@ -98,14 +106,14 @@ as_choices = lambda x: [(i, i) for i in x]  # noqa: E731
 
 def get_or_create_default_device(project: "Project") -> "Device":
     """Create a default device for a project."""
-    device, _created = Device.objects.get_or_create(name="Default device", project=project)
+    device, _created = Device.objects.get_or_create(name="Default Device", project=project)
     logger.info(f"Created default device for project {project}")
     return device
 
 
 def get_or_create_default_research_site(project: "Project") -> "Site":
     """Create a default research site for a project."""
-    site, _created = Site.objects.get_or_create(name="Default site", project=project)
+    site, _created = Site.objects.get_or_create(name="Default Site", project=project)
     logger.info(f"Created default research site for project {project}")
     return site
 
@@ -119,6 +127,8 @@ def get_or_create_default_deployment(
         project=project,
         research_site=site,
         device=device,
+        latitude=0,
+        longitude=0,
     )
     logger.info(f"Created default deployment for project {project}")
     return deployment
@@ -153,7 +163,7 @@ def get_or_create_default_project(user: User) -> "Project":
     return project
 
 
-class ProjectQuerySet(models.QuerySet):
+class ProjectQuerySet(BaseQuerySet):
     def filter_by_user(self, user: User):
         """
         Filters projects to include only those where the given user is a member.
@@ -161,9 +171,8 @@ class ProjectQuerySet(models.QuerySet):
         return self.filter(members=user)
 
 
-class ProjectManager(models.Manager):
-    def get_queryset(self) -> ProjectQuerySet:
-        return ProjectQuerySet(self.model, using=self._db)
+class ProjectManager(models.Manager.from_queryset(ProjectQuerySet)):
+    pass
 
     def create(self, create_defaults: bool = True, **kwargs) -> "Project":
         """
@@ -205,12 +214,12 @@ class ProjectFeatureFlags(pydantic.BaseModel):
     """
 
     tags: bool = False  # Whether the project supports tagging taxa
-    auto_process_manual_uploads: bool = False  # Whether to automatically process uploaded images
     reprocess_existing_detections: bool = False  # Whether to reprocess existing detections
     default_filters: bool = False  # Whether to show default filters form in UI
 
 
-default_feature_flags = ProjectFeatureFlags()
+def get_default_feature_flags() -> ProjectFeatureFlags:
+    return ProjectFeatureFlags()
 
 
 @final
@@ -222,10 +231,13 @@ class Project(ProjectSettingsMixin, BaseModel):
     image = models.ImageField(upload_to="projects", blank=True, null=True)
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="projects")
     members = models.ManyToManyField(User, related_name="user_projects", blank=True)
-
+    draft = models.BooleanField(
+        default=False,
+        help_text="Indicates whether this project is in draft mode",
+    )
     feature_flags = SchemaField(
         ProjectFeatureFlags,
-        default=default_feature_flags,
+        default=get_default_feature_flags,
         null=False,
         blank=True,
     )
@@ -250,9 +262,6 @@ class Project(ProjectSettingsMixin, BaseModel):
 
     objects = ProjectManager()
 
-    def get_project(self):
-        return self
-
     def ensure_owner_membership(self):
         """Add owner to members if they are not already a member"""
         if self.owner and not self.members.filter(id=self.owner.pk).exists():
@@ -269,35 +278,77 @@ class Project(ProjectSettingsMixin, BaseModel):
         Data prepared for rendering charts with plotly.js on the overview page.
         """
 
-        plots = []
+        return [
+            {
+                "id": "captures",
+                "title": "Captures",
+                "plots": [
+                    charts.captures_per_hour(project_pk=self.pk),
+                    charts.captures_per_month(project_pk=self.pk),
+                ],
+            },
+            {
+                "id": "occurrences",
+                "title": "Occurrences",
+                "plots": [
+                    charts.detections_per_hour(project_pk=self.pk),
+                    charts.average_occurrences_per_month(project_pk=self.pk),
+                ],
+            },
+            {
+                "id": "taxa",
+                "title": "Taxa",
+                "plots": [
+                    charts.project_top_taxa(project_pk=self.pk),
+                    charts.unique_species_per_month(project_pk=self.pk),
+                ],
+            },
+        ]
 
-        plots.append(charts.captures_per_hour(project_pk=self.pk))
-        if self.occurrences.exists():
-            plots.append(charts.detections_per_hour(project_pk=self.pk))
-            # plots.append(charts.occurrences_accumulated(project_pk=self.pk))
-        else:
-            plots.append(charts.events_per_month(project_pk=self.pk))
-            # plots.append(charts.captures_per_month(project_pk=self.pk))
-        plots.append(charts.project_top_taxa(project_pk=self.pk))
-        plots.append(charts.average_occurrences_per_month(project_pk=self.pk))
-        plots.append(charts.unique_species_per_month(project_pk=self.pk))
+    def update_related_calculated_fields(self):
+        """
+        Update calculated fields for all related events and deployments.
+        """
+        # Update events
+        for event in self.events.all():
+            event.update_calculated_fields(save=True)
 
-        return plots
+        # Update deployments
+        for deployment in self.deployments.all():
+            deployment.update_calculated_fields(save=True)
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         # Add owner to members
         self.ensure_owner_membership()
 
+    def check_custom_permission(self, user, action: str) -> bool:
+        """
+        Check custom permissions for actions like 'charts'.
+        Charts is treated as a read-only operation, so it follows the same
+        permission logic as 'retrieve'.
+        """
+        from ami.users.roles import BasicMember
+
+        if action == "charts":
+            # Same permission logic as retrieve action
+            if self.draft:
+                # Allow view permission for members and owners of draft projects
+                return BasicMember.has_role(user, self) or user == self.owner or user.is_superuser
+            return True
+
+        # Fall back to default permission checking for other actions
+        return super().check_custom_permission(user, action)
+
     class Permissions:
         """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
         `delete_<model>`, `view_<model>`"""
 
         # Project permissions
-        VIEW = "view_project"
-        CHANGE = "update_project"
-        DELETE = "delete_project"
-        ADD = "create_project"
+        VIEW_PROJECT = "view_project"
+        UPDATE_PROJECT = "update_project"
+        DELETE_PROJECT = "delete_project"
+        CREATE_PROJECT = "create_project"
 
         # Identification permissions
         CREATE_IDENTIFICATION = "create_identification"
@@ -312,6 +363,7 @@ class Project(ProjectSettingsMixin, BaseModel):
         RUN_POPULATE_CAPTURES_COLLECTION_JOB = "run_populate_captures_collection_job"
         RUN_DATA_STORAGE_SYNC_JOB = "run_data_storage_sync_job"
         RUN_DATA_EXPORT_JOB = "run_data_export_job"
+        RUN_POST_PROCESSING_JOB = "run_post_processing_job"
         DELETE_JOB = "delete_job"
 
         # Deployment permissions
@@ -374,6 +426,7 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("run_data_storage_sync_job", "Can run/retry/cancel Data Storage Sync jobs"),
             ("run_data_export_job", "Can run/retry/cancel Data Export jobs"),
             ("run_single_image_ml_job", "Can process a single capture"),
+            ("run_post_processing_job", "Can run/retry/cancel Post-Processing jobs"),
             ("delete_job", "Can delete a job"),
             # Deployment permissions
             ("create_deployment", "Can create a deployment"),
@@ -469,16 +522,12 @@ class Site(BaseModel):
 
 
 @final
-class DeploymentManager(models.Manager):
+class DeploymentManager(models.Manager.from_queryset(ProjectQuerySet)):
     """
     Custom manager that adds counts of related objects to the default queryset.
     """
 
-    def get_queryset(self):
-        return (
-            super().get_queryset()
-            # Add any common annotations or optimizations here
-        )
+    pass
 
 
 def _create_source_image_for_sync(
@@ -835,21 +884,14 @@ class Deployment(BaseModel):
         self.events_count = self.events.count()
         self.captures_count = self.data_source_total_files or self.captures.count()
         self.detections_count = Detection.objects.filter(Q(source_image__deployment=self)).count()
-        self.occurrences_count = (
-            self.occurrences.filter(
-                event__isnull=False,
-            )
-            .distinct()
-            .count()
-        )
-        self.taxa_count = (
-            Taxon.objects.filter(
-                occurrences__deployment=self,
-                occurrences__event__isnull=False,
-            )
-            .distinct()
-            .count()
-        )
+        occ_qs = self.occurrences.filter(event__isnull=False).apply_default_filters(  # type: ignore
+            project=self.project,
+            request=None,
+        )  # type: ignore
+
+        self.occurrences_count = occ_qs.distinct().count()
+
+        self.taxa_count = occ_qs.values("determination_id").distinct().count()
 
         self.first_capture_timestamp, self.last_capture_timestamp = self.get_first_and_last_timestamps()
 
@@ -872,10 +914,53 @@ class Deployment(BaseModel):
                 # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
 
 
+class EventQuerySet(BaseQuerySet):
+    def with_taxa_count(self, project: Project | None = None, request: Request | None = None):
+        """
+        Annotate each event with the number of distinct taxa observed,
+        filtered by default filters (score threshold and taxa inclusion/exclusion).
+        """
+        if project is None:
+            return self
+
+        filter_q = build_occurrence_default_filters_q(project, request, "occurrences")
+
+        return self.annotate(
+            taxa_count=models.Count(
+                "occurrences__determination",
+                distinct=True,
+                filter=filter_q,
+            )
+        )
+
+    def with_occurrences_count(self, project: Project | None = None, request: Request | None = None):
+        """
+        Annotate each event with the number of occurrences,
+        filtered by default filters (score threshold and taxa inclusion/exclusion).
+        """
+        if project is None:
+            return self
+
+        filter_q = build_occurrence_default_filters_q(project, request, "occurrences")
+
+        return self.annotate(
+            occurrences_count=models.Count(
+                "occurrences",
+                distinct=True,
+                filter=filter_q,
+            )
+        )
+
+
+class EventManager(models.Manager.from_queryset(EventQuerySet)):
+    pass
+
+
 @final
 class Event(BaseModel):
     """A monitoring session"""
 
+    objects: EventManager = EventManager()
     group_by = models.CharField(
         max_length=255,
         db_index=True,
@@ -966,7 +1051,16 @@ class Event(BaseModel):
         return Detection.objects.filter(Q(source_image__event=self)).count()
 
     def get_occurrences_count(self, classification_threshold: float = 0) -> int:
-        return self.occurrences.distinct().filter(determination_score__gte=classification_threshold).count()
+        """
+        Get the count of occurrences for this event, filtered by default filters.
+
+        Note: classification_threshold parameter is deprecated, use project default filters instead.
+        """
+        return (
+            self.occurrences.distinct()
+            .apply_default_filters(project=self.project, request=None)  # type: ignore
+            .count()
+        )
 
     def stats(self) -> dict[str, int | None]:
         return (
@@ -991,6 +1085,11 @@ class Event(BaseModel):
         ).distinct()
 
     def first_capture(self):
+        # @TODO these needs to return a source image with detections prefetched and filtered
+        # based on the project settings.
+        # Ideally this would be an annotated field, rather than an additional query.
+        # raise NotImplementedError("This is added an annotated field, it should not be called directly.")
+        # return SourceImage.objects.filter(event=self).order_by("timestamp").first().with_detections()
         return SourceImage.objects.filter(event=self).order_by("timestamp").first()
 
     def summary_data(self):
@@ -1468,6 +1567,7 @@ class SourceImageUpload(BaseModel):
     The SourceImageViewSet will create a SourceImage from the uploaded file and delete the upload.
     """
 
+    project_accessor = "deployment__project"
     image = models.ImageField(upload_to=upload_to_with_deployment)
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     deployment = models.ForeignKey(Deployment, on_delete=models.CASCADE, related_name="manually_uploaded_captures")
@@ -1475,9 +1575,10 @@ class SourceImageUpload(BaseModel):
         "SourceImage", on_delete=models.CASCADE, null=True, blank=True, related_name="upload"
     )
 
-    def get_project(self):
-        """Get the project associated with the model instance."""
-        return self.deployment.get_project()
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # @TODO Use a "dirty" flag to mark the deployment as having new uploads, needs refresh
+        self.deployment.save()
 
 
 @receiver(pre_delete, sender=SourceImageUpload)
@@ -1496,33 +1597,66 @@ def delete_source_image(sender, instance, **kwargs):
     instance.deployment.save()
 
 
-class SourceImageQuerySet(models.QuerySet):
-    def with_occurrences_count(self, classification_threshold: float = 0):
-        return self.annotate(
-            occurrences_count=models.Count(
-                "detections__occurrence",
-                filter=models.Q(
-                    detections__occurrence__determination_score__gte=classification_threshold,
-                ),
-                distinct=True,
-            )
+class SourceImageQuerySet(BaseQuerySet):
+    def with_occurrences_count(self, project: Project | None = None, request=None):
+        """
+        Annotate each source image with the number of occurrences,
+        filtered by default filters (score threshold and taxa inclusion/exclusion).
+
+        Note: classification_threshold parameter is deprecated, use project default filters instead.
+
+        Uses a subquery to avoid GROUP BY in the pagination count query, which may
+        improve performance for large datasets.
+        """
+        filter_q = build_occurrence_default_filters_q(project, request, "")
+
+        # Use a subquery instead of Count with joins to avoid GROUP BY in pagination count query
+        # The subquery counts distinct occurrences for each source image
+        # Use Coalesce to return 0 when the subquery returns NULL (no matching rows)
+        # @TODO update the SourceImageCollectionQuerySet to use the same approach
+        occurrences_subquery = (
+            Occurrence.objects.filter(detections__source_image_id=models.OuterRef("pk"))
+            .filter(filter_q)
+            .values("detections__source_image_id")  # Group by source_image_id to get one row per source_image
+            .annotate(count=models.Count("id", distinct=True))
+            .values("count")
         )
 
-    def with_taxa_count(self, classification_threshold: float = 0):
         return self.annotate(
-            taxa_count=models.Count(
-                "detections__occurrence__determination",
-                filter=models.Q(
-                    detections__occurrence__determination_score__gte=classification_threshold,
-                ),
-                distinct=True,
-            )
+            occurrences_count=Coalesce(models.Subquery(occurrences_subquery, output_field=models.IntegerField()), 0)
+        )
+
+    def with_taxa_count(self, project: Project | None = None, request=None):
+        """
+        Annotate each source image with the number of distinct taxa,
+        filtered by default filters (score threshold and taxa inclusion/exclusion).
+
+        Note: classification_threshold parameter is deprecated, use project default filters instead.
+
+        Uses a subquery to avoid GROUP BY in the pagination count query, which may
+        improve performance for large datasets.
+        """
+        filter_q = build_occurrence_default_filters_q(project, request, "")
+
+        # Use a subquery instead of Count with joins to avoid GROUP BY in pagination count query
+        # The subquery counts distinct taxa for each source image
+        # Use Coalesce to return 0 when the subquery returns NULL (no matching rows)
+        # @TODO update the SourceImageCollectionQuerySet to use the same approach
+        taxa_subquery = (
+            Occurrence.objects.filter(detections__source_image_id=models.OuterRef("pk"))
+            .filter(filter_q)
+            .values("detections__source_image_id")  # Group by source_image_id to get one row per source_image
+            .annotate(count=models.Count("determination_id", distinct=True))
+            .values("count")
+        )
+
+        return self.annotate(
+            taxa_count=Coalesce(models.Subquery(taxa_subquery, output_field=models.IntegerField()), 0)
         )
 
 
-class SourceImageManager(models.Manager):
-    def get_queryset(self) -> SourceImageQuerySet:
-        return SourceImageQuerySet(self.model, using=self._db)
+class SourceImageManager(models.Manager.from_queryset(SourceImageQuerySet)):
+    pass
 
 
 @final
@@ -1971,6 +2105,8 @@ def user_agrees_with_identification(user: "User", occurrence: "Occurrence", taxo
 class Identification(BaseModel):
     """A classification of an occurrence by a human."""
 
+    project_accessor = "occurrence__project"
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -2010,9 +2146,6 @@ class Identification(BaseModel):
         ordering = [
             "-created_at",
         ]
-
-    def get_project(self):
-        return self.occurrence.get_project()
 
     def save(self, *args, **kwargs):
         """
@@ -2093,7 +2226,7 @@ class ClassificationResult(BaseModel):
     pass
 
 
-class ClassificationQuerySet(models.QuerySet):
+class ClassificationQuerySet(BaseQuerySet):
     def find_duplicates(self, project_id: int | None = None) -> models.QuerySet:
         # Find the oldest classification for each unique combination
         if project_id:
@@ -2116,6 +2249,7 @@ class ClassificationManager(models.Manager.from_queryset(ClassificationQuerySet)
 class Classification(BaseModel):
     """The output of a classifier"""
 
+    project_accessor = "detection__source_image__project"
     detection = models.ForeignKey(
         "Detection",
         on_delete=models.SET_NULL,
@@ -2125,7 +2259,7 @@ class Classification(BaseModel):
 
     taxon = models.ForeignKey("Taxon", on_delete=models.SET_NULL, null=True, related_name="classifications")
     score = models.FloatField(null=True)
-    timestamp = models.DateTimeField()
+    timestamp = models.DateTimeField()  # Is this to represent when classification was made? why not use created_at?
     terminal = models.BooleanField(
         default=True, help_text="Is this the final classification from a series of classifiers in a pipeline?"
     )
@@ -2146,7 +2280,17 @@ class Classification(BaseModel):
         related_name="classifications",
     )
     # job = models.CharField(max_length=255, null=True)
-
+    applied_to = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="derived_classifications",
+        help_text=(
+            "If this classification was produced by a post-processing algorithm, "
+            "this field references the original classification it was applied to."
+        ),
+    )
     objects = ClassificationManager()
 
     # Type hints for auto-generated fields
@@ -2220,14 +2364,15 @@ class Classification(BaseModel):
         """Return top N taxa and scores for this classification."""
         if not self.category_map:
             logger.warning(
-                f"Classification {self.pk}'s algrorithm ({self.algorithm_id} has no catgory map, "
+                f"Classification {self.pk}'s algorithm ({self.algorithm_id}) has no category map, "
                 "can't get top N predictions."
             )
             return []
 
         top_scored = self.top_scores_with_index(n)  # (index, score) pairs
         indexes = [idx for idx, _ in top_scored]
-        category_data = self.category_map.with_taxa(only_indexes=indexes)
+        category_data: list[dict] = self.category_map.with_taxa(only_indexes=indexes)
+        assert category_data is not None
         index_to_taxon = {cat["index"]: cat["taxon"] for cat in category_data}
 
         return [
@@ -2252,6 +2397,7 @@ class Classification(BaseModel):
 class Detection(BaseModel):
     """An object detected in an image"""
 
+    project_accessor = "source_image__project"
     source_image = models.ForeignKey(
         SourceImage,
         on_delete=models.CASCADE,
@@ -2400,6 +2546,15 @@ class Detection(BaseModel):
         self.source_image.save()
         return occurrence
 
+    def occurrence_meets_criteria(self) -> bool | None:
+        """
+        This is added an annotated field, it should not be called directly.
+
+        If the value is None, it means it has not been annotated and not calculated.
+        In that case, no detections should be returned in the API.
+        """
+        return None
+
     def update_calculated_fields(self, save=True):
         needs_update = False
         if not self.timestamp:
@@ -2419,7 +2574,7 @@ class Detection(BaseModel):
         return f"#{self.pk} from SourceImage #{self.source_image_id} with Algorithm #{self.detection_algorithm_id}"
 
 
-class OccurrenceQuerySet(models.QuerySet["Occurrence"]):
+class OccurrenceQuerySet(BaseQuerySet):
     def valid(self):
         return self.exclude(detections__isnull=True)
 
@@ -2457,6 +2612,81 @@ class OccurrenceQuerySet(models.QuerySet["Occurrence"]):
             .distinct("determination_id")
         )
         return qs
+
+    def filter_by_score_threshold(self, project: Project | None = None, request: Request | None = None):
+        """
+        Filter occurrences by score threshold.
+
+        This is a convenience method for applying only the score threshold filter.
+        Respects the apply_defaults flag - if False, filtering is bypassed.
+        """
+        if project is None:
+            return self
+
+        # Check if default filters should be bypassed
+        if get_apply_default_filters_flag(request) is False:
+            return self
+
+        score_threshold = get_default_classification_threshold(project, request)
+        logger.debug(f"Filtering occurrences by determination score threshold of {score_threshold}")
+        filter_q = build_occurrence_score_threshold_q(score_threshold, occurrence_accessor="")
+        return self.filter(filter_q)
+
+    def filter_by_project_default_taxa(self, project: Project | None = None, request: Request | None = None):
+        """
+        Filter occurrences by project's default include/exclude taxa lists.
+
+        Respects the apply_defaults flag - if False, filtering is bypassed.
+        """
+        if project is None:
+            return self
+
+        # Check if default filters should be bypassed
+        if get_apply_default_filters_flag(request) is False:
+            return self
+
+        qs = self
+
+        # Apply taxa inclusion/exclusion filter
+        include_taxa = project.default_filters_include_taxa.all()
+        exclude_taxa = project.default_filters_exclude_taxa.all()
+        taxa_q = build_taxa_recursive_filter_q(include_taxa, exclude_taxa, taxon_accessor="determination")
+        if taxa_q:
+            qs = qs.filter(taxa_q)
+
+        return qs
+
+    def apply_default_filters(self, project: Project | None = None, request: Request | None = None):
+        """
+        Apply all default filters to occurrences based on project settings.
+
+        This is the standard method for filtering occurrences according to project defaults.
+        It applies both score threshold and taxa filters in a single call.
+
+        Args:
+            project: The project whose default filters should be applied
+            request: The request object (optional, used to check for apply_defaults=false)
+
+        Returns:
+            Filtered queryset with both score and taxa filters applied
+
+        Example:
+            # In a viewset
+            qs = Occurrence.objects.apply_default_filters(project, self.request)
+
+            # In a model method
+            qs = Occurrence.objects.apply_default_filters(self.project, None)
+        """
+        if project is None:
+            return self
+
+        # Check if default filters should be bypassed entirely
+        if get_apply_default_filters_flag(request) is False:
+            return self
+
+        # Use build_occurrence_default_filters_q to get the combined filter and apply it
+        filter_q = build_occurrence_default_filters_q(project, request, occurrence_accessor="")
+        return self.filter(filter_q)
 
 
 class OccurrenceManager(models.Manager.from_queryset(OccurrenceQuerySet)):
@@ -2642,6 +2872,22 @@ class Occurrence(BaseModel):
 
     class Meta:
         ordering = ["-determination_score"]
+        indexes = [
+            # Composite index for taxa queries filtered by project
+            # Optimizes the taxa list query which executes correlated subqueries for each taxon
+            # Pattern: WHERE determination_id=? AND project_id=? AND event_id IS NOT NULL AND determination_score>=?
+            models.Index(
+                fields=["determination_id", "project_id", "event_id", "determination_score"],
+                name="occur_det_proj_evt_score",
+            ),
+            # Composite index for timestamp queries (last_detected)
+            # Optimizes queries that join with detections table for timestamps
+            # Pattern: WHERE determination_id=? AND project_id=? AND event_id IS NOT NULL
+            models.Index(
+                fields=["determination_id", "project_id", "event_id"],
+                name="occur_det_proj_evt",
+            ),
+        ]
 
 
 def update_occurrence_determination(
@@ -2714,7 +2960,7 @@ def update_occurrence_determination(
     return needs_update
 
 
-class TaxonQuerySet(models.QuerySet):
+class TaxonQuerySet(BaseQuerySet):
     def with_occurrence_counts(self, project: Project):
         """
         Annotate each taxon with the count of its occurrences for a given project.
@@ -2723,6 +2969,60 @@ class TaxonQuerySet(models.QuerySet):
         qs = qs.filter(occurrences__project=project)
 
         return qs.annotate(occurrence_count=models.Count("occurrences", distinct=True))
+
+    def filter_by_project_default_taxa(self, project: Project | None = None, request: Request | None = None):
+        """
+        Filter taxa according to a project's default include and exclude settings,
+        keeping taxa in the include set along with their descendants
+        and removing taxa in the exclude set along with their descendants.
+
+        Note: For TaxonQuerySet, this method DOES check apply_defaults since it's
+        filtering Taxa objects directly, not Occurrences.
+        """
+        if project is None:
+            return self
+
+        # Check if default filters should be bypassed
+        if get_apply_default_filters_flag(request) is False:
+            return self
+
+        include_taxa = project.default_filters_include_taxa.all()
+        exclude_taxa = project.default_filters_exclude_taxa.all()
+
+        # Use taxon_accessor="" for direct Taxa model filtering (not through occurrences)
+        taxa_q = build_taxa_recursive_filter_q(include_taxa, exclude_taxa, taxon_accessor="")
+        if taxa_q:
+            return self.filter(taxa_q)
+
+        return self
+
+    def visible_for_user(self, user: User | AnonymousUser):
+        if user.is_superuser:
+            return self
+
+        is_anonymous = isinstance(user, AnonymousUser)
+
+        # Visible projects
+        project_qs = Project.objects.all()
+        if is_anonymous:
+            project_qs = project_qs.filter(draft=False)
+        else:
+            project_qs = project_qs.filter(Q(draft=False) | Q(owner=user) | Q(members=user))
+
+        # Taxa explicitly linked to visible projects
+        direct_taxa = self.filter(projects__in=project_qs)
+
+        # Taxa with at least one occurrence in visible projects
+        occurrence_taxa = self.filter(
+            Exists(
+                Occurrence.objects.filter(
+                    project__in=project_qs,
+                    determination_id=OuterRef("id"),
+                )
+            )
+        )
+
+        return (direct_taxa | occurrence_taxa).distinct()
 
 
 @final
@@ -2738,20 +3038,30 @@ class TaxonManager(models.Manager.from_queryset(TaxonQuerySet)):
         Create a genus if it doesn't exist based on the scientific name of the species.
         This will replace any parents of a species that are not of the GENUS rank.
         """
-        species = self.get_queryset().filter(rank="SPECIES")  # , parent=None)
+        Taxon: "Taxon" = self.model  # type: ignore
+        species = self.get_queryset().filter(rank=TaxonRank.SPECIES)  # , parent=None)
         updated = []
         for taxon in species:
-            if taxon.parent and taxon.parent.rank == "GENUS":
+            if taxon.parent and taxon.parent.rank == TaxonRank.GENUS:
                 continue
-            genus_name = taxon.name.split()[0]
-            genus = self.get_queryset().filter(name=genus_name, rank="GENUS").first()
-            if not genus:
-                Taxon = self.model
-                genus = Taxon.objects.create(name=genus_name, rank="GENUS")
-            taxon.parent = genus
-            logger.info(f"Added parent {genus} to {taxon}")
+
+            genus_name = taxon.name.split()[0].strip()
+
+            # There can be only one taxon with a given name.
+            genus_taxon, created = Taxon.objects.get_or_create(name=genus_name, defaults={"rank": TaxonRank.GENUS})
+            if created:
+                updated.append(genus_taxon)
+            elif genus_taxon.rank != TaxonRank.GENUS:
+                genus_taxon.rank = TaxonRank.GENUS
+                logger.info(f"Updating rank of existing {genus_taxon} from {genus_taxon.rank} to {TaxonRank.GENUS}")
+                genus_taxon.save()
+                updated.append(genus_taxon)
+
+            taxon.parent = genus_taxon
+            logger.info(f"Added parent {genus_taxon} to {taxon}")
             taxon.save()
             updated.append(taxon)
+
         return updated
 
     def update_display_names(self, queryset: models.QuerySet | None = None):
@@ -2958,7 +3268,11 @@ class Taxon(BaseModel):
     gbif_taxon_key = models.BigIntegerField("GBIF taxon key", blank=True, null=True)
     bold_taxon_bin = models.CharField("BOLD taxon BIN", max_length=255, blank=True, null=True)
     inat_taxon_id = models.BigIntegerField("iNaturalist taxon ID", blank=True, null=True)
+    fieldguide_id = models.CharField(max_length=255, blank=True, null=True)
     # lepsai_id = models.BigIntegerField("LepsAI / Fieldguide ID", blank=True, null=True)
+
+    cover_image_url = models.URLField(max_length=255, blank=True, null=True)
+    cover_image_credit = models.CharField(max_length=255, blank=True, null=True)
 
     notes = models.TextField(blank=True)
 
@@ -3134,6 +3448,23 @@ class Taxon(BaseModel):
         if save:
             self.save(update_fields=["search_names"])
 
+    def summary_data(self, project: Project | None = None) -> list[dict]:
+        """
+        Data prepared for rendering charts with plotly.js
+        """
+
+        if project is None:
+            # We could return data for all projects a user has access to,
+            # but for now we just return an empty list.
+            return []
+
+        plots = []
+
+        plots.append(charts.average_occurrences_per_day(project_pk=project.pk, taxon_pk=self.pk))
+        plots.append(charts.average_occurrences_per_month(project_pk=project.pk, taxon_pk=self.pk))
+
+        return plots
+
     class Meta:
         ordering = [
             "ordering",
@@ -3258,7 +3589,7 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
 ]
 
 
-class SourceImageCollectionQuerySet(models.QuerySet):
+class SourceImageCollectionQuerySet(BaseQuerySet):
     def with_source_images_count(self):
         return self.annotate(
             source_images_count=models.Count(
@@ -3283,25 +3614,37 @@ class SourceImageCollectionQuerySet(models.QuerySet):
             )
         )
 
-    def with_occurrences_count(self, classification_threshold: float = 0):
+    def with_occurrences_count(
+        self, classification_threshold: float = 0, project: Project | None = None, request=None
+    ):
+        """
+        Annotate each collection with the number of occurrences,
+        filtered by default filters (score threshold and taxa inclusion/exclusion).
+
+        Note: classification_threshold parameter is deprecated, use project default filters instead.
+        """
+        filter_q = build_occurrence_default_filters_q(project, request, "images__detections__occurrence")
         return self.annotate(
             occurrences_count=models.Count(
                 "images__detections__occurrence",
-                filter=models.Q(
-                    images__detections__occurrence__determination_score__gte=classification_threshold,
-                ),
+                filter=filter_q,
                 distinct=True,
             )
         )
 
-    def with_taxa_count(self, classification_threshold: float = 0):
+    def with_taxa_count(self, classification_threshold: float = 0, project: Project | None = None, request=None):
+        """
+        Annotate each collection with the number of distinct taxa,
+        filtered by default filters (score threshold and taxa inclusion/exclusion).
+
+        Note: classification_threshold parameter is deprecated, use project default filters instead.
+        """
+        filter_q = build_occurrence_default_filters_q(project, request, "images__detections__occurrence")
         return self.annotate(
             taxa_count=models.Count(
                 "images__detections__occurrence__determination",
+                filter=filter_q,
                 distinct=True,
-                filter=models.Q(
-                    images__detections__occurrence__determination_score__gte=classification_threshold,
-                ),
             )
         )
 

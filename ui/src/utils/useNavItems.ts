@@ -47,6 +47,14 @@ export const useNavItems = () => {
           ]
         : []),
       {
+        id: 'captures',
+        title: translate(STRING.NAV_ITEM_CAPTURES),
+        icon: IconType.Images,
+        count: status?.numCaptures,
+        path: APP_ROUTES.CAPTURES({ projectId: projectId as string }),
+        matchPath: APP_ROUTES.CAPTURES({ projectId: ':projectId' }),
+      },
+      {
         id: 'deployments',
         title: translate(STRING.NAV_ITEM_DEPLOYMENTS),
         icon: IconType.Deployments,
