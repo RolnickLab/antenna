@@ -4,6 +4,11 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-
 python manage.py migrate
-exec uvicorn config.asgi:application --host 0.0.0.0 --reload --reload-include '*.html'
+
+# Support optional debug mode via DEBUGGER environment variable
+if [ "${DEBUGGER:-0}" = "1" ]; then
+    exec python -m debugpy --listen 0.0.0.0:5678 -m uvicorn config.asgi:application --host 0.0.0.0 --reload --reload-include '*.html'
+else
+    exec uvicorn config.asgi:application --host 0.0.0.0 --reload --reload-include '*.html'
+fi

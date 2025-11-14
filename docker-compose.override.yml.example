@@ -1,0 +1,41 @@
+# Docker Compose Override File for Local Development Debugging
+#
+# This file enables remote debugging with debugpy for Django and Celery services.
+#
+# Setup Instructions:
+# 1. Copy this file: cp docker-compose.override.yml.example docker-compose.override.yml
+# 2. Start services: docker compose up
+# 3. Attach debugger from VS Code using the launch configurations in .vscode/launch.json
+#
+# The docker-compose.override.yml file is git-ignored for local customization.
+
+services:
+  django:
+    environment:
+      - DEBUGGER=1
+    ports:
+      - "5678:5678"
+    # VS Code Launch Configuration:
+    # {
+    #   "name": "Attach: Django",
+    #   "type": "debugpy",
+    #   "request": "attach",
+    #   "connect": {"host": "localhost", "port": 5678},
+    #   "pathMappings": [{"localRoot": "${workspaceFolder}", "remoteRoot": "/app"}],
+    #   "justMyCode": false
+    # }
+
+  celeryworker:
+    environment:
+      - DEBUGGER=1
+    ports:
+      - "5679:5678"  # Maps container port 5678 to host port 5679 to avoid conflict
+    # VS Code Launch Configuration:
+    # {
+    #   "name": "Attach: Celeryworker",
+    #   "type": "debugpy",
+    #   "request": "attach",
+    #   "connect": {"host": "localhost", "port": 5679},
+    #   "pathMappings": [{"localRoot": "${workspaceFolder}", "remoteRoot": "/app"}],
+    #   "justMyCode": false
+    # }
