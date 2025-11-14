@@ -32,16 +32,23 @@ Antenna uses [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](ht
       To update the UI Docker container, use the following command to rebuild the frontend and
       then refresh your browser after.
       ```sh
-      docker compose stop ui -t 0 && docker compose build ui &&  docker compose up ui -d
+      docker compose build ui && docker compose up ui -d
       ```
 
    2) With Hot Reload UI**: Hot reload is enabled for frontend development, but the primary web interface will be slow to load when it first starts or restarts.
       ```sh
-      # Run docker compose with the override config
-      docker compose -f docker-compose.yml -f docker-compose-frontend-dev.override.yml up -d
+      # Stop the production ui first, then start with ui-dev profile
+      docker compose stop ui
+      docker compose --profile ui-dev up -d
+
+      # Or in one command, scale ui to 0 and start ui-dev
+      docker compose --profile ui-dev up -d --scale ui=0
+
+      # To stream the logs
+      docker compose logs -f django celeryworker ui-dev
       ```
-      _**Do note that this will create a `ui/node_modules` folder if one does not exist yet. This folder is created by the mounting of the `/ui` folder
-      in the [docker-compose-frontend-dev.override.yml](docker-compose-frontend-dev.override.yml), and is written by a `root` user.
+      _**Note that this will create a `ui/node_modules` folder if one does not exist yet. This folder is created by the mounting of the `/ui` folder
+      for the `ui-dev` service, and is written by a `root` user.
       It will need to be removed, or you will need to modify its access permissions with the `chown` command if you later want to work on the frontend using the [instructions here](#frontend)._
 
 
