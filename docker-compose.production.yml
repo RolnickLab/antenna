@@ -30,12 +30,28 @@ services:
     ports: []
     command: /start-celeryworker
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "/celery/healthcheck.sh"]
+      interval: 30s      # Check every 30 seconds
+      timeout: 15s       # Healthcheck must complete within 15s (connection timeout is 5s + overhead)
+      retries: 3         # Mark unhealthy after 3 consecutive failures (90s total)
+      start_period: 60s  # Grace period during container startup
+    labels:
+      - "autoheal=true"  # Enable autoheal to restart this container when unhealthy
 
   celerybeat:
     <<: *django
     ports: []
     command: /start-celerybeat
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'celery.*beat' > /dev/null || exit 1"]
+      interval: 60s      # Beat is less critical, check every minute
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "autoheal=true"
 
   flower:
     <<: *django
@@ -45,6 +61,25 @@ services:
     restart: always
     volumes:
       - ./data/flower/:/data/
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5555/', timeout=3)\" || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "autoheal=true"
+
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: ami_production_autoheal
+    restart: always
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=autoheal
+      - AUTOHEAL_INTERVAL=10      # Check container health every 10 seconds
+      - AUTOHEAL_START_PERIOD=60  # Don't restart containers for 60s after they start
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
 
   awscli:
     build:

@@ -92,6 +92,12 @@ services:
     command: /start-celeryworker
     depends_on:
       - rabbitmq
+    healthcheck:
+      test: ["CMD-SHELL", "/celery/healthcheck.sh"]
+      interval: 30s      # Check every 30 seconds
+      timeout: 15s       # Healthcheck must complete within 15s (connection timeout is 5s + overhead)
+      retries: 3         # Mark unhealthy after 3 consecutive failures (90s total)
+      start_period: 60s  # Grace period during container startup
 
   celerybeat:
     <<: *django
