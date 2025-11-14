@@ -72,7 +72,7 @@ Enable remote debugging with debugpy for Django and Celery services:
 
 ```bash
 # One-time setup: copy the override example file
-cp docker-compose.override.yml.example docker-compose.override.yml
+cp docker-compose.override-example.yml docker-compose.override.yml
 
 # Start services (debugpy will be enabled automatically)
 docker compose up

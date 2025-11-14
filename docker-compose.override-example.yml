@@ -4,7 +4,7 @@
 # without affecting the committed docker-compose.yml file.
 #
 # Setup Instructions:
-# 1. Copy this file: cp docker-compose.override.yml.example docker-compose.override.yml
+# 1. Copy this file: cp docker-compose.override-example.yml docker-compose.override.yml
 # 2. Start services: docker compose up
 # 3. Attach debugger from VS Code using the launch configurations in .vscode/launch.json
 #

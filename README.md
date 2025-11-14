@@ -265,9 +265,11 @@ Antenna supports remote debugging with debugpy for both Django and Celery servic
 
 ### Setup
 
-1. Copy the override example file:
+1. Copy or link the override example file:
    ```bash
-   cp docker-compose.override.yml.example docker-compose.override.yml
+   cp docker-compose.override-example.yml docker-compose.override.yml
+   # OR
+   ln -s docker-compose.override-example.yml docker-compose.override.yml
    ```
 
 2. Start services normally:
@@ -290,7 +292,7 @@ Antenna supports remote debugging with debugpy for both Django and Celery servic
 
 ### Troubleshooting
 
-- **Connection refused**: Make sure you copied `docker-compose.override.yml.example` to `docker-compose.override.yml`
+- **Connection refused**: Make sure you copied `docker-compose.override-example.yml` to `docker-compose.override.yml`
 - **Debugger not stopping**: Verify breakpoints are set in code that actually executes
 - **Port conflicts**: Check that ports 5678 and 5679 aren't already in use on your host machine
 
