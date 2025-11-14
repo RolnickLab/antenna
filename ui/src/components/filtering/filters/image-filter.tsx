@@ -1,17 +1,12 @@
-import { useCaptureDetails } from 'data-services/hooks/captures/useCaptureDetails'
 import { FilterProps } from './types'
 
 export const ImageFilter = ({ value }: FilterProps) => {
-  const { capture, isLoading } = useCaptureDetails(value)
-
   const label = (() => {
-    if (capture) {
-      return `#${capture.id}`
+    if (!value) {
+      return 'All images'
     }
-    if (value && isLoading) {
-      return 'Loading...'
-    }
-    return 'All images'
+
+    return `#${value}`
   })()
 
   return (

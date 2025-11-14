@@ -36,11 +36,11 @@ export const Playback = ({
   const { activeCaptureId, setActiveCaptureId } = useActiveCaptureId(
     session.firstCapture?.id
   )
-  const { capture: activeCapture } = useCaptureDetails(
-    activeCaptureId as string,
+  const { capture: activeCapture } = useCaptureDetails({
+    id: activeCaptureId as string,
     poll,
-    projectId
-  )
+    projectId: projectId as string,
+  })
 
   useEffect(() => {
     // If the active capture has a job in progress, we want to poll the endpoint so we can show job updates
