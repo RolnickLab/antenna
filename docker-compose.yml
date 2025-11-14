@@ -10,7 +10,6 @@ volumes:
     driver: local
   node_modules:
 
-
 services:
   django: &django
     build:
@@ -133,7 +132,7 @@ services:
     ports:
       - "9001:9001"
     healthcheck:
-      test: [ "CMD", "mc", "ready", "local" ]
+      test: ["CMD", "mc", "ready", "local"]
       interval: 5s
       timeout: 5s
       retries: 5

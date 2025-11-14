@@ -39,6 +39,13 @@
                 }
             ],
             "justMyCode": true
+        },
+        {
+            "name": "Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal"
         }
     ]
 }
