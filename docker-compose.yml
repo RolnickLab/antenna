@@ -91,6 +91,7 @@ services:
     <<: *django
     image: ami_local_celeryworker
     scale: 1
+    ports: []
     command: /start-celeryworker
     depends_on:
       - rabbitmq
