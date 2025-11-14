@@ -4,4 +4,10 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-exec newrelic-admin run-program celery -A config.celery_app worker --queues=antenna -l INFO
+# Production Celery worker with protections
+#
+# Worker protections:
+# --max-tasks-per-child=50 - Restart after 50 tasks (prevents memory leaks)
+# --max-memory-per-child=4000000 - Restart if memory exceeds 4GB
+
+exec newrelic-admin run-program celery -A config.celery_app worker --queues=antenna -l INFO --max-tasks-per-child=50 --max-memory-per-child=4000000
