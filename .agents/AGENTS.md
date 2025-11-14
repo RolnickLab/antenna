@@ -66,6 +66,35 @@ Stop all services:
 docker compose down
 ```
 
+### Debugging with VS Code
+
+Enable remote debugging with debugpy for Django and Celery services:
+
+```bash
+# One-time setup: copy the override example file
+cp docker-compose.override-example.yml docker-compose.override.yml
+
+# Start services (debugpy will be enabled automatically)
+docker compose up
+
+# In VS Code, attach debugger:
+# - "Attach: Django" for web server debugging (port 5678)
+# - "Attach: Celeryworker" for task debugging (port 5679)
+# - "Attach: Django + Celery" for simultaneous debugging
+```
+
+**How it works:**
+- The `docker-compose.override.yml` file sets `DEBUGGER=1` environment variable
+- Start scripts (`compose/local/django/start` and `compose/local/django/celery/worker/start`) detect this and launch with debugpy
+- VS Code launch configurations in `.vscode/launch.json` connect to the exposed ports
+- The override file is git-ignored for local customization
+
+**Disable debugging:**
+```bash
+rm docker-compose.override.yml
+docker compose restart django celeryworker
+```
+
 ### Backend (Django)
 
 Run tests:
