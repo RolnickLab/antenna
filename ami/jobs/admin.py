@@ -4,7 +4,7 @@ from django.http import HttpRequest
 
 from ami.main.admin import AdminBase
 
-from .models import Job, get_job_type_by_inferred_key
+from .models import Job
 
 
 @admin.register(Job)
@@ -13,14 +13,14 @@ class JobAdmin(AdminBase):
 
     list_display = (
         "name",
+        "job_type_key",
         "status",
         "task_id",
+        "project",
         "scheduled_at",
         "started_at",
         "finished_at",
         "duration",
-        "job_type_key",
-        "inferred_job_type",
     )
 
     @admin.action()
@@ -29,22 +29,28 @@ class JobAdmin(AdminBase):
             job.enqueue()
         self.message_user(request, f"Queued {queryset.count()} job(s).")
 
-    @admin.display(description="Inferred Job Type")
-    def inferred_job_type(self, obj: Job) -> str:
-        """
-        @TODO Remove this after running migration 0011_job_job_type_key.py and troubleshooting.
-        """
-        job_type = get_job_type_by_inferred_key(obj)
-        return job_type.name if job_type else "Could not infer"
+    @admin.action()
+    def retry_jobs(self, request: HttpRequest, queryset: QuerySet[Job]) -> None:
+        for job in queryset:
+            job.retry(async_task=True)
+        self.message_user(request, f"Retried {queryset.count()} job(s).")
 
-        # return obj.job_type().name
+    @admin.action()
+    def cancel_jobs(self, request: HttpRequest, queryset: QuerySet[Job]) -> None:
+        for job in queryset:
+            job.cancel()
+        self.message_user(request, f"Cancelled {queryset.count()} job(s).")
 
-    actions = [enqueue_jobs]
+    actions = [enqueue_jobs, retry_jobs]
 
-    exclude = (
-        # This takes too long to load in the admin panel
+    autocomplete_fields = (
+        "source_image_collection",
         "source_image_single",
-        # These are read-only fields
+        "pipeline",
+        "project",
+    )
+
+    readonly_fields = (
         "task_id",
         "scheduled_at",
         "started_at",
@@ -53,4 +59,12 @@ class JobAdmin(AdminBase):
         "updated_at",
         "progress",
         "result",
+    )
+
+    list_filter = (
+        "status",
+        "job_type_key",
+        "project",
+        "source_image_collection",
+        "pipeline",
     )
