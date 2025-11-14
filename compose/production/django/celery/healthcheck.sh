@@ -21,21 +21,20 @@ fi
 # Check 2: Can we connect to RabbitMQ (the broker)?
 # Use Python and Celery's connection to test broker connectivity
 if command -v python > /dev/null 2>&1; then
-    # Extract host and port from CELERY_BROKER_URL (format: amqp://user:pass@host:port/vhost)
-    # Default to rabbitmq:5672 if not set
-    BROKER_URL="${CELERY_BROKER_URL:-amqp://rabbituser:rabbitpass@rabbitmq:5672/}"
-    
     # Use Python to test the connection with a timeout
+    # Access CELERY_BROKER_URL from environment within Python for security
     if ! timeout 5 python -c "
 import sys
+import os
 from kombu import Connection
 try:
-    conn = Connection('${BROKER_URL}')
+    broker_url = os.environ.get('CELERY_BROKER_URL', 'amqp://rabbituser:rabbitpass@rabbitmq:5672/')
+    conn = Connection(broker_url)
     conn.ensure_connection(max_retries=1, timeout=3)
     conn.release()
     sys.exit(0)
 except Exception as e:
-    print(f'ERROR: Cannot connect to RabbitMQ broker: {e}', file=sys.stderr)
+    print('ERROR: Cannot connect to RabbitMQ broker: {0}'.format(str(e)), file=sys.stderr)
     sys.exit(1)
 " 2>&1; then
         echo "ERROR: Cannot connect to RabbitMQ broker" >&2

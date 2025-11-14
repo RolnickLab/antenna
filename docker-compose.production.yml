@@ -62,7 +62,7 @@ services:
     volumes:
       - ./data/flower/:/data/
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:5555/ || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5555/', timeout=3)\" || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
