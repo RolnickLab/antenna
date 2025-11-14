@@ -35,7 +35,7 @@ Antenna uses [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](ht
       docker compose build ui && docker compose up ui -d
       ```
 
-   2) With Hot Reload UI**: Hot reload is enabled for frontend development, but the primary web interface will be slow to load when it first starts or restarts.
+   2) **With hot reloading UI**: Hot reload is enabled for frontend development, but the primary web interface will be slow to load when it first starts or restarts.
       ```sh
       # Stop the production ui first, then start with ui-dev profile
       docker compose stop ui
