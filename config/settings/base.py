@@ -346,16 +346,20 @@ CELERY_REDIS_BACKEND_HEALTH_CHECK_INTERVAL = 30  # Check health every 30s
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_ENABLE_PREFETCH_COUNT_REDUCTION = True
 
-# Connection settings to match Redis timeout and keepalive
+# RabbitMQ broker connection settings
+# These settings improve reliability for long-running workers with intermittent network issues
 CELERY_BROKER_TRANSPORT_OPTIONS = {
-    "visibility_timeout": 43200,  # 12 hours - default celery value
-    "socket_timeout": 120,  # Matches Redis timeout setting
-    "socket_connect_timeout": 30,  # Max time to establish connection
-    "socket_keepalive": True,  # Enable TCP keepalive
-    "retry_on_timeout": True,  # Retry operations if Redis times out
-    "max_connections": 20,  # Per process connection pool limit
+    "visibility_timeout": 43200,  # 12 hours - how long tasks stay reserved before returning to queue
+    "socket_timeout": 120,  # Socket read/write timeout (seconds)
+    "socket_connect_timeout": 30,  # Max time to establish connection (seconds)
+    "socket_keepalive": True,  # Enable TCP keepalive probes
+    "retry_on_timeout": True,  # Retry operations on timeout
+    "max_connections": 20,  # Per-process connection pool limit
+    "heartbeat": 60,  # RabbitMQ heartbeat interval (seconds) - detects broken connections
 }
 
+# Broker connection retry settings
+# Workers will retry forever on connection failures rather than crashing
 CELERY_BROKER_CONNECTION_RETRY = True
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_BROKER_CONNECTION_MAX_RETRIES = None  # Retry forever
