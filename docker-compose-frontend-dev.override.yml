@@ -6,3 +6,5 @@ services:
       - ./.git:/app/.git:ro
       - ./ui:/app
     entrypoint: ["sh", "-c", "yarn install && yarn start --debug --host 0.0.0.0 --port 4000"]
+    environment:
+      - CHOKIDAR_USEPOLLING=true
