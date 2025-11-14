@@ -11,9 +11,8 @@ try {
     .execSync('git rev-parse --short HEAD')
     .toString()
 } catch (error) {
-  console.warn('Could not get git commit hash:', error)
-  temporaryCommitHash =
-    '- Local docker image: please ensure this is the latest version -'
+  console.warn('Could not obtain git commit hash:', error)
+  temporaryCommitHash = 'unknown' // Fallback value if git command fails
 }
 
 const commitHash = temporaryCommitHash

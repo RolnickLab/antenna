@@ -29,13 +29,13 @@ Antenna uses [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](ht
       NOTE: If you see docker build errors such as `At least one invalid signature was encountered`, these could happen if docker runs out of space. Commands like `docker image prune -f` and `docker system prune` can be helpful to clean up space.
 
       ```
-      To update the UI Docker container, use the following command to rebuild the frontend and load the new changes
-      (and remember to refresh your browser after!).
+      To update the UI Docker container, use the following command to rebuild the frontend and
+      then refresh your browser after.
       ```sh
-      docker compose stop ui && docker compose build ui &&  docker compose up ui -d
+      docker compose stop ui -t 0 && docker compose build ui &&  docker compose up ui -d
       ```
 
-   2) With Hot Reload UI**: Hot reload is enabled for frontend development, but the primary web interface will be slow to load at startup and later restarts.
+   2) With Hot Reload UI**: Hot reload is enabled for frontend development, but the primary web interface will be slow to load when it first starts or restarts.
       ```sh
       # Run docker compose with the override config
       docker compose -f docker-compose.yml -f docker-compose-frontend-dev.override.yml up -d
