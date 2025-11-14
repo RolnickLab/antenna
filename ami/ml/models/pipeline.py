@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ami.ml.models import ProcessingService, ProjectPipelineConfig
     from ami.jobs.models import Job
+    from ami.ml.models import ProcessingService, ProjectPipelineConfig
 
 import collections
 import dataclasses
@@ -166,6 +166,7 @@ def process_images(
     images: typing.Iterable[SourceImage],
     job_id: int | None = None,
     project_id: int | None = None,
+    skip_processed: bool = True,
 ) -> PipelineResultsResponse:
     """
     Process images using ML pipeline API.
@@ -189,7 +190,10 @@ def process_images(
     task_logger.info(f"Using pipeline config: {pipeline_config}")
 
     prefiltered_images = list(images)
-    images = list(filter_processed_images(images=prefiltered_images, pipeline=pipeline, task_logger=task_logger))
+    if skip_processed:
+        images = list(filter_processed_images(images=prefiltered_images, pipeline=pipeline, task_logger=task_logger))
+    else:
+        images = prefiltered_images
     if len(images) < len(prefiltered_images):
         # Log how many images were filtered out because they have already been processed
         task_logger.info(f"Ignoring {len(prefiltered_images) - len(images)} images that have already been processed")
@@ -208,7 +212,7 @@ def process_images(
     source_image_requests: list[SourceImageRequest] = []
     detection_requests: list[DetectionRequest] = []
 
-    reprocess_existing_detections = False
+    reprocess_existing_detections = not skip_processed
     # Check if feature flag is enabled to reprocess existing detections
     if project and project.feature_flags.reprocess_existing_detections:
         # Check if the user wants to reprocess existing detections or ignore them
@@ -1089,7 +1093,13 @@ class Pipeline(BaseModel):
 
             return processing_service_lowest_latency
 
-    def process_images(self, images: typing.Iterable[SourceImage], project_id: int, job_id: int | None = None):
+    def process_images(
+        self,
+        images: typing.Iterable[SourceImage],
+        project_id: int,
+        job_id: int | None = None,
+        skip_processed: bool = True,
+    ) -> PipelineResultsResponse:
         processing_service = self.choose_processing_service_for_pipeline(job_id, self.name, project_id)
 
         if not processing_service.endpoint_url:
@@ -1103,6 +1113,7 @@ class Pipeline(BaseModel):
             images=images,
             job_id=job_id,
             project_id=project_id,
+            skip_processed=skip_processed,
         )
 
     def save_results(self, results: PipelineResultsResponse, job_id: int | None = None):

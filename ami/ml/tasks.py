@@ -15,9 +15,11 @@ def process_source_images_async(pipeline_choice: str, endpoint_url: str, image_i
     from ami.ml.models.pipeline import Pipeline, process_images, save_results
 
     job = None
+    skip_processed = True
     try:
         job = Job.objects.get(pk=job_id)
-        job.logger.info(f"Processing {len(image_ids)} images for job {job}")
+        skip_processed = job.project.feature_flags.skip_processed
+        job.logger.info(f"Processing {len(image_ids)} images for job {job} (skip_processed={skip_processed})")
     except Job.DoesNotExist as e:
         logger.error(f"Job {job_id} not found: {e}")
         pass
@@ -30,6 +32,7 @@ def process_source_images_async(pipeline_choice: str, endpoint_url: str, image_i
         endpoint_url=endpoint_url,
         images=images,
         job_id=job_id,
+        skip_processed=skip_processed,
     )
 
     try:
