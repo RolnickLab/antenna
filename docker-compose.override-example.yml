@@ -16,9 +16,15 @@ services:
       - DEBUGGER=1
     ports:
       - "5678:5678"
+    volumes:
+      # allow modifying the start script without rebuilding the image
+      - ./compose/local/django/start:/start:ro
 
   celeryworker:
     environment:
       - DEBUGGER=1
     ports:
       - "5679:5679"
+    volumes:
+      # allow modifying the start script without rebuilding the image
+      - ./compose/local/django/celery/worker/start:/start-celeryworker

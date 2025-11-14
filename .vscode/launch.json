@@ -1,5 +1,12 @@
 {
     "version": "0.2.0",
+    "compounds": [
+        {
+            "name": "Attach: Django + Celery",
+            "configurations": ["Attach: Django", "Attach: Celeryworker"],
+            "stopAll": true
+        }
+    ],
     "configurations": [
         {
             "name": "Attach: Django",
@@ -15,7 +22,7 @@
                     "remoteRoot": "/app"
                 }
             ],
-            "justMyCode": false
+            "justMyCode": true
         },
         {
             "name": "Attach: Celeryworker",
@@ -31,7 +38,7 @@
                     "remoteRoot": "/app"
                 }
             ],
-            "justMyCode": false
+            "justMyCode": true
         },
         {
             "name": "Python Debugger: Remote Attach",
@@ -47,13 +54,6 @@
                     "remoteRoot": "."
                 }
             ]
-        }
-    ],
-    "compounds": [
-        {
-            "name": "Attach: Django + Celery",
-            "configurations": ["Attach: Django", "Attach: Celeryworker"],
-            "stopAll": true
         }
     ]
 }

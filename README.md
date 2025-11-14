@@ -295,6 +295,7 @@ Antenna supports remote debugging with debugpy for both Django and Celery servic
 - **Connection refused**: Make sure you copied `docker-compose.override-example.yml` to `docker-compose.override.yml`
 - **Debugger not stopping**: Verify breakpoints are set in code that actually executes
 - **Port conflicts**: Check that ports 5678 and 5679 aren't already in use on your host machine
+- **Auto-reload**: Note that auto-reloading is disabled when debugging. You will need to manually restart the services to see code changes.
 
 ### Disabling Debug Mode
 
