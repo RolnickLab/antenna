@@ -24,7 +24,7 @@ These protections cause workers to gracefully restart before problems occur.
 **Active Tasks View:**
 - Shows currently running tasks
 - Look for tasks stuck in "running" state for unusually long periods
-- Your `CELERY_TASK_TIME_LIMIT` is 7 days, so anything approaching that is suspicious
+- Your `CELERY_TASK_TIME_LIMIT` is 4 days, so anything approaching that is suspicious
 
 **Worker Page:**
 - Shows last heartbeat timestamp for each worker
@@ -160,8 +160,8 @@ If workers constantly hit the 2GB limit:
 ### Tasks timing out
 
 Current limits:
-- `CELERY_TASK_TIME_LIMIT = 7 * 60 * 24` (7 days)
-- `CELERY_TASK_SOFT_TIME_LIMIT = 6 * 60 * 24` (6 days)
+- `CELERY_TASK_TIME_LIMIT = 4 * 60 * 24` (4 days)
+- `CELERY_TASK_SOFT_TIME_LIMIT = 3 * 60 * 24` (3 days)
 
 These are very generous. If tasks timeout:
 - Check task logs for errors

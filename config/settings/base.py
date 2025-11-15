@@ -323,10 +323,10 @@ CELERY_TASK_COMPRESSION = "gzip"
 CELERY_RESULT_COMPRESSION = "gzip"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-time-limit
 # TODO: set to whatever value is adequate in your circumstances
-CELERY_TASK_TIME_LIMIT = 7 * 60 * 24
+CELERY_TASK_TIME_LIMIT = 4 * 60 * 60 * 24  # 4 days
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-soft-time-limit
 # TODO: set to whatever value is adequate in your circumstances
-CELERY_TASK_SOFT_TIME_LIMIT = 6 * 60 * 24
+CELERY_TASK_SOFT_TIME_LIMIT = 3 * 60 * 60 * 24  # 3 days
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#beat-scheduler
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-send-task-events
