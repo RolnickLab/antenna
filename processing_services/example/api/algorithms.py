@@ -3,6 +3,7 @@ import logging
 import math
 import random
 
+import numpy as np
 import torch
 
 from .schemas import (
@@ -201,8 +202,9 @@ class FlatBugObjectDetector(Algorithm):
             self.model = Predictor(model="flat_bug_M.pt", device=device_choice)  # Default flat-bug model
 
             # Set some reasonable hyperparameters
+            # TIME=False is critical to avoid CUDA event errors when running on CPU
             self.model.set_hyperparameters(
-                SCORE_THRESHOLD=0.5, IOU_THRESHOLD=0.5, TIME=False  # Set to True for detailed timing info
+                SCORE_THRESHOLD=0.5, IOU_THRESHOLD=0.5, TIME=False  # Must be False for CPU compatibility
             )
 
             SAVED_MODELS[saved_models_key] = self.model
@@ -217,26 +219,30 @@ class FlatBugObjectDetector(Algorithm):
                 start_time = datetime.datetime.now()
                 logger.info("Predicting with flat-bug...")
 
-                # Use flat-bug's pyramid_predictions method
-                predictions = self.model.pyramid_predictions(source_image._pil)
+                # Convert PIL image to tensor (flat-bug expects tensor, not PIL Image)
+                # Convert PIL to numpy then to tensor in CHW format
+                image_np = np.array(source_image._pil)
+                image_tensor = torch.from_numpy(image_np).permute(2, 0, 1).float()
+                
+                # Use flat-bug's pyramid_predictions method with tensor input
+                predictions = self.model.pyramid_predictions(image_tensor)
 
                 end_time = datetime.datetime.now()
                 elapsed_time = (end_time - start_time).total_seconds()
 
                 # Extract bounding boxes from flat-bug predictions
-                # flat-bug returns TensorPredictions with boxes, masks, and scores
-                # NOTE: The exact attribute names may vary - run test_flat_bug_implementation.py to verify
+                # flat-bug returns TensorPredictions with boxes, confs (not scores), and classes
+                # Based on test results: boxes=int64, confs=float32, classes=float32
                 if hasattr(predictions, "boxes") and predictions.boxes is not None:
-                    boxes = predictions.boxes.cpu().numpy()  # Convert to numpy if tensor
+                    boxes = predictions.boxes.cpu().numpy()  # Convert to numpy (int64)
                     scores = (
-                        predictions.scores.cpu().numpy()
-                        if hasattr(predictions, "scores") and predictions.scores is not None
+                        predictions.confs.cpu().numpy()  # Use 'confs' not 'scores' (float32)
+                        if hasattr(predictions, "confs") and predictions.confs is not None
                         else None
                     )
 
                     for i, box in enumerate(boxes):
-                        # box format from flat-bug is typically [x1, y1, x2, y2]
-                        # NOTE: Verify this format by running the test script
+                        # box format from flat-bug is xyxy: [x1, y1, x2, y2] (verified via test)
                         x1, y1, x2, y2 = box
 
                         bbox = BoundingBox(
