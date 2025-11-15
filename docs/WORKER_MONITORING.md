@@ -10,10 +10,10 @@ The workers are configured with automatic protections to prevent long-running is
   - Prevents memory leaks from accumulating over time
   - Clean slate every 100 tasks ensures consistent performance
 
-- **`--max-memory-per-child=2000000`** - Each worker process restarts if it exceeds 2GB
-  - Measured in KB (2000000 KB = 2GB)
+- **`--max-memory-per-child=2097152`** - Each worker process restarts if it exceeds 2 GiB
+  - Measured in KB (2097152 KB = 2 GiB)
   - With prefork pool (default), this is **per worker process**
-  - Example: 8 CPUs = 8 worker processes × 2GB = 16GB max total
+  - Example: 8 CPUs = 8 worker processes × 2 GiB = 16 GiB max total
 
 These protections cause workers to gracefully restart before problems occur.
 
@@ -151,10 +151,10 @@ If you see too many restarts:
 
 ### Worker hitting memory limit frequently
 
-If workers constantly hit the 2GB limit:
+If workers constantly hit the 2 GiB limit:
 - Review which tasks use the most memory
 - Optimize data loading (use streaming for large datasets)
-- Consider increasing limit: `--max-memory-per-child=3000000` (3GB)
+- Consider increasing limit: `--max-memory-per-child=3145728` (3 GiB)
 - Check for memory leaks in task code
 
 ### Tasks timing out
@@ -201,18 +201,18 @@ Default is number of CPUs. Increase if CPU is underutilized.
 
 Based on your ML workload:
 
-**Current setting:** 2GB per worker process
-**Task requirement:** Up to 1GB per task
+**Current setting:** 2 GiB per worker process (production), 1 GiB (local dev)
+**Task requirement:** JSON orchestration with large request/response payloads
 
-This provides 2x headroom for overhead and caching.
+This provides adequate headroom for JSON processing and HTTP overhead.
 
 **If tasks consistently use more:**
-- Increase: `--max-memory-per-child=3000000` (3GB)
+- Increase: `--max-memory-per-child=3145728` (3 GiB)
 - Ensure container/host has sufficient memory
 - Monitor total memory: (num CPUs) × (limit per child)
 
 **If tasks use much less:**
-- Decrease: `--max-memory-per-child=1000000` (1GB)
+- Decrease: `--max-memory-per-child=1048576` (1 GiB)
 - Allows more workers on same hardware
 - Faster to detect actual memory leaks
 
