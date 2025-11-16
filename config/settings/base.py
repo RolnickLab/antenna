@@ -346,6 +346,10 @@ CELERY_TASK_SEND_SENT_EVENT = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_ENABLE_PREFETCH_COUNT_REDUCTION = True
 
+# Cancel & return to queue if connection is lost
+# https://docs.celeryq.dev/en/latest/userguide/configuration.html#worker-cancel-long-running-tasks-on-connection-loss
+CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
+
 # RabbitMQ broker connection settings
 # These settings improve reliability for long-running workers with intermittent network issues
 CELERY_BROKER_TRANSPORT_OPTIONS = {
@@ -355,7 +359,6 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
     "retry_on_timeout": True,  # Retry operations on timeout
     "max_connections": 20,  # Per-process connection pool limit
     "heartbeat": 30,  # RabbitMQ heartbeat interval (seconds) - detects broken connections
-    "worker_cancel_long_running_tasks_on_connection_loss": True,  # Cancel & return to queue if connection is lost
 }
 
 # Broker connection retry settings
