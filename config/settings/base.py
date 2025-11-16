@@ -355,6 +355,7 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
     "retry_on_timeout": True,  # Retry operations on timeout
     "max_connections": 20,  # Per-process connection pool limit
     "heartbeat": 60,  # RabbitMQ heartbeat interval (seconds) - detects broken connections
+    "worker_cancel_long_running_tasks_on_connection_loss": True,  # Cancel & return to queue if connection is lost
 }
 
 # Broker connection retry settings
