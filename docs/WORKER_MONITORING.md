@@ -160,8 +160,8 @@ If workers constantly hit the 2 GiB limit:
 ### Tasks timing out
 
 Current limits:
-- `CELERY_TASK_TIME_LIMIT = 4 * 60 * 24` (4 days)
-- `CELERY_TASK_SOFT_TIME_LIMIT = 3 * 60 * 24` (3 days)
+- `CELERY_TASK_TIME_LIMIT = 4 * 60 * 60 * 24` (4 days)
+- `CELERY_TASK_SOFT_TIME_LIMIT = 3 * 60 * 60 * 24` (3 days)
 
 These are very generous. If tasks timeout:
 - Check task logs for errors
