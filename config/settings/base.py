@@ -334,11 +334,11 @@ CELERY_WORKER_SEND_TASK_EVENTS = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std-setting-task_send_sent_event
 CELERY_TASK_SEND_SENT_EVENT = True
 
-# Health checking and retries, specific to Redis
-CELERY_REDIS_MAX_CONNECTIONS = 50  # Total connection pool limit for results backend
-CELERY_REDIS_SOCKET_TIMEOUT = 120  # Match Redis timeout
-CELERY_REDIS_SOCKET_KEEPALIVE = True
-CELERY_REDIS_BACKEND_HEALTH_CHECK_INTERVAL = 30  # Check health every 30s
+# Health checking and retries, specific to Redis (not needed for RabbitMQ)
+# CELERY_REDIS_MAX_CONNECTIONS = 50  # Total connection pool limit for results backend
+# CELERY_REDIS_SOCKET_TIMEOUT = 120  # Match Redis timeout
+# CELERY_REDIS_SOCKET_KEEPALIVE = True
+# CELERY_REDIS_BACKEND_HEALTH_CHECK_INTERVAL = 30  # Check health every 30s
 
 # Help distribute long-running tasks
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-prefetch-multiplier
