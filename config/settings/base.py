@@ -349,7 +349,6 @@ CELERY_WORKER_ENABLE_PREFETCH_COUNT_REDUCTION = True
 # RabbitMQ broker connection settings
 # These settings improve reliability for long-running workers with intermittent network issues
 CELERY_BROKER_TRANSPORT_OPTIONS = {
-    "visibility_timeout": 43200,  # 12 hours - how long tasks stay reserved before returning to queue
     "socket_timeout": 120,  # Socket read/write timeout (seconds)
     "socket_connect_timeout": 30,  # Max time to establish connection (seconds)
     "socket_keepalive": True,  # Enable TCP keepalive probes
