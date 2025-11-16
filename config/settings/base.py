@@ -350,11 +350,11 @@ CELERY_WORKER_ENABLE_PREFETCH_COUNT_REDUCTION = True
 # These settings improve reliability for long-running workers with intermittent network issues
 CELERY_BROKER_TRANSPORT_OPTIONS = {
     "socket_timeout": 120,  # Socket read/write timeout (seconds)
-    "socket_connect_timeout": 30,  # Max time to establish connection (seconds)
+    "socket_connect_timeout": 40,  # Max time to establish connection (seconds)
     "socket_keepalive": True,  # Enable TCP keepalive probes
     "retry_on_timeout": True,  # Retry operations on timeout
     "max_connections": 20,  # Per-process connection pool limit
-    "heartbeat": 60,  # RabbitMQ heartbeat interval (seconds) - detects broken connections
+    "heartbeat": 30,  # RabbitMQ heartbeat interval (seconds) - detects broken connections
     "worker_cancel_long_running_tasks_on_connection_loss": True,  # Cancel & return to queue if connection is lost
 }
 
