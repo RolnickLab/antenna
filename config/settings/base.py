@@ -305,7 +305,8 @@ CELERY_TASK_DEFAULT_QUEUE = "antenna"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-broker_url
 CELERY_BROKER_URL = env("CELERY_BROKER_URL")
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-result_backend
-CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default=env("REDIS_URL", default=None))
+# "rpc://" means use RabbitMQ for results backend by default
+CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="rpc://")  # type: ignore[no-untyped-call]
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-extended
 CELERY_RESULT_EXTENDED = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-backend-always-retry
