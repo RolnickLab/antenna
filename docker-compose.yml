@@ -92,6 +92,8 @@ services:
     command: /start-celeryworker
     depends_on:
       - rabbitmq
+    environment:
+      - CELERY_WORKER_NAME=${CELERY_WORKER_NAME:-worker@local}
 
   celerybeat:
     <<: *django

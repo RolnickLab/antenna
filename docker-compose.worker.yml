@@ -26,3 +26,5 @@ services:
     ports: []
     command: /start-celeryworker
     restart: always
+    environment:
+      - CELERY_WORKER_NAME=${CELERY_WORKER_NAME:-worker@${HOSTNAME}}

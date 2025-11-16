@@ -16,4 +16,7 @@ set -o nounset
 MAX_TASKS_PER_CHILD=100
 MAX_MEMORY_PER_CHILD=2097152  # 2 GiB in KB
 
-exec newrelic-admin run-program celery -A config.celery_app worker --queues=antenna -l INFO --max-tasks-per-child=$MAX_TASKS_PER_CHILD --max-memory-per-child=$MAX_MEMORY_PER_CHILD
+# Use CELERY_WORKER_NAME if set, otherwise default to worker@hostname
+WORKER_NAME="${CELERY_WORKER_NAME:-worker@$(hostname)}"
+
+exec newrelic-admin run-program celery -A config.celery_app worker --queues=antenna -l INFO -n "$WORKER_NAME" --max-tasks-per-child=$MAX_TASKS_PER_CHILD --max-memory-per-child=$MAX_MEMORY_PER_CHILD
