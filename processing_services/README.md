@@ -20,7 +20,7 @@ If your goal is to run an ML backend locally, simply copy the `example` app and 
 
 1. Update `processing_services/example/requirements.txt` with required packages (i.e. PyTorch, etc)
 2. Rebuild container to install updated dependencies. Start the minimal and example ML backends: `docker compose -f processing_services/docker-compose.yml up -d --build ml_backend_example`
-3. To test that everything works, register a new processing service in Antenna with endpoint URL http://ml_backend_example:2000. All ML backends are connected to the main docker compose stack using the `antenna_network`.
+3. To test that everything works, register a new processing service in Antenna with endpoint URL http://ml_backend_example:2000. All ML backends are connected to the main docker compose stack using the `ml_network`.
 
 
 ## Add Algorithms, Pipelines, and ML Backend/Processing Services
