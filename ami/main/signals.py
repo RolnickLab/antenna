@@ -1,12 +1,11 @@
 import logging
 
 from django.contrib.auth.models import Group
-from django.db import transaction
 from django.db.models.signals import m2m_changed, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from guardian.shortcuts import assign_perm
 
-from ami.main.models import Deployment, Event, Project
+from ami.main.models import Project
 from ami.users.roles import BasicMember, ProjectManager, create_roles_for_project
 
 from .models import User
@@ -129,39 +128,50 @@ def delete_project_groups(sender, instance, **kwargs):
 # This ensures that cached counts (e.g., occurrences_count, taxa_count) remain
 # accurate and consistent with the active filter configuration for each project.
 # ============================================================================
+
+
 def refresh_cached_counts_for_project(project: Project):
     """
     Refresh cached counts for Deployments and Events belonging to a project.
     """
-    logger.info(f"Refreshing cached counts for project {project.pk}")
-
-    with transaction.atomic():
-        deployments = Deployment.objects.filter(project=project)
-        for dep in deployments.iterator():
-            dep.update_calculated_fields(save=True)
-
-        events = Event.objects.filter(project=project)
-        for ev in events.iterator():
-            ev.update_calculated_fields(save=True)
-
-    logger.info(
-        f"Recomputed cached counts for {deployments.count()} deployments "
-        f"and {events.count()} events in project {project.pk}."
-    )
+    logger.info(f"Refreshing cached counts for project {project.pk} ({project.name})")
+    project.update_related_calculated_fields()
 
 
 @receiver(pre_save, sender=Project)
-def project_threshold_updated(sender, instance: Project, **kwargs):
-    """Refresh cached counts when the project's default score threshold changes."""
-    if not instance.pk:
-        return  # skip new projects
+def cache_old_threshold(sender, instance, **kwargs):
+    """
+    Cache the previous default score threshold before saving the Project.
 
-    old = Project.objects.get(pk=instance.pk)
-    if old.default_filters_score_threshold != instance.default_filters_score_threshold:
-        logger.info(
-            f"Default score threshold changed for project {instance.pk}: "
-            f"{old.default_filters_score_threshold} => {instance.default_filters_score_threshold}"
-        )
+    We do this because:
+      - In post_save, the instance already contains the NEW value.
+      - To detect whether the threshold actually changed, we must read the OLD
+        value from the database before the update happens.
+      - This allows us to accurately detect threshold changes and then trigger
+        recalculation of cached filtered counts (Events, Deployments, etc.).
+
+    The cached value is stored on the instance as `_old_threshold` so it can be
+    safely accessed in the post_save handler.
+    """
+    if instance.pk:
+        instance._old_threshold = Project.objects.get(pk=instance.pk).default_filters_score_threshold
+    else:
+        instance._old_threshold = None
+
+
+@receiver(post_save, sender=Project)
+def threshold_updated(sender, instance, **kwargs):
+    """
+    After saving the Project, compare the previously cached threshold with the new value.
+    If the default score threshold changed, we refresh all cached counts using the new filters.
+
+    This two-step (pre_save + post_save) pattern is required because:
+      - post_save instances already contain the updated value
+      - so the old threshold would be lost without caching it in pre_save
+    """
+    old_threshold = instance._old_threshold
+    new_threshold = instance.default_filters_score_threshold
+    if old_threshold is not None and old_threshold != new_threshold:
         refresh_cached_counts_for_project(instance)
 
 
