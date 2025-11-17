@@ -1806,7 +1806,7 @@ class SourceImage(BaseModel):
         q = build_occurrence_default_filters_q(
             project=project,
             request=None,
-            occurrence_accessor="detections__occurrence",
+            occurrence_accessor="occurrence",
         )
 
         return self.detections.filter(q).distinct().count()
