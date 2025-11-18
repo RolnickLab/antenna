@@ -12,6 +12,15 @@ export const convertToServerFormData = (fieldValues: any) => {
   } else if (fieldValues.image === null) {
     data.append('image', '')
   }
+  if (fieldValues.isDraft !== undefined) {
+    data.append('draft', fieldValues.isDraft)
+  }
+  if (fieldValues.defaultProcessingPipeline) {
+    data.append(
+      'settings.default_processing_pipeline_id',
+      fieldValues.defaultProcessingPipeline.id
+    )
+  }
 
   return data
 }

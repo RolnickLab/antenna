@@ -3,18 +3,6 @@ import { Project } from './project'
 
 export type ServerProject = any // TODO: Update this type
 
-interface SummaryData {
-  title: string
-  data: {
-    x: (string | number)[]
-    y: number[]
-    tickvals?: (string | number)[]
-    ticktext?: string[]
-  }
-  type: any
-  orientation: 'h' | 'v'
-}
-
 interface Settings {
   sessionTimeGapSeconds: number
   scoreThreshold: number
@@ -56,10 +44,6 @@ export class ProjectDetails extends Project {
       excludeTaxa,
       defaultProcessingPipeline,
     }
-  }
-
-  get summaryData(): SummaryData[] {
-    return this._project.summary_data
   }
 
   get userPermissions(): UserPermission[] {

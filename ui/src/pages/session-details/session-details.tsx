@@ -16,7 +16,7 @@ import styles from './session-details.module.scss'
 import { SessionInfo } from './session-info/session-info'
 
 export const SessionDetails = () => {
-  const { id } = useParams()
+  const { id, projectId } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { activeOccurrences } = useActiveOccurrences()
   const { activeCaptureId } = useActiveCaptureId()
@@ -56,7 +56,7 @@ export const SessionDetails = () => {
         </div>
       )}
       <div className={styles.playbackWrapper}>
-        <Playback session={session} />
+        <Playback session={session} projectId={projectId} />
       </div>
       <PlotGrid>
         <Box>
