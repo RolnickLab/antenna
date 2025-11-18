@@ -373,7 +373,7 @@ class MLJob(JobType):
                 deployment=job.deployment,
                 source_images=[job.source_image_single] if job.source_image_single else None,
                 job_id=job.pk,
-                skip_processed=job.project.feature_flags.skip_processed,
+                reprocess_all_images=job.project.feature_flags.reprocess_all_images,
                 # shuffle=job.shuffle,
             )
         )
@@ -419,7 +419,7 @@ class MLJob(JobType):
                     images=chunk,
                     job_id=job.pk,
                     project_id=job.project.pk,
-                    skip_processed=job.project.feature_flags.skip_processed,
+                    reprocess_all_images=job.project.feature_flags.reprocess_all_images,
                 )
                 job.logger.info(f"Processed image batch {i+1} in {time.time() - request_sent:.2f}s")
             except Exception as e:

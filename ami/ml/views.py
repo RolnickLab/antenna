@@ -133,7 +133,7 @@ class PipelineViewSet(DefaultViewSet, ProjectMixin):
             images=[random_image],
             project_id=project.pk,
             job_id=None,
-            skip_processed=project.feature_flags.skip_processed,
+            reprocess_all_images=project.feature_flags.reprocess_all_images,
         )
         return Response(results.dict())
 

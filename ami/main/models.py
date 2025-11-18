@@ -216,7 +216,8 @@ class ProjectFeatureFlags(pydantic.BaseModel):
     tags: bool = False  # Whether the project supports tagging taxa
     reprocess_existing_detections: bool = False  # Whether to reprocess existing detections
     default_filters: bool = False  # Whether to show default filters form in UI
-    skip_processed: bool = True  # Development flag for jobs to skip processed images in the project
+    # Feature flag for jobs to reprocess all images in the project, even if already processed
+    reprocess_all_images: bool = False
 
 
 def get_default_feature_flags() -> ProjectFeatureFlags:
