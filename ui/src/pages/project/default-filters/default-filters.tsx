@@ -16,7 +16,7 @@ export const DefaultFilters = () => {
   const { updateProjectSettings, isLoading, isSuccess, error } =
     useUpdateProjectSettings(project.id)
 
-  const canView = project.canUpdate && project.featureFlags.default_filters
+  const canView = project.canUpdate
 
   useEffect(() => {
     if (!canView) {

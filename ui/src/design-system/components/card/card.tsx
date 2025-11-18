@@ -1,6 +1,7 @@
 import classNames from 'classnames'
 import { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { Badge } from '../badge/badge'
 import { Icon, IconTheme, IconType } from '../icon/icon'
 import styles from './card.module.scss'
 
@@ -16,6 +17,7 @@ interface CardProps {
     src: string
     alt?: string
   }
+  label?: string
   maxWidth?: string
   size?: CardSize
   subTitle?: string
@@ -27,6 +29,7 @@ export const Card = ({
   children,
   id,
   image,
+  label,
   maxWidth,
   size = CardSize.Medium,
   subTitle = '',
@@ -72,6 +75,11 @@ export const Card = ({
           >
             {subTitle}
           </span>
+        ) : null}
+        {label ? (
+          <div className="absolute top-2 right-2">
+            <Badge label={label} />
+          </div>
         ) : null}
       </div>
       {children && <div className={styles.content}>{children}</div>}

@@ -1,6 +1,5 @@
 import { isBefore, isValid } from 'date-fns'
 import { useSearchParams } from 'react-router-dom'
-import { STRING, translate } from './language'
 import { SEARCH_PARAM_KEY_PAGE } from './usePagination'
 
 export const AVAILABLE_FILTERS: {
@@ -14,10 +13,6 @@ export const AVAILABLE_FILTERS: {
   {
     label: 'Include algorithm',
     field: 'algorithm',
-  },
-  {
-    label: translate(STRING.FIELD_LABEL_SCORE_THRESHOLD),
-    field: 'classification_threshold',
   },
   {
     label: 'Collection',
@@ -102,8 +97,12 @@ export const AVAILABLE_FILTERS: {
     field: 'taxon',
   },
   {
-    label: 'Taxa list',
+    label: 'Include taxa in list',
     field: 'taxa_list_id',
+  },
+  {
+    label: 'Exclude taxa from list',
+    field: 'not_taxa_list_id',
   },
   {
     label: 'Source image',
@@ -130,8 +129,8 @@ export const AVAILABLE_FILTERS: {
     field: 'include_unobserved',
   },
   {
-    label: 'Best score threshold',
-    field: 'best_determination_score',
+    label: 'Default filters',
+    field: 'apply_defaults',
   },
 ]
 
