@@ -2441,7 +2441,7 @@ class TestProjectDefaultThresholdFilter(APITestCase):
     # SourceImageViewSet tests
     def test_source_image_counts_respect_threshold(self):
         """occurrences_count and taxa_count should exclude low-score occurrences (per-capture assertions)."""
-        url = f"/api/v2/captures/?project_id={self.project.pk}"
+        url = f"/api/v2/captures/?project_id={self.project.pk}&with_counts=true"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
@@ -2500,7 +2500,7 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         """occurrences_count and taxa_count on collections should exclude low-score occurrences."""
         collection = self._make_collection_with_some_images()
 
-        url = f"/api/v2/captures/collections/?project_id={self.project.pk}"
+        url = f"/api/v2/captures/collections/?project_id={self.project.pk}&with_counts=true"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
@@ -2934,7 +2934,7 @@ class TestProjectDefaultTaxaFilter(APITestCase):
         """
         Helper to fetch list of (capture_id, occurrences_count, taxa_count) from SourceImageViewSet
         """
-        url = f"/api/v2/captures/?project_id={self.project.pk}"
+        url = f"/api/v2/captures/?project_id={self.project.pk}&with_counts=true"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         return [(c["id"], c["occurrences_count"], c["taxa_count"]) for c in res.json()["results"]]
@@ -2998,7 +2998,7 @@ class TestProjectDefaultTaxaFilter(APITestCase):
     # SourceImageCollectionViewSet tests
     def _get_collection_counts(self):
         """Helper to return list of (collection_id, occurrences_count, taxa_count)"""
-        url = f"/api/v2/captures/collections/?project_id={self.project.pk}"
+        url = f"/api/v2/captures/collections/?project_id={self.project.pk}&with_counts=true"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         return [(c["id"], c["occurrences_count"], c["taxa_count"]) for c in res.json()["results"]]
@@ -3291,7 +3291,7 @@ class TestProjectDefaultTaxaFilter(APITestCase):
         images = SourceImage.objects.filter(deployment=self.deployment)[:3]
         collection.images.set(images)
 
-        url = f"/api/v2/captures/collections/?project_id={self.project.pk}"
+        url = f"/api/v2/captures/collections/?project_id={self.project.pk}&with_counts=true"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
@@ -3346,7 +3346,7 @@ class TestProjectDefaultTaxaFilter(APITestCase):
         images = SourceImage.objects.filter(deployment=self.deployment)[:3]
         collection.images.set(images)
 
-        url = f"/api/v2/captures/collections/?project_id={self.project.pk}"
+        url = f"/api/v2/captures/collections/?project_id={self.project.pk}&with_counts=true"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
@@ -3379,3 +3379,20 @@ class TestProjectDefaultTaxaFilter(APITestCase):
             expected_taxa_count,
             "Collection taxa_count should respect threshold + exclude filters",
         )
+
+    def test_taxon_detail_visible_when_excluded_from_list(self):
+        """
+        Taxon excluded by default project taxa filter should not appear in list,
+        but should still be accessible via detail view.
+        """
+        excluded_taxon = self.exclude_taxa[0]
+        self.project.default_filters_exclude_taxa.set([excluded_taxon])
+
+        # Taxon should NOT appear in list view
+        list_ids = self._get_taxon_ids()
+        self.assertNotIn(excluded_taxon.id, list_ids)
+
+        # Taxon detail endpoint should still return 200
+        detail_url = f"/api/v2/taxa/{excluded_taxon.id}/?project_id={self.project.pk}"
+        res = self.client.get(detail_url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)

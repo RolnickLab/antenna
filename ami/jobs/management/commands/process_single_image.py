@@ -5,9 +5,9 @@ import time
 
 from django.core.management.base import BaseCommand, CommandError
 
-from ami.jobs.utils import submit_single_image_job
 from ami.main.models import Detection, SourceImage
 from ami.ml.models import Pipeline
+from ami.ml.orchestration.processing import process_single_source_image
 
 logger = logging.getLogger(__name__)
 
@@ -24,33 +24,24 @@ class Command(BaseCommand):
             help="Pipeline ID to use for processing",
         )
         parser.add_argument(
-            "--name",
-            type=str,
-            default=None,
-            help="Custom job name (optional)",
-        )
-        parser.add_argument(
             "--wait",
             action="store_true",
             help="Wait for the job to complete and show results",
-        )
-        parser.add_argument(
-            "--poll-interval",
-            type=int,
-            default=2,
-            help="Polling interval in seconds when using --wait (default: 2)",
         )
 
     def handle(self, *args, **options):
         image_id = options["image_id"]
         pipeline_id = options["pipeline"]
-        job_name = options["name"]
         wait = options["wait"]
-        poll_interval = options["poll_interval"]
-
+        poll_interval = 2.0  # seconds
         # Validate image exists
+        image: SourceImage
         try:
             image = SourceImage.objects.select_related("deployment__project").get(pk=image_id)
+            if not image.deployment or not image.deployment.project:
+                raise CommandError(
+                    f"SourceImage with id {image_id} is not attached to a deployment/project, cannot submit job"
+                )
             self.stdout.write(self.style.SUCCESS(f"✓ Found image: {image.path}"))
             self.stdout.write(f"  Project: {image.deployment.project.name}")
             self.stdout.write(f"  Deployment: {image.deployment.name}")
@@ -69,10 +60,10 @@ class Command(BaseCommand):
         self.stdout.write(self.style.WARNING("Submitting job..."))
 
         try:
-            job = submit_single_image_job(
-                image_id=image_id,
-                pipeline_id=pipeline_id,
-                job_name=job_name,
+            job = process_single_source_image(
+                source_image=image,
+                pipeline=pipeline,
+                run_async=not wait,
             )
         except Exception as e:
             raise CommandError(f"Failed to submit job: {str(e)}")
@@ -104,7 +95,10 @@ class Command(BaseCommand):
 
             while True:
                 job.refresh_from_db()
-                progress = job.progress.summary.progress * 100
+                if job.progress and job.progress.summary and job.progress.summary.progress is not None:
+                    progress = job.progress.summary.progress * 100
+                else:
+                    progress = 0.0
                 status = job.status
 
                 # Only update display if something changed
@@ -153,13 +147,6 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(f"✗ Job failed after {elapsed_total:.1f}s"))
             self.stdout.write("\nCheck job logs for details:")
             self.stdout.write(f"  Job.objects.get(pk={job.pk}).logs")
-
-            # Show any error messages
-            if job.progress.errors:
-                self.stdout.write("\nErrors:")
-                for error in job.progress.errors[-5:]:  # Last 5 errors
-                    self.stdout.write(f"  - {error}")  # noqa: E221
-
         else:
             self.stdout.write(self.style.WARNING(f"⚠ Job ended with status: {job.status}"))
 

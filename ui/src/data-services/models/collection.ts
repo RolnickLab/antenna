@@ -90,12 +90,12 @@ export class Collection extends Entity {
     return this._data.jobs?.length
   }
 
-  get numOccurrences(): number {
-    return this._data.occurrences_count
+  get numOccurrences(): number | undefined {
+    return this._data.occurrences_count ?? undefined
   }
 
-  get numTaxa(): number {
-    return this._data.taxa_count
+  get numTaxa(): number | undefined {
+    return this._data.taxa_count ?? undefined
   }
 
   get settingsDisplay(): string {
