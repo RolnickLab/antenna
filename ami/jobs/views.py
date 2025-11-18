@@ -222,12 +222,6 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         1. Call this endpoint to get tasks
         2. Process the tasks
         3. POST to /jobs/{id}/result/ with the reply_subject to acknowledge
-
-        This stateless approach allows workers to communicate over HTTP without
-        maintaining persistent connections to the queue system.
-
-        NOTE: This endpoint requires NATS JetStream integration which is not yet
-        available in main. Implementation coming from PR #987.
         """
         job: Job = self.get_object()
         batch = IntegerField(required=False, min_value=1).clean(request.query_params.get("batch", 1))
@@ -236,35 +230,13 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         if not job.pipeline:
             raise ValidationError("This job does not have a pipeline configured")
 
-        # TODO: Implement NATS JetStream task queue integration
-        # This requires:
-        # 1. TaskQueueManager from ami.ml.orchestration.nats_queue (PR #987)
-        # 2. NATS server configuration
-        # 3. Task enqueuing on job creation
-        # 4. async_to_sync from asgiref.sync to handle async calls
-        #
-        # Example implementation (currently stubbed):
-        # from asgiref.sync import async_to_sync
-        # from ami.ml.orchestration.nats_queue import TaskQueueManager
-        # async def get_tasks():
-        #     tasks = []
-        #     async with TaskQueueManager() as manager:
-        #         for i in range(batch):
-        #             task = await manager.reserve_task(f"job{job.pk}", timeout=0.1)
-        #             if task:
-        #                 tasks.append(task)
-        #     return tasks
-        # tasks = async_to_sync(get_tasks)()
-
-        logger.warning(
-            f"Task queue endpoint called for job {job.pk} but NATS integration not yet available. "
-            "This endpoint will be functional once PR #987 is merged."
-        )
+        # TODO: Implement task queue integration
+        logger.warning(f"Task queue endpoint called for job {job.pk} but the implementation is not yet available.")
 
         return Response(
             {
                 "tasks": [],
-                "message": "Task queue integration not yet available. Coming in PR #987.",
+                "message": "Task queue integration not yet available.",
                 "job_id": job.pk,
                 "batch_requested": batch,
             }
@@ -276,27 +248,16 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         Submit pipeline results for asynchronous processing.
 
         This endpoint accepts a list of pipeline results and queues them for
-        background processing. Each result will be validated, saved to the database,
-        and acknowledged via NATS in a Celery task.
+        background processing. Each result will be validated and saved.
 
         The request body should be a list of results:
         [
             {
                 "reply_subject": "string",  # Required: from the task response
                 "result": {  # Required: PipelineResultsResponse (kept as JSON)
-                    "pipeline": "string",
-                    "algorithms": {},
-                    "total_time": 0.0,
-                    "source_images": [...],
-                    "detections": [...],
-                    "errors": null
                 }
             },
-            ...
         ]
-
-        NOTE: This endpoint requires the process_pipeline_result Celery task which is not yet
-        available in main. Implementation coming from PR #987.
         """
 
         job = self.get_object()
@@ -306,20 +267,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         if not isinstance(request.data, list):
             raise ValidationError("Request body must be a list of results")
 
-        # TODO: Implement result processing with Celery task
-        # This requires:
-        # 1. process_pipeline_result task from ami.jobs.tasks (PR #987)
-        # 2. NATS acknowledgment integration
-        #
-        # Example implementation (currently stubbed):
-        # from ami.jobs.tasks import process_pipeline_result
-        # for idx, item in enumerate(request.data):
-        #     reply_subject = item.get("reply_subject")
-        #     result_data = item.get("result")
-        #     task = process_pipeline_result.delay(
-        #         job_id=job_id, result_data=result_data, reply_subject=reply_subject
-        #     )
-
+        # TODO: Implement result storage and processing
         queued_tasks = []
         for idx, item in enumerate(request.data):
             reply_subject = item.get("reply_subject")
@@ -334,14 +282,14 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             # Stub: Log that we received the result but don't process it yet
             logger.warning(
                 f"Result endpoint called for job {job_id} (reply_subject: {reply_subject}) "
-                "but result processing not yet available. This will be functional once PR #987 is merged."
+                "but result processing not yet available."
             )
 
             queued_tasks.append(
                 {
                     "reply_subject": reply_subject,
                     "status": "pending_implementation",
-                    "message": "Result processing will be available in PR #987",
+                    "message": "Result processing not yet implemented.",
                 }
             )
 
@@ -351,6 +299,6 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                 "job_id": job_id,
                 "results_received": len(queued_tasks),
                 "tasks": queued_tasks,
-                "message": "Result processing not yet implemented. Coming in PR #987.",
+                "message": "Result processing not yet implemented.",
             }
         )
