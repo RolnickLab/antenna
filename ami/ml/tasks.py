@@ -16,13 +16,16 @@ def process_source_images_async(pipeline_choice: str, endpoint_url: str, image_i
 
     job = None
     skip_processed = True
-    try:
-        job = Job.objects.get(pk=job_id)
-        skip_processed = job.project.feature_flags.skip_processed
-        job.logger.info(f"Processing {len(image_ids)} images for job {job} (skip_processed={skip_processed})")
-    except Job.DoesNotExist as e:
-        logger.error(f"Job {job_id} not found: {e}")
-        pass
+    if job_id is not None:
+        try:
+            job = Job.objects.get(pk=job_id)
+            skip_processed = job.project.feature_flags.skip_processed
+            job.logger.info(f"Processing {len(image_ids)} images for job {job} (skip_processed={skip_processed})")
+        except Job.DoesNotExist as e:
+            logger.error(f"Job {job_id} not found: {e}")
+            pass
+    else:
+        logger.info(f"Processing {len(image_ids)} images for job_id=None (skip_processed={skip_processed})")
 
     images = SourceImage.objects.filter(pk__in=image_ids)
     pipeline = Pipeline.objects.get(slug=pipeline_choice)
