@@ -25,7 +25,7 @@ def process_source_images_async(pipeline_choice: str, endpoint_url: str, image_i
             )
         except Job.DoesNotExist as e:
             logger.error(f"Job {job_id} not found: {e}")
-            pass
+
     else:
         logger.info(
             f"Processing {len(image_ids)} images for job_id=None (reprocess_all_images={reprocess_all_images})"
