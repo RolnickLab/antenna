@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 class Role:
     """Base class for all roles."""
 
+    name = ""
     permissions = {Project.Permissions.VIEW_PROJECT}
 
     # @TODO : Refactor after adding the project <-> Group formal relationship
@@ -51,8 +52,30 @@ class Role:
         """Checks if the user has any role assigned to a given project."""
         return any(role_class.has_role(user, project) for role_class in Role.__subclasses__())
 
+    @staticmethod
+    def get_supported_roles():
+        """
+        Returns all supported role classes in the system.
+        """
+        result = []
+        for cls in Role.__subclasses__():
+            result.append({"role": cls.__name__, "display_name": cls.name})
+        return result
+
+    @staticmethod
+    def get_user_role(project, user):
+        """
+        Returns the role name assigned to a user for a specific project.
+        Or None if no role is found.
+        """
+        for role_cls in Role.__subclasses__():
+            if role_cls.has_role(user, project):
+                return role_cls.__name__
+        return None
+
 
 class BasicMember(Role):
+    name = "Basic member"
     permissions = Role.permissions | {
         Project.Permissions.VIEW_PRIVATE_DATA,
         Project.Permissions.STAR_SOURCE_IMAGE,
@@ -62,10 +85,12 @@ class BasicMember(Role):
 
 
 class Researcher(Role):
+    name = "Researcher"
     permissions = BasicMember.permissions | {Project.Permissions.TRIGGER_EXPORT}
 
 
 class Identifier(Role):
+    name = "Identifier"
     permissions = BasicMember.permissions | {
         Project.Permissions.CREATE_IDENTIFICATION,
         Project.Permissions.UPDATE_IDENTIFICATION,
@@ -74,6 +99,7 @@ class Identifier(Role):
 
 
 class MLDataManager(Role):
+    name = "ML Data manager"
     permissions = BasicMember.permissions | {
         Project.Permissions.CREATE_JOB,
         Project.Permissions.UPDATE_JOB,
@@ -88,6 +114,7 @@ class MLDataManager(Role):
 
 
 class ProjectManager(Role):
+    name = "Project manager"
     permissions = (
         BasicMember.permissions
         | Researcher.permissions

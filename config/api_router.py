@@ -8,6 +8,7 @@ from ami.jobs import views as job_views
 from ami.labelstudio import views as labelstudio_views
 from ami.main.api import views
 from ami.ml import views as ml_views
+from ami.users.api.views import ProjectMembersView, ProjectRolesView
 
 router = DefaultRouter()
 
@@ -61,3 +62,11 @@ urlpatterns = [
 
 
 urlpatterns += router.urls
+
+role_management_api_urls = [
+    path("roles/", ProjectRolesView.as_view(), name="project-roles"),
+    path("members/", ProjectMembersView.as_view(), name="project-members"),
+]
+urlpatterns += [
+    path("role_management/", include((role_management_api_urls, "role_management"))),
+]

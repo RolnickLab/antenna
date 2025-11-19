@@ -49,3 +49,21 @@ class GroupSerializer(DefaultSerializer):
     class Meta:
         model = Group
         fields = ["id", "details", "name"]
+
+
+# Roles management api serializers
+class ProjectRoleSerializer(serializers.Serializer):
+    role = serializers.CharField()
+    display_name = serializers.CharField()
+
+
+class ProjectMemberSerializer(serializers.Serializer):
+    user = serializers.SerializerMethodField()
+    role = serializers.CharField()
+
+    def get_user(self, obj):
+        user = obj["user"]
+        return {
+            "id": user.pk,
+            "email": user.email,
+        }
