@@ -17,11 +17,18 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - postgres
-      - redis
-      - minio-init
-      - ml_backend
-      - rabbitmq
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      minio-init:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      ml_backend:
+        condition: service_started
+      celeryworker:  # required to subscribe the worker to the pipelines in the db
+        condition: service_healthy
     env_file:
       - ./.envs/.ci/.django
       - ./.envs/.ci/.postgres
@@ -43,12 +50,26 @@ services:
     <<: *django
     depends_on:
       - rabbitmq
-    command: /start-celeryworker
+    # start the worker with antenna_celeryworker to ensure it's discoverable by ami.ml.signals.get_worker_name
+    command:
+      - sh
+      - -c
+      - |
+        python manage.py migrate &&
+        python -m celery -A config.celery_app worker --queues=antenna -n antenna_celeryworker@%h -l INFO
+    healthcheck:
+      # make sure DATABASE_URL is inside the ./.envs/.ci/.postgres
+      test: ["CMD-SHELL", "celery -A config.celery_app inspect ping -d antenna_celeryworker@$(hostname) | grep -q pong"]
+      interval: 10s
+      timeout: 50s
+      retries: 5
+      start_period: 10s
 
   rabbitmq:
     image: rabbitmq:3-management
     env_file:
       - ./.envs/.ci/.django
+
 
   minio:
     image: minio/minio:RELEASE.2024-11-07T00-52-20Z
@@ -79,6 +100,8 @@ services:
       context: ./processing_services/minimal
     volumes:
       - ./processing_services/minimal/:/app
+    depends_on:
+      - rabbitmq
     networks:
       default:
         aliases:

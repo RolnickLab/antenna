@@ -33,7 +33,7 @@ def run_job(self, job_id: int) -> None:
 @task_postrun.connect(sender=run_job)
 @task_prerun.connect(sender=run_job)
 def update_job_status(sender, task_id, task, *args, **kwargs):
-    from ami.jobs.models import Job
+    from ami.jobs.models import Job, MLJob
 
     job_id = task.request.kwargs["job_id"]
     if job_id is None:
@@ -48,9 +48,12 @@ def update_job_status(sender, task_id, task, *args, **kwargs):
             logger.error(f"No job found for task {task_id} or job_id {job_id}")
             return
 
-    task = AsyncResult(task_id)  # I'm not sure if this is reliable
-    job.update_status(task.status, save=False)
-    job.save()
+    # NOTE: After calling run_job, only update the status if the job
+    # is not an ML job (this job should handle it's own status updates)
+    if job.job_type_key != MLJob.key:
+        task = AsyncResult(task_id)  # I'm not sure if this is reliable
+        job.update_status(task.status, save=False)
+        job.save()
 
 
 @task_failure.connect(sender=run_job, retry=False)

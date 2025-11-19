@@ -18,10 +18,13 @@ set -o nounset
 MAX_TASKS_PER_CHILD=100
 MAX_MEMORY_PER_CHILD=1048576  # 1 GiB in KB
 
+# start the worker with antenna_celeryworker to ensure it's discoverable by ami.ml.signals.get_worker_name
+python manage.py migrate
+
 # Launch VS Code debug server if DEBUGGER environment variable is set to 1
 # Note that auto reloading is disabled when debugging, manual restart required for code changes.
 if [ "${DEBUGGER:-0}" = "1" ]; then
-    exec python -Xfrozen_modules=off -m debugpy --listen 0.0.0.0:5679 -m celery -A config.celery_app worker --queues=antenna -l INFO --max-tasks-per-child=$MAX_TASKS_PER_CHILD --max-memory-per-child=$MAX_MEMORY_PER_CHILD
+    exec python -Xfrozen_modules=off -m debugpy --listen 0.0.0.0:5679 -m celery -A config.celery_app worker --queues=antenna -n antenna_celeryworker@%h -l INFO --max-tasks-per-child=$MAX_TASKS_PER_CHILD --max-memory-per-child=$MAX_MEMORY_PER_CHILD
 else
-    exec watchfiles --filter python celery.__main__.main --args '-A config.celery_app worker --queues=antenna -l INFO --max-tasks-per-child='$MAX_TASKS_PER_CHILD' --max-memory-per-child='$MAX_MEMORY_PER_CHILD
+    exec watchfiles --filter python celery.__main__.main --args '-A config.celery_app worker --queues=antenna -n antenna_celeryworker@%h -l INFO --max-tasks-per-child='$MAX_TASKS_PER_CHILD' --max-memory-per-child='$MAX_MEMORY_PER_CHILD
 fi

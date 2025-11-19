@@ -19,11 +19,18 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      - postgres
-      - redis
-      - minio-init
-      - ml_backend
-      - rabbitmq
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      minio-init:
+        condition: service_started
+      ml_backend:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      celeryworker:  # required to subscribe the worker to the pipelines in the db
+        condition: service_healthy
     volumes:
       - .:/app:z
     env_file:
@@ -83,15 +90,32 @@ services:
   redis:
     image: redis:6
     container_name: ami_local_redis
+    networks:
+      - antenna_network
+    ports:
+      - "6379:6379" # expose redis port for setting celery task locks
 
   celeryworker:
     <<: *django
     image: ami_local_celeryworker
     scale: 1
     ports: []
-    command: /start-celeryworker
+    # start the worker with antenna_celeryworker to ensure it's discoverable by ami.ml.signals.get_worker_name
+    command:
+      - sh
+      - -c
+      - |
+        python manage.py migrate &&
+        python -m debugpy --listen 0.0.0.0:5678 -m celery -A config.celery_app worker --queues=antenna -n antenna_celeryworker@%h -l INFO
     depends_on:
       - rabbitmq
+    healthcheck:
+      # make sure DATABASE_URL is inside the ./.envs/.local/.postgres
+      test: ["CMD-SHELL", "celery -A config.celery_app inspect ping -d antenna_celeryworker@$(hostname) | grep -q pong"]
+      interval: 10s
+      timeout: 50s
+      retries: 5
+      start_period: 10s
 
   celerybeat:
     <<: *django
@@ -149,8 +173,10 @@ services:
     env_file:
       - ./.envs/.local/.django
     depends_on:
-      - minio
-      - minio-proxy
+      minio:
+        condition: service_healthy
+      minio-proxy:
+        condition: service_started
     volumes:
       - ./compose/local/minio/init.sh:/etc/minio/init.sh
     entrypoint: /etc/minio/init.sh
@@ -166,6 +192,7 @@ services:
       default:
         aliases:
           - processing_service
+
 
 networks:
   antenna_network:

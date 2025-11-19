@@ -128,6 +128,7 @@ def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
 
     deployment = Deployment.objects.filter(project=project).filter(name__contains=short_id).latest("created_at")
     assert deployment, f"No deployment found for project {project}. Recreate the project."
+
     return project, deployment
 
 

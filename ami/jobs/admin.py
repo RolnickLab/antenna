@@ -4,7 +4,7 @@ from django.http import HttpRequest
 
 from ami.main.admin import AdminBase
 
-from .models import Job, get_job_type_by_inferred_key
+from .models import Job, MLTaskRecord, get_job_type_by_inferred_key
 
 
 @admin.register(Job)
@@ -54,3 +54,23 @@ class JobAdmin(AdminBase):
         "progress",
         "result",
     )
+
+
+@admin.register(MLTaskRecord)
+class MLTaskRecordAdmin(AdminBase):
+    """Admin panel example for ``MLTaskRecord`` model."""
+
+    list_display = (
+        "job",
+        "task_id",
+        "task_name",
+        "status",
+    )
+
+    @admin.action()
+    def kill_task(self, request: HttpRequest, queryset: QuerySet[MLTaskRecord]) -> None:
+        for ml_task_record in queryset:
+            ml_task_record.kill_task()
+        self.message_user(request, f"Killed {queryset.count()} ML task(s).")
+
+    actions = [kill_task]
