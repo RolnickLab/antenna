@@ -26,8 +26,8 @@ export const useNavItems = () => {
   const navItems: NavigationItem[] = useMemo(
     () => [
       {
-        id: 'overview',
-        title: translate(STRING.NAV_ITEM_OVERVIEW),
+        id: 'project',
+        title: translate(STRING.NAV_ITEM_PROJECT),
         icon: IconType.Overview,
         path: APP_ROUTES.PROJECT_DETAILS({ projectId: projectId as string }),
         matchPath: APP_ROUTES.PROJECT_DETAILS({ projectId: ':projectId' }),
@@ -46,6 +46,14 @@ export const useNavItems = () => {
             },
           ]
         : []),
+      {
+        id: 'captures',
+        title: translate(STRING.NAV_ITEM_CAPTURES),
+        icon: IconType.Images,
+        count: status?.numCaptures,
+        path: APP_ROUTES.CAPTURES({ projectId: projectId as string }),
+        matchPath: APP_ROUTES.CAPTURES({ projectId: ':projectId' }),
+      },
       {
         id: 'deployments',
         title: translate(STRING.NAV_ITEM_DEPLOYMENTS),
@@ -99,5 +107,5 @@ export const useNavItems = () => {
       (navItem) => !!matchPath(navItem.matchPath, location.pathname)
     ) ?? navItems[0]
 
-  return { navItems, activeNavItemId: activeNavItem.id }
+  return { navItems, activeNavItem }
 }

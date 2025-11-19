@@ -1,0 +1,9 @@
+fastapi==0.116.0
+uvicorn==0.35.0
+pydantic==2.11.7
+Pillow==11.3.0
+requests==2.32.4
+transformers==4.50.3
+torch==2.6.0
+torchvision==0.21.0
+scipy==1.16.0

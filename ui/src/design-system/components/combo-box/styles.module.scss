@@ -33,7 +33,6 @@ $accessory-wrapper-size: 38px;
   color: $color-neutral-700;
   border: 1px solid $color-neutral-100;
   box-sizing: border-box;
-  margin-bottom: 8px;
   padding-right: $accessory-wrapper-size;
 
   &::placeholder {
@@ -111,29 +110,6 @@ $accessory-wrapper-size: 38px;
   }
 }
 
-/* For simple version */
 .arrow {
   fill: $color-generic-white;
-}
-
-/* For tree version */
-.treeItems {
-  position: fixed;
-
-  > div {
-    display: grid;
-  }
-
-  &:not(.open) {
-    display: none;
-  }
-
-  .item {
-    border-radius: 0;
-    white-space: nowrap;
-
-    &:not(.empty) {
-      padding: 4px 0;
-    }
-  }
 }

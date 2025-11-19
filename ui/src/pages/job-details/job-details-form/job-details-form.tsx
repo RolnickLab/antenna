@@ -7,14 +7,15 @@ import {
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
+import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
+import { SaveButton } from 'design-system/components/button/save-button'
 import { Checkbox } from 'design-system/components/checkbox/checkbox'
-import { IconType } from 'design-system/components/icon/icon'
+import { CollectionsPicker } from 'design-system/components/collections-picker'
 import { InputContent } from 'design-system/components/input/input'
 import { useForm } from 'react-hook-form'
+import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
-import { CollectionsPicker } from './collections-picker'
 import { PipelinesPicker } from './pipelines-picker'
 
 interface JobFormValues {
@@ -44,7 +45,7 @@ const config: FormConfig = {
     label: translate(STRING.FIELD_LABEL_PIPELINE),
   },
   sourceImages: {
-    label: translate(STRING.FIELD_LABEL_SOURCE_IMAGES),
+    label: translate(STRING.FIELD_LABEL_SOURCE_IMAGES_COLLECTION),
   },
   startNow: {
     label: 'Start immediately',
@@ -62,6 +63,9 @@ export const JobDetailsForm = ({
   isSuccess?: boolean
   onSubmit: (data: JobFormValues) => void
 }) => {
+  const { projectId } = useParams()
+  const { project } = useProjectDetails(projectId as string, true)
+
   const {
     control,
     handleSubmit,
@@ -70,6 +74,7 @@ export const JobDetailsForm = ({
     defaultValues: {
       name: '',
       delay: 0,
+      pipeline: project?.settings.defaultProcessingPipeline?.id,
     },
     mode: 'onChange',
   })
@@ -78,11 +83,17 @@ export const JobDetailsForm = ({
 
   return (
     <form onSubmit={handleSubmit((values) => onSubmit(values))}>
-      {errorMessage && (
+      {errorMessage ? (
         <FormError
           inDialog
           intro={translate(STRING.MESSAGE_COULD_NOT_SAVE)}
           message={errorMessage}
+        />
+      ) : (
+        <FormError
+          inDialog
+          intro="Warning"
+          message="Batch processing is currently in development and problems are likely to occur. If you need data processed, we recommend to reach out to the team for support. Thank you for your patience!"
         />
       )}
       <FormSection>
@@ -155,13 +166,7 @@ export const JobDetailsForm = ({
         </FormRow>
       </FormSection>
       <FormActions>
-        <Button
-          label={isSuccess ? translate(STRING.SAVED) : translate(STRING.SAVE)}
-          icon={isSuccess ? IconType.RadixCheck : undefined}
-          type="submit"
-          theme={ButtonTheme.Success}
-          loading={isLoading}
-        />
+        <SaveButton isLoading={isLoading} isSuccess={isSuccess} />
       </FormActions>
     </form>
   )

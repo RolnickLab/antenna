@@ -29,3 +29,15 @@ a:hover {
 a:focus-visible {
   box-shadow: 0 0 0 2px #000000;
 }
+
+@layer base {
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}

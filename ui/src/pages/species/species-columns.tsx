@@ -1,4 +1,5 @@
-import { TaxonInfo } from 'components/taxon/taxon-info/taxon-info'
+import { DeterminationScore } from 'components/determination-score'
+import { Tag } from 'components/taxon-tags/tag'
 import { Species } from 'data-services/models/species'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
@@ -8,32 +9,26 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
+import { TaxonDetails } from 'nova-ui-kit'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 
-export const columns: (projectId: string) => TableColumn<Species>[] = (
+export const columns: (project: {
   projectId: string
-) => [
+  featureFlags?: { [key: string]: boolean }
+}) => TableColumn<Species>[] = ({ projectId, featureFlags }) => [
   {
-    id: 'snapshots',
-    name: translate(STRING.FIELD_LABEL_SNAPSHOTS),
-    styles: {
-      textAlign: TextAlign.Center,
-    },
+    id: 'cover-image',
+    name: 'Cover image',
+    sortField: 'cover_image_url',
     renderCell: (item: Species) => {
-      const detailsRoute = getAppRoute({
-        to: APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id }),
-        keepSearchParams: true,
-      })
-
       return (
         <ImageTableCell
-          images={item.images}
-          total={item.numOccurrences}
+          images={item.coverImage ? [{ src: item.coverImage.url }] : []}
           theme={ImageCellTheme.Light}
-          to={detailsRoute}
+          to={APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id })}
         />
       )
     },
@@ -43,33 +38,47 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     sortField: 'name',
     name: translate(STRING.FIELD_LABEL_TAXON),
     renderCell: (item: Species) => (
-      <Link
-        to={getAppRoute({
-          to: APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id }),
-          keepSearchParams: true,
-        })}
-      >
-        <BasicTableCell>
-          <TaxonInfo compact taxon={item} />
-        </BasicTableCell>
-      </Link>
+      <BasicTableCell>
+        <div className="grid gap-4">
+          <Link
+            to={getAppRoute({
+              to: APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id }),
+              keepSearchParams: true,
+            })}
+          >
+            <TaxonDetails compact taxon={item} />
+          </Link>
+          {featureFlags?.tags && item.tags.length ? (
+            <div className="flex flex-wrap gap-1">
+              {item.tags.map((tag) => (
+                <Tag key={tag.id} name={tag.name} />
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </BasicTableCell>
     ),
   },
   {
-    id: 'score',
-    sortField: 'best_determination_score',
-    name: translate(STRING.FIELD_LABEL_BEST_SCORE),
+    id: 'rank',
+    name: 'Taxon rank',
     styles: {
       textAlign: TextAlign.Right,
     },
+    renderCell: (item: Species) => <BasicTableCell value={item.rank} />,
+  },
+  {
+    id: 'last-seen',
+    sortField: 'last_detected',
+    name: 'Last seen',
     renderCell: (item: Species) => (
-      <BasicTableCell value={item.scoreLabel} style={{ textAlign: 'right' }} />
+      <BasicTableCell value={item.lastSeenLabel} />
     ),
   },
   {
     id: 'occurrences',
     sortField: 'occurrences_count',
-    name: translate(STRING.FIELD_LABEL_OCCURRENCES),
+    name: translate(STRING.FIELD_LABEL_DIRECT_OCCURRENCES),
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -85,18 +94,31 @@ export const columns: (projectId: string) => TableColumn<Species>[] = (
     ),
   },
   {
-    id: 'training-images',
-    name: translate(STRING.FIELD_LABEL_TRAINING_IMAGES),
-    styles: {
-      textAlign: TextAlign.Right,
-    },
+    id: 'best-determination-score',
+    name: translate(STRING.FIELD_LABEL_BEST_SCORE),
+    sortField: 'best_determination_score',
     renderCell: (item: Species) => (
-      <Link to={item.trainingImagesUrl} target="_blank">
-        <BasicTableCell
-          value={item.trainingImagesLabel}
-          theme={CellTheme.Primary}
+      <BasicTableCell>
+        <DeterminationScore
+          score={item.score}
+          scoreLabel={item.scoreLabel}
+          tooltip={translate(STRING.MACHINE_PREDICTION_SCORE, {
+            score: `${item.score}`,
+          })}
         />
-      </Link>
+      </BasicTableCell>
     ),
+  },
+  {
+    id: 'created-at',
+    name: translate(STRING.FIELD_LABEL_CREATED_AT),
+    sortField: 'created_at',
+    renderCell: (item: Species) => <BasicTableCell value={item.createdAt} />,
+  },
+  {
+    id: 'updated-at',
+    name: translate(STRING.FIELD_LABEL_UPDATED_AT),
+    sortField: 'updated_at',
+    renderCell: (item: Species) => <BasicTableCell value={item.updatedAt} />,
   },
 ]

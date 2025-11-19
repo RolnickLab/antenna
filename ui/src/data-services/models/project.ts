@@ -3,20 +3,9 @@ import { Deployment, ServerDeployment } from './deployment'
 
 export type ServerProject = any // TODO: Update this type
 
-interface SummaryData {
-  title: string
-  data: {
-    x: (string | number)[]
-    y: number[]
-    tickvals?: (string | number)[]
-    ticktext?: string[]
-  }
-  type: any
-}
-
 export class Project {
-  private readonly _project: ServerProject
-  private readonly _deployments: Deployment[] = []
+  protected readonly _project: ServerProject
+  protected readonly _deployments: Deployment[] = []
 
   public constructor(project: ServerProject) {
     this._project = project
@@ -33,8 +22,16 @@ export class Project {
     return this._project.user_permissions.includes(UserPermission.Update)
   }
 
+  get deployments(): Deployment[] {
+    return this._deployments
+  }
+
   get description(): string {
     return this._project.description
+  }
+
+  get featureFlags(): { [key: string]: boolean } {
+    return this._project.feature_flags ?? {}
   }
 
   get id(): string {
@@ -45,15 +42,11 @@ export class Project {
     return this._project.image ? `${this._project.image}` : undefined
   }
 
+  get isDraft(): boolean {
+    return this._project.draft
+  }
+
   get name(): string {
     return this._project.name
-  }
-
-  get deployments(): Deployment[] {
-    return this._deployments
-  }
-
-  get summaryData(): SummaryData[] {
-    return this._project.summary_data
   }
 }

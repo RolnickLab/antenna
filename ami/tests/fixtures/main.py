@@ -6,11 +6,11 @@ import random
 import uuid
 
 from django.db import transaction
+from django.utils import timezone
 
 from ami.main.models import (
     Deployment,
     Detection,
-    Event,
     Occurrence,
     Project,
     SourceImage,
@@ -20,8 +20,11 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
+from ami.ml.models.algorithm import Algorithm
+from ami.ml.models.processing_service import ProcessingService
 from ami.ml.tasks import create_detection_images
 from ami.tests.fixtures.storage import GeneratedTestFrame, create_storage_source, populate_bucket
+from ami.users.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -36,62 +39,95 @@ def update_site_settings(**kwargs):
     return site
 
 
-def create_ml_pipeline(project):
-    from ami.ml.models import Algorithm, Pipeline
+def create_processing_service(project: Project, name: str = "Test Processing Service") -> ProcessingService:
+    processing_service_to_add = {
+        "name": name,
+        "projects": [{"name": project.name}],
+        # "endpoint_url": "http://processing_service:2000",
+        "endpoint_url": "http://ml_backend:2000",
+    }
 
-    pipelines_to_add = [
-        {
-            "name": "ML Dummy Backend",
-            "slug": "dummy",
-            "version": 1,
-            "algorithms": [
-                {"name": "Dummy Detector", "key": 1},
-                {"name": "Random Detector", "key": 2},
-                {"name": "Always Moth Classifier", "key": 3},
-            ],
-            "projects": {"name": project.name},
-            "endpoint_url": "http://ml_backend:2000/pipeline/process",
-        },
-    ]
+    processing_service, created = ProcessingService.objects.get_or_create(
+        name=processing_service_to_add["name"],
+        endpoint_url=processing_service_to_add["endpoint_url"],
+    )
+    processing_service.save()
 
-    for pipeline_data in pipelines_to_add:
-        pipeline, created = Pipeline.objects.get_or_create(
-            name=pipeline_data["name"],
-            slug=pipeline_data["slug"],
-            version=pipeline_data["version"],
-            endpoint_url=pipeline_data["endpoint_url"],
+    if created:
+        logger.info(f'Successfully created processing service with {processing_service_to_add["endpoint_url"]}.')
+    else:
+        logger.info(f'Using existing processing service with {processing_service_to_add["endpoint_url"]}.')
+
+    for project_data in processing_service_to_add["projects"]:
+        try:
+            project = Project.objects.get(name=project_data["name"])
+            processing_service.projects.add(project)
+            processing_service.save()
+        except Exception:
+            logger.error(f'Could not find project {project_data["name"]}.')
+    processing_service.get_status()
+    processing_service.create_pipelines()
+
+    return processing_service
+
+
+def create_deployment(
+    project: Project,
+    data_source,
+    name="Test Deployment",
+) -> Deployment:
+    """
+    Create a test deployment with a data source for source images.
+    """
+    deployment, _ = Deployment.objects.get_or_create(
+        project=project,
+        name=name,
+        defaults=dict(
+            description=f"Created at {timezone.now()}",
+            data_source=data_source,
+            data_source_subdir="/",
+            data_source_regex=".*\\.jpg",
+            latitude=45.0,
+            longitude=-123.0,
+            research_site=project.sites.first(),
+            device=project.devices.first(),
+        ),
+    )
+    return deployment
+
+
+def create_test_project(name: str | None) -> tuple[Project, str]:
+    short_id = uuid.uuid4().hex[:8]
+    name = name or f"Test Project {short_id}"
+
+    with transaction.atomic():
+        admin_user, _ = User.objects.get_or_create(
+            email=f"antenna+{short_id}@insectai.org", is_superuser=True, is_staff=True
         )
-
-        if created:
-            logger.info(f'Successfully created {pipeline_data["name"]}.')
-        else:
-            logger.info(f'Using existing pipeline {pipeline_data["name"]}.')
-
-        for algorithm_data in pipeline_data["algorithms"]:
-            algorithm, _ = Algorithm.objects.get_or_create(name=algorithm_data["name"], key=algorithm_data["key"])
-            pipeline.algorithms.add(algorithm)
-
-        pipeline.save()
-
-    return pipeline
+        project = Project.objects.create(name=name, owner=admin_user, description="Test description")
+        data_source = create_storage_source(project, f"Test Data Source {short_id}", prefix=f"{short_id}")
+        create_deployment(project, data_source, f"Test Deployment {short_id}")
+        create_processing_service(project, f"Test Processing Service {short_id}")
+        return project, short_id
 
 
 def setup_test_project(reuse=True) -> tuple[Project, Deployment]:
+    """
+    Always return a valid project and deployment, creating them if necessary.
+    """
+    project = None
+    short_id = ""
+    shared_test_project_name = "Shared Test Project"
+
     if reuse:
-        project, _ = Project.objects.get_or_create(name="Test Project")
-        data_source = create_storage_source(project, "Test Data Source")
-        deployment, _ = Deployment.objects.get_or_create(
-            project=project, name="Test Deployment", defaults=dict(data_source=data_source)
-        )
-        create_ml_pipeline(project)
+        project = Project.objects.filter(name=shared_test_project_name).first()
+        if not project:
+            project, short_id = create_test_project(name=shared_test_project_name)
     else:
-        short_id = uuid.uuid4().hex[:8]
-        project = Project.objects.create(name=f"Test Project {short_id}")
-        data_source = create_storage_source(project, f"Test Data Source {short_id}")
-        deployment = Deployment.objects.create(
-            project=project, name=f"Test Deployment {short_id}", data_source=data_source
-        )
-        create_ml_pipeline(project)
+        project, short_id = create_test_project(name=None)
+
+    deployment = Deployment.objects.filter(project=project).filter(name__contains=short_id).latest("created_at")
+    assert deployment, f"No deployment found for project {project}. Recreate the project."
     return project, deployment
 
 
@@ -101,6 +137,7 @@ def create_captures(
     images_per_night: int = 3,
     interval_minutes: int = 10,
     subdir: str = "test",
+    update_deployment: bool = True,
 ):
     # Create some images over a few monitoring nights
     first_night = datetime.datetime.now()
@@ -123,6 +160,10 @@ def create_captures(
         name="Test Source Image Collection",
     )
     collection.images.set(created)
+
+    if update_deployment:
+        # This should only be set to False when manually testing grouping images into events
+        deployment.save(update_calculated_fields=True, regroup_async=False)
 
     return created
 
@@ -237,6 +278,7 @@ def create_detections(
             timestamp=source_image.timestamp,
             bbox=bbox,
         )
+        assert source_image.deployment
         taxon = Taxon.objects.filter(projects=source_image.deployment.project).order_by("?").first()
         if taxon:
             detection.classifications.create(
@@ -273,6 +315,8 @@ def create_occurrences_from_frame_data(
             identifier = make_identifier(frame.series_id, bbox.identifier)
             detections_by_identifier.setdefault(identifier, []).append((source_image, bbox.bbox))
 
+    algorithm = Algorithm.objects.get(key="random-species-classifier")
+
     for identifier, detections in detections_by_identifier.items():
         assert source_image.deployment
         if not taxa_list:
@@ -291,6 +335,7 @@ def create_occurrences_from_frame_data(
                 taxon=taxon,
                 score=random.randint(41, 92) / 100,
                 timestamp=datetime.datetime.now(),
+                algorithm=algorithm,
             )
             detection.save()
 
@@ -315,29 +360,35 @@ def create_occurrences(
     deployment: Deployment,
     num: int = 6,
     taxon: Taxon | None = None,
+    determination_score: float = 0.9,
 ):
-    event = Event.objects.filter(deployment=deployment).first()
-    if not event:
-        raise ValueError("No events found for deployment")
+    # Get all source images for the deployment that have an event
+    source_images = list(SourceImage.objects.filter(deployment=deployment))
+    if not source_images:
+        raise ValueError("No source images with events found for deployment")
 
-    for i in range(num):
-        # Every Occurrence requires a Detection
-        source_image = SourceImage.objects.filter(event=event).order_by("?").first()
-        if not source_image:
-            raise ValueError("No source images found for event")
-        taxon = taxon or Taxon.objects.filter(projects=deployment.project).order_by("?").first()
-        if not taxon:
+    # Get  a random taxon if not provided
+    if not taxon:
+        taxa_qs = Taxon.objects.filter(projects=deployment.project)
+        count = taxa_qs.count()
+        if count == 0:
             raise ValueError("No taxa found for project")
+        taxon = taxa_qs[random.randint(0, count - 1)]
+
+    # Create occurrences evenly distributed across all source images
+    for i in range(num):
+        # Select images in a round-robin fashion
+        source_image = source_images[i % len(source_images)]
+
         detection = Detection.objects.create(
             source_image=source_image,
-            timestamp=source_image.timestamp,  # @TODO this should be automatically set to the source image timestamp
+            timestamp=source_image.timestamp,
             bbox=[0.1, 0.1, 0.2, 0.2],
         )
-        # Could speed this up by creating an Occurrence with a determined taxon directly
-        # but this tests more of the code.
+
         detection.classifications.create(
             taxon=taxon,
-            score=0.9,
+            score=determination_score,
             timestamp=datetime.datetime.now(),
         )
         occurrence = detection.associate_new_occurrence()

@@ -1,10 +1,11 @@
 import { IdentificationFieldValues } from 'data-services/hooks/identifications/types'
 import { useCreateIdentifications } from 'data-services/hooks/identifications/useCreateIdentifications'
 import { Occurrence } from 'data-services/models/occurrence'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { IconType } from 'design-system/components/icon/icon'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
-import { IdQuickActions } from 'pages/occurrence-details/reject-id/id-quick-actions'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { AlertCircleIcon, CheckIcon, Loader2Icon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
+import { IdQuickActions } from 'pages/occurrence-details/id-quick-actions/id-quick-actions'
+import { SuggestIdPopover } from 'pages/occurrence-details/suggest-id/suggest-id-popover'
 import { useMemo } from 'react'
 import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
@@ -17,8 +18,8 @@ export const OccurrenceActions = ({
 }) => {
   const { userInfo } = useUserInfo()
 
-  const allAgreed = !occurrences.some((occurrences) => {
-    const agreed = userInfo ? occurrences.userAgreed(userInfo.id) : false
+  const allAgreed = !occurrences.some((occurrence) => {
+    const agreed = userInfo ? occurrence.userAgreed(userInfo.id) : false
 
     return !agreed
   })
@@ -32,15 +33,18 @@ export const OccurrenceActions = ({
   }
 
   return (
-    <>
+    <div className="flex items-center justify-center gap-2">
       <Agree allAgreed={allAgreed} occurrences={occurrences} />
+      <SuggestIdPopover
+        occurrenceIds={occurrences.map((occurrence) => occurrence.id)}
+      />
       <IdQuickActions
         occurrenceIds={occurrences.map((occurrence) => occurrence.id)}
-        occurrenceTaxons={occurrences.map(
+        occurrenceTaxa={occurrences.map(
           (occurrence) => occurrence.determinationTaxon
         )}
       />
-    </>
+    </div>
   )
 }
 
@@ -52,6 +56,8 @@ const Agree = ({
   allAgreed: boolean
 }) => {
   const { userInfo } = useUserInfo()
+
+  const occurrenceIds = occurrences.map((occurrence) => occurrence.id)
 
   const agreeParams: IdentificationFieldValues[] = useMemo(
     () =>
@@ -75,27 +81,32 @@ const Agree = ({
   )
 
   const { createIdentifications, isLoading, isSuccess, error } =
-    useCreateIdentifications(agreeParams)
+    useCreateIdentifications(occurrenceIds)
 
   if (isSuccess || allAgreed) {
     return (
-      <Button
-        label={translate(STRING.AGREED)}
-        icon={IconType.RadixCheck}
-        disabled
-      />
+      <Button disabled size="small" variant="outline">
+        <CheckIcon className="w-4 h-4 " />
+        <span>{translate(STRING.CONFIRMED)}</span>
+      </Button>
     )
   }
 
   return (
-    <Tooltip content={error} contentStyle={{ zIndex: 3 }}>
+    <BasicTooltip content={error}>
       <Button
-        icon={error ? IconType.Error : undefined}
-        label={translate(STRING.AGREE)}
-        loading={isLoading}
-        theme={error ? ButtonTheme.Error : undefined}
-        onClick={createIdentifications}
-      />
-    </Tooltip>
+        size="small"
+        variant="outline"
+        onClick={() => createIdentifications(agreeParams)}
+      >
+        {error ? (
+          <AlertCircleIcon className="w-4 h-4 mr-2 text-destructive" />
+        ) : null}
+        <span>{translate(STRING.CONFIRM)}</span>
+        {isLoading ? (
+          <Loader2Icon className="w-4 h-4 ml-2 animate-spin" />
+        ) : null}
+      </Button>
+    </BasicTooltip>
   )
 }

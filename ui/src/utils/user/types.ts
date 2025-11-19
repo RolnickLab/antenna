@@ -11,9 +11,13 @@ export type UserInfo = {
 }
 
 export enum UserPermission {
-  Update = 'update',
   Create = 'create',
   Delete = 'delete',
+  Populate = 'populate', // Custom collection permission
+  Run = 'run', // Custom job permission
+  RunSingleImage = 'run_single_image_ml_job', // Custom job permission
+  Star = 'star',
+  Update = 'update',
 }
 
 export interface UserContextValues {

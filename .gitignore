@@ -50,7 +50,7 @@ coverage.xml
 *.mo
 *.pot
 
-# Django stuff:
+# Django stuff
 staticfiles/
 
 # Sphinx documentation
@@ -273,3 +273,15 @@ ami/media/
 backups/
 data/
 sandbox/
+
+# Other
+flower
+
+# huggingface cache
+huggingface_cache/
+
+# Docker Compose override for local debugging (copy from .example file)
+docker-compose.override.yml
+
+# Temporary files in current work session
+.agents/todo

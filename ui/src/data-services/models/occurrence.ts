@@ -1,4 +1,3 @@
-import _ from 'lodash'
 import { getFormatedDateString } from 'utils/date/getFormatedDateString/getFormatedDateString'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
@@ -28,18 +27,26 @@ export class Occurrence {
     })
   }
 
+  get updatedAt(): string {
+    return getFormatedDateTimeString({
+      date: new Date(this._occurrence.updated_at),
+    })
+  }
+
   get dateLabel(): string {
     return getFormatedDateString({
       date: new Date(this.firstAppearanceTimestamp),
     })
   }
 
-  get deploymentId(): string {
-    return `${this._occurrence.deployment.id}`
+  get deploymentId(): string | undefined {
+    return this._occurrence.deployment
+      ? `${this._occurrence.deployment.id}`
+      : undefined
   }
 
-  get deploymentLabel(): string {
-    return this._occurrence.deployment.name
+  get deploymentLabel(): string | undefined {
+    return this._occurrence.deployment?.name
   }
 
   get determinationId(): string {
@@ -62,18 +69,24 @@ export class Occurrence {
     return determinationPrediction ? `${determinationPrediction.id}` : undefined
   }
 
-  get determinationScore(): number {
+  get determinationScore(): number | undefined {
     const score = this._occurrence.determination_details.score
 
-    if (score === undefined) {
-      return 0
+    if (score || score === 0) {
+      return score
     }
 
-    return _.round(this._occurrence.determination_score, 4)
+    if (!score) {
+      return undefined
+    }
   }
 
-  get determinationScoreLabel(): string {
-    return this.determinationScore.toFixed(2)
+  get determinationScoreLabel(): string | undefined {
+    if (this.determinationScore !== undefined) {
+      return this.determinationScore.toFixed(2)
+    }
+
+    return undefined
   }
 
   get determinationTaxon(): Taxon {
@@ -81,7 +94,7 @@ export class Occurrence {
   }
 
   get determinationVerified(): boolean {
-    return !!this._occurrence.determination_details.identification?.user
+    return !!this._occurrence.determination_details.identification
   }
 
   get determinationVerifiedBy() {
@@ -89,8 +102,11 @@ export class Occurrence {
       this._occurrence.determination_details.identification?.user
 
     return verifiedBy
-      ? { id: `${verifiedBy.id}`, name: verifiedBy.name }
-      : undefined
+      ? {
+          id: `${verifiedBy.id}`,
+          name: verifiedBy.name?.length ? verifiedBy.name : 'Anonymous user',
+        }
+      : { name: 'Unknown user' }
   }
 
   get durationLabel(): string | undefined {
@@ -120,11 +136,19 @@ export class Occurrence {
     return this._occurrence.detections_count
   }
 
-  get sessionId(): string {
+  get sessionId(): string | undefined {
+    if (!this._occurrence.event) {
+      return undefined
+    }
+
     return `${this._occurrence.event.id}`
   }
 
-  get sessionLabel(): string {
+  get sessionLabel(): string | undefined {
+    if (!this._occurrence.event) {
+      return undefined
+    }
+
     return this._occurrence.event.name
   }
 
@@ -139,14 +163,22 @@ export class Occurrence {
     return this._occurrence.user_permissions
   }
 
-  userAgreed(userId: string): boolean {
+  userAgreed(userId: string, taxonId?: string): boolean {
     return this._occurrence.identifications?.some((identification: any) => {
+      if (!identification.user) {
+        return false
+      }
+
       if (identification.withdrawn) {
         return false
       }
 
       const identificationTaxonId = `${identification.taxon.id}`
       const identificationUserId = `${identification.user.id}`
+
+      if (taxonId && taxonId !== identificationTaxonId) {
+        return false
+      }
 
       return (
         identificationTaxonId === this.determinationTaxon.id &&

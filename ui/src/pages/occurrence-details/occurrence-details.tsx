@@ -2,17 +2,21 @@ import {
   BlueprintCollection,
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
-import {
-  TaxonInfo,
-  TaxonInfoSize,
-} from 'components/taxon/taxon-info/taxon-info'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
-import { Button } from 'design-system/components/button/button'
-import { IconType } from 'design-system/components/icon/icon'
-import { IdentificationStatus } from 'design-system/components/identification/identification-status/identification-status'
-import { InfoBlock } from 'design-system/components/info-block/info-block'
+import {
+  InfoBlockField,
+  InfoBlockFieldValue,
+} from 'design-system/components/info-block/info-block'
 import * as Tabs from 'design-system/components/tabs/tabs'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { SearchIcon } from 'lucide-react'
+import {
+  Box,
+  Button,
+  CodeBlock,
+  IdentificationScore,
+  TaxonDetails,
+} from 'nova-ui-kit'
 import { useMemo, useRef, useState } from 'react'
 import { Helmet } from 'react-helmet-async'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
@@ -23,37 +27,38 @@ import { UserPermission } from 'utils/user/types'
 import { useUser } from 'utils/user/userContext'
 import { useUserInfo } from 'utils/user/userInfoContext'
 import { Agree } from './agree/agree'
-import { IdentificationCard } from './identification-card/identification-card'
+import { IdQuickActions } from './id-quick-actions/id-quick-actions'
+import { HumanIdentification } from './identification-card/human-identification'
+import { MachinePrediction } from './identification-card/machine-prediction'
 import styles from './occurrence-details.module.scss'
-import { IdQuickActions } from './reject-id/id-quick-actions'
+import { StatusLabel } from './status-label/status-label'
 import { SuggestId } from './suggest-id/suggest-id'
 
 export const TABS = {
   FIELDS: 'fields',
   IDENTIFICATION: 'identification',
+  RAW: 'raw',
 }
 
 export const OccurrenceDetails = ({
   occurrence,
+  selectedTab,
+  setSelectedTab,
 }: {
   occurrence: Occurrence
+  selectedTab?: string
+  setSelectedTab: (selectedTab?: string) => void
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
-  const suggestIdInputRef = useRef<HTMLInputElement>(null)
   const {
     user: { loggedIn },
   } = useUser()
   const { userInfo } = useUserInfo()
-  const { state } = useLocation()
+  const { pathname } = useLocation()
   const { projectId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
-  const [selectedTab, setSelectedTab] = useState<string | undefined>(
-    state?.defaultTab ?? TABS.FIELDS
-  )
-  const [suggestIdOpen, setSuggestIdOpen] = useState<boolean>(
-    state?.suggestIdOpen ?? false
-  )
+  const [suggestIdOpen, setSuggestIdOpen] = useState(false)
   const canUpdate = occurrence.userPermissions.includes(UserPermission.Update)
 
   const blueprintItems = useMemo(
@@ -66,16 +71,22 @@ export const OccurrenceDetails = ({
             )
             .map((item) => ({
               ...item,
-              to: getAppRoute({
-                to: APP_ROUTES.SESSION_DETAILS({
-                  projectId: projectId as string,
-                  sessionId: occurrence.sessionId,
-                }),
-                filters: {
-                  occurrence: occurrence.id,
-                  capture: item.captureId,
-                },
-              }),
+              to:
+                !occurrence.sessionId ||
+                pathname.includes(
+                  APP_ROUTES.SESSIONS({ projectId: projectId as string })
+                )
+                  ? undefined
+                  : getAppRoute({
+                      to: APP_ROUTES.SESSION_DETAILS({
+                        projectId: projectId as string,
+                        sessionId: occurrence.sessionId,
+                      }),
+                      filters: {
+                        occurrence: occurrence.id,
+                        capture: item.captureId,
+                      },
+                    }),
             }))
         : [],
     [occurrence]
@@ -85,18 +96,29 @@ export const OccurrenceDetails = ({
     {
       label: translate(STRING.FIELD_LABEL_DEPLOYMENT),
       value: occurrence.deploymentLabel,
-      to: APP_ROUTES.DEPLOYMENTS({ projectId: projectId as string }),
+      to: occurrence.deploymentId
+        ? APP_ROUTES.DEPLOYMENT_DETAILS({
+            projectId: projectId as string,
+            deploymentId: occurrence.deploymentId,
+          })
+        : undefined,
     },
     {
       label: translate(STRING.FIELD_LABEL_SESSION),
       value: occurrence.sessionLabel,
-      to: getAppRoute({
-        to: APP_ROUTES.SESSION_DETAILS({
-          projectId: projectId as string,
-          sessionId: occurrence.sessionId,
-        }),
-        filters: { occurrence: occurrence.id },
-      }),
+      to:
+        !occurrence.sessionId ||
+        pathname.includes(
+          APP_ROUTES.SESSIONS({ projectId: projectId as string })
+        )
+          ? undefined
+          : getAppRoute({
+              to: APP_ROUTES.SESSION_DETAILS({
+                projectId: projectId as string,
+                sessionId: occurrence.sessionId,
+              }),
+              filters: { occurrence: occurrence.id },
+            }),
     },
     {
       label: translate(STRING.FIELD_LABEL_DATE),
@@ -106,10 +128,6 @@ export const OccurrenceDetails = ({
       label: translate(STRING.FIELD_LABEL_TIME),
       value: occurrence.timeLabel,
     },
-    {
-      label: translate(STRING.FIELD_LABEL_DURATION),
-      value: occurrence.durationLabel,
-    },
   ]
 
   return (
@@ -118,65 +136,71 @@ export const OccurrenceDetails = ({
         <meta name="og:image" content={occurrence.images[0]?.src} />
       </Helmet>
       <div className={styles.header}>
-        <TaxonInfo
-          taxon={occurrence.determinationTaxon}
-          size={TaxonInfoSize.Large}
-          getLink={(id: string) =>
-            getAppRoute({
-              to: APP_ROUTES.TAXON_DETAILS({
-                projectId: projectId as string,
-                taxonId: id,
-              }),
-            })
+        <TaxonDetails
+          onTaxonClick={(id) =>
+            navigate(
+              getAppRoute({
+                to: APP_ROUTES.TAXON_DETAILS({
+                  projectId: projectId as string,
+                  taxonId: id,
+                }),
+              })
+            )
           }
+          size="lg"
+          taxon={occurrence.determinationTaxon}
         />
         <div className={styles.taxonActions}>
-          <Tooltip
-            content={
-              occurrence.determinationVerified
-                ? translate(STRING.VERIFIED_BY, {
-                    name: occurrence.determinationVerifiedBy?.name,
-                  })
-                : translate(STRING.MACHINE_PREDICTION_SCORE, {
-                    score: occurrence.determinationScore,
-                  })
-            }
-          >
-            <IdentificationStatus
-              isVerified={occurrence.determinationVerified}
-              score={occurrence.determinationScore}
-            />
-          </Tooltip>
+          {occurrence.determinationScore !== undefined ? (
+            <BasicTooltip
+              content={
+                occurrence.determinationVerified
+                  ? translate(STRING.VERIFIED_BY, {
+                      name: occurrence.determinationVerifiedBy?.name,
+                    })
+                  : translate(STRING.MACHINE_PREDICTION_SCORE, {
+                      score: `${occurrence.determinationScore}`,
+                    })
+              }
+            >
+              <IdentificationScore
+                confirmed={occurrence.determinationVerified}
+                confidenceScore={occurrence.determinationScore}
+              />
+            </BasicTooltip>
+          ) : null}
           {canUpdate && (
             <>
               <Agree
-                agreed={userInfo ? occurrence.userAgreed(userInfo?.id) : false}
+                agreed={userInfo ? occurrence.userAgreed(userInfo.id) : false}
                 agreeWith={{
                   identificationId: occurrence.determinationIdentificationId,
                   predictionId: occurrence.determinationPredictionId,
                 }}
+                applied
                 occurrenceId={occurrence.id}
                 taxonId={occurrence.determinationTaxon.id}
               />
               <Button
-                label={translate(STRING.SUGGEST_ID)}
-                icon={IconType.RadixSearch}
                 onClick={() => {
                   setSelectedTab(TABS.IDENTIFICATION)
                   setSuggestIdOpen(true)
-                  suggestIdInputRef?.current?.focus()
                 }}
-              />
+                size="small"
+                variant="outline"
+              >
+                <SearchIcon className="w-4 h-4" />
+                <span>{translate(STRING.SUGGEST_ID)}</span>
+              </Button>
               <IdQuickActions
                 containerRef={containerRef}
                 occurrenceIds={[occurrence.id]}
-                occurrenceTaxons={[occurrence.determinationTaxon]}
+                occurrenceTaxa={[occurrence.determinationTaxon]}
               />
             </>
           )}
           {!canUpdate && !loggedIn && (
             <Button
-              label="Login to suggest ID"
               onClick={() =>
                 navigate(APP_ROUTES.LOGIN, {
                   state: {
@@ -187,7 +211,11 @@ export const OccurrenceDetails = ({
                   },
                 })
               }
-            />
+              size="small"
+              variant="outline"
+            >
+              Login to suggest ID
+            </Button>
           )}
         </div>
       </div>
@@ -205,23 +233,34 @@ export const OccurrenceDetails = ({
                     value={TABS.IDENTIFICATION}
                     label={translate(STRING.TAB_ITEM_IDENTIFICATION)}
                   />
+                  <Tabs.Trigger value={TABS.RAW} label="Raw" />
                 </Tabs.List>
                 <Tabs.Content value={TABS.FIELDS}>
-                  <InfoBlock fields={fields} />
+                  <div className="grid gap-6">
+                    {fields.map((field, index) => (
+                      <InfoBlockField key={index} label={field.label}>
+                        <InfoBlockFieldValue
+                          value={field.value}
+                          to={field.to}
+                        />
+                      </InfoBlockField>
+                    ))}
+                  </div>
                 </Tabs.Content>
                 <Tabs.Content value={TABS.IDENTIFICATION}>
                   <div className={styles.identifications}>
                     {suggestIdOpen && (
-                      <SuggestId
-                        containerRef={containerRef}
-                        inputRef={suggestIdInputRef}
-                        occurrenceId={occurrence.id}
-                        onCancel={() => setSuggestIdOpen(false)}
-                      />
+                      <Box className="p-0 relative">
+                        <StatusLabel label={translate(STRING.NEW_ID)} />
+                        <SuggestId
+                          occurrenceIds={[occurrence.id]}
+                          onCancel={() => setSuggestIdOpen(false)}
+                        />
+                      </Box>
                     )}
 
                     {occurrence.humanIdentifications.map((i) => (
-                      <IdentificationCard
+                      <HumanIdentification
                         key={i.id}
                         identification={i}
                         occurrence={occurrence}
@@ -231,7 +270,7 @@ export const OccurrenceDetails = ({
                     ))}
 
                     {occurrence.machinePredictions.map((p) => (
-                      <IdentificationCard
+                      <MachinePrediction
                         key={p.id}
                         identification={p}
                         occurrence={occurrence}
@@ -240,13 +279,27 @@ export const OccurrenceDetails = ({
                     ))}
                   </div>
                 </Tabs.Content>
+                <Tabs.Content value={TABS.RAW}>
+                  <div className="flex flex-col gap-4">
+                    <CodeBlock
+                      className="flex items-center"
+                      externalLink={occurrence.endpointURL}
+                      snippet={`GET ${occurrence.endpointURL}`}
+                    />
+                    <CodeBlock snippet={occurrence.rawData} />
+                  </div>
+                </Tabs.Content>
               </Tabs.Root>
             </div>
           </div>
         </div>
         <div className={styles.blueprintWrapper}>
           <div className={styles.blueprintContainer}>
-            <BlueprintCollection items={blueprintItems} />
+            <BlueprintCollection showLicenseInfo={blueprintItems.length > 0}>
+              {blueprintItems.map((item) => (
+                <BlueprintItem key={item.id} item={item} />
+              ))}
+            </BlueprintCollection>
           </div>
         </div>
       </div>

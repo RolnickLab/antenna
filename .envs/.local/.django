@@ -2,6 +2,7 @@
 DJANGO_SETTINGS_MODULE="config.settings.local"
 USE_DOCKER=yes
 DJANGO_DEBUG=True
+DJANGO_LOG_LEVEL=INFO
 IPYTHONDIR=/app/.ipython
 
 # Default superuser for local development
@@ -14,6 +15,18 @@ REDIS_URL=redis://redis:6379/0
 # Celery / Flower
 CELERY_FLOWER_USER=QSocnxapfMvzLqJXSsXtnEZqRkBtsmKT
 CELERY_FLOWER_PASSWORD=BEQgmCtgyrFieKNoGTsux9YIye0I7P5Q7vEgfJD2C4jxmtHDetFaE2jhS7K7rxaf
+
+# RabbitMQ
+CELERY_BROKER_URL=amqp://rabbituser:rabbitpass@rabbitmq:5672/
+CELERY_RESULT_BACKEND=rpc:// # Use RabbitMQ for results backend
+RABBITMQ_DEFAULT_USER=rabbituser
+RABBITMQ_DEFAULT_PASS=rabbitpass
+
+# Attempting to keep Flower from showing workers as offline
+# FLOWER_BROKER_API=REDIS_URL
+FLOWER_PERSISTENT=True
+FLOWER_UPDATE_INTERVAL=10000  # 10 seconds in milliseconds
+FLOWER_HEARTBEAT_INTERVAL=5000  # Default
 
 # This is the hostname for the frontend server
 EXTERNAL_HOSTNAME=localhost:4000
@@ -30,3 +43,8 @@ MINIO_DEFAULT_BUCKET=ami
 MINIO_STORAGE_USE_HTTPS=False
 MINIO_TEST_BUCKET=ami-test
 MINIO_BROWSER_REDIRECT_URL=http://minio:9001
+
+# Default processing service (local)
+DEFAULT_PROCESSING_SERVICE_NAME=Local Processing Service
+DEFAULT_PROCESSING_SERVICE_ENDPOINT=http://ml_backend:2000
+# DEFAULT_PIPELINES_ENABLED=random,constant  # When set to None, all pipelines will be enabled.

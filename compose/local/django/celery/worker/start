@@ -1,7 +1,27 @@
 #!/bin/bash
 
 set -o errexit
+set -o pipefail
 set -o nounset
 
+# Local development with auto-reload and optional debugging
+#
+# DEBUGGER=1 - Enable debugpy for remote debugging on port 5679
+#
+# Worker protections (prevent memory leaks from long-running workers):
+# --max-tasks-per-child=100 - Restart worker process after 100 tasks
+# --max-memory-per-child=1048576 - Restart if worker process exceeds 1 GiB (in KB)
+#
+# With prefork pool (default), each CPU gets a worker process.
+# Example: 8 CPUs × 1 GiB = 8 GiB max total worker memory
 
-exec watchfiles --filter python celery.__main__.main --args '-A config.celery_app worker -l INFO'
+MAX_TASKS_PER_CHILD=100
+MAX_MEMORY_PER_CHILD=1048576  # 1 GiB in KB
+
+# Launch VS Code debug server if DEBUGGER environment variable is set to 1
+# Note that auto reloading is disabled when debugging, manual restart required for code changes.
+if [ "${DEBUGGER:-0}" = "1" ]; then
+    exec python -Xfrozen_modules=off -m debugpy --listen 0.0.0.0:5679 -m celery -A config.celery_app worker --queues=antenna -l INFO --max-tasks-per-child=$MAX_TASKS_PER_CHILD --max-memory-per-child=$MAX_MEMORY_PER_CHILD
+else
+    exec watchfiles --filter python celery.__main__.main --args '-A config.celery_app worker --queues=antenna -l INFO --max-tasks-per-child='$MAX_TASKS_PER_CHILD' --max-memory-per-child='$MAX_MEMORY_PER_CHILD
+fi

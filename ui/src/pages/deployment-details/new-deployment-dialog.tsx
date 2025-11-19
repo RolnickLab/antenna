@@ -1,8 +1,8 @@
 import { useCreateDeployment } from 'data-services/hooks/deployments/useCreateDeployment'
 import { DeploymentDetails } from 'data-services/models/deployment-details'
-import { Button } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
-import { IconType } from 'design-system/components/icon/icon'
+import { PlusIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
@@ -24,7 +24,10 @@ export const NewDeploymentDialog = () => {
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
       <Dialog.Trigger>
-        <Button label={label} icon={IconType.Plus} />
+        <Button size="small" variant="outline">
+          <PlusIcon className="w-4 h-4" />
+          <span>{label}</span>
+        </Button>
       </Dialog.Trigger>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
         <DeploymentDetailsForm
@@ -34,9 +37,11 @@ export const NewDeploymentDialog = () => {
           title={label}
           onCancelClick={() => setIsOpen(false)}
           onSubmit={async (data) => {
-            await createDeployment({ ...data, projectId })
-            if (!error) {
+            try {
+              await createDeployment({ ...data, projectId })
               setIsOpen(false)
+            } catch {
+              // Error handled in hook
             }
           }}
         />

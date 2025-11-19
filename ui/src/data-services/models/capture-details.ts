@@ -1,3 +1,4 @@
+import { UserPermission } from 'utils/user/types'
 import { Capture, ServerCapture } from './capture'
 import { Job } from './job'
 
@@ -16,6 +17,19 @@ export class CaptureDetails extends Capture {
 
   get currentIndex(): number | undefined {
     return this._capture.event_current_capture_index
+  }
+
+  get currentJob(): Job | undefined {
+    if (!this._jobs.length) {
+      return
+    }
+
+    return this._jobs.sort((j1: Job, j2: Job) => {
+      const date1 = new Date(j1.updatedAt as string)
+      const date2 = new Date(j2.updatedAt as string)
+
+      return date2.getTime() - date1.getTime()
+    })[0]
   }
 
   get hasJobInProgress(): boolean {
@@ -55,5 +69,9 @@ export class CaptureDetails extends Capture {
 
   get url(): string {
     return this._capture.url
+  }
+
+  get userPermissions(): UserPermission[] {
+    return this._capture.user_permissions
   }
 }

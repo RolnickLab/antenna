@@ -21,14 +21,14 @@ S3_TEST_CONFIG = s3.S3Config(
 )
 
 
-def create_storage_source(project: Project, name: str) -> S3StorageSource:
+def create_storage_source(project: Project, name: str, prefix: str = S3_TEST_CONFIG.prefix) -> S3StorageSource:
     s3.create_bucket(config=S3_TEST_CONFIG, bucket_name=S3_TEST_CONFIG.bucket_name)
     data_source, _created = S3StorageSource.objects.get_or_create(
         project=project,
         name=name,
         defaults=dict(
             bucket=S3_TEST_CONFIG.bucket_name,
-            prefix=S3_TEST_CONFIG.prefix,
+            prefix=prefix,
             endpoint_url=S3_TEST_CONFIG.endpoint_url,
             access_key=S3_TEST_CONFIG.access_key_id,
             secret_key=S3_TEST_CONFIG.secret_access_key,
@@ -42,7 +42,7 @@ def populate_bucket(
     config: s3.S3Config,
     subdir: str = "deployment_1",
     num_nights: int = 2,
-    images_per_day: int = 6,
+    images_per_day: int = 3,
     minutes_interval: int = 45,
     minutes_interval_variation: int = 10,
     skip_existing: bool = True,

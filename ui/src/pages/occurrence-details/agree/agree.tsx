@@ -1,7 +1,7 @@
 import { useCreateIdentification } from 'data-services/hooks/identifications/useCreateIdentification'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { IconType } from 'design-system/components/icon/icon'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { AlertCircleIcon, CheckIcon, Loader2Icon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { useEffect } from 'react'
 import { STRING, translate } from 'utils/language'
 
@@ -11,7 +11,8 @@ interface AgreeProps {
     identificationId?: string
     predictionId?: string
   }
-  buttonTheme?: ButtonTheme
+  applied?: boolean
+  compact?: boolean
   occurrenceId: string
   taxonId: string
 }
@@ -19,7 +20,8 @@ interface AgreeProps {
 export const Agree = ({
   agreed,
   agreeWith,
-  buttonTheme,
+  applied,
+  compact,
   occurrenceId,
   taxonId,
 }: AgreeProps) => {
@@ -32,22 +34,29 @@ export const Agree = ({
 
   if (isSuccess || agreed) {
     return (
-      <Button
-        label={translate(STRING.AGREED)}
-        icon={IconType.RadixCheck}
-        theme={buttonTheme}
-        disabled
-      />
+      <Button disabled size={compact ? 'icon' : 'small'} variant="outline">
+        <CheckIcon className="w-4 h-4" />
+        {!compact ? <span>{translate(STRING.CONFIRMED)}</span> : null}
+      </Button>
     )
   }
 
+  const label = applied ? translate(STRING.CONFIRM) : translate(STRING.APPLY_ID)
+  const tooltip = (() => {
+    if (error) {
+      return error
+    }
+
+    if (compact) {
+      return label
+    }
+  })()
+
   return (
-    <Tooltip content={error}>
+    <BasicTooltip asChild content={tooltip}>
       <Button
-        icon={error ? IconType.Error : undefined}
-        label={translate(STRING.AGREE)}
-        loading={isLoading}
-        theme={error ? ButtonTheme.Error : buttonTheme}
+        size={compact ? 'icon' : 'small'}
+        variant="outline"
         onClick={() =>
           createIdentification({
             agreeWith,
@@ -55,7 +64,16 @@ export const Agree = ({
             taxonId,
           })
         }
-      />
-    </Tooltip>
+      >
+        {isLoading ? (
+          <Loader2Icon className="w-4 h-4 animate-spin" />
+        ) : error ? (
+          <AlertCircleIcon className="w-4 h-4 text-destructive" />
+        ) : (
+          <CheckIcon className="w-4 h-4" />
+        )}
+        {!compact ? <span>{label}</span> : null}
+      </Button>
+    </BasicTooltip>
   )
 }

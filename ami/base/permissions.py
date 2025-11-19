@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import logging
 
+from django.contrib.auth.models import AbstractBaseUser, AnonymousUser, User
+from guardian.shortcuts import get_perms
 from rest_framework import permissions
 
-if TYPE_CHECKING:
-    from django.contrib.auth.models import User
+from ami.main.models import BaseModel
+
+logger = logging.getLogger(__name__)
 
 
 def is_active_staff(user: User) -> bool:
@@ -28,32 +31,59 @@ class IsActiveStaffOrReadOnly(permissions.BasePermission):
         )
 
 
-def add_object_level_permissions(user: User | None, response_data: dict) -> dict:
-    """
-    Add placeholder permissions to detail views and nested objects.
+def filter_permissions(permissions, model_name):
+    """Filter and extract only the action part of `action_modelname`"""
 
-    If the user is logged in, they can edit any object type.
-    If the user is a superuser, they can delete any object type.
+    filtered_permissions = {
+        perm.split("_")[0]  # Extract "action" from "action_modelname"
+        for perm in permissions
+        if perm.endswith(f"_{model_name}")  # Ensure it matches the model
+    }
+    return filtered_permissions
 
-    @TODO @IMPORTANT At least check if they are the owner of the project.
+
+def add_object_level_permissions(
+    user: AbstractBaseUser | AnonymousUser, instance: BaseModel, response_data: dict
+) -> dict:
     """
+    Adds object-level permissions to the response data for a given user and instance.
+    This function updates the `response_data` dictionary with the permissions that the
+    specified `user` has on the given `instance`'s project.
+    """
+
     permissions = response_data.get("user_permissions", set())
-    if user and is_active_staff(user):
-        permissions.update(["update"])
-        if user.is_superuser:
-            permissions.update(["delete"])
-    response_data["user_permissions"] = permissions
+    if isinstance(instance, BaseModel):
+        permissions.update(instance.get_user_object_permissions(user))
+    response_data["user_permissions"] = list(permissions)
     return response_data
 
 
-def add_collection_level_permissions(user: User | None, response_data: dict) -> dict:
-    """
-    Add placeholder permissions to list view responses.
+def add_collection_level_permissions(user: User | None, response_data: dict, model, project) -> dict:
+    """Add collection-level permissions to the response data for a list view.
 
-    If the user is logged in, they can create new objects of any type.
+    This function modifies the `response_data` dictionary to include user permissions
+    for creating new objects of the specified model type. If the user is logged in and
+    is an active staff member, or if the user has create_model permission, the
+    "create" permission is added to the `user_permissions` set in the `response_data`.
     """
+
+    logger.debug(f"add_collection_level_permissions model {model.__name__}, {type(model)} ")
     permissions = response_data.get("user_permissions", set())
-    if user and is_active_staff(user):
+    if user and user.is_superuser:
         permissions.add("create")
-    response_data["user_permissions"] = permissions
+    if user and project and f"create_{model.__name__.lower()}" in get_perms(user, project):
+        permissions.add("create")
+    response_data["user_permissions"] = list(permissions)
     return response_data
+
+
+class ObjectPermission(permissions.BasePermission):
+    """
+    Generic permission class that delegates to the model's `check_permission(user, action)` method.
+    """
+
+    def has_permission(self, request, view):
+        return True  # Always allow — object-level handles actual checks
+
+    def has_object_permission(self, request, view, obj: BaseModel):
+        return obj.check_permission(request.user, view.action)

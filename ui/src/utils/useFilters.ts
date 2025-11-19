@@ -1,5 +1,6 @@
 import { isBefore, isValid } from 'date-fns'
 import { useSearchParams } from 'react-router-dom'
+import { SEARCH_PARAM_KEY_PAGE } from './usePagination'
 
 export const AVAILABLE_FILTERS: {
   label: string
@@ -14,16 +15,16 @@ export const AVAILABLE_FILTERS: {
     field: 'algorithm',
   },
   {
-    label: 'Score threshold',
-    field: 'classification_threshold',
-  },
-  {
     label: 'Collection',
     field: 'collection', // This is for viewing Occurrences by collection
   },
   {
     label: 'Collection',
     field: 'source_image_collection', // This is for viewing Jobs by collection. @TODO: Can we update this key to "collection" to streamline?
+  },
+  {
+    label: 'Collection',
+    field: 'collections', // This is for viewing Captures by collection @TODO: Can we update this key to "collection" to streamline?
   },
   {
     label: 'Station',
@@ -84,8 +85,24 @@ export const AVAILABLE_FILTERS: {
     field: 'not_algorithm',
   },
   {
+    label: 'Include tag',
+    field: 'tag_id',
+  },
+  {
+    label: 'Exclude tag',
+    field: 'not_tag_id',
+  },
+  {
     label: 'Taxon',
     field: 'taxon',
+  },
+  {
+    label: 'Include taxa in list',
+    field: 'taxa_list_id',
+  },
+  {
+    label: 'Exclude taxa from list',
+    field: 'not_taxa_list_id',
   },
   {
     label: 'Source image',
@@ -106,6 +123,14 @@ export const AVAILABLE_FILTERS: {
   {
     label: 'Verified by',
     field: 'verified_by_me',
+  },
+  {
+    label: 'Show unobserved taxa',
+    field: 'include_unobserved',
+  },
+  {
+    label: 'Default filters',
+    field: 'apply_defaults',
   },
 ]
 
@@ -137,6 +162,12 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   const addFilter = (field: string, value: string) => {
     if (AVAILABLE_FILTERS.some((filter) => filter.field === field)) {
       searchParams.set(field, value)
+
+      // Reset page param if set, when filters are updated
+      if (searchParams.has(SEARCH_PARAM_KEY_PAGE)) {
+        searchParams.delete(SEARCH_PARAM_KEY_PAGE)
+      }
+
       setSearchParams(searchParams)
     }
   }
@@ -144,6 +175,12 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   const clearFilter = (field: string) => {
     if (AVAILABLE_FILTERS.some((filter) => filter.field === field)) {
       searchParams.delete(field)
+
+      // Reset page param if set, when filters are updated
+      if (searchParams.has(SEARCH_PARAM_KEY_PAGE)) {
+        searchParams.delete(SEARCH_PARAM_KEY_PAGE)
+      }
+
       setSearchParams(searchParams)
     }
   }

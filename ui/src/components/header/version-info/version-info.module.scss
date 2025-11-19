@@ -9,24 +9,8 @@
   gap: 16px;
 }
 
-.badge {
-  padding: 6px 16px 4px;
-  border-radius: 4px;
-  background-color: $color-success-100;
-  color: $color-success-700;
-  text-align: center;
-  @include label();
-}
-
 .version {
   @include paragraph-x-small();
   color: $color-neutral-700;
   white-space: nowrap;
-}
-
-.deprecated {
-  .badge {
-    background-color: $color-destructive-100;
-    color: $color-destructive-600;
-  }
 }

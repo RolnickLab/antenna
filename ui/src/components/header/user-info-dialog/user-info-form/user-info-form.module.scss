@@ -4,6 +4,7 @@
 .miniForm {
   border-radius: 8px;
   border: 1px solid $color-neutral-100;
+  overflow: hidden;
 }
 
 .miniFormContent {
@@ -16,6 +17,6 @@
 .miniFormActions {
   display: flex;
   justify-content: flex-end;
-  gap: 16px;
+  gap: 8px;
   padding-top: 16px;
 }

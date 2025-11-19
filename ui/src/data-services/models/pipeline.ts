@@ -1,8 +1,17 @@
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { Algorithm, ServerAlgorithm } from './algorithm'
+import { ProcessingService } from './processing-service'
 
 export type ServerPipeline = any // TODO: Update this type
 
+export const PIPELINE_ENABLED_CODES = ['ENABLED', 'DISABLED'] as const
+
+export type PipelineEnabledCode = (typeof PIPELINE_ENABLED_CODES)[number]
+
+export enum PipelineEnabledType {
+  Enabled,
+  Disabled,
+}
 export class Pipeline {
   protected readonly _pipeline: ServerPipeline
   protected readonly _algorithms: Algorithm[] = []
@@ -66,7 +75,11 @@ export class Pipeline {
     })
   }
 
-  get versionLabel(): string {
+  get versionLabel(): string | undefined {
+    if (this._pipeline.version == undefined) {
+      return undefined
+    }
+
     return this._pipeline.version_name?.length
       ? `${this._pipeline.version} "${this._pipeline.version_name?.length}"`
       : `${this._pipeline.version}`
@@ -80,5 +93,86 @@ export class Pipeline {
     return getFormatedDateTimeString({
       date: new Date(this._pipeline.updated_at),
     })
+  }
+
+  get currentProcessingService(): {
+    online: boolean
+    service?: ProcessingService
+  } {
+    const processingServices = this._pipeline.processing_services.map(
+      (service: any) => new ProcessingService(service)
+    )
+    for (const processingService of processingServices) {
+      if (processingService.lastCheckedLive) {
+        return { online: true, service: processingService }
+      }
+    }
+
+    return { online: false, service: processingServices[0] }
+  }
+
+  get processingServicesOnline(): string {
+    const processingServices = this._pipeline.processing_services
+    let total_online = 0
+    for (const processingService of processingServices) {
+      if (processingService.last_checked_live) {
+        total_online += 1
+      }
+    }
+
+    return total_online + '/' + processingServices.length
+  }
+
+  get processingServicesOnlineLastChecked(): string | undefined {
+    const processingServices = this._pipeline.processing_services
+
+    if (!processingServices.length) {
+      return undefined
+    }
+
+    const last_checked_times = []
+    for (const processingService of processingServices) {
+      last_checked_times.push(
+        new Date(processingService.last_checked).getTime()
+      )
+    }
+
+    return getFormatedDateTimeString({
+      date: new Date(Math.max(...last_checked_times)),
+    })
+  }
+
+  get enabled(): {
+    code: PipelineEnabledCode
+    label: string
+    type: PipelineEnabledType
+    color: string
+  } {
+    const status_code = this._pipeline.project_pipeline_configs[0].enabled
+      ? 'ENABLED'
+      : 'DISABLED'
+    return Pipeline.getEnabledInfo(status_code)
+  }
+
+  static getEnabledInfo(code: PipelineEnabledCode) {
+    const label =
+      String(code).charAt(0).toUpperCase() + String(code).toLowerCase().slice(1)
+
+    const type = {
+      DISABLED: PipelineEnabledType.Disabled,
+      ENABLED: PipelineEnabledType.Enabled,
+    }[code]
+
+    const color = {
+      [PipelineEnabledType.Disabled]: '#ef4444', // color-destructive-500,
+      [PipelineEnabledType.Enabled]: '#09af8a', // color-success-500
+    }[type]
+
+    return {
+      code,
+      label,
+      type,
+      color,
+    }
   }
 }

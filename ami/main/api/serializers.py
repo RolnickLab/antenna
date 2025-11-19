@@ -1,16 +1,19 @@
 import datetime
 
 from django.db.models import QuerySet
+from guardian.shortcuts import get_perms
 from rest_framework import serializers
+from rest_framework.request import Request
 
-from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, get_current_user, reverse_with_params
+from ami.base.fields import DateStringField
+from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, reverse_with_params
+from ami.base.views import get_active_project
 from ami.jobs.models import Job
-from ami.main.models import create_source_image_from_upload
-from ami.ml.models import Algorithm
-from ami.ml.serializers import AlgorithmSerializer
+from ami.main.models import Tag
+from ami.ml.models import Algorithm, Pipeline
+from ami.ml.serializers import AlgorithmSerializer, PipelineNestedSerializer
 from ami.users.models import User
-from ami.utils.dates import get_image_timestamp_from_filename
-from ami.utils.requests import get_active_classification_threshold
+from ami.users.roles import ProjectManager
 
 from ..models import (
     Classification,
@@ -22,11 +25,13 @@ from ..models import (
     Occurrence,
     Page,
     Project,
+    ProjectSettingsMixin,
     S3StorageSource,
     Site,
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
+    TaxaList,
     Taxon,
 )
 
@@ -127,12 +132,40 @@ class StorageSourceNestedSerializer(DefaultSerializer):
         ]
 
 
+class JobTypeSerializer(serializers.Serializer):
+    """
+    Serializer for the JobType json field in the Job model.
+
+    This is duplicated from ami.jobs.serializers to avoid circular imports.
+    but it is extremely simple.
+    """
+
+    name = serializers.CharField(read_only=True)
+    key = serializers.SlugField(read_only=True)
+
+
+class JobStatusSerializer(DefaultSerializer):
+    job_type = JobTypeSerializer(read_only=True)
+
+    class Meta:
+        model = Job
+        fields = [
+            "id",
+            "details",
+            "status",
+            "job_type",
+            "created_at",
+            "updated_at",
+        ]
+
+
 class DeploymentListSerializer(DefaultSerializer):
     events = serializers.SerializerMethodField()
     occurrences = serializers.SerializerMethodField()
     project = ProjectNestedSerializer(read_only=True)
     device = DeviceNestedSerializer(read_only=True)
     research_site = SiteNestedSerializer(read_only=True)
+    jobs = JobStatusSerializer(many=True, read_only=True)
 
     class Meta:
         model = Deployment
@@ -156,6 +189,7 @@ class DeploymentListSerializer(DefaultSerializer):
             "last_date",
             "device",
             "research_site",
+            "jobs",
         ]
 
     def get_events(self, obj):
@@ -221,6 +255,22 @@ class DeploymentNestedSerializerWithLocationAndCounts(DefaultSerializer):
         ]
 
 
+class TaxonNoParentNestedSerializer(DefaultSerializer):
+    class Meta:
+        model = Taxon
+        fields = [
+            "id",
+            "name",
+            "rank",
+            "details",
+            "gbif_taxon_key",
+            "fieldguide_id",
+            "inat_taxon_id",
+            "cover_image_url",
+            "cover_image_credit",
+        ]
+
+
 class ProjectListSerializer(DefaultSerializer):
     deployments_count = serializers.IntegerField(read_only=True)
 
@@ -235,17 +285,70 @@ class ProjectListSerializer(DefaultSerializer):
             "created_at",
             "updated_at",
             "image",
+            "draft",
+        ]
+
+
+class ProjectSettingsSerializer(DefaultSerializer):
+    default_processing_pipeline = PipelineNestedSerializer(read_only=True)
+    default_processing_pipeline_id = serializers.PrimaryKeyRelatedField(
+        queryset=Pipeline.objects.all(),
+        source="default_processing_pipeline",
+        write_only=True,
+        required=False,
+        allow_null=True,
+    )
+    default_filters_include_taxa = TaxonNoParentNestedSerializer(read_only=True, many=True)
+    default_filters_include_taxa_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Taxon.objects.all(),
+        many=True,
+        source="default_filters_include_taxa",
+        write_only=True,
+        required=False,
+    )
+    default_filters_exclude_taxa = TaxonNoParentNestedSerializer(read_only=True, many=True)
+    default_filters_exclude_taxa_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Taxon.objects.all(),
+        many=True,
+        source="default_filters_exclude_taxa",
+        write_only=True,
+        required=False,
+    )
+
+    class Meta:
+        model = Project
+        fields = ProjectSettingsMixin.get_settings_field_names() + [
+            "default_processing_pipeline_id",
+            "default_filters_include_taxa_ids",
+            "default_filters_exclude_taxa_ids",
         ]
 
 
 class ProjectSerializer(DefaultSerializer):
     deployments = DeploymentNestedSerializerWithLocationAndCounts(many=True, read_only=True)
+    feature_flags = serializers.SerializerMethodField()
+    owner = UserNestedSerializer(read_only=True)
+    settings = ProjectSettingsSerializer(source="*", required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Remove summary_data field if with_charts is False
+        if not self.context.get("with_charts", True):
+            self.fields.pop("summary_data", None)
+
+    def get_feature_flags(self, obj):
+        if obj.feature_flags:
+            return obj.feature_flags.dict()
+        return {}
 
     class Meta:
         model = Project
         fields = ProjectListSerializer.Meta.fields + [
             "deployments",
-            "summary_data",  # @TODO move to a 2nd request, it's too slow
+            "summary_data",  # Conditionally included based on with_charts query param
+            "owner",
+            "feature_flags",
+            "settings",
         ]
 
 
@@ -287,6 +390,8 @@ class EventListSerializer(DefaultSerializer):
             "taxa_count",
             "captures",
             "example_captures",
+            "created_at",
+            "updated_at",
         ]
 
     def get_captures(self, obj):
@@ -412,17 +517,6 @@ class DeploymentSerializer(DeploymentListSerializer):
         )
 
 
-class TaxonNoParentNestedSerializer(DefaultSerializer):
-    class Meta:
-        model = Taxon
-        fields = [
-            "id",
-            "name",
-            "rank",
-            "details",
-        ]
-
-
 class TaxonParentSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
@@ -458,11 +552,32 @@ class TaxonSearchResultSerializer(TaxonNestedSerializer):
         ]
 
 
+class TagSerializer(DefaultSerializer):
+    project = ProjectNestedSerializer(read_only=True)
+    project_id = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), source="project", write_only=True)
+    taxa_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Taxon.objects.all(), many=True, source="taxa", write_only=True, required=False
+    )
+    taxa = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Tag
+        fields = ["id", "name", "project", "project_id", "taxa_ids", "taxa"]
+
+    def get_taxa(self, obj):
+        return [{"id": taxon.id, "name": taxon.name} for taxon in obj.taxa.all()]
+
+
 class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
-    occurrence_images = serializers.SerializerMethodField()
-    parent = TaxonNestedSerializer(read_only=True)
+    parents = TaxonNestedSerializer(read_only=True)
+    parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent")
+    tags = serializers.SerializerMethodField()
+
+    def get_tags(self, obj):
+        tag_list = getattr(obj, "prefetched_tags", [])
+        return TagSerializer(tag_list, many=True, context=self.context).data
 
     class Meta:
         model = Taxon
@@ -470,13 +585,15 @@ class TaxonListSerializer(DefaultSerializer):
             "id",
             "name",
             "rank",
-            "parent",
+            "parent_id",
+            "parents",
             "details",
             "occurrences_count",
             "occurrences",
-            "occurrence_images",
+            "tags",
             "last_detected",
             "best_determination_score",
+            "cover_image_url",
             "created_at",
             "updated_at",
         ]
@@ -496,27 +613,33 @@ class TaxonListSerializer(DefaultSerializer):
             params=params,
         )
 
-    def get_occurrence_images(self, obj):
-        """
-        Call the occurrence_images method on the Taxon model, with arguments.
-        """
 
-        # request = self.context.get("request")
-        # project_id = request.query_params.get("project") if request else None
-        project_id = self.context["request"].query_params["project"]
-        classification_threshold = get_active_classification_threshold(self.context["request"])
+class TaxaListSerializer(serializers.ModelSerializer):
+    taxa = serializers.SerializerMethodField()
+    projects = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), many=True)
 
-        return obj.occurrence_images(
-            # @TODO pass the request to generate media url & filter by current user's access
-            # request=self.context.get("request"),
-            project_id=project_id,
-            classification_threshold=classification_threshold,
+    class Meta:
+        model = TaxaList
+        fields = ["id", "name", "description", "taxa", "projects"]
+
+    def get_taxa(self, obj):
+        """
+        Return URL to the taxa endpoint filtered by this taxalist.
+        """
+        return reverse_with_params(
+            "taxon-list",
+            request=self.context.get("request"),
+            params={"taxa_list_id": obj.pk},
         )
 
 
 class CaptureTaxonSerializer(DefaultSerializer):
     parent = TaxonNoParentNestedSerializer(read_only=True)
     parents = TaxonParentSerializer(many=True, read_only=True)
+
+    def get_permissions(self, instance, instance_data):
+        instance_data["user_permissions"] = []
+        return instance_data
 
     class Meta:
         model = Taxon
@@ -669,11 +792,21 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
 
 class TaxonSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
-    occurrences = TaxonOccurrenceNestedSerializer(many=True, read_only=True)
+    occurrences = TaxonOccurrenceNestedSerializer(many=True, read_only=True, source="example_occurrences")
     parent = TaxonNoParentNestedSerializer(read_only=True)
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent", write_only=True)
-    # parents = TaxonParentNestedSerializer(many=True, read_only=True, source="parents_json")
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
+    tags = serializers.SerializerMethodField()
+    summary_data = serializers.SerializerMethodField()
+
+    def get_tags(self, obj):
+        # Use prefetched tags
+        tag_list = getattr(obj, "prefetched_tags", [])
+        return TagSerializer(tag_list, many=True, context=self.context).data
+
+    def get_summary_data(self, obj: Taxon):
+        project = get_active_project(request=self.context["request"], required=False)
+        return obj.summary_data(project)
 
     class Meta:
         model = Taxon
@@ -686,9 +819,18 @@ class TaxonSerializer(DefaultSerializer):
             "parents",
             "details",
             "occurrences_count",
-            "detections_count",
             "events_count",
             "occurrences",
+            "gbif_taxon_key",
+            "tags",
+            "last_detected",
+            "best_determination_score",
+            "fieldguide_id",
+            "inat_taxon_id",
+            "cover_image_url",
+            "cover_image_credit",
+            "summary_data",
+            "common_name_en",
         ]
 
 
@@ -707,9 +849,16 @@ class CaptureOccurrenceSerializer(DefaultSerializer):
         ]
 
 
+class ClassificationPredictionItemSerializer(serializers.Serializer):
+    taxon = TaxonNestedSerializer(read_only=True)
+    score = serializers.FloatField(read_only=True)
+    logit = serializers.FloatField(read_only=True)
+
+
 class ClassificationSerializer(DefaultSerializer):
     taxon = TaxonNestedSerializer(read_only=True)
     algorithm = AlgorithmSerializer(read_only=True)
+    top_n = ClassificationPredictionItemSerializer(many=True, read_only=True)
 
     class Meta:
         model = Classification
@@ -719,12 +868,60 @@ class ClassificationSerializer(DefaultSerializer):
             "taxon",
             "score",
             "algorithm",
+            "scores",
+            "logits",
+            "top_n",
             "created_at",
+            "updated_at",
         ]
 
 
-class OccurrenceClassificationSerializer(ClassificationSerializer):
-    pass
+class ClassificationWithTaxaSerializer(ClassificationSerializer):
+    """
+    Return all possible taxa objects in the category map with the classification.
+
+    This is slow for large category maps.
+    It's recommended to retrieve and cache the category map with taxa ahead of time.
+    """
+
+    taxa = TaxonNestedSerializer(many=True, read_only=True)
+
+    class Meta(ClassificationSerializer.Meta):
+        fields = ClassificationSerializer.Meta.fields + [
+            "taxa",
+        ]
+
+
+class ClassificationListSerializer(DefaultSerializer):
+    class Meta:
+        model = Classification
+        fields = [
+            "id",
+            "details",
+            "taxon",
+            "score",
+            "algorithm",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class ClassificationNestedSerializer(ClassificationSerializer):
+    def get_permissions(self, instance, instance_data):
+        instance_data["user_permissions"] = []
+        return instance_data
+
+    class Meta:
+        model = Classification
+        fields = [
+            "id",
+            "details",
+            "taxon",
+            "score",
+            "terminal",
+            "algorithm",
+            "created_at",
+        ]
 
 
 class CaptureDetectionsSerializer(DefaultSerializer):
@@ -736,12 +933,14 @@ class CaptureDetectionsSerializer(DefaultSerializer):
         # queryset = Detection.objects.prefetch_related("classifications")
         fields = [
             "id",
+            "details",
             "url",
             "width",
             "height",
             "bbox",
             "occurrence",
             "classifications",
+            "occurrence_meets_criteria",
         ]
 
     def get_classifications(self, obj) -> str:
@@ -769,7 +968,7 @@ class DetectionCaptureNestedSerializer(DefaultSerializer):
 
 
 class DetectionNestedSerializer(DefaultSerializer):
-    classifications = ClassificationSerializer(many=True, read_only=True)
+    classifications = ClassificationNestedSerializer(many=True, read_only=True)
     capture = DetectionCaptureNestedSerializer(read_only=True, source="source_image")
 
     class Meta:
@@ -777,6 +976,7 @@ class DetectionNestedSerializer(DefaultSerializer):
         # queryset = Detection.objects.prefetch_related("classifications")
         fields = [
             "id",
+            "details",
             "timestamp",
             "url",
             "capture",
@@ -811,6 +1011,7 @@ class DetectionSerializer(DefaultSerializer):
     detection_algorithm_id = serializers.PrimaryKeyRelatedField(
         queryset=Algorithm.objects.all(), source="detection_algorithm", write_only=True
     )
+    classifications = ClassificationNestedSerializer(many=True, read_only=True)
 
     class Meta:
         model = Detection
@@ -818,6 +1019,7 @@ class DetectionSerializer(DefaultSerializer):
             "source_image",
             "detection_algorithm",
             "detection_algorithm_id",
+            "classifications",
         ]
 
 
@@ -826,6 +1028,7 @@ class SourceImageListSerializer(DefaultSerializer):
     detections = CaptureDetectionsSerializer(many=True, read_only=True, source="filtered_detections")
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
+    project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), required=False)
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
 
     class Meta:
@@ -846,18 +1049,7 @@ class SourceImageListSerializer(DefaultSerializer):
             "occurrences_count",
             "taxa_count",
             "detections",
-        ]
-
-
-class JobStatusSerializer(DefaultSerializer):
-    class Meta:
-        model = Job
-        fields = [
-            "id",
-            "details",
-            "status",
-            "created_at",
-            "updated_at",
+            "project",
         ]
 
 
@@ -916,44 +1108,43 @@ class SourceImageUploadSerializer(DefaultSerializer):
             "created_at",
         ]
 
-    def create(self, validated_data):
-        # Add the user to the validated data
-        request = self.context.get("request")
-        user = get_current_user(request)
-        # @TODO IMPORTANT ensure current user is a member of the deployment's project
-        obj = SourceImageUpload.objects.create(user=user, **validated_data)
-        source_image = create_source_image_from_upload(
-            obj.image,
-            obj.deployment,
-            request,
-        )
-        if source_image is not None:
-            obj.source_image = source_image  # type: ignore
-            obj.save()
-        return obj
-
-    def validate_image(self, value):
-        # Ensure that image filename contains a timestamp
-        timestamp = get_image_timestamp_from_filename(value.name)
-        if timestamp is None:
-            # @TODO bring back EXIF support
-            raise serializers.ValidationError(
-                "Image filename does not contain a timestamp in the format YYYYMMDDHHMMSS "
-                " (e.g. 20210101120000-snapshot.jpg). EXIF support coming soon."
-            )
-        return value
-
 
 class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
     # The most common kwargs for the sampling methods
     # use for the "common_combined" method
     minute_interval = serializers.IntegerField(required=False, allow_null=True)
     max_num = serializers.IntegerField(required=False, allow_null=True)
+    shuffle = serializers.BooleanField(required=False, allow_null=True)
+
     month_start = serializers.IntegerField(required=False, allow_null=True)
     month_end = serializers.IntegerField(required=False, allow_null=True)
 
+    date_start = DateStringField(required=False, allow_null=True)
+    date_end = DateStringField(required=False, allow_null=True)
+
     hour_start = serializers.IntegerField(required=False, allow_null=True)
     hour_end = serializers.IntegerField(required=False, allow_null=True)
+
+    deployment_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        allow_null=True,
+        allow_empty=True,
+    )
+
+    event_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        allow_null=True,
+        allow_empty=True,
+    )
+
+    research_site_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        allow_null=True,
+        allow_empty=True,
+    )
 
     # Kwargs for other sampling methods, this is not complete
     # see the SourceImageCollection model for all available kwargs.
@@ -963,15 +1154,13 @@ class SourceImageCollectionCommonKwargsSerializer(serializers.Serializer):
     deployment_id = serializers.IntegerField(required=False, allow_null=True)
     position = serializers.IntegerField(required=False, allow_null=True)
 
-    # Don't return the kwargs if they are empty
     def to_representation(self, instance):
         data = super().to_representation(instance)
+        # Don't return the kwargs if they are empty
         return {key: value for key, value in data.items() if value is not None}
 
 
 class SourceImageCollectionSerializer(DefaultSerializer):
-    # @TODO can sampling kwargs be a nested serializer instead??
-
     source_images = serializers.SerializerMethodField()
     kwargs = SourceImageCollectionCommonKwargsSerializer(required=False, partial=True)
     jobs = JobStatusSerializer(many=True, read_only=True)
@@ -991,10 +1180,28 @@ class SourceImageCollectionSerializer(DefaultSerializer):
             "source_images_with_detections_count",
             "occurrences_count",
             "taxa_count",
+            "description",
             "jobs",
             "created_at",
             "updated_at",
         ]
+
+    def get_permissions(self, instance, instance_data):
+        request: Request = self.context["request"]
+        user = request.user
+        project = instance.get_project()
+        permissions = get_perms(user, project)
+        source_image_collection_permissions = {
+            perm.split("_")[0] for perm in permissions if perm.endswith("_sourceimagecollection")
+        }
+        source_image_collection_permissions.discard("create")
+        if instance.dataset_type == "curated":
+            source_image_collection_permissions.discard("populate")
+            if Project.Permissions.STAR_SOURCE_IMAGE in permissions:
+                source_image_collection_permissions.add("star")
+
+        instance_data["user_permissions"] = list(source_image_collection_permissions)
+        return instance_data
 
     def get_source_images(self, obj) -> str:
         """
@@ -1011,6 +1218,18 @@ class SourceImageCollectionSerializer(DefaultSerializer):
 class OccurrenceIdentificationSerializer(DefaultSerializer):
     user = UserNestedSerializer(read_only=True)
     taxon = TaxonNestedSerializer(read_only=True)
+
+    def get_permissions(self, instance, instance_data):
+        # If the user can delete an identification then return a delete permission
+        request: Request = self.context["request"]
+        user = request.user
+        project = instance.get_project()
+        # Add delete permission if identification created by current user or user is a project manager
+        permissions = set()
+        if instance.user == user or ProjectManager.has_role(user, project):
+            permissions.add("delete")
+        instance_data["user_permissions"] = list(permissions)
+        return instance_data
 
     class Meta:
         model = Identification
@@ -1032,6 +1251,19 @@ class OccurrenceListSerializer(DefaultSerializer):
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
     determination_details = serializers.SerializerMethodField()
     identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
+
+    def get_permissions(self, instance, instance_data):
+        request: Request = self.context["request"]
+        user = request.user
+        project = instance.get_project()
+        permissions = set()
+        if Project.Permissions.CREATE_IDENTIFICATION in get_perms(user, project):
+            # check if the user has identification permissions on this project,
+            # then add  update permission to response
+            permissions.add("update")
+
+        instance_data["user_permissions"] = list(permissions)
+        return instance_data
 
     class Meta:
         model = Occurrence
@@ -1058,6 +1290,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             "determination_details",
             "identifications",
             "created_at",
+            "updated_at",
         ]
 
     def get_determination_details(self, obj: Occurrence):
@@ -1080,7 +1313,7 @@ class OccurrenceListSerializer(DefaultSerializer):
         if identification or not obj.best_prediction:
             prediction = None
         else:
-            prediction = OccurrenceClassificationSerializer(obj.best_prediction, context=context).data
+            prediction = ClassificationNestedSerializer(obj.best_prediction, context=context).data
 
         return dict(
             taxon=taxon,
@@ -1093,7 +1326,8 @@ class OccurrenceListSerializer(DefaultSerializer):
 class OccurrenceSerializer(OccurrenceListSerializer):
     determination = CaptureTaxonSerializer(read_only=True)
     detections = DetectionNestedSerializer(many=True, read_only=True)
-    predictions = OccurrenceClassificationSerializer(many=True, read_only=True)
+    identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
+    predictions = ClassificationNestedSerializer(many=True, read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
@@ -1170,6 +1404,8 @@ class EventSerializer(DefaultSerializer):
             "first_capture",
             "summary_data",
             "capture_page_offset",
+            "created_at",
+            "updated_at",
         ]
 
     def get_captures(self, obj):

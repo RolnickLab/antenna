@@ -1,6 +1,6 @@
+import { Button } from 'nova-ui-kit'
 import { useRef } from 'react'
 import { STRING, translate } from 'utils/language'
-import { Button, ButtonTheme } from '../button/button'
 import styles from './file-input.module.scss'
 import { FileInputAccept } from './types'
 
@@ -57,8 +57,6 @@ export const FileInput = ({
       {renderInput({ loading, onClick: () => inputRef.current?.click() })}
       {withClear && (
         <Button
-          label={translate(STRING.CLEAR)}
-          theme={ButtonTheme.Plain}
           onClick={() => {
             if (inputRef.current) {
               inputRef.current.value = ''
@@ -66,7 +64,12 @@ export const FileInput = ({
             }
             onChange(null)
           }}
-        />
+          size="small"
+          type="button"
+          variant="ghost"
+        >
+          <span>{translate(STRING.CLEAR)}</span>
+        </Button>
       )}
     </div>
   )

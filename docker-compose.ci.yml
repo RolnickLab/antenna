@@ -1,21 +1,38 @@
+# Ensure this launches a separate stack for CI testing to avoid conflicts with local dev setup:
+name: antenna-ci
+
+volumes:
+  ami_ci_postgres_data:
+    driver: local
+  minio_ci_data:
+    driver: local
+
 services:
   django: &django
     build:
       context: .
       dockerfile: ./compose/local/django/Dockerfile
-    image: ami_ci_django
+    volumes:
+      - .:/app:z
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - postgres
       - redis
       - minio-init
       - ml_backend
+      - rabbitmq
     env_file:
       - ./.envs/.ci/.django
       - ./.envs/.ci/.postgres
     command: /start
 
   postgres:
-    image: postgres:13
+    build:
+      context: .
+      dockerfile: ./compose/local/postgres/Dockerfile
+    volumes:
+      - ami_ci_postgres_data:/var/lib/postgresql/data
     env_file:
       - ./.envs/.ci/.postgres
 
@@ -24,29 +41,45 @@ services:
 
   celeryworker:
     <<: *django
-    image: ami_ci_celeryworker
+    depends_on:
+      - rabbitmq
     command: /start-celeryworker
 
-  minio:
-    image: minio/minio:latest
-    command: minio server --console-address ":9001" /data
+  rabbitmq:
+    image: rabbitmq:3-management
     env_file:
       - ./.envs/.ci/.django
 
+  minio:
+    image: minio/minio:RELEASE.2024-11-07T00-52-20Z
+    command: minio server --console-address ":9001" /data
+    volumes:
+      - "minio_ci_data:/data"
+    env_file:
+      - ./.envs/.ci/.django
+    healthcheck:
+      test: [ "CMD", "mc", "ready", "local" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   minio-init:
-    image: minio/mc
+    image: minio/mc:RELEASE.2025-03-12T17-29-24Z
     env_file:
       - ./.envs/.ci/.django
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
     volumes:
       - ./compose/local/minio/init.sh:/etc/minio/init.sh
     entrypoint: /etc/minio/init.sh
 
   ml_backend:
     build:
-      context: ./ml_backends/example
+      context: ./processing_services/minimal
     volumes:
-      - ./ml_backends/example/:/app:ml_backend
-    ports:
-      - "2000:2000"
+      - ./processing_services/minimal/:/app
+    networks:
+      default:
+        aliases:
+          - processing_service
