@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef } from 'react'
 import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
 import {
   ATTRIBUTION,
-  DEFAULT_ZOOM,
   MAX_BOUNDS,
   MIN_ZOOM,
   TILE_LAYER_URL,
@@ -38,7 +37,7 @@ export const MultiMarkerMap = ({
 
   useEffect(() => {
     requestAnimationFrame(() => {
-      mapRef.current?.fitBounds(bounds, { maxZoom: DEFAULT_ZOOM })
+      mapRef.current?.fitBounds(bounds)
     })
   }, [mapRef, bounds])
 
