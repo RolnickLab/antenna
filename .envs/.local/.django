@@ -21,7 +21,7 @@ CELERY_BROKER_URL=amqp://rabbituser:rabbitpass@rabbitmq:5672/
 CELERY_RESULT_BACKEND=rpc:// # Use RabbitMQ for results backend
 RABBITMQ_DEFAULT_USER=rabbituser
 RABBITMQ_DEFAULT_PASS=rabbitpass
-RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit consumer_timeout 60480000
+RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit consumer_timeout 604800000
 
 # Attempting to keep Flower from showing workers as offline
 # FLOWER_BROKER_API=REDIS_URL
