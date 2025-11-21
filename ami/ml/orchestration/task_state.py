@@ -32,8 +32,8 @@ class TaskStateManager:
             job_id: The job primary key
         """
         self.job_id = job_id
-        self._pending_key = f"job:{job_id}:pending_images"  # noqa E231
-        self._total_key = f"job:{job_id}:pending_images_total"  # noqa E231
+        self._pending_key = f"job:{job_id}:pending_images"
+        self._total_key = f"job:{job_id}:pending_images_total"
 
     def initialize_job(self, image_ids: list[str], stages: list[str]) -> None:
         """
@@ -50,7 +50,7 @@ class TaskStateManager:
         cache.set(self._total_key, len(image_ids), timeout=self.TIMEOUT)
 
     def _get_pending_key(self, stage: str) -> str:
-        return f"{self._pending_key}:{stage}"  # noqa E231
+        return f"{self._pending_key}:{stage}"
 
     def update_state(
         self,

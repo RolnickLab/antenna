@@ -72,7 +72,7 @@ def get_status_label(status: JobState, progress: float) -> str:
     if status in [JobState.CREATED, JobState.PENDING, JobState.RECEIVED]:
         return "Waiting to start"
     elif status in [JobState.STARTED, JobState.RETRY, JobState.SUCCESS]:
-        return f"{progress:.0%} complete"  # noqa E231
+        return f"{progress:.0%} complete"
     else:
         return f"{status.name}"
 
@@ -435,7 +435,7 @@ class MLJob(JobType):
                     project_id=job.project.pk,
                     reprocess_all_images=job.project.feature_flags.reprocess_all_images,
                 )
-                job.logger.info(f"Processed image batch {i+1} in {time.time() - request_sent:.2f}s")  # noqa E231
+                job.logger.info(f"Processed image batch {i+1} in {time.time() - request_sent:.2f}s")
             except Exception as e:
                 # Log error about image batch and continue
                 job.logger.error(f"Failed to process image batch {i+1}: {e}")
@@ -487,7 +487,7 @@ class MLJob(JobType):
 
         if image_count:
             percent_successful = 1 - len(request_failed_images) / image_count if image_count else 0
-            job.logger.info(f"Processed {percent_successful:.0%} of images successfully.")  # noqa E231
+            job.logger.info(f"Processed {percent_successful:.0%} of images successfully.")
 
         # Check all Celery sub-tasks if they have completed saving results
         save_tasks_remaining = set(save_tasks) - set(save_tasks_completed)
