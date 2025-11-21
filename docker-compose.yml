@@ -34,7 +34,6 @@ services:
         required: false
     ports:
       - "8000:8000"
-      - "5679:5679"
     command: /start
     # for debugging with debugpy:
     # command: python -m debugpy --listen 0.0.0.0:5679 -m django runserver 0.0.0.0:8000
@@ -79,7 +78,12 @@ services:
     volumes:
       - ./.git:/app/.git:ro
       - ./ui:/app
-    entrypoint: ["sh", "-c", "yarn install && yarn start --debug --host 0.0.0.0 --port 4000"]
+    entrypoint:
+      [
+        "sh",
+        "-c",
+        "yarn install && yarn start --debug --host 0.0.0.0 --port 4000",
+      ]
     environment:
       - API_PROXY_TARGET=http://django:8000
       - CHOKIDAR_USEPOLLING=true

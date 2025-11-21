@@ -67,10 +67,9 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
         failed_queues = 0
 
         async with TaskQueueManager() as manager:
-            for i, (image_pk, message) in enumerate(messages):
+            for image_pk, message in messages:
                 try:
                     logger.info(f"Queueing image {image_pk} to stream for job '{job_id}': {message}")
-                    # Use TTR of 300 seconds (5 minutes) for image processing
                     success = await manager.publish_task(
                         job_id=job_id,
                         data=message,
@@ -86,11 +85,7 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
 
         return successful_queues, failed_queues
 
-    result = async_to_sync(queue_all_images)()
-    if result is None:
-        job.logger.error(f"Failed to queue images to NATS for job '{job_id}'")
-        return False
-    successful_queues, failed_queues = result
+    successful_queues, failed_queues = async_to_sync(queue_all_images)()
 
     if not images:
         job.progress.update_stage("results", status=JobState.SUCCESS, progress=1.0)
