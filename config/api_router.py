@@ -8,6 +8,7 @@ from ami.jobs import views as job_views
 from ami.labelstudio import views as labelstudio_views
 from ami.main.api import views
 from ami.ml import views as ml_views
+from ami.users.api.views import ProjectMembersViewSet, ProjectRolesViewSet
 
 router = DefaultRouter()
 
@@ -47,7 +48,8 @@ router.register(
 )
 router.register(r"labelstudio/hooks", labelstudio_views.LabelStudioHooksViewSet, basename="labelstudio-hooks")
 router.register(r"labelstudio/config", labelstudio_views.LabelStudioConfigViewSet, basename="labelstudio-config")
-
+router.register("role_management/roles", ProjectRolesViewSet, basename="project-roles")
+router.register("role_management/members", ProjectMembersViewSet, basename="project-members")
 # Wire up our API using automatic URL routing.
 
 
@@ -61,3 +63,4 @@ urlpatterns = [
 
 
 urlpatterns += router.urls
+#
