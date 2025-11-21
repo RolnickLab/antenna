@@ -25,6 +25,9 @@ async def get_connection(nats_url: str):
     return nc, js
 
 
+TASK_TTR = 300  # Default Time-To-Run (visibility timeout) in seconds
+
+
 class TaskQueueManager:
     """
     Manager for NATS JetStream task queue operations.
@@ -67,7 +70,7 @@ class TaskQueueManager:
         """Get consumer name from job_id."""
         return f"job-{job_id}-consumer"
 
-    async def _ensure_stream(self, job_id: str, ttr: int = 30):
+    async def _ensure_stream(self, job_id: str):
         """Ensure stream exists for the given job."""
         if self.js is None:
             raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
@@ -88,7 +91,7 @@ class TaskQueueManager:
             )
             logger.info(f"Created stream {stream_name}")
 
-    async def _ensure_consumer(self, job_id: str, ttr: int = 30):
+    async def _ensure_consumer(self, job_id: str):
         """Ensure consumer exists for the given job."""
         if self.js is None:
             raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
@@ -107,7 +110,7 @@ class TaskQueueManager:
                 config=ConsumerConfig(
                     durable_name=consumer_name,
                     ack_policy=AckPolicy.EXPLICIT,
-                    ack_wait=ttr,  # Visibility timeout (TTR)
+                    ack_wait=TASK_TTR,  # Visibility timeout (TTR)
                     max_deliver=5,  # Max retry attempts
                     deliver_policy=DeliverPolicy.ALL,
                     max_ack_pending=100,  # Max unacked messages
@@ -116,14 +119,13 @@ class TaskQueueManager:
             )
             logger.info(f"Created consumer {consumer_name}")
 
-    async def publish_task(self, job_id: str, data: dict[str, Any], ttr: int = 30) -> bool:
+    async def publish_task(self, job_id: str, data: dict[str, Any]) -> bool:
         """
         Publish a task to it's job queue.
 
         Args:
             job_id: The job ID (e.g., 'job123' or '123')
             data: Task data (dict will be JSON-encoded)
-            ttr: Time-to-run in seconds (visibility timeout, default 30)
 
         Returns:
             bool: True if successful, False otherwise
@@ -133,8 +135,8 @@ class TaskQueueManager:
 
         try:
             # Ensure stream and consumer exist
-            await self._ensure_stream(job_id, ttr)
-            await self._ensure_consumer(job_id, ttr)
+            await self._ensure_stream(job_id)
+            await self._ensure_consumer(job_id)
 
             subject = self._get_subject(job_id)
             task_data = json.dumps(data)

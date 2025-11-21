@@ -23,6 +23,7 @@ class TaskStateManager:
     """
 
     TIMEOUT = 86400 * 7  # 7 days in seconds
+    STAGES = ["process", "results"]
 
     def __init__(self, job_id: int):
         """
@@ -35,16 +36,14 @@ class TaskStateManager:
         self._pending_key = f"job:{job_id}:pending_images"
         self._total_key = f"job:{job_id}:pending_images_total"
 
-    def initialize_job(self, image_ids: list[str], stages: list[str]) -> None:
+    def initialize_job(self, image_ids: list[str]) -> None:
         """
         Initialize job tracking with a list of image IDs to process.
 
         Args:
             image_ids: List of image IDs that need to be processed
-            stages: List of stages to track for each image
         """
-        self.stages = stages
-        for stage in stages:
+        for stage in self.STAGES:
             cache.set(self._get_pending_key(stage), image_ids, timeout=self.TIMEOUT)
 
         cache.set(self._total_key, len(image_ids), timeout=self.TIMEOUT)
@@ -121,6 +120,6 @@ class TaskStateManager:
         """
         Delete all Redis keys associated with this job.
         """
-        for stage in self.stages:
+        for stage in self.STAGES:
             cache.delete(self._get_pending_key(stage))
         cache.delete(self._total_key)

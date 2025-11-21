@@ -59,7 +59,7 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
 
     # Store all image IDs in Redis for progress tracking
     state_manager = TaskStateManager(job.pk)
-    state_manager.initialize_job(image_ids, stages=["process", "results"])
+    state_manager.initialize_job(image_ids)
     job.logger.info(f"Initialized task state tracking for {len(image_ids)} images")
 
     async def queue_all_images():
@@ -74,7 +74,6 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
                     success = await manager.publish_task(
                         job_id=job_id,
                         data=message,
-                        ttr=300,  # visibility timeout in seconds
                     )
                 except Exception as e:
                     logger.error(f"Failed to queue image {image_pk} to stream for job '{job_id}': {e}")
