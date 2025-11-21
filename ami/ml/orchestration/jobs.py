@@ -53,7 +53,7 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
             "timestamp": (image.timestamp.isoformat() if hasattr(image, "timestamp") and image.timestamp else None),
             "batch_index": i,
             "total_images": len(images),
-            "queue_timestamp": datetime.datetime.now().isoformat(),
+            "queue_timestamp": timezone.now().isoformat(),
         }
         messages.append((image.pk, message))
 
