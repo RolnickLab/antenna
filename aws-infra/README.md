@@ -24,9 +24,9 @@ The Antenna backend is a Django application deployed using:
 
 ## 2. Repository Structure (Deployment-Relevant)
 
-- /.ebextensions/00_setup.config     # EB environment variables and settings
-- /.ebignore                         # Exclusion list for EB deployment bundle
-- /Dockerrun.aws.json                # Multi-container EB deployment config
+- /.ebextensions/00_setup.config     :  EB environment variables and settings
+- /.ebignore                         : Exclusion list for EB deployment bundle
+- /Dockerrun.aws.json                : Multi-container EB deployment config
 
 ---
 
@@ -38,11 +38,49 @@ The Antenna backend is a Django application deployed using:
 - Deployment bundle includes:
   - `Dockerrun.aws.json` (v2)
   - `.ebextensions/00_setup.config`
-- Instance type: `t3.large`
-- Environment type: **single instance** (no load balancing)
-- Security groups:
-  - EB-created instance security group
-  - An outbound egress security group (named App Runner but used by EB)
+- Environment type:
+  - Single-instance environment (used for development/testing to reduce cost). 
+  - Can be upgraded later to a load-balanced environment for production.
+- **Instance Configuration**
+  - Architecture: `x86_64`
+  - Instance types (preferred order):
+    - `t3.large`
+    - `t3.small`
+  - Capacity type: **On-Demand instances**
+
+- **Auto Scaling Group**
+  - Uses a **single-instance ASG** (managed automatically by Elastic Beanstalk)
+  - EB performs health checks on the instance
+
+- **Security Groups**
+  - EB-managed instance security group (default inbound + outbound rules)
+  - Additional outbound egress security group  
+    *(originally created for App Runner, now reused for EB networking)*
+
+- **Enhanced health reporting**  
+  - Real-time system + application monitoring  
+  - Free custom metric: `EnvironmentHealth`
+
+- **Health Event Streaming**
+  - Log streaming to CloudWatch Logs: Enabled  
+  - Retention: 7 days  
+  - Lifecycle: Keep logs after terminating environment  
+
+- **Managed Platform Updates**
+  - Enabled
+  - Weekly maintenance window: Thursday @ 22:40 UTC
+  - Update level: Apply **minor and patch** updates
+  - Instance replacement enabled : EB replaces instance if no other updates apply.
+
+- **Rolling Updates & Deployments**
+  - Deployment policy: All at once  
+  - Batch size type: Percentage
+  - Rolling updates: Disabled (not needed for single instance)
+  - **Deployment preferences:**
+    - Ignore health check: `False`
+    - Health threshold: `OK`
+    - Command timeout: `600 seconds`
+
 
 ---
 
@@ -50,11 +88,11 @@ The Antenna backend is a Django application deployed using:
 
 EB ECS runs the following containers:
 
-1. **django** — web application (the container listens on port 5000, which is exposed as port 80 on the Elastic Beanstalk host)
-2. **celeryworker** — asynchronous task worker
-3. **celerybeat** — scheduled task runner
-4. **flower** — Celery monitoring UI (port 5555)
-5. **awscli** — lightweight helper container for internal AWS commands
+1. **django** - web application (the container listens on port 5000, which is exposed as port 80 on the Elastic Beanstalk host)
+2. **celeryworker** - asynchronous task worker
+3. **celerybeat** - scheduled task runner
+4. **flower** - Celery monitoring UI (port 5555)
+5. **awscli** - lightweight helper container for internal AWS commands
 
 ---
 
@@ -166,10 +204,12 @@ The deployment uses the following environment variables across these categories:
 - **Instance type:** `t3.large`
 - **Instance profile:** `aws-elasticbeanstalk-ec2-role`
 - **Service role:** `aws-elasticbeanstalk-service-role`
+- Create an EC2 key pair in your AWS account and attach it to the EB environment when launching the backend. (Each developer should use their own key pair.)
 - **Public IP:** Assigned
 - **Security groups:**
   - EB default instance SG
   - Outbound-only egress SG
+ 
 
 ### 5.4. IAM Roles and Policies
 
