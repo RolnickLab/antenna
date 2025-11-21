@@ -15,7 +15,7 @@ The Antenna backend is a Django application deployed using:
 - **RDS PostgreSQL** as the application database
 - **ElastiCache Redis (TLS)** for Celery broker + Django cache
 - **Dockerized services** (Django, Celery Worker, Celery Beat, Flower, AWS CLI helper)
-- **S3** as static + media storage backend
+- **S3** as static storage backend
 - **IAM** roles for instance profiles and service roles
 - **CloudWatch** for logs, health monitoring, ECS task metrics
 - **Default VPC** with public and private subnets
