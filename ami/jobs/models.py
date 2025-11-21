@@ -133,14 +133,14 @@ class JobProgress(pydantic.BaseModel):
         for stage in self.stages:
             if stage.key == stage_key:
                 return stage
-        raise ValueError(f"Job stage with key '{stage_key}' not found in progress")  # noqa E713
+        raise ValueError(f"Job stage with key '{stage_key}' not found in progress")
 
     def get_stage_param(self, stage_key: str, param_key: str) -> ConfigurableStageParam:
         stage = self.get_stage(stage_key)
         for param in stage.params:
             if param.key == param_key:
                 return param
-        raise ValueError(f"Job stage parameter with key '{param_key}' not found in stage '{stage_key}'")  # noqa E713
+        raise ValueError(f"Job stage parameter with key '{param_key}' not found in stage '{stage_key}'")
 
     def add_stage_param(self, stage_key: str, param_name: str, value: typing.Any = None) -> ConfigurableStageParam:
         stage = self.get_stage(stage_key)

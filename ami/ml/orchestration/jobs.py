@@ -1,10 +1,11 @@
 import datetime
 
+from asgiref.sync import async_to_sync
+
 from ami.jobs.models import Job, JobState, logger
 from ami.main.models import SourceImage
 from ami.ml.orchestration.nats_queue import TaskQueueManager
 from ami.ml.orchestration.task_state import TaskStateManager
-from ami.ml.orchestration.utils import run_in_async_loop
 
 
 # TODO CGJS: Call this once a job is fully complete (all images processed and saved)
@@ -22,7 +23,7 @@ def cleanup_nats_resources(job: "Job"):
             success = await manager.cleanup_job_resources(job_id)
             return success
 
-    run_in_async_loop(cleanup, f"cleaning up NATS resources for job '{job_id}'")
+    async_to_sync(cleanup)()
 
 
 def queue_images_to_nats(job: "Job", images: list[SourceImage]):
@@ -86,7 +87,7 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
 
         return successful_queues, failed_queues
 
-    result = run_in_async_loop(queue_all_images, f"queuing images to NATS for job '{job_id}'")
+    result = async_to_sync(queue_all_images)()
     if result is None:
         job.logger.error(f"Failed to queue images to NATS for job '{job_id}'")
         return False

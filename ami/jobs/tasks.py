@@ -3,13 +3,13 @@ import logging
 import time
 from collections.abc import Callable
 
+from asgiref.sync import async_to_sync
 from celery.result import AsyncResult
 from celery.signals import task_failure, task_postrun, task_prerun
 from django.db import transaction
 
 from ami.ml.orchestration.nats_queue import TaskQueueManager
 from ami.ml.orchestration.task_state import TaskStateManager
-from ami.ml.orchestration.utils import run_in_async_loop
 from ami.ml.schemas import PipelineResultsResponse
 from ami.tasks import default_soft_time_limit, default_time_limit
 from config import celery_app
@@ -119,7 +119,7 @@ def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject:
                 async with TaskQueueManager() as manager:
                     return await manager.acknowledge_task(reply_subject)
 
-            ack_success = run_in_async_loop(ack_task, f"acknowledging job {job.pk} via NATS")
+            ack_success = async_to_sync(ack_task)()
 
             if ack_success:
                 job.logger.info(f"Successfully acknowledged task via NATS: {reply_subject}")
