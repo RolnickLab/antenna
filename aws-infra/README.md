@@ -24,9 +24,9 @@ The Antenna backend is a Django application deployed using:
 
 ## 2. Repository Structure (Deployment-Relevant)
 
-- /.ebextensions/00_setup.config # EB environment variables and settings
-- /.ebignore # Exclusion list for EB deployment bundle
-- /Dockerrun.aws.json # Multi-container EB deployment config
+- /.ebextensions/00_setup.config     # EB environment variables and settings
+- /.ebignore                         # Exclusion list for EB deployment bundle
+- /Dockerrun.aws.json                # Multi-container EB deployment config
 
 ---
 
