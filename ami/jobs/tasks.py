@@ -2,6 +2,7 @@ import functools
 import logging
 import time
 from collections.abc import Callable
+from datetime import datetime
 
 from asgiref.sync import async_to_sync
 from celery.result import AsyncResult
@@ -60,9 +61,6 @@ def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject:
         job_id: The job ID
         result_data: Dictionary containing the pipeline result
         reply_subject: NATS reply subject for acknowledgment
-
-    Returns:
-        dict with status information
     """
     from ami.jobs.models import Job  # avoid circular import
 
@@ -159,6 +157,10 @@ def _update_job_progress(job_id: int, stage: str, progress_percentage: float) ->
             status=JobState.SUCCESS if progress_percentage >= 1.0 else JobState.STARTED,
             progress=progress_percentage,
         )
+        if stage == "results" and progress_percentage >= 1.0:
+            job.status = JobState.SUCCESS
+            job.progress.summary.status = JobState.SUCCESS
+            job.finished_at = datetime.now()
         job.logger.info(f"Updated job {job_id} progress in stage '{stage}' to {progress_percentage*100}%")
         job.save()
 

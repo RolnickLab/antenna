@@ -9,7 +9,7 @@ from ami.ml.orchestration.task_state import TaskStateManager
 
 
 # TODO CGJS: Call this once a job is fully complete (all images processed and saved)
-def cleanup_nats_resources(job: "Job"):
+def cleanup_nats_resources(job: "Job") -> bool:
     """
     Clean up NATS JetStream resources (stream and consumer) for a completed job.
 
@@ -23,7 +23,7 @@ def cleanup_nats_resources(job: "Job"):
             success = await manager.cleanup_job_resources(job_id)
             return success
 
-    async_to_sync(cleanup)()
+    return async_to_sync(cleanup)()
 
 
 def queue_images_to_nats(job: "Job", images: list[SourceImage]):
