@@ -71,8 +71,8 @@ def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject:
         pipeline_result = PipelineResultsResponse(**result_data)
         processed_image_ids = {str(img.id) for img in pipeline_result.source_images}
     else:
-        processed_image_ids = set()
         image_id = result_data.get("image_id")
+        processed_image_ids = {str(image_id)} if image_id else set()
         logger.error(f"Pipeline returned error for job {job_id}, image {image_id}: {error}")
 
     state_manager = TaskStateManager(job_id)
