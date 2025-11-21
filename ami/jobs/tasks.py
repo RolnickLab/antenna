@@ -98,11 +98,9 @@ def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject:
         )
 
         # Save to database (this is the slow operation)
-        if not job.pipeline:
-            job.logger.warning(f"Job {job_id} has no pipeline, skipping save_results")
-            return
-
         if pipeline_result:
+            # should never happen since otherwise we could not be processing results here
+            assert job.pipeline is not None, "Job pipeline is None"
             job.pipeline.save_results(results=pipeline_result, job_id=job.pk)
             job.logger.info(f"Successfully saved results for job {job_id}")
 

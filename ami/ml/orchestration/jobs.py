@@ -1,6 +1,5 @@
-import datetime
-
 from asgiref.sync import async_to_sync
+from django.utils import timezone
 
 from ami.jobs.models import Job, JobState, logger
 from ami.main.models import SourceImage
