@@ -63,15 +63,16 @@ class Role:
         return result
 
     @staticmethod
-    def get_user_role(project, user):
+    def get_user_roles(project, user):
         """
-        Returns the role name assigned to a user for a specific project.
-        Or None if no role is found.
+        Returns the names of roles assigned to a user for a specific project.
+        Or empty list if no role is found.
         """
+        user_roles = []
         for role_cls in Role.__subclasses__():
             if role_cls.has_role(user, project):
-                return role_cls.__name__
-        return None
+                user_roles.append(role_cls)
+        return user_roles
 
 
 class BasicMember(Role):

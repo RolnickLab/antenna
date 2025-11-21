@@ -77,6 +77,48 @@ def add_collection_level_permissions(user: User | None, response_data: dict, mod
     return response_data
 
 
+class ProjectMemberPermissions(permissions.BasePermission):
+    """
+    Controls access to project member api operations.
+
+    Rules:
+    - READ (GET/list): user must be a project member (BasicMember or higher)
+    - WRITE (POST/PUT): user must be a ProjectManager
+    - DELETE: user must be a ProjectManager OR user is removing themselves AND is a member
+    """
+
+    def has_permission(self, request, view):
+        from ami.users.roles import ProjectManager, Role
+
+        project = view.get_active_project()
+        user = request.user
+
+        if project is None:
+            return False
+
+        # READ permissions
+        if request.method in permissions.SAFE_METHODS:
+            return Role.user_has_any_role(user, project)
+
+        # WRITE permissions
+        # Allow if user is project manager
+        if ProjectManager.has_role(user, project):
+            return True
+
+        # User is removing themselves
+        if view.action == "destroy":
+            target_user_id = view.kwargs.get("pk")
+            if target_user_id and str(user.pk) == str(target_user_id):
+                # Only allow if the user is at least a BasicMember
+                return Role.user_has_any_role(user, project)
+
+        return False
+
+    def has_object_permission(self, request, view, obj):
+        # Object-level permissions are handled in has_permission
+        return True
+
+
 class ObjectPermission(permissions.BasePermission):
     """
     Generic permission class that delegates to the model's `check_permission(user, action)` method.
