@@ -1,4 +1,5 @@
 import classNames from 'classnames'
+import _ from 'lodash'
 import _Plot from 'react-plotly.js'
 import styles from './plot.module.scss'
 import { PlotProps } from './types'
@@ -43,8 +44,12 @@ const Plot = ({
         },
       ]}
       config={{
-        displayModeBar: false,
         autosizable: false,
+        modeBarButtons: [['toImage']],
+        toImageButtonOptions: {
+          filename: _.snakeCase(title),
+          scale: 4,
+        },
       }}
       layout={{
         title: {
