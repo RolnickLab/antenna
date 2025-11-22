@@ -29,7 +29,7 @@ def get_best_device() -> str:
     MPS is not supported by the current algoritms.
     """
     if torch.cuda.is_available():
-        return f"cuda:{torch.cuda.current_device()}"
+        return f"cuda: {torch.cuda.current_device()}"
     else:
         return "cpu"
 
@@ -223,7 +223,7 @@ class FlatBugObjectDetector(Algorithm):
                 # Convert PIL to numpy then to tensor in CHW format
                 image_np = np.array(source_image._pil)
                 image_tensor = torch.from_numpy(image_np).permute(2, 0, 1).float()
-                
+
                 # Use flat-bug's pyramid_predictions method with tensor input
                 predictions = self.model.pyramid_predictions(image_tensor)
 
@@ -420,7 +420,7 @@ class HFImageClassifier(Algorithm):
             labels=labels,
             version="ImageNet-1k",
             description=description_text,
-            uri=f"https://huggingface.co/{self.model_name}",
+            uri=f"https://huggingface.co/{self.model_name}",  # noqa: E231
         )
 
     def get_algorithm_config_response(self) -> AlgorithmConfigResponse:
