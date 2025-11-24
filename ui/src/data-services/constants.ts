@@ -13,6 +13,7 @@ export const API_ROUTES = {
   LOGIN: 'auth/token/login',
   LOGOUT: 'auth/token/logout',
   ME: 'users/me',
+  MEMBERS: 'role_management/members',
   OCCURRENCES: 'occurrences',
   PAGES: 'pages',
   PIPELINES: 'ml/pipelines',
@@ -23,10 +24,10 @@ export const API_ROUTES = {
   SESSIONS: 'events',
   SITES: 'deployments/sites',
   SPECIES: 'taxa',
-  TAGS: 'tags',
-  TAXA_LISTS: 'taxa/lists',
   STORAGE: 'storage',
   SUMMARY: 'status/summary',
+  TAGS: 'tags',
+  TAXA_LISTS: 'taxa/lists',
   USERS: 'users',
 }
 
