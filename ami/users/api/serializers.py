@@ -10,7 +10,7 @@ User = get_user_model()
 class UserListSerializer(DefaultSerializer):
     class Meta:
         model = User
-        fields = ["id", "name", "details", "image"]
+        fields = ["id", "name", "details", "image", "email"]
 
         extra_kwargs = {
             "details": {"view_name": "api:user-detail", "lookup_field": "pk", "lookup_url_kwarg": "id"},
@@ -49,3 +49,52 @@ class GroupSerializer(DefaultSerializer):
     class Meta:
         model = Group
         fields = ["id", "details", "name"]
+
+
+# Roles management api serializers
+class ProjectRoleSerializer(serializers.Serializer):
+    id = serializers.CharField(source="role")
+    name = serializers.CharField()
+
+
+class ProjectMemberSerializer(serializers.Serializer):
+    user = UserListSerializer(read_only=True)
+    role = serializers.CharField(read_only=True)
+
+    user_id = serializers.IntegerField(write_only=True, required=False)
+    role_id = serializers.CharField(write_only=True, required=True)
+
+    def validate_user_id(self, value):
+        try:
+            user = User.objects.get(pk=value)
+        except User.DoesNotExist:
+            raise serializers.ValidationError("User not found.")
+        # store user object for use in .validate()
+        self._validated_user = user
+        return value
+
+    def validate_role_id(self, value):
+        from ami.users.roles import Role
+
+        role_map = {r.__name__: r for r in Role.__subclasses__()}
+
+        if value not in role_map:
+            raise serializers.ValidationError(f"Invalid role_id. Must be one of: {list(role_map.keys())}")
+
+        # store role class for use in .validate()
+        self._validated_role = role_map[value]
+        return value
+
+    def validate(self, data):
+        """
+        Attach validated user + role onto validated_data
+        so the viewset can use serializer.validated_data["user"]
+        and serializer.validated_data["role"].
+        """
+        if hasattr(self, "_validated_user"):
+            data["user"] = self._validated_user
+
+        if hasattr(self, "_validated_role"):
+            data["role"] = self._validated_role
+
+        return data
