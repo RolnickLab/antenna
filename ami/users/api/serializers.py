@@ -54,7 +54,7 @@ class GroupSerializer(DefaultSerializer):
 # Roles management api serializers
 class ProjectRoleSerializer(serializers.Serializer):
     id = serializers.CharField(source="role")
-    display_name = serializers.CharField()
+    name = serializers.CharField()
 
 
 class ProjectMemberSerializer(serializers.Serializer):

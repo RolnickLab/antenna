@@ -5,6 +5,7 @@ import { TableColumn } from 'design-system/components/table/types'
 import { UserIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
+import { ManageAccessDialog } from './manage-access-dialog'
 
 export const columns: (
   projectId: string,
@@ -37,9 +38,7 @@ export const columns: (
   {
     id: 'role',
     name: translate(STRING.FIELD_LABEL_ROLE),
-    renderCell: (item: Member) => (
-      <BasicTableCell value={item.role.displayName} />
-    ),
+    renderCell: (item: Member) => <BasicTableCell value={item.role.name} />,
   },
   {
     id: 'actions',
@@ -55,9 +54,7 @@ export const columns: (
             <span>{translate(STRING.LEAVE_TEAM)}</span>
           </Button>
         ) : (
-          <Button size="small" variant="outline">
-            <span>{translate(STRING.MANAGE_ACCESS)}</span>
-          </Button>
+          <ManageAccessDialog member={item} />
         )}
       </div>
     ),

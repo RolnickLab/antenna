@@ -11,8 +11,8 @@ const convertServerRecord = (record: any): Member => ({
   image: record.user.image,
   name: record.user.name,
   role: {
-    displayName: record.role, // TODO: Can we get the display name from backend?
     id: record.role,
+    name: record.role, // TODO: Can we get the name from backend?
   },
 })
 
@@ -25,14 +25,12 @@ export const useMembers = (
   isFetching: boolean
   error?: unknown
 } => {
-  const fetchUrl = getFetchUrl({
-    collection: API_ROUTES.MEMBERS,
-    params,
-  })
-
   const { data, isLoading, isFetching, error } = useAuthorizedQuery<any[]>({
     queryKey: [API_ROUTES.MEMBERS, params],
-    url: fetchUrl,
+    url: getFetchUrl({
+      collection: API_ROUTES.MEMBERS,
+      params,
+    }),
   })
 
   const members = useMemo(() => data?.map(convertServerRecord), [data])

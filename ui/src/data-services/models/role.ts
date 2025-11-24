@@ -1,4 +1,4 @@
 export type Role = {
-  displayName: string
+  name: string
   id: string
 }
