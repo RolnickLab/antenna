@@ -3,14 +3,14 @@ import { Badge } from 'design-system/components/badge/badge'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { TableColumn } from 'design-system/components/table/types'
 import { UserIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
+import { LeaveTeamDialog } from './leave-team-dialog'
 import { ManageAccessDialog } from './manage-access-dialog'
+import { RemoveMemberDialog } from './remove-member-dialog'
 
-export const columns: (
-  projectId: string,
+export const columns: (userId?: string) => TableColumn<Member>[] = (
   userId?: string
-) => TableColumn<Member>[] = (projectId: string, userId?: string) => [
+) => [
   {
     id: 'user',
     name: translate(STRING.FIELD_LABEL_USER),
@@ -50,11 +50,12 @@ export const columns: (
     renderCell: (item: Member) => (
       <div className="p-4 flex items-center justify-end gap-2">
         {item.id === userId ? (
-          <Button size="small" variant="outline">
-            <span>{translate(STRING.LEAVE_TEAM)}</span>
-          </Button>
+          <LeaveTeamDialog member={item} />
         ) : (
-          <ManageAccessDialog member={item} />
+          <>
+            <ManageAccessDialog member={item} />
+            <RemoveMemberDialog member={item} />
+          </>
         )}
       </div>
     ),

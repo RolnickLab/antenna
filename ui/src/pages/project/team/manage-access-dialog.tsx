@@ -45,7 +45,7 @@ export const ManageAccessDialog = ({ member }: { member: Member }) => {
         <FormSection
           title={translate(STRING.MANAGE_ACCESS)}
           description={translate(STRING.MANAGE_ACCESS_FOR, {
-            user: member.email,
+            user: member.name ?? member.email,
           })}
         >
           <InputContent label={translate(STRING.FIELD_LABEL_ROLE)}>

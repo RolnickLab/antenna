@@ -55,7 +55,7 @@ export const Team = () => {
         </Button>
       </PageHeader>
       <Table
-        columns={columns(project.id, userInfo?.id)}
+        columns={columns(userInfo?.id)}
         error={error}
         isLoading={isLoading}
         items={members}
