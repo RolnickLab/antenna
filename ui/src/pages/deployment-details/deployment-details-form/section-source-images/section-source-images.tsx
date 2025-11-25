@@ -22,7 +22,6 @@ import { isEmpty } from 'utils/isEmpty/isEmpty'
 import { STRING, translate } from 'utils/language'
 import { useSyncSectionStatus } from 'utils/useSyncSectionStatus'
 import { config } from '../config'
-import { SectionExampleCaptures } from '../section-example-captures/section-example-captures'
 import { Section } from '../types'
 import { SyncDeploymentSourceImages } from './actions/sync-source-images'
 
@@ -102,7 +101,6 @@ export const SectionSourceImages = ({
         deployment={deployment}
         isConnected={isConnected}
       />
-      <SectionExampleCaptures deployment={deployment} />
       <FormActions>
         <Button label={translate(STRING.BACK)} onClick={onBack} />
       </FormActions>

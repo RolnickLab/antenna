@@ -1,6 +1,6 @@
 import classNames from 'classnames'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import styles from './status-info.module.scss'
 import { Status } from './types'
 
@@ -32,7 +32,7 @@ export const StatusInfo = ({
 
   return (
     <div className={styles.wrapper}>
-      <Tooltip content={tooltip}>
+      <BasicTooltip content={tooltip}>
         <div className={styles.content}>
           <div className={classNames(styles.iconContainer, info.className)}>
             {info.icon && (
@@ -40,7 +40,7 @@ export const StatusInfo = ({
             )}
           </div>
         </div>
-      </Tooltip>
+      </BasicTooltip>
     </div>
   )
 }
