@@ -38,9 +38,7 @@ export enum STRING {
   START,
   SUBMIT,
   SUGGEST_ID,
-  SUGGEST_ID_SHORT,
-  TEST,
-  TEST_CONNECTION,
+  VIEW_DOCS,
   VIEW_PUBLIC_PROJECTS,
 
   /* ENTITY */
@@ -320,9 +318,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.START]: 'Start',
   [STRING.SUBMIT]: 'Submit',
   [STRING.SUGGEST_ID]: 'Suggest ID',
-  [STRING.SUGGEST_ID_SHORT]: 'Suggest',
-  [STRING.TEST]: 'Test',
-  [STRING.TEST_CONNECTION]: 'Test Connection',
+  [STRING.VIEW_DOCS]: 'View docs',
   [STRING.VIEW_PUBLIC_PROJECTS]: 'View public projects',
 
   /* FIELD_LABEL */
