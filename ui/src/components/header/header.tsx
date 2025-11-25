@@ -68,12 +68,12 @@ export const Header = () => {
             target="_blank"
           >
             <BookOpenIcon className="w-4 h-4" />
-            <span>Docs</span>
+            <span>{translate(STRING.NAV_ITEM_DOCS)}</span>
           </a>
           <Popover.Root key={location.pathname}>
             <Popover.Trigger asChild>
               <Button size="small" variant="ghost">
-                <span>About</span>
+                <span>{translate(STRING.NAV_ITEM_ABOUT)}</span>
                 <ChevronDownIcon className="w-4 h-4" />
               </Button>
             </Popover.Trigger>
@@ -84,14 +84,14 @@ export const Header = () => {
                 rel="noreferrer"
                 target="_blank"
               >
-                <span>Landing page</span>
+                <span>{translate(STRING.NAV_ITEM_LANDING_PAGE)}</span>
                 <ExternalLinkIcon className="w-4 h-4" />
               </a>
               <Link className={LINK_CLASSNAME} to={APP_ROUTES.TERMS_OF_SERVICE}>
-                <span>Terms of service</span>
+                <span>{translate(STRING.NAV_ITEM_TERMS_OF_SERVICE)}</span>
               </Link>
               <Link className={LINK_CLASSNAME} to={APP_ROUTES.CODE_OF_CONDUCT}>
-                <span>Code of conduct</span>
+                <span>{translate(STRING.NAV_ITEM_CODE_OF_CONDUCT)}</span>
               </Link>
             </Popover.Content>
           </Popover.Root>
