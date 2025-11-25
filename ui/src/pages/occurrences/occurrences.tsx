@@ -25,7 +25,7 @@ import {
 import { useContext, useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
-import { APP_ROUTES } from 'utils/constants'
+import { APP_ROUTES, DOCS_LINKS } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'
@@ -122,11 +122,10 @@ export const Occurrences = () => {
         </div>
         <div className="w-full overflow-hidden">
           <PageHeader
+            docsLink={DOCS_LINKS.VALIDATING_DATA}
             isFetching={isFetching}
             isLoading={isLoading}
-            subTitle={translate(STRING.RESULTS, {
-              total,
-            })}
+            subTitle={translate(STRING.RESULTS, { total })}
             title={translate(STRING.NAV_ITEM_OCCURRENCES)}
             tooltip={translate(STRING.TOOLTIP_OCCURRENCE)}
           >
