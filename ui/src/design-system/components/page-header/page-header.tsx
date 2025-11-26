@@ -3,26 +3,29 @@ import { InfoIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { ReactNode } from 'react'
 import { STRING, translate } from 'utils/language'
+import { DocsLink } from '../button/docs-link'
 import { LoadingSpinner } from '../loading-spinner/loading-spinner'
 import { BasicTooltip } from '../tooltip/basic-tooltip'
 import styles from './page-header.module.scss'
 
 interface PageHeaderProps {
+  children?: ReactNode
+  docsLink?: string
   isFetching?: boolean
   isLoading?: boolean
   subTitle: string
   title: string
   tooltip?: string
-  children?: ReactNode
 }
 
 export const PageHeader = ({
+  children,
+  docsLink,
   isFetching,
   isLoading,
   subTitle,
   title,
   tooltip,
-  children,
 }: PageHeaderProps) => (
   <div className={styles.wrapper}>
     <div>
@@ -35,6 +38,7 @@ export const PageHeader = ({
             </Button>
           </BasicTooltip>
         ) : null}
+        {docsLink ? <DocsLink href={docsLink} isCompact /> : null}
       </div>
       <div className={classNames(styles.row, styles.details)}>
         <div className={styles.row}>
