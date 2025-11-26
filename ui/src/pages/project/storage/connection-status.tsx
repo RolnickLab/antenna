@@ -117,7 +117,7 @@ export const ConnectionStatus = ({
             className={styles.wizardTrigger}
             showToggle
           >
-            <StatusInfo label={label} status={status} tooltip={details} />
+            <StatusInfo status={status} tooltip={details} />
           </Wizard.Trigger>
           <Wizard.Content className={styles.wizardContent}>
             <FormRow>
@@ -129,7 +129,7 @@ export const ConnectionStatus = ({
                 <>
                   {data?.first_file_found ? (
                     <InputContent label="First file found">
-                      <BasicTooltip content={data.first_file_found}>
+                      <BasicTooltip asChild content={data.first_file_found}>
                         <a
                           href={data.first_file_found}
                           rel="noreferrer"

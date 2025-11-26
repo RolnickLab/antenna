@@ -16,6 +16,7 @@ export const PopulateProcessingService = ({
 
   return (
     <BasicTooltip
+      asChild
       content={
         error
           ? 'Could not register the pipelines, please check the endpoint URL.'

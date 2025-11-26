@@ -24,7 +24,6 @@ export const StatusInfo = ({
   status,
   tooltip,
 }: {
-  label: string
   status: Status
   tooltip?: string
 }) => {
