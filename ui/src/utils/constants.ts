@@ -103,7 +103,8 @@ export const LANDING_PAGE_URL = 'https://insectai.org/'
 
 export const LANDING_PAGE_WAITLIST_URL = 'https://insectai.org/waitlist'
 
-export const DOCS_URL = 'https://rolnicklab.github.io/antenna-docs'
+export const DOCS_URL =
+  import.meta.env.VITE_DOCS_URL ?? 'https://rolnicklab.github.io/antenna-docs'
 
 export const DOCS_LINKS = {
   CONFIGURING_DATA_SOURCE: `${DOCS_URL}/sections/user-guide/uploading-data/#configuring-a-data-source`,
