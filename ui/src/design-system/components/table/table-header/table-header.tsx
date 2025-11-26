@@ -38,15 +38,15 @@ const BasicTableHeader = <T,>({
   column,
   visuallyHidden,
 }: Omit<TableHeaderProps<T>, 'sortSettings' | 'onSortClick'>) => (
-  <BasicTooltip content={column.tooltip}>
-    <th
-      key={column.id}
-      style={{
-        textAlign: column.styles?.textAlign,
-        width: column.styles?.width,
-      }}
-      className={styles.tableHeader}
-    >
+  <th
+    key={column.id}
+    style={{
+      textAlign: column.styles?.textAlign,
+      width: column.styles?.width,
+    }}
+    className={styles.tableHeader}
+  >
+    <BasicTooltip asChild content={column.tooltip}>
       <div
         className={classNames(styles.content, {
           [styles.visuallyHidden]: visuallyHidden,
@@ -62,8 +62,8 @@ const BasicTableHeader = <T,>({
           ) : null}
         </div>
       </div>
-    </th>
-  </BasicTooltip>
+    </BasicTooltip>
+  </th>
 )
 
 const SortableTableHeader = <T,>({
@@ -90,7 +90,7 @@ const SortableTableHeader = <T,>({
         [styles.active]: sortActive,
       })}
     >
-      <BasicTooltip content={column.tooltip}>
+      <BasicTooltip asChild content={column.tooltip}>
         <button
           className={classNames(styles.content, styles.sortButton, {
             [styles.visuallyHidden]: visuallyHidden,
