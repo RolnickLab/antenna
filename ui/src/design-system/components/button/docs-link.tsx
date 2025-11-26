@@ -15,6 +15,7 @@ export const DocsLink = ({
     content={isCompact ? translate(STRING.VIEW_DOCS) : undefined}
   >
     <a
+      aria-label={isCompact ? translate(STRING.VIEW_DOCS) : undefined}
       className={buttonVariants({
         size: isCompact ? 'icon' : 'small',
         variant: 'ghost',
