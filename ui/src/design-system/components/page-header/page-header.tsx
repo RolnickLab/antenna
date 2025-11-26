@@ -1,10 +1,10 @@
 import classNames from 'classnames'
+import { InfoIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { ReactNode } from 'react'
 import { STRING, translate } from 'utils/language'
-import { IconButton, IconButtonTheme } from '../icon-button/icon-button'
-import { IconType } from '../icon/icon'
 import { LoadingSpinner } from '../loading-spinner/loading-spinner'
-import { Tooltip } from '../tooltip/tooltip'
+import { BasicTooltip } from '../tooltip/basic-tooltip'
 import styles from './page-header.module.scss'
 
 interface PageHeaderProps {
@@ -29,9 +29,11 @@ export const PageHeader = ({
       <div className={styles.row} style={{ gap: '4px' }}>
         <h1 className={styles.title}>{title}</h1>
         {tooltip ? (
-          <Tooltip content={tooltip}>
-            <IconButton icon={IconType.Info} theme={IconButtonTheme.Plain} />
-          </Tooltip>
+          <BasicTooltip asChild content={tooltip}>
+            <Button size="icon" variant="ghost">
+              <InfoIcon className="w-4 h-4" />
+            </Button>
+          </BasicTooltip>
         ) : null}
       </div>
       <div className={classNames(styles.row, styles.details)}>

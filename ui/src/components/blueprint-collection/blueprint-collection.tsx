@@ -1,8 +1,9 @@
 import classNames from 'classnames'
 import { LicenseInfo } from 'components/license-info/license-info'
 import { Icon, IconType } from 'design-system/components/icon/icon'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { EyeIcon } from 'lucide-react'
-import { buttonVariants, Tooltip } from 'nova-ui-kit'
+import { buttonVariants } from 'nova-ui-kit'
 import { ReactNode, useState } from 'react'
 import { Link } from 'react-router-dom'
 import styles from './blueprint-collection.module.scss'
@@ -77,24 +78,17 @@ export const BlueprintItem = ({
           }}
         />
         {item.to ? (
-          <Tooltip.Provider delayDuration={0}>
-            <Tooltip.Root>
-              <Tooltip.Trigger asChild>
-                <Link
-                  to={item.to}
-                  className={classNames(
-                    buttonVariants({ size: 'icon', variant: 'outline' }),
-                    'hidden w-8 h-8 absolute right-2 bottom-2 group-hover:flex'
-                  )}
-                >
-                  <EyeIcon className="w-4 h-4" />
-                </Link>
-              </Tooltip.Trigger>
-              <Tooltip.Content side="bottom">
-                <span>Show in session capture</span>
-              </Tooltip.Content>
-            </Tooltip.Root>
-          </Tooltip.Provider>
+          <BasicTooltip asChild content="Show in session capture">
+            <Link
+              to={item.to}
+              className={classNames(
+                buttonVariants({ size: 'icon', variant: 'outline' }),
+                'flex w-8 h-8 absolute right-2 bottom-2 invisible group-hover:visible'
+              )}
+            >
+              <EyeIcon className="w-4 h-4" />
+            </Link>
+          </BasicTooltip>
         ) : null}
       </div>
       <span
