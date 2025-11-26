@@ -605,6 +605,45 @@ class TestSourceImageCollections(TestCase):
         self.assertGreater(collection_images.filter(deployment=deployment_two).count(), 0)
         self.assertGreater(collection_images.filter(deployment=deployment_three).count(), 0)
 
+    def test_interval_sample_multiple_deployments(self):
+        """
+        Ensure interval sampling applies independently per deployment (station).
+
+        Create two deployments with captures spaced 1 minute apart for a few hours,
+        then sample with `minute_interval=60` and verify the total sampled count equals
+        the sum of per-deployment hourly samples.
+        """
+        from ami.main.models import SourceImage, SourceImageCollection, sample_captures_by_interval
+
+        # Create a new project and two deployments
+        project = Project.objects.create(name="Multi Dep Project")
+        dep1 = Deployment.objects.create(name="Dep One", project=project)
+        dep2 = Deployment.objects.create(name="Dep Two", project=project)
+
+        # Create captures: 3 hours worth of captures at 1-minute intervals (~180 images)
+        images_per_night = 180
+        create_captures(deployment=dep1, num_nights=1, images_per_night=images_per_night, interval_minutes=1)
+        create_captures(deployment=dep2, num_nights=1, images_per_night=images_per_night, interval_minutes=1)
+
+        collection = SourceImageCollection.objects.create(
+            name="Test Multi-Dep Interval",
+            project=project,
+            method="interval",
+            kwargs={"minute_interval": 60},
+        )
+        collection.save()
+        collection.populate_sample()
+
+        sampled_count = collection.images.count()
+
+        # Compute expected by sampling each deployment separately
+        expected = 0
+        for dep in [dep1, dep2]:
+            qs = SourceImage.objects.filter(deployment=dep).exclude(timestamp=None).order_by("timestamp")
+            expected += len(list(sample_captures_by_interval(60, qs)))
+
+        self.assertEqual(sampled_count, expected)
+
 
 class TestTaxonomy(TestCase):
     def setUp(self) -> None:
