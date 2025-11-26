@@ -98,7 +98,12 @@ export const Header = () => {
         </div>
         {user.loggedIn ? (
           <>
-            <Button onClick={() => logout()} size="small" variant="ghost">
+            <Button
+              disabled={isLogoutLoading}
+              onClick={() => logout()}
+              size="small"
+              variant="ghost"
+            >
               <span>{translate(STRING.LOGOUT)}</span>
               {isLogoutLoading ? (
                 <Loader2Icon className="w-4 h-4 animate-spin" />
