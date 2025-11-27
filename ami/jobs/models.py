@@ -723,11 +723,22 @@ class Job(BaseModel):
     # Hide old failed jobs after 3 days
     FAILED_CUTOFF_HOURS = 24 * 3
 
+    # Job status checking configuration constants
+    NO_TASK_ID_TIMEOUT_SECONDS = 300  # 5 minutes
+    DISAPPEARED_TASK_RETRY_THRESHOLD_SECONDS = 300  # 5 minutes
+    MAX_JOB_RUNTIME_SECONDS = 7 * 24 * 60 * 60  # 7 days
+    STUCK_PENDING_TIMEOUT_SECONDS = 600  # 10 minutes
+
     name = models.CharField(max_length=255)
     queue = models.CharField(max_length=255, default="default")
     scheduled_at = models.DateTimeField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
+    last_checked_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Last time job status was checked by periodic task",
+    )
     # @TODO can we use an Enum or Pydantic model for status?
     status = models.CharField(max_length=255, default=JobState.CREATED.name, choices=JobState.choices())
     progress: JobProgress = SchemaField(JobProgress, default=default_job_progress)
@@ -814,7 +825,7 @@ class Job(BaseModel):
         self.started_at = None
         self.finished_at = None
         self.scheduled_at = datetime.datetime.now()
-        self.status = AsyncResult(task_id).status
+        self.update_status(AsyncResult(task_id).status, save=False)
         self.update_progress(save=False)
         self.save()
 
@@ -863,7 +874,7 @@ class Job(BaseModel):
         self.logger.info(f"Re-running job {self}")
         self.finished_at = None
         self.progress.reset()
-        self.status = JobState.RETRY
+        self.update_status(JobState.RETRY, save=False)
         self.save()
         if async_task:
             self.enqueue()
@@ -874,7 +885,7 @@ class Job(BaseModel):
         """
         Terminate the celery task.
         """
-        self.status = JobState.CANCELING
+        self.update_status(JobState.CANCELING, save=False)
         self.save()
         if self.task_id:
             task = run_job.AsyncResult(self.task_id)
@@ -882,7 +893,7 @@ class Job(BaseModel):
                 task.revoke(terminate=True)
                 self.save()
         else:
-            self.status = JobState.REVOKED
+            self.update_status(JobState.REVOKED, save=False)
             self.save()
 
     def update_status(self, status=None, save=True):
@@ -910,6 +921,7 @@ class Job(BaseModel):
     def update_progress(self, save=True):
         """
         Update the total aggregate progress from the progress of each stage.
+        Also ensure the displayed progress.summary.status is in sync with job.status.
         """
         if not len(self.progress.stages):
             # Need at least one stage to calculate progress
@@ -928,6 +940,10 @@ class Job(BaseModel):
             total_progress = sum([stage.progress for stage in self.progress.stages]) / len(self.progress.stages)
 
         self.progress.summary.progress = total_progress
+        try:
+            self.progress.summary.status = JobState(self.status)
+        except ValueError:
+            self.progress.summary.status = JobState.UNKNOWN
 
         if save:
             self.save(update_progress=False)
@@ -949,6 +965,23 @@ class Job(BaseModel):
         logger.debug(f"Saved job {self}")
         if self.progress.summary.status != self.status:
             logger.warning(f"Job {self} status mismatches progress: {self.progress.summary.status} != {self.status}")
+
+    def check_status(self, force: bool = False, save: bool = True) -> bool:
+        """
+        Check if the job's Celery task still exists and update status accordingly.
+
+        This delegates to the status_checker module to avoid bloating this file.
+
+        Args:
+            force: Skip the recent check time limit
+            save: Save the job if status changes
+
+        Returns:
+            bool: True if job status was changed, False otherwise
+        """
+        from ami.jobs.status import check_job_status
+
+        return check_job_status(self, force=force, save=save)
 
     def check_custom_permission(self, user, action: str) -> bool:
         job_type = self.job_type_key.lower()
