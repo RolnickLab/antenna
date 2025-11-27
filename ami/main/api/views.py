@@ -236,8 +236,8 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         "events_count",
         "occurrences_count",
         "taxa_count",
-        "first_date",
-        "last_date",
+        "first_capture_timestamp",
+        "last_capture_timestamp",
         "name",
     ]
 

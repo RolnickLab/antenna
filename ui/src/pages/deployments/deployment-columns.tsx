@@ -177,7 +177,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
   {
     id: 'first-date',
     name: translate(STRING.FIELD_LABEL_FIRST_DATE),
-    sortField: 'first_date',
+    sortField: 'first_capture_timestamp',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -188,7 +188,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
   {
     id: 'last-date',
     name: translate(STRING.FIELD_LABEL_LAST_DATE),
-    sortField: 'last_date',
+    sortField: 'last_capture_timestamp',
     styles: {
       textAlign: TextAlign.Right,
     },
