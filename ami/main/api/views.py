@@ -238,6 +238,7 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         "taxa_count",
         "first_date",
         "last_date",
+        "name",
     ]
 
     permission_classes = [ObjectPermission]
