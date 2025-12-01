@@ -232,7 +232,12 @@ class Project(ProjectSettingsMixin, BaseModel):
     description = models.TextField(blank=True)
     image = models.ImageField(upload_to="projects", blank=True, null=True)
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="projects")
-    members = models.ManyToManyField(User, related_name="user_projects", blank=True)
+    members = models.ManyToManyField(
+        User,
+        through="UserProjectMembership",
+        related_name="user_projects",
+        blank=True,
+    )
     draft = models.BooleanField(
         default=False,
         help_text="Indicates whether this project is in draft mode",
@@ -466,6 +471,29 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("view_private_data", "Can view private data"),
             ("trigger_exports", "Can trigger data exports"),
         ]
+
+
+class UserProjectMembership(BaseModel):
+    """
+    Through model connecting User <-> Project.
+    This model represents membership ONLY.
+    Role assignment is handled separately via permission groups.
+    """
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="project_memberships",
+    )
+
+    project = models.ForeignKey(
+        "main.Project",
+        on_delete=models.CASCADE,
+        related_name="project_memberships",
+    )
+
+    class Meta:
+        unique_together = ("user", "project")
 
 
 @final
