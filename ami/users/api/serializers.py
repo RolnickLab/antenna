@@ -116,6 +116,7 @@ class UserProjectMembershipSerializer(DefaultSerializer):
         attrs.pop("role_id", None)
         if user:
             attrs["user"] = user
+        attrs["project"] = project
         return attrs
 
 
