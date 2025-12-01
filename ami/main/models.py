@@ -410,6 +410,10 @@ class Project(ProjectSettingsMixin, BaseModel):
         CREATE_DEVICE = "create_device"
         DELETE_DEVICE = "delete_device"
         UPDATE_DEVICE = "update_device"
+        # User projet membership permissions
+        CREATE_USER_PROJECT_MEMBERSHIP = "create_userprojectmembership"
+        UPDATE_USER_PROJECT_MEMBERSHIP = "update_userprojectmembership"
+        DELETE_USER_PROJECT_MEMBERSHIP = "delete_userprojectmembership"
 
         # Other permissions
         VIEW_PRIVATE_DATA = "view_private_data"
@@ -467,6 +471,10 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("create_device", "Can create a device"),
             ("delete_device", "Can delete a device"),
             ("update_device", "Can update a device"),
+            # User project membership permissions
+            ("create_userprojectmembership", "Can add a user to the project"),
+            ("update_userprojectmembership", "Can update a user's project membership and role in the project"),
+            ("delete_userprojectmembership", "Can remove a user from the project"),
             # Other permissions
             ("view_private_data", "Can view private data"),
             ("trigger_exports", "Can trigger data exports"),
