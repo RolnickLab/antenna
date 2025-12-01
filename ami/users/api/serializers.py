@@ -11,7 +11,7 @@ User = get_user_model()
 class UserListSerializer(DefaultSerializer):
     class Meta:
         model = User
-        fields = ["id", "name", "details", "image"]
+        fields = ["id", "name", "details", "image", "email"]
 
         extra_kwargs = {
             "details": {"view_name": "api:user-detail", "lookup_field": "pk", "lookup_url_kwarg": "id"},
@@ -55,7 +55,7 @@ class GroupSerializer(DefaultSerializer):
 # Roles management api serializers
 class ProjectRoleSerializer(serializers.Serializer):
     id = serializers.CharField(source="role")
-    display_name = serializers.CharField()
+    name = serializers.CharField()
 
 
 class UserProjectMembershipSerializer(DefaultSerializer):

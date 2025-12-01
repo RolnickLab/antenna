@@ -59,7 +59,7 @@ class Role:
         """
         result = []
         for cls in Role.__subclasses__():
-            result.append({"role": cls.__name__, "display_name": cls.name})
+            result.append({"role": cls.__name__, "name": cls.name})
         return result
 
     @staticmethod
