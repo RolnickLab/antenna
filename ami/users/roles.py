@@ -150,6 +150,9 @@ class ProjectManager(Role):
             Project.Permissions.CREATE_SOURCE_IMAGE_UPLOAD,
             Project.Permissions.UPDATE_SOURCE_IMAGE_UPLOAD,
             Project.Permissions.DELETE_SOURCE_IMAGE_UPLOAD,
+            Project.Permissions.CREATE_USER_PROJECT_MEMBERSHIP,
+            Project.Permissions.UPDATE_USER_PROJECT_MEMBERSHIP,
+            Project.Permissions.DELETE_USER_PROJECT_MEMBERSHIP,
         }
     )
 
