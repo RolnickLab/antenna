@@ -23,7 +23,7 @@ class ProjectRolesViewSet(viewsets.ViewSet, ProjectMixin):
     serializer_class = ProjectRoleSerializer
     permission_classes = [IsActiveStaffOrReadOnly]
 
-    def list(self, request):
+    def list(self, request, **kwargs):
         roles = Role.get_supported_roles()
         serializer = ProjectRoleSerializer(roles, many=True)
         return Response(serializer.data)
