@@ -39,7 +39,6 @@ class JobFilterSet(filters.FilterSet):
             "source_image_collection",
             "source_image_single",
             "pipeline",
-            "pipeline__slug",
             "job_type_key",
         ]
 
@@ -283,7 +282,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                     }
                 )
         except pydantic.ValidationError as e:
-            raise ValidationError(f"Invalid result data: {e}")
+            raise ValidationError(f"Invalid result data: {e}") from e
 
         return Response(
             {
