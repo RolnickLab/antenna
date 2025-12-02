@@ -1,5 +1,6 @@
 import logging
 
+import pydantic
 from django.db.models.query import QuerySet
 from django.forms import IntegerField
 from django.utils import timezone
@@ -14,6 +15,7 @@ from ami.base.views import ProjectMixin
 
 # from ami.jobs.tasks import process_pipeline_result  # TODO: Uncomment when available in main
 from ami.main.api.views import DefaultViewSet
+from ami.ml.schemas import PipelineProcessingTask, PipelineTaskResult
 from ami.utils.fields import url_boolean_param
 from ami.utils.requests import batch_param, ids_only_param, incomplete_only_param, project_id_doc_param
 
@@ -233,14 +235,14 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         # TODO: Implement task queue integration
         logger.warning(f"Task queue endpoint called for job {job.pk} but the implementation is not yet available.")
 
-        return Response(
-            {
-                "tasks": [],
-                "message": "Task queue integration not yet available.",
-                "job_id": job.pk,
-                "batch_requested": batch,
-            }
+        dummy_task = PipelineProcessingTask(
+            id="1",
+            image_id="1",
+            image_url="http://example.com/image1",
+            queue_timestamp=timezone.now().isoformat(),
         )
+
+        return Response({"tasks": [task.dict() for task in [dummy_task] * batch]})
 
     @action(detail=True, methods=["post"], name="result")
     def result(self, request, pk=None):
@@ -250,48 +252,38 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         This endpoint accepts a list of pipeline results and queues them for
         background processing. Each result will be validated and saved.
 
-        The request body should be a list of results:
-        [
-            {
-                "reply_subject": "string",  # Required: from the task response
-                "result": {  # Required: PipelineResultsResponse (kept as JSON)
-                }
-            },
-        ]
+        The request body should be a list of results: list[PipelineTaskResult]
         """
 
         job = self.get_object()
         job_id = job.pk
 
         # Validate request data is a list
-        if not isinstance(request.data, list):
-            raise ValidationError("Request body must be a list of results")
+        if isinstance(request.data, list):
+            results = request.data
+        else:
+            results = [request.data]
 
-        # TODO: Implement result storage and processing
-        queued_tasks = []
-        for idx, item in enumerate(request.data):
-            reply_subject = item.get("reply_subject")
-            result_data = item.get("result")
+        try:
+            queued_tasks = []
+            for item in results:
+                task_result = PipelineTaskResult(**item)
+                # Stub: Log that we received the result but don't process it yet
+                logger.warning(
+                    f"Result endpoint called for job {job_id} (reply_subject: {task_result.reply_subject}) "
+                    "but result processing not yet available."
+                )
 
-            if not reply_subject:
-                raise ValidationError(f"Item {idx}: reply_subject is required")
-
-            if not result_data:
-                raise ValidationError(f"Item {idx}: result is required")
-
-            # Stub: Log that we received the result but don't process it yet
-            logger.warning(
-                f"Result endpoint called for job {job_id} (reply_subject: {reply_subject}) "
-                "but result processing not yet available."
-            )
-
-            queued_tasks.append(
-                {
-                    "reply_subject": reply_subject,
-                    "status": "pending_implementation",
-                    "message": "Result processing not yet implemented.",
-                }
-            )
+                # TODO: Implement result storage and processing
+                queued_tasks.append(
+                    {
+                        "reply_subject": task_result.reply_subject,
+                        "status": "pending_implementation",
+                        "message": "Result processing not yet implemented.",
+                    }
+                )
+        except pydantic.ValidationError as e:
+            raise ValidationError(f"Invalid result data: {e}")
 
         return Response(
             {
