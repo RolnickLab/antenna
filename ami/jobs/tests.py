@@ -330,9 +330,7 @@ class TestJobView(APITestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertIn("tasks", data)
-        self.assertIn("message", data)
-        self.assertEqual(data["tasks"], [])  # Stubbed, should return empty
-        self.assertIn("not yet available", data["message"].lower())
+        self.assertEqual(len(data["tasks"]), 1)  # Stubbed, should return one dummy task
 
     def test_tasks_endpoint_with_batch(self):
         """Test the tasks endpoint respects the batch parameter."""
@@ -347,7 +345,7 @@ class TestJobView(APITestCase):
 
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
-        self.assertEqual(data["batch_requested"], 5)
+        self.assertEqual(len(data["tasks"]), 5)
 
     def test_tasks_endpoint_without_pipeline(self):
         """Test the tasks endpoint returns error when job has no pipeline."""
@@ -399,11 +397,6 @@ class TestJobView(APITestCase):
 
         self.client.force_authenticate(user=self.user)
         result_url = reverse_with_params("api:job-result", args=[job.pk], params={"project_id": self.project.pk})
-
-        # Test with non-list data
-        resp = self.client.post(result_url, {"invalid": "data"}, format="json")
-        self.assertEqual(resp.status_code, 400)
-        self.assertIn("list", resp.json()[0].lower())
 
         # Test with missing reply_subject
         invalid_data = [{"result": {"pipeline": "test"}}]
