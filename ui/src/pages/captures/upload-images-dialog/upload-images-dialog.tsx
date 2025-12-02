@@ -63,7 +63,7 @@ export const UploadImagesDialog = ({
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Dialog.Trigger>
+      <Dialog.Trigger asChild>
         <Button size={buttonSize} variant={buttonVariant}>
           <UploadIcon className="w-4 h-4" />
           <span>Upload images</span>

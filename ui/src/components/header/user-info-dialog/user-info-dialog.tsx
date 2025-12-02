@@ -14,7 +14,7 @@ export const UserInfoDialog = () => {
 
   return (
     <Dialog.Root>
-      <Dialog.Trigger>
+      <Dialog.Trigger asChild>
         <div
           role="button"
           tabIndex={0}
