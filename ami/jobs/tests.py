@@ -347,6 +347,18 @@ class TestJobView(APITestCase):
         data = resp.json()
         self.assertEqual(len(data["tasks"]), 5)
 
+    def test_tasks_endpoint_with__invalid_batch(self):
+        """Test the tasks endpoint respects the batch parameter."""
+        pipeline = self._create_pipeline()
+        job = self._create_ml_job("Job for batch test", pipeline)
+
+        self.client.force_authenticate(user=self.user)
+        tasks_url = reverse_with_params(
+            "api:job-tasks", args=[job.pk], params={"project_id": self.project.pk, "batch": "invalid"}
+        )
+        resp = self.client.get(tasks_url)
+        self.assertEqual(resp.status_code, 400)
+
     def test_tasks_endpoint_without_pipeline(self):
         """Test the tasks endpoint returns error when job has no pipeline."""
         # Use the existing job which doesn't have a pipeline

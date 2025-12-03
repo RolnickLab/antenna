@@ -225,7 +225,10 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         3. POST to /jobs/{id}/result/ with the reply_subject to acknowledge
         """
         job: Job = self.get_object()
-        batch = IntegerField(required=False, min_value=1).clean(request.query_params.get("batch", 1))
+        try:
+            batch = IntegerField(required=False, min_value=1).clean(request.query_params.get("batch", 1))
+        except Exception as e:
+            raise ValidationError({"batch": str(e)}) from e
 
         # Validate that the job has a pipeline
         if not job.pipeline:
