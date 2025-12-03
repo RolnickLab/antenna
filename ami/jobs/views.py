@@ -230,6 +230,9 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         except Exception as e:
             raise ValidationError({"batch": str(e)}) from e
 
+        if not batch:
+            raise ValidationError({"batch": "Batch size must be at least 1."})
+
         # Validate that the job has a pipeline
         if not job.pipeline:
             raise ValidationError("This job does not have a pipeline configured")

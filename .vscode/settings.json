@@ -3,8 +3,6 @@
     "diffEditor.codeLens": true,
     "eslint.enable": true,
     "editor.codeActionsOnSave": {
-        "source.organizeImports": "explicit",
-        "source.sortImports": "explicit",
         "source.fixAll.markdownlint": "explicit",
         "source.fixAll": "explicit"
     },

@@ -1,5 +1,6 @@
 # from rich import print
 import logging
+from typing import Any
 
 from django.test import TestCase
 from guardian.shortcuts import assign_perm
@@ -88,6 +89,7 @@ class TestJobView(APITestCase):
             is_superuser=True,
         )
         self.factory = APIRequestFactory()
+        self.pipeline = None  # type: Pipeline | None
 
     def test_get_job(self):
         self.client.force_authenticate(user=self.user)
@@ -136,12 +138,16 @@ class TestJobView(APITestCase):
 
     def _create_pipeline(self, name: str = "Test Pipeline", slug: str = "test-pipeline") -> Pipeline:
         """Helper to create a pipeline and add it to the project."""
+        if self.pipeline:
+            return self.pipeline
+
         pipeline = Pipeline.objects.create(
             name=name,
             slug=slug,
             description=f"{name} description",
         )
         pipeline.projects.add(self.project)
+        self.pipeline = pipeline
         return pipeline
 
     def _create_ml_job(self, name: str, pipeline: Pipeline) -> Job:
@@ -332,32 +338,30 @@ class TestJobView(APITestCase):
         self.assertIn("tasks", data)
         self.assertEqual(len(data["tasks"]), 1)  # Stubbed, should return one dummy task
 
-    def test_tasks_endpoint_with_batch(self):
-        """Test the tasks endpoint respects the batch parameter."""
+    def _task_batch_helper(self, value: Any, expected_status: int):
         pipeline = self._create_pipeline()
         job = self._create_ml_job("Job for batch test", pipeline)
 
         self.client.force_authenticate(user=self.user)
         tasks_url = reverse_with_params(
-            "api:job-tasks", args=[job.pk], params={"project_id": self.project.pk, "batch": 5}
+            "api:job-tasks", args=[job.pk], params={"project_id": self.project.pk, "batch": value}
         )
         resp = self.client.get(tasks_url)
+        self.assertEqual(resp.status_code, expected_status)
+        return resp.json()
 
-        self.assertEqual(resp.status_code, 200)
-        data = resp.json()
+    def test_tasks_endpoint_with_batch(self):
+        """Test the tasks endpoint respects the batch parameter."""
+        data = self._task_batch_helper(5, 200)
+        self.assertIn("tasks", data)
         self.assertEqual(len(data["tasks"]), 5)
 
     def test_tasks_endpoint_with__invalid_batch(self):
-        """Test the tasks endpoint respects the batch parameter."""
-        pipeline = self._create_pipeline()
-        job = self._create_ml_job("Job for batch test", pipeline)
+        """Test the tasks endpoint with bad batch parameters."""
 
-        self.client.force_authenticate(user=self.user)
-        tasks_url = reverse_with_params(
-            "api:job-tasks", args=[job.pk], params={"project_id": self.project.pk, "batch": "invalid"}
-        )
-        resp = self.client.get(tasks_url)
-        self.assertEqual(resp.status_code, 400)
+        for value in ["invalid", None, "", 0]:
+            with self.subTest(batch=value):
+                self._task_batch_helper(value, 400)
 
     def test_tasks_endpoint_without_pipeline(self):
         """Test the tasks endpoint returns error when job has no pipeline."""
