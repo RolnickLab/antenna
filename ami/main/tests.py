@@ -616,7 +616,7 @@ class TestSourceImageCollections(TestCase):
         from ami.main.models import SourceImage, SourceImageCollection, sample_captures_by_interval
 
         # Create a new project and two deployments
-        project = Project.objects.create(name="Multi Dep Project")
+        project = Project.objects.create(name="Multi Dep Project", create_defaults=False)
         dep1 = Deployment.objects.create(name="Dep One", project=project)
         dep2 = Deployment.objects.create(name="Dep Two", project=project)
 
