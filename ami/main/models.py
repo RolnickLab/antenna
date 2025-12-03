@@ -3911,8 +3911,6 @@ class SourceImageCollection(BaseModel):
         )
         if deployment_id:
             qs = qs.filter(deployment=deployment_id)
-        if exclude_events:
-            qs = qs.exclude(event__in=exclude_events)
         qs = qs.exclude(event__in=exclude_events)
         # Limit to project
         qs = qs.filter(project=self.project)
