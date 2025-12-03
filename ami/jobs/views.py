@@ -169,23 +169,10 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             updated_at__lt=cutoff_datetime,
         )
 
-    @extend_schema(
-        parameters=[
-            project_id_doc_param,
-            ids_only_param,
-            incomplete_only_param,
-        ]
-    )
-    def list(self, request, *args, **kwargs):
-        # Check if ids_only parameter is set
-        ids_only = url_boolean_param(request, "ids_only", default=False)
-
+    def filter_queryset(self, queryset: QuerySet) -> QuerySet:
+        queryset = super().filter_queryset(queryset)
         # Check if incomplete_only parameter is set
-        incomplete_only = url_boolean_param(request, "incomplete_only", default=False)
-
-        # Get the base queryset
-        queryset = self.filter_queryset(self.get_queryset())
-
+        incomplete_only = url_boolean_param(self.request, "incomplete_only", default=False)
         # Filter to incomplete jobs if requested (checks "results" stage status)
         if incomplete_only:
             from django.db.models import Q
@@ -200,14 +187,26 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                 exclude_conditions |= Q(progress__stages__contains=[{"key": "results", "status": state}])
 
             queryset = queryset.exclude(exclude_conditions)
+        return queryset
+
+    @extend_schema(
+        parameters=[
+            project_id_doc_param,
+            ids_only_param,
+            incomplete_only_param,
+        ]
+    )
+    def list(self, request, *args, **kwargs):
+        # Get the base queryset
+        # Check if ids_only parameter is set
+        ids_only = url_boolean_param(request, "ids_only", default=False)
 
         if ids_only:
+            queryset = self.filter_queryset(self.get_queryset())
             # Return only IDs
             job_ids = list(queryset.values_list("id", flat=True))
             return Response({"job_ids": job_ids, "count": len(job_ids)})
 
-        # Override the queryset for the list view
-        self.queryset = queryset
         return super().list(request, *args, **kwargs)
 
     @extend_schema(
