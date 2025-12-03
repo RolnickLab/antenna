@@ -71,6 +71,7 @@ docker compose -f processing_services/example/docker-compose.yml up -d
 - Django admin: http://localhost:8000/admin/
 - OpenAPI / Swagger documentation: http://localhost:8000/api/v2/docs/
 - Minio UI: http://minio:9001, Minio service: http://minio:9000
+- NATS dashboard: https://natsdashboard.com/ (Add localhost)
 
 NOTE: If one of these services is not working properly, it could be due another process is using the port. You can check for this with `lsof -i :<PORT_NUMBER>`.
 
