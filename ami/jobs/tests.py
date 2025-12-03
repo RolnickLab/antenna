@@ -356,7 +356,7 @@ class TestJobView(APITestCase):
         self.assertIn("tasks", data)
         self.assertEqual(len(data["tasks"]), 5)
 
-    def test_tasks_endpoint_with__invalid_batch(self):
+    def test_tasks_endpoint_with_invalid_batch(self):
         """Test the tasks endpoint with bad batch parameters."""
 
         for value in ["invalid", None, "", 0]:
