@@ -1,8 +1,10 @@
 import datetime
+import functools
 import logging
 import random
 import time
 import typing
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 import pydantic
@@ -10,6 +12,7 @@ from celery import uuid
 from celery.result import AsyncResult
 from django.db import models, transaction
 from django.utils.text import slugify
+from django.utils.timesince import timesince
 from django_pydantic_field import SchemaField
 from guardian.shortcuts import get_perms
 
@@ -20,13 +23,141 @@ from ami.main.models import Deployment, Project, SourceImage, SourceImageCollect
 from ami.ml.models import Pipeline
 from ami.ml.post_processing.registry import get_postprocessing_task
 from ami.utils.schemas import OrderedEnum
+from config import celery_app
 
 logger = logging.getLogger(__name__)
+
+
+# ==============================================================================
+# CONCURRENCY PROTECTION
+# ==============================================================================
+# This module implements row-level locking to prevent concurrent updates from
+# multiple Celery workers from overwriting each other's changes.
+#
+# Key components:
+# - atomic_job_update(): Context manager that locks a job row for safe updates
+# - JobLogHandler.emit(): Uses locking when writing logs
+# - Job.save(): Automatically uses locking and validates logs to prevent overwrites
+#
+# When multiple workers (1-10) are processing the same job, they all may need
+# to update logs, progress, and status fields. Without locking, last-write-wins
+# can cause lost updates. The locking approach ensures all updates are preserved.
+# ==============================================================================
+
+
+def check_celery_workers_available() -> tuple[bool, int]:
+    """
+    Check if any Celery workers are currently running and available.
+
+    Returns:
+        tuple: (workers_available: bool, worker_count: int)
+    """
+    try:
+        # Get active workers using Celery's inspect API
+        inspect = celery_app.control.inspect()
+        active_workers = inspect.active()
+
+        if active_workers is None:
+            # None means no workers responded (likely no workers running)
+            return False, 0
+
+        worker_count = len(active_workers)
+        return worker_count > 0, worker_count
+    except Exception as e:
+        logger.warning(f"Failed to check for Celery workers: {e}")
+        # If we can't check, assume workers might be available (fail open)
+        return True, 0
+
+
+@functools.lru_cache(maxsize=1)
+def check_celery_workers_available_cached(timestamp: int) -> tuple[bool, int]:
+    """
+    Cached version of check_celery_workers_available.
+
+    Cache is keyed by timestamp (current minute), so results are cached
+    for approximately 1 minute to avoid excessive worker checks when
+    processing many jobs.
+
+    Args:
+        timestamp: Current minute as an integer (int(time.time() / 60))
+
+    Returns:
+        tuple: (workers_available: bool, worker_count: int)
+    """
+    return check_celery_workers_available()
+
+
+@contextmanager
+def atomic_job_update(job_id: int, timeout: int | None = None):
+    """
+    Context manager for safely updating job fields with row-level locking.
+
+    This ensures that concurrent updates to the same job (from multiple
+    Celery workers or tasks) don't overwrite each other's changes. The job
+    is locked for the duration of the context, and automatically saved when
+    the context exits if it was modified.
+
+    Args:
+        job_id: The ID of the job to lock and update
+        timeout: Optional timeout in seconds to wait for the lock.
+                 If None (default), waits indefinitely.
+
+    Yields:
+        Job: The locked job instance, safe to modify
+
+    Example:
+        with atomic_job_update(job.pk) as locked_job:
+            locked_job.logs.stdout.insert(0, "New log message")
+            locked_job.progress.update_stage("process", progress=0.5)
+            # Job is automatically saved on context exit
+
+    Raises:
+        Job.DoesNotExist: If the job doesn't exist
+        DatabaseError: If the lock cannot be acquired within timeout
+    """
+    # Import here to avoid circular import
+    from ami.jobs.models import Job
+
+    with transaction.atomic():
+        # Use select_for_update to lock the row
+        # nowait=False means we'll wait for the lock (don't lose data)
+        # skip_locked=False means we'll wait, not skip
+        query = Job.objects.select_for_update(nowait=False, skip_locked=False)
+
+        if timeout is not None:
+            # Set statement timeout for this transaction
+            from django.db import connection
+
+            with connection.cursor() as cursor:
+                cursor.execute(f"SET LOCAL statement_timeout = {timeout * 1000}")
+
+        job = query.get(pk=job_id)
+        yield job
+        # Job will be saved automatically when exiting if changed
+        # due to Django's behavior with select_for_update
 
 
 class JobState(str, OrderedEnum):
     """
     These come from Celery, except for CREATED, which is a custom state.
+
+    Future Enhancement: Consider implementing a state machine validator to enforce
+    valid state transitions. Example structure:
+
+        VALID_TRANSITIONS = {
+            JobState.CREATED: [JobState.PENDING, JobState.STARTED, JobState.FAILURE],
+            JobState.PENDING: [JobState.STARTED, JobState.RECEIVED, JobState.FAILURE],
+            JobState.STARTED: [JobState.SUCCESS, JobState.FAILURE, JobState.RETRY],
+            JobState.RETRY: [JobState.PENDING, JobState.STARTED, JobState.FAILURE],
+            JobState.CANCELING: [JobState.REVOKED, JobState.FAILURE],
+            # Final states generally shouldn't transition
+            JobState.SUCCESS: [],
+            JobState.FAILURE: [JobState.RETRY],  # Only allow retry from failure
+            JobState.REVOKED: [],
+        }
+
+    This would help catch invalid state transitions early and make the job
+    lifecycle more predictable.
     """
 
     # CREATED = "Created"
@@ -255,9 +386,12 @@ class JobLogs(pydantic.BaseModel):
 class JobLogHandler(logging.Handler):
     """
     Class for handling logs from a job and writing them to the job instance.
+
+    Uses row-level locking to prevent concurrent log writes from overwriting
+    each other when multiple Celery workers are updating the same job.
     """
 
-    max_log_length = 1000
+    max_log_length = 10000  # Allow ~100 messages per batch × hundreds of batches
 
     def __init__(self, job: "Job", *args, **kwargs):
         self.job = job
@@ -267,23 +401,29 @@ class JobLogHandler(logging.Handler):
         # Log to the current app logger
         logger.log(record.levelno, self.format(record))
 
-        # Write to the logs field on the job instance
+        # Write to the logs field on the job instance with atomic locking
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         msg = f"[{timestamp}] {record.levelname} {self.format(record)}"
-        if msg not in self.job.logs.stdout:
-            self.job.logs.stdout.insert(0, msg)
 
-        # Write a simpler copy of any errors to the errors field
-        if record.levelno >= logging.ERROR:
-            if record.message not in self.job.logs.stderr:
-                self.job.logs.stderr.insert(0, record.message)
-
-        if len(self.job.logs.stdout) > self.max_log_length:
-            self.job.logs.stdout = self.job.logs.stdout[: self.max_log_length]
-
-        # @TODO consider saving logs to the database periodically rather than on every log
         try:
-            self.job.save(update_fields=["logs"], update_progress=False)
+            # Use atomic update to prevent race conditions
+            with atomic_job_update(self.job.pk) as job:
+                if msg not in job.logs.stdout:
+                    job.logs.stdout.insert(0, msg)
+
+                # Write a simpler copy of any errors to the errors field
+                if record.levelno >= logging.ERROR:
+                    if record.message not in job.logs.stderr:
+                        job.logs.stderr.insert(0, record.message)
+
+                if len(job.logs.stdout) > self.max_log_length:
+                    job.logs.stdout = job.logs.stdout[: self.max_log_length]
+
+                if len(job.logs.stderr) > self.max_log_length:
+                    job.logs.stderr = job.logs.stderr[: self.max_log_length]
+
+                # Save with only the logs field to minimize lock time
+                job.save(update_fields=["logs"])
         except Exception as e:
             logger.error(f"Failed to save logs for job #{self.job.pk}: {e}")
             pass
@@ -325,7 +465,7 @@ class MLJob(JobType):
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
-        job.save()
+        job.save(update_fields=["status", "progress", "started_at", "finished_at"])
 
         # Keep track of sub-tasks for saving results, pair with batch number
         save_tasks: list[tuple[int, AsyncResult]] = []
@@ -345,7 +485,8 @@ class MLJob(JobType):
                         progress=i / job.delay,
                         mood="😵‍💫",
                     )
-                    job.save()
+                    # Only save progress to avoid overwriting logs
+                    job.save(update_fields=["progress"])
                     last_update = time.time()
 
             job.progress.update_stage(
@@ -354,7 +495,8 @@ class MLJob(JobType):
                 progress=1,
                 mood="🥳",
             )
-            job.save()
+            # Only save progress to avoid overwriting logs
+            job.save(update_fields=["progress"])
 
         if not job.pipeline:
             raise ValueError("No pipeline specified to process images in ML job")
@@ -398,8 +540,8 @@ class MLJob(JobType):
             progress=1,
         )
 
-        # End image collection stage
-        job.save()
+        # End image collection stage - only save progress to avoid overwriting logs
+        job.save(update_fields=["progress"])
 
         total_captures = 0
         total_detections = 0
@@ -462,7 +604,8 @@ class MLJob(JobType):
                 detections=total_detections,
                 classifications=total_classifications,
             )
-            job.save()
+            # Only save progress field to avoid overwriting logs from JobLogHandler
+            job.save(update_fields=["progress"])
 
             # Stop processing if any save tasks have failed
             # Otherwise, calculate the percent of images that have failed to save
@@ -496,7 +639,8 @@ class MLJob(JobType):
         FAILURE_THRESHOLD = 0.5
         if image_count and (percent_successful < FAILURE_THRESHOLD):
             job.progress.update_stage("process", status=JobState.FAILURE)
-            job.save()
+            # Only save progress to avoid overwriting logs
+            job.save(update_fields=["progress"])
             raise Exception(f"Failed to process more than {int(FAILURE_THRESHOLD * 100)}% of images")
 
         job.progress.update_stage(
@@ -511,7 +655,8 @@ class MLJob(JobType):
         )
         job.update_status(JobState.SUCCESS, save=False)
         job.finished_at = datetime.datetime.now()
-        job.save()
+        # Save all final fields at once, excluding logs
+        job.save(update_fields=["status", "progress", "finished_at"])
 
 
 class DataStorageSyncJob(JobType):
@@ -531,7 +676,8 @@ class DataStorageSyncJob(JobType):
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
-        job.save()
+        # Only save specific fields to avoid overwriting logs
+        job.save(update_fields=["progress", "status", "started_at", "finished_at"])
 
         if not job.deployment:
             raise ValueError("No deployment provided for data storage sync job")
@@ -543,7 +689,8 @@ class DataStorageSyncJob(JobType):
                 progress=0,
                 total_files=0,
             )
-            job.save()
+            # Only save progress to avoid overwriting logs
+            job.save(update_fields=["progress"])
 
             job.deployment.sync_captures(job=job)
 
@@ -554,10 +701,12 @@ class DataStorageSyncJob(JobType):
                 progress=1,
             )
             job.update_status(JobState.SUCCESS)
-            job.save()
+            # Save status and progress to avoid overwriting logs
+            job.save(update_fields=["status", "progress"])
 
         job.finished_at = datetime.datetime.now()
-        job.save()
+        # Only save finished_at to avoid overwriting logs
+        job.save(update_fields=["finished_at"])
 
 
 class SourceImageCollectionPopulateJob(JobType):
@@ -576,7 +725,8 @@ class SourceImageCollectionPopulateJob(JobType):
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
-        job.save()
+        # Only save specific fields to avoid overwriting logs
+        job.save(update_fields=["progress", "status", "started_at", "finished_at"])
 
         if not job.source_image_collection:
             raise ValueError("No source image collection provided")
@@ -591,11 +741,13 @@ class SourceImageCollectionPopulateJob(JobType):
             progress=0.10,
             captures_added=0,
         )
-        job.save()
+        # Only save progress to avoid overwriting logs
+        job.save(update_fields=["progress", "status", "started_at", "finished_at"])
 
         job.source_image_collection.populate_sample(job=job)
         job.logger.info(f"Finished populating source image collection {job.source_image_collection}")
-        job.save()
+        # Only save progress to avoid overwriting logs
+        job.save(update_fields=["progress"])
 
         captures_added = job.source_image_collection.images.count()
         job.logger.info(f"Added {captures_added} captures to source image collection {job.source_image_collection}")
@@ -608,7 +760,8 @@ class SourceImageCollectionPopulateJob(JobType):
         )
         job.finished_at = datetime.datetime.now()
         job.update_status(JobState.SUCCESS, save=False)
-        job.save()
+        # Save final fields to avoid overwriting logs
+        job.save(update_fields=["progress", "status", "finished_at"])
 
 
 class DataExportJob(JobType):
@@ -631,7 +784,8 @@ class DataExportJob(JobType):
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
-        job.save()
+        # Only save specific fields to avoid overwriting logs
+        job.save(update_fields=["progress", "status", "started_at", "finished_at"])
 
         job.logger.info(f"Starting export for project {job.project}")
 
@@ -644,7 +798,9 @@ class DataExportJob(JobType):
         job.progress.add_stage_param(stage.key, "File URL", f"{file_url}")
         job.progress.update_stage(stage.key, status=JobState.SUCCESS, progress=1)
         job.finished_at = datetime.datetime.now()
-        job.update_status(JobState.SUCCESS, save=True)
+        job.update_status(JobState.SUCCESS, save=False)
+        # Save final fields to avoid overwriting logs
+        job.save(update_fields=["progress", "status", "finished_at"])
 
 
 class PostProcessingJob(JobType):
@@ -720,14 +876,23 @@ def get_job_type_by_inferred_key(job: "Job") -> type[JobType] | None:
 class Job(BaseModel):
     """A job to be run by the scheduler"""
 
-    # Hide old failed jobs after 3 days
-    FAILED_CUTOFF_HOURS = 24 * 3
+    # Hide old failed jobs after 30 days
+    FAILED_CUTOFF_HOURS = 24 * 30
+
+    # Job status check configuration thresholds
+    NO_TASK_ID_TIMEOUT_SECONDS = 300  # 5 minutes
+    DISAPPEARED_TASK_RETRY_THRESHOLD_SECONDS = 300  # 5 minutes
+    MAX_JOB_RUNTIME_SECONDS = 7 * 24 * 60 * 60  # 7 days
+    STUCK_PENDING_TIMEOUT_SECONDS = 600  # 10 minutes
+    STUCK_PENDING_NO_WORKERS_TIMEOUT_SECONDS = 3600  # 1 hour
+    PENDING_LOG_INTERVAL_SECONDS = 300  # 5 minutes
 
     name = models.CharField(max_length=255)
     queue = models.CharField(max_length=255, default="default")
     scheduled_at = models.DateTimeField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)
+    last_checked_at = models.DateTimeField(null=True, blank=True, help_text="Last time job status was checked")
     # @TODO can we use an Enum or Pydantic model for status?
     status = models.CharField(max_length=255, default=JobState.CREATED.name, choices=JobState.choices())
     progress: JobProgress = SchemaField(JobProgress, default=default_job_progress)
@@ -862,7 +1027,7 @@ class Job(BaseModel):
         """
         self.logger.info(f"Re-running job {self}")
         self.finished_at = None
-        self.progress.reset()
+        self.progress.reset(status=JobState.RETRY)
         self.status = JobState.RETRY
         self.save()
         if async_task:
@@ -875,6 +1040,7 @@ class Job(BaseModel):
         Terminate the celery task.
         """
         self.status = JobState.CANCELING
+        self.progress.summary.status = JobState.CANCELING
         self.save()
         if self.task_id:
             task = run_job.AsyncResult(self.task_id)
@@ -883,29 +1049,393 @@ class Job(BaseModel):
                 self.save()
         else:
             self.status = JobState.REVOKED
+            self.progress.summary.status = JobState.REVOKED
             self.save()
 
-    def update_status(self, status=None, save=True):
+    def _mark_as_failed(self, error_message: str, now: datetime.datetime) -> bool:
         """
-        Update the status of the job based on the status of the celery task.
-        Or if a status is provided, update the status of the job to that value.
-        """
-        if not status and self.task_id:
-            task = run_job.AsyncResult(self.task_id)
-            status = task.status
+        Mark the job as failed.
 
+        Args:
+            error_message: The error message to log
+            now: The current datetime to use for finished_at
+
+        Returns:
+            Always returns True since status is being changed to FAILURE
+        """
+        if self.status == JobState.FAILURE:
+            return False  # No change
+        self.logger.error(error_message)
+        self.status = JobState.FAILURE
+        self.progress.summary.status = JobState.FAILURE
+        self.finished_at = now
+        return True
+
+    def _check_if_resurrected(self, now: datetime.datetime, save: bool) -> tuple[bool, bool]:
+        """
+        Check if a failed job has been resurrected (Celery task is now running/completed).
+
+        Args:
+            now: Current datetime
+            save: Whether to save changes
+
+        Returns:
+            Tuple of (should_continue_checks, status_changed)
+        """
+        if self.status != JobState.FAILURE or not self.task_id:
+            return True, False
+
+        try:
+            task = AsyncResult(self.task_id)
+            celery_status = task.status
+            # If the task is now running or succeeded, resurrect the job
+            if celery_status in [JobState.STARTED, JobState.SUCCESS]:
+                self.logger.warning(
+                    f"Job {self.pk} was marked as FAILURE but task is now {celery_status}, resurrecting job"
+                )
+                self.update_status(celery_status, save=False)
+                self.finished_at = None if celery_status == JobState.STARTED else self.finished_at
+                if save:
+                    update_fields = ["last_checked_at", "status", "progress"]
+                    if celery_status == JobState.STARTED:
+                        update_fields.append("finished_at")
+                    self.save(update_fields=update_fields)
+                return False, True
+        except Exception as e:
+            self.logger.debug(f"Could not check resurrection of failed job {self.pk}: {e}")
+
+        return False, False
+
+    def _check_missing_task_id(self, now: datetime.datetime, timeout_seconds: int) -> bool:
+        """
+        Check if job was scheduled but never got a task_id.
+
+        Args:
+            now: Current datetime
+            timeout_seconds: How long to wait before marking as failed
+
+        Returns:
+            True if status changed, False otherwise
+        """
+        if self.task_id or not self.scheduled_at:
+            return False
+
+        time_since_scheduled = (now - self.scheduled_at).total_seconds()
+        if time_since_scheduled > timeout_seconds:
+            return self._mark_as_failed(
+                f"Job {self.pk} was scheduled {time_since_scheduled:.0f}s ago but never got a task_id", now
+            )
+        return False
+
+    def _check_disappeared_task(
+        self,
+        task: AsyncResult,
+        celery_status: str | None,
+        now: datetime.datetime,
+        auto_retry: bool,
+        retry_threshold_seconds: int,
+        save: bool,
+    ) -> tuple[bool, bool]:
+        """
+        Check if task has disappeared from Celery backend and handle retry logic.
+
+        Args:
+            task: The Celery AsyncResult
+            celery_status: The task status (may be None)
+            now: Current datetime
+            auto_retry: Whether to auto-retry disappeared tasks
+            retry_threshold_seconds: Time threshold for auto-retry
+            save: Whether to save changes
+
+        Returns:
+            Tuple of (should_return_early, status_changed)
+        """
+        # Task not found or status unavailable
+        if celery_status is None or (
+            celery_status == "PENDING" and self.status not in [JobState.CREATED, JobState.PENDING]
+        ):
+            self.logger.warning(
+                f"Job {self.pk} task {self.task_id} not found in Celery backend "
+                f"(current job status: {self.status})"
+            )
+
+            # Only retry if job was supposedly running
+            if self.status in JobState.running_states() and auto_retry:
+                if self.started_at:
+                    time_since_start = (now - self.started_at).total_seconds()
+                    if time_since_start < retry_threshold_seconds:
+                        # Task disappeared shortly after starting - likely a worker crash
+                        self.logger.info(f"Job {self.pk} task disappeared shortly after starting, attempting retry")
+                        try:
+                            self.retry(async_task=True)
+                            if save:
+                                self.save(update_fields=["last_checked_at"])
+                            return True, True
+                        except Exception as retry_err:
+                            self.logger.error(f"Failed to retry job {self.pk}: {retry_err}")
+
+            # If we didn't retry or retry failed, mark as failed
+            status_changed = self._mark_as_failed(
+                f"Job {self.pk} task disappeared from Celery, marking as failed", now
+            )
+            return True, status_changed  # Return early - job is now failed
+
+        return False, False
+
+    def _check_status_mismatch(self, celery_status: str, now: datetime.datetime) -> bool:
+        """
+        Check if job status doesn't match Celery task status and reconcile.
+
+        Args:
+            celery_status: The status reported by Celery
+            now: Current datetime
+
+        Returns:
+            True if status changed, False otherwise
+        """
+        if celery_status == self.status:
+            return False
+
+        self.logger.warning(f"Job {self.pk} status '{self.status}' doesn't match Celery task status '{celery_status}'")
+
+        # Update to match Celery's status
+        old_status = self.status
+        self.update_status(celery_status, save=False)
+
+        # If Celery says it failed but we thought it was running
+        if celery_status in JobState.failed_states() and old_status in JobState.running_states():
+            self.finished_at = now
+            self.logger.error(f"Job {self.pk} task failed in Celery")
+        # If Celery says it succeeded but we thought it was running
+        elif celery_status == JobState.SUCCESS and old_status in JobState.running_states():
+            self.finished_at = now
+
+        return True
+
+    def _check_if_stale(self, task: AsyncResult, now: datetime.datetime, max_runtime_seconds: int) -> bool:
+        """
+        Check if job has been running for too long and should be marked as stale.
+
+        Args:
+            task: The Celery AsyncResult
+            now: Current datetime
+            max_runtime_seconds: Maximum allowed runtime
+
+        Returns:
+            True if status changed, False otherwise
+        """
+        if self.status not in JobState.running_states() or not self.started_at:
+            return False
+
+        time_since_start = (now - self.started_at).total_seconds()
+        if time_since_start > max_runtime_seconds:
+            time_running = timesince(self.started_at, now)
+            max_runtime_hours = max_runtime_seconds / 3600
+            status_changed = self._mark_as_failed(
+                f"Job {self.pk} has been running for {time_running}, "
+                f"marking as failed (max runtime: {max_runtime_hours:.0f} hours)",
+                now,
+            )
+
+            # Try to revoke the task if we just marked it as failed
+            if status_changed:
+                try:
+                    task.revoke(terminate=True)
+                except Exception as e:
+                    self.logger.error(f"Failed to revoke stale task {self.task_id}: {e}")
+
+            return status_changed
+
+        return False
+
+    def _check_stuck_pending(
+        self,
+        celery_status: str,
+        now: datetime.datetime,
+        timeout_with_workers: int,
+        timeout_no_workers: int,
+        log_interval: int,
+    ) -> bool:
+        """
+        Check if task is stuck in PENDING state for too long.
+
+        Args:
+            celery_status: The status reported by Celery
+            now: Current datetime
+            timeout_with_workers: Timeout when workers are available
+            timeout_no_workers: Timeout when no workers are available
+            log_interval: How often to log waiting messages
+
+        Returns:
+            True if status changed, False otherwise
+        """
+        if celery_status != JobState.PENDING or not self.scheduled_at:
+            return False
+
+        time_since_scheduled = (now - self.scheduled_at).total_seconds()
+
+        # Check if workers are available (using cached check to avoid excessive queries)
+        current_minute = int(time.time() / 60)
+        workers_available, worker_count = check_celery_workers_available_cached(current_minute)
+
+        # Determine timeout based on worker availability
+        timeout = timeout_with_workers if workers_available else timeout_no_workers
+
+        # Log periodic waiting messages (approximately every log_interval seconds)
+        # Only log if we're past the interval and within a reasonable window
+        if time_since_scheduled > log_interval:
+            # Calculate how many intervals have passed
+            intervals_passed = int(time_since_scheduled / log_interval)
+            time_since_last_interval = time_since_scheduled - (intervals_passed * log_interval)
+
+            # Log if we're within the first 60 seconds of a new interval
+            if time_since_last_interval < 60:
+                time_waiting = timesince(self.scheduled_at, now)
+                if workers_available:
+                    self.logger.warning(
+                        f"Job {self.pk} has been waiting for {time_waiting} "
+                        f"with {worker_count} worker(s) available. Task may be queued behind other jobs."
+                    )
+                else:
+                    self.logger.error(
+                        f"Job {self.pk} has been waiting for {time_waiting}. "
+                        f"NO WORKERS RUNNING - task cannot be picked up until workers start."
+                    )
+
+        # Check if timeout exceeded
+        if time_since_scheduled > timeout:
+            time_waiting = timesince(self.scheduled_at, now)
+            if workers_available:
+                error_message = (
+                    f"Job {self.pk} has been pending for {time_waiting} " f"with workers available, marking as failed"
+                )
+            else:
+                error_message = (
+                    f"Job {self.pk} has been pending for {time_waiting} "
+                    f"with no workers detected, marking as failed"
+                )
+            return self._mark_as_failed(error_message, now)
+
+        return False
+
+    def check_status(self, force: bool = False, save: bool = True, auto_retry: bool = True) -> bool:
+        """
+        Check the status of the job by querying the underlying Celery task.
+
+        This method verifies that the job's task is still active and updates
+        the job status if inconsistencies are detected (e.g., task disappeared).
+
+        Args:
+            force: If True, check even if job is in a final state
+            save: If True, save the job after checking
+            auto_retry: If True, automatically retry jobs with disappeared tasks
+
+        Returns:
+            True if job status was updated, False otherwise
+        """
+        now = datetime.datetime.now()
+        self.last_checked_at = now
+
+        # Special case: check if a failed job has come back to life
+        if not force:
+            should_continue, status_changed = self._check_if_resurrected(now, save)
+            if not should_continue:
+                return status_changed
+
+        # Don't check jobs that are already in final states unless forced
+        if not force and self.status in JobState.final_states():
+            if save:
+                self.save(update_fields=["last_checked_at"])
+            return False
+
+        status_changed = False
+
+        # Check if task_id exists
+        status_changed = self._check_missing_task_id(now, self.NO_TASK_ID_TIMEOUT_SECONDS)
+        if not self.task_id:
+            if save:
+                update_fields = ["last_checked_at"]
+                if status_changed:
+                    update_fields.extend(["status", "progress", "finished_at"])
+                self.save(update_fields=update_fields)
+            return status_changed
+
+        # Query the Celery task
+        try:
+            task = AsyncResult(self.task_id)
+
+            # Try to get task status
+            try:
+                celery_status = task.status
+            except Exception as status_err:
+                self.logger.warning(f"Job {self.pk} task {self.task_id} status could not be retrieved: {status_err}")
+                celery_status = None
+
+            # Check if task has disappeared
+            should_return, disappeared_status_changed = self._check_disappeared_task(
+                task, celery_status, now, auto_retry, self.DISAPPEARED_TASK_RETRY_THRESHOLD_SECONDS, save
+            )
+            status_changed = status_changed or disappeared_status_changed
+            if should_return:
+                return disappeared_status_changed
+
+            # Check for status mismatches with Celery
+            if celery_status:
+                mismatch_changed = self._check_status_mismatch(celery_status, now)
+                status_changed = status_changed or mismatch_changed
+
+                # Check if job is stale (running too long)
+                stale_changed = self._check_if_stale(task, now, self.MAX_JOB_RUNTIME_SECONDS)
+                status_changed = status_changed or stale_changed
+
+                # Check if stuck in PENDING
+                pending_changed = self._check_stuck_pending(
+                    celery_status,
+                    now,
+                    self.STUCK_PENDING_TIMEOUT_SECONDS,
+                    self.STUCK_PENDING_NO_WORKERS_TIMEOUT_SECONDS,
+                    self.PENDING_LOG_INTERVAL_SECONDS,
+                )
+                status_changed = status_changed or pending_changed
+
+        except Exception as e:
+            self.logger.error(f"Error checking status for job {self.pk}: {e}")
+
+        if save:
+            update_fields = ["last_checked_at"]
+            if status_changed:
+                update_fields.extend(["status", "progress", "finished_at"])
+            self.save(update_fields=update_fields)
+
+        return status_changed
+
+    def update_status(self, status, save=True):
+        """
+        Update the job status to a specific value.
+
+        This is a simple setter for when you know the status you want to set.
+        For checking and syncing with Celery, use check_status() instead.
+
+        Args:
+            status: The status to set (required)
+            save: Whether to save the job after updating
+        """
         if not status:
-            self.logger.warning(f"Could not determine status of job {self.pk}")
+            self.logger.warning(f"Cannot update status for job {self.pk} - no status provided")
             return
 
+        status_changed = False
         if status != self.status:
             self.logger.info(f"Changing status of job {self.pk} from {self.status} to {status}")
             self.status = status
-
-        self.progress.summary.status = status
+            self.progress.summary.status = status
+            status_changed = True
 
         if save:
-            self.save()
+            # Only update status and progress fields to avoid concurrency issues
+            update_fields = ["status", "progress"] if status_changed else []
+            if update_fields:
+                self.save(update_fields=update_fields)
 
     def update_progress(self, save=True):
         """
@@ -930,22 +1460,129 @@ class Job(BaseModel):
         self.progress.summary.progress = total_progress
 
         if save:
-            self.save(update_progress=False)
+            # Only update progress field to avoid concurrency issues
+            self.save(update_fields=["progress"])
+
+    def _validate_log_lengths(self, update_fields: list[str] | None) -> None:
+        """
+        Validate that logs aren't getting shorter due to stale in-memory data.
+
+        This is a safety check to catch bugs where concurrent updates might
+        overwrite logs. If logs would get shorter, automatically refreshes
+        them from the database to prevent data loss.
+
+        Args:
+            update_fields: List of fields being updated, or None for all fields
+
+        Note:
+            This can be easily disabled by commenting out the call in save()
+            if the validation overhead becomes an issue. However, the check
+            is very cheap (just a length comparison) and provides valuable
+            protection against data loss.
+        """
+        if self.pk is None or not update_fields or "logs" in update_fields:
+            # Skip validation for new jobs, when updating logs explicitly,
+            # or when not using update_fields
+            return
+
+        try:
+            # Get current log lengths from database
+            current_job = Job.objects.only("logs").get(pk=self.pk)
+            current_stdout_len = len(current_job.logs.stdout)
+            current_stderr_len = len(current_job.logs.stderr)
+            new_stdout_len = len(self.logs.stdout)
+            new_stderr_len = len(self.logs.stderr)
+
+            # If logs would get shorter, it means we have stale in-memory data
+            if new_stdout_len < current_stdout_len or new_stderr_len < current_stderr_len:
+                logger.error(
+                    f"CRITICAL: Job #{self.pk} attempted to save with stale logs! "
+                    f"stdout: {current_stdout_len} -> {new_stdout_len}, "
+                    f"stderr: {current_stderr_len} -> {new_stderr_len}. "
+                    f"update_fields={update_fields}. This would lose log data!"
+                )
+                # Refresh logs from database to prevent data loss
+                self.logs = current_job.logs
+                logger.warning(f"Refreshed logs for job #{self.pk} from database to prevent data loss")
+        except Job.DoesNotExist:
+            # Job might have been deleted, let it fail naturally
+            pass
+        except Exception as e:
+            # Don't let validation break the save, but log it
+            logger.warning(f"Failed to validate log lengths for job #{self.pk}: {e}")
 
     def duration(self) -> datetime.timedelta | None:
         if self.started_at and self.finished_at:
             return self.finished_at - self.started_at
         return None
 
-    def save(self, update_progress=True, *args, **kwargs):
+    def save(self, update_progress=True, use_locking=True, *args, **kwargs):
         """
         Create the job stages if they don't exist.
+
+        This method automatically uses row-level locking when updating existing jobs
+        to prevent concurrent workers from overwriting each other's changes.
+
+        Args:
+            update_progress: Whether to recalculate progress summary (default: True)
+            use_locking: Whether to use SELECT FOR UPDATE locking for existing jobs (default: True)
+            *args, **kwargs: Additional arguments passed to Django's save()
+
+        Special handling:
+        - If 'update_fields' is specified, only those fields will be saved
+        - If 'update_fields' includes 'logs', locking is automatically disabled to avoid
+          conflicts with JobLogHandler which manages its own locks
+        - For new jobs (pk=None), locking is skipped
         """
+        is_new = self.pk is None
+        update_fields = kwargs.get("update_fields")
+
+        # Don't use locking if explicitly disabled or if this is a new job
+        # or if we're only updating logs (JobLogHandler manages its own locks)
+        should_lock = use_locking and not is_new and not (update_fields and update_fields == ["logs"])
+
+        # Update progress/setup before saving
         if self.pk and self.progress.stages and update_progress:
             self.update_progress(save=False)
         else:
             self.setup(save=False)
-        super().save(*args, **kwargs)
+
+        # Safety check: Ensure logs never get shorter (unless explicitly updating logs)
+        # This can be disabled by commenting out this line if needed
+        self._validate_log_lengths(update_fields)
+
+        if should_lock:
+            # Refresh from database with row-level lock to prevent concurrent overwrites
+            # This ensures we have the latest data before saving our changes
+            try:
+                with atomic_job_update(self.pk) as locked_job:
+                    # Copy our in-memory changes to the locked instance
+                    if update_fields:
+                        # Only update specified fields
+                        for field_name in update_fields:
+                            setattr(locked_job, field_name, getattr(self, field_name))
+                    else:
+                        # Update all non-log fields to preserve concurrent log writes
+                        for field in self._meta.fields:
+                            if field.name != "logs":  # Never overwrite logs unless explicitly specified
+                                setattr(locked_job, field.name, getattr(self, field.name))
+
+                    # Save the locked instance with our changes
+                    super(Job, locked_job).save(*args, **kwargs)
+
+                    # Update our instance with the saved state
+                    self.pk = locked_job.pk
+                    for field in self._meta.fields:
+                        setattr(self, field.name, getattr(locked_job, field.name))
+            except Exception as e:
+                logger.error(f"Failed to save job #{self.pk} with locking: {e}")
+                # Fall back to normal save - better to save without lock than to fail completely
+                logger.warning(f"Falling back to unlocked save for job #{self.pk}")
+                super().save(*args, **kwargs)
+        else:
+            # New job or locking disabled - use normal save
+            super().save(*args, **kwargs)
+
         logger.debug(f"Saved job {self}")
         if self.progress.summary.status != self.status:
             logger.warning(f"Job {self} status mismatches progress: {self.progress.summary.status} != {self.status}")
