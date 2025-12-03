@@ -3933,7 +3933,7 @@ class SourceImageCollection(BaseModel):
 
         # Return results in a deterministic order. Sort by timestamp (oldest first),
         # then by primary key to stabilize ordering when timestamps are equal.
-        captures_list = sorted(captures, key=lambda s: (s.timestamp or datetime.datetime.min, s.pk))
+        captures_list = sorted(captures, key=lambda s: (s.timestamp is None, s.timestamp, s.pk))
         return captures_list
 
     def sample_positional(self, position: int = -1):
