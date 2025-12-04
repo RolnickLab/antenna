@@ -2,6 +2,7 @@
 Base settings to build other settings files upon.
 """
 
+import socket
 from pathlib import Path
 
 import django_stubs_ext
@@ -362,6 +363,28 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
     "max_connections": 20,  # Per-process connection pool limit
     "heartbeat": 30,  # RabbitMQ heartbeat interval (seconds) - detects broken connections
 }
+
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    # Custom TCP Keepalives to ensure network stack doesn't silently drop connections
+    "socket_keepalive": True,
+    "socket_settings": {
+        # Start sending Keepalive packets after 60 seconds of silence.
+        # This forces traffic on the wire, preventing the OpenStack 1-hour timeout.
+        socket.TCP_KEEPIDLE: 60,
+        # If no response, retry every 10 seconds.
+        socket.TCP_KEEPINTVL: 10,
+        # Give up and close connection after 9 failed attempts.
+        socket.TCP_KEEPCNT: 9,
+    },
+    # Connection Stability Settings
+    "socket_connect_timeout": 40,  # Max time to establish connection
+    "retry_on_timeout": True,  # Retry operations if they time out
+    "max_connections": 20,  # Connection pool limit per process
+    # REMOVED "socket_timeout: 120" to prevent workers self-destructing during long blocking operations.
+}
+
+# Application Heartbeat
+CELERY_BROKER_HEARTBEAT = 30
 
 # Broker connection retry settings
 # Workers will retry forever on connection failures rather than crashing
