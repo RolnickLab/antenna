@@ -371,11 +371,9 @@ CELERY_BROKER_TRANSPORT_OPTIONS = {
     "socket_connect_timeout": 40,  # Max time to establish connection
     "retry_on_timeout": True,  # Retry operations if they time out
     "max_connections": 20,  # Connection pool limit per process
+    "heartbeat": 30,  # RabbitMQ heartbeat interval (seconds) - detects broken connections
     # REMOVED "socket_timeout: 120" to prevent workers self-destructing during long blocking operations.
 }
-
-# Application Heartbeat
-CELERY_BROKER_HEARTBEAT = 30
 
 # Broker connection retry settings
 # Workers will retry forever on connection failures rather than crashing
