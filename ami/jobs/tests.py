@@ -240,14 +240,13 @@ class TestJobView(APITestCase):
 
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
-        self.assertIn("job_ids", data)
         self.assertIn("count", data)
         self.assertEqual(data["count"], 3)  # Original job + 2 new ones
-        self.assertEqual(len(data["job_ids"]), 3)
+        self.assertEqual(len(data["results"]), 3)
         # Verify these are actually IDs
-        self.assertTrue(all(isinstance(job_id, int) for job_id in data["job_ids"]))
+        self.assertTrue(all(isinstance(r["id"], int) for r in data["results"]))
         # Verify we don't get the full results structure
-        self.assertNotIn("results", data)
+        self.assertNotIn("details", data["results"][0])
 
     def test_list_jobs_with_incomplete_only(self):
         """Test the incomplete_only parameter filters jobs correctly."""
