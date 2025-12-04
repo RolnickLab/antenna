@@ -356,15 +356,6 @@ CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
 # RabbitMQ broker connection settings
 # These settings improve reliability for long-running workers with intermittent network issues
 CELERY_BROKER_TRANSPORT_OPTIONS = {
-    "socket_timeout": 120,  # Socket read/write timeout (seconds)
-    "socket_connect_timeout": 40,  # Max time to establish connection (seconds)
-    "socket_keepalive": True,  # Enable TCP keepalive probes
-    "retry_on_timeout": True,  # Retry operations on timeout
-    "max_connections": 20,  # Per-process connection pool limit
-    "heartbeat": 30,  # RabbitMQ heartbeat interval (seconds) - detects broken connections
-}
-
-CELERY_BROKER_TRANSPORT_OPTIONS = {
     # Custom TCP Keepalives to ensure network stack doesn't silently drop connections
     "socket_keepalive": True,
     "socket_settings": {
