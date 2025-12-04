@@ -201,3 +201,367 @@ class TestJobView(APITestCase):
         # This cannot be tested until we have a way to cancel jobs
         # and a way to run async tasks in tests.
         pass
+
+
+class TestJobStatusChecking(TestCase):
+    """
+    Test the job status checking functionality.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Status Check Test Project")
+        self.pipeline = Pipeline.objects.create(
+            name="Test ML pipeline",
+            description="Test ML pipeline",
+        )
+        self.pipeline.projects.add(self.project)
+
+    def test_check_status_missing_task_id(self):
+        """Test that jobs scheduled but never assigned a task_id are marked failed."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test Job - No Task ID",
+            status=JobState.PENDING,
+            scheduled_at=timezone.now() - timedelta(minutes=10),
+            task_id=None,
+        )
+
+        status_changed = job.check_status(force=True, save=True)
+
+        self.assertTrue(status_changed)
+        self.assertEqual(job.status, JobState.FAILURE)
+        self.assertIsNotNone(job.last_checked_at)
+        # Check that error was logged
+        self.assertTrue(any("never got a task_id" in msg for msg in job.logs.stderr))
+
+    def test_check_status_not_missing_task_id_when_recent(self):
+        """Test that jobs without task_id but scheduled recently are not marked failed."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test Job - Recent No Task ID",
+            status=JobState.PENDING,
+            scheduled_at=timezone.now() - timedelta(minutes=1),  # Only 1 minute old
+            task_id=None,
+        )
+
+        status_changed = job.check_status(force=True, save=True)
+
+        self.assertFalse(status_changed)
+        self.assertEqual(job.status, JobState.PENDING)
+
+    def test_check_status_disappeared_task(self):
+        """Test that started jobs with disappeared tasks are marked failed."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test Job - Disappeared Task",
+            status=JobState.STARTED,
+            started_at=timezone.now() - timedelta(minutes=10),
+            task_id="nonexistent-task-id-12345",
+        )
+
+        status_changed = job.check_status(force=True, save=True)
+
+        self.assertTrue(status_changed)
+        self.assertEqual(job.status, JobState.FAILURE)
+        # Check that error was logged
+        self.assertTrue(any("disappeared from Celery" in msg for msg in job.logs.stderr))
+
+    def test_check_status_max_runtime_exceeded(self):
+        """Test that jobs running too long are marked failed."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test Job - Max Runtime",
+            status=JobState.STARTED,
+            started_at=timezone.now() - timedelta(days=8),  # 8 days (max is 7)
+            task_id="some-task-id",
+        )
+
+        status_changed = job.check_status(force=True, save=True)
+
+        self.assertTrue(status_changed)
+        self.assertEqual(job.status, JobState.FAILURE)
+        # Refresh from DB to get the latest logs
+        job.refresh_from_db()
+        # Check that error was logged (check both stdout and stderr)
+        all_logs = job.logs.stdout + job.logs.stderr
+        self.assertTrue(
+            any("exceeded maximum runtime" in msg for msg in all_logs),
+            f"Expected 'exceeded maximum runtime' in logs, got: {all_logs}",
+        )
+
+    def test_check_status_skip_final_states(self):
+        """Test that jobs in final states are not re-checked."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test Job - Already Success",
+            status=JobState.SUCCESS,
+            started_at=timezone.now() - timedelta(minutes=5),
+            finished_at=timezone.now(),
+            task_id="some-task-id",
+        )
+
+        status_changed = job.check_status(force=True, save=True)
+
+        self.assertFalse(status_changed)
+        self.assertEqual(job.status, JobState.SUCCESS)
+
+    def test_check_status_skip_recent_check(self):
+        """Test that jobs checked recently are skipped unless forced."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test Job - Recent Check",
+            status=JobState.STARTED,
+            started_at=timezone.now() - timedelta(minutes=5),
+            last_checked_at=timezone.now() - timedelta(seconds=30),  # 30 seconds ago
+            task_id="some-task-id",
+        )
+
+        # Without force, should skip
+        status_changed = job.check_status(force=False, save=True)
+        self.assertFalse(status_changed)
+
+        # With force, should check
+        job.started_at = timezone.now() - timedelta(days=8)
+        status_changed = job.check_status(force=True, save=True)
+        self.assertTrue(status_changed)
+        self.assertEqual(job.status, JobState.FAILURE)
+
+    def test_check_status_updates_last_checked_at(self):
+        """Test that last_checked_at is updated even when status doesn't change."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test Job - Update Timestamp",
+            status=JobState.STARTED,
+            started_at=timezone.now() - timedelta(minutes=5),
+            task_id="some-task-id",
+            last_checked_at=None,
+        )
+
+        self.assertIsNone(job.last_checked_at)
+        job.check_status(force=True, save=True)
+        self.assertIsNotNone(job.last_checked_at)
+
+    def test_enqueue_syncs_status(self):
+        """Test that enqueue() keeps status in sync."""
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test Job - Enqueue Sync",
+        )
+
+        # Enqueue the job
+        job.enqueue()
+
+        # Status and progress should be in sync
+        self.assertEqual(job.status, job.progress.summary.status)
+
+    def test_retry_syncs_status(self):
+        """Test that retry() keeps status in sync."""
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            pipeline=self.pipeline,
+            name="Test Job - Retry Sync",
+            status=JobState.FAILURE,
+        )
+
+        job.retry(async_task=True)
+
+        # Refresh to get latest status after retry() method completes
+        job.refresh_from_db()
+
+        # Status should have been updated and should be in sync
+        # After retry() with async_task=True, it calls enqueue() which sets status to PENDING
+        self.assertEqual(job.status, job.progress.summary.status)
+
+    def test_cancel_syncs_status(self):
+        """Test that cancel() keeps status in sync."""
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test Job - Cancel Sync",
+            status=JobState.STARTED,
+        )
+
+        # Cancel the job (without task_id, so it goes to REVOKED)
+        job.cancel()
+
+        # Status should be REVOKED and in sync
+        self.assertEqual(job.status, JobState.REVOKED)
+        self.assertEqual(job.progress.summary.status, JobState.REVOKED)
+
+    def test_status_checker_syncs_status(self):
+        """Test that status checker keeps status in sync when marking as FAILURE."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test Job - Checker Sync",
+            status=JobState.STARTED,
+            started_at=timezone.now() - timedelta(days=8),  # Exceeds max runtime
+            task_id="some-task",
+        )
+
+        # Check status - should mark as FAILURE
+        status_changed = job.check_status(force=True, save=True)
+
+        # Both should now be FAILURE and synced
+        self.assertTrue(status_changed)
+        self.assertEqual(job.status, JobState.FAILURE)
+        self.assertEqual(job.progress.summary.status, JobState.FAILURE)
+
+
+class TestCheckIncompleteJobsTask(TestCase):
+    """
+    Test the periodic task that checks all unfinished jobs.
+    """
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        # Clear the lock before each test
+        cache.delete("check_incomplete_jobs_lock")
+
+        self.project = Project.objects.create(name="Periodic Check Test Project")
+        self.pipeline = Pipeline.objects.create(
+            name="Test ML pipeline",
+            description="Test ML pipeline",
+        )
+        self.pipeline.projects.add(self.project)
+
+    def tearDown(self):
+        from django.core.cache import cache
+
+        # Clear the lock after each test
+        cache.delete("check_incomplete_jobs_lock")
+
+    def test_check_incomplete_jobs_task(self):
+        """Test the periodic task runs successfully."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from ami.jobs.tasks import check_incomplete_jobs
+
+        # Create some test jobs in various states
+        Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Job 1 - Started",
+            status=JobState.STARTED,
+            started_at=timezone.now() - timedelta(days=8),
+            task_id="task-1",
+        )
+        Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Job 2 - Success",
+            status=JobState.SUCCESS,
+            finished_at=timezone.now(),
+        )  # Should be skipped
+        Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Job 3 - Pending No Task",
+            status=JobState.PENDING,
+            scheduled_at=timezone.now() - timedelta(minutes=10),
+            task_id=None,
+        )
+
+        result = check_incomplete_jobs()
+
+        self.assertEqual(result["status"], "success")
+        self.assertGreaterEqual(int(result["checked"]), 2)  # Should check jobs 1 and 3
+        self.assertGreaterEqual(int(result["updated"]), 2)  # Should update both to FAILURE
+
+    def test_check_incomplete_jobs_lock(self):
+        """Test that concurrent executions are prevented by locking."""
+        from django.core.cache import cache
+
+        from ami.jobs.tasks import check_incomplete_jobs
+
+        # Set the lock manually
+        cache.set("check_incomplete_jobs_lock", "locked", 300)
+
+        result = check_incomplete_jobs()
+
+        self.assertEqual(result["status"], "skipped")
+        self.assertEqual(result["reason"], "already_running")
+
+    def test_check_incomplete_jobs_no_jobs(self):
+        """Test the task handles empty job list gracefully."""
+        from ami.jobs.tasks import check_incomplete_jobs
+
+        result = check_incomplete_jobs()
+
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["checked"], 0)
+        self.assertEqual(result["updated"], 0)
+
+
+class TestWorkerAvailability(TestCase):
+    """
+    Test the worker availability checking functions.
+    """
+
+    def test_check_celery_workers_available(self):
+        """Test that worker availability check returns a tuple."""
+        from ami.jobs.status import check_celery_workers_available
+
+        workers_available, worker_count = check_celery_workers_available()
+
+        self.assertIsInstance(workers_available, bool)
+        self.assertIsInstance(worker_count, int)
+
+    def test_check_celery_workers_available_cached(self):
+        """Test that cached version returns same result as uncached."""
+        import time
+
+        from ami.jobs.status import check_celery_workers_available, check_celery_workers_available_cached
+
+        # Clear cache
+        check_celery_workers_available_cached.cache_clear()
+
+        timestamp = int(time.time() / 60)
+        cached_result = check_celery_workers_available_cached(timestamp)
+        direct_result = check_celery_workers_available()
+
+        self.assertEqual(cached_result, direct_result)
