@@ -1,6 +1,7 @@
 import logging
 
 import pydantic
+from django.db.models import Q
 from django.db.models.query import QuerySet
 from django.forms import IntegerField
 from django.utils import timezone
@@ -8,6 +9,7 @@ from django_filters import rest_framework as filters
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.filters import BaseFilterBackend
 from rest_framework.response import Response
 
 from ami.base.permissions import ObjectPermission
@@ -20,7 +22,7 @@ from ami.utils.fields import url_boolean_param
 from ami.utils.requests import batch_param, ids_only_param, incomplete_only_param, project_id_doc_param
 
 from .models import Job, JobState
-from .serializers import JobListSerializer, JobSerializer
+from .serializers import JobListSerializer, JobSerializer, MinimalJobSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,27 @@ class JobFilterSet(filters.FilterSet):
             "pipeline",
             "job_type_key",
         ]
+
+
+class IncompleteJobFilter(BaseFilterBackend):
+    """Filter backend to filter jobs by incomplete status based on results stage."""
+
+    def filter_queryset(self, request, queryset, view):
+        # Check if incomplete_only parameter is set
+        incomplete_only = url_boolean_param(request, "incomplete_only", default=False)
+        # Filter to incomplete jobs if requested (checks "results" stage status)
+        if incomplete_only:
+            # Create filters for each final state to exclude
+            final_states = JobState.final_states()
+            exclude_conditions = Q()
+
+            # Exclude jobs where the "results" stage has a final state status
+            for state in final_states:
+                # JSON path query to check if results stage status is in final states
+                exclude_conditions |= Q(progress__stages__contains=[{"key": "results", "status": state}])
+
+            queryset = queryset.exclude(exclude_conditions)
+        return queryset
 
 
 class JobViewSet(DefaultViewSet, ProjectMixin):
@@ -70,6 +93,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
     )
     serializer_class = JobSerializer
     filterset_class = JobFilterSet
+    filter_backends = [*DefaultViewSet.filter_backends, IncompleteJobFilter]
     search_fields = ["name", "pipeline__name"]
     ordering_fields = [
         "name",
@@ -91,6 +115,9 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         Return different serializers for list and detail views.
         """
         if self.action == "list":
+            # Use MinimalJobSerializer when ids_only parameter is set
+            if url_boolean_param(self.request, "ids_only", default=False):
+                return MinimalJobSerializer
             return JobListSerializer
         else:
             return JobSerializer
@@ -169,26 +196,6 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             updated_at__lt=cutoff_datetime,
         )
 
-    def filter_queryset(self, queryset: QuerySet) -> QuerySet:
-        queryset = super().filter_queryset(queryset)
-        # Check if incomplete_only parameter is set
-        incomplete_only = url_boolean_param(self.request, "incomplete_only", default=False)
-        # Filter to incomplete jobs if requested (checks "results" stage status)
-        if incomplete_only:
-            from django.db.models import Q
-
-            # Create filters for each final state to exclude
-            final_states = JobState.final_states()
-            exclude_conditions = Q()
-
-            # Exclude jobs where the "results" stage has a final state status
-            for state in final_states:
-                # JSON path query to check if results stage status is in final states
-                exclude_conditions |= Q(progress__stages__contains=[{"key": "results", "status": state}])
-
-            queryset = queryset.exclude(exclude_conditions)
-        return queryset
-
     @extend_schema(
         parameters=[
             project_id_doc_param,
@@ -197,16 +204,6 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         ]
     )
     def list(self, request, *args, **kwargs):
-        # Get the base queryset
-        # Check if ids_only parameter is set
-        ids_only = url_boolean_param(request, "ids_only", default=False)
-
-        if ids_only:
-            queryset = self.filter_queryset(self.get_queryset())
-            # Return only IDs
-            job_ids = list(queryset.values_list("id", flat=True))
-            return Response({"job_ids": job_ids, "count": len(job_ids)})
-
         return super().list(request, *args, **kwargs)
 
     @extend_schema(
