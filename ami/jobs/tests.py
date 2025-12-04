@@ -138,7 +138,7 @@ class TestJobView(APITestCase):
 
     def _create_pipeline(self, name: str = "Test Pipeline", slug: str = "test-pipeline") -> Pipeline:
         """Helper to create a pipeline and add it to the project."""
-        if self.pipeline:
+        if self.pipeline and self.pipeline.slug == slug and self.pipeline.name == name:
             return self.pipeline
 
         pipeline = Pipeline.objects.create(
@@ -153,7 +153,7 @@ class TestJobView(APITestCase):
     def _create_ml_job(self, name: str, pipeline: Pipeline) -> Job:
         """Helper to create an ML job with a pipeline."""
         return Job.objects.create(
-            job_type_key="ml",
+            job_type_key=MLJob.key,
             project=self.project,
             name=name,
             pipeline=pipeline,
