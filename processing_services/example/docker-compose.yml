@@ -4,6 +4,7 @@ services:
       context: .
     volumes:
       - ./:/app:z
+      - ./cache:/app/cache  # Model weights and labels cache
       - ./huggingface_cache:/root/.cache/huggingface
       - ./pytorch_cache:/root/.cache/torch
     ports:
