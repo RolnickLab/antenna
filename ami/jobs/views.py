@@ -225,12 +225,9 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         """
         job: Job = self.get_object()
         try:
-            batch = IntegerField(required=False, min_value=1).clean(request.query_params.get("batch", 1))
+            batch = IntegerField(required=True, min_value=1).clean(request.query_params.get("batch"))
         except Exception as e:
             raise ValidationError({"batch": str(e)}) from e
-
-        if not batch:
-            raise ValidationError({"batch": "Batch size must be at least 1."})
 
         # Validate that the job has a pipeline
         if not job.pipeline:

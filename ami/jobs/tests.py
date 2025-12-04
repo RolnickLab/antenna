@@ -324,20 +324,6 @@ class TestJobView(APITestCase):
         self.assertEqual(data["count"], 1)
         self.assertEqual(data["results"][0]["pipeline"]["name"], "SearchablePipeline")
 
-    def test_tasks_endpoint_stub(self):
-        """Test the tasks endpoint returns stub response (awaiting NATS integration)."""
-        pipeline = self._create_pipeline()
-        job = self._create_ml_job("Job for tasks test", pipeline)
-
-        self.client.force_authenticate(user=self.user)
-        tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
-        resp = self.client.get(tasks_url)
-
-        self.assertEqual(resp.status_code, 200)
-        data = resp.json()
-        self.assertIn("tasks", data)
-        self.assertEqual(len(data["tasks"]), 1)  # Stubbed, should return one dummy task
-
     def _task_batch_helper(self, value: Any, expected_status: int):
         pipeline = self._create_pipeline()
         job = self._create_ml_job("Job for batch test", pipeline)
@@ -369,7 +355,9 @@ class TestJobView(APITestCase):
         job_data = self._create_job("Job without pipeline", start_now=False)
 
         self.client.force_authenticate(user=self.user)
-        tasks_url = reverse_with_params("api:job-tasks", args=[job_data["id"]], params={"project_id": self.project.pk})
+        tasks_url = reverse_with_params(
+            "api:job-tasks", args=[job_data["id"]], params={"project_id": self.project.pk, "batch": 1}
+        )
         resp = self.client.get(tasks_url)
 
         self.assertEqual(resp.status_code, 400)
@@ -381,7 +369,9 @@ class TestJobView(APITestCase):
         job = self._create_ml_job("Job for results test", pipeline)
 
         self.client.force_authenticate(user=self.user)
-        result_url = reverse_with_params("api:job-result", args=[job.pk], params={"project_id": self.project.pk})
+        result_url = reverse_with_params(
+            "api:job-result", args=[job.pk], params={"project_id": self.project.pk, "batch": 1}
+        )
 
         result_data = [
             {
