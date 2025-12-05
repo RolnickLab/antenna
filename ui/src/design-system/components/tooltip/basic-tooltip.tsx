@@ -24,10 +24,8 @@ export const BasicTooltip = ({
         <Tooltip.Trigger asChild={asChild} onClick={onTriggerClick}>
           {children}
         </Tooltip.Trigger>
-        <Tooltip.Content side="bottom">
-          <span className="block text-center whitespace-break-spaces">
-            {content}
-          </span>
+        <Tooltip.Content className="max-w-sm text-center" side="bottom">
+          <span className="block whitespace-break-spaces">{content}</span>
         </Tooltip.Content>
       </Tooltip.Root>
     </Tooltip.Provider>

@@ -11,6 +11,7 @@ import { usePagination } from 'utils/usePagination'
 import { UserPermission } from 'utils/user/types'
 import { useUserInfo } from 'utils/user/userInfoContext'
 import { useSort } from 'utils/useSort'
+import { AboutRoles } from './about-roles'
 import { AddMemberDialog } from './add-member-dialog'
 import { columns } from './team-columns'
 
@@ -48,6 +49,7 @@ export const Team = () => {
         isLoading={isLoading}
         isFetching={isFetching}
       >
+        <AboutRoles />
         {canCreate ? <AddMemberDialog /> : null}
       </PageHeader>
       <Table

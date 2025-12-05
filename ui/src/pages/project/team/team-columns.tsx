@@ -2,7 +2,9 @@ import { Member } from 'data-services/models/member'
 import { Badge } from 'design-system/components/badge/badge'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { TableColumn } from 'design-system/components/table/types'
-import { UserIcon } from 'lucide-react'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { InfoIcon, UserIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import { LeaveTeamDialog } from './leave-team-dialog'
 import { ManageAccessDialog } from './manage-access-dialog'
@@ -40,7 +42,20 @@ export const columns: (userId?: string) => TableColumn<Member>[] = (
   {
     id: 'role',
     name: translate(STRING.FIELD_LABEL_ROLE),
-    renderCell: (item: Member) => <BasicTableCell value={item.role.name} />,
+    renderCell: (item: Member) => (
+      <BasicTableCell>
+        <div className="flex items-center gap-2">
+          <span>{item.role.name}</span>
+          {item.role.description ? (
+            <BasicTooltip asChild content={item.role.description}>
+              <Button size="icon" variant="ghost">
+                <InfoIcon className="w-4 h-4" />
+              </Button>
+            </BasicTooltip>
+          ) : null}
+        </div>
+      </BasicTableCell>
+    ),
   },
   {
     id: 'actions',

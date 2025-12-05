@@ -245,6 +245,7 @@ export enum STRING {
   TOOLTIP_STORAGE,
 
   /* OTHER */
+  ABOUT_ROLES,
   ALGORITHMS,
   APPLY_ID_SHORT,
   APPLY_ID,
@@ -568,6 +569,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'A storage is a place where source images are kept, for example a S3 bucket. One or many stations can be connected to a storage.',
 
   /* OTHER */
+  [STRING.ABOUT_ROLES]: 'About roles',
   [STRING.ALGORITHMS]: 'Algorithms',
   [STRING.APPLY_ID_SHORT]: 'Apply',
   [STRING.APPLY_ID]: 'Apply ID',
