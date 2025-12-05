@@ -304,6 +304,22 @@ Update the tag:
 
 "image": "<ECR_URI>:v10"
 
+```md
+### About Docker Image Versions
+`v10` is only an example placeholder.
+
+You can use any version tag (v1, v2, v3, etc.).
+
+How to choose a version:
+- Increase the number with every build, OR
+- Use semantic versions (1.0.0, 1.1.0)
+
+Use the same tag in both:
+1. `docker tag`and `docker push` commands
+2. `Dockerrun.aws.json`
+
+```
+
 ### Step 3 — Create EB bundle
 
 zip -r deploy.zip Dockerrun.aws.json .ebextensions .ebignore
@@ -323,6 +339,100 @@ zip -r deploy.zip Dockerrun.aws.json .ebextensions .ebignore
 - Celery Beat schedules run successfully
 - Flower UI loads on port 5555 (if security groups permit)
 
+>
+
+> ### How to Validate this deployment?
+> The points listed above describe the expected state of a successful AWS deployment.  
+>
+> ---
+>
+> ### 1. Confirming that `/api/v2/` returns a successful response
+> When you open:
+> ```
+> https://<EB-URL>/api/v2/
+> ```
+> the browser shows the JSON content returned by Django.  
+> This means that simply opening the URL visually confirms “the API is working,” but not the status code.
+>
+> To check the actual HTTP status code, use:
+> ```bash
+> curl -I https://<EB-URL>/api/v2/
+> ```
+> This command returns the HTTP headers. A successful response looks like:
+> ```
+> HTTP/1.1 200 OK
+> ```
+> This confirms:
+> - Django is reachable  
+> - Routing is working  
+> - The container is serving requests normally  
+>
+> ---
+>
+> ### 2. Verifying that the Django container is healthy inside Elastic Beanstalk
+> Elastic Beanstalk uses several internal checks to determine whether a container is “Healthy.”  
+> EB marks the Django container as Healthy only if:
+> - the Docker container starts without crashing. If Django crashes on startup, health becomes "Severe".
+> - the app listens on the correct port (port 8000 in this project). If nothing is listening, health becomes "Warning".
+> - the configured application URL returns a successful response  
+>
+> In this deployment, we used the `/api/v2/` endpoint for testing.  
+> Once this endpoint consistently returned **HTTP 200 OK**, Elastic Beanstalk updated the  
+> environment status to **Healthy**.
+>
+> You can confirm this in the EB Console under:  
+> **Elastic Beanstalk -> Environments -> Health**
+>
+> ---
+>
+> ### 3. Confirming Celery Worker successfully connects to Redis
+> Celery Worker logs show whether the process booted correctly and whether it could authenticate with Redis over TLS.
+>
+> We retrieved logs using:
+> ```bash
+> eb logs --all
+> ```
+> In the worker logs, we verified the connection with entries such as:
+> ```
+> Connected to rediss://<redis-endpoint>:6379/0
+> ```
+> This confirms:
+> - the worker process started  
+> - Redis TLS (`rediss://`) worked  
+> - certificate verification settings were correct  
+> - no connection retries or SSL errors occurred  
+>
+> ---
+>
+> ### 4. Confirming Celery Beat is running and scheduling tasks
+> Celery Beat regularly prints a log line every time a scheduled task becomes due.
+>
+> In the logs retrieved above, we saw messages like:
+> ```
+> celery.beat: Scheduler: Sending due task <task-name>
+> ```
+> This indicates:
+> - Beat is running continuously  
+> - it is reading the schedule correctly  
+> - scheduled tasks are being dispatched to the worker  
+>
+> ---
+>
+> ### 5. Confirming Flower UI loads on port 5555
+> Flower exposes a monitoring dashboard on port **5555**, but it will only load if the EC2 instance’s Security Group allows inbound traffic on that port.
+>
+> After enabling access, visiting:
+> ```
+> http://<EC2-instance-public-ip>:5555
+> ```
+> displayed the Flower dashboard, confirming that:
+> - the Flower container is running  
+> - it can communicate with Redis  
+> - it can display worker and task activity  
+>
+> ---
+>
+> Together, these checks confirm that the full Django + Celery + Redis deployment is healthy and functioning as expected on AWS.
 ---
 
 ## 8. Common Issues & Fixes
@@ -335,6 +445,31 @@ ssl.SSLCertVerificationError
 
 **Fix:**  
 Use `rediss://` and `ssl_cert_reqs=none`.
+
+```md
+### Where the Redis TLS Fix Is Applied
+
+This project reads Redis and Celery connection settings from **Elastic Beanstalk environment variables**,  
+not from Django code.
+
+The TLS configuration (`rediss://` + `ssl_cert_reqs=none`) is defined in:
+
+**`.ebextensions/00_setup.config`**, for example:
+
+
+REDIS_URL: "rediss://<redis-endpoint>:6379/0?ssl_cert_reqs=none"
+CELERY_BROKER_URL: "rediss://<redis-endpoint>:6379/0?ssl_cert_reqs=none"
+
+
+Elastic Beanstalk automatically loads these values and sets them as environment variables  
+inside the running containers. Django and Celery then read:
+
+- `REDIS_URL`
+- `CELERY_BROKER_URL`
+
+directly from the EB environment.
+```
+
 
 ### Health Check Redirect Loops
 
