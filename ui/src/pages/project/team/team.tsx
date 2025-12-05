@@ -8,6 +8,7 @@ import { useNavigate, useOutletContext } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
+import { UserPermission } from 'utils/user/types'
 import { useUserInfo } from 'utils/user/userInfoContext'
 import { AddMemberDialog } from './add-member-dialog'
 import { columns } from './team-columns'
@@ -18,21 +19,20 @@ export const Team = () => {
     project: ProjectDetails
   }>()
   const { pagination, setPage } = usePagination()
-  const { members, total, isLoading, isFetching, error } = useMembers(
-    project.id,
-    {
+  const { members, userPermissions, total, isLoading, isFetching, error } =
+    useMembers(project.id, {
       pagination,
-    }
-  )
+    })
   const { userInfo } = useUserInfo()
+  const canCreate = userPermissions?.includes(UserPermission.Create)
 
   useEffect(() => {
-    if (!project.canUpdate) {
+    if (!project.isMember) {
       navigate(APP_ROUTES.PROJECT_DETAILS({ projectId: project.id }))
     }
-  }, [project.canUpdate])
+  }, [project.isMember])
 
-  if (!project.canUpdate) {
+  if (!project.isMember) {
     return null
   }
 
@@ -46,7 +46,7 @@ export const Team = () => {
         isLoading={isLoading}
         isFetching={isFetching}
       >
-        <AddMemberDialog />
+        {canCreate ? <AddMemberDialog /> : null}
       </PageHeader>
       <Table
         columns={columns(userInfo?.id)}

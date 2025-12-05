@@ -25,7 +25,9 @@ export const columns: (userId?: string) => TableColumn<Member>[] = (
             )}
           </div>
           <span>{item.email}</span>
-          {item.id === userId ? <Badge label={translate(STRING.YOU)} /> : null}
+          {item.userId === userId ? (
+            <Badge label={translate(STRING.YOU)} />
+          ) : null}
         </div>
       </BasicTableCell>
     ),
@@ -49,12 +51,14 @@ export const columns: (userId?: string) => TableColumn<Member>[] = (
     },
     renderCell: (item: Member) => (
       <div className="p-4 flex items-center justify-end gap-2">
-        {item.id === userId ? (
-          <LeaveTeamDialog member={item} />
+        {item.userId === userId ? (
+          item.canDelete ? (
+            <LeaveTeamDialog member={item} />
+          ) : null
         ) : (
           <>
-            <ManageAccessDialog member={item} />
-            <RemoveMemberDialog member={item} />
+            {item.canUpdate ? <ManageAccessDialog member={item} /> : null}
+            {item.canDelete ? <RemoveMemberDialog member={item} /> : null}
           </>
         )}
       </div>

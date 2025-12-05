@@ -7,6 +7,8 @@ import { UserPermission } from 'utils/user/types'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 const convertServerRecord = (record: ServerMember): Member => ({
+  canDelete: record.user_permissions.includes(UserPermission.Delete),
+  canUpdate: record.user_permissions.includes(UserPermission.Update),
   email: record.user.email,
   id: `${record.id}`,
   image: record.user.image,
@@ -16,6 +18,7 @@ const convertServerRecord = (record: ServerMember): Member => ({
     id: record.role,
     name: record.role_display_name,
   },
+  userId: `${record.user.id}`,
 })
 
 export const useMembers = (

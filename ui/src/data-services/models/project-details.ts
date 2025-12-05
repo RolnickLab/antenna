@@ -16,6 +16,10 @@ export class ProjectDetails extends Project {
     super(project)
   }
 
+  get isMember(): boolean {
+    return this._project.is_member
+  }
+
   get settings(): Settings {
     const includeTaxa = this._project.settings.default_filters_include_taxa.map(
       (taxon: any) => ({
