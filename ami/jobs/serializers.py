@@ -151,3 +151,12 @@ class JobSerializer(JobListSerializer):
         fields = JobListSerializer.Meta.fields + [
             "result",
         ]
+
+
+class MinimalJobSerializer(DefaultSerializer):
+    """Minimal serializer returning only essential job fields."""
+
+    class Meta:
+        model = Job
+        # Add other fields when needed, e.g:  "name", "status", "created_at"
+        fields = ["id"]

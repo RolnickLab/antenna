@@ -214,6 +214,30 @@ class PipelineResultsResponse(pydantic.BaseModel):
     errors: list | str | None = None
 
 
+class PipelineProcessingTask(pydantic.BaseModel):
+    """
+    A task representing a single image or detection to be processed in an async pipeline.
+    """
+
+    id: str
+    image_id: str
+    image_url: str
+    queue_timestamp: str
+    reply_subject: str | None = None  # The NATS subject to send the result to
+    # TODO: Do we need these?
+    # detections: list[DetectionRequest] | None = None
+    # config: PipelineRequestConfigParameters | dict | None = None
+
+
+class PipelineTaskResult(pydantic.BaseModel):
+    """
+    The result from processing a single PipelineProcessingTask.
+    """
+
+    reply_subject: str  # The reply_subject from the PipelineProcessingTask
+    result: PipelineResultsResponse
+
+
 class PipelineStageParam(pydantic.BaseModel):
     """A configurable parameter of a stage of a pipeline."""
 
