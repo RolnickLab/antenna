@@ -13,7 +13,7 @@ export const AboutRoles = () => {
   return (
     <Dialog.Root>
       <Dialog.Trigger>
-        <Button size="small" variant="outline">
+        <Button size="small" variant="ghost">
           <InfoIcon className="w-4 h-4" />
           <span>{translate(STRING.ABOUT_ROLES)}</span>
         </Button>
@@ -25,7 +25,7 @@ export const AboutRoles = () => {
         <Dialog.Header title={translate(STRING.ABOUT_ROLES)} />
         <FormSection>
           {roles.map((role) => (
-            <div>
+            <div key={role.id}>
               <h3 className="body-base font-medium mb-2">{role.name}</h3>
               <p className="body-base">{role.description}</p>
             </div>
