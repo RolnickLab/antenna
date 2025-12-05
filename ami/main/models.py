@@ -3911,11 +3911,30 @@ class SourceImageCollection(BaseModel):
         )
         if deployment_id:
             qs = qs.filter(deployment=deployment_id)
-        if exclude_events:
-            qs = qs.exclude(event__in=exclude_events)
-        qs.exclude(event__in=exclude_events)
+        qs = qs.exclude(event__in=exclude_events)
+        # Limit to project
         qs = qs.filter(project=self.project)
-        return sample_captures_by_interval(minute_interval=minute_interval, qs=qs)
+
+        # Sample per-deployment so the minute interval applies independently per station.
+        # If specific deployment ids are provided, use them; otherwise iterate over all deployments
+        # in the project and sample each separately.
+        if deployment_ids is not None:
+            deps = deployment_ids
+        elif deployment_id is not None:
+            deps = [deployment_id]
+        else:
+            deps = list(self.project.deployments.values_list("id", flat=True))
+
+        captures: set[SourceImage] = set()
+        for dep in deps:
+            dep_qs = qs.filter(deployment=dep)
+            for c in sample_captures_by_interval(minute_interval=minute_interval, qs=dep_qs):
+                captures.add(c)
+
+        # Return results in a deterministic order. Sort by timestamp (oldest first),
+        # then by primary key to stabilize ordering when timestamps are equal.
+        captures_list = sorted(captures, key=lambda s: (s.timestamp is None, s.timestamp, s.pk))
+        return captures_list
 
     def sample_positional(self, position: int = -1):
         """Sample the single nth source image from all events in the project"""
