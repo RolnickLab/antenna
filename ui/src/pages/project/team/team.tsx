@@ -10,6 +10,7 @@ import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { UserPermission } from 'utils/user/types'
 import { useUserInfo } from 'utils/user/userInfoContext'
+import { useSort } from 'utils/useSort'
 import { AddMemberDialog } from './add-member-dialog'
 import { columns } from './team-columns'
 
@@ -19,6 +20,7 @@ export const Team = () => {
     project: ProjectDetails
   }>()
   const { pagination, setPage } = usePagination()
+  const { sort, setSort } = useSort()
   const { members, userPermissions, total, isLoading, isFetching, error } =
     useMembers(project.id, {
       pagination,
@@ -53,6 +55,9 @@ export const Team = () => {
         error={error}
         isLoading={isLoading}
         items={members}
+        onSortSettingsChange={setSort}
+        sortable
+        sortSettings={sort}
       />
       {members?.length ? (
         <PaginationBar
