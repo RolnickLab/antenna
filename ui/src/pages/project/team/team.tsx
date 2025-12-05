@@ -18,10 +18,12 @@ export const Team = () => {
     project: ProjectDetails
   }>()
   const { pagination, setPage } = usePagination()
-  const { members, total, isLoading, isFetching, error } = useMembers({
-    projectId: project.id,
-    pagination,
-  })
+  const { members, total, isLoading, isFetching, error } = useMembers(
+    project.id,
+    {
+      pagination,
+    }
+  )
   const { userInfo } = useUserInfo()
 
   useEffect(() => {

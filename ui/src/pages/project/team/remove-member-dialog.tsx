@@ -13,7 +13,7 @@ export const RemoveMemberDialog = ({ member }: { member: Member }) => {
   const { projectId } = useParams()
   const [isOpen, setIsOpen] = useState(false)
   const { removeMember, isLoading, isSuccess, error } = useRemoveMember(
-    member.id
+    projectId as string
   )
   const errorMessage = useFormError({ error })
 
@@ -47,11 +47,7 @@ export const RemoveMemberDialog = ({ member }: { member: Member }) => {
             </Button>
             <Button
               disabled={isSuccess}
-              onClick={() =>
-                removeMember({
-                  projectId: projectId as string,
-                })
-              }
+              onClick={() => removeMember(member.id)}
               size="small"
               variant="destructive"
             >

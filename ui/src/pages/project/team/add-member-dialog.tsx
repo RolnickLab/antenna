@@ -11,6 +11,7 @@ import { InputContent } from 'design-system/components/input/input'
 import { PlusIcon } from 'lucide-react'
 import { Button, Input } from 'nova-ui-kit'
 import { useEffect, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import { RolesPicker } from './roles-picker'
@@ -18,10 +19,13 @@ import { RolesPicker } from './roles-picker'
 const DEFAULT_ROLE_ID = 'BasicMember'
 
 export const AddMemberDialog = () => {
+  const { projectId } = useParams()
   const [isOpen, setIsOpen] = useState(false)
   const [email, setEmail] = useState('')
   const [roleId, setRoleId] = useState(DEFAULT_ROLE_ID)
-  const { isLoading, isSuccess, error } = useAddMember()
+  const { addMember, isLoading, isSuccess, error } = useAddMember(
+    projectId as string
+  )
   const errorMessage = useFormError({ error })
 
   // Reset form on open state change
@@ -77,6 +81,7 @@ export const AddMemberDialog = () => {
             isLoading={isLoading}
             isSuccess={isSuccess}
             onClick={async () => {
+              await addMember({ roleId, email })
               setTimeout(() => setIsOpen(false), SUCCESS_TIMEOUT)
             }}
           />

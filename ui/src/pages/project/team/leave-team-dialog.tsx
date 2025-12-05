@@ -16,7 +16,7 @@ export const LeaveTeamDialog = ({ member }: { member: Member }) => {
   const { projectId } = useParams()
   const [isOpen, setIsOpen] = useState(false)
   const { removeMember, isLoading, isSuccess, error } = useRemoveMember(
-    member.id
+    projectId as string
   )
   const errorMessage = useFormError({ error })
 
@@ -49,9 +49,7 @@ export const LeaveTeamDialog = ({ member }: { member: Member }) => {
             <Button
               disabled={isSuccess}
               onClick={async () => {
-                await removeMember({
-                  projectId: projectId as string,
-                })
+                await removeMember(member.id)
 
                 navigate(
                   getAppRoute({

@@ -1,11 +1,10 @@
 import { API_ROUTES } from 'data-services/constants'
 import { Role } from 'data-services/models/role'
-import { FetchParams } from 'data-services/types'
 import { getFetchUrl } from 'data-services/utils'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 export const useRoles = (
-  params?: FetchParams
+  projectId: string
 ): {
   roles?: Role[]
   isLoading: boolean
@@ -13,11 +12,8 @@ export const useRoles = (
   error?: unknown
 } => {
   const { data, isLoading, isFetching, error } = useAuthorizedQuery<Role[]>({
-    queryKey: [API_ROUTES.ROLES, params],
-    url: getFetchUrl({
-      collection: API_ROUTES.ROLES,
-      params,
-    }),
+    queryKey: [API_ROUTES.ROLES(projectId)],
+    url: getFetchUrl({ collection: API_ROUTES.ROLES(projectId) }),
   })
 
   return { roles: data, isLoading, isFetching, error }
