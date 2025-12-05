@@ -329,6 +329,7 @@ class ProjectSerializer(DefaultSerializer):
     feature_flags = serializers.SerializerMethodField()
     owner = UserNestedSerializer(read_only=True)
     settings = ProjectSettingsSerializer(source="*", required=False)
+    is_member = serializers.SerializerMethodField()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -341,6 +342,23 @@ class ProjectSerializer(DefaultSerializer):
             return obj.feature_flags.dict()
         return {}
 
+    def get_is_member(self, obj):
+        """Check if the current user is a member of this project."""
+        from ami.users.roles import Role
+
+        request = self.context["request"]
+        user = request.user
+
+        if not user or not user.is_authenticated:
+            return False
+
+        # Return True for superusers
+        if user.is_superuser:
+            return True
+
+        # Check if the user has any role in the project
+        return Role.user_has_any_role(user, obj)
+
     class Meta:
         model = Project
         fields = ProjectListSerializer.Meta.fields + [
@@ -349,6 +367,7 @@ class ProjectSerializer(DefaultSerializer):
             "owner",
             "feature_flags",
             "settings",
+            "is_member",  # is the current user a member of this project
         ]
 
 
