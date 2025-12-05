@@ -411,6 +411,7 @@ class Project(ProjectSettingsMixin, BaseModel):
         DELETE_DEVICE = "delete_device"
         UPDATE_DEVICE = "update_device"
         # User projet membership permissions
+        VIEW_USER_PROJECT_MEMBERSHIP = "view_userprojectmembership"
         CREATE_USER_PROJECT_MEMBERSHIP = "create_userprojectmembership"
         UPDATE_USER_PROJECT_MEMBERSHIP = "update_userprojectmembership"
         DELETE_USER_PROJECT_MEMBERSHIP = "delete_userprojectmembership"
@@ -472,6 +473,7 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("delete_device", "Can delete a device"),
             ("update_device", "Can update a device"),
             # User project membership permissions
+            ("view_userprojectmembership", "Can view project members"),
             ("create_userprojectmembership", "Can add a user to the project"),
             ("update_userprojectmembership", "Can update a user's project membership and role in the project"),
             ("delete_userprojectmembership", "Can remove a user from the project"),
@@ -499,6 +501,24 @@ class UserProjectMembership(BaseModel):
         on_delete=models.CASCADE,
         related_name="project_memberships",
     )
+
+    def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
+        project = self.project
+        # Allow viewing membership details if the user has view permission on the project
+        if action == "retrieve":
+            return user.has_perm(Project.Permissions.VIEW_USER_PROJECT_MEMBERSHIP, project)
+        # Allow users to delete their own membership
+        if action == "destroy" and user == self.user:
+            return True
+        return super().check_permission(user, action)
+
+    def get_user_object_permissions(self, user) -> list[str]:
+        # Return delete permission if user is the same as the membership user
+        user_permissions = super().get_user_object_permissions(user)
+        if user == self.user:
+            if "delete" not in user_permissions:
+                user_permissions.append("delete")
+        return user_permissions
 
     class Meta:
         unique_together = ("user", "project")

@@ -82,6 +82,7 @@ class BasicMember(Role):
         Project.Permissions.STAR_SOURCE_IMAGE,
         Project.Permissions.CREATE_JOB,
         Project.Permissions.RUN_SINGLE_IMAGE_JOB,
+        Project.Permissions.VIEW_USER_PROJECT_MEMBERSHIP,
     }
 
 
