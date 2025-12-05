@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from rest_framework import serializers
 
-from ami.main.api.serializers import DefaultSerializer, UserNestedSerializer
+from ami.main.api.serializers import DefaultSerializer
 from ami.main.models import UserProjectMembership
 
 User = get_user_model()
@@ -75,7 +75,7 @@ class UserProjectMembershipSerializer(DefaultSerializer):
     email = serializers.EmailField(write_only=True)
     role_id = serializers.CharField(write_only=True)
 
-    user = UserNestedSerializer(read_only=True)
+    user = UserListSerializer(read_only=True)
     role = serializers.SerializerMethodField(read_only=True)
     role_display_name = serializers.SerializerMethodField(read_only=True)
     role_description = serializers.SerializerMethodField(read_only=True)
@@ -166,7 +166,7 @@ class UserProjectMembershipSerializer(DefaultSerializer):
 
 
 class UserProjectMembershipListSerializer(UserProjectMembershipSerializer):
-    user = UserNestedSerializer(read_only=True)
+    user = UserListSerializer(read_only=True)
     role = serializers.SerializerMethodField()
     role_display_name = serializers.SerializerMethodField()
     role_description = serializers.SerializerMethodField()
