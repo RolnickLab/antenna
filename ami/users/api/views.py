@@ -4,7 +4,7 @@ from django.db import transaction
 from rest_framework import viewsets
 from rest_framework.response import Response
 
-from ami.base.permissions import IsActiveStaffOrReadOnly, ObjectPermission
+from ami.base.permissions import IsActiveStaffOrReadOnly, UserMembershipPermission
 from ami.base.views import ProjectMixin
 from ami.main.api.views import DefaultViewSet
 from ami.main.models import UserProjectMembership
@@ -32,7 +32,7 @@ class ProjectRolesViewSet(viewsets.ViewSet, ProjectMixin):
 class UserProjectMembershipViewSet(DefaultViewSet, ProjectMixin):
     require_project = True
     queryset = UserProjectMembership.objects.all()
-    permission_classes = [ObjectPermission]
+    permission_classes = [UserMembershipPermission]
 
     def get_queryset(self):
         project = self.get_active_project()
