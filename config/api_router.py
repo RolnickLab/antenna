@@ -63,8 +63,6 @@ router.register(
 )
 router.register(r"labelstudio/hooks", labelstudio_views.LabelStudioHooksViewSet, basename="labelstudio-hooks")
 router.register(r"labelstudio/config", labelstudio_views.LabelStudioConfigViewSet, basename="labelstudio-config")
-router.register("role_management/roles", ProjectRolesViewSet, basename="project-roles")
-router.register("role_management/members", UserProjectMembershipViewSet, basename="project-members")
 # Wire up our API using automatic URL routing.
 
 app_name = "api"  # this breaks the automatic routing with viewsets & hyperlinked serializers
