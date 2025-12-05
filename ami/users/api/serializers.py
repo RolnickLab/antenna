@@ -54,8 +54,21 @@ class GroupSerializer(DefaultSerializer):
 
 # Roles management api serializers
 class ProjectRoleSerializer(serializers.Serializer):
-    id = serializers.CharField(source="role")
-    name = serializers.CharField()
+    id = serializers.SerializerMethodField()
+    name = serializers.SerializerMethodField()
+    description = serializers.SerializerMethodField()
+
+    def get_id(self, obj):
+        """Get role class name as ID."""
+        return obj.__name__
+
+    def get_name(self, obj):
+        """Get role display name."""
+        return obj.display_name
+
+    def get_description(self, obj):
+        """Get role description."""
+        return obj.description
 
 
 class UserProjectMembershipSerializer(DefaultSerializer):
@@ -63,6 +76,9 @@ class UserProjectMembershipSerializer(DefaultSerializer):
     role_id = serializers.CharField(write_only=True)
 
     user = UserNestedSerializer(read_only=True)
+    role = serializers.SerializerMethodField(read_only=True)
+    role_display_name = serializers.SerializerMethodField(read_only=True)
+    role_description = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = UserProjectMembership
@@ -72,10 +88,21 @@ class UserProjectMembershipSerializer(DefaultSerializer):
             "role_id",
             "user",
             "project",
+            "role",
+            "role_display_name",
+            "role_description",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["project", "user", "created_at", "updated_at"]
+        read_only_fields = [
+            "project",
+            "user",
+            "created_at",
+            "updated_at",
+            "role",
+            "role_display_name",
+            "role_description",
+        ]
 
     def validate_email(self, value):
         """Validate user email and store actual user object."""
@@ -97,6 +124,24 @@ class UserProjectMembershipSerializer(DefaultSerializer):
 
         self._validated_role_cls = role_map[value]
         return value
+
+    def get_role(self, obj):
+        from ami.users.roles import Role
+
+        role_cls = Role.get_primary_role(obj.project, obj.user)
+        return role_cls.__name__ if role_cls else None
+
+    def get_role_display_name(self, obj):
+        from ami.users.roles import Role
+
+        role_cls = Role.get_primary_role(obj.project, obj.user)
+        return role_cls.display_name if role_cls else None
+
+    def get_role_description(self, obj):
+        from ami.users.roles import Role
+
+        role_cls = Role.get_primary_role(obj.project, obj.user)
+        return role_cls.description if role_cls else None
 
     def validate(self, attrs):
         project = self.context["project"]
@@ -120,10 +165,11 @@ class UserProjectMembershipSerializer(DefaultSerializer):
         return attrs
 
 
-class UserProjectMembershipListSerializer(DefaultSerializer):
+class UserProjectMembershipListSerializer(UserProjectMembershipSerializer):
     user = UserNestedSerializer(read_only=True)
     role = serializers.SerializerMethodField()
     role_display_name = serializers.SerializerMethodField()
+    role_description = serializers.SerializerMethodField()
 
     class Meta:
         model = UserProjectMembership
@@ -132,27 +178,7 @@ class UserProjectMembershipListSerializer(DefaultSerializer):
             "user",
             "role",
             "role_display_name",
+            "role_description",
             "created_at",
             "updated_at",
-            "details",
         ]
-        extra_kwargs = {
-            "details": {"view_name": "api:project-members-detail"},
-        }
-
-    def _get_primary_role_class(self, obj):
-        """Return the role class with the most permissions."""
-        from ami.users.roles import Role
-
-        roles = Role.get_user_roles(obj.project, obj.user)
-        if not roles:
-            return None
-        return max(roles, key=lambda r: len(r.permissions))
-
-    def get_role(self, obj):
-        role_cls = self._get_primary_role_class(obj)
-        return role_cls.__name__ if role_cls else None
-
-    def get_role_display_name(self, obj):
-        role_cls = self._get_primary_role_class(obj)
-        return role_cls.name if role_cls else None

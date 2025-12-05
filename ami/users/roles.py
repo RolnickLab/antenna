@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 class Role:
     """Base class for all roles."""
 
-    name = ""
+    display_name = ""
+    description = ""
     permissions = {Project.Permissions.VIEW_PROJECT}
 
     # @TODO : Refactor after adding the project <-> Group formal relationship
@@ -57,10 +58,7 @@ class Role:
         """
         Returns all supported role classes in the system.
         """
-        result = []
-        for cls in Role.__subclasses__():
-            result.append({"role": cls.__name__, "name": cls.name})
-        return result
+        return list(Role.__subclasses__())
 
     @staticmethod
     def get_user_roles(project, user):
@@ -74,9 +72,20 @@ class Role:
                 user_roles.append(role_cls)
         return user_roles
 
+    @staticmethod
+    def get_primary_role(project, user):
+        """Return the role class with the most permissions for a user on a project."""
+        roles = Role.get_user_roles(project, user)
+        if not roles:
+            return None
+        return max(roles, key=lambda r: len(r.permissions))
+
 
 class BasicMember(Role):
-    name = "Basic member"
+    display_name = "Basic member"
+    description = (
+        "Basic project member with access to star source images, create jobs, and run single image processsing jobs."
+    )
     permissions = Role.permissions | {
         Project.Permissions.VIEW_PRIVATE_DATA,
         Project.Permissions.STAR_SOURCE_IMAGE,
@@ -87,12 +96,17 @@ class BasicMember(Role):
 
 
 class Researcher(Role):
-    name = "Researcher"
+    display_name = "Researcher"
+    description = "Researcher with all basic member permissions, plus the ability to trigger data exports"
     permissions = BasicMember.permissions | {Project.Permissions.TRIGGER_EXPORT}
 
 
 class Identifier(Role):
-    name = "Identifier"
+    display_name = "Identifier"
+    description = (
+        "Identifier with all basic member permissions, plus the ability to create, "
+        "update, and delete occurrence identifications."
+    )
     permissions = BasicMember.permissions | {
         Project.Permissions.CREATE_IDENTIFICATION,
         Project.Permissions.UPDATE_IDENTIFICATION,
@@ -101,7 +115,12 @@ class Identifier(Role):
 
 
 class MLDataManager(Role):
-    name = "ML Data manager"
+    display_name = "ML Data manager"
+    description = (
+        "Machine Learning Data Manager with all basic member permissions, plus the ability to "
+        "manage ML jobs, run collection population jobs, sync data storage, export data, and "
+        "delete occurrences."
+    )
     permissions = BasicMember.permissions | {
         Project.Permissions.CREATE_JOB,
         Project.Permissions.UPDATE_JOB,
@@ -116,7 +135,12 @@ class MLDataManager(Role):
 
 
 class ProjectManager(Role):
-    name = "Project manager"
+    display_name = "Project manager"
+    description = (
+        "Project manager with full administrative access, including all permissions from all roles "
+        "plus the ability to manage project settings, members, deployments, collections, storage, "
+        "and all project resources."
+    )
     permissions = (
         BasicMember.permissions
         | Researcher.permissions
