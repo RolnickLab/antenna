@@ -14,7 +14,7 @@ export const convertToFormData = (fieldValues: DeploymentFieldValues) => {
     longitude: fieldValues.longitude,
     research_site_id: fieldValues.siteId,
   }).forEach(([key, value]) => {
-    if (value !== undefined) {
+    if (value !== undefined && value !== null) {
       data.append(key, `${value}`)
     }
   })
