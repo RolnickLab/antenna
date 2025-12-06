@@ -14,8 +14,9 @@ export const convertToFormData = (fieldValues: DeploymentFieldValues) => {
     longitude: fieldValues.longitude,
     research_site_id: fieldValues.siteId,
   }).forEach(([key, value]) => {
-    if (value !== undefined && value !== null) {
-      data.append(key, `${value}`)
+    if (value !== undefined) {
+      // Convert null to empty string to signal "clear this field" (matches image field pattern)
+      data.append(key, value === null ? '' : `${value}`)
     }
   })
 
