@@ -1,6 +1,6 @@
-# Antenna Backend - Deployment & Infrastructure Guide
+# Antenna Platform - Deployment & Infrastructure Guide
 
-This document describes the AWS infrastructure and deployment pipeline for the Antenna backend.  
+This document describes the AWS infrastructure and deployment pipeline for the Antenna platform.  
 The system runs on AWS Elastic Beanstalk (ECS-based multicontainer) using Docker, Celery, ElastiCache Redis (TLS), RDS PostgreSQL, S3, ECR, and Sentry.  
 It is intended for maintainers and contributors who need to understand, update, or reproduce the deployed environment.
 
@@ -8,7 +8,7 @@ It is intended for maintainers and contributors who need to understand, update, 
 
 ## 1. Overview
 
-The Antenna backend is a Django application deployed using:
+The Antenna platform consists of a Django backend, ML processing services, and a React frontend, all deployed using:
 
 - **Elastic Beanstalk (ECS-based multicontainer)** running Docker
 - **ECR** for storing container images
@@ -19,15 +19,16 @@ The Antenna backend is a Django application deployed using:
 - **IAM** roles for instance profiles and service roles
 - **CloudWatch** for logs, health monitoring, ECS task metrics
 - **Default VPC** with public and private subnets
+- **CloudFront** as a global CDN layer for faster asset delivery
 
 ---
 
-## 2. Repository Structure (Deployment-Relevant)
+## 2. Deployment Configuration Files
 
-- /.ebextensions/00_setup.config     :  EB environment variables and settings
+- /.ebextensions/00_setup.config     : (Elastic Beanstalk) EB environment variables and settings
 - /.ebignore                         : Exclusion list for EB deployment bundle
 - /Dockerrun.aws.json                : Multi-container EB deployment config
-
+  
 ---
 
 ## 3. Deployment Architecture
@@ -36,7 +37,7 @@ The Antenna backend is a Django application deployed using:
 
 - Platform: ECS on Amazon Linux 2 (Multicontainer Docker)
 - Deployment bundle includes:
-  - `Dockerrun.aws.json` (v2)
+  - `Dockerrun.aws.json` 
   - `.ebextensions/00_setup.config`
 - Environment type:
   - Single-instance environment (used for development/testing to reduce cost). 
@@ -93,6 +94,8 @@ EB ECS runs the following containers:
 3. **celerybeat** - scheduled task runner
 4. **flower** - Celery monitoring UI (port 5555)
 5. **awscli** - lightweight helper container for internal AWS commands
+6. **ml-backend-minimal** - A lightweight, minimal ML processing service used to test Antenna’s processing-service API and verify ML integration. It provides basic pipelines only.
+7. **ml-backend-example** - A demonstration ML backend that includes more advanced pipelines and shows how to build custom algorithms and processing flows. Intended as an example/template for extending ML capabilities.
 
 ---
 
@@ -108,7 +111,16 @@ The AWS CLI helper container pulls from:
 - **antenna-awscli**  
   `<ECR_URI>/antenna-awscli`
 
-Both repositories are **mutable** and **AES-256 encrypted**.
+The ML processing services pull from:
+
+- **antenna-ml-minimal**  
+  `<ECR_URI>/antenna-ml-minimal`
+
+- **antenna-ml-example**  
+  `<ECR_URI>/antenna-ml-example`
+  
+
+All repositories are **mutable**, support versioned tags, and **AES-256 encrypted**.
 
 ---
 
@@ -149,6 +161,9 @@ The deployment uses the following environment variables across these categories:
 ### Redis / Celery
 - `REDIS_URL`
 - `CELERY_BROKER_URL`
+
+### ML Processing Service
+- `DEFAULT_PROCESSING_SERVICE_ENDPOINT`
 
 ### Third-Party Integrations
 - `SENDGRID_API_KEY`
