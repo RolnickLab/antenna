@@ -1,4 +1,4 @@
-# Antenna Platform — Deployment & Infrastructure Guide
+# Antenna Platform - Deployment & Infrastructure Guide
 
 This document describes the AWS infrastructure and deployment pipeline for the Antenna platform.  
 It is intended for maintainers and contributors who need to understand, update, or reproduce the deployed environment.
