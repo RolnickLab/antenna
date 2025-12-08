@@ -2,6 +2,7 @@ import { Tooltip } from 'nova-ui-kit'
 import { ReactNode } from 'react'
 
 interface TooltipProps {
+  align?: 'center' | 'end' | 'start'
   asChild?: boolean
   children: ReactNode
   content?: string
@@ -9,6 +10,7 @@ interface TooltipProps {
 }
 
 export const BasicTooltip = ({
+  align,
   asChild,
   children,
   content,
@@ -24,8 +26,10 @@ export const BasicTooltip = ({
         <Tooltip.Trigger asChild={asChild} onClick={onTriggerClick}>
           {children}
         </Tooltip.Trigger>
-        <Tooltip.Content className="max-w-sm text-center" side="bottom">
-          <span className="block whitespace-break-spaces">{content}</span>
+        <Tooltip.Content className="max-w-xs" side="bottom" align={align}>
+          <span className="block text-center whitespace-break-spaces">
+            {content}
+          </span>
         </Tooltip.Content>
       </Tooltip.Root>
     </Tooltip.Provider>

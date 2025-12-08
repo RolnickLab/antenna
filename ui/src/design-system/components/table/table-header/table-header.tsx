@@ -1,6 +1,7 @@
 import classNames from 'classnames'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { InfoIcon } from 'lucide-react'
 import { TableColumn, TableSortSettings } from '../types'
 import styles from './table-header.module.scss'
 
@@ -37,15 +38,15 @@ const BasicTableHeader = <T,>({
   column,
   visuallyHidden,
 }: Omit<TableHeaderProps<T>, 'sortSettings' | 'onSortClick'>) => (
-  <Tooltip content={column.tooltip}>
-    <th
-      key={column.id}
-      style={{
-        textAlign: column.styles?.textAlign,
-        width: column.styles?.width,
-      }}
-      className={styles.tableHeader}
-    >
+  <th
+    key={column.id}
+    style={{
+      textAlign: column.styles?.textAlign,
+      width: column.styles?.width,
+    }}
+    className={styles.tableHeader}
+  >
+    <BasicTooltip asChild content={column.tooltip}>
       <div
         className={classNames(styles.content, {
           [styles.visuallyHidden]: visuallyHidden,
@@ -56,13 +57,13 @@ const BasicTableHeader = <T,>({
           <span>{column.name}</span>
           {column.tooltip ? (
             <div className={styles.iconWrapper}>
-              <Icon type={IconType.Info} theme={IconTheme.Neutral} />
+              <InfoIcon className="w-4 h-4 text-muted-foreground" />
             </div>
           ) : null}
         </div>
       </div>
-    </th>
-  </Tooltip>
+    </BasicTooltip>
+  </th>
 )
 
 const SortableTableHeader = <T,>({
@@ -89,7 +90,7 @@ const SortableTableHeader = <T,>({
         [styles.active]: sortActive,
       })}
     >
-      <Tooltip content={column.tooltip}>
+      <BasicTooltip asChild content={column.tooltip}>
         <button
           className={classNames(styles.content, styles.sortButton, {
             [styles.visuallyHidden]: visuallyHidden,
@@ -101,7 +102,7 @@ const SortableTableHeader = <T,>({
             <span>{column.name}</span>
             {column.tooltip && !sortActive ? (
               <div className={styles.iconWrapper}>
-                <Icon type={IconType.Info} theme={IconTheme.Neutral} />
+                <InfoIcon className="w-4 h-4 text-muted-foreground" />
               </div>
             ) : null}
             {sortActive ? (
@@ -116,7 +117,7 @@ const SortableTableHeader = <T,>({
             ) : null}
           </div>
         </button>
-      </Tooltip>
+      </BasicTooltip>
     </th>
   )
 }
