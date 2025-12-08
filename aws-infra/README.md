@@ -26,7 +26,11 @@ These components are deployed on AWS:
 - **Default VPC** with public and private subnets
 - **CloudFront** as a global CDN layer for faster asset delivery
 
+
 ---
+
+![AWS architecture](images/aws_architecture.png)
+
 
 ## 2. Deployment Configuration Files
 
