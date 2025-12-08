@@ -1,20 +1,25 @@
 # Antenna Platform - Deployment & Infrastructure Guide
 
 This document describes the AWS infrastructure and deployment pipeline for the Antenna platform.  
-The system runs on AWS Elastic Beanstalk (ECS-based multicontainer) using Docker, Celery, ElastiCache Redis (TLS), RDS PostgreSQL, S3, ECR, and Sentry.  
 It is intended for maintainers and contributors who need to understand, update, or reproduce the deployed environment.
 
----
 
 ## 1. Overview
 
-The Antenna platform consists of a Django backend, ML processing services, and a React frontend, all deployed using:
+Antenna consists of three major parts:
 
-- **Elastic Beanstalk (ECS-based multicontainer)** running Docker
+1. **Django backend**, which includes the API server along with the Celery worker, Celery beat scheduler, and the Flower monitoring dashboard.
+2. **ML processing services**, responsible for running model inference and feature extraction pipelines.
+3. **React frontend** deployed via Netlify with automatic builds on every push to main.
+
+
+These components are deployed on AWS: 
+
+- **Elastic Beanstalk** (Docker on ECS) for running all backend containers
 - **ECR** for storing container images
 - **RDS PostgreSQL** as the application database
 - **ElastiCache Redis (TLS)** for Celery broker + Django cache
-- **Dockerized services** (Django, Celery Worker, Celery Beat, Flower, AWS CLI helper)
+- **Dockerized services** (Django, Celery Worker, Celery Beat, Flower, AWS CLI, ML Processing Services)
 - **S3** as static storage backend
 - **IAM** roles for instance profiles and service roles
 - **CloudWatch** for logs, health monitoring, ECS task metrics
@@ -31,7 +36,7 @@ The Antenna platform consists of a Django backend, ML processing services, and a
   
 ---
 
-## 3. Deployment Architecture
+## 3. Backend Deployment Architecture
 
 ### 3.1. Elastic Beanstalk (EB)
 
@@ -56,7 +61,6 @@ The Antenna platform consists of a Django backend, ML processing services, and a
 - **Security Groups**
   - EB-managed instance security group (default inbound + outbound rules)
   - Additional outbound egress security group  
-    *(originally created for App Runner, now reused for EB networking)*
 
 - **Enhanced health reporting**  
   - Real-time system + application monitoring  
@@ -171,7 +175,7 @@ The deployment uses the following environment variables across these categories:
 
 ---
 
-## 5. AWS Infrastructure Components
+## 5. AWS Infrastructure Units
 
 ### 5.1. RDS (PostgreSQL)
 
@@ -586,9 +590,6 @@ To harden the deployment and move toward a production-grade architecture, the fo
 
 - **Enable ElastiCache Multi-AZ + Auto-Failover**  
   Improves high availability for Celery and Django caching; eliminates single-node Redis failure risks.
-
-- **Restrict RDS and Redis to private-only access**  
-  Disable public accessibility on RDS and ensure Redis remains reachable only via EB’s security group.
 
 - **IAM hardening and least-privilege review**  
   Replace broad EB-managed policies with reduced IAM policies scoped only to required S3, ECR, CloudWatch, and ECS resources.
