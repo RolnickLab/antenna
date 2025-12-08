@@ -29,9 +29,17 @@ These components are deployed on AWS:
 
 ---
 
-![AWS architecture](images/aws_architecture.png)
 
-<img src="images/aws_architecture.svg" width="1100" />
+<img src="images/aws_architecture.svg" width="1100" alt="AWS deployment and runtime architecture diagram" />
+
+**Figure:** AWS deployment + runtime architecture for the Antenna backend.  
+Docker images for each service are built locally and pushed to Amazon ECR; Elastic Beanstalk is deployed using a ZIP bundle that includes `Dockerrun.aws.json` (pointing to the ECR image URIs). At runtime, a single Elastic Beanstalk environment (Docker on ECS, single EC2 instance) pulls those images from ECR and runs six containers: Django (API), Celery Worker, Celery Beat (scheduler), Flower (monitoring), an AWS CLI helper container, and ML processing services.
+
+
+
+
+
+
 
 
 
