@@ -35,7 +35,7 @@ export const Team = () => {
     if (!project.isMember) {
       navigate(APP_ROUTES.PROJECT_DETAILS({ projectId: project.id }))
     }
-  }, [project.isMember])
+  }, [project.isMember, navigate, project.id])
 
   if (!project.isMember) {
     return null

@@ -49,13 +49,16 @@ export const LeaveTeamDialog = ({ member }: { member: Member }) => {
             <Button
               disabled={isSuccess}
               onClick={async () => {
-                await removeMember(member.id)
-
-                navigate(
-                  getAppRoute({
-                    to: APP_ROUTES.PROJECTS,
-                  })
-                )
+                try {
+                  await removeMember(member.id)
+                  navigate(
+                    getAppRoute({
+                      to: APP_ROUTES.PROJECTS,
+                    })
+                  )
+                } catch {
+                  // Error is handled by hook
+                }
               }}
               size="small"
               variant="destructive"

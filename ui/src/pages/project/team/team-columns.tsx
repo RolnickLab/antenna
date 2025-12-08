@@ -48,7 +48,11 @@ export const columns: (userId?: string) => TableColumn<Member>[] = (
           <span>{item.role.name}</span>
           {item.role.description ? (
             <BasicTooltip asChild content={item.role.description}>
-              <Button size="icon" variant="ghost">
+              <Button
+                aria-label={translate(STRING.ABOUT_ROLE)}
+                size="icon"
+                variant="ghost"
+              >
                 <InfoIcon className="w-4 h-4" />
               </Button>
             </BasicTooltip>
