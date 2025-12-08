@@ -10,7 +10,7 @@ export const RolesPicker = ({
   onValueChange: (value: string) => void
 }) => {
   const { projectId } = useParams()
-  const { roles = [], isLoading } = useRoles(projectId as string)
+  const { roles = [], isLoading } = useRoles(projectId as string, true)
 
   return (
     <Select.Root

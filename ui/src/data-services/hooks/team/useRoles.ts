@@ -4,7 +4,8 @@ import { getFetchUrl } from 'data-services/utils'
 import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 
 export const useRoles = (
-  projectId: string
+  projectId: string,
+  useInternalCache?: boolean
 ): {
   roles?: Role[]
   isLoading: boolean
@@ -14,6 +15,7 @@ export const useRoles = (
   const { data, isLoading, isFetching, error } = useAuthorizedQuery<Role[]>({
     queryKey: [API_ROUTES.ROLES(projectId)],
     url: getFetchUrl({ collection: API_ROUTES.ROLES(projectId) }),
+    staleTime: useInternalCache ? Infinity : undefined,
   })
 
   return { roles: data, isLoading, isFetching, error }

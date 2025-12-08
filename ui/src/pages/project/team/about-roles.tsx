@@ -8,7 +8,7 @@ import { STRING, translate } from 'utils/language'
 
 export const AboutRoles = () => {
   const { projectId } = useParams()
-  const { roles = [] } = useRoles(projectId as string)
+  const { roles = [] } = useRoles(projectId as string, true)
 
   return (
     <Dialog.Root>
