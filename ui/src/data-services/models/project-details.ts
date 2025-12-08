@@ -16,6 +16,10 @@ export class ProjectDetails extends Project {
     super(project)
   }
 
+  get permissionsAdminUrl() {
+    return `https://api.antenna.insectai.org/bereich/main/project/${this.id}/permissions/` // TODO: Use dynamic admin URL based on environment?
+  }
+
   get isMember(): boolean {
     return this._project.is_member
   }

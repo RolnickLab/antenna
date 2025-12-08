@@ -3,8 +3,10 @@ import { ProjectDetails } from 'data-services/models/project-details'
 import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { Table } from 'design-system/components/table/table/table'
+import { LockIcon } from 'lucide-react'
+import { buttonVariants } from 'nova-ui-kit'
 import { useEffect } from 'react'
-import { useNavigate, useOutletContext } from 'react-router-dom'
+import { Link, useNavigate, useOutletContext } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
@@ -50,6 +52,19 @@ export const Team = () => {
         isFetching={isFetching}
       >
         <AboutRoles />
+        {project.canUpdate ? (
+          <Link
+            className={buttonVariants({
+              size: 'small',
+              variant: 'outline',
+            })}
+            to={project.permissionsAdminUrl}
+            target="_blank"
+          >
+            <LockIcon className="w-4 h-4" />
+            <span>{translate(STRING.ADMIN)}</span>
+          </Link>
+        ) : null}
         {canCreate ? <AddMemberDialog /> : null}
       </PageHeader>
       <Table

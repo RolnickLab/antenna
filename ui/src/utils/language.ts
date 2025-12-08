@@ -1,5 +1,6 @@
 export enum STRING {
   /* BUTTON */
+  ADMIN,
   BACK,
   CANCEL,
   CHANGE_IMAGE,
@@ -294,6 +295,7 @@ export enum STRING {
 
 const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* BUTTON */
+  [STRING.ADMIN]: 'Admin',
   [STRING.BACK]: 'Back',
   [STRING.CANCEL]: 'Cancel',
   [STRING.CHANGE_IMAGE]: 'Change image',
