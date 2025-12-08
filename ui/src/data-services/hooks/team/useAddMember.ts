@@ -26,5 +26,5 @@ export const useAddMember = (projectId: string) => {
     },
   })
 
-  return { addMember: mutateAsync, isLoading, error, isSuccess }
+  return { addMember: mutateAsync, error, isLoading, isSuccess, reset }
 }
