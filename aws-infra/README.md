@@ -1,34 +1,40 @@
-# Antenna Platform - Deployment & Infrastructure Guide
+# Antenna Platform — Deployment & Infrastructure Guide
 
 This document describes the AWS infrastructure and deployment pipeline for the Antenna platform.  
 It is intended for maintainers and contributors who need to understand, update, or reproduce the deployed environment.
 
-
 ## 1. Overview
 
-Antenna consists of three major parts:
+Antenna consists of two major parts:
 
-1. **Django backend**, which includes the API server along with the Celery worker, Celery beat scheduler, and the Flower monitoring dashboard.
-2. **ML processing services**, responsible for running model inference and feature extraction pipelines.
-3. **React frontend** deployed via Netlify with automatic builds on every push to main.
+1. **Backend (Django API + Celery Worker + Celery Beat + Flower + ML processing services)** running as multiple Docker containers.
+2. **Frontend (React + Vite)** built into static files, hosted on **S3**, and delivered globally via **CloudFront**.
 
 
-These components are deployed on AWS: 
+## 1.1 Backend components (AWS)
 
-- **Elastic Beanstalk** (Docker on ECS) for running all backend containers
-- **ECR** for storing container images
-- **RDS PostgreSQL** as the application database
-- **ElastiCache Redis (TLS)** for Celery broker + Django cache
-- **Dockerized services** (Django, Celery Worker, Celery Beat, Flower, AWS CLI, ML Processing Services)
-- **S3** as static storage backend
-- **IAM** roles for instance profiles and service roles
-- **CloudWatch** for logs, health monitoring, ECS task metrics
-- **Default VPC** with public and private subnets
-- **CloudFront** as a global CDN layer for faster asset delivery
+The backend is deployed as a **multi-container** service on AWS:
 
+- **Elastic Beanstalk (Docker on ECS)**: runs all backend containers (Django, Celery Worker, Celery Beat, Flower, ML services, helper containers as needed).
+- **Amazon ECR**: stores Docker images that Elastic Beanstalk pulls at deploy/runtime.
+- **Amazon RDS (PostgreSQL)**: primary application database.
+- **Amazon ElastiCache (Redis with TLS)**: Celery broker and Django cache.
+- **Amazon S3**: object storage (e.g., uploaded files/static/media, depending on app config).
+- **Amazon CloudWatch**: logs, health monitoring, and ECS/instance metrics.
+
+## 1.2 Frontend components (AWS)
+
+- **React (Vite) frontend** is built into static assets and hosted on **S3**, delivered via **CloudFront**.
+- **CloudFront** also forwards **`/api/*`** requests to the backend, so users access the UI and API from **one domain**.
 
 ---
 
+## 2. High-level AWS architecture
+
+This section provides a visual, end-to-end view of how Antenna is deployed and how requests flow at runtime.
+Details for each component are documented in the sections that follow.
+
+### 2.1 Backend: build + deploy + runtime
 
 <img src="images/aws_architecture_backend.svg" width="1100" alt="AWS deployment and runtime backend architecture diagram" />
 
@@ -37,6 +43,7 @@ Docker images for each service are built locally and pushed to Amazon ECR; Elast
 
 
 
+### 2.2 Frontend: global delivery + API proxy
 
 <img src="images/aws_architecture_frontend.svg" width="1100" alt="AWS deployment and runtime frontend architecture diagram" />
 
@@ -44,20 +51,12 @@ Docker images for each service are built locally and pushed to Amazon ECR; Elast
 **Figure:** Antenna frontend web app deployment flow.
 The React frontend is built into static website files and stored in Amazon S3, then delivered globally via CloudFront. CloudFront serves the UI for normal page requests and forwards /api/* requests to the Elastic Beanstalk backend (Django + Celery), which connects privately to RDS (PostgreSQL) and ElastiCache (Redis).
 
-
-
-
-## 2. Deployment Configuration Files
-
-- /.ebextensions/00_setup.config     : (Elastic Beanstalk) EB environment variables and settings
-- /.ebignore                         : Exclusion list for EB deployment bundle
-- /Dockerrun.aws.json                : Multi-container EB deployment config
   
 ---
 
-## 3. Backend Deployment Architecture
+## 3. Elastic Beanstalk (EB)
 
-### 3.1. Elastic Beanstalk (EB)
+## 3.1. Elastic Beanstalk environment
 
 - Platform: ECS on Amazon Linux 2 (Multicontainer Docker)
 - Deployment bundle includes:
@@ -147,7 +146,7 @@ All repositories are **mutable**, support versioned tags, and **AES-256 encrypte
 
 ---
 
-## 4. Environment Variables
+## 3.4. Environment Variables
 
 In this setup, **all required environment variables—including secrets—are defined inside**  
 `.ebextensions/00_setup.config`.
@@ -192,58 +191,10 @@ The deployment uses the following environment variables across these categories:
 - `SENDGRID_API_KEY`
 - `SENTRY_DSN`
 
----
 
-## 5. AWS Infrastructure Units
 
-### 5.1. RDS (PostgreSQL)
 
-- **Engine:** PostgreSQL 17.6
-- **Instance class:** `db.t4g.small`  
-- **Availability:** Single-AZ deployment (`us-west-2b`)
-
-- **Networking**
-  - Runs inside the **default VPC**
-  - Uses the **private DB subnet group**: `antenna-private-db-subnet-group`
-  - **Public accessibility:** Disabled (RDS is fully private)
-  - Accessible only from resources inside the VPC
-
-- **Security Group (`antenna-rds-sg`) **
-  - **Inbound:**  
-    - Port **5432** allowed **only** from the Elastic Beanstalk security group (`antenna-eb-sg`)
-  - **Outbound:**  
-    - Allowed to `0.0.0.0/0` (default outbound rule)
-
----
-
-### 5.2. ElastiCache (Redis)
-
-- **Engine:** Redis 7.1
-- **Node type:** `cache.t4g.micro`
-- **Cluster mode:** Disabled (single node)
-- **Multi-AZ:** Disabled
-- **Auto-failover:** Disabled
-
-- **Security**
-  - **Encryption in transit:** Enabled  
-  - **Encryption at rest:** Enabled  
-  - Redis connections must use:
-    - `rediss://` (TLS endpoint)
-    - `ssl_cert_reqs=none` (required for Celery / Django Redis clients)
-  - **Security Group (`antenna-redis-sg`)**
-    - **Inbound:**
-      - Port **6379** allowed **only from the Elastic Beanstalk SG** (`antenna-eb-sg`)  
-        *(Only the Django app can talk to Redis — fully private.)*
-    - **Outbound:**  
-      - Default allow to `0.0.0.0/0` (standard for ElastiCache)
-
-- **Networking:**
-  - Deployed into private subnets (via its subnet group)
-  - Runs within the same VPC as EB and RDS
-
----
-
-### 5.3. Elastic Beanstalk EC2 Instance 
+### 3.5. Elastic Beanstalk EC2 Instance 
 
 - **Instance type:** `t3.large`
 - **Instance profile:** `aws-elasticbeanstalk-ec2-role`
@@ -255,7 +206,7 @@ The deployment uses the following environment variables across these categories:
   - Outbound-only egress SG (`antenna-eb-sg`)  
  
 
-### 5.4. IAM Roles and Policies
+### 3.6. IAM Roles and Policies
 
 **1. EC2 Instance Profile – `aws-elasticbeanstalk-ec2-role`**  
 Attached AWS-managed policies (default from EB):
@@ -306,7 +257,7 @@ This is recommended once the deployment architecture has stabilized so it would 
 
 ---
 
-### 5.5. Networking (EB Environment)
+### 3.7. Networking (EB Environment)
 
 - **VPC:** default VPC
 - **Subnets:**
@@ -320,192 +271,40 @@ This is recommended once the deployment architecture has stabilized so it would 
   - Internet connectivity available through AWS default routing
 
 ---
-
-### 5.6. CloudFront (Frontend CDN)
-
-CloudFront is used to deliver the Antenna **React frontend** quickly to users around the world.  
-It also forwards any `/api/*` requests to the Elastic Beanstalk backend.
-
-- **Distribution:** `antenna-ui-prod`
-- **Domain URL:** `d1f2c1m9t8rmn9.cloudfront.net`
-- **Main idea:**  
-  - Static frontend files come from **S3**  
-  - API calls go to **Elastic Beanstalk**  
-  - CloudFront acts as a global caching layer
-
-
-#### 5.6.1. Origins (Where CloudFront reads data from)
-
-CloudFront is connected to **two origins**:
-
-1. **S3 Bucket – React Frontend**
-   - Bucket name: **`antenna-prod-ssec`**
-   - Stores the uploaded frontend build files (`index.html`, JS, CSS, images)
-   - Bucket is **private**, not publicly accessible
-   - CloudFront can read it only through **Origin Access Control (OAC)**  
-     → This keeps the bucket secure while still serving files globally
-
-2. **Elastic Beanstalk Backend**
-   - The EB environment URL is added as the second origin
-   - Used only for **`/api/*`** requests
-   - Lets frontend and backend work together through one CloudFront domain
-
-
-#### 5.6.2. Behaviors (How CloudFront decides what to do)
-
-CloudFront uses path rules:
-
-1. **`/api/*` -> Backend**
-   - Forwarded to Elastic Beanstalk
-   - HTTPS enforced  
-   - Caching disabled (API results should always be fresh)
-
-2. **Default (`*`) -> S3**
-   - Everything else goes to the S3 bucket
-   - HTTPS enforced
-   - Caching optimized for fast loading
-   - Default file served: `index.html`  
-    
-#### 5.6.3. Security
-
-- **HTTPS required** for all requests  
-- The S3 bucket **cannot be accessed directly**  
-  - CloudFront is the only allowed reader (via OAC)
-- Backend is accessed only through CloudFront’s origin request
-- No WAF or geo-blocking currently enabled (optional future improvement)
-
-
-#### 5.6.4.  Invalidations
-
-- After each frontend deployment, an invalidation like `/*` is run  
-  -> Ensures users immediately see the updated UI
-
-
-#### 5.6.5.  Logging
-
-- Standard access logs: **Disabled**  
-- Real-time logs: **Disabled**  
-  (Can be enabled later if deeper monitoring is needed)
-
 ---
 
-# Antenna UI — AWS Production Deployment (S3 + CloudFront + EB API Proxy)
+## 4. Backend Deployment Workflows 
 
-This guide documents how the Antenna **React + Vite** frontend is deployed to AWS using:
-- **S3** — hosts compiled static files
-- **CloudFront** — CDN + global cache + API proxy routing
-- **Elastic Beanstalk (EB)** — backend API target (`/api/*`)
+### 4.0. Configuration Files
 
-Backend deployment is documented separately.
+- `Dockerrun.aws.json`  
+  Multi-container definition for Elastic Beanstalk (images + ports + container config)
 
----
+- `.ebextensions/00_setup.config`  
+  Elastic Beanstalk environment settings + environment variables
 
-## 1️⃣ Build UI Locally
+- `.ebignore`  
+  Exclusions for the EB ZIP bundle (keeps deploys small and clean)
+
+
+### 4.1 Backend deploy (Docker -> ECR -> EB)
+
+#### Step 1 - Create the ECR repository, then build + push (Linux / AMD64)
+
+Create an ECR repository named antenna-backend (one-time). Then build the Linux AMD64 image, tag it with the repo URI, and push:
 
 ```bash
-cd ui
-nvm use        # ensures correct Node version
-yarn install
-yarn build     # produces static files in ui/build/
+# Build a Linux AMD64 image locally (creates a local image tag: antenna-backend:latest)
+docker buildx build --platform linux/amd64 -t antenna-backend:latest --load .
+
+# Tag the same image for the ECR repository (creates: <ECR_REPO_URI>:v10)
+docker tag antenna-backend:latest <ECR_REPO_URI>:v10
+
+# Push the image to Amazon ECR (uploads: <ECR_REPO_URI>:v10)
+docker push <ECR_REPO_URI>:v10
 ```
 
-This generates optimized static web assets (HTML, JS, CSS, images) that do not require a Node server.
-
-Output folder: ui/build/
-
-2️⃣ Upload Static Build to S3 Bucket
-
-Bucket name:
-
-antenna-prod-ssec
-
-
-Upload contents of ui/build/, NOT the folder itself.
-
-Structure must be:
-
-s3://antenna-prod-ssec/index.html
-s3://antenna-prod-ssec/assets/... (etc)
-
-3️⃣ Enable Public File Access via Bucket Policy
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": "*",
-      "Action": "s3:GetObject",
-      "Resource": "arn:aws:s3:::antenna-prod-ssec/*"
-    }
-  ]
-}
-
-
-Block Public Access = OFF for this bucket.
-
-4️⃣ Create CloudFront Distribution
-
-Distribution Name: antenna-ui-prod
-
-Origins
-Origin name	Type	Purpose
-antenna-prod-ssec	S3	Serves UI static assets
-antenna-backend-env.eba-…	Elastic Beanstalk	API origin for /api/*
-Default Root Object
-index.html
-
-5️⃣ CloudFront Behaviors
-Path Pattern	Origin	Cache	Notes
-/api/*	Backend EB Origin	Disable caching	For all API calls
-Default (*)	S3 UI Origin	Cache optimized	Serve React app
-
-Ensure Redirect HTTP to HTTPS for both.
-
-6️⃣ Invalidate Cache After Every Deployment
-
-This forces CloudFront to fetch the latest UI build.
-
-Path: /*
-
-
-Click Create invalidation.
-
-7️⃣ Test Production
-
-✨ Primary UI URL
-
-https://d1f2c1m9t8rmn9.cloudfront.net
-
-
-🚀 Example API request via CloudFront:
-
-https://d1f2c1m9t8rmn9.cloudfront.net/api/projects
-
-
-UI → CloudFront → EB backend is now fully connected.
-
-## 6. .ebextensions Configuration
-
-`00_setup.config` handles:
-
-- Loading environment variables into EB
-- Setting health check path: `/api/v2/`
-- Disabling SSL redirects during health checks (`EB_HEALTHCHECK=1`)
-- Running Django migrations via Docker:
-docker exec $(docker ps -q -f name=django) python manage.py migrate --noinput
-
-
----
-
-## 7. Deployment Workflow
-
-### Step 1 — Build and push image to ECR
-
-docker build -t antenna-backend .
-docker tag antenna-backend:latest <ECR_URI>:v10
-docker push <ECR_URI>:v10
-
-### Step 2 — Update Dockerrun.aws.json
+#### Step 2 - Update Dockerrun.aws.json
 
 Update the tag:
 
@@ -547,7 +346,6 @@ zip -r deploy.zip Dockerrun.aws.json .ebextensions .ebignore
 - Flower UI loads on port 5555 (if security groups permit)
 
 >
-
 > ### How to Validate this deployment?
 > The points listed above describe the expected state of a successful AWS deployment.  
 >
@@ -642,7 +440,132 @@ zip -r deploy.zip Dockerrun.aws.json .ebextensions .ebignore
 > Together, these checks confirm that the full Django + Celery + Redis deployment is healthy and functioning as expected on AWS.
 ---
 
-## 8. Common Issues & Fixes
+
+## 5. AWS Infrastructure Units
+
+### 5.1. RDS (PostgreSQL)
+
+- **Engine:** PostgreSQL 17.6
+- **Instance class:** `db.t4g.small`  
+- **Availability:** Single-AZ deployment (`us-west-2b`)
+
+- **Networking**
+  - Runs inside the **default VPC**
+  - Uses the **private DB subnet group**: `antenna-private-db-subnet-group`
+  - **Public accessibility:** Disabled (RDS is fully private)
+  - Accessible only from resources inside the VPC
+
+- **Security Group (`antenna-rds-sg`) **
+  - **Inbound:**  
+    - Port **5432** allowed **only** from the Elastic Beanstalk security group (`antenna-eb-sg`)
+  - **Outbound:**  
+    - Allowed to `0.0.0.0/0` (default outbound rule)
+
+---
+
+### 5.2. ElastiCache (Redis)
+
+- **Engine:** Redis 7.1
+- **Node type:** `cache.t4g.micro`
+- **Cluster mode:** Disabled (single node)
+- **Multi-AZ:** Disabled
+- **Auto-failover:** Disabled
+
+- **Security**
+  - **Encryption in transit:** Enabled  
+  - **Encryption at rest:** Enabled  
+  - Redis connections must use:
+    - `rediss://` (TLS endpoint)
+    - `ssl_cert_reqs=none` (required for Celery / Django Redis clients)
+  - **Security Group (`antenna-redis-sg`)**
+    - **Inbound:**
+      - Port **6379** allowed **only from the Elastic Beanstalk SG** (`antenna-eb-sg`)  
+        *(Only the Django app can talk to Redis — fully private.)*
+    - **Outbound:**  
+      - Default allow to `0.0.0.0/0` (standard for ElastiCache)
+
+- **Networking:**
+  - Deployed into private subnets (via its subnet group)
+  - Runs within the same VPC as EB and RDS
+
+---
+
+## 6. Frontend deployment workflow (S3 + CloudFront + EB API proxy)
+
+This section documents how the Antenna **React + Vite** frontend is deployed to AWS using:
+
+- **S3** to host compiled static files
+- **CloudFront** to serve the UI globally and proxy API calls
+- **Elastic Beanstalk (EB)** as the backend API origin for **`/api/*`**
+
+---
+
+### 6.1 Build the UI locally
+
+```bash
+cd ui
+nvm use
+yarn install
+yarn build
+```
+
+This generates optimized static web assets (HTML, JS, CSS, images) that do not require a Node server.
+
+The build output directory depends on the UI build configuration (commonly `dist/` for Vite-based projects).
+
+### 6.2 Upload the build output to S3
+
+- **S3 bucket:** `antenna-prod-ssec`
+- Upload the **contents** of the build output directory (not the directory itself)
+
+Expected structure in the bucket root:
+
+- `index.html`
+- `assets/` (and other static files)
+
+### 6.3 Create / configure the CloudFront distribution
+
+- **Distribution name:** `antenna-ui-prod`
+- **Default root object:** `index.html`
+
+#### Origins
+
+- **S3 origin:** `antenna-prod-ssec` (serves UI static assets)
+- **EB origin:** Elastic Beanstalk environment URL (serves API requests)
+
+#### Behaviors
+
+- **Path pattern:** `/api/*`
+  - Origin: EB origin
+  - Caching: Disabled
+  - Viewer protocol policy: Redirect HTTP to HTTPS (or HTTPS only)
+
+- **Default behavior:** `*`
+  - Origin: S3 origin
+  - Caching: Optimized
+  - Viewer protocol policy: Redirect HTTP to HTTPS (or HTTPS only)
+
+### 6.4 Invalidate CloudFront after every frontend deployment
+
+After uploading a new UI build to S3, create a CloudFront invalidation:
+
+- **Invalidation path:** `/*`
+
+This forces CloudFront to fetch the latest files from S3.
+
+### 6.5 Test production
+
+- **UI:** `https://<CLOUDFRONT_DOMAIN>`
+- **API (via CloudFront):** `https://<CLOUDFRONT_DOMAIN>/api/projects`
+
+Request flow:
+
+- UI requests → CloudFront → S3
+- API requests (`/api/*`) → CloudFront → Elastic Beanstalk
+
+---
+
+## 7. Common Issues & Fixes
 
 ### Redis SSL Errors
 
@@ -694,7 +617,7 @@ EB sometimes runs migrations before services are ready.
 
 ---
 
-## 9. Future Improvements
+## 8. Future Improvements
 
 To harden the deployment and move toward a production-grade architecture, the following enhancements are recommended:
 
@@ -723,6 +646,4 @@ To harden the deployment and move toward a production-grade architecture, the fo
   Custom EB or CloudWatch alarms to alert on worker failures, broker connectivity issues, or long task queues.
 
 
----
 
-_End of documentation._
