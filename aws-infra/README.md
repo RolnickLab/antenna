@@ -31,6 +31,17 @@ These components are deployed on AWS:
 
 ![AWS architecture](images/aws_architecture.png)
 
+<img src="images/aws_architecture.svg" width="1100" />
+
+
+
+
+
+
+
+
+
+
 
 ## 2. Deployment Configuration Files
 
