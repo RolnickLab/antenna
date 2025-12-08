@@ -175,20 +175,21 @@ The deployment uses the following environment variables across these categories:
 
 ### 5.1. RDS (PostgreSQL)
 
-- **Engine:** PostgreSQL  
-- **Instance class:** `db.t4g.small`
-- **Availability Zone:** Single-AZ
+- **Engine:** PostgreSQL 17.6
+- **Instance class:** `db.t4g.small`  
+- **Availability:** Single-AZ deployment (`us-west-2b`)
 
-- **Networking:**
+- **Networking**
   - Runs inside the **default VPC**
-  - RDS subnet group uses **public subnets**
-  - Instance is configured as **publicly accessible** (need to make it private)
+  - Uses the **private DB subnet group**: `antenna-private-db-subnet-group`
+  - **Public accessibility:** Disabled (RDS is fully private)
+  - Accessible only from resources inside the VPC
 
-- **Endpoint:** *(redacted for security)*
-
-- **Security group:**
-  - Inbound port **5432** allowed from the EB instance SG
-  - Outbound allowed to `0.0.0.0/0`
+- **Security Group (`antenna-rds-sg`) **
+  - **Inbound:**  
+    - Port **5432** allowed **only** from the Elastic Beanstalk security group (`antenna-eb-sg`)
+  - **Outbound:**  
+    - Allowed to `0.0.0.0/0` (default outbound rule)
 
 ---
 
@@ -200,13 +201,18 @@ The deployment uses the following environment variables across these categories:
 - **Multi-AZ:** Disabled
 - **Auto-failover:** Disabled
 
-- **Security:**
-  - Encryption in transit: **Enabled**
-  - Encryption at rest: **Enabled**
-  - Redis URL requires:
-    - `rediss://` (TLS)
-    - `ssl_cert_reqs=none` for Celery/Django clients
-  - Inbound port **6379** allowed only from the EB instance SG
+- **Security**
+  - **Encryption in transit:** Enabled  
+  - **Encryption at rest:** Enabled  
+  - Redis connections must use:
+    - `rediss://` (TLS endpoint)
+    - `ssl_cert_reqs=none` (required for Celery / Django Redis clients)
+  - **Security Group (`antenna-redis-sg`)**
+    - **Inbound:**
+      - Port **6379** allowed **only from the Elastic Beanstalk SG** (`antenna-eb-sg`)  
+        *(Only the Django app can talk to Redis — fully private.)*
+    - **Outbound:**  
+      - Default allow to `0.0.0.0/0` (standard for ElastiCache)
 
 - **Networking:**
   - Deployed into private subnets (via its subnet group)
@@ -214,7 +220,7 @@ The deployment uses the following environment variables across these categories:
 
 ---
 
-### 5.3. Elastic Beanstalk EC2 Instance & IAM Roles
+### 5.3. Elastic Beanstalk EC2 Instance 
 
 - **Instance type:** `t3.large`
 - **Instance profile:** `aws-elasticbeanstalk-ec2-role`
@@ -223,7 +229,7 @@ The deployment uses the following environment variables across these categories:
 - **Public IP:** Assigned
 - **Security groups:**
   - EB default instance SG
-  - Outbound-only egress SG
+  - Outbound-only egress SG (`antenna-eb-sg`)  
  
 
 ### 5.4. IAM Roles and Policies
@@ -291,6 +297,75 @@ This is recommended once the deployment architecture has stabilized so it would 
   - Internet connectivity available through AWS default routing
 
 ---
+
+### 5.6. CloudFront (Frontend CDN)
+
+CloudFront is used to deliver the Antenna **React frontend** quickly to users around the world.  
+It also forwards any `/api/*` requests to the Elastic Beanstalk backend.
+
+- **Distribution:** `antenna-ui-prod`
+- **Domain URL:** `d1f2c1m9t8rmn9.cloudfront.net`
+- **Main idea:**  
+  - Static frontend files come from **S3**  
+  - API calls go to **Elastic Beanstalk**  
+  - CloudFront acts as a global caching layer
+
+
+#### 5.6.1. Origins (Where CloudFront reads data from)
+
+CloudFront is connected to **two origins**:
+
+1. **S3 Bucket – React Frontend**
+   - Bucket name: **`antenna-prod-ssec`**
+   - Stores the uploaded frontend build files (`index.html`, JS, CSS, images)
+   - Bucket is **private**, not publicly accessible
+   - CloudFront can read it only through **Origin Access Control (OAC)**  
+     → This keeps the bucket secure while still serving files globally
+
+2. **Elastic Beanstalk Backend**
+   - The EB environment URL is added as the second origin
+   - Used only for **`/api/*`** requests
+   - Lets frontend and backend work together through one CloudFront domain
+
+
+#### 5.6.2. Behaviors (How CloudFront decides what to do)
+
+CloudFront uses path rules:
+
+1. **`/api/*` -> Backend**
+   - Forwarded to Elastic Beanstalk
+   - HTTPS enforced  
+   - Caching disabled (API results should always be fresh)
+
+2. **Default (`*`) -> S3**
+   - Everything else goes to the S3 bucket
+   - HTTPS enforced
+   - Caching optimized for fast loading
+   - Default file served: `index.html`  
+    
+#### 5.6.3. Security
+
+- **HTTPS required** for all requests  
+- The S3 bucket **cannot be accessed directly**  
+  - CloudFront is the only allowed reader (via OAC)
+- Backend is accessed only through CloudFront’s origin request
+- No WAF or geo-blocking currently enabled (optional future improvement)
+
+
+#### 5.6.4.  Invalidations
+
+- After each frontend deployment, an invalidation like `/*` is run  
+  -> Ensures users immediately see the updated UI
+
+
+#### 5.6.5.  Logging
+
+- Standard access logs: **Disabled**  
+- Real-time logs: **Disabled**  
+  (Can be enabled later if deeper monitoring is needed)
+
+---
+
 
 ## 6. .ebextensions Configuration
 
