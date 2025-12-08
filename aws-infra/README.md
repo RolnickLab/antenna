@@ -30,7 +30,7 @@ These components are deployed on AWS:
 ---
 
 
-<img src="images/aws_architecture.svg" width="1100" alt="AWS deployment and runtime architecture diagram" />
+<img src="images/aws_architecture_backend.svg" width="1100" alt="AWS deployment and runtime backend architecture diagram" />
 
 **Figure:** AWS deployment + runtime architecture for the Antenna backend.  
 Docker images for each service are built locally and pushed to Amazon ECR; Elastic Beanstalk is deployed using a ZIP bundle that includes `Dockerrun.aws.json` (pointing to the ECR image URIs). At runtime, a single Elastic Beanstalk environment (Docker on ECS, single EC2 instance) pulls those images from ECR and runs six containers: Django (API), Celery Worker, Celery Beat (scheduler), Flower (monitoring), an AWS CLI helper container, and ML processing services.
@@ -38,15 +38,11 @@ Docker images for each service are built locally and pushed to Amazon ECR; Elast
 
 
 
+<img src="images/aws_architecture_frontend.svg" width="1100" alt="AWS deployment and runtime frontend architecture diagram" />
 
 
-
-
-
-
-
-
-
+**Figure:** Antenna frontend web app deployment flow.
+The React frontend is built into static website files and stored in Amazon S3, then delivered globally via CloudFront. CloudFront serves the UI for normal page requests and forwards /api/* requests to the Elastic Beanstalk backend (Django + Celery), which connects privately to RDS (PostgreSQL) and ElastiCache (Redis).
 
 
 
@@ -393,6 +389,100 @@ CloudFront uses path rules:
 
 ---
 
+# Antenna UI — AWS Production Deployment (S3 + CloudFront + EB API Proxy)
+
+This guide documents how the Antenna **React + Vite** frontend is deployed to AWS using:
+- **S3** — hosts compiled static files
+- **CloudFront** — CDN + global cache + API proxy routing
+- **Elastic Beanstalk (EB)** — backend API target (`/api/*`)
+
+Backend deployment is documented separately.
+
+---
+
+## 1️⃣ Build UI Locally
+
+```bash
+cd ui
+nvm use        # ensures correct Node version
+yarn install
+yarn build     # produces static files in ui/build/
+```
+
+This generates optimized static web assets (HTML, JS, CSS, images) that do not require a Node server.
+
+Output folder: ui/build/
+
+2️⃣ Upload Static Build to S3 Bucket
+
+Bucket name:
+
+antenna-prod-ssec
+
+
+Upload contents of ui/build/, NOT the folder itself.
+
+Structure must be:
+
+s3://antenna-prod-ssec/index.html
+s3://antenna-prod-ssec/assets/... (etc)
+
+3️⃣ Enable Public File Access via Bucket Policy
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::antenna-prod-ssec/*"
+    }
+  ]
+}
+
+
+Block Public Access = OFF for this bucket.
+
+4️⃣ Create CloudFront Distribution
+
+Distribution Name: antenna-ui-prod
+
+Origins
+Origin name	Type	Purpose
+antenna-prod-ssec	S3	Serves UI static assets
+antenna-backend-env.eba-…	Elastic Beanstalk	API origin for /api/*
+Default Root Object
+index.html
+
+5️⃣ CloudFront Behaviors
+Path Pattern	Origin	Cache	Notes
+/api/*	Backend EB Origin	Disable caching	For all API calls
+Default (*)	S3 UI Origin	Cache optimized	Serve React app
+
+Ensure Redirect HTTP to HTTPS for both.
+
+6️⃣ Invalidate Cache After Every Deployment
+
+This forces CloudFront to fetch the latest UI build.
+
+Path: /*
+
+
+Click Create invalidation.
+
+7️⃣ Test Production
+
+✨ Primary UI URL
+
+https://d1f2c1m9t8rmn9.cloudfront.net
+
+
+🚀 Example API request via CloudFront:
+
+https://d1f2c1m9t8rmn9.cloudfront.net/api/projects
+
+
+UI → CloudFront → EB backend is now fully connected.
 
 ## 6. .ebextensions Configuration
 
