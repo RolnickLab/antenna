@@ -12,7 +12,7 @@ export const AboutRoles = () => {
 
   return (
     <Dialog.Root>
-      <Dialog.Trigger>
+      <Dialog.Trigger asChild>
         <Button size="small" variant="ghost">
           <InfoIcon className="w-4 h-4" />
           <span>{translate(STRING.ABOUT_ROLES)}</span>

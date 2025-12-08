@@ -31,7 +31,7 @@ export const ManageAccessDialog = ({ member }: { member: Member }) => {
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Dialog.Trigger>
+      <Dialog.Trigger asChild>
         <Button size="small" variant="outline">
           <span>{translate(STRING.MANAGE_ACCESS)}</span>
         </Button>

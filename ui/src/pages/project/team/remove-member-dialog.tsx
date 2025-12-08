@@ -21,7 +21,7 @@ export const RemoveMemberDialog = ({ member }: { member: Member }) => {
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
       <BasicTooltip asChild content={translate(STRING.REMOVE_MEMBER)}>
-        <Dialog.Trigger>
+        <Dialog.Trigger asChild>
           <Button size="icon" variant="ghost">
             <XIcon className="w-4 h-4" />
           </Button>

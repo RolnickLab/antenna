@@ -22,7 +22,7 @@ export const LeaveTeamDialog = ({ member }: { member: Member }) => {
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Dialog.Trigger>
+      <Dialog.Trigger asChild>
         <Button size="small" variant="outline">
           <span>{translate(STRING.LEAVE_TEAM)}</span>
         </Button>
