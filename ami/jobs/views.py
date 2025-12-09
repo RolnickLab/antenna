@@ -14,7 +14,8 @@ from rest_framework.response import Response
 
 from ami.base.permissions import ObjectPermission
 from ami.base.views import ProjectMixin
-from ami.jobs.schemas import batch_param, ids_only_param, incomplete_only_param, project_id_doc_param
+from ami.jobs.schemas import batch_param, ids_only_param, incomplete_only_param
+from ami.main.api.schemas import project_id_doc_param
 
 # from ami.jobs.tasks import process_pipeline_result  # TODO: Uncomment when available in main
 from ami.main.api.views import DefaultViewSet
