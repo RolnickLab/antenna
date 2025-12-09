@@ -46,6 +46,11 @@ Antenna uses [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](ht
 
       # To stream the logs
       docker compose logs -f django celeryworker ui-dev
+
+      # To stop the ui-dev container, you must specify the profile when running `down` or `stop`
+      docker compose --profile ui-dev down
+      # Or!
+      docker compose --profile "*" down
       ```
       _**Note that this will create a `ui/node_modules` folder if one does not exist yet. This folder is created by the mounting of the `/ui` folder
       for the `ui-dev` service, and is written by a `root` user.

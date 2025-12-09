@@ -1,6 +1,7 @@
 import logging
 
 from asgiref.sync import async_to_sync
+from django.db.models import Q
 from django.db.models.query import QuerySet
 from django.forms import IntegerField
 from django.utils import timezone
@@ -8,17 +9,22 @@ from django_filters import rest_framework as filters
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.filters import BaseFilterBackend
 from rest_framework.response import Response
 
 from ami.base.permissions import ObjectPermission
 from ami.base.views import ProjectMixin
+from ami.jobs.schemas import batch_param, ids_only_param, incomplete_only_param
 from ami.jobs.tasks import process_pipeline_result
+from ami.main.api.schemas import project_id_doc_param
+
+# from ami.jobs.tasks import process_pipeline_result  # TODO: Uncomment when available in main
 from ami.main.api.views import DefaultViewSet
+from ami.ml.schemas import PipelineTaskResult
 from ami.utils.fields import url_boolean_param
-from ami.utils.requests import batch_param, ids_only_param, incomplete_only_param, project_id_doc_param
 
 from .models import Job, JobState
-from .serializers import JobListSerializer, JobSerializer
+from .serializers import JobListSerializer, JobSerializer, MinimalJobSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -37,10 +43,30 @@ class JobFilterSet(filters.FilterSet):
             "source_image_collection",
             "source_image_single",
             "pipeline",
-            "pipeline__name",
-            "pipeline__slug",
             "job_type_key",
         ]
+
+
+class IncompleteJobFilter(BaseFilterBackend):
+    """Filter backend to filter jobs by incomplete status based on results stage."""
+
+    def filter_queryset(self, request, queryset, view):
+        # Check if incomplete_only parameter is set
+        incomplete_only = url_boolean_param(request, "incomplete_only", default=False)
+        # Filter to incomplete jobs if requested (checks "results" stage status)
+        if incomplete_only:
+            # Create filters for each final state to exclude
+            final_states = JobState.final_states()
+            exclude_conditions = Q()
+
+            # Exclude jobs where the "results" stage has a final state status
+            for state in final_states:
+                # JSON path query to check if results stage status is in final states
+                # @TODO move to a QuerySet method on Job model if/when this needs to be reused elsewhere
+                exclude_conditions |= Q(progress__stages__contains=[{"key": "results", "status": state}])
+
+            queryset = queryset.exclude(exclude_conditions)
+        return queryset
 
 
 class JobViewSet(DefaultViewSet, ProjectMixin):
@@ -91,6 +117,9 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         Return different serializers for list and detail views.
         """
         if self.action == "list":
+            # Use MinimalJobSerializer when ids_only parameter is set
+            if url_boolean_param(self.request, "ids_only", default=False):
+                return MinimalJobSerializer
             return JobListSerializer
         else:
             return JobSerializer
@@ -223,13 +252,13 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         1. Call this endpoint to get tasks
         2. Process the tasks
         3. POST to /jobs/{id}/result/ with the reply_subject to acknowledge
-
-        This stateless approach allows workers to communicate over HTTP without
-        maintaining persistent connections to the queue system.
         """
         job: Job = self.get_object()
-        batch = IntegerField(required=False, min_value=1).clean(request.query_params.get("batch", 1))
-        job_id = f"job{job.pk}"
+        job_id = job.pk
+        try:
+            batch = IntegerField(required=True, min_value=1).clean(request.query_params.get("batch"))
+        except Exception as e:
+            raise ValidationError({"batch": str(e)}) from e
 
         # Validate that the job has a pipeline
         if not job.pipeline:
@@ -255,50 +284,29 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="result")
     def result(self, request, pk=None):
         """
-        Submit pipeline results for asynchronous processing.
+        The request body should be a list of results: list[PipelineTaskResult]
 
         This endpoint accepts a list of pipeline results and queues them for
         background processing. Each result will be validated, saved to the database,
         and acknowledged via NATS in a Celery task.
-
-        The request body should be a list of results:
-        [
-            {
-                "reply_subject": "string",  # Required: from the task response
-                "result": {  # Required: PipelineResultsResponse (kept as JSON)
-                    "pipeline": "string",
-                    "algorithms": {},
-                    "total_time": 0.0,
-                    "source_images": [...],
-                    "detections": [...],
-                    "errors": null
-                }
-            },
-            ...
-        ]
         """
 
-        job_id = pk if pk else self.kwargs.get("pk")
-        if not job_id:
-            raise ValidationError("Job ID is required")
-        job_id = int(job_id)
+        job = self.get_object()
+        job_id = job.pk
 
         # Validate request data is a list
-        if not isinstance(request.data, list):
-            raise ValidationError("Request body must be a list of results")
+        if isinstance(request.data, list):
+            results = request.data
+        else:
+            results = [request.data]
 
         # Queue each result for background processing
         queued_tasks = []
 
-        for idx, item in enumerate(request.data):
-            reply_subject = item.get("reply_subject")
-            result_data = item.get("result")
-
-            if not reply_subject:
-                raise ValidationError(f"Item {idx}: reply_subject is required")
-
-            if not result_data:
-                raise ValidationError(f"Item {idx}: result is required")
+        for item in results:
+            task_result = PipelineTaskResult(**item)
+            reply_subject = task_result.reply_subject
+            result_data = task_result.result
 
             try:
                 # Queue the background task
@@ -320,7 +328,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                 )
 
             except Exception as e:
-                logger.error(f"Failed to queue result {idx} for job {job_id}: {e}")
+                logger.error(f"Failed to queue result with reply_subject='{reply_subject}' for job {job_id}: {e}")
                 queued_tasks.append(
                     {
                         "reply_subject": reply_subject,

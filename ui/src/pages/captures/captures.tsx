@@ -11,6 +11,7 @@ import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { DOCS_LINKS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'
 import { useFilters } from 'utils/useFilters'
@@ -63,12 +64,11 @@ export const Captures = () => {
       </div>
       <div className="w-full overflow-hidden">
         <PageHeader
-          title={translate(STRING.NAV_ITEM_CAPTURES)}
-          subTitle={translate(STRING.RESULTS, {
-            total,
-          })}
-          isLoading={isLoading}
+          docsLink={DOCS_LINKS.UPLOADING_DATA}
           isFetching={isFetching}
+          isLoading={isLoading}
+          subTitle={translate(STRING.RESULTS, { total })}
+          title={translate(STRING.NAV_ITEM_CAPTURES)}
         >
           <ToggleGroup
             items={[
