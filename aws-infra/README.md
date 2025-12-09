@@ -7,7 +7,7 @@ It is intended for maintainers and contributors who need to understand, update, 
 
 Antenna consists of two major parts:
 
-1. **Backend (Django API + Celery Worker + Celery Beat + Flower + ML processing services)** running as multiple Docker containers.
+1. **Backend (Django API + Celery Worker + Celery Beat + Flower + ML processing services + AWS CLI)** running as multiple Docker containers.
 2. **Frontend (React + Vite)** built into static files, hosted on **S3**, and delivered globally via **CloudFront**.
 
 
@@ -15,17 +15,17 @@ Antenna consists of two major parts:
 
 The backend is deployed as a **multi-container** service on AWS:
 
-- **Elastic Beanstalk (Docker on ECS)**: runs all backend containers (Django, Celery Worker, Celery Beat, Flower, ML services, helper containers as needed).
+- **Elastic Beanstalk (Docker on ECS)**: runs all backend containers (Django, Celery Worker, Celery Beat, Flower, ML services, AWS CLI containers as needed).
 - **Amazon ECR**: stores Docker images that Elastic Beanstalk pulls at deploy/runtime.
 - **Amazon RDS (PostgreSQL)**: primary application database.
 - **Amazon ElastiCache (Redis with TLS)**: Celery broker and Django cache.
-- **Amazon S3**: object storage (e.g., uploaded files/static/media, depending on app config).
-- **Amazon CloudWatch**: logs, health monitoring, and ECS/instance metrics.
+- **Amazon S3**: object storage (e.g., uploaded files/static/media).
+- **Amazon CloudWatch**: logs, health monitoring, and Elastic Beanstalk instance metrics.
 
 ## 1.2 Frontend components (AWS)
 
-- **React (Vite) frontend** is built into static assets and hosted on **S3**, delivered via **CloudFront**.
-- **CloudFront** also forwards **`/api/*`** requests to the backend, so users access the UI and API from **one domain**.
+- **S3:** Hosts the compiled **React (Vite)** static assets (HTML, JS, CSS, images).
+- **CloudFront:** Delivers the UI globally from S3 and forwards **`/api/*`** requests to the backend so the UI and API are served from a single domain.
 
 ---
 
@@ -39,7 +39,7 @@ Details for each component are documented in the sections that follow.
 <img src="images/aws_architecture_backend.svg" width="1100" alt="AWS deployment and runtime backend architecture diagram" />
 
 **Figure:** AWS deployment + runtime architecture for the Antenna backend.  
-Docker images for each service are built locally and pushed to Amazon ECR; Elastic Beanstalk is deployed using a ZIP bundle that includes `Dockerrun.aws.json` (pointing to the ECR image URIs). At runtime, a single Elastic Beanstalk environment (Docker on ECS, single EC2 instance) pulls those images from ECR and runs six containers: Django (API), Celery Worker, Celery Beat (scheduler), Flower (monitoring), an AWS CLI helper container, and ML processing services.
+Docker images for each service are built locally and pushed to Amazon ECR; Elastic Beanstalk is deployed using a ZIP bundle that includes `Dockerrun.aws.json` (pointing to the ECR image URIs). At runtime, a single Elastic Beanstalk environment (Docker on ECS, single EC2 instance) pulls those images from ECR and runs seven containers: Django (API), Celery Worker, Celery Beat (scheduler), Flower (monitoring), an AWS CLI helper container, and ML processing services.
 
 
 
@@ -238,22 +238,6 @@ It allows EB to:
 - Interact with Auto Scaling  
 - Register container tasks and update ECS configuration  
 
----
-
-### Notes on Security / Least Privilege
-
-The current roles use **Elastic Beanstalk’s default managed policies**, which are intentionally broad to ensure environments deploy successfully.
-
-For a production-grade hardened setup, these should eventually be adjusted toward **least privilege**, including:
-
-- Restricting S3 access to only specific buckets  
-- Restricting ECR access to only required repositories  
-- Minimizing CloudWatch permissions  
-- Adding explicit denies on unneeded services  
-
-This is recommended once the deployment architecture has stabilized so it would be a part of future scope.
-
-
 
 ---
 
@@ -271,7 +255,6 @@ This is recommended once the deployment architecture has stabilized so it would 
   - Internet connectivity available through AWS default routing
 
 ---
----
 
 ## 4. Backend Deployment Workflows 
 
@@ -282,9 +265,6 @@ This is recommended once the deployment architecture has stabilized so it would 
 
 - `.ebextensions/00_setup.config`  
   Elastic Beanstalk environment settings + environment variables
-
-- `.ebignore`  
-  Exclusions for the EB ZIP bundle (keeps deploys small and clean)
 
 
 ### 4.1 Backend deploy (Docker -> ECR -> EB)
@@ -441,7 +421,7 @@ zip -r deploy.zip Dockerrun.aws.json .ebextensions .ebignore
 ---
 
 
-## 5. AWS Infrastructure Units
+## 5. Other Backend AWS Infrastructure Units
 
 ### 5.1. RDS (PostgreSQL)
 
@@ -644,6 +624,9 @@ To harden the deployment and move toward a production-grade architecture, the fo
 
 - **Add health checks for Celery worker & beat**  
   Custom EB or CloudWatch alarms to alert on worker failures, broker connectivity issues, or long task queues.
+
+- The S3 bucket policy currently includes a public read rule (`Principal: "*"`, `s3:GetObject`), so objects are accessible directly from S3. There is also a CloudFront-specific   allow rule. If we want stricter security later, we can remove the public rule and allow reads **only via CloudFront (OAC).
+
 
 
 
