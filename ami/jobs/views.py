@@ -60,6 +60,7 @@ class IncompleteJobFilter(BaseFilterBackend):
             # Exclude jobs where the "results" stage has a final state status
             for state in final_states:
                 # JSON path query to check if results stage status is in final states
+                # @TODO move to a QuerySet method on Job model if/when this needs to be reused elsewhere
                 exclude_conditions |= Q(progress__stages__contains=[{"key": "results", "status": state}])
 
             queryset = queryset.exclude(exclude_conditions)
@@ -240,6 +241,8 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             queue_timestamp=timezone.now().isoformat(),
         )
 
+        # @TODO when this gets fully implemented, use a Serializer or Pydantic schema
+        # for the full repsponse structure.
         return Response({"tasks": [task.dict() for task in [dummy_task] * batch]})
 
     @action(detail=True, methods=["post"], name="result")
