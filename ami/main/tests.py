@@ -2350,8 +2350,8 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         self.user = User.objects.create_user(email="tester@insectai.org", is_staff=False, is_superuser=False)
         self.client.force_authenticate(user=self.user)
 
-        self.url = f"/api/v2/occurrences/?project_id={self.project.pk}"
-        self.url_taxa = f"/api/v2/taxa/?project_id={self.project.pk}"
+        self.url = f"/api/v2/occurrences/?project_id={self.project.pk}&page_size=1000"
+        self.url_taxa = f"/api/v2/taxa/?project_id={self.project.pk}&page_size=1000"
 
     # OccurrenceViewSet tests
     def test_occurrences_respect_project_threshold(self):
@@ -2371,10 +2371,12 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         """apply_defaults=false should allow explicit classification_threshold to override project default"""
         res = self.client.get(self.url + "&apply_defaults=false&classification_threshold=0.2")
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        ids = {o["id"] for o in res.data["results"]}
-        # Both sets should be included with threshold=0.2
-        for occ in list(self.high_occurrences) + list(self.low_occurrences):
-            self.assertIn(occ.id, ids)
+
+        # Check that our test occurrences are present
+        expected_ids = {occ.id for occ in list(self.high_occurrences) + list(self.low_occurrences)}
+        returned_ids = {o["id"] for o in res.data["results"]}
+
+        self.assertTrue(expected_ids.issubset(returned_ids), f"Missing occurrence IDs: {expected_ids - returned_ids}")
 
     def test_query_threshold_ignored_when_defaults_applied(self):
         """classification_threshold param is ignored if apply_defaults is not false"""
@@ -2389,13 +2391,15 @@ class TestProjectDefaultThresholdFilter(APITestCase):
 
     def test_no_project_id_returns_all(self):
         """Without project_id, threshold falls back to 0.0 and returns all occurrences"""
-        url = "/api/v2/occurrences/"
+        url = "/api/v2/occurrences/?page_size=1000"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        ids = {o["id"] for o in res.data["results"]}
-        # All occurrences should appear
-        for occ in list(self.high_occurrences) + list(self.low_occurrences):
-            self.assertIn(occ.id, ids)
+
+        # Check that our test occurrences are present (don't assume all in DB are ours)
+        expected_ids = {occ.pk for occ in list(self.high_occurrences) + list(self.low_occurrences)}
+        returned_ids = {o["id"] for o in res.data["results"]}
+
+        self.assertTrue(expected_ids.issubset(returned_ids), f"Missing occurrence IDs: {expected_ids - returned_ids}")
 
     def test_retrieve_occurrence_respects_threshold(self):
         """Detail retrieval should 404 if occurrence is filtered out by threshold"""
@@ -2425,10 +2429,14 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         """apply_defaults=false should allow low-score taxa to appear"""
         res = self.client.get(self.url_taxa + "&apply_defaults=false&classification_threshold=0.2")
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        names = {t["name"] for t in res.data["results"]}
 
-        for occ in list(self.high_occurrences) + list(self.low_occurrences):
-            self.assertIn(occ.determination.name, names)
+        # Check that our test taxa are present
+        expected_names = {occ.determination.name for occ in list(self.high_occurrences) + list(self.low_occurrences)}
+        returned_names = {t["name"] for t in res.data["results"]}
+
+        self.assertTrue(
+            expected_names.issubset(returned_names), f"Missing taxa names: {expected_names - returned_names}"
+        )
 
     def test_query_threshold_ignored_when_defaults_applied_taxa(self):
         """classification_threshold is ignored when defaults apply"""

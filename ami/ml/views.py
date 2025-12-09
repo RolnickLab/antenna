@@ -11,9 +11,9 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from ami.base.views import ProjectMixin
+from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
 from ami.main.models import SourceImage
-from ami.utils.requests import project_id_doc_param
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline
