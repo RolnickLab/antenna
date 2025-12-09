@@ -162,7 +162,6 @@ def _update_job_progress(job_id: int, stage: str, progress_percentage: float) ->
         job.save()
 
 
-@task_postrun.connect(sender=run_job)
 @task_prerun.connect(sender=run_job)
 def pre_update_job_status(sender, task_id, task, **kwargs):
     # in the prerun signal, set the job status to PENDING

@@ -1,9 +1,11 @@
 import logging
 
+import pydantic
 from asgiref.sync import async_to_sync
 from django.db.models import Q
 from django.db.models.query import QuerySet
 from django.forms import IntegerField
+from django.http import HttpResponseServerError
 from django.utils import timezone
 from django_filters import rest_framework as filters
 from drf_spectacular.utils import extend_schema
@@ -94,8 +96,8 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         "source_image_collection",
         "source_image_single",
     )
-    serializer_class = JobSerializer
     filterset_class = JobFilterSet
+    filter_backends = [*DefaultViewSet.filter_backends, IncompleteJobFilter]
     search_fields = ["name", "pipeline__name"]
     ordering_fields = [
         "name",
@@ -206,37 +208,6 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         ]
     )
     def list(self, request, *args, **kwargs):
-        # Check if ids_only parameter is set
-        ids_only = request.query_params.get("ids_only", "false").lower() in ["true", "1", "yes"]
-
-        # Check if incomplete_only parameter is set
-        incomplete_only = request.query_params.get("incomplete_only", "false").lower() in ["true", "1", "yes"]
-
-        # Get the base queryset
-        queryset = self.filter_queryset(self.get_queryset())
-
-        # Filter to incomplete jobs if requested (checks "results" stage status)
-        if incomplete_only:
-            from django.db.models import Q
-
-            # Create filters for each final state to exclude
-            final_states = JobState.final_states()
-            exclude_conditions = Q()
-
-            # Exclude jobs where the "results" stage has a final state status
-            for state in final_states:
-                # JSON path query to check if results stage status is in final states
-                exclude_conditions |= Q(progress__stages__contains=[{"key": "results", "status": state}])
-
-            queryset = queryset.exclude(exclude_conditions)
-
-        if ids_only:
-            # Return only IDs
-            job_ids = list(queryset.values_list("id", flat=True))
-            return Response({"job_ids": job_ids, "count": len(job_ids)})
-
-        # Override the queryset for the list view
-        self.queryset = queryset
         return super().list(request, *args, **kwargs)
 
     @extend_schema(
@@ -300,18 +271,18 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         else:
             results = [request.data]
 
-        # Queue each result for background processing
         queued_tasks = []
+        try:
+            # Queue each result for background processing
+            for item in results:
+                task_result = PipelineTaskResult(**item)
+                reply_subject = task_result.reply_subject
+                result_data = task_result.result
 
-        for item in results:
-            task_result = PipelineTaskResult(**item)
-            reply_subject = task_result.reply_subject
-            result_data = task_result.result
-
-            try:
                 # Queue the background task
+                # Convert Pydantic model to dict for JSON serialization
                 task = process_pipeline_result.delay(
-                    job_id=job_id, result_data=result_data, reply_subject=reply_subject
+                    job_id=job_id, result_data=result_data.dict(), reply_subject=reply_subject
                 )
 
                 queued_tasks.append(
@@ -327,21 +298,22 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                     f"task_id: {task.id}, reply_subject: {reply_subject}"
                 )
 
-            except Exception as e:
-                logger.error(f"Failed to queue result with reply_subject='{reply_subject}' for job {job_id}: {e}")
-                queued_tasks.append(
-                    {
-                        "reply_subject": reply_subject,
-                        "status": "error",
-                        "error": str(e),
-                    }
-                )
+            return Response(
+                {
+                    "status": "accepted",
+                    "job_id": job_id,
+                    "results_queued": len([t for t in queued_tasks if t["status"] == "queued"]),
+                    "tasks": queued_tasks,
+                }
+            )
+        except pydantic.ValidationError as e:
+            raise ValidationError(f"Invalid result data: {e}") from e
 
-        return Response(
-            {
-                "status": "accepted",
-                "job_id": job_id,
-                "results_queued": len([t for t in queued_tasks if t["status"] == "queued"]),
-                "tasks": queued_tasks,
-            }
-        )
+        except Exception as e:
+            logger.error(f"Failed to queue pipeline results for job {job_id}: {e}")
+            return HttpResponseServerError(
+                {
+                    "status": "error",
+                    "job_id": job_id,
+                },
+            )

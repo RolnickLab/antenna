@@ -36,7 +36,7 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
     Returns:
         bool: True if all images were successfully queued, False otherwise
     """
-    job_id = f"job{job.pk}"
+    job_id = str(job.pk)
     job.logger.info(f"Queuing {len(images)} images to NATS stream for job '{job_id}'")
 
     # Prepare all messages outside of async context to avoid Django ORM issues
