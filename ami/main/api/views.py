@@ -29,8 +29,9 @@ from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
+from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.serializers import TagSerializer
-from ami.utils.requests import get_default_classification_threshold, project_id_doc_param
+from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
 from ..models import (
@@ -236,8 +237,9 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         "events_count",
         "occurrences_count",
         "taxa_count",
-        "first_date",
-        "last_date",
+        "first_capture_timestamp",
+        "last_capture_timestamp",
+        "name",
     ]
 
     permission_classes = [ObjectPermission]

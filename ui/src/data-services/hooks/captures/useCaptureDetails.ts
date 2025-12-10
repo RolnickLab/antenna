@@ -10,11 +10,15 @@ import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 const convertServerRecord = (record: ServerCaptureDetails) =>
   new CaptureDetails(record)
 
-export const useCaptureDetails = (
-  id?: string,
-  poll?: boolean,
-  projectId?: string
-): {
+export const useCaptureDetails = ({
+  id,
+  poll,
+  projectId,
+}: {
+  id: string
+  poll?: boolean
+  projectId: string
+}): {
   capture?: CaptureDetails
   isLoading: boolean
   isFetching: boolean

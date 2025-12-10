@@ -605,6 +605,45 @@ class TestSourceImageCollections(TestCase):
         self.assertGreater(collection_images.filter(deployment=deployment_two).count(), 0)
         self.assertGreater(collection_images.filter(deployment=deployment_three).count(), 0)
 
+    def test_interval_sample_multiple_deployments(self):
+        """
+        Ensure interval sampling applies independently per deployment (station).
+
+        Create two deployments with captures spaced 1 minute apart for a few hours,
+        then sample with `minute_interval=60` and verify the total sampled count equals
+        the sum of per-deployment hourly samples.
+        """
+        from ami.main.models import SourceImage, SourceImageCollection, sample_captures_by_interval
+
+        # Create a new project and two deployments
+        project = Project.objects.create(name="Multi Dep Project", create_defaults=False)
+        dep1 = Deployment.objects.create(name="Dep One", project=project)
+        dep2 = Deployment.objects.create(name="Dep Two", project=project)
+
+        # Create captures: 3 hours worth of captures at 1-minute intervals (~180 images)
+        images_per_night = 180
+        create_captures(deployment=dep1, num_nights=1, images_per_night=images_per_night, interval_minutes=1)
+        create_captures(deployment=dep2, num_nights=1, images_per_night=images_per_night, interval_minutes=1)
+
+        collection = SourceImageCollection.objects.create(
+            name="Test Multi-Dep Interval",
+            project=project,
+            method="interval",
+            kwargs={"minute_interval": 60},
+        )
+        collection.save()
+        collection.populate_sample()
+
+        sampled_count = collection.images.count()
+
+        # Compute expected by sampling each deployment separately
+        expected = 0
+        for dep in [dep1, dep2]:
+            qs = SourceImage.objects.filter(deployment=dep).exclude(timestamp=None).order_by("timestamp")
+            expected += len(list(sample_captures_by_interval(60, qs)))
+
+        self.assertEqual(sampled_count, expected)
+
 
 class TestTaxonomy(TestCase):
     def setUp(self) -> None:
@@ -2311,8 +2350,8 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         self.user = User.objects.create_user(email="tester@insectai.org", is_staff=False, is_superuser=False)
         self.client.force_authenticate(user=self.user)
 
-        self.url = f"/api/v2/occurrences/?project_id={self.project.pk}"
-        self.url_taxa = f"/api/v2/taxa/?project_id={self.project.pk}"
+        self.url = f"/api/v2/occurrences/?project_id={self.project.pk}&page_size=1000"
+        self.url_taxa = f"/api/v2/taxa/?project_id={self.project.pk}&page_size=1000"
 
     # OccurrenceViewSet tests
     def test_occurrences_respect_project_threshold(self):
@@ -2332,10 +2371,12 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         """apply_defaults=false should allow explicit classification_threshold to override project default"""
         res = self.client.get(self.url + "&apply_defaults=false&classification_threshold=0.2")
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        ids = {o["id"] for o in res.data["results"]}
-        # Both sets should be included with threshold=0.2
-        for occ in list(self.high_occurrences) + list(self.low_occurrences):
-            self.assertIn(occ.id, ids)
+
+        # Check that our test occurrences are present
+        expected_ids = {occ.id for occ in list(self.high_occurrences) + list(self.low_occurrences)}
+        returned_ids = {o["id"] for o in res.data["results"]}
+
+        self.assertTrue(expected_ids.issubset(returned_ids), f"Missing occurrence IDs: {expected_ids - returned_ids}")
 
     def test_query_threshold_ignored_when_defaults_applied(self):
         """classification_threshold param is ignored if apply_defaults is not false"""
@@ -2350,13 +2391,15 @@ class TestProjectDefaultThresholdFilter(APITestCase):
 
     def test_no_project_id_returns_all(self):
         """Without project_id, threshold falls back to 0.0 and returns all occurrences"""
-        url = "/api/v2/occurrences/"
+        url = "/api/v2/occurrences/?page_size=1000"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        ids = {o["id"] for o in res.data["results"]}
-        # All occurrences should appear
-        for occ in list(self.high_occurrences) + list(self.low_occurrences):
-            self.assertIn(occ.id, ids)
+
+        # Check that our test occurrences are present (don't assume all in DB are ours)
+        expected_ids = {occ.pk for occ in list(self.high_occurrences) + list(self.low_occurrences)}
+        returned_ids = {o["id"] for o in res.data["results"]}
+
+        self.assertTrue(expected_ids.issubset(returned_ids), f"Missing occurrence IDs: {expected_ids - returned_ids}")
 
     def test_retrieve_occurrence_respects_threshold(self):
         """Detail retrieval should 404 if occurrence is filtered out by threshold"""
@@ -2386,10 +2429,14 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         """apply_defaults=false should allow low-score taxa to appear"""
         res = self.client.get(self.url_taxa + "&apply_defaults=false&classification_threshold=0.2")
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        names = {t["name"] for t in res.data["results"]}
 
-        for occ in list(self.high_occurrences) + list(self.low_occurrences):
-            self.assertIn(occ.determination.name, names)
+        # Check that our test taxa are present
+        expected_names = {occ.determination.name for occ in list(self.high_occurrences) + list(self.low_occurrences)}
+        returned_names = {t["name"] for t in res.data["results"]}
+
+        self.assertTrue(
+            expected_names.issubset(returned_names), f"Missing taxa names: {expected_names - returned_names}"
+        )
 
     def test_query_threshold_ignored_when_defaults_applied_taxa(self):
         """classification_threshold is ignored when defaults apply"""

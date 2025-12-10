@@ -4,4 +4,16 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-exec newrelic-admin run-program celery -A config.celery_app worker -l INFO
+# Production Celery worker with memory leak protections
+#
+# Worker protections:
+# --max-tasks-per-child=100 - Restart worker process after 100 tasks
+# --max-memory-per-child=2097152 - Restart if worker process exceeds 2 GiB (in KB)
+#
+# With prefork pool (default), each CPU gets a worker process.
+# Example: 8 CPUs × 2 GiB = 16 GiB max total worker memory
+
+MAX_TASKS_PER_CHILD=100
+MAX_MEMORY_PER_CHILD=2097152  # 2 GiB in KB
+
+exec newrelic-admin run-program celery -A config.celery_app worker --queues=antenna -l INFO --max-tasks-per-child=$MAX_TASKS_PER_CHILD --max-memory-per-child=$MAX_MEMORY_PER_CHILD
