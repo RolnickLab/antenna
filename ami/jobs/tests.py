@@ -11,6 +11,7 @@ from ami.base.serializers import reverse_with_params
 from ami.jobs.models import Job, JobProgress, JobState, MLJob, SourceImageCollectionPopulateJob
 from ami.main.models import Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
+from ami.ml.orchestration.jobs import queue_images_to_nats
 from ami.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -326,6 +327,9 @@ class TestJobView(APITestCase):
     def _task_batch_helper(self, value: Any, expected_status: int):
         pipeline = self._create_pipeline()
         job = self._create_ml_job("Job for batch test", pipeline)
+        queue_images_to_nats(
+            job, [SourceImage(path=f"image_{i}.jpg", public_base_url="http://example.com") for i in range(20)]
+        )
 
         self.client.force_authenticate(user=self.user)
         tasks_url = reverse_with_params(
@@ -390,10 +394,9 @@ class TestJobView(APITestCase):
 
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
-        self.assertEqual(data["status"], "received")
+        self.assertEqual(data["status"], "accepted")
         self.assertEqual(data["job_id"], job.pk)
-        self.assertEqual(data["results_received"], 1)
-        self.assertIn("message", data)
+        self.assertEqual(data["results_queued"], 1)
 
     def test_result_endpoint_validation(self):
         """Test the result endpoint validates request data."""
