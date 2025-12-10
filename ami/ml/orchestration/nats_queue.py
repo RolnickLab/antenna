@@ -9,12 +9,13 @@ connection to NATS.
 
 import json
 import logging
-from typing import Any
 
 import nats
 from django.conf import settings
 from nats.js import JetStreamContext
 from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy
+
+from ami.ml.schemas import PipelineProcessingTask
 
 logger = logging.getLogger(__name__)
 
@@ -119,13 +120,13 @@ class TaskQueueManager:
             )
             logger.info(f"Created consumer {consumer_name}")
 
-    async def publish_task(self, job_id: str, data: dict[str, Any]) -> bool:
+    async def publish_task(self, job_id: str, data: PipelineProcessingTask) -> bool:
         """
         Publish a task to it's job queue.
 
         Args:
             job_id: The job ID (e.g., 'job123' or '123')
-            data: Task data (dict will be JSON-encoded)
+            data: PipelineProcessingTask object to be published
 
         Returns:
             bool: True if successful, False otherwise
@@ -139,7 +140,8 @@ class TaskQueueManager:
             await self._ensure_consumer(job_id)
 
             subject = self._get_subject(job_id)
-            task_data = json.dumps(data)
+            # Convert Pydantic model to JSON
+            task_data = json.dumps(data.dict())
 
             # Publish to JetStream
             ack = await self.js.publish(subject, task_data.encode())
@@ -151,7 +153,7 @@ class TaskQueueManager:
             logger.error(f"Failed to publish task to stream for job '{job_id}': {e}")
             return False
 
-    async def reserve_task(self, job_id: str, timeout: float | None = None) -> dict[str, Any] | None:
+    async def reserve_task(self, job_id: str, timeout: float | None = None) -> PipelineProcessingTask | None:
         """
         Reserve a task from the specified stream.
 
@@ -160,7 +162,7 @@ class TaskQueueManager:
             timeout: Timeout in seconds for reservation (default: 5 seconds)
 
         Returns:
-            Dict with task details including 'reply_subject' for acknowledgment, or None if no task available
+            PipelineProcessingTask with reply_subject set for acknowledgment, or None if no task available
         """
         if self.js is None:
             raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
@@ -188,14 +190,13 @@ class TaskQueueManager:
                     task_data = json.loads(msg.data.decode())
                     metadata = msg.metadata
 
-                    result = {
-                        "id": metadata.sequence.stream,
-                        "body": task_data,
-                        "reply_subject": msg.reply,  # For acknowledgment
-                    }
+                    # Parse the task data into PipelineProcessingTask
+                    task = PipelineProcessingTask(**task_data)
+                    # Set the reply_subject for acknowledgment
+                    task.reply_subject = msg.reply
 
                     logger.debug(f"Reserved task from stream for job '{job_id}', sequence {metadata.sequence.stream}")
-                    return result
+                    return task
 
             except nats.errors.TimeoutError:
                 # No messages available

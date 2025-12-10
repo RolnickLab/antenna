@@ -2,11 +2,11 @@ import functools
 import logging
 import time
 from collections.abc import Callable
-from datetime import datetime
 
 from asgiref.sync import async_to_sync
 from celery.signals import task_failure, task_postrun, task_prerun
 from django.db import transaction
+from django.utils import timezone
 
 from ami.ml.orchestration.nats_queue import TaskQueueManager
 from ami.ml.orchestration.task_state import TaskStateManager
@@ -157,7 +157,7 @@ def _update_job_progress(job_id: int, stage: str, progress_percentage: float) ->
         if stage == "results" and progress_percentage >= 1.0:
             job.status = JobState.SUCCESS
             job.progress.summary.status = JobState.SUCCESS
-            job.finished_at = datetime.now()
+            job.finished_at = timezone.now()
         job.logger.info(f"Updated job {job_id} progress in stage '{stage}' to {progress_percentage*100}%")
         job.save()
 

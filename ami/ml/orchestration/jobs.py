@@ -1,10 +1,10 @@
 from asgiref.sync import async_to_sync
-from django.utils import timezone
 
 from ami.jobs.models import Job, JobState, logger
 from ami.main.models import SourceImage
 from ami.ml.orchestration.nats_queue import TaskQueueManager
 from ami.ml.orchestration.task_state import TaskStateManager
+from ami.ml.schemas import PipelineProcessingTask
 
 
 # TODO CGJS: Call this once a job is fully complete (all images processed and saved)
@@ -40,21 +40,21 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
     job.logger.info(f"Queuing {len(images)} images to NATS stream for job '{job_id}'")
 
     # Prepare all messages outside of async context to avoid Django ORM issues
-    messages = []
+    tasks: list[tuple[int, PipelineProcessingTask]] = []
     image_ids = []
-    for i, image in enumerate(images):
+    for image in images:
         image_id = str(image.pk)
+        image_url = image.url() if hasattr(image, "url") and image.url() else ""
+        if not image_url:
+            job.logger.warning(f"Image {image.pk} has no URL, skipping queuing to NATS for job '{job_id}'")
+            continue
         image_ids.append(image_id)
-        message = {
-            "job_id": job.pk,
-            "image_id": image_id,
-            "image_url": image.url() if hasattr(image, "url") else None,
-            "timestamp": (image.timestamp.isoformat() if hasattr(image, "timestamp") and image.timestamp else None),
-            "batch_index": i,
-            "total_images": len(images),
-            "queue_timestamp": timezone.now().isoformat(),
-        }
-        messages.append((image.pk, message))
+        task = PipelineProcessingTask(
+            id=image_id,
+            image_id=image_id,
+            image_url=image_url,
+        )
+        tasks.append((image.pk, task))
 
     # Store all image IDs in Redis for progress tracking
     state_manager = TaskStateManager(job.pk)
@@ -66,12 +66,12 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
         failed_queues = 0
 
         async with TaskQueueManager() as manager:
-            for image_pk, message in messages:
+            for image_pk, task in tasks:
                 try:
-                    logger.info(f"Queueing image {image_pk} to stream for job '{job_id}': {message}")
+                    logger.info(f"Queueing image {image_pk} to stream for job '{job_id}': {task.image_url}")
                     success = await manager.publish_task(
                         job_id=job_id,
-                        data=message,
+                        data=task,
                     )
                 except Exception as e:
                     logger.error(f"Failed to queue image {image_pk} to stream for job '{job_id}': {e}")
@@ -87,6 +87,7 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
     successful_queues, failed_queues = async_to_sync(queue_all_images)()
 
     if not images:
+        job.progress.update_stage("process", status=JobState.SUCCESS, progress=1.0)
         job.progress.update_stage("results", status=JobState.SUCCESS, progress=1.0)
         job.save()
 

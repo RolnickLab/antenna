@@ -5,7 +5,6 @@ from asgiref.sync import async_to_sync
 from django.db.models import Q
 from django.db.models.query import QuerySet
 from django.forms import IntegerField
-from django.http import HttpResponseServerError
 from django.utils import timezone
 from django_filters import rest_framework as filters
 from drf_spectacular.utils import extend_schema
@@ -96,6 +95,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         "source_image_collection",
         "source_image_single",
     )
+    serializer_class = JobSerializer
     filterset_class = JobFilterSet
     filter_backends = [*DefaultViewSet.filter_backends, IncompleteJobFilter]
     search_fields = ["name", "pipeline__name"]
@@ -244,7 +244,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                 for i in range(batch):
                     task = await manager.reserve_task(job_id, timeout=0.1)
                     if task:
-                        tasks.append(task)
+                        tasks.append(task.dict())
             return tasks
 
         # Use async_to_sync to properly handle the async call
@@ -311,9 +311,10 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
         except Exception as e:
             logger.error(f"Failed to queue pipeline results for job {job_id}: {e}")
-            return HttpResponseServerError(
+            return Response(
                 {
                     "status": "error",
                     "job_id": job_id,
                 },
+                status=500,
             )
