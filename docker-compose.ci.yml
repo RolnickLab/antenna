@@ -42,11 +42,8 @@ services:
 
   nats:
     image: nats:2.10-alpine
-    container_name: ami_local_nats
+    container_name: ami_ci_nats
     hostname: nats
-    ports:
-      - "4222:4222" # Client port
-      - "8222:8222" # HTTP monitoring port
     command: ["-js", "-m", "8222"] # Enable JetStream and monitoring
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
