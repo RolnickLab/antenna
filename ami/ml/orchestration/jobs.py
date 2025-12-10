@@ -14,13 +14,13 @@ def cleanup_nats_resources(job: "Job") -> bool:
 
     Args:
         job: The Job instance
+    Returns:
+        bool: True if cleanup was successful, False otherwise
     """
-    job_id = f"job{job.pk}"
 
     async def cleanup():
         async with TaskQueueManager() as manager:
-            success = await manager.cleanup_job_resources(job_id)
-            return success
+            return await manager.cleanup_job_resources(job.pk)
 
     return async_to_sync(cleanup)()
 
@@ -36,8 +36,7 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
     Returns:
         bool: True if all images were successfully queued, False otherwise
     """
-    job_id = str(job.pk)
-    job.logger.info(f"Queuing {len(images)} images to NATS stream for job '{job_id}'")
+    job.logger.info(f"Queuing {len(images)} images to NATS stream for job '{job.pk}'")
 
     # Prepare all messages outside of async context to avoid Django ORM issues
     tasks: list[tuple[int, PipelineProcessingTask]] = []
@@ -46,7 +45,7 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
         image_id = str(image.pk)
         image_url = image.url() if hasattr(image, "url") and image.url() else ""
         if not image_url:
-            job.logger.warning(f"Image {image.pk} has no URL, skipping queuing to NATS for job '{job_id}'")
+            job.logger.warning(f"Image {image.pk} has no URL, skipping queuing to NATS for job '{job.pk}'")
             continue
         image_ids.append(image_id)
         task = PipelineProcessingTask(
@@ -68,13 +67,13 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
         async with TaskQueueManager() as manager:
             for image_pk, task in tasks:
                 try:
-                    logger.info(f"Queueing image {image_pk} to stream for job '{job_id}': {task.image_url}")
+                    logger.info(f"Queueing image {image_pk} to stream for job '{job.pk}': {task.image_url}")
                     success = await manager.publish_task(
-                        job_id=job_id,
+                        job_id=job.pk,
                         data=task,
                     )
                 except Exception as e:
-                    logger.error(f"Failed to queue image {image_pk} to stream for job '{job_id}': {e}")
+                    logger.error(f"Failed to queue image {image_pk} to stream for job '{job.pk}': {e}")
                     success = False
 
                 if success:
@@ -84,19 +83,20 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
 
         return successful_queues, failed_queues
 
-    successful_queues, failed_queues = async_to_sync(queue_all_images)()
-
-    if not images:
+    if tasks:
+        successful_queues, failed_queues = async_to_sync(queue_all_images)()
+    else:
         job.progress.update_stage("process", status=JobState.SUCCESS, progress=1.0)
         job.progress.update_stage("results", status=JobState.SUCCESS, progress=1.0)
         job.save()
+        successful_queues, failed_queues = 0, 0
 
     # Log results (back in sync context)
     if successful_queues > 0:
-        job.logger.info(f"Successfully queued {successful_queues}/{len(images)} images to stream for job '{job_id}'")
+        job.logger.info(f"Successfully queued {successful_queues}/{len(images)} images to stream for job '{job.pk}'")
 
     if failed_queues > 0:
-        job.logger.warning(f"Failed to queue {failed_queues}/{len(images)} images to stream for job '{job_id}'")
+        job.logger.warning(f"Failed to queue {failed_queues}/{len(images)} images to stream for job '{job.pk}'")
         return False
 
     return True

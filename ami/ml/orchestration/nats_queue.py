@@ -59,19 +59,19 @@ class TaskQueueManager:
 
         return False
 
-    def _get_stream_name(self, job_id: str) -> str:
+    def _get_stream_name(self, job_id: int) -> str:
         """Get stream name from job_id."""
         return f"job_{job_id}"
 
-    def _get_subject(self, job_id: str) -> str:
+    def _get_subject(self, job_id: int) -> str:
         """Get subject name from job_id."""
         return f"job.{job_id}.tasks"
 
-    def _get_consumer_name(self, job_id: str) -> str:
+    def _get_consumer_name(self, job_id: int) -> str:
         """Get consumer name from job_id."""
         return f"job-{job_id}-consumer"
 
-    async def _ensure_stream(self, job_id: str):
+    async def _ensure_stream(self, job_id: int):
         """Ensure stream exists for the given job."""
         if self.js is None:
             raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
@@ -92,7 +92,7 @@ class TaskQueueManager:
             )
             logger.info(f"Created stream {stream_name}")
 
-    async def _ensure_consumer(self, job_id: str):
+    async def _ensure_consumer(self, job_id: int):
         """Ensure consumer exists for the given job."""
         if self.js is None:
             raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
@@ -120,12 +120,12 @@ class TaskQueueManager:
             )
             logger.info(f"Created consumer {consumer_name}")
 
-    async def publish_task(self, job_id: str, data: PipelineProcessingTask) -> bool:
+    async def publish_task(self, job_id: int, data: PipelineProcessingTask) -> bool:
         """
         Publish a task to it's job queue.
 
         Args:
-            job_id: The job ID (e.g., 'job123' or '123')
+            job_id: The job ID (integer primary key)
             data: PipelineProcessingTask object to be published
 
         Returns:
@@ -153,12 +153,12 @@ class TaskQueueManager:
             logger.error(f"Failed to publish task to stream for job '{job_id}': {e}")
             return False
 
-    async def reserve_task(self, job_id: str, timeout: float | None = None) -> PipelineProcessingTask | None:
+    async def reserve_task(self, job_id: int, timeout: float | None = None) -> PipelineProcessingTask | None:
         """
         Reserve a task from the specified stream.
 
         Args:
-            job_id: The job ID to pull tasks from
+            job_id: The job ID (integer primary key) to pull tasks from
             timeout: Timeout in seconds for reservation (default: 5 seconds)
 
         Returns:
@@ -231,12 +231,12 @@ class TaskQueueManager:
             logger.error(f"Failed to acknowledge task: {e}")
             return False
 
-    async def delete_consumer(self, job_id: str) -> bool:
+    async def delete_consumer(self, job_id: int) -> bool:
         """
         Delete the consumer for a job.
 
         Args:
-            job_id: The job ID
+            job_id: The job ID (integer primary key)
 
         Returns:
             bool: True if successful, False otherwise
@@ -255,12 +255,12 @@ class TaskQueueManager:
             logger.error(f"Failed to delete consumer for job '{job_id}': {e}")
             return False
 
-    async def delete_stream(self, job_id: str) -> bool:
+    async def delete_stream(self, job_id: int) -> bool:
         """
         Delete the stream for a job.
 
         Args:
-            job_id: The job ID
+            job_id: The job ID (integer primary key)
 
         Returns:
             bool: True if successful, False otherwise
@@ -278,14 +278,14 @@ class TaskQueueManager:
             logger.error(f"Failed to delete stream for job '{job_id}': {e}")
             return False
 
-    async def cleanup_job_resources(self, job_id: str) -> bool:
+    async def cleanup_job_resources(self, job_id: int) -> bool:
         """
         Clean up all NATS resources (consumer and stream) for a job.
 
         This should be called when a job completes or is cancelled.
 
         Args:
-            job_id: The job ID
+            job_id: The job ID (integer primary key)
 
         Returns:
             bool: True if successful, False otherwise

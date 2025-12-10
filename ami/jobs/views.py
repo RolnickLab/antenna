@@ -225,7 +225,6 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         3. POST to /jobs/{id}/result/ with the reply_subject to acknowledge
         """
         job: Job = self.get_object()
-        job_id = job.pk
         try:
             batch = IntegerField(required=True, min_value=1).clean(request.query_params.get("batch"))
         except Exception as e:
@@ -241,8 +240,8 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         async def get_tasks():
             tasks = []
             async with TaskQueueManager() as manager:
-                for i in range(batch):
-                    task = await manager.reserve_task(job_id, timeout=0.1)
+                for _ in range(batch):
+                    task = await manager.reserve_task(job.pk, timeout=0.1)
                     if task:
                         tasks.append(task.dict())
             return tasks
@@ -263,7 +262,6 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         """
 
         job = self.get_object()
-        job_id = job.pk
 
         # Validate request data is a list
         if isinstance(request.data, list):
@@ -282,7 +280,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                 # Queue the background task
                 # Convert Pydantic model to dict for JSON serialization
                 task = process_pipeline_result.delay(
-                    job_id=job_id, result_data=result_data.dict(), reply_subject=reply_subject
+                    job_id=job.pk, result_data=result_data.dict(), reply_subject=reply_subject
                 )
 
                 queued_tasks.append(
@@ -294,14 +292,14 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                 )
 
                 logger.info(
-                    f"Queued pipeline result processing for job {job_id}, "
+                    f"Queued pipeline result processing for job {job.pk}, "
                     f"task_id: {task.id}, reply_subject: {reply_subject}"
                 )
 
             return Response(
                 {
                     "status": "accepted",
-                    "job_id": job_id,
+                    "job_id": job.pk,
                     "results_queued": len([t for t in queued_tasks if t["status"] == "queued"]),
                     "tasks": queued_tasks,
                 }
@@ -310,11 +308,11 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             raise ValidationError(f"Invalid result data: {e}") from e
 
         except Exception as e:
-            logger.error(f"Failed to queue pipeline results for job {job_id}: {e}")
+            logger.error(f"Failed to queue pipeline results for job {job.pk}: {e}")
             return Response(
                 {
                     "status": "error",
-                    "job_id": job_id,
+                    "job_id": job.pk,
                 },
                 status=500,
             )
