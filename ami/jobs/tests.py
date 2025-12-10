@@ -327,9 +327,15 @@ class TestJobView(APITestCase):
     def _task_batch_helper(self, value: Any, expected_status: int):
         pipeline = self._create_pipeline()
         job = self._create_ml_job("Job for batch test", pipeline)
-        queue_images_to_nats(
-            job, [SourceImage(path=f"image_{i}.jpg", public_base_url="http://example.com") for i in range(20)]
-        )
+        images = [
+            SourceImage.objects.create(
+                path=f"image_{i}.jpg",
+                public_base_url="http://example.com",
+                project=self.project,
+            )
+            for i in range(8)  # more than 5 since we test with batch=5
+        ]
+        queue_images_to_nats(job, images)
 
         self.client.force_authenticate(user=self.user)
         tasks_url = reverse_with_params(
