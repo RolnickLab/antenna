@@ -54,6 +54,24 @@ class GroupSerializer(DefaultSerializer):
 
 # Roles management api serializers
 class ProjectRoleSerializer(serializers.Serializer):
+    """
+    Serializer for project roles.
+
+    Note:
+        Roles are NOT database-backed models. They are defined as Python classes
+        (subclasses of the base `Role` class) and represent permission sets rather
+        than persisted records.
+
+        The list of roles serialized by this serializer is obtained by inspecting
+        `Role.__subclasses__()` (via `Role.get_supported_roles()` in the view),
+        and each `obj` passed to this serializer is a role class, not a model
+        instance.
+
+        Because roles are class-based:
+        - `id` corresponds to the role class name
+        - `name` and `description` are class attributes
+    """
+
     id = serializers.SerializerMethodField()
     name = serializers.SerializerMethodField()
     description = serializers.SerializerMethodField()
