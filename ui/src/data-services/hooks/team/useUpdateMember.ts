@@ -4,20 +4,14 @@ import { API_ROUTES, API_URL, SUCCESS_TIMEOUT } from 'data-services/constants'
 import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
 
-export const useUpdateMember = (id: string) => {
+export const useUpdateMember = (projectId: string, id: string) => {
   const { user } = useUser()
   const queryClient = useQueryClient()
 
   const { mutateAsync, isLoading, isSuccess, reset, error } = useMutation({
-    mutationFn: ({
-      projectId,
-      roleId,
-    }: {
-      projectId: string
-      roleId: string
-    }) =>
-      axios.put(
-        `${API_URL}/${API_ROUTES.MEMBERS}/${id}/?project_id=${projectId}`,
+    mutationFn: ({ roleId }: { roleId: string }) =>
+      axios.patch(
+        `${API_URL}/${API_ROUTES.MEMBERS(projectId)}/${id}/`,
         {
           role_id: roleId,
         },
@@ -26,7 +20,7 @@ export const useUpdateMember = (id: string) => {
         }
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries([API_ROUTES.MEMBERS])
+      queryClient.invalidateQueries([API_ROUTES.MEMBERS(projectId)])
       setTimeout(reset, SUCCESS_TIMEOUT)
     },
   })

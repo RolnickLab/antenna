@@ -1,5 +1,6 @@
 export enum STRING {
   /* BUTTON */
+  ADMIN,
   BACK,
   CANCEL,
   CHANGE_IMAGE,
@@ -40,6 +41,7 @@ export enum STRING {
   SUBMIT,
   SUGGEST_ID_SHORT,
   SUGGEST_ID,
+  VIEW_DOCS,
   VIEW_PUBLIC_PROJECTS,
 
   /* ENTITY */
@@ -190,15 +192,19 @@ export enum STRING {
   MESSAGE_VALUE_MISSING,
 
   /* NAV_ITEM */
+  NAV_ITEM_ABOUT,
   NAV_ITEM_ALGORITHMS,
   NAV_ITEM_CAPTURES,
+  NAV_ITEM_CODE_OF_CONDUCT,
   NAV_ITEM_COLLECTIONS,
   NAV_ITEM_DEFAULT_FILTERS,
   NAV_ITEM_DEPLOYMENTS,
   NAV_ITEM_DEVICES,
+  NAV_ITEM_DOCS,
   NAV_ITEM_EXPORTS,
   NAV_ITEM_GENERAL,
   NAV_ITEM_JOBS,
+  NAV_ITEM_LANDING_PAGE,
   NAV_ITEM_OCCURRENCES,
   NAV_ITEM_PIPELINES,
   NAV_ITEM_PROCESSING_SERVICES,
@@ -211,6 +217,7 @@ export enum STRING {
   NAV_ITEM_SUMMARY,
   NAV_ITEM_TAXA,
   NAV_ITEM_TEAM,
+  NAV_ITEM_TERMS_OF_SERVICE,
 
   /* TAB_ITEM */
   TAB_ITEM_ALL_PROJECTS,
@@ -245,6 +252,8 @@ export enum STRING {
   TOOLTIP_STORAGE,
 
   /* OTHER */
+  ABOUT_ROLE,
+  ABOUT_ROLES,
   ALGORITHMS,
   APPLY_ID_SHORT,
   APPLY_ID,
@@ -293,6 +302,7 @@ export enum STRING {
 
 const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* BUTTON */
+  [STRING.ADMIN]: 'Admin',
   [STRING.BACK]: 'Back',
   [STRING.CANCEL]: 'Cancel',
   [STRING.CHANGE_IMAGE]: 'Change image',
@@ -333,6 +343,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SUBMIT]: 'Submit',
   [STRING.SUGGEST_ID_SHORT]: 'Suggest',
   [STRING.SUGGEST_ID]: 'Suggest ID',
+  [STRING.VIEW_DOCS]: 'View docs',
   [STRING.VIEW_PUBLIC_PROJECTS]: 'View public projects',
 
   /* FIELD_LABEL */
@@ -501,15 +512,19 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_VALUE_MISSING]: 'Please provide a value',
 
   /* NAV_ITEM */
+  [STRING.NAV_ITEM_ABOUT]: 'About',
   [STRING.NAV_ITEM_ALGORITHMS]: 'Algorithms',
   [STRING.NAV_ITEM_CAPTURES]: 'Captures',
+  [STRING.NAV_ITEM_CODE_OF_CONDUCT]: 'Code of conduct',
   [STRING.NAV_ITEM_COLLECTIONS]: 'Collections',
   [STRING.NAV_ITEM_DEFAULT_FILTERS]: 'Default filters',
   [STRING.NAV_ITEM_DEPLOYMENTS]: 'Stations',
   [STRING.NAV_ITEM_DEVICES]: 'Device types',
+  [STRING.NAV_ITEM_DOCS]: 'Docs',
   [STRING.NAV_ITEM_EXPORTS]: 'Exports',
   [STRING.NAV_ITEM_GENERAL]: 'General',
   [STRING.NAV_ITEM_JOBS]: 'Jobs',
+  [STRING.NAV_ITEM_LANDING_PAGE]: 'Landing page',
   [STRING.NAV_ITEM_OCCURRENCES]: 'Occurrences',
   [STRING.NAV_ITEM_PIPELINES]: 'Pipelines',
   [STRING.NAV_ITEM_PROCESSING_SERVICES]: 'Processing services',
@@ -522,6 +537,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NAV_ITEM_SUMMARY]: 'Summary',
   [STRING.NAV_ITEM_TAXA]: 'Taxa',
   [STRING.NAV_ITEM_TEAM]: 'Team',
+  [STRING.NAV_ITEM_TERMS_OF_SERVICE]: 'Terms of service',
 
   /* TAB_ITEM */
   [STRING.TAB_ITEM_ALL_PROJECTS]: 'All projects',
@@ -568,6 +584,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'A storage is a place where source images are kept, for example a S3 bucket. One or many stations can be connected to a storage.',
 
   /* OTHER */
+  [STRING.ABOUT_ROLE]: 'About role',
+  [STRING.ABOUT_ROLES]: 'About roles',
   [STRING.ALGORITHMS]: 'Algorithms',
   [STRING.APPLY_ID_SHORT]: 'Apply',
   [STRING.APPLY_ID]: 'Apply ID',

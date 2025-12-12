@@ -21,6 +21,7 @@ export const ManageAccessDialog = ({ member }: { member: Member }) => {
   const [isOpen, setIsOpen] = useState(false)
   const [roleId, setRoleId] = useState<string>(member.role.id)
   const { updateMember, isLoading, isSuccess, error } = useUpdateMember(
+    projectId as string,
     member.id
   )
   const errorMessage = useFormError({ error })
@@ -30,7 +31,7 @@ export const ManageAccessDialog = ({ member }: { member: Member }) => {
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Dialog.Trigger>
+      <Dialog.Trigger asChild>
         <Button size="small" variant="outline">
           <span>{translate(STRING.MANAGE_ACCESS)}</span>
         </Button>
@@ -64,11 +65,7 @@ export const ManageAccessDialog = ({ member }: { member: Member }) => {
             isLoading={isLoading}
             isSuccess={isSuccess}
             onClick={async () => {
-              await updateMember({
-                roleId,
-                projectId: projectId as string,
-              })
-
+              await updateMember({ roleId })
               setTimeout(() => setIsOpen(false), SUCCESS_TIMEOUT)
             }}
           />

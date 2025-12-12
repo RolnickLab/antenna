@@ -16,13 +16,13 @@ export const LeaveTeamDialog = ({ member }: { member: Member }) => {
   const { projectId } = useParams()
   const [isOpen, setIsOpen] = useState(false)
   const { removeMember, isLoading, isSuccess, error } = useRemoveMember(
-    member.id
+    projectId as string
   )
   const errorMessage = useFormError({ error })
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Dialog.Trigger>
+      <Dialog.Trigger asChild>
         <Button size="small" variant="outline">
           <span>{translate(STRING.LEAVE_TEAM)}</span>
         </Button>
@@ -49,15 +49,16 @@ export const LeaveTeamDialog = ({ member }: { member: Member }) => {
             <Button
               disabled={isSuccess}
               onClick={async () => {
-                await removeMember({
-                  projectId: projectId as string,
-                })
-
-                navigate(
-                  getAppRoute({
-                    to: APP_ROUTES.PROJECTS,
-                  })
-                )
+                try {
+                  await removeMember(member.id)
+                  navigate(
+                    getAppRoute({
+                      to: APP_ROUTES.PROJECTS,
+                    })
+                  )
+                } catch {
+                  // Error is handled by hook
+                }
               }}
               size="small"
               variant="destructive"

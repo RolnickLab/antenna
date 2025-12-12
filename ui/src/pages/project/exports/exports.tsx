@@ -9,6 +9,7 @@ import { ExportDetailsDialog } from 'pages/export-details/export-details-dialog'
 import { NewEntityDialog } from 'pages/project/entities/new-entity-dialog'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { DOCS_LINKS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { UserPermission } from 'utils/user/types'
@@ -45,12 +46,11 @@ export const Exports = () => {
   return (
     <>
       <PageHeader
-        title={translate(STRING.NAV_ITEM_EXPORTS)}
-        subTitle={translate(STRING.RESULTS, {
-          total,
-        })}
-        isLoading={isLoading}
+        docsLink={DOCS_LINKS.EXPORTING_DATA}
         isFetching={isFetching}
+        isLoading={isLoading}
+        subTitle={translate(STRING.RESULTS, { total })}
+        title={translate(STRING.NAV_ITEM_EXPORTS)}
       >
         {canCreate && (
           <NewEntityDialog
