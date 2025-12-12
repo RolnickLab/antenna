@@ -33,6 +33,7 @@ class UserProjectMembershipViewSet(DefaultViewSet, ProjectMixin):
     require_project = True
     queryset = UserProjectMembership.objects.all()
     permission_classes = [UserMembershipPermission]
+    ordering_fields = ["created_at", "updated_at", "user__email"]
 
     def get_queryset(self):
         project = self.get_active_project()
