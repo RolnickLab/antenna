@@ -2,18 +2,34 @@ from django.urls import path
 from django.urls.conf import include
 from djoser.views import UserViewSet
 from rest_framework.routers import DefaultRouter
+from rest_framework_nested import routers
 
 from ami.exports import views as export_views
 from ami.jobs import views as job_views
 from ami.labelstudio import views as labelstudio_views
 from ami.main.api import views
 from ami.ml import views as ml_views
+from ami.users.api.views import ProjectRolesViewSet, UserProjectMembershipViewSet
 
 router = DefaultRouter()
 
 router.register(r"users", UserViewSet)
 router.register(r"storage", views.StorageSourceViewSet)
 router.register(r"projects", views.ProjectViewSet)
+# NESTED: /projects/{project_id}/members/
+projects_router = routers.NestedDefaultRouter(router, r"projects", lookup="project")
+projects_router.register(
+    r"members",
+    UserProjectMembershipViewSet,
+    basename="project-members",
+)
+
+# NESTED: /projects/{project_id}/roles/
+projects_router.register(
+    r"roles",
+    ProjectRolesViewSet,
+    basename="project-roles",
+)
 router.register(r"deployments/devices", views.DeviceViewSet)
 router.register(r"deployments/sites", views.SiteViewSet)
 router.register(r"deployments", views.DeploymentViewSet)
@@ -47,9 +63,7 @@ router.register(
 )
 router.register(r"labelstudio/hooks", labelstudio_views.LabelStudioHooksViewSet, basename="labelstudio-hooks")
 router.register(r"labelstudio/config", labelstudio_views.LabelStudioConfigViewSet, basename="labelstudio-config")
-
 # Wire up our API using automatic URL routing.
-
 
 app_name = "api"  # this breaks the automatic routing with viewsets & hyperlinked serializers
 
@@ -60,4 +74,5 @@ urlpatterns = [
 ]
 
 
-urlpatterns += router.urls
+urlpatterns += router.urls + projects_router.urls
+#
