@@ -95,6 +95,7 @@ export const AddMemberDialog = () => {
             title={translate(STRING.ENTITY_ADD, {
               type: translate(STRING.ENTITY_TYPE_MEMBER),
             })}
+            description="Only users with existing Antenna accounts can be added as members."
           >
             <FormField
               name="email"
