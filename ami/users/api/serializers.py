@@ -174,6 +174,13 @@ class UserProjectMembershipSerializer(DefaultSerializer):
             exists = UserProjectMembership.objects.filter(project=project, user=user).exists()
             if exists:
                 raise serializers.ValidationError("User is already a member of this project.")
+        else:  # updating
+            # Check if another membership with same project+user exists
+            # Only check if user is being changed
+            if user != self.instance.user:
+                exists = UserProjectMembership.objects.filter(project=project, user=user).exists()
+                if exists:
+                    raise serializers.ValidationError("User is already a member of this project.")
 
         attrs.pop("email", None)
         attrs.pop("role_id", None)
