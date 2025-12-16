@@ -605,7 +605,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.LOADING_DATA]: 'Loading data',
   [STRING.MACHINE_PREDICTION_SCORE]: 'Machine prediction score\n{{score}}',
   [STRING.MACHINE_SUGGESTION]: 'Machine suggestion',
-  [STRING.MANAGE_ACCESS_FOR]: 'Manage access for {{user}}',
+  [STRING.MANAGE_ACCESS_FOR]: 'Manage access for {{user}}.',
   [STRING.NEW_ID]: 'New ID',
   [STRING.NOT_CONNECTED]: 'Not connected',
   [STRING.OR]: 'Or',
