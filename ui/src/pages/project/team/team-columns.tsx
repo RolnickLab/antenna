@@ -17,6 +17,7 @@ export const columns: (userId?: string) => TableColumn<Member>[] = (
 ) => [
   {
     id: 'user',
+    sortField: 'user__email',
     name: translate(STRING.FIELD_LABEL_USER),
     renderCell: (item: Member) => (
       <BasicTableCell>
