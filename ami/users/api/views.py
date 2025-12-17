@@ -1,10 +1,10 @@
 import logging
 
 from django.db import transaction
-from rest_framework import viewsets
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from ami.base.permissions import IsActiveStaffOrReadOnly, UserMembershipPermission
+from ami.base.permissions import UserMembershipPermission
 from ami.base.views import ProjectMixin
 from ami.main.api.views import DefaultViewSet
 from ami.main.models import UserProjectMembership
@@ -18,12 +18,8 @@ from ami.users.roles import Role
 logger = logging.getLogger(__name__)
 
 
-class ProjectRolesViewSet(viewsets.ViewSet, ProjectMixin):
-    require_project = True
-    serializer_class = ProjectRoleSerializer
-    permission_classes = [IsActiveStaffOrReadOnly]
-
-    def list(self, request, **kwargs):
+class RolesAPIView(APIView):
+    def get(self, request, **kwargs):
         roles = Role.get_supported_roles()
         serializer = ProjectRoleSerializer(roles, many=True)
         return Response(serializer.data)
