@@ -1,6 +1,5 @@
 import { useRoles } from 'data-services/hooks/team/useRoles'
 import { Select } from 'nova-ui-kit'
-import { useParams } from 'react-router-dom'
 
 export const RolesPicker = ({
   value,
@@ -9,8 +8,7 @@ export const RolesPicker = ({
   value: string
   onValueChange: (value: string) => void
 }) => {
-  const { projectId } = useParams()
-  const { roles = [], isLoading } = useRoles(projectId as string, true)
+  const { roles = [], isLoading } = useRoles(true)
 
   return (
     <Select.Root

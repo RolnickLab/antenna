@@ -3,12 +3,10 @@ import { useRoles } from 'data-services/hooks/team/useRoles'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { InfoIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
-import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 
 export const AboutRoles = () => {
-  const { projectId } = useParams()
-  const { roles = [] } = useRoles(projectId as string, true)
+  const { roles = [] } = useRoles(true)
 
   return (
     <Dialog.Root>

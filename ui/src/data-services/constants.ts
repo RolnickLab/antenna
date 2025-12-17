@@ -21,7 +21,7 @@ export const API_ROUTES = {
   PROJECTS: 'projects',
   RESET_PASSWORD_CONFIRM: 'users/reset_password_confirm',
   RESET_PASSWORD: 'users/reset_password',
-  ROLES: (projectId: string) => `projects/${projectId}/roles`,
+  ROLES: 'users/roles',
   SESSIONS: 'events',
   SITES: 'deployments/sites',
   SPECIES: 'taxa',

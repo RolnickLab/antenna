@@ -9,7 +9,7 @@ from ami.jobs import views as job_views
 from ami.labelstudio import views as labelstudio_views
 from ami.main.api import views
 from ami.ml import views as ml_views
-from ami.users.api.views import ProjectRolesViewSet, UserProjectMembershipViewSet
+from ami.users.api.views import RolesAPIView, UserProjectMembershipViewSet
 
 router = DefaultRouter()
 
@@ -24,12 +24,6 @@ projects_router.register(
     basename="project-members",
 )
 
-# NESTED: /projects/{project_id}/roles/
-projects_router.register(
-    r"roles",
-    ProjectRolesViewSet,
-    basename="project-roles",
-)
 router.register(r"deployments/devices", views.DeviceViewSet)
 router.register(r"deployments/sites", views.SiteViewSet)
 router.register(r"deployments", views.DeploymentViewSet)
@@ -71,6 +65,11 @@ urlpatterns = [
     path("auth/", include("djoser.urls.authtoken")),
     path("status/summary/", views.SummaryView.as_view(), name="status-summary"),
     path("status/storage/", views.StorageStatus.as_view(), name="status-storage"),
+    path(
+        "users/roles/",
+        RolesAPIView.as_view(),
+        name="user-roles",
+    ),
 ]
 
 
