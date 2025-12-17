@@ -19,7 +19,7 @@ class TestUserProjectMembershipAPI(APITestCase):
         self.other = User.objects.create_user(email="other@insectai.org")
 
         # Endpoints
-        self.roles_url = f"/api/v2/projects/{self.project.pk}/roles/"
+        self.roles_url = "/api/v2/users/roles/"
         self.members_url = f"/api/v2/projects/{self.project.pk}/members/"
 
     def create_membership(self, user=None):
