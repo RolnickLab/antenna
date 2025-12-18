@@ -43,12 +43,13 @@ export const DeleteForm = ({
             size="small"
             variant="destructive"
           >
-            {isSuccess ? <CheckIcon className="w-4 h-4 mr-2" /> : null}
             <span>
               {isSuccess ? translate(STRING.DELETED) : translate(STRING.DELETE)}
             </span>
-            {isLoading ? (
-              <Loader2Icon className="w-4 h-4 ml-2 animate-spin" />
+            {isSuccess ? (
+              <CheckIcon className="w-4 h-4" />
+            ) : isLoading ? (
+              <Loader2Icon className="w-4 h-4 animate-spin" />
             ) : null}
           </Button>
         </div>

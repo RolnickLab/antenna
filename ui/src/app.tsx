@@ -35,6 +35,7 @@ import { Processing } from 'pages/project/processing/processing'
 import Project from 'pages/project/project'
 import { Storage } from 'pages/project/storage/storage'
 import { Summary } from 'pages/project/summary/summary'
+import { Team } from 'pages/project/team/team'
 import { Projects } from 'pages/projects/projects'
 import SessionDetails from 'pages/session-details/session-details'
 import { Sessions } from 'pages/sessions/sessions'
@@ -121,6 +122,7 @@ export const App = () => (
             <Route path="sites" element={<Sites />} />
             <Route path="devices" element={<Devices />} />
             <Route path="general" element={<General />} />
+            <Route path="team" element={<Team />} />
             <Route path="default-filters" element={<DefaultFilters />} />
             <Route path="storage" element={<Storage />} />
             <Route path="processing" element={<Processing />} />

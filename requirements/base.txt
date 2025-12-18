@@ -42,7 +42,8 @@ django-guardian==2.4.0
 # Email sending
 django-sendgrid-v5==1.2.2
 django-anymail[sendgrid]==10.0  # https://github.com/anymail/django-anymail
-
+# Nested routing for membership/roles api
+drf-nested-routers
 ## Formerly dev-only dependencies
 # However we cannot run the app without some of these these dependencies
 # and it is easier to maintain in a single file
