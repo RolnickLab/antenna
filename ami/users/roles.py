@@ -150,7 +150,6 @@ class ProjectManager(Role):
             Project.Permissions.UPDATE_PROJECT,
             Project.Permissions.DELETE_PROJECT,
             Project.Permissions.IMPORT_DATA,
-            Project.Permissions.MANAGE_MEMBERS,
             Project.Permissions.POPULATE_COLLECTION,
             Project.Permissions.CREATE_COLLECTION,
             Project.Permissions.DELETE_COLLECTION,

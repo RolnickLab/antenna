@@ -421,7 +421,6 @@ class Project(ProjectSettingsMixin, BaseModel):
         TRIGGER_EXPORT = "trigger_export"
         DELETE_OCCURRENCES = "delete_occurrences"
         IMPORT_DATA = "import_data"
-        MANAGE_MEMBERS = "manage_members"
 
     class Meta:
         ordering = ["-priority", "created_at"]
