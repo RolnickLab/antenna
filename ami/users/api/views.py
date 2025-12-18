@@ -1,6 +1,8 @@
 import logging
 
+from django.contrib.auth.models import Group
 from django.db import transaction
+from django.db.models.signals import m2m_changed
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -14,6 +16,7 @@ from ami.users.api.serializers import (
     UserProjectMembershipSerializer,
 )
 from ami.users.roles import Role
+from ami.users.signals import manage_project_membership
 
 logger = logging.getLogger(__name__)
 
@@ -53,12 +56,19 @@ class UserProjectMembershipViewSet(DefaultViewSet, ProjectMixin):
             membership = serializer.save(project=project)
             user = membership.user
 
-            # unassign all existing roles for this project
-            for r in Role.__subclasses__():
-                r.unassign_user(user, project)
+            # Disconnect signal before unassigning/assigning roles to prevent signal interference
+            # The membership is already created above, so we don't need the signal to modify it
+            m2m_changed.disconnect(manage_project_membership, sender=Group.user_set.through)
+            try:
+                # unassign all existing roles for this project
+                for r in Role.__subclasses__():
+                    r.unassign_user(user, project)
 
-            # assign new role
-            role_cls.assign_user(user, project)
+                # assign new role
+                role_cls.assign_user(user, project)
+            finally:
+                # Reconnect signal
+                m2m_changed.connect(manage_project_membership, sender=Group.user_set.through)
 
     def perform_update(self, serializer):
         membership = self.get_object()
