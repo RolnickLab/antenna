@@ -62,7 +62,11 @@ class BasicMember(Role):
 
 
 class Researcher(Role):
-    permissions = BasicMember.permissions | {Project.Permissions.TRIGGER_EXPORT}
+    permissions = BasicMember.permissions | {
+        Project.Permissions.CREATE_DATA_EXPORT,
+        Project.Permissions.UPDATE_DATA_EXPORT,
+        Project.Permissions.DELETE_DATA_EXPORT,
+    }
 
 
 class Identifier(Role):
