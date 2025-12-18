@@ -404,9 +404,13 @@ class Project(ProjectSettingsMixin, BaseModel):
         DELETE_DEVICE = "delete_device"
         UPDATE_DEVICE = "update_device"
 
+        # Data Export permissions
+        CREATE_DATA_EXPORT = "create_dataexport"
+        UPDATE_DATA_EXPORT = "update_dataexport"
+        DELETE_DATA_EXPORT = "delete_dataexport"
+
         # Other permissions
         VIEW_PRIVATE_DATA = "view_private_data"
-        TRIGGER_EXPORT = "trigger_export"
         DELETE_OCCURRENCES = "delete_occurrences"
         IMPORT_DATA = "import_data"
         MANAGE_MEMBERS = "manage_members"
@@ -460,9 +464,12 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("create_device", "Can create a device"),
             ("delete_device", "Can delete a device"),
             ("update_device", "Can update a device"),
+            # Data Export permissions
+            ("create_dataexport", "Can create a data export"),
+            ("update_dataexport", "Can update a data export"),
+            ("delete_dataexport", "Can delete a data export"),
             # Other permissions
             ("view_private_data", "Can view private data"),
-            ("trigger_exports", "Can trigger data exports"),
         ]
 
 
