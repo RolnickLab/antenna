@@ -40,7 +40,7 @@ def run_job(self, job_id: int) -> None:
 
 @celery_app.task(
     bind=True,
-    max_retries=0, # don't retry since we already have retry logic in the NATS queue
+    max_retries=0,  # don't retry since we already have retry logic in the NATS queue
     soft_time_limit=300,  # 5 minutes
     time_limit=360,  # 6 minutes
 )
@@ -127,8 +127,10 @@ def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject:
     except Exception as e:
         job.logger.error(f"Failed to process pipeline result for job {job_id}: {e}. Retrying ...")
 
+
 def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> None:
     try:
+
         async def ack_task():
             async with TaskQueueManager() as manager:
                 return await manager.acknowledge_task(reply_subject)
@@ -142,6 +144,7 @@ def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> None:
     except Exception as ack_error:
         job_logger.error(f"Error acknowledging task via NATS: {ack_error}")
         # Don't fail the task if ACK fails - data is already saved
+
 
 def _update_job_progress(job_id: int, stage: str, progress_percentage: float) -> None:
     from ami.jobs.models import Job, JobState  # avoid circular import
