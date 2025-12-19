@@ -40,9 +40,7 @@ def run_job(self, job_id: int) -> None:
 
 @celery_app.task(
     bind=True,
-    max_retries=3,
-    default_retry_delay=60,
-    autoretry_for=(Exception,),
+    max_retries=0, # don't retry since we already have retry logic in the NATS queue
     soft_time_limit=300,  # 5 minutes
     time_limit=360,  # 6 minutes
 )
@@ -95,7 +93,13 @@ def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject:
             f"({progress_info.percentage*100}%), {progress_info.remaining} remaining, {len(processed_image_ids)} just "
             "processed"
         )
+    except Job.DoesNotExist:
+        # don't raise and ack so that we don't retry since the job doesn't exists
+        logger.error(f"Job {job_id} not found")
+        _ack_task_via_nats(reply_subject, logger)
+        return
 
+    try:
         # Save to database (this is the slow operation)
         if pipeline_result:
             # should never happen since otherwise we could not be processing results here
@@ -107,23 +111,8 @@ def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject:
                 f"Saved pipeline results to database with {len(pipeline_result.detections)} detections"
                 f", percentage: {progress_info.percentage*100}%"
             )
-        # Acknowledge the task via NATS
-        try:
 
-            async def ack_task():
-                async with TaskQueueManager() as manager:
-                    return await manager.acknowledge_task(reply_subject)
-
-            ack_success = async_to_sync(ack_task)()
-
-            if ack_success:
-                job.logger.info(f"Successfully acknowledged task via NATS: {reply_subject}")
-            else:
-                job.logger.warning(f"Failed to acknowledge task via NATS: {reply_subject}")
-        except Exception as ack_error:
-            job.logger.error(f"Error acknowledging task via NATS: {ack_error}")
-            # Don't fail the task if ACK fails - data is already saved
-
+        _ack_task_via_nats(reply_subject, job.logger)
         # Update job stage with calculated progress
         progress_info = state_manager.update_state(processed_image_ids, stage="results", request_id=self.request.id)
 
@@ -135,14 +124,24 @@ def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject:
             raise self.retry(countdown=5, max_retries=10)
         _update_job_progress(job_id, "results", progress_info.percentage)
 
-    except Job.DoesNotExist:
-        logger.error(f"Job {job_id} not found")
-        raise
     except Exception as e:
-        logger.error(f"Failed to process pipeline result for job {job_id}: {e}")
-        # Celery will automatically retry based on autoretry_for
-        raise
+        job.logger.error(f"Failed to process pipeline result for job {job_id}: {e}. Retrying ...")
 
+def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> None:
+    try:
+        async def ack_task():
+            async with TaskQueueManager() as manager:
+                return await manager.acknowledge_task(reply_subject)
+
+        ack_success = async_to_sync(ack_task)()
+
+        if ack_success:
+            job_logger.info(f"Successfully acknowledged task via NATS: {reply_subject}")
+        else:
+            job_logger.warning(f"Failed to acknowledge task via NATS: {reply_subject}")
+    except Exception as ack_error:
+        job_logger.error(f"Error acknowledging task via NATS: {ack_error}")
+        # Don't fail the task if ACK fails - data is already saved
 
 def _update_job_progress(job_id: int, stage: str, progress_percentage: float) -> None:
     from ami.jobs.models import Job, JobState  # avoid circular import
