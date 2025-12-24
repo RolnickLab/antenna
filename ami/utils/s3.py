@@ -10,7 +10,7 @@ import urllib.parse
 from dataclasses import dataclass
 
 import boto3
-import boto3.resources.base
+import boto3.session
 import botocore
 import botocore.config
 import botocore.exceptions
@@ -37,6 +37,7 @@ class S3Config:
     secret_access_key: str
     bucket_name: str
     prefix: str
+    region: str | None = None
     public_base_url: str | None = None
 
     sensitive_fields = ["access_key_id", "secret_access_key"]
@@ -94,26 +95,36 @@ def get_session(config: S3Config) -> boto3.session.Session:
     session = boto3.Session(
         aws_access_key_id=config.access_key_id,
         aws_secret_access_key=config.secret_access_key,
+        region_name=config.region,
     )
     return session
 
 
 def get_s3_client(config: S3Config) -> S3Client:
     session = get_session(config)
+
+    # Always use signature version 4
+    boto_config = botocore.config.Config(signature_version="s3v4")
+
     if config.endpoint_url:
         client = session.client(
             service_name="s3",
             endpoint_url=config.endpoint_url,
             aws_access_key_id=config.access_key_id,
             aws_secret_access_key=config.secret_access_key,
-            config=botocore.config.Config(signature_version="s3v4"),
+            region_name=config.region,
+            config=boto_config,
         )
     else:
         client = session.client(
             service_name="s3",
             aws_access_key_id=config.access_key_id,
             aws_secret_access_key=config.secret_access_key,
+            region_name=config.region,
+            config=boto_config,
         )
+
+    client = typing.cast(S3Client, client)
     return client
 
 
@@ -124,6 +135,7 @@ def get_resource(config: S3Config) -> S3ServiceResource:
         endpoint_url=config.endpoint_url,
         # api_version="s3v4",
     )
+    s3 = typing.cast(S3ServiceResource, s3)
     return s3
 
 
@@ -584,7 +596,9 @@ def read_image(config: S3Config, key: str) -> PIL.Image.Image:
     obj = bucket.Object(key)
     logger.info(f"Fetching image {key} from S3")
     try:
-        img = PIL.Image.open(obj.get()["Body"])
+        # StreamingBody inherits from io.IOBase, but type checkers don't see that
+        fp = obj.get()["Body"]
+        img = PIL.Image.open(fp)  # type: ignore[arg-type]
     except PIL.UnidentifiedImageError:
         logger.error(f"Could not read image {key}")
         raise
@@ -677,6 +691,7 @@ def test():
         bucket_name="test",
         prefix="",
         public_base_url="http://minio:9000/test",
+        region=None,
     )
 
     projects = list_projects(config)
