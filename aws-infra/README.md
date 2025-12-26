@@ -1,3 +1,8 @@
+## ⚠️ Experimental AWS Deployment
+
+> **Note:** The AWS deployment described in this document is **experimental and not supported at this time**.  
+> It is intended for development, testing, and architectural exploration only and **should not be used in production**.
+
 # Antenna Platform - Deployment & Infrastructure Guide
 
 This document describes the AWS infrastructure and deployment pipeline for the Antenna platform.  
