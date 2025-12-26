@@ -1,21 +1,37 @@
-# ---------------------------------------------------------------------
-# NOTE ON MODIFICATIONS
-#
-# This module originally assumed a local, test-only MinIO setup and
-# attempted to create the S3 bucket at runtime.
-#
-# While this works for local testing, it is not appropriate for AWS
-# deployments, where S3 buckets are created and managed outside the
-# application (e.g., via AWS Console or IaC tools).
-#
-# The logic below was updated to:
-# - Use an existing AWS S3 bucket when running in Elastic Beanstalk
-# - Fall back to MinIO for local Docker and test environments
-# - Verify access via a lightweight write check instead of bucket creation
-#
-# This keeps test behavior intact while aligning with production-grade
-# AWS deployment practices.
-# ---------------------------------------------------------------------
+"""
+
+This module provides helper functions for setting up and working with
+S3-based storage used by Antenna projects. 
+
+## Function Overview
+- create_storage_source(...)
+  Called during project setup to ensure an S3 storage source exists
+  and is accessible for a given Project.
+
+- populate_bucket(...)
+  Called only for demo or test setup to upload generated image data
+  into S3/MinIO for pipeline validation.
+  
+
+## What Was Modified and Why
+Previously, this module assumed a test-only MinIO setup and always tried
+to create the S3 bucket at runtime.
+
+This works locally, but causes issues in AWS because:
+- S3 buckets already exist and are managed outside the application
+- Attempting to create them again can fail or behave incorrectly
+
+The logic was updated to:
+- Automatically select AWS S3 in production and MinIO locally
+- Assume the bucket already exists in AWS
+- Verify access by writing a small placeholder file instead of creating
+  the bucket
+
+This allows the same code to run safely in both local and AWS
+environments without duplication.
+
+"""
+
 
 
 import io
