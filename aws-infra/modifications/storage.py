@@ -1,3 +1,23 @@
+# ---------------------------------------------------------------------
+# NOTE ON MODIFICATIONS
+#
+# This module originally assumed a local, test-only MinIO setup and
+# attempted to create the S3 bucket at runtime.
+#
+# While this works for local testing, it is not appropriate for AWS
+# deployments, where S3 buckets are created and managed outside the
+# application (e.g., via AWS Console or IaC tools).
+#
+# The logic below was updated to:
+# - Use an existing AWS S3 bucket when running in Elastic Beanstalk
+# - Fall back to MinIO for local Docker and test environments
+# - Verify access via a lightweight write check instead of bucket creation
+#
+# This keeps test behavior intact while aligning with production-grade
+# AWS deployment practices.
+# ---------------------------------------------------------------------
+
+
 import io
 import logging
 
