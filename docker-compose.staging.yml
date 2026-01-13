@@ -20,7 +20,7 @@ services:
     depends_on:
       - postgres
       - redis
-        # - nats  
+        # - nats
     env_file:
       - ./.envs/.production/.django
       - ./.envs/.local/.postgres
