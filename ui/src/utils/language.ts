@@ -207,6 +207,7 @@ export enum STRING {
   NAV_ITEM_STORAGE,
   NAV_ITEM_SUMMARY,
   NAV_ITEM_TAXA,
+  NAV_ITEM_TAXA_LISTS,
   NAV_ITEM_TERMS_OF_SERVICE,
 
   /* TAB_ITEM */
@@ -508,6 +509,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NAV_ITEM_STORAGE]: 'Storage',
   [STRING.NAV_ITEM_SUMMARY]: 'Summary',
   [STRING.NAV_ITEM_TAXA]: 'Taxa',
+  [STRING.NAV_ITEM_TAXA_LISTS]: 'Taxa lists',
   [STRING.NAV_ITEM_TERMS_OF_SERVICE]: 'Terms of service',
 
   /* TAB_ITEM */
