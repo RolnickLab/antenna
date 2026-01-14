@@ -1,6 +1,9 @@
+import { API_ROUTES } from 'data-services/constants'
 import { TaxaList } from 'data-services/models/taxa-list'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { CellTheme, TableColumn } from 'design-system/components/table/types'
+import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
+import { UpdateEntityDialog } from 'pages/project/entities/entity-details-dialog'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -43,5 +46,30 @@ export const columns: (projectId: string) => TableColumn<TaxaList>[] = (
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
     renderCell: (item: TaxaList) => <BasicTableCell value={item.updatedAt} />,
+  },
+  {
+    id: 'actions',
+    name: '',
+    styles: {
+      padding: '16px',
+      width: '100%',
+    },
+    renderCell: (item: TaxaList) => (
+      <div className="flex items-center justify-end gap-2 p-4">
+        {/* TODO: Check user permissions when returned by API */}
+        <UpdateEntityDialog
+          collection={API_ROUTES.TAXA_LISTS}
+          entity={item}
+          isCompact
+          type={translate(STRING.ENTITY_TYPE_TAXA_LIST)}
+        />
+
+        <DeleteEntityDialog
+          collection={API_ROUTES.TAXA_LISTS}
+          id={item.id}
+          type={translate(STRING.ENTITY_TYPE_TAXA_LIST)}
+        />
+      </div>
+    ),
   },
 ]

@@ -11,11 +11,11 @@ export class Entity {
   }
 
   get canUpdate(): boolean {
-    return this._data.user_permissions.includes(UserPermission.Update)
+    return this._data.user_permissions?.includes(UserPermission.Update)
   }
 
   get canDelete(): boolean {
-    return this._data.user_permissions.includes(UserPermission.Delete)
+    return this._data.user_permissions?.includes(UserPermission.Delete)
   }
 
   get createdAt(): string | undefined {
