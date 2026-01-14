@@ -1,14 +1,15 @@
 import { API_ROUTES } from 'data-services/constants'
 import { useTaxaLists } from 'data-services/hooks/taxa-lists/useTaxaLists'
 import { PageHeader } from 'design-system/components/page-header/page-header'
+import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { SortControl } from 'design-system/components/sort-control'
 import { Table } from 'design-system/components/table/table/table'
-import { DeploymentDetailsDialog } from 'pages/deployment-details/deployment-details-dialog'
 import { NewEntityDialog } from 'pages/project/entities/new-entity-dialog'
 import { useContext, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { STRING, translate } from 'utils/language'
+import { usePagination } from 'utils/usePagination'
 import { UserPermission } from 'utils/user/types'
 import { useSort } from 'utils/useSort'
 import { columns } from './taxa-list-columns'
@@ -16,15 +17,15 @@ import { columns } from './taxa-list-columns'
 export const TaxaLists = () => {
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { projectId, id } = useParams()
-
   const { sort, setSort } = useSort({
     field: 'name',
     order: 'asc',
   })
-  const { taxaLists, userPermissions, isLoading, isFetching, error } =
+  const { pagination, setPage } = usePagination()
+  const { taxaLists, total, userPermissions, isLoading, isFetching, error } =
     useTaxaLists({
       projectId,
-      pagination: { page: 0, perPage: 200 },
+      pagination,
       sort,
     })
   const canCreate = userPermissions?.includes(UserPermission.Create)
@@ -70,7 +71,14 @@ export const TaxaLists = () => {
         sortable
         sortSettings={sort}
       />
-      {id ? <DeploymentDetailsDialog id={id} /> : null}
+      {taxaLists?.length ? (
+        <PaginationBar
+          compact
+          pagination={pagination}
+          setPage={setPage}
+          total={total}
+        />
+      ) : null}
     </>
   )
 }
