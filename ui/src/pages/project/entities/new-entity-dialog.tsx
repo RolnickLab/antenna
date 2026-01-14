@@ -16,14 +16,16 @@ export const NewEntityDialog = ({
   buttonSize = 'small',
   buttonVariant = 'outline',
   collection,
-  type,
+  global,
   isCompact,
+  type,
 }: {
   buttonSize?: string
   buttonVariant?: string
   collection: string
-  type: string
+  global?: boolean
   isCompact?: boolean
+  type: string
 }) => {
   const { projectId } = useParams()
   const [isOpen, setIsOpen] = useState(false)
@@ -67,6 +69,10 @@ export const NewEntityDialog = ({
               createEntity({
                 ...data,
                 projectId: projectId as string,
+                customFields: {
+                  ...data.customFields,
+                  ...(global ? { projects: [projectId as string] } : {}), // Some entities are shared across projects
+                },
               })
             }}
           />
