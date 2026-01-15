@@ -34,6 +34,7 @@ def create_storage_source(project: Project, name: str, prefix: str = S3_TEST_CON
             access_key=S3_TEST_CONFIG.access_key_id,
             secret_key=S3_TEST_CONFIG.secret_access_key,
             public_base_url=S3_TEST_CONFIG.public_base_url,
+            region=S3_TEST_CONFIG.region,
         ),
     )
     return data_source
