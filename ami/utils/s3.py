@@ -130,10 +130,12 @@ def get_s3_client(config: S3Config) -> S3Client:
 
 def get_resource(config: S3Config) -> S3ServiceResource:
     session = get_session(config)
+    boto_config = botocore.config.Config(signature_version="s3v4")
     s3 = session.resource(
         "s3",
         endpoint_url=config.endpoint_url,
-        # api_version="s3v4",
+        region_name=config.region,
+        config=boto_config,
     )
     s3 = typing.cast(S3ServiceResource, s3)
     return s3
