@@ -39,6 +39,7 @@ import { Projects } from 'pages/projects/projects'
 import SessionDetails from 'pages/session-details/session-details'
 import { Sessions } from 'pages/sessions/sessions'
 import { Species } from 'pages/species/species'
+import { TaxaLists } from 'pages/taxa-lists/taxa-lists'
 import { ReactNode, useContext, useEffect } from 'react'
 import { Helmet, HelmetProvider } from 'react-helmet-async'
 import {
@@ -132,6 +133,7 @@ export const App = () => (
           <Route path="sessions/:id" element={<SessionDetails />} />
           <Route path="occurrences/:id?" element={<Occurrences />} />
           <Route path="taxa/:id?" element={<Species />} />
+          <Route path="taxa/taxa-lists" element={<TaxaLists />} />
         </Route>
         <Route
           path="/terms-of-service"
