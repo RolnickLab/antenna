@@ -614,13 +614,14 @@ class TaxonListSerializer(DefaultSerializer):
         )
 
 
-class TaxaListSerializer(serializers.ModelSerializer):
+class TaxaListSerializer(DefaultSerializer):
     taxa = serializers.SerializerMethodField()
+    taxa_count = serializers.SerializerMethodField()
     projects = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), many=True)
 
     class Meta:
         model = TaxaList
-        fields = ["id", "name", "description", "taxa", "projects"]
+        fields = ["id", "name", "description", "taxa", "taxa_count", "projects", "created_at", "updated_at"]
 
     def get_taxa(self, obj):
         """
@@ -631,6 +632,12 @@ class TaxaListSerializer(serializers.ModelSerializer):
             request=self.context.get("request"),
             params={"taxa_list_id": obj.pk},
         )
+
+    def get_taxa_count(self, obj):
+        """
+        Return the number of taxa in this list.
+        """
+        return obj.taxa.count()
 
 
 class CaptureTaxonSerializer(DefaultSerializer):

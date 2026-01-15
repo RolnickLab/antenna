@@ -1608,8 +1608,10 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
 
-class TaxaListViewSet(viewsets.ModelViewSet, ProjectMixin):
+class TaxaListViewSet(DefaultViewSet, ProjectMixin):
     queryset = TaxaList.objects.all()
+    serializer_class = TaxaListSerializer
+    ordering_fields = ["name", "created_at", "updated_at"]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -1617,8 +1619,6 @@ class TaxaListViewSet(viewsets.ModelViewSet, ProjectMixin):
         if project:
             return qs.filter(projects=project)
         return qs
-
-    serializer_class = TaxaListSerializer
 
 
 class TagViewSet(DefaultViewSet, ProjectMixin):
