@@ -232,7 +232,12 @@ class Project(ProjectSettingsMixin, BaseModel):
     description = models.TextField(blank=True)
     image = models.ImageField(upload_to="projects", blank=True, null=True)
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="projects")
-    members = models.ManyToManyField(User, related_name="user_projects", blank=True)
+    members = models.ManyToManyField(
+        User,
+        through="UserProjectMembership",
+        related_name="user_projects",
+        blank=True,
+    )
     draft = models.BooleanField(
         default=False,
         help_text="Indicates whether this project is in draft mode",
@@ -405,13 +410,17 @@ class Project(ProjectSettingsMixin, BaseModel):
         CREATE_DEVICE = "create_device"
         DELETE_DEVICE = "delete_device"
         UPDATE_DEVICE = "update_device"
+        # User projet membership permissions
+        VIEW_USER_PROJECT_MEMBERSHIP = "view_userprojectmembership"
+        CREATE_USER_PROJECT_MEMBERSHIP = "create_userprojectmembership"
+        UPDATE_USER_PROJECT_MEMBERSHIP = "update_userprojectmembership"
+        DELETE_USER_PROJECT_MEMBERSHIP = "delete_userprojectmembership"
 
         # Other permissions
         VIEW_PRIVATE_DATA = "view_private_data"
         TRIGGER_EXPORT = "trigger_export"
         DELETE_OCCURRENCES = "delete_occurrences"
         IMPORT_DATA = "import_data"
-        MANAGE_MEMBERS = "manage_members"
 
     class Meta:
         ordering = ["-priority", "created_at"]
@@ -462,10 +471,56 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("create_device", "Can create a device"),
             ("delete_device", "Can delete a device"),
             ("update_device", "Can update a device"),
+            # User project membership permissions
+            ("view_userprojectmembership", "Can view project members"),
+            ("create_userprojectmembership", "Can add a user to the project"),
+            ("update_userprojectmembership", "Can update a user's project membership and role in the project"),
+            ("delete_userprojectmembership", "Can remove a user from the project"),
             # Other permissions
             ("view_private_data", "Can view private data"),
             ("trigger_exports", "Can trigger data exports"),
         ]
+
+
+class UserProjectMembership(BaseModel):
+    """
+    Through model connecting User <-> Project.
+    This model represents membership ONLY.
+    Role assignment is handled separately via permission groups.
+    """
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="project_memberships",
+    )
+
+    project = models.ForeignKey(
+        "main.Project",
+        on_delete=models.CASCADE,
+        related_name="project_memberships",
+    )
+
+    def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
+        project = self.project
+        # Allow viewing membership details if the user has view permission on the project
+        if action == "retrieve":
+            return user.has_perm(Project.Permissions.VIEW_USER_PROJECT_MEMBERSHIP, project)
+        # Allow users to delete their own membership
+        if action == "destroy" and user == self.user:
+            return True
+        return super().check_permission(user, action)
+
+    def get_user_object_permissions(self, user) -> list[str]:
+        # Return delete permission if user is the same as the membership user
+        user_permissions = super().get_user_object_permissions(user)
+        if user == self.user:
+            if "delete" not in user_permissions:
+                user_permissions.append("delete")
+        return user_permissions
+
+    class Meta:
+        unique_together = ("user", "project")
 
 
 @final
