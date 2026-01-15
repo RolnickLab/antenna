@@ -1611,7 +1611,11 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
 class TaxaListViewSet(DefaultViewSet, ProjectMixin):
     queryset = TaxaList.objects.all()
     serializer_class = TaxaListSerializer
-    ordering_fields = ["name", "created_at", "updated_at"]
+    ordering_fields = [
+        "name",
+        "created_at",
+        "updated_at",
+    ]
 
     def get_queryset(self):
         qs = super().get_queryset()

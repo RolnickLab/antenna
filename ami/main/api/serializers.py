@@ -621,7 +621,16 @@ class TaxaListSerializer(DefaultSerializer):
 
     class Meta:
         model = TaxaList
-        fields = ["id", "name", "description", "taxa", "taxa_count", "projects", "created_at", "updated_at"]
+        fields = [
+            "id",
+            "name",
+            "description",
+            "taxa",
+            "taxa_count",
+            "projects",
+            "created_at",
+            "updated_at",
+        ]
 
     def get_taxa(self, obj):
         """
