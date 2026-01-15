@@ -142,10 +142,32 @@ def get_resource(config: S3Config) -> S3ServiceResource:
 
 
 def create_bucket(config: S3Config, bucket_name: str, exists_ok: bool = True) -> CreateBucketOutputTypeDef | None:
+    """
+    Create an S3 bucket.
+
+    Note: This is primarily used for testing. In production, users are expected to
+    create their own buckets and provide credentials to Antenna.
+
+    Args:
+        config: S3 configuration including region
+        bucket_name: Name of the bucket to create
+        exists_ok: If True, don't raise an error if bucket already exists
+
+    Returns:
+        CreateBucketOutputTypeDef or None if bucket already exists and exists_ok=True
+    """
     client = get_s3_client(config)
     try:
-        # Create bucket if it doesn't exist
-        return client.create_bucket(Bucket=bucket_name)
+        # AWS requires CreateBucketConfiguration for non-us-east-1 regions
+        # See: https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucket.html
+        if config.region and config.region != "us-east-1":
+            return client.create_bucket(
+                Bucket=bucket_name,
+                CreateBucketConfiguration={"LocationConstraint": config.region},
+            )
+        else:
+            # us-east-1 or no region (Swift/MinIO) - don't specify CreateBucketConfiguration
+            return client.create_bucket(Bucket=bucket_name)
     except botocore.exceptions.ClientError as e:
         error_code = e.response.get("Error", {}).get("Code", "UnknownBotoError")
         if error_code == "BucketAlreadyOwnedByYou" and exists_ok:
