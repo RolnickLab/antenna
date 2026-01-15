@@ -636,8 +636,9 @@ class TaxaListSerializer(DefaultSerializer):
     def get_taxa_count(self, obj):
         """
         Return the number of taxa in this list.
+        Uses annotated_taxa_count if available (from ViewSet) for performance.
         """
-        return obj.taxa.count()
+        return getattr(obj, "annotated_taxa_count", obj.taxa.count())
 
 
 class CaptureTaxonSerializer(DefaultSerializer):

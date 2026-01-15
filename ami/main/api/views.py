@@ -1615,6 +1615,8 @@ class TaxaListViewSet(DefaultViewSet, ProjectMixin):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # Annotate with taxa count for better performance
+        qs = qs.annotate(annotated_taxa_count=models.Count("taxa"))
         project = self.get_active_project()
         if project:
             return qs.filter(projects=project)
