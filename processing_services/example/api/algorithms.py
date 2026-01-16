@@ -3,6 +3,7 @@ import logging
 import math
 import random
 
+import numpy as np
 import torch
 
 from .schemas import (
@@ -28,7 +29,7 @@ def get_best_device() -> str:
     MPS is not supported by the current algoritms.
     """
     if torch.cuda.is_available():
-        return f"cuda:{torch.cuda.current_device()}"
+        return f"cuda: {torch.cuda.current_device()}"
     else:
         return "cpu"
 
@@ -178,6 +179,148 @@ class ZeroShotObjectDetector(Algorithm):
         )
 
 
+class FlatBugObjectDetector(Algorithm):
+    """
+    Flat-bug Object Detection model.
+    Uses the flat-bug library for terrestrial arthropod detection and segmentation.
+    Produces both a bounding box and a classification for each detection.
+    """
+
+    candidate_labels: list[str] = ["insect"]
+
+    def compile(self, device: str | None = None):
+        saved_models_key = "flat_bug_object_detector"  # generate a key for each uniquely compiled algorithm
+
+        if saved_models_key not in SAVED_MODELS:
+            from flat_bug.predictor import Predictor
+
+            device_choice = device or get_best_device()
+            # device_index = int(device_choice.split(":")[-1]) if ":" in device_choice else -1
+            logger.info(f"Compiling {self.algorithm_config_response.name} on device {device_choice}...")
+
+            # Initialize flat-bug predictor with default model
+            self.model = Predictor(model="flat_bug_M.pt", device=device_choice)  # Default flat-bug model
+
+            # Set some reasonable hyperparameters
+            # TIME=False is critical to avoid CUDA event errors when running on CPU
+            self.model.set_hyperparameters(
+                SCORE_THRESHOLD=0.5, IOU_THRESHOLD=0.5, TIME=False  # Must be False for CPU compatibility
+            )
+
+            SAVED_MODELS[saved_models_key] = self.model
+        else:
+            logger.info(f"Using saved model for {self.algorithm_config_response.name}...")
+            self.model = SAVED_MODELS[saved_models_key]
+
+    def run(self, source_images: list[SourceImage], intermediate=False) -> list[Detection]:
+        detector_responses: list[Detection] = []
+        for source_image in source_images:
+            if source_image.width and source_image.height and source_image._pil:
+                start_time = datetime.datetime.now()
+                logger.info("Predicting with flat-bug...")
+
+                # Convert PIL image to tensor (flat-bug expects tensor, not PIL Image)
+                # Convert PIL to numpy then to tensor in CHW format
+                image_np = np.array(source_image._pil)
+                image_tensor = torch.from_numpy(image_np).permute(2, 0, 1).float()
+
+                # Use flat-bug's pyramid_predictions method with tensor input
+                predictions = self.model.pyramid_predictions(image_tensor)
+
+                end_time = datetime.datetime.now()
+                elapsed_time = (end_time - start_time).total_seconds()
+
+                # Extract bounding boxes from flat-bug predictions
+                # flat-bug returns TensorPredictions with boxes, confs (not scores), and classes
+                # Based on test results: boxes=int64, confs=float32, classes=float32
+                if hasattr(predictions, "boxes") and predictions.boxes is not None:
+                    boxes = predictions.boxes.cpu().numpy()  # Convert to numpy (int64)
+                    scores = (
+                        predictions.confs.cpu().numpy()  # Use 'confs' not 'scores' (float32)
+                        if hasattr(predictions, "confs") and predictions.confs is not None
+                        else None
+                    )
+
+                    for i, box in enumerate(boxes):
+                        # box format from flat-bug is xyxy: [x1, y1, x2, y2] (verified via test)
+                        x1, y1, x2, y2 = box
+
+                        bbox = BoundingBox(
+                            x1=float(x1),
+                            x2=float(x2),
+                            y1=float(y1),
+                            y2=float(y2),
+                        )
+
+                        cropped_image_pil = source_image._pil.crop((bbox.x1, bbox.y1, bbox.x2, bbox.y2))
+
+                        # Get confidence score if available
+                        confidence_score = float(scores[i]) if scores is not None and i < len(scores) else 0.5
+
+                        detection = Detection(
+                            id=f"{source_image.id}-crop-{bbox.x1}-{bbox.y1}-{bbox.x2}-{bbox.y2}",
+                            url=source_image.url,  # @TODO: ideally, should save cropped image at separate url
+                            width=cropped_image_pil.width,
+                            height=cropped_image_pil.height,
+                            timestamp=datetime.datetime.now(),
+                            source_image=source_image,
+                            bbox=bbox,
+                            inference_time=elapsed_time,
+                            algorithm=AlgorithmReference(
+                                name=self.algorithm_config_response.name,
+                                key=self.algorithm_config_response.key,
+                            ),
+                            classifications=[
+                                ClassificationResponse(
+                                    classification=self.candidate_labels[
+                                        0
+                                    ],  # flat-bug detects arthropods, use first label
+                                    labels=self.candidate_labels,
+                                    scores=[confidence_score],
+                                    logits=[confidence_score],
+                                    inference_time=elapsed_time,
+                                    timestamp=datetime.datetime.now(),
+                                    algorithm=AlgorithmReference(
+                                        name=self.algorithm_config_response.name,
+                                        key=self.algorithm_config_response.key,
+                                    ),
+                                    terminal=not intermediate,
+                                )
+                            ],
+                        )
+                        detection._pil = cropped_image_pil
+                        detector_responses.append(detection)
+                else:
+                    logger.info("No detections found in image")
+            else:
+                raise ValueError(f"Source image {source_image.id} does not have width and height attributes.")
+
+        return detector_responses
+
+    def get_category_map(self) -> AlgorithmCategoryMapResponse:
+        return AlgorithmCategoryMapResponse(
+            data=[{"index": i, "label": label} for i, label in enumerate(self.candidate_labels)],
+            labels=self.candidate_labels,
+            version="v1",  # TODO confirm version
+            description="Candidate labels used for flat-bug object detection.",
+            uri=None,
+        )
+
+    def get_algorithm_config_response(self) -> AlgorithmConfigResponse:
+        return AlgorithmConfigResponse(
+            name="Flat Bug Object Detector",
+            key="flat-bug-object-detector",
+            task_type="detection",
+            description=(
+                "Flat Bug Object Detection model."
+                "Produces both a bounding box and a candidate label classification for each detection."
+            ),
+            version=1,
+            version_name="v1",  # TODO confirm version
+            category_map=self.get_category_map(),
+        )
+
+
 class HFImageClassifier(Algorithm):
     """
     A  local classifier that uses the Hugging Face pipeline to classify images.
@@ -277,7 +420,7 @@ class HFImageClassifier(Algorithm):
             labels=labels,
             version="ImageNet-1k",
             description=description_text,
-            uri=f"https://huggingface.co/{self.model_name}",
+            uri=f"https://huggingface.co/{self.model_name}",  # noqa: E231
         )
 
     def get_algorithm_config_response(self) -> AlgorithmConfigResponse:

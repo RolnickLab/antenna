@@ -5,6 +5,7 @@ from typing import final
 from .algorithms import (
     Algorithm,
     ConstantClassifier,
+    FlatBugObjectDetector,
     HFImageClassifier,
     RandomSpeciesClassifier,
     ZeroShotObjectDetector,
@@ -345,4 +346,35 @@ class ZeroShotObjectDetectorWithConstantClassifierPipeline(Pipeline):
         )
         logger.info(f"Successfully processed {len(detections_with_classifications)} detections.")
 
+        return pipeline_response
+
+
+class FlatBugDetectorPipeline(Pipeline):
+    """
+    A pipeline that uses the flat-bug object detector for arthropod detection.
+    Produces both a bounding box and a classification for each detection.
+    """
+
+    batch_sizes = [1]
+    config = PipelineConfigResponse(
+        name="Flat Bug Object Detector Pipeline",
+        slug="flat-bug-object-detector-pipeline",
+        description="Flat Bug object detector for terrestrial arthropods.",
+        version=1,
+        algorithms=[FlatBugObjectDetector().algorithm_config_response],
+    )
+
+    def get_stages(self) -> list[Algorithm]:
+        flat_bug_detector = FlatBugObjectDetector()
+        self.config.algorithms = [flat_bug_detector.algorithm_config_response]
+        return [flat_bug_detector]
+
+    def run(self) -> PipelineResultsResponse:
+        start_time = datetime.datetime.now()
+        logger.info("[1/1] Running the flat-bug object detector...")
+        detections = self._get_detections(self.stages[0], self.source_images, self.batch_sizes[0])
+        end_time = datetime.datetime.now()
+        elapsed_time = (end_time - start_time).total_seconds()
+        pipeline_response: PipelineResultsResponse = self._get_pipeline_response(detections, elapsed_time)
+        logger.info(f"Successfully processed {len(detections)} detections.")
         return pipeline_response
