@@ -41,11 +41,13 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
     # Prepare all messages outside of async context to avoid Django ORM issues
     tasks: list[tuple[int, PipelineProcessingTask]] = []
     image_ids = []
+    skipped_count = 0
     for image in images:
         image_id = str(image.pk)
         image_url = image.url() if hasattr(image, "url") and image.url() else ""
         if not image_url:
             job.logger.warning(f"Image {image.pk} has no URL, skipping queuing to NATS for job '{job.pk}'")
+            skipped_count += 1
             continue
         image_ids.append(image_id)
         task = PipelineProcessingTask(
@@ -85,18 +87,27 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
 
     if tasks:
         successful_queues, failed_queues = async_to_sync(queue_all_images)()
+        # Add skipped images to failed count
+        failed_queues += skipped_count
     else:
-        job.progress.update_stage("process", status=JobState.SUCCESS, progress=1.0)
-        job.progress.update_stage("results", status=JobState.SUCCESS, progress=1.0)
+        # If no tasks but there are skipped images, mark as failed
+        if skipped_count > 0:
+            job.progress.update_stage("process", status=JobState.FAILURE, progress=1.0)
+            job.progress.update_stage("results", status=JobState.FAILURE, progress=1.0)
+        else:
+            job.progress.update_stage("process", status=JobState.SUCCESS, progress=1.0)
+            job.progress.update_stage("results", status=JobState.SUCCESS, progress=1.0)
         job.save()
-        successful_queues, failed_queues = 0, 0
+        successful_queues, failed_queues = 0, skipped_count
 
     # Log results (back in sync context)
     if successful_queues > 0:
         job.logger.info(f"Successfully queued {successful_queues}/{len(images)} images to stream for job '{job.pk}'")
 
     if failed_queues > 0:
-        job.logger.warning(f"Failed to queue {failed_queues}/{len(images)} images to stream for job '{job.pk}'")
+        job.logger.warning(
+            f"Failed to queue {failed_queues}/{len(images)} images to stream for job '{job.pk}' (including {skipped_count} skipped images)"
+        )
         return False
 
     return True

@@ -267,11 +267,17 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         else:
             results = [request.data]
 
-        queued_tasks = []
         try:
-            # Queue each result for background processing
+            # Pre-validate all results before enqueuing any tasks
+            # This prevents partial queueing and duplicate task processing
+            validated_results = []
             for item in results:
                 task_result = PipelineTaskResult(**item)
+                validated_results.append(task_result)
+
+            # All validation passed, now queue all tasks
+            queued_tasks = []
+            for task_result in validated_results:
                 reply_subject = task_result.reply_subject
                 result_data = task_result.result
 
