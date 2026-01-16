@@ -18,8 +18,6 @@ from ami.base.views import ProjectMixin
 from ami.jobs.schemas import batch_param, ids_only_param, incomplete_only_param
 from ami.jobs.tasks import process_pipeline_result
 from ami.main.api.schemas import project_id_doc_param
-
-# from ami.jobs.tasks import process_pipeline_result  # TODO: Uncomment when available in main
 from ami.main.api.views import DefaultViewSet
 from ami.ml.schemas import PipelineTaskResult
 from ami.utils.fields import url_boolean_param

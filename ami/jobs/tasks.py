@@ -125,7 +125,9 @@ def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject:
         _update_job_progress(job_id, "results", progress_info.percentage)
 
     except Exception as e:
-        job.logger.error(f"Failed to process pipeline result for job {job_id}: {e}. Retrying ...")
+        job.logger.error(
+            f"Failed to process pipeline result for job {job_id}: {e}. NATS will redeliver the task message."
+        )
 
 
 def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> None:

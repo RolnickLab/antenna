@@ -7,7 +7,7 @@ from ami.ml.orchestration.task_state import TaskStateManager
 from ami.ml.schemas import PipelineProcessingTask
 
 
-# TODO CGJS: Call this once a job is fully complete (all images processed and saved)
+# TODO CGJS: (Issue #1083) Call this once a job is fully complete (all images processed and saved)
 def cleanup_nats_resources(job: "Job") -> bool:
     """
     Clean up NATS JetStream resources (stream and consumer) for a completed job.

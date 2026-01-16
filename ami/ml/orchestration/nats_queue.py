@@ -5,6 +5,9 @@ This module provides a TaskQueueManager that uses NATS JetStream for distributed
 task queuing with acknowledgment support via reply subjects. This allows workers
 to pull tasks over HTTP and acknowledge them later without maintaining a persistent
 connection to NATS.
+
+Other queue systems were considered, such as RabbitMQ and Beanstalkd. However, they don't
+support the visibility timeout semantics we want or a disconnected mode of pulling and ACKing tasks.
 """
 
 import json
