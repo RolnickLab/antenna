@@ -1613,6 +1613,8 @@ class TaxaListViewSet(DefaultViewSet, ProjectMixin):
     serializer_class = TaxaListSerializer
     ordering_fields = [
         "name",
+        "description",
+        "annotated_taxa_count",
         "created_at",
         "updated_at",
     ]

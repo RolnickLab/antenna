@@ -1,7 +1,11 @@
 import { API_ROUTES } from 'data-services/constants'
 import { TaxaList } from 'data-services/models/taxa-list'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
-import { CellTheme, TableColumn } from 'design-system/components/table/types'
+import {
+  CellTheme,
+  TableColumn,
+  TextAlign,
+} from 'design-system/components/table/types'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { UpdateEntityDialog } from 'pages/project/entities/entity-details-dialog'
 import { Link } from 'react-router-dom'
@@ -16,6 +20,21 @@ export const columns: (projectId: string) => TableColumn<TaxaList>[] = (
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
     sortField: 'name',
+    renderCell: (item: TaxaList) => <BasicTableCell value={item.name} />,
+  },
+  {
+    id: 'description',
+    name: translate(STRING.FIELD_LABEL_DESCRIPTION),
+    sortField: 'description',
+    renderCell: (item: TaxaList) => <BasicTableCell value={item.description} />,
+  },
+  {
+    id: 'taxa',
+    name: translate(STRING.FIELD_LABEL_TAXA),
+    sortField: 'annotated_taxa_count',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
     renderCell: (item: TaxaList) => (
       <Link
         to={getAppRoute({
@@ -25,15 +44,9 @@ export const columns: (projectId: string) => TableColumn<TaxaList>[] = (
           filters: { include_unobserved: 'true', taxa_list_id: item.id },
         })}
       >
-        <BasicTableCell value={item.name} theme={CellTheme.Primary} />
+        <BasicTableCell value={item.taxaCount} theme={CellTheme.Bubble} />
       </Link>
     ),
-  },
-  {
-    id: 'description',
-    name: translate(STRING.FIELD_LABEL_DESCRIPTION),
-    sortField: 'description',
-    renderCell: (item: TaxaList) => <BasicTableCell value={item.description} />,
   },
   {
     id: 'created-at',

@@ -56,7 +56,6 @@ export const TaxaLists = () => {
         {canCreate && (
           <NewEntityDialog
             collection={API_ROUTES.TAXA_LISTS}
-            global
             isCompact
             type={translate(STRING.ENTITY_TYPE_TAXA_LIST)}
           />
