@@ -222,7 +222,6 @@ class PipelineProcessingTask(pydantic.BaseModel):
     id: str
     image_id: str
     image_url: str
-    queue_timestamp: str
     reply_subject: str | None = None  # The NATS subject to send the result to
     # TODO: Do we need these?
     # detections: list[DetectionRequest] | None = None

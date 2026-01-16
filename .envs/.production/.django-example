@@ -65,3 +65,7 @@ WEB_CONCURRENCY=4
 DEFAULT_PROCESSING_SERVICE_NAME="AMI Data Companion"
 DEFAULT_PROCESSING_SERVICE_ENDPOINT=https://ml.antenna.insectai.org/
 DEFAULT_PIPELINES_ENABLED=global_moths_2024,quebec_vermont_moths_2023,panama_moths_2023,uk_denmark_moths_2023
+
+# NATS
+# ------------------------------------------------------------------------------
+NATS_URL=nats://nats:4222
