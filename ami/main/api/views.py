@@ -33,7 +33,7 @@ from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.ml.models.processing_service import ProcessingService
-from ami.ml.schemas import PipelineRegistrationResponse
+from ami.ml.schemas import AsyncPipelineRegistrationRequest
 from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
@@ -228,8 +228,9 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
         """
         # Parse the incoming payload using the pydantic schema so we convert dicts to
         # the expected PipelineConfigResponse models
+
         try:
-            parsed: PipelineRegistrationResponse = PipelineRegistrationResponse.parse_obj(request.data)
+            parsed: AsyncPipelineRegistrationRequest = AsyncPipelineRegistrationRequest.parse_obj(request.data)
         except ValidationError as err:
             logger.debug(f"Invalid pipeline registration payload: {err}")
             return Response({"detail": str(err)}, status=status.HTTP_400_BAD_REQUEST)
@@ -237,22 +238,23 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
         project: Project = self.get_object()
 
         # TODO: Discuss the right approach for associating pipelines with projects in V2.
-        # For now, we create a dummy processing service if none exists (hack).
-
-        # Find an existing processing service for this project
-        processing_service = ProcessingService.objects.filter(projects=project).first()
+        processing_service = ProcessingService.objects.filter(
+            projects=project, name=parsed.processing_service_name
+        ).first()
 
         if not processing_service:
             # Create a dummy processing service and associate it with the project
             processing_service = ProcessingService.objects.create(
-                name=f"Dummy Processing Service for project {project.pk}",
-                endpoint_url=f"http://dummy.local/projects/{project.pk}/processing-service",
+                name=parsed.processing_service_name,
+                endpoint_url=None,  # TODO: depends on https://github.com/RolnickLab/antenna/pull/1090
             )
             processing_service.projects.add(project)
             processing_service.save()
             logger.info(f"Created dummy processing service {processing_service} for project {project.pk}")
 
-        pipeline_configs = parsed.pipelines if parsed and parsed.pipelines else None
+        pipeline_configs = None
+        if parsed and parsed.pipeline_response:
+            pipeline_configs = parsed.pipeline_response.pipelines
 
         # Call create_pipelines limited to this project
         response = processing_service.create_pipelines(

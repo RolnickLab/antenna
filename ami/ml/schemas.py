@@ -307,3 +307,12 @@ class PipelineRegistrationResponse(pydantic.BaseModel):
     pipelines: list[PipelineConfigResponse] = []
     pipelines_created: list[str] = []
     algorithms_created: list[str] = []
+
+
+class AsyncPipelineRegistrationRequest(pydantic.BaseModel):
+    """
+    Request to register pipelines from an async processing service
+    """
+
+    processing_service_name: str
+    pipeline_response: PipelineRegistrationResponse
