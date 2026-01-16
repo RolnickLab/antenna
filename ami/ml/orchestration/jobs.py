@@ -106,7 +106,8 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
 
     if failed_queues > 0:
         job.logger.warning(
-            f"Failed to queue {failed_queues}/{len(images)} images to stream for job '{job.pk}' (including {skipped_count} skipped images)"
+            f"Failed to queue {failed_queues}/{len(images)} images to stream for job '{job.pk}' (including "
+            f"{skipped_count} skipped images)"
         )
         return False
 
