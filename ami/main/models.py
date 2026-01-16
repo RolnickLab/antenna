@@ -20,6 +20,7 @@ from django.core.files.storage import default_storage
 from django.db import IntegrityError, models, transaction
 from django.db.models import Exists, OuterRef, Q
 from django.db.models.fields.files import ImageFieldFile
+from django.db.models.functions import Coalesce
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from django.template.defaultfilters import filesizeformat
@@ -215,6 +216,8 @@ class ProjectFeatureFlags(pydantic.BaseModel):
     tags: bool = False  # Whether the project supports tagging taxa
     reprocess_existing_detections: bool = False  # Whether to reprocess existing detections
     default_filters: bool = False  # Whether to show default filters form in UI
+    # Feature flag for jobs to reprocess all images in the project, even if already processed
+    reprocess_all_images: bool = False
 
 
 def get_default_feature_flags() -> ProjectFeatureFlags:
@@ -320,6 +323,24 @@ class Project(ProjectSettingsMixin, BaseModel):
         super().save(*args, **kwargs)
         # Add owner to members
         self.ensure_owner_membership()
+
+    def check_custom_permission(self, user, action: str) -> bool:
+        """
+        Check custom permissions for actions like 'charts'.
+        Charts is treated as a read-only operation, so it follows the same
+        permission logic as 'retrieve'.
+        """
+        from ami.users.roles import BasicMember
+
+        if action == "charts":
+            # Same permission logic as retrieve action
+            if self.draft:
+                # Allow view permission for members and owners of draft projects
+                return BasicMember.has_role(user, self) or user == self.owner or user.is_superuser
+            return True
+
+        # Fall back to default permission checking for other actions
+        return super().check_custom_permission(user, action)
 
     class Permissions:
         """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
@@ -1579,37 +1600,60 @@ def delete_source_image(sender, instance, **kwargs):
 
 
 class SourceImageQuerySet(BaseQuerySet):
-    def with_occurrences_count(self, classification_threshold: float = 0, project: Project | None = None):
+    def with_occurrences_count(self, project: Project | None = None, request=None):
         """
         Annotate each source image with the number of occurrences,
         filtered by default filters (score threshold and taxa inclusion/exclusion).
 
         Note: classification_threshold parameter is deprecated, use project default filters instead.
+
+        Uses a subquery to avoid GROUP BY in the pagination count query, which may
+        improve performance for large datasets.
         """
-        filter_q = build_occurrence_default_filters_q(project, None, "detections__occurrence")
-        return self.annotate(
-            occurrences_count=models.Count(
-                "detections__occurrence",
-                filter=filter_q,
-                distinct=True,
-            )
+        filter_q = build_occurrence_default_filters_q(project, request, "")
+
+        # Use a subquery instead of Count with joins to avoid GROUP BY in pagination count query
+        # The subquery counts distinct occurrences for each source image
+        # Use Coalesce to return 0 when the subquery returns NULL (no matching rows)
+        # @TODO update the SourceImageCollectionQuerySet to use the same approach
+        occurrences_subquery = (
+            Occurrence.objects.filter(detections__source_image_id=models.OuterRef("pk"))
+            .filter(filter_q)
+            .values("detections__source_image_id")  # Group by source_image_id to get one row per source_image
+            .annotate(count=models.Count("id", distinct=True))
+            .values("count")
         )
 
-    def with_taxa_count(self, classification_threshold: float = 0, project: Project | None = None):
+        return self.annotate(
+            occurrences_count=Coalesce(models.Subquery(occurrences_subquery, output_field=models.IntegerField()), 0)
+        )
+
+    def with_taxa_count(self, project: Project | None = None, request=None):
         """
         Annotate each source image with the number of distinct taxa,
         filtered by default filters (score threshold and taxa inclusion/exclusion).
 
         Note: classification_threshold parameter is deprecated, use project default filters instead.
+
+        Uses a subquery to avoid GROUP BY in the pagination count query, which may
+        improve performance for large datasets.
         """
-        filter_q = build_occurrence_default_filters_q(project, None, "detections__occurrence")
+        filter_q = build_occurrence_default_filters_q(project, request, "")
+
+        # Use a subquery instead of Count with joins to avoid GROUP BY in pagination count query
+        # The subquery counts distinct taxa for each source image
+        # Use Coalesce to return 0 when the subquery returns NULL (no matching rows)
+        # @TODO update the SourceImageCollectionQuerySet to use the same approach
+        taxa_subquery = (
+            Occurrence.objects.filter(detections__source_image_id=models.OuterRef("pk"))
+            .filter(filter_q)
+            .values("detections__source_image_id")  # Group by source_image_id to get one row per source_image
+            .annotate(count=models.Count("determination_id", distinct=True))
+            .values("count")
+        )
 
         return self.annotate(
-            taxa_count=models.Count(
-                "detections__occurrence__determination",
-                filter=filter_q,
-                distinct=True,
-            )
+            taxa_count=Coalesce(models.Subquery(taxa_subquery, output_field=models.IntegerField()), 0)
         )
 
 
@@ -3418,8 +3462,8 @@ class Taxon(BaseModel):
 
         plots = []
 
+        plots.append(charts.average_occurrences_per_day(project_pk=project.pk, taxon_pk=self.pk))
         plots.append(charts.average_occurrences_per_month(project_pk=project.pk, taxon_pk=self.pk))
-        plots.append(charts.relative_occurrences_per_month(project_pk=project.pk, taxon_pk=self.pk))
 
         return plots
 
@@ -3572,14 +3616,16 @@ class SourceImageCollectionQuerySet(BaseQuerySet):
             )
         )
 
-    def with_occurrences_count(self, classification_threshold: float = 0, project: Project | None = None):
+    def with_occurrences_count(
+        self, classification_threshold: float = 0, project: Project | None = None, request=None
+    ):
         """
         Annotate each collection with the number of occurrences,
         filtered by default filters (score threshold and taxa inclusion/exclusion).
 
         Note: classification_threshold parameter is deprecated, use project default filters instead.
         """
-        filter_q = build_occurrence_default_filters_q(project, None, "images__detections__occurrence")
+        filter_q = build_occurrence_default_filters_q(project, request, "images__detections__occurrence")
         return self.annotate(
             occurrences_count=models.Count(
                 "images__detections__occurrence",
@@ -3588,14 +3634,14 @@ class SourceImageCollectionQuerySet(BaseQuerySet):
             )
         )
 
-    def with_taxa_count(self, classification_threshold: float = 0, project: Project | None = None):
+    def with_taxa_count(self, classification_threshold: float = 0, project: Project | None = None, request=None):
         """
         Annotate each collection with the number of distinct taxa,
         filtered by default filters (score threshold and taxa inclusion/exclusion).
 
         Note: classification_threshold parameter is deprecated, use project default filters instead.
         """
-        filter_q = build_occurrence_default_filters_q(project, None, "images__detections__occurrence")
+        filter_q = build_occurrence_default_filters_q(project, request, "images__detections__occurrence")
         return self.annotate(
             taxa_count=models.Count(
                 "images__detections__occurrence__determination",
@@ -3865,11 +3911,30 @@ class SourceImageCollection(BaseModel):
         )
         if deployment_id:
             qs = qs.filter(deployment=deployment_id)
-        if exclude_events:
-            qs = qs.exclude(event__in=exclude_events)
-        qs.exclude(event__in=exclude_events)
+        qs = qs.exclude(event__in=exclude_events)
+        # Limit to project
         qs = qs.filter(project=self.project)
-        return sample_captures_by_interval(minute_interval=minute_interval, qs=qs)
+
+        # Sample per-deployment so the minute interval applies independently per station.
+        # If specific deployment ids are provided, use them; otherwise iterate over all deployments
+        # in the project and sample each separately.
+        if deployment_ids is not None:
+            deps = deployment_ids
+        elif deployment_id is not None:
+            deps = [deployment_id]
+        else:
+            deps = list(self.project.deployments.values_list("id", flat=True))
+
+        captures: set[SourceImage] = set()
+        for dep in deps:
+            dep_qs = qs.filter(deployment=dep)
+            for c in sample_captures_by_interval(minute_interval=minute_interval, qs=dep_qs):
+                captures.add(c)
+
+        # Return results in a deterministic order. Sort by timestamp (oldest first),
+        # then by primary key to stabilize ordering when timestamps are equal.
+        captures_list = sorted(captures, key=lambda s: (s.timestamp is None, s.timestamp, s.pk))
+        return captures_list
 
     def sample_positional(self, position: int = -1):
         """Sample the single nth source image from all events in the project"""

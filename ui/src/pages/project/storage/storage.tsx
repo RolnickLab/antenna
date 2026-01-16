@@ -7,6 +7,7 @@ import { TableSortSettings } from 'design-system/components/table/types'
 import { NewEntityDialog } from 'pages/project/entities/new-entity-dialog'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { DOCS_LINKS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { UserPermission } from 'utils/user/types'
@@ -30,12 +31,11 @@ export const Storage = () => {
   return (
     <>
       <PageHeader
-        title={translate(STRING.NAV_ITEM_STORAGE)}
-        subTitle={translate(STRING.RESULTS, {
-          total,
-        })}
-        isLoading={isLoading}
+        docsLink={DOCS_LINKS.CONFIGURING_DATA_SOURCE}
         isFetching={isFetching}
+        isLoading={isLoading}
+        subTitle={translate(STRING.RESULTS, { total })}
+        title={translate(STRING.NAV_ITEM_STORAGE)}
         tooltip={translate(STRING.TOOLTIP_STORAGE)}
       >
         {canCreate && (

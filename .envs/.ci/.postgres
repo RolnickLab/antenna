@@ -3,3 +3,5 @@ POSTGRES_PORT=5432
 POSTGRES_DB=ami-ci
 POSTGRES_USER=4JXkOnTAeDmDyIapSRrGEE
 POSTGRES_PASSWORD=d4xojpnJU3OzPQ0apSCLP1oHR1TYvyMzAlF5KpE9HFL6MPlnbDibwI
+# DATABASE_URL is for optional convenience with certain tools (e.g., psql), not used by Django
+DATABASE_URL=postgresql://4JXkOnTAeDmDyIapSRrGEE:d4xojpnJU3OzPQ0apSCLP1oHR1TYvyMzAlF5KpE9HFL6MPlnbDibwI@postgres:5432/ami-ci

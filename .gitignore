@@ -280,3 +280,12 @@ antenna-flatbug/
 flat_bug_M.pt
 processing_services/example/flat_bug_M.pt
 processing_services/example/huggingface_cache/
+
+# huggingface cache
+huggingface_cache/
+
+# Docker Compose override for local debugging (copy from .example file)
+docker-compose.override.yml
+
+# Temporary files in current work session
+.agents/todo

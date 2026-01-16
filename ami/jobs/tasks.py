@@ -1,6 +1,5 @@
 import logging
 
-from celery.result import AsyncResult
 from celery.signals import task_failure, task_postrun, task_prerun
 
 from ami.tasks import default_soft_time_limit, default_time_limit
@@ -30,9 +29,14 @@ def run_job(self, job_id: int) -> None:
             job.logger.info(f"Finished job {job}")
 
 
-@task_postrun.connect(sender=run_job)
 @task_prerun.connect(sender=run_job)
-def update_job_status(sender, task_id, task, *args, **kwargs):
+def pre_update_job_status(sender, task_id, task, **kwargs):
+    # in the prerun signal, set the job status to PENDING
+    update_job_status(sender, task_id, task, "PENDING", **kwargs)
+
+
+@task_postrun.connect(sender=run_job)
+def update_job_status(sender, task_id, task, state: str, retval=None, **kwargs):
     from ami.jobs.models import Job
 
     job_id = task.request.kwargs["job_id"]
@@ -48,9 +52,7 @@ def update_job_status(sender, task_id, task, *args, **kwargs):
             logger.error(f"No job found for task {task_id} or job_id {job_id}")
             return
 
-    task = AsyncResult(task_id)  # I'm not sure if this is reliable
-    job.update_status(task.status, save=False)
-    job.save()
+    job.update_status(state)
 
 
 @task_failure.connect(sender=run_job, retry=False)

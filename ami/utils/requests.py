@@ -2,7 +2,6 @@ import typing
 
 import requests
 from django.forms import BooleanField, FloatField
-from drf_spectacular.utils import OpenApiParameter
 from requests.adapters import HTTPAdapter
 from rest_framework.request import Request
 from urllib3.util import Retry
@@ -39,6 +38,47 @@ def create_session(
     session.mount("http://", adapter)
     session.mount("https://", adapter)
     return session
+
+
+def extract_error_message_from_response(resp: requests.Response) -> str:
+    """
+    Extract detailed error information from an HTTP response.
+
+    Prioritizes the "detail" field from JSON responses (FastAPI standard),
+    falls back to other fields, text content, or raw bytes.
+
+    Args:
+        resp: The HTTP response object
+
+    Returns:
+        A formatted error message string
+    """
+    error_details = [f"HTTP {resp.status_code}: {resp.reason}"]
+
+    try:
+        # Try to parse JSON response
+        resp_json = resp.json()
+        if isinstance(resp_json, dict):
+            # Check for the standard "detail" field first
+            if "detail" in resp_json:
+                error_details.append(f"Detail: {resp_json['detail']}")
+            else:
+                # Fallback: add all fields from the error response
+                for key, value in resp_json.items():
+                    error_details.append(f"{key}: {value}")
+        else:
+            error_details.append(f"Response: {resp_json}")
+    except (ValueError, KeyError):
+        # If JSON parsing fails, try to get text content
+        try:
+            content_text = resp.text
+            if content_text:
+                error_details.append(f"Response text: {content_text[:500]}")  # Limit to first 500 chars
+        except Exception:
+            # Last resort: raw content
+            error_details.append(f"Response content: {resp.content[:500]}")
+
+    return " | ".join(error_details)
 
 
 def get_active_classification_threshold(request: Request) -> float:
@@ -102,11 +142,3 @@ def get_default_classification_threshold(project: "Project | None" = None, reque
         return project.default_filters_score_threshold
     else:
         return default_threshold
-
-
-project_id_doc_param = OpenApiParameter(
-    name="project_id",
-    description="Filter by project ID",
-    required=False,
-    type=int,
-)

@@ -1,14 +1,15 @@
 import { useDeployments } from 'data-services/hooks/deployments/useDeployments'
 import { PageHeader } from 'design-system/components/page-header/page-header'
+import { SortControl } from 'design-system/components/sort-control'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import { DeploymentDetailsDialog } from 'pages/deployment-details/deployment-details-dialog'
 import { NewDeploymentDialog } from 'pages/deployment-details/new-deployment-dialog'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
-import { useClientSideSort } from 'utils/useClientSideSort'
 import { useColumnSettings } from 'utils/useColumnSettings'
 import { UserPermission } from 'utils/user/types'
+import { useSort } from 'utils/useSort'
 import { columns } from './deployment-columns'
 
 export const Deployments = () => {
@@ -20,18 +21,19 @@ export const Deployments = () => {
     sessions: true,
     occurrences: true,
     taxa: true,
-    firstDate: true,
-    lastDate: true,
+    'first-date': true,
+    'last-date': true,
+  })
+  const { sort, setSort } = useSort({
+    field: 'name',
+    order: 'asc',
   })
   const { deployments, userPermissions, isLoading, isFetching, error } =
     useDeployments({
       projectId,
       pagination: { page: 0, perPage: 200 },
+      sort,
     })
-  const { sortedItems, sort, setSort } = useClientSideSort({
-    items: deployments,
-    defaultSort: { field: 'name', order: 'asc' },
-  })
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
   return (
@@ -45,12 +47,17 @@ export const Deployments = () => {
         isFetching={isFetching}
         tooltip={translate(STRING.TOOLTIP_DEPLOYMENT)}
       >
+        <SortControl
+          columns={columns(projectId as string)}
+          setSort={setSort}
+          sort={sort}
+        />
+        {canCreate ? <NewDeploymentDialog /> : null}
         <ColumnSettings
           columns={columns(projectId as string)}
           columnSettings={columnSettings}
           onColumnSettingsChange={setColumnSettings}
         />
-        {canCreate ? <NewDeploymentDialog /> : null}
       </PageHeader>
       <Table
         columns={columns(projectId as string).filter(
@@ -58,7 +65,7 @@ export const Deployments = () => {
         )}
         error={error}
         isLoading={!id && isLoading}
-        items={sortedItems}
+        items={deployments}
         onSortSettingsChange={setSort}
         sortable
         sortSettings={sort}
