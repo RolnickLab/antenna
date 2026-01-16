@@ -154,10 +154,8 @@ class ProcessingService(BaseModel):
         """
         # If no endpoint URL is configured, return a no-op response
         if self.endpoint_url is None:
-            timestamp = datetime.datetime.now()
-
             return ProcessingServiceStatusResponse(
-                timestamp=timestamp,
+                timestamp=datetime.datetime.now(),
                 request_successful=False,
                 server_live=None,
                 pipelines_online=[],
