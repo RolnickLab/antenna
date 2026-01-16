@@ -12,6 +12,7 @@ import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { AddTaxonPopover } from './add-taxon/add-taxon-popover'
 
 export const columns: (projectId: string) => TableColumn<TaxaList>[] = (
   projectId: string
@@ -69,14 +70,13 @@ export const columns: (projectId: string) => TableColumn<TaxaList>[] = (
     },
     renderCell: (item: TaxaList) => (
       <div className="flex items-center justify-end gap-2 p-4">
-        {/* TODO: Check user permissions when returned by API */}
+        <AddTaxonPopover taxaListId={item.id} />
         <UpdateEntityDialog
           collection={API_ROUTES.TAXA_LISTS}
           entity={item}
           isCompact
           type={translate(STRING.ENTITY_TYPE_TAXA_LIST)}
         />
-
         <DeleteEntityDialog
           collection={API_ROUTES.TAXA_LISTS}
           id={item.id}

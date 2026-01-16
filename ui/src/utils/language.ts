@@ -1,5 +1,6 @@
 export enum STRING {
   /* BUTTON */
+  ADD,
   REGISTER_PIPELINES,
   BACK,
   CANCEL,
@@ -42,6 +43,7 @@ export enum STRING {
   VIEW_PUBLIC_PROJECTS,
 
   /* ENTITY */
+  ENTITY_ADD,
   ENTITY_CREATE,
   ENTITY_DELETE,
   ENTITY_DETAILS,
@@ -57,6 +59,7 @@ export enum STRING {
   ENTITY_TYPE_PROJECT_DETAILS,
   ENTITY_TYPE_PROJECT,
   ENTITY_TYPE_TAXA_LIST,
+  ENTITY_TYPE_TAXON,
   ENTITY_VIEW,
 
   /* FIELD_LABEL */
@@ -287,6 +290,7 @@ export enum STRING {
 
 const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* BUTTON */
+  [STRING.ADD]: 'Add',
   [STRING.REGISTER_PIPELINES]: 'Register pipelines',
   [STRING.BACK]: 'Back',
   [STRING.CANCEL]: 'Cancel',
@@ -422,6 +426,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_VERSION_NAME]: 'Version Name',
 
   /* ENTITY */
+  [STRING.ENTITY_ADD]: 'Add {{type}}',
   [STRING.ENTITY_CREATE]: 'Create new {{type}}',
   [STRING.ENTITY_DELETE]: 'Delete {{type}}',
   [STRING.ENTITY_DETAILS]: '{{type}} details',
@@ -437,6 +442,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.ENTITY_TYPE_PROJECT_DETAILS]: 'project details',
   [STRING.ENTITY_TYPE_PROJECT]: 'project',
   [STRING.ENTITY_TYPE_TAXA_LIST]: 'taxa list',
+  [STRING.ENTITY_TYPE_TAXON]: 'taxon',
   [STRING.ENTITY_VIEW]: 'View {{type}}',
 
   /* MESSAGE */

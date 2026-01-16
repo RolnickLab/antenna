@@ -2,6 +2,7 @@ import { Taxon } from 'data-services/models/taxa'
 import { PlusIcon } from 'lucide-react'
 import { Button, Popover } from 'nova-ui-kit'
 import { useState } from 'react'
+import { STRING, translate } from 'utils/language'
 import { TaxonSearch } from './taxon-search'
 
 export const AddTaxon = ({ onAdd }: { onAdd: (taxon?: Taxon) => void }) => {
@@ -17,7 +18,11 @@ export const AddTaxon = ({ onAdd }: { onAdd: (taxon?: Taxon) => void }) => {
           className="w-full justify-between px-4 text-muted-foreground font-normal"
         >
           <>
-            <span>Add taxon</span>
+            <span>
+              {translate(STRING.ENTITY_ADD, {
+                type: translate(STRING.ENTITY_TYPE_TAXON),
+              })}
+            </span>
             <PlusIcon className="h-4 w-4 ml-2" />
           </>
         </Button>
