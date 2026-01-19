@@ -687,6 +687,25 @@ class TestPipeline(TestCase):
         final_config = self.pipeline.get_config(self.project.pk)
         self.assertEqual(final_config["test_param"], "project_value")
 
+    def test_image_with_null_detection(self):
+        """
+        Test saving results for a pipeline that returns null detections for some images.
+        """
+        results = self.fake_pipeline_results(self.test_images, self.pipeline)
+
+        # Manually change the results for a single image to a list of empty detections
+        first_image_id = results.source_images[0].id
+        new_detections = [detection for detection in results.detections if detection.source_image_id == first_image_id]
+        results.detections = new_detections
+
+        save_results(results)
+
+        # After save is done, each image should have at least one detection,
+        # even if the detection list from the PS was empty.
+        for image in self.test_images:
+            image.save()
+            self.assertEqual(image.detections_count, 1)
+
 
 class TestAlgorithmCategoryMaps(TestCase):
     def setUp(self):
