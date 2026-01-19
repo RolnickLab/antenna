@@ -93,6 +93,9 @@ export const APP_ROUTES = {
 
   TAXA: (params: { projectId: string }) => `/projects/${params.projectId}/taxa`,
 
+  TAXA_LISTS: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/taxa-lists`,
+
   TAXON_DETAILS: (params: { projectId: string; taxonId: string }) =>
     `/projects/${params.projectId}/taxa/${params.taxonId}`,
 }

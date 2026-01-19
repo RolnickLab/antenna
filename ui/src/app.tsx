@@ -112,6 +112,7 @@ export const App = () => (
             <Route path="summary" element={<Summary />} />
             <Route path="collections" element={<Collections />} />
             <Route path="collections/:id" element={<CollectionDetails />} />
+            <Route path="taxa-lists" element={<TaxaLists />} />
             <Route path="exports/:id?" element={<Exports />} />
             <Route
               path="processing-services/:id?"
@@ -133,7 +134,6 @@ export const App = () => (
           <Route path="sessions/:id" element={<SessionDetails />} />
           <Route path="occurrences/:id?" element={<Occurrences />} />
           <Route path="taxa/:id?" element={<Species />} />
-          <Route path="taxa/taxa-lists" element={<TaxaLists />} />
         </Route>
         <Route
           path="/terms-of-service"
