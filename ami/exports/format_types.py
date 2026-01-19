@@ -8,7 +8,7 @@ from rest_framework import serializers
 
 from ami.exports.base import BaseExporter
 from ami.exports.utils import get_data_in_batches
-from ami.main.models import Occurrence
+from ami.main.models import Occurrence, get_media_url
 
 logger = logging.getLogger(__name__)
 
@@ -140,8 +140,6 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
         Returns the full URL to the cropped detection image.
         Uses the annotated best_detection_path from the queryset.
         """
-        from ami.main.models import get_media_url
-        
         path = getattr(obj, "best_detection_path", None)
         return get_media_url(path) if path else None
     

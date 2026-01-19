@@ -2618,7 +2618,7 @@ class OccurrenceQuerySet(BaseQuerySet):
         
         Adds the following annotations:
         - best_detection_path: The path to the detection image
-        - best_detection_bbox: The bounding box of the detection as a JSON array
+        - best_detection_bbox: The bounding box of the detection as a list [x1, y1, x2, y2]
         """
         # Subquery to get the path of the best detection
         # Use id as secondary sort to ensure deterministic results
