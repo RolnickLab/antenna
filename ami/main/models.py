@@ -2621,16 +2621,18 @@ class OccurrenceQuerySet(BaseQuerySet):
         - best_detection_bbox: The bounding box of the detection as a JSON array
         """
         # Subquery to get the path of the best detection
+        # Use id as secondary sort to ensure deterministic results
         best_detection_path_subquery = (
             Detection.objects.filter(occurrence=OuterRef("pk"))
-            .order_by("-classifications__score")
+            .order_by("-classifications__score", "id")
             .values("path")[:1]
         )
         
         # Subquery to get the bbox of the best detection
+        # Use id as secondary sort to ensure deterministic results
         best_detection_bbox_subquery = (
             Detection.objects.filter(occurrence=OuterRef("pk"))
-            .order_by("-classifications__score")
+            .order_by("-classifications__score", "id")
             .values("bbox")[:1]
         )
         
