@@ -70,18 +70,22 @@ export const columns: (projectId: string) => TableColumn<TaxaList>[] = (
     },
     renderCell: (item: TaxaList) => (
       <div className="flex items-center justify-end gap-2 p-4">
-        <AddTaxonPopover taxaListId={item.id} />
-        <UpdateEntityDialog
-          collection={API_ROUTES.TAXA_LISTS}
-          entity={item}
-          isCompact
-          type={translate(STRING.ENTITY_TYPE_TAXA_LIST)}
-        />
-        <DeleteEntityDialog
-          collection={API_ROUTES.TAXA_LISTS}
-          id={item.id}
-          type={translate(STRING.ENTITY_TYPE_TAXA_LIST)}
-        />
+        {item.canUpdate ? <AddTaxonPopover taxaListId={item.id} /> : null}
+        {item.canUpdate ? (
+          <UpdateEntityDialog
+            collection={API_ROUTES.TAXA_LISTS}
+            entity={item}
+            isCompact
+            type={translate(STRING.ENTITY_TYPE_TAXA_LIST)}
+          />
+        ) : null}
+        {item.canDelete ? (
+          <DeleteEntityDialog
+            collection={API_ROUTES.TAXA_LISTS}
+            id={item.id}
+            type={translate(STRING.ENTITY_TYPE_TAXA_LIST)}
+          />
+        ) : null}
       </div>
     ),
   },
