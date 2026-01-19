@@ -91,6 +91,10 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
     determination_name = serializers.CharField(source="determination.name", allow_null=True)
     determination_score = serializers.FloatField(allow_null=True)
     verification_status = serializers.SerializerMethodField()
+    
+    best_detection_url = serializers.SerializerMethodField()
+    best_detection_width = serializers.SerializerMethodField()
+    best_detection_height = serializers.SerializerMethodField()
 
     class Meta:
         model = Occurrence
@@ -110,6 +114,9 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
             "first_appearance_timestamp",
             "last_appearance_timestamp",
             "duration",
+            "best_detection_url",
+            "best_detection_width",
+            "best_detection_height",
         ]
 
     def get_verification_status(self, obj):
@@ -117,6 +124,36 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
         Returns 'Verified' if the occurrence has identifications, otherwise 'Not verified'.
         """
         return "Verified" if obj.identifications.exists() else "Not verified"
+    
+    def get_best_detection_url(self, obj):
+        """
+        Returns the full URL to the cropped detection image.
+        Uses the annotated best_detection_path from the queryset.
+        """
+        from ami.main.models import get_media_url
+        
+        path = getattr(obj, "best_detection_path", None)
+        return get_media_url(path) if path else None
+    
+    def get_best_detection_width(self, obj):
+        """
+        Returns the width of the detection bounding box.
+        Uses the annotated best_detection_bbox from the queryset.
+        """
+        bbox = getattr(obj, "best_detection_bbox", None)
+        if bbox and isinstance(bbox, list) and len(bbox) == 4:
+            return bbox[2] - bbox[0]
+        return None
+    
+    def get_best_detection_height(self, obj):
+        """
+        Returns the height of the detection bounding box.
+        Uses the annotated best_detection_bbox from the queryset.
+        """
+        bbox = getattr(obj, "best_detection_bbox", None)
+        if bbox and isinstance(bbox, list) and len(bbox) == 4:
+            return bbox[3] - bbox[1]
+        return None
 
 
 class CSVExporter(BaseExporter):
@@ -138,6 +175,7 @@ class CSVExporter(BaseExporter):
             .with_timestamps()  # type: ignore[union-attr]  Custom queryset method
             .with_detections_count()
             .with_identifications()
+            .with_best_detection()  # type: ignore[union-attr]  Custom queryset method
         )
 
     def export(self):

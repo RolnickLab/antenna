@@ -2611,6 +2611,34 @@ class OccurrenceQuerySet(BaseQuerySet):
             "identifications__user",
         )
 
+    def with_best_detection(self):
+        """
+        Annotate the queryset with fields from the best detection.
+        The best detection is the one with the highest classification score.
+        
+        Adds the following annotations:
+        - best_detection_path: The path to the detection image
+        - best_detection_bbox: The bounding box of the detection as a JSON array
+        """
+        # Subquery to get the path of the best detection
+        best_detection_path_subquery = (
+            Detection.objects.filter(occurrence=OuterRef("pk"))
+            .order_by("-classifications__score")
+            .values("path")[:1]
+        )
+        
+        # Subquery to get the bbox of the best detection
+        best_detection_bbox_subquery = (
+            Detection.objects.filter(occurrence=OuterRef("pk"))
+            .order_by("-classifications__score")
+            .values("bbox")[:1]
+        )
+        
+        return self.annotate(
+            best_detection_path=models.Subquery(best_detection_path_subquery),
+            best_detection_bbox=models.Subquery(best_detection_bbox_subquery),
+        )
+
     def unique_taxa(self, project: Project | None = None):
         qs = self
         if project:
