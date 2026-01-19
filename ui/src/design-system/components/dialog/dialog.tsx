@@ -20,9 +20,7 @@ const Root = ({
   </Dialog.Root>
 )
 
-const Trigger = ({ children }: { children: ReactNode }) => (
-  <Dialog.Trigger asChild>{children}</Dialog.Trigger>
-)
+const Trigger = Dialog.Trigger
 
 const Content = ({
   ariaCloselabel,

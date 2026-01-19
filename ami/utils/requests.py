@@ -2,7 +2,6 @@ import typing
 
 import requests
 from django.forms import BooleanField, FloatField
-from drf_spectacular.utils import OpenApiParameter
 from requests.adapters import HTTPAdapter
 from rest_framework.request import Request
 from urllib3.util import Retry
@@ -143,11 +142,3 @@ def get_default_classification_threshold(project: "Project | None" = None, reque
         return project.default_filters_score_threshold
     else:
         return default_threshold
-
-
-project_id_doc_param = OpenApiParameter(
-    name="project_id",
-    description="Filter by project ID",
-    required=False,
-    type=int,
-)

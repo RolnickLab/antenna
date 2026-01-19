@@ -12,7 +12,7 @@ import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { IconButton, IconButtonTheme } from '../icon-button/icon-button'
 import { IconType } from '../icon/icon'
-import { Tooltip } from '../tooltip/tooltip'
+import { BasicTooltip } from '../tooltip/basic-tooltip'
 import styles from './input.module.scss'
 
 interface InputProps {
@@ -85,7 +85,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           />
           {initialType === 'password' && !disabled ? (
             <div className={styles.passwordButtonContainer}>
-              <Tooltip
+              <BasicTooltip
+                align="end"
+                asChild
                 content={`${type === 'password' ? 'Show' : 'Hide'} password`}
               >
                 <IconButton
@@ -95,7 +97,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
                     setType(type === 'password' ? 'text' : 'password')
                   }
                 />
-              </Tooltip>
+              </BasicTooltip>
             </div>
           ) : null}
         </div>

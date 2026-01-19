@@ -1,7 +1,7 @@
 import classNames from 'classnames'
 import { usePopulateCollection } from 'data-services/hooks/collections/usePopulateCollection'
 import { Collection } from 'data-services/models/collection'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { AlertCircleIcon, Loader2 } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
@@ -14,7 +14,8 @@ export const PopulateCollection = ({
   const { populateCollection, isLoading, error } = usePopulateCollection()
 
   return (
-    <Tooltip
+    <BasicTooltip
+      asChild
       content={
         error ? 'Could not populate the collection, please retry.' : undefined
       }
@@ -30,6 +31,6 @@ export const PopulateCollection = ({
         <span>{translate(STRING.POPULATE)}</span>
         {isLoading ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : null}
       </Button>
-    </Tooltip>
+    </BasicTooltip>
   )
 }
