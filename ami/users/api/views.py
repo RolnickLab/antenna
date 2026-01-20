@@ -77,22 +77,37 @@ class UserProjectMembershipViewSet(DefaultViewSet, ProjectMixin):
         role_cls = getattr(serializer, "_validated_role_cls", None)
         if not role_cls:
             raise ValueError("role_cls not set during validation")
-        with transaction.atomic():
-            membership.user = user
-            membership.save()
 
-            for r in Role.__subclasses__():
-                r.unassign_user(user, project)
+        # Disconnect signal before unassigning/assigning roles to prevent signal interference
+        # The membership already exists, so we don't need the signal to delete/recreate it
+        m2m_changed.disconnect(manage_project_membership, sender=Group.user_set.through)
+        try:
+            with transaction.atomic():
+                membership.user = user
+                membership.save()
 
-            role_cls.assign_user(user, project)
+                for r in Role.__subclasses__():
+                    r.unassign_user(user, project)
+
+                role_cls.assign_user(user, project)
+        finally:
+            # Reconnect signal
+            m2m_changed.connect(manage_project_membership, sender=Group.user_set.through)
 
     def perform_destroy(self, instance):
         user = instance.user
         project = instance.project
 
-        with transaction.atomic():
-            # remove roles for this project
-            for r in Role.__subclasses__():
-                r.unassign_user(user, project)
+        # Disconnect signal before unassigning roles to prevent signal interference
+        # The membership will be deleted explicitly below, so we don't need the signal to delete it
+        m2m_changed.disconnect(manage_project_membership, sender=Group.user_set.through)
+        try:
+            with transaction.atomic():
+                # remove roles for this project
+                for r in Role.__subclasses__():
+                    r.unassign_user(user, project)
 
-            instance.delete()
+                instance.delete()
+        finally:
+            # Reconnect signal
+            m2m_changed.connect(manage_project_membership, sender=Group.user_set.through)
