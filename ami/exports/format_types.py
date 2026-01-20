@@ -138,21 +138,19 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
         Returns the width of the detection bounding box.
         Uses the annotated best_detection_bbox from the queryset.
         """
-        from ami.main.models import Detection
         bbox = getattr(obj, "best_detection_bbox", None)
-        # Use Detection's validation method for consistency
+        # Inline validation to avoid circular imports
         if bbox and isinstance(bbox, list) and len(bbox) == 4:
             return abs(bbox[2] - bbox[0])
         return None
-    
+
     def get_best_detection_height(self, obj):
         """
         Returns the height of the detection bounding box.
         Uses the annotated best_detection_bbox from the queryset.
         """
-        from ami.main.models import Detection
         bbox = getattr(obj, "best_detection_bbox", None)
-        # Use Detection's validation method for consistency
+        # Inline validation to avoid circular imports
         if bbox and isinstance(bbox, list) and len(bbox) == 4:
             return abs(bbox[3] - bbox[1])
         return None
