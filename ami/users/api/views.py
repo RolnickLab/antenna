@@ -73,8 +73,10 @@ class UserProjectMembershipViewSet(DefaultViewSet, ProjectMixin):
     def perform_update(self, serializer):
         membership = self.get_object()
         project = membership.project
-        user = serializer._validated_user if hasattr(serializer, "_validated_user") else membership.user
-        role_cls = serializer._validated_role_cls
+        user = getattr(serializer, "_validated_user", None) or membership.user
+        role_cls = getattr(serializer, "_validated_role_cls", None)
+        if not role_cls:
+            raise ValueError("role_cls not set during validation")
         with transaction.atomic():
             membership.user = user
             membership.save()
