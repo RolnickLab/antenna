@@ -50,7 +50,7 @@ class UserProjectMembershipViewSet(DefaultViewSet, ProjectMixin):
 
     def perform_create(self, serializer):
         project = self.get_active_project()
-        user = serializer._validated_user
+        # user = serializer._validated_user
         role_cls = serializer._validated_role_cls
         with transaction.atomic():
             membership = serializer.save(project=project)

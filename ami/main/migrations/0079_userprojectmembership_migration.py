@@ -4,8 +4,8 @@ import django.db.models.deletion
 
 
 def forwards(apps, schema_editor):
-    Project = apps.get_model("main", "Project")
-    User = apps.get_model(settings.AUTH_USER_MODEL.split(".")[0], settings.AUTH_USER_MODEL.split(".")[1])
+    # Project = apps.get_model("main", "Project")
+    # User = apps.get_model(settings.AUTH_USER_MODEL.split(".")[0], settings.AUTH_USER_MODEL.split(".")[1])
     UserProjectMembership = apps.get_model("main", "UserProjectMembership")
 
     # Copy data from old implicit M2M

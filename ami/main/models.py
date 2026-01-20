@@ -410,7 +410,7 @@ class Project(ProjectSettingsMixin, BaseModel):
         CREATE_DEVICE = "create_device"
         DELETE_DEVICE = "delete_device"
         UPDATE_DEVICE = "update_device"
-        # User projet membership permissions
+        # User project membership permissions
         VIEW_USER_PROJECT_MEMBERSHIP = "view_userprojectmembership"
         CREATE_USER_PROJECT_MEMBERSHIP = "create_userprojectmembership"
         UPDATE_USER_PROJECT_MEMBERSHIP = "update_userprojectmembership"
