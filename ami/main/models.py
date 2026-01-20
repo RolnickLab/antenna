@@ -2505,13 +2505,29 @@ class Detection(BaseModel):
     #         self.bbox_height / self.source_image.height,
     #     )
 
+    def get_bbox_if_valid(self):
+        """
+        Validate and return the bounding box if it's properly formatted.
+        Returns the bbox list [x1, y1, x2, y2] if valid, None otherwise.
+        
+        This centralizes bbox validation logic for reuse across the codebase.
+        TODO: Replace with typed field (Django Pydantic JSON Schema field) in the future.
+        """
+        if self.bbox and isinstance(self.bbox, list) and len(self.bbox) == 4:
+            return self.bbox
+        return None
+
     def width(self) -> int | None:
-        if self.bbox and len(self.bbox) == 4:
-            return self.bbox[2] - self.bbox[0]
+        bbox = self.get_bbox_if_valid()
+        if bbox:
+            return abs(bbox[2] - bbox[0])
+        return None
 
     def height(self) -> int | None:
-        if self.bbox and len(self.bbox) == 4:
-            return self.bbox[3] - self.bbox[1]
+        bbox = self.get_bbox_if_valid()
+        if bbox:
+            return abs(bbox[3] - bbox[1])
+        return None
 
     class Meta:
         ordering = [

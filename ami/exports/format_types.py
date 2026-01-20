@@ -125,16 +125,6 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
         """
         return "Verified" if obj.identifications.exists() else "Not verified"
     
-    def _get_best_detection_bbox(self, obj):
-        """
-        Helper method to extract and validate the bbox from annotated data.
-        Returns the bbox list if valid, None otherwise.
-        """
-        bbox = getattr(obj, "best_detection_bbox", None)
-        if bbox and isinstance(bbox, list) and len(bbox) == 4:
-            return bbox
-        return None
-    
     def get_best_detection_url(self, obj):
         """
         Returns the full URL to the cropped detection image.
@@ -148,16 +138,24 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
         Returns the width of the detection bounding box.
         Uses the annotated best_detection_bbox from the queryset.
         """
-        bbox = self._get_best_detection_bbox(obj)
-        return bbox[2] - bbox[0] if bbox else None
+        from ami.main.models import Detection
+        bbox = getattr(obj, "best_detection_bbox", None)
+        # Use Detection's validation method for consistency
+        if bbox and isinstance(bbox, list) and len(bbox) == 4:
+            return abs(bbox[2] - bbox[0])
+        return None
     
     def get_best_detection_height(self, obj):
         """
         Returns the height of the detection bounding box.
         Uses the annotated best_detection_bbox from the queryset.
         """
-        bbox = self._get_best_detection_bbox(obj)
-        return bbox[3] - bbox[1] if bbox else None
+        from ami.main.models import Detection
+        bbox = getattr(obj, "best_detection_bbox", None)
+        # Use Detection's validation method for consistency
+        if bbox and isinstance(bbox, list) and len(bbox) == 4:
+            return abs(bbox[3] - bbox[1])
+        return None
 
 
 class CSVExporter(BaseExporter):

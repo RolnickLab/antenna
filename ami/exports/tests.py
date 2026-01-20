@@ -199,6 +199,16 @@ class DataExportTest(TestCase):
             logger.debug(f"Has detection URLs: {has_url}")
             logger.debug(f"Has detection dimensions: {has_dimensions}")
 
+            # Assert that at least one row has detection data
+            self.assertTrue(
+                has_url,
+                f"No detection URLs found in {len(rows)} exported rows. At least one occurrence should have a detection URL."
+            )
+            self.assertTrue(
+                has_dimensions,
+                f"No detection dimensions found in {len(rows)} exported rows. At least one occurrence should have detection width and height."
+            )
+
         # Clean up the exported file after the test
         default_storage.delete(file_path)
 
