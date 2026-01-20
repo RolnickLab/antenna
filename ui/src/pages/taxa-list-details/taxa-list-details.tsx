@@ -30,7 +30,10 @@ export const TaxaListDetails = () => {
     projectId,
     sort,
     pagination,
-    filters: [{ field: 'include_unobserved', value: 'true' }],
+    filters: [
+      { field: 'include_unobserved', value: 'true' },
+      { field: 'taxa_list_id', value: id },
+    ],
   })
 
   useEffect(() => {
