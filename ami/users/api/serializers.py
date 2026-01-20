@@ -9,13 +9,27 @@ User = get_user_model()
 
 
 class UserListSerializer(DefaultSerializer):
+    """General user serializer - excludes email for privacy."""
+
     class Meta:
         model = User
-        fields = ["id", "name", "details", "image", "email"]
+        fields = [
+            "id",
+            "name",
+            "details",
+            "image",
+        ]
 
         extra_kwargs = {
             "details": {"view_name": "api:user-detail", "lookup_field": "pk", "lookup_url_kwarg": "id"},
         }
+
+
+class MemberUserSerializer(UserListSerializer):
+    """User serializer for membership context - includes email for management purposes."""
+
+    class Meta(UserListSerializer.Meta):
+        fields = UserListSerializer.Meta.fields + ["email"]
 
 
 class UserSerializer(UserListSerializer):
@@ -93,7 +107,7 @@ class UserProjectMembershipSerializer(DefaultSerializer):
     email = serializers.EmailField(write_only=True)
     role_id = serializers.CharField(write_only=True)
 
-    user = UserListSerializer(read_only=True)
+    user = MemberUserSerializer(read_only=True)
     role = serializers.SerializerMethodField(read_only=True)
     role_display_name = serializers.SerializerMethodField(read_only=True)
     role_description = serializers.SerializerMethodField(read_only=True)
@@ -191,7 +205,7 @@ class UserProjectMembershipSerializer(DefaultSerializer):
 
 
 class UserProjectMembershipListSerializer(UserProjectMembershipSerializer):
-    user = UserListSerializer(read_only=True)
+    user = MemberUserSerializer(read_only=True)
     role = serializers.SerializerMethodField()
     role_display_name = serializers.SerializerMethodField()
     role_description = serializers.SerializerMethodField()
