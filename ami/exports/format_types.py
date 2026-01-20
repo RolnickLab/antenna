@@ -9,6 +9,7 @@ from rest_framework import serializers
 from ami.exports.base import BaseExporter
 from ami.exports.utils import get_data_in_batches
 from ami.main.models import Occurrence, get_media_url
+from ami.ml.schemas import BoundingBox
 
 logger = logging.getLogger(__name__)
 
@@ -134,26 +135,14 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
         return get_media_url(path) if path else None
 
     def get_best_detection_width(self, obj):
-        """
-        Returns the width of the detection bounding box.
-        Uses the annotated best_detection_bbox from the queryset.
-        """
-        bbox = getattr(obj, "best_detection_bbox", None)
-        # Inline validation to avoid circular imports
-        if bbox and isinstance(bbox, list) and len(bbox) == 4:
-            return abs(bbox[2] - bbox[0])
-        return None
+        """Returns the width of the detection bounding box."""
+        bbox = BoundingBox.from_coords_safe(getattr(obj, "best_detection_bbox", None))
+        return bbox.width if bbox else None
 
     def get_best_detection_height(self, obj):
-        """
-        Returns the height of the detection bounding box.
-        Uses the annotated best_detection_bbox from the queryset.
-        """
-        bbox = getattr(obj, "best_detection_bbox", None)
-        # Inline validation to avoid circular imports
-        if bbox and isinstance(bbox, list) and len(bbox) == 4:
-            return abs(bbox[3] - bbox[1])
-        return None
+        """Returns the height of the detection bounding box."""
+        bbox = BoundingBox.from_coords_safe(getattr(obj, "best_detection_bbox", None))
+        return bbox.height if bbox else None
 
 
 class CSVExporter(BaseExporter):

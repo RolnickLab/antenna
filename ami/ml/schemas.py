@@ -18,6 +18,24 @@ class BoundingBox(pydantic.BaseModel):
     def from_coords(cls, coords: list[float]) -> "BoundingBox":
         return cls(x1=coords[0], y1=coords[1], x2=coords[2], y2=coords[3])
 
+    @classmethod
+    def from_coords_safe(cls, coords: typing.Any) -> "BoundingBox | None":
+        """Parse coords safely, returning None if invalid."""
+        if coords and isinstance(coords, list) and len(coords) == 4:
+            try:
+                return cls.from_coords(coords)
+            except (TypeError, ValueError, pydantic.ValidationError):
+                return None
+        return None
+
+    @property
+    def width(self) -> float:
+        return abs(self.x2 - self.x1)
+
+    @property
+    def height(self) -> float:
+        return abs(self.y2 - self.y1)
+
     def to_string(self) -> str:
         return f"{self.x1},{self.y1},{self.x2},{self.y2}"
 
