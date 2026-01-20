@@ -15,18 +15,27 @@ class BoundingBox(pydantic.BaseModel):
     y2: float
 
     @classmethod
-    def from_coords(cls, coords: list[float]) -> "BoundingBox":
-        return cls(x1=coords[0], y1=coords[1], x2=coords[2], y2=coords[3])
+    def from_coords(cls, coords: typing.Any, raise_on_error: bool = True) -> "BoundingBox | None":
+        """
+        Create BoundingBox from coordinate list [x1, y1, x2, y2].
 
-    @classmethod
-    def from_coords_safe(cls, coords: typing.Any) -> "BoundingBox | None":
-        """Parse coords safely, returning None if invalid."""
-        if coords and isinstance(coords, list) and len(coords) == 4:
-            try:
-                return cls.from_coords(coords)
-            except (TypeError, ValueError, pydantic.ValidationError):
-                return None
-        return None
+        Args:
+            coords: List of 4 float coordinates
+            raise_on_error: If True (default), raises ValueError on invalid input.
+                           If False, returns None on invalid input.
+        """
+        if not isinstance(coords, list) or len(coords) != 4:
+            if raise_on_error:
+                if not isinstance(coords, list):
+                    raise ValueError(f"BoundingBox coords must be a list, got {type(coords).__name__}")
+                raise ValueError(f"BoundingBox coords must have 4 elements, got {len(coords)}")
+            return None
+        try:
+            return cls(x1=coords[0], y1=coords[1], x2=coords[2], y2=coords[3])
+        except (TypeError, pydantic.ValidationError) as e:
+            if raise_on_error:
+                raise ValueError(f"Invalid BoundingBox coordinates: {e}") from e
+            return None
 
     @property
     def width(self) -> float:

@@ -136,12 +136,12 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
 
     def get_best_detection_width(self, obj):
         """Returns the width of the detection bounding box."""
-        bbox = BoundingBox.from_coords_safe(getattr(obj, "best_detection_bbox", None))
+        bbox = BoundingBox.from_coords(getattr(obj, "best_detection_bbox", None), raise_on_error=False)
         return bbox.width if bbox else None
 
     def get_best_detection_height(self, obj):
         """Returns the height of the detection bounding box."""
-        bbox = BoundingBox.from_coords_safe(getattr(obj, "best_detection_bbox", None))
+        bbox = BoundingBox.from_coords(getattr(obj, "best_detection_bbox", None), raise_on_error=False)
         return bbox.height if bbox else None
 
 
