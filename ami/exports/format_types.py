@@ -91,7 +91,7 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
     determination_name = serializers.CharField(source="determination.name", allow_null=True)
     determination_score = serializers.FloatField(allow_null=True)
     verification_status = serializers.SerializerMethodField()
-    
+
     best_detection_url = serializers.SerializerMethodField()
     best_detection_width = serializers.SerializerMethodField()
     best_detection_height = serializers.SerializerMethodField()
@@ -124,7 +124,7 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
         Returns 'Verified' if the occurrence has identifications, otherwise 'Not verified'.
         """
         return "Verified" if obj.identifications.exists() else "Not verified"
-    
+
     def get_best_detection_url(self, obj):
         """
         Returns the full URL to the cropped detection image.
@@ -132,7 +132,7 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
         """
         path = getattr(obj, "best_detection_path", None)
         return get_media_url(path) if path else None
-    
+
     def get_best_detection_width(self, obj):
         """
         Returns the width of the detection bounding box.

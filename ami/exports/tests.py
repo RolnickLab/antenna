@@ -194,11 +194,6 @@ class DataExportTest(TestCase):
             has_url = any(row.get("best_detection_url") for row in rows)
             has_dimensions = any(row.get("best_detection_width") and row.get("best_detection_height") for row in rows)
 
-            # Log the result for debugging
-            logger.debug(f"CSV export test: {len(rows)} rows exported")
-            logger.debug(f"Has detection URLs: {has_url}")
-            logger.debug(f"Has detection dimensions: {has_dimensions}")
-
             # Assert that at least one row has detection data
             self.assertTrue(
                 has_url,
