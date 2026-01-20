@@ -2509,7 +2509,7 @@ class Detection(BaseModel):
         """
         Validate and return the bounding box if it's properly formatted.
         Returns the bbox list [x1, y1, x2, y2] if valid, None otherwise.
-        
+
         This centralizes bbox validation logic for reuse across the codebase.
         TODO: Replace with typed field (Django Pydantic JSON Schema field) in the future.
         """
@@ -2631,7 +2631,7 @@ class OccurrenceQuerySet(BaseQuerySet):
         """
         Annotate the queryset with fields from the best detection.
         The best detection is the one with the highest classification score.
-        
+
         Adds the following annotations:
         - best_detection_path: The path to the detection image
         - best_detection_bbox: The bounding box of the detection as a list [x1, y1, x2, y2]
@@ -2643,7 +2643,7 @@ class OccurrenceQuerySet(BaseQuerySet):
             .order_by("-classifications__score", "id")
             .values("path")[:1]
         )
-        
+
         # Subquery to get the bbox of the best detection
         # Use id as secondary sort to ensure deterministic results
         best_detection_bbox_subquery = (
@@ -2651,7 +2651,7 @@ class OccurrenceQuerySet(BaseQuerySet):
             .order_by("-classifications__score", "id")
             .values("bbox")[:1]
         )
-        
+
         return self.annotate(
             best_detection_path=models.Subquery(best_detection_path_subquery),
             best_detection_bbox=models.Subquery(best_detection_bbox_subquery),
