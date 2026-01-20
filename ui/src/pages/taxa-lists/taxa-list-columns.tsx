@@ -12,7 +12,7 @@ import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
-import { AddTaxonPopover } from './add-taxon/add-taxon-popover'
+import { AddTaxonPopover } from '../taxa-list-details/add-taxon/add-taxon-popover'
 
 export const columns: (projectId: string) => TableColumn<TaxaList>[] = (
   projectId: string
@@ -21,7 +21,18 @@ export const columns: (projectId: string) => TableColumn<TaxaList>[] = (
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
     sortField: 'name',
-    renderCell: (item: TaxaList) => <BasicTableCell value={item.name} />,
+    renderCell: (item: TaxaList) => (
+      <Link
+        to={getAppRoute({
+          to: APP_ROUTES.TAXA_LIST_DETAILS({
+            projectId,
+            taxaListId: item.id,
+          }),
+        })}
+      >
+        <BasicTableCell value={item.name} theme={CellTheme.Primary} />
+      </Link>
+    ),
   },
   {
     id: 'description',
