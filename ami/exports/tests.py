@@ -156,6 +156,59 @@ class DataExportTest(TestCase):
         """Test JSON export record count."""
         self.run_and_validate_export("occurrences_api_json")
 
+    def test_csv_export_has_detection_fields(self):
+        """Test that CSV export includes best detection fields."""
+        # Create a DataExport instance
+        data_export = DataExport.objects.create(
+            user=self.user,
+            project=self.project,
+            format="occurrences_simple_csv",
+            filters={"collection_id": self.collection.pk},
+            job=None,
+        )
+
+        # Run export and get the file URL
+        file_url = data_export.run_export()
+
+        # Ensure the file is generated
+        self.assertIsNotNone(file_url)
+        file_path = file_url.replace("/media/", "")
+        self.assertTrue(default_storage.exists(file_path))
+
+        # Read and validate the exported data
+        with default_storage.open(file_path, "r") as f:
+            csv_reader = csv.DictReader(f)
+            rows = list(csv_reader)
+
+            # Ensure we have rows to test
+            self.assertGreater(len(rows), 0, "No rows exported")
+
+            # Check that the new fields are present in the header
+            first_row = rows[0]
+            self.assertIn("best_detection_url", first_row.keys(), "best_detection_url field missing from CSV")
+            self.assertIn("best_detection_width", first_row.keys(), "best_detection_width field missing from CSV")
+            self.assertIn("best_detection_height", first_row.keys(), "best_detection_height field missing from CSV")
+
+            # Check that at least one row has non-empty values for the new fields
+            # (Some occurrences might not have detections, so we check if any row has values)
+            has_url = any(row.get("best_detection_url") for row in rows)
+            has_dimensions = any(row.get("best_detection_width") and row.get("best_detection_height") for row in rows)
+
+            # Assert that at least one row has detection data
+            self.assertTrue(
+                has_url,
+                f"No detection URLs found in {len(rows)} exported rows. "
+                "At least one occurrence should have a detection URL.",
+            )
+            self.assertTrue(
+                has_dimensions,
+                f"No detection dimensions found in {len(rows)} exported rows. "
+                "At least one occurrence should have detection width and height.",
+            )
+
+        # Clean up the exported file after the test
+        default_storage.delete(file_path)
+
 
 class DataExportPermissionTest(TestCase):
     """Test data export permissions (create, update, delete)."""
