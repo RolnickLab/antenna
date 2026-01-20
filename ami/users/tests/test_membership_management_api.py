@@ -205,3 +205,41 @@ class TestUserProjectMembershipAPI(APITestCase):
                 user__email=self.user1.email,
             ).exists()
         )
+
+    # Validation error tests
+
+    def test_create_membership_with_invalid_role_id(self):
+        """POST with non-existent role_id should return 400."""
+        self.auth_super()
+        payload = {"email": self.user2.email, "role_id": "NonExistentRole"}
+        resp = self.client.post(self.members_url, payload, format="json")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_create_membership_with_nonexistent_email(self):
+        """POST with unknown email should return 400."""
+        self.auth_super()
+        payload = {"email": "nonexistent@example.com", "role_id": BasicMember.__name__}
+        resp = self.client.post(self.members_url, payload, format="json")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_create_duplicate_membership(self):
+        """POST for user already in project should return 400."""
+        self.auth_super()
+        self.create_membership(self.user1)
+        payload = {"email": self.user1.email, "role_id": BasicMember.__name__}
+        resp = self.client.post(self.members_url, payload, format="json")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_create_membership_missing_email(self):
+        """POST without email should return 400."""
+        self.auth_super()
+        payload = {"role_id": BasicMember.__name__}
+        resp = self.client.post(self.members_url, payload, format="json")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_create_membership_missing_role_id(self):
+        """POST without role_id should return 400."""
+        self.auth_super()
+        payload = {"email": self.user2.email}
+        resp = self.client.post(self.members_url, payload, format="json")
+        self.assertEqual(resp.status_code, 400)
