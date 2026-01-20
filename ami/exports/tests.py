@@ -155,3 +155,97 @@ class DataExportTest(TestCase):
     def test_json_export_record_count(self):
         """Test JSON export record count."""
         self.run_and_validate_export("occurrences_api_json")
+
+
+class DataExportPermissionTest(TestCase):
+    """Test data export permissions (create, update, delete)."""
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.owner = self.project.owner
+
+        # Create a researcher (project member with Researcher role)
+        from ami.users.models import User
+        from ami.users.roles import Researcher
+
+        self.researcher = User.objects.create_user(email="researcher@test.org")
+        self.project.members.add(self.researcher)
+        Researcher.assign_user(self.researcher, self.project)
+
+        # Create a basic member (no Researcher role)
+        from ami.users.roles import BasicMember
+
+        self.basic_member = User.objects.create_user(email="basic@test.org")
+        self.project.members.add(self.basic_member)
+        BasicMember.assign_user(self.basic_member, self.project)
+
+        # Create a superuser
+        self.superuser = User.objects.create_superuser(email="super@test.org", password="test123")
+
+        # Create a non-member
+        self.non_member = User.objects.create_user(email="nonmember@test.org")
+
+        self.client = APIClient()
+
+    def _create_export(self, user):
+        """Helper to create an export owned by the given user."""
+        return DataExport.objects.create(
+            user=user,
+            project=self.project,
+            format="occurrences_simple_csv",
+        )
+
+    def test_researcher_can_create_export(self):
+        """Researcher role should be able to create data exports."""
+        from ami.main.models import Project
+
+        self.assertTrue(
+            self.researcher.has_perm(Project.Permissions.CREATE_DATA_EXPORT, self.project),
+            "Researcher should have create_dataexport permission",
+        )
+
+    def test_researcher_can_delete_export(self):
+        """Researcher role should be able to delete data exports."""
+        from ami.main.models import Project
+
+        self.assertTrue(
+            self.researcher.has_perm(Project.Permissions.DELETE_DATA_EXPORT, self.project),
+            "Researcher should have delete_dataexport permission",
+        )
+
+    def test_researcher_cannot_update_export(self):
+        """Researcher role should NOT be able to update data exports (admin-only)."""
+        from ami.main.models import Project
+
+        self.assertFalse(
+            self.researcher.has_perm(Project.Permissions.UPDATE_DATA_EXPORT, self.project),
+            "Researcher should NOT have update_dataexport permission (admin-only)",
+        )
+
+    def test_basic_member_cannot_create_export(self):
+        """Basic member (without Researcher role) should not be able to create exports."""
+        from ami.main.models import Project
+
+        self.assertFalse(
+            self.basic_member.has_perm(Project.Permissions.CREATE_DATA_EXPORT, self.project),
+            "Basic member should not have create_dataexport permission",
+        )
+
+    def test_superuser_can_update_export(self):
+        """Superuser should be able to update data exports."""
+        from ami.main.models import Project
+
+        # Superusers bypass object-level permissions via has_perm
+        self.assertTrue(
+            self.superuser.has_perm(Project.Permissions.UPDATE_DATA_EXPORT, self.project),
+            "Superuser should have update_dataexport permission",
+        )
+
+    def test_non_member_cannot_create_export(self):
+        """Non-members should not be able to create exports."""
+        from ami.main.models import Project
+
+        self.assertFalse(
+            self.non_member.has_perm(Project.Permissions.CREATE_DATA_EXPORT, self.project),
+            "Non-member should not have create_dataexport permission",
+        )
