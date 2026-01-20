@@ -84,7 +84,7 @@ class Role:
 class BasicMember(Role):
     display_name = "Basic member"
     description = (
-        "Basic project member with access to star source images, create jobs, and run single image processsing jobs."
+        "Basic project member with access to star source images, create jobs, and run single image processing jobs."
     )
     permissions = Role.permissions | {
         Project.Permissions.VIEW_PRIVATE_DATA,
