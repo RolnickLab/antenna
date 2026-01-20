@@ -97,8 +97,13 @@ class BasicMember(Role):
 
 class Researcher(Role):
     display_name = "Researcher"
-    description = "Researcher with all basic member permissions, plus the ability to trigger data exports"
-    permissions = BasicMember.permissions | {Project.Permissions.TRIGGER_EXPORT}
+    description = "Researcher with all basic member permissions, plus the ability to create and delete data exports"
+    # Note: UPDATE_DATA_EXPORT is intentionally excluded - only superusers can modify exports.
+    # Users should delete and recreate exports if they need different settings.
+    permissions = BasicMember.permissions | {
+        Project.Permissions.CREATE_DATA_EXPORT,
+        Project.Permissions.DELETE_DATA_EXPORT,
+    }
 
 
 class Identifier(Role):
