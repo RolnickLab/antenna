@@ -323,7 +323,7 @@ class ProcessingServiceStatusResponse(pydantic.BaseModel):
     error: str | None = None
     server_live: bool | None = None
     pipelines_online: list[str] = []
-    endpoint_url: str | None
+    endpoint_url: str | None = None
     latency: float
 
 
