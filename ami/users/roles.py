@@ -62,7 +62,12 @@ class BasicMember(Role):
 
 
 class Researcher(Role):
-    permissions = BasicMember.permissions | {Project.Permissions.TRIGGER_EXPORT}
+    # Note: UPDATE_DATA_EXPORT is intentionally excluded - only superusers can modify exports.
+    # Users should delete and recreate exports if they need different settings.
+    permissions = BasicMember.permissions | {
+        Project.Permissions.CREATE_DATA_EXPORT,
+        Project.Permissions.DELETE_DATA_EXPORT,
+    }
 
 
 class Identifier(Role):
