@@ -3443,3 +3443,94 @@ class TestProjectDefaultTaxaFilter(APITestCase):
         detail_url = f"/api/v2/taxa/{excluded_taxon.id}/?project_id={self.project.pk}"
         res = self.client.get(detail_url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+
+class TestProjectPipelinesAPI(APITestCase):
+    """Test the project pipelines API endpoint."""
+
+    def setUp(self):
+        from ami.users.roles import ProjectManager
+
+        self.user = User.objects.create_user(email="test@example.com", is_staff=True)  # type: ignore
+        self.other_user = User.objects.create_user(email="other@example.com")  # type: ignore
+
+        # Create projects with explicit ownership
+        self.project = Project.objects.create(name="Test Project", owner=self.user, create_defaults=True)
+        self.other_project = Project.objects.create(name="Other Project", owner=self.other_user, create_defaults=True)
+
+        # Assign ProjectManager role to user for this project
+        ProjectManager.assign_user(self.user, self.project)
+
+    def _get_pipelines_url(self, project_id):
+        """Get the pipelines API URL for a project."""
+        return f"/api/v2/projects/{project_id}/pipelines/"
+
+    def _get_test_payload(self, service_name: str):
+        """Get a minimal test payload for pipeline registration."""
+        return {
+            "processing_service_name": service_name,
+            "pipeline_response": {"timestamp": "2024-01-01T00:00:00Z", "pipelines": [], "success": True},
+        }
+
+    def test_create_new_service_success(self):
+        """Test creating a new processing service if it doesn't exist."""
+        url = self._get_pipelines_url(self.project.pk)
+        payload = self._get_test_payload("NewService")
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(url, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Verify service was created and associated
+        service = ProcessingService.objects.get(name="NewService")
+        self.assertIn(self.project, service.projects.all())
+
+    def test_service_already_associated_returns_400(self):
+        """Test 400 when service already exists and is associated with project."""
+        # Create and associate service
+        service = ProcessingService.objects.create(name="ExistingService")
+        service.projects.add(self.project)
+
+        url = self._get_pipelines_url(self.project.pk)
+        payload = self._get_test_payload("ExistingService")
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(url, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Processing service already exists", response.data["detail"])
+
+    def test_associate_existing_service_success(self):
+        """Test associating existing service with project when not yet associated."""
+        # Create service but don't associate with project
+        service = ProcessingService.objects.create(name="UnassociatedService")
+
+        url = self._get_pipelines_url(self.project.pk)
+        payload = self._get_test_payload("UnassociatedService")
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(url, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn(self.project, service.projects.all())
+
+    def test_unauthorized_project_access_returns_403(self):
+        """Test 403 when user doesn't have write access to project."""
+        url = self._get_pipelines_url(self.other_project.pk)
+        payload = self._get_test_payload("UnauthorizedService")
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(url, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_invalid_payload_returns_400(self):
+        """Test 400 when payload is invalid."""
+        url = self._get_pipelines_url(self.project.pk)
+        invalid_payload = {"invalid": "data"}
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(url, invalid_payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

@@ -237,13 +237,11 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
 
         project: Project = self.get_object()
 
-        # TODO: Discuss the right approach for associating pipelines with projects in V2.
-        processing_service = ProcessingService.objects.filter(
-            projects=project, name=parsed.processing_service_name
-        ).first()
+        # Check if a processing service with the same name already exists,
+        processing_service = ProcessingService.objects.filter(name=parsed.processing_service_name).first()
 
         if not processing_service:
-            # Create a dummy processing service and associate it with the project
+            # Create a processing service and associate it with the project
             processing_service = ProcessingService.objects.create(
                 name=parsed.processing_service_name,
                 endpoint_url=None,  # TODO: depends on https://github.com/RolnickLab/antenna/pull/1090
@@ -251,6 +249,16 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
             processing_service.projects.add(project)
             processing_service.save()
             logger.info(f"Created dummy processing service {processing_service} for project {project.pk}")
+        else:
+            # Associate with the project if not already associated
+            if project not in processing_service.projects.all():
+                processing_service.projects.add(project)
+                processing_service.save()
+                logger.info(f"Associated processing service {processing_service} with project {project.pk}")
+            else:
+                # Processing service already exists for this project
+                logger.warning(f"Processing service {processing_service} already exists for project {project.pk}")
+                return Response({"detail": "Processing service already exists."}, status=status.HTTP_400_BAD_REQUEST)
 
         pipeline_configs = None
         if parsed and parsed.pipeline_response:

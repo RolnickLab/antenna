@@ -330,7 +330,7 @@ class Project(ProjectSettingsMixin, BaseModel):
         Charts is treated as a read-only operation, so it follows the same
         permission logic as 'retrieve'.
         """
-        from ami.users.roles import BasicMember
+        from ami.users.roles import BasicMember, ProjectManager
 
         if action == "charts":
             # Same permission logic as retrieve action
@@ -338,6 +338,10 @@ class Project(ProjectSettingsMixin, BaseModel):
                 # Allow view permission for members and owners of draft projects
                 return BasicMember.has_role(user, self) or user == self.owner or user.is_superuser
             return True
+
+        if action == "pipelines":
+            # Pipeline registration requires project management permissions
+            return ProjectManager.has_role(user, self) or user == self.owner or user.is_superuser
 
         # Fall back to default permission checking for other actions
         return super().check_custom_permission(user, action)
