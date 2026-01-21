@@ -149,7 +149,7 @@ class TestProcessingServiceAPI(APITestCase):
         self.assertIsNone(status.server_live)
         self.assertIsNone(status.endpoint_url)
         self.assertIsNotNone(status.error)
-        self.assertTrue("No endpoint URL configured" in (status.error or ""))
+        self.assertIn("No endpoint URL configured", (status.error or ""))
         self.assertEqual(status.pipelines_online, [])
 
     def test_get_pipeline_configs_with_null_endpoint_url(self):
