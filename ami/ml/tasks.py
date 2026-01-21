@@ -109,7 +109,7 @@ def check_processing_services_online():
     services = ProcessingService.objects.all()
 
     for service in services:
-        if service.endpoint_url is None:
+        if service.endpoint_url is None or not service.endpoint_url.strip():
             logger.warning(f"Processing service {service} has no endpoint URL, skipping.")
             continue
         logger.info(f"Checking service {service}")

@@ -33,7 +33,7 @@ from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.ml.models.processing_service import ProcessingService
-from ami.ml.schemas import AsyncPipelineRegistrationRequest
+from ami.ml.schemas import AsyncPipelineRegistrationRequest, PipelineRegistrationResponse
 from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
@@ -209,17 +209,31 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
         project = self.get_object()
         return Response({"summary_data": project.summary_data()})
 
+    @extend_schema(
+        operation_id="projects_pipelines_create",
+        summary="Register pipelines for a project",
+        description=(
+            "Receive pipeline registrations for a project. This endpoint is called by the "
+            "V2 ML processing services to register available pipelines for a project."
+        ),
+        request=AsyncPipelineRegistrationRequest,
+        responses={
+            200: PipelineRegistrationResponse,
+            400: {"type": "object", "properties": {"detail": {"type": "string"}}},
+        },
+        tags=["projects"],
+    )
     @action(detail=True, methods=["post"], url_path="pipelines")
     def pipelines(self, request, pk=None):
         """
         Receive pipeline registrations for a project. This endpoint is called by the
         V2 ML processing services to register available pipelines for a project.
 
-        Expected payload: PipelineRegistrationResponse (pydantic schema) containing a
-        list of PipelineConfigResponse objects under the `pipelines` key.
+        Expected payload: AsyncPipelineRegistrationRequest (pydantic schema) containing a
+        list of PipelineConfigResponse objects under the `pipelines_response.pipelines` key.
 
         Behavior:
-        - If the project has no associated ProcessingService, create a dummy one and
+        - If the project has no associated ProcessingService, create one and
           associate it with the project.
         - Call ProcessingService.create_pipelines() with the provided pipeline configs
           and limit the operation to this project.
@@ -247,13 +261,11 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
                 endpoint_url=None,  # TODO: depends on https://github.com/RolnickLab/antenna/pull/1090
             )
             processing_service.projects.add(project)
-            processing_service.save()
             logger.info(f"Created dummy processing service {processing_service} for project {project.pk}")
         else:
             # Associate with the project if not already associated
             if project not in processing_service.projects.all():
                 processing_service.projects.add(project)
-                processing_service.save()
                 logger.info(f"Associated processing service {processing_service} with project {project.pk}")
             else:
                 # Processing service already exists for this project
@@ -261,7 +273,7 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
                 return Response({"detail": "Processing service already exists."}, status=status.HTTP_400_BAD_REQUEST)
 
         pipeline_configs = None
-        if parsed and parsed.pipeline_response:
+        if parsed.pipeline_response:
             pipeline_configs = parsed.pipeline_response.pipelines
 
         # Call create_pipelines limited to this project
@@ -269,9 +281,6 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
             pipeline_configs=pipeline_configs,
             projects=Project.objects.filter(pk=project.pk),
         )
-
-        # Save any changes to the processing service
-        processing_service.save()
 
         # response is a pydantic model; return its dict representation
         return Response(response.dict())
