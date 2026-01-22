@@ -2,16 +2,25 @@ from django.db import migrations, models
 from django.conf import settings
 import django.db.models.deletion
 
+# Django's auto-generated table name for the implicit Project.members M2M
+OLD_THROUGH_TABLE = "main_project_members"
+
 
 def forwards(apps, schema_editor):
+    """
+    Migrate data from the old implicit M2M table to the new UserProjectMembership model.
+
+    Note: BasicMember role assignment is handled separately in migration 0081.
+    """
     UserProjectMembership = apps.get_model("main", "UserProjectMembership")
 
-    # Copy data from old implicit M2M table
-    through_table = "main_project_members"
-
+    # Read from old implicit M2M table (must use raw SQL - table not in ORM state)
     with schema_editor.connection.cursor() as cursor:
-        cursor.execute(f"SELECT project_id, user_id FROM {through_table};")
+        cursor.execute(f"SELECT project_id, user_id FROM {OLD_THROUGH_TABLE}")
         rows = cursor.fetchall()
+
+    if not rows:
+        return
 
     # Create new through model entries
     for project_id, user_id in rows:
@@ -22,23 +31,30 @@ def forwards(apps, schema_editor):
 
 
 def backwards(apps, schema_editor):
+    """
+    Reverse migration: recreate the old implicit M2M table and restore data.
+    """
     UserProjectMembership = apps.get_model("main", "UserProjectMembership")
 
+    # Recreate old implicit M2M table with proper constraints
     with schema_editor.connection.cursor() as cursor:
-        # Recreate old table
         cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS main_project_members (
+            f"""
+            CREATE TABLE IF NOT EXISTS {OLD_THROUGH_TABLE} (
                 id serial PRIMARY KEY,
-                project_id integer NOT NULL,
-                user_id integer NOT NULL
-            );
-        """
+                project_id integer NOT NULL REFERENCES main_project(id) ON DELETE CASCADE,
+                user_id integer NOT NULL REFERENCES users_user(id) ON DELETE CASCADE,
+                UNIQUE (project_id, user_id)
+            )
+            """
         )
-        # Copy back membership data
-        for m in UserProjectMembership.objects.all():
+
+    # Copy back membership data
+    memberships = UserProjectMembership.objects.all()
+    with schema_editor.connection.cursor() as cursor:
+        for m in memberships:
             cursor.execute(
-                "INSERT INTO main_project_members (project_id, user_id) VALUES (%s, %s)",
+                f"INSERT INTO {OLD_THROUGH_TABLE} (project_id, user_id) VALUES (%s, %s)",
                 [m.project_id, m.user_id],
             )
 

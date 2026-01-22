@@ -74,7 +74,15 @@ class Role:
 
     @staticmethod
     def get_primary_role(project, user):
-        """Return the role class with the most permissions for a user on a project."""
+        """
+        Return the role class with the most permissions for a user on a project.
+
+        In practive, a user should only have one role per project, but in case of multiple roles,
+        we return the one with the most permissions.
+
+        The original design allowed multiple roles per user per project, but it was later decided to
+        that from a UX and management perspective, a single role per user per project is preferable.
+        """
         roles = Role.get_user_roles(project, user)
         if not roles:
             return None
