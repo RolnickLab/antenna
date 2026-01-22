@@ -90,14 +90,19 @@ const getSidebarSections = (
               title: translate(STRING.NAV_ITEM_GENERAL),
               path: APP_ROUTES.GENERAL({ projectId: project.id }),
             },
-          ]
-        : []),
-      ...(project.canUpdate
-        ? [
             {
               id: 'default-filters',
               title: translate(STRING.NAV_ITEM_DEFAULT_FILTERS),
               path: APP_ROUTES.DEFAULT_FILTERS({ projectId: project.id }),
+            },
+          ]
+        : []),
+      ...(project.isMember
+        ? [
+            {
+              id: 'team',
+              title: translate(STRING.NAV_ITEM_TEAM),
+              path: APP_ROUTES.TEAM({ projectId: project.id }),
             },
           ]
         : []),
