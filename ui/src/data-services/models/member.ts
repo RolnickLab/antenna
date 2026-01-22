@@ -1,6 +1,19 @@
 import { Role } from './role'
+import { UserPermission } from 'utils/user/types'
 
-export type ServerMember = any // TODO: Update this type
+export type ServerMember = {
+  created_at: string
+  id: string
+  role: Role | null
+  updated_at: string
+  user: {
+    id: string
+    name: string
+    email: string
+    image?: string
+  }
+  user_permissions: UserPermission[]
+}
 
 export type Member = {
   addedAt: Date
@@ -10,7 +23,7 @@ export type Member = {
   id: string
   image?: string
   name: string
-  role: Role
+  role: Role | null
   updatedAt?: Date
   userId: string
 }

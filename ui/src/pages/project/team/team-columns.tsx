@@ -48,8 +48,8 @@ export const columns: (userId?: string) => TableColumn<Member>[] = (
     renderCell: (item: Member) => (
       <BasicTableCell>
         <div className="flex items-center gap-2">
-          <span>{item.role.name}</span>
-          {item.role.description ? (
+          <span>{item.role?.name ?? ''}</span>
+          {item.role?.description ? (
             <BasicTooltip asChild content={item.role.description}>
               <Button
                 aria-label={translate(STRING.ABOUT_ROLE)}

@@ -112,7 +112,9 @@ class TestUserProjectMembershipAPI(APITestCase):
         self.assertEqual(resp.status_code, 200)
 
         updated = resp.json()
-        self.assertEqual(updated["role"], ProjectManager.__name__)
+        self.assertEqual(updated["role"]["id"], ProjectManager.__name__)
+        self.assertEqual(updated["role"]["name"], ProjectManager.display_name)
+        self.assertEqual(updated["role"]["description"], ProjectManager.description)
 
         membership = UserProjectMembership.objects.get(
             project=self.project,
