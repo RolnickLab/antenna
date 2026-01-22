@@ -17,7 +17,7 @@ export const columns: (userId?: string) => TableColumn<Member>[] = (
 ) => [
   {
     id: 'user',
-    sortField: 'user__email',
+    sortField: 'name',
     name: translate(STRING.FIELD_LABEL_USER),
     renderCell: (item: Member) => (
       <BasicTableCell>
@@ -30,13 +30,14 @@ export const columns: (userId?: string) => TableColumn<Member>[] = (
             )}
           </div>
           <div className="flex flex-col">
-            <div className="flex items-center gap-2">
-              <span className="font-medium">{item.name}</span>
+            <div className="flex items-center gap-4">
+              {item.name ? (
+                <span className="font-medium">{item.name}</span>
+              ) : null}
               {item.userId === userId ? (
                 <Badge label={translate(STRING.YOU)} />
               ) : null}
             </div>
-
             <span>{item.email}</span>
           </div>
         </div>
