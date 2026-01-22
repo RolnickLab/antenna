@@ -77,7 +77,7 @@ class Role:
         """
         Return the role class with the most permissions for a user on a project.
 
-        In practive, a user should only have one role per project, but in case of multiple roles,
+        In practice, a user should only have one role per project, but in case of multiple roles,
         we return the one with the most permissions.
 
         The original design allowed multiple roles per user per project, but it was later decided to
