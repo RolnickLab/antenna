@@ -24,8 +24,8 @@ export const Team = () => {
   }>()
   const { pagination, setPage } = usePagination()
   const { sort, setSort } = useSort({
-    field: 'updated_at',
-    order: 'desc',
+    field: 'name',
+    order: 'asc',
   })
   const { members, userPermissions, total, isLoading, isFetching, error } =
     useMembers(project.id, {
