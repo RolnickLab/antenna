@@ -30,8 +30,11 @@ def get_active_project(
     param = "project_id"
 
     project_id = None
+    # Support nested routers: /projects/{project_pk}/members/{pk}
+    if kwargs and "project_pk" in kwargs:
+        project_id = kwargs["project_pk"]
     # Extract from URL if `/projects/` is in the url path
-    if kwargs and "/projects/" in request.path:
+    elif kwargs and "/projects/" in request.path:
         project_id = kwargs.get("pk")
 
     # If not in URL, try query parameters
