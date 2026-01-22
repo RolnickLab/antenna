@@ -39,6 +39,7 @@ $dialog-padding-medium: 32px;
   z-index: 3;
 
   &.compact {
+    width: 384px;
     height: fit-content;
   }
 

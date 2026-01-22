@@ -73,8 +73,7 @@ class ProjectAdmin(GuardedModelAdmin):
 
     list_display = ("name", "owner", "priority", "active", "created_at", "updated_at")
     list_filter = ("active", "owner")
-    search_fields = ("name", "owner__email", "members__email")
-    filter_horizontal = ("members",)
+    search_fields = ("name", "owner__email")
 
     inlines = [ProjectPipelineConfigInline]
     autocomplete_fields = ("default_filters_include_taxa", "default_filters_exclude_taxa")
@@ -108,7 +107,7 @@ class ProjectAdmin(GuardedModelAdmin):
         (
             "Ownership & Access",
             {
-                "fields": ("owner", "members"),
+                "fields": ("owner",),
                 "classes": ("wide",),
             },
         ),
