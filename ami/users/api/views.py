@@ -36,7 +36,7 @@ class UserProjectMembershipViewSet(DefaultViewSet, ProjectMixin):
 
     def get_queryset(self):
         project = self.get_active_project()
-        return UserProjectMembership.objects.filter(project=project).select_related("user")
+        return UserProjectMembership.objects.filter(project=project).select_related("user").with_role(log_invalid=True)
 
     def get_serializer_class(self):
         if self.action == "list":

@@ -4,7 +4,7 @@ import { UserPermission } from 'utils/user/types'
 export type ServerMember = {
   created_at: string
   id: string
-  role: Role | null
+  role: Role
   updated_at: string
   user: {
     id: string
@@ -23,7 +23,7 @@ export type Member = {
   id: string
   image?: string
   name: string
-  role: Role | null
+  role: Role
   updatedAt?: Date
   userId: string
 }

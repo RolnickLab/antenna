@@ -19,7 +19,7 @@ import { RolesPicker } from './roles-picker'
 export const ManageAccessDialog = ({ member }: { member: Member }) => {
   const { projectId } = useParams()
   const [isOpen, setIsOpen] = useState(false)
-  const [roleId, setRoleId] = useState<string>(member.role?.id ?? '')
+  const [roleId, setRoleId] = useState<string>(member.role.id)
   const { updateMember, isLoading, isSuccess, error } = useUpdateMember(
     projectId as string,
     member.id
@@ -27,7 +27,7 @@ export const ManageAccessDialog = ({ member }: { member: Member }) => {
   const errorMessage = useFormError({ error })
 
   // Reset form on open state change
-  useEffect(() => setRoleId(member.role?.id ?? ''), [isOpen, member])
+  useEffect(() => setRoleId(member.role.id), [isOpen, member])
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>

@@ -152,6 +152,13 @@ class UserProjectMembershipSerializer(DefaultSerializer):
         return value
 
     def get_role(self, obj):
+        """
+        Get the primary role for this membership.
+
+        Note: Due to queryset filtering in UserProjectMembershipViewSet.get_queryset(),
+        this method should never return None in API responses. However, we maintain
+        the None check for safety (e.g., when called outside API context).
+        """
         from ami.users.roles import Role
 
         role_cls = Role.get_primary_role(obj.project, obj.user)
