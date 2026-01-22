@@ -1628,6 +1628,56 @@ class TaxaListViewSet(DefaultViewSet, ProjectMixin):
             return qs.filter(projects=project)
         return qs
 
+    def _get_taxon(self):
+        """
+        Get taxon from the POST request body.
+        """
+        key = "taxon_id"
+        taxon_id = SingleParamSerializer[int].clean(
+            key,
+            field=serializers.IntegerField(required=True, min_value=0),
+            data=self.request.data,
+        )
+
+        try:
+            return Taxon.objects.get(id=taxon_id)
+        except Taxon.DoesNotExist:
+            raise api_exceptions.NotFound(detail=f"Taxon with id {taxon_id} not found")
+
+    @action(detail=True, methods=["post"], name="add_taxon")
+    def add_taxon(self, request, pk=None):
+        """
+        Add a taxon to a taxa list.
+        """
+        taxa_list: TaxaList = self.get_object()
+        taxon = self._get_taxon()
+        taxa_list.taxa.add(taxon)
+
+        return Response(
+            {
+                "taxa_list_id": taxa_list.pk,
+                "taxon_id": taxon.pk,
+                "taxa_count": taxa_list.taxa.count(),
+            }
+        )
+
+    @action(detail=True, methods=["post"], name="remove_taxon")
+    def remove_taxon(self, request, pk=None):
+        """
+        Remove a taxon from a taxa list.
+        """
+        taxa_list: TaxaList = self.get_object()
+        taxon = self._get_taxon()
+        taxa_list.taxa.remove(taxon)
+
+        return Response(
+            {
+                "taxa_list_id": taxa_list.pk,
+                "taxon_id": taxon.pk,
+                "taxa_count": taxa_list.taxa.count(),
+            }
+        )
+
 
 class TagViewSet(DefaultViewSet, ProjectMixin):
     queryset = Tag.objects.all()
