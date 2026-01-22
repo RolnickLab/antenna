@@ -12,20 +12,41 @@ logger = logging.getLogger(__name__)
 
 
 def create_roles(sender, **kwargs):
-    """Creates predefined roles with specific permissions ."""
+    """
+    Creates predefined roles with specific permissions.
+    Only runs when role schema version has changed.
+    """
+    from ami.users.models import RoleSchemaVersion
 
-    logger.info("Creating roles for all projects")
+    # Quick check - does schema need updating?
+    if not RoleSchemaVersion.needs_update():
+        logger.debug("Role schema is up to date, skipping role creation")
+        return
+
+    logger.info("Role schema version changed - updating roles for all projects")
+    project_count = Project.objects.count()
+
+    if project_count > 100:
+        logger.warning(
+            f"Updating roles for {project_count} projects. "
+            f"This may take a while. Consider running 'python manage.py update_roles' "
+            f"separately for better control."
+        )
+
     try:
         for project in Project.objects.all():
             try:
-                create_roles_for_project(project)
+                create_roles_for_project(project, force_update=True)
             except Exception as e:
                 logger.warning(f"Failed to create roles for project {project.pk} ({project.name}): {e}")
                 continue
+
+        # Mark schema as updated
+        RoleSchemaVersion.mark_updated(description="Post-migration role update")
+        logger.info(f"Successfully updated roles for {project_count} projects")
+
     except Exception as e:
-        logger.warning(
-            f"Failed to create roles during migration: {e}. This can be run manually via management command."
-        )
+        logger.error(f"Failed to create roles during migration: {e}")
 
 
 @receiver(m2m_changed, sender=Group.user_set.through)
