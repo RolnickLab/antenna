@@ -129,8 +129,12 @@ const SpeciesDetailsDialog = ({
     >
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
-        isLoading={isLoading}
         error={error}
+        isLoading={isLoading}
+        onOpenAutoFocus={(e) => {
+          /* Prevent tooltip auto focus */
+          e.preventDefault()
+        }}
       >
         {species ? (
           <SpeciesDetails
