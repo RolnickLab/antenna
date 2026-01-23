@@ -26,7 +26,14 @@ export const columns: (project: {
         <ImageTableCell
           images={item.coverImage ? [{ src: item.coverImage.url }] : []}
           theme={ImageCellTheme.Light}
-          to={APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id })}
+          to={getAppRoute({
+            to: APP_ROUTES.TAXA_LIST_TAXON_DETAILS({
+              projectId,
+              taxaListId,
+              taxonId: item.id,
+            }),
+            keepSearchParams: true,
+          })}
         />
       )
     },
@@ -40,7 +47,11 @@ export const columns: (project: {
         <div className="grid gap-4">
           <Link
             to={getAppRoute({
-              to: APP_ROUTES.TAXON_DETAILS({ projectId, taxonId: item.id }),
+              to: APP_ROUTES.TAXA_LIST_TAXON_DETAILS({
+                projectId,
+                taxaListId,
+                taxonId: item.id,
+              }),
               keepSearchParams: true,
             })}
           >

@@ -21,7 +21,7 @@ import { AddTaxaListTaxonPopover } from './add-taxa-list-taxon/add-taxa-list-tax
 import { columns } from './taxa-list-details-columns'
 
 export const TaxaListDetails = () => {
-  const { projectId, id } = useParams()
+  const { projectId, id, taxonId } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { sort, setSort } = useSort({ field: 'name', order: 'asc' })
   const { pagination, setPage } = usePagination()
@@ -87,28 +87,28 @@ export const TaxaListDetails = () => {
           />
         ) : null}
       </PageFooter>
+      {taxonId ? (
+        <SpeciesDetailsDialog taxaListId={id as string} taxonId={taxonId} />
+      ) : null}
     </>
   )
 }
 
-const SpeciesDetailsDialog = ({ id }: { id: string }) => {
+const SpeciesDetailsDialog = ({
+  taxaListId,
+  taxonId,
+}: {
+  taxaListId: string
+  taxonId: string
+}) => {
   const navigate = useNavigate()
   const { selectedView, setSelectedView } = useSelectedView(TABS.FIELDS, 'tab')
   const { projectId } = useParams()
-  const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
-  const { species, isLoading, error } = useSpeciesDetails(id, projectId)
-
-  useEffect(() => {
-    setDetailBreadcrumb(species ? { title: species.name } : undefined)
-
-    return () => {
-      setDetailBreadcrumb(undefined)
-    }
-  }, [species])
+  const { species, isLoading, error } = useSpeciesDetails(taxonId, projectId)
 
   return (
     <Dialog.Root
-      open={!!id}
+      open={!!taxonId}
       onOpenChange={(open) => {
         if (!open) {
           setSelectedView(undefined)
@@ -116,7 +116,10 @@ const SpeciesDetailsDialog = ({ id }: { id: string }) => {
 
         navigate(
           getAppRoute({
-            to: APP_ROUTES.TAXA({ projectId: projectId as string }),
+            to: APP_ROUTES.TAXA_LIST_DETAILS({
+              projectId: projectId as string,
+              taxaListId,
+            }),
             keepSearchParams: true,
           })
         )

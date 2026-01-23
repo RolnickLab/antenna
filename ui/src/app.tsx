@@ -116,6 +116,10 @@ export const App = () => (
             <Route path="collections/:id" element={<CollectionDetails />} />
             <Route path="taxa-lists" element={<TaxaLists />} />
             <Route path="taxa-lists/:id?" element={<TaxaListDetails />} />
+            <Route
+              path="taxa-lists/:id?/taxa/:taxonId"
+              element={<TaxaListDetails />}
+            />
             <Route path="exports/:id?" element={<Exports />} />
             <Route
               path="processing-services/:id?"
