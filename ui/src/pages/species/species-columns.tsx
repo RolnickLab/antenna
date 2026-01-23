@@ -21,7 +21,7 @@ export const columns: (project: {
 }) => TableColumn<Species>[] = ({ projectId, featureFlags }) => [
   {
     id: 'cover-image',
-    name: 'Cover image',
+    name: translate(STRING.FIELD_LABEL_IMAGE),
     sortField: 'cover_image_url',
     renderCell: (item: Species) => {
       return (

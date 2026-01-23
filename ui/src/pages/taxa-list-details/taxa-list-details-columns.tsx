@@ -19,7 +19,7 @@ export const columns: (project: {
 }) => TableColumn<Species>[] = ({ projectId, taxaListId }) => [
   {
     id: 'cover-image',
-    name: 'Cover image',
+    name: translate(STRING.FIELD_LABEL_IMAGE),
     sortField: 'cover_image_url',
     renderCell: (item: Species) => {
       return (
@@ -44,20 +44,18 @@ export const columns: (project: {
     name: translate(STRING.FIELD_LABEL_TAXON),
     renderCell: (item: Species) => (
       <BasicTableCell>
-        <div className="grid gap-4">
-          <Link
-            to={getAppRoute({
-              to: APP_ROUTES.TAXA_LIST_TAXON_DETAILS({
-                projectId,
-                taxaListId,
-                taxonId: item.id,
-              }),
-              keepSearchParams: true,
-            })}
-          >
-            <TaxonDetails compact taxon={item} />
-          </Link>
-        </div>
+        <Link
+          to={getAppRoute({
+            to: APP_ROUTES.TAXA_LIST_TAXON_DETAILS({
+              projectId,
+              taxaListId,
+              taxonId: item.id,
+            }),
+            keepSearchParams: true,
+          })}
+        >
+          <TaxonDetails compact taxon={item} />
+        </Link>
       </BasicTableCell>
     ),
   },
