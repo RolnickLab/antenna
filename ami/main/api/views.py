@@ -272,13 +272,9 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
                 logger.warning(f"Processing service {processing_service} already exists for project {project.pk}")
                 return Response({"detail": "Processing service already exists."}, status=status.HTTP_400_BAD_REQUEST)
 
-        pipeline_configs = None
-        if parsed.pipeline_response:
-            pipeline_configs = parsed.pipeline_response.pipelines
-
         # Call create_pipelines limited to this project
         response = processing_service.create_pipelines(
-            pipeline_configs=pipeline_configs,
+            pipeline_configs=parsed.pipelines,
             projects=Project.objects.filter(pk=project.pk),
         )
 

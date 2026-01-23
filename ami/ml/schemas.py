@@ -342,4 +342,4 @@ class AsyncPipelineRegistrationRequest(pydantic.BaseModel):
     """
 
     processing_service_name: str
-    pipeline_response: PipelineRegistrationResponse
+    pipelines: list[PipelineConfigResponse] = []
