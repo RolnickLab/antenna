@@ -13,10 +13,11 @@ import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { RemoveTaxaListTaxonDialog } from './remove-taxa-list-taxon/remove-taxa-list-taxon-dialog'
 
-export const columns: (project: {
+export const columns: (params: {
+  canUpdate?: boolean
   projectId: string
   taxaListId: string
-}) => TableColumn<Species>[] = ({ projectId, taxaListId }) => [
+}) => TableColumn<Species>[] = ({ canUpdate, projectId, taxaListId }) => [
   {
     id: 'cover-image',
     name: translate(STRING.FIELD_LABEL_IMAGE),
@@ -76,7 +77,12 @@ export const columns: (project: {
     },
     renderCell: (item: Species) => (
       <div className="flex items-center justify-end gap-2 p-4">
-        <RemoveTaxaListTaxonDialog taxaListId={taxaListId} taxonId={item.id} />
+        {canUpdate ? (
+          <RemoveTaxaListTaxonDialog
+            taxaListId={taxaListId}
+            taxonId={item.id}
+          />
+        ) : null}
       </div>
     ),
   },

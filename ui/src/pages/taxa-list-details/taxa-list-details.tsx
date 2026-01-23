@@ -58,6 +58,7 @@ export const TaxaListDetails = () => {
       >
         <SortControl
           columns={columns({
+            canUpdate: taxaList?.canUpdate,
             projectId: projectId as string,
             taxaListId: id as string,
           })}
@@ -68,6 +69,7 @@ export const TaxaListDetails = () => {
       </PageHeader>
       <Table
         columns={columns({
+          canUpdate: taxaList?.canUpdate,
           projectId: projectId as string,
           taxaListId: id as string,
         })}
