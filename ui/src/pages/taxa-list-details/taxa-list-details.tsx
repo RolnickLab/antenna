@@ -17,7 +17,7 @@ import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
-import { AddTaxonPopover } from './add-taxon/add-taxon-popover'
+import { AddTaxaListTaxonPopover } from './add-taxa-list-taxon/add-taxa-list-taxon-popover'
 import { columns } from './taxa-list-details-columns'
 
 export const TaxaListDetails = () => {
@@ -61,7 +61,7 @@ export const TaxaListDetails = () => {
           setSort={setSort}
           sort={sort}
         />
-        <AddTaxonPopover taxaListId={id as string} />
+        <AddTaxaListTaxonPopover taxaListId={id as string} />
       </PageHeader>
       <Table
         columns={columns({

@@ -2,9 +2,13 @@ import { PlusIcon } from 'lucide-react'
 import { Button, Popover } from 'nova-ui-kit'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
-import { AddTaxon } from './add-taxon'
+import { AddTaxaListTaxon } from './add-taxa-list-taxon'
 
-export const AddTaxonPopover = ({ taxaListId }: { taxaListId: string }) => {
+export const AddTaxaListTaxonPopover = ({
+  taxaListId,
+}: {
+  taxaListId: string
+}) => {
   const [open, setOpen] = useState(false)
 
   return (
@@ -19,8 +23,11 @@ export const AddTaxonPopover = ({ taxaListId }: { taxaListId: string }) => {
           </span>
         </Button>
       </Popover.Trigger>
-      <Popover.Content className="p-0 w-72">
-        <AddTaxon onCancel={() => setOpen(false)} taxaListId={taxaListId} />
+      <Popover.Content align="end" className="p-0 w-72">
+        <AddTaxaListTaxon
+          onCancel={() => setOpen(false)}
+          taxaListId={taxaListId}
+        />
       </Popover.Content>
     </Popover.Root>
   )

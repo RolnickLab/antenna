@@ -16,9 +16,7 @@ export const useTaxaListDetails = (
 } => {
   const { data, isLoading, isFetching, error } = useAuthorizedQuery<TaxaList>({
     queryKey: [API_ROUTES.TAXA_LISTS, id],
-    url: `${API_URL}/${API_ROUTES.TAXA_LISTS}/${id}/?project_id=${
-      projectId || ''
-    }`,
+    url: `${API_URL}/${API_ROUTES.TAXA_LISTS}/${id}/?project_id=${projectId}`,
   })
 
   const taxaList = useMemo(

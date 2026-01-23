@@ -1,24 +1,27 @@
 import { FormError } from 'components/form/layout/layout'
 import { TaxonSelect } from 'components/taxon-search/taxon-select'
+import { SUCCESS_TIMEOUT } from 'data-services/constants'
+import { useAddTaxaListTaxon } from 'data-services/hooks/taxa-lists/useAddTaxaListTaxon'
 import { Taxon } from 'data-services/models/taxa'
 import { CheckIcon, Loader2Icon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
 
-interface AddTaxonProps {
+export const AddTaxaListTaxon = ({
+  onCancel,
+  taxaListId,
+}: {
   onCancel: () => void
   taxaListId: string
-}
-
-export const AddTaxon = ({ onCancel }: AddTaxonProps) => {
+}) => {
+  const { projectId } = useParams()
   const [taxon, setTaxon] = useState<Taxon>()
-  const { error, isLoading, isSuccess } = {
-    error: undefined,
-    isLoading: false,
-    isSuccess: false,
-  }
+  const { addTaxaListTaxon, error, isLoading, isSuccess } = useAddTaxaListTaxon(
+    projectId as string
+  )
   const formError = error ? parseServerError(error)?.message : undefined
 
   return (
@@ -40,7 +43,12 @@ export const AddTaxon = ({ onCancel }: AddTaxonProps) => {
           </Button>
           <Button
             disabled={!taxon}
-            onClick={() => {}}
+            onClick={async () => {
+              if (taxon) {
+                await addTaxaListTaxon({ taxaListId, taxonId: taxon.id })
+                setTimeout(() => setTaxon(undefined), SUCCESS_TIMEOUT)
+              }
+            }}
             size="small"
             variant="success"
           >
