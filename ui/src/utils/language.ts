@@ -189,6 +189,7 @@ export enum STRING {
   MESSAGE_PERMISSIONS_MISSING,
   MESSAGE_PROCESS_NOW_TOOLTIP,
   MESSAGE_REMOVE_MEMBER_CONFIRM,
+  MESSAGE_MESSAGE_REMOVE_TAXA_LIST_TAXON_CONFIRM,
   MESSAGE_RESET_INSTRUCTIONS_SENT,
   MESSAGE_RESULT_RANGE,
   MESSAGE_SIGNED_UP,
@@ -285,6 +286,7 @@ export enum STRING {
   REJECT_ID_SHORT,
   REJECT_ID,
   REMOVE_MEMBER,
+  REMOVE_TAXA_LIST_TAXON,
   RESULTS_MEMBERS,
   RESULTS,
   SELECT_COLUMNS,
@@ -512,6 +514,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'Process this single image with presets',
   [STRING.MESSAGE_REMOVE_MEMBER_CONFIRM]:
     'Are you sure you want to remove {{user}} from the team?',
+  [STRING.MESSAGE_MESSAGE_REMOVE_TAXA_LIST_TAXON_CONFIRM]:
+    'Are you sure you want to remove this taxon from the taxa list?',
   [STRING.MESSAGE_RESET_INSTRUCTIONS_SENT]:
     'Reset intructions has been sent to {{email}}!',
   [STRING.MESSAGE_RESULT_RANGE]:
@@ -622,6 +626,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.REJECT_ID_SHORT]: 'Reject',
   [STRING.REJECT_ID]: 'Reject ID',
   [STRING.REMOVE_MEMBER]: 'Remove member',
+  [STRING.REMOVE_TAXA_LIST_TAXON]: 'Remove taxon',
   [STRING.RESULTS_MEMBERS]: '{{total}} member(s)',
   [STRING.RESULTS]: '{{total}} result(s)',
   [STRING.SELECT_COLUMNS]: 'Select columns',

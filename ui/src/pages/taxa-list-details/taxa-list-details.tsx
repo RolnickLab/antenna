@@ -57,7 +57,10 @@ export const TaxaListDetails = () => {
         title={taxaList?.name ?? `${translate(STRING.LOADING_DATA)}...`}
       >
         <SortControl
-          columns={columns({ projectId: projectId as string })}
+          columns={columns({
+            projectId: projectId as string,
+            taxaListId: id as string,
+          })}
           setSort={setSort}
           sort={sort}
         />
@@ -66,6 +69,7 @@ export const TaxaListDetails = () => {
       <Table
         columns={columns({
           projectId: projectId as string,
+          taxaListId: id as string,
         })}
         error={error}
         isLoading={!id && isLoading}

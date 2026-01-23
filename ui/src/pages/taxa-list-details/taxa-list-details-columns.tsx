@@ -1,4 +1,3 @@
-import { Tag } from 'components/taxon-tags/tag'
 import { Species } from 'data-services/models/species'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
@@ -12,11 +11,12 @@ import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { RemoveTaxaListTaxonDialog } from './remove-taxa-list-taxon/remove-taxa-list-taxon-dialog'
 
 export const columns: (project: {
   projectId: string
-  featureFlags?: { [key: string]: boolean }
-}) => TableColumn<Species>[] = ({ projectId, featureFlags }) => [
+  taxaListId: string
+}) => TableColumn<Species>[] = ({ projectId, taxaListId }) => [
   {
     id: 'cover-image',
     name: 'Cover image',
@@ -46,13 +46,6 @@ export const columns: (project: {
           >
             <TaxonDetails compact taxon={item} />
           </Link>
-          {featureFlags?.tags && item.tags.length ? (
-            <div className="flex flex-wrap gap-1">
-              {item.tags.map((tag) => (
-                <Tag key={tag.id} name={tag.name} />
-              ))}
-            </div>
-          ) : null}
         </div>
       </BasicTableCell>
     ),
@@ -64,5 +57,18 @@ export const columns: (project: {
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Species) => <BasicTableCell value={item.rank} />,
+  },
+  {
+    id: 'actions',
+    name: '',
+    styles: {
+      padding: '16px',
+      width: '100%',
+    },
+    renderCell: (item: Species) => (
+      <div className="flex items-center justify-end gap-2 p-4">
+        <RemoveTaxaListTaxonDialog taxaListId={taxaListId} taxonId={item.id} />
+      </div>
+    ),
   },
 ]
