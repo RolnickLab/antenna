@@ -1,5 +1,5 @@
 export type Role = {
   name: string
   id: string
-  description: string | null
+  description: string
 }
