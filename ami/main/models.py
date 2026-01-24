@@ -557,15 +557,19 @@ class UserProjectMembershipQuerySet(BaseQuerySet):
 
         # Log invalid memberships if requested (before filtering them out)
         if log_invalid:
-            # Use a single query to get both count and unique project IDs
-            invalid_projects = list(
+            from django.db.models import Count
+            
+            # Single query to get project IDs and their invalid membership counts
+            invalid_by_project = list(
                 queryset.filter(has_role=False)
-                .values_list("project_id", flat=True)
-                .distinct()
+                .values("project_id")
+                .annotate(count=Count("id"))
             )
-            if invalid_projects:
-                invalid_count = queryset.filter(has_role=False).count()
-                projects_str = ", ".join(str(pid) for pid in invalid_projects)
+            
+            if invalid_by_project:
+                invalid_count = sum(item["count"] for item in invalid_by_project)
+                project_ids = [item["project_id"] for item in invalid_by_project]
+                projects_str = ", ".join(str(pid) for pid in project_ids)
                 logger.warning(
                     f"Data inconsistency detected: {invalid_count} UserProjectMembership(s) "
                     f"without assigned roles found in project(s): {projects_str}. "
