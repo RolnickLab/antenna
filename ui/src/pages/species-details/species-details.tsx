@@ -72,7 +72,7 @@ export const SpeciesDetails = ({
               target="_blank"
             >
               <LockIcon className="w-4 h-4" />
-              <span>Admin</span>
+              <span>{translate(STRING.ADMIN)}</span>
             </Link>
           </div>
         ) : null}

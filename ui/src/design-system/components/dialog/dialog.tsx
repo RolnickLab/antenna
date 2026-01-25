@@ -25,6 +25,7 @@ const Trigger = Dialog.Trigger
 const Content = ({
   ariaCloselabel,
   children,
+  className,
   isCompact,
   isLoading,
   error,
@@ -33,6 +34,7 @@ const Content = ({
   ariaCloselabel: string
   children: ReactNode
   isCompact?: boolean
+  className?: string
   isLoading?: boolean
   error?: any
   onOpenAutoFocus?: (event: Event) => void
@@ -46,10 +48,14 @@ const Content = ({
       ) : null}
     </Dialog.Overlay>
     <Dialog.Content
-      className={classNames(styles.dialog, {
-        [styles.compact]: isCompact || error,
-        [styles.loading]: isLoading,
-      })}
+      className={classNames(
+        styles.dialog,
+        {
+          [styles.compact]: isCompact || error,
+          [styles.loading]: isLoading,
+        },
+        className
+      )}
       tabIndex={-1}
       onOpenAutoFocus={onOpenAutoFocus}
     >
