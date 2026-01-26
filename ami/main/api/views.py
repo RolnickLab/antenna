@@ -230,7 +230,7 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
         V2 ML processing services to register available pipelines for a project.
 
         Expected payload: AsyncPipelineRegistrationRequest (pydantic schema) containing a
-        list of PipelineConfigResponse objects under the `pipelines_response.pipelines` key.
+        list of PipelineConfigResponse objects under the `pipeline_response.pipelines` key.
 
         Behavior:
         - If the project has no associated ProcessingService, create one and
@@ -251,26 +251,20 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
 
         project: Project = self.get_object()
 
-        # Check if a processing service with the same name already exists,
-        processing_service = ProcessingService.objects.filter(name=parsed.processing_service_name).first()
+        # Atomically get or create the processing service
+        processing_service, created = ProcessingService.objects.get_or_create(
+            name=parsed.processing_service_name,
+            defaults={
+                "endpoint_url": None,  # TODO: depends on https://github.com/RolnickLab/antenna/pull/1090
+            },
+        )
+        # Associate with the project regardless of whether it was created or already existed
+        processing_service.projects.add(project)
 
-        if not processing_service:
-            # Create a processing service and associate it with the project
-            processing_service = ProcessingService.objects.create(
-                name=parsed.processing_service_name,
-                endpoint_url=None,  # TODO: depends on https://github.com/RolnickLab/antenna/pull/1090
-            )
-            processing_service.projects.add(project)
+        if created:
             logger.info(f"Created dummy processing service {processing_service} for project {project.pk}")
         else:
-            # Associate with the project if not already associated
-            if project not in processing_service.projects.all():
-                processing_service.projects.add(project)
-                logger.info(f"Associated processing service {processing_service} with project {project.pk}")
-            else:
-                # Processing service already exists for this project
-                logger.warning(f"Processing service {processing_service} already exists for project {project.pk}")
-                return Response({"detail": "Processing service already exists."}, status=status.HTTP_400_BAD_REQUEST)
+            logger.info(f"Associated processing service {processing_service} with project {project.pk}")
 
         # Call create_pipelines limited to this project
         response = processing_service.create_pipelines(
