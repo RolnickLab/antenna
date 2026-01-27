@@ -258,11 +258,18 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
                 "endpoint_url": None,  # TODO: depends on https://github.com/RolnickLab/antenna/pull/1090
             },
         )
-        # Associate with the project regardless of whether it was created or already existed
+
+        # Check if the service is already associated with this project
+        if not created and project in processing_service.projects.all():
+            error_msg = f"Processing service already exists and is associated with project {project.pk}"
+            logger.warning(error_msg)
+            return Response({"detail": error_msg}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Associate with the project
         processing_service.projects.add(project)
 
         if created:
-            logger.info(f"Created dummy processing service {processing_service} for project {project.pk}")
+            logger.info(f"Created processing service {processing_service} for project {project.pk}")
         else:
             logger.info(f"Associated processing service {processing_service} with project {project.pk}")
 
