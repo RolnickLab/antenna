@@ -83,6 +83,8 @@ from .serializers import (
     StorageSourceSerializer,
     StorageStatusSerializer,
     TaxaListSerializer,
+    TaxaListTaxonInputSerializer,
+    TaxaListTaxonSerializer,
     TaxonListSerializer,
     TaxonSearchResultSerializer,
     TaxonSerializer,
@@ -1628,55 +1630,74 @@ class TaxaListViewSet(DefaultViewSet, ProjectMixin):
             return qs.filter(projects=project)
         return qs
 
-    def _get_taxon(self):
-        """
-        Get taxon from the POST request body.
-        """
-        key = "taxon_id"
-        taxon_id = SingleParamSerializer[int].clean(
-            key,
-            field=serializers.IntegerField(required=True, min_value=0),
-            data=self.request.data,
-        )
 
+class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):
+    """
+    Nested ViewSet for managing taxa in a taxa list.
+    Accessed via /taxa/lists/{taxa_list_id}/taxa/
+    """
+
+    serializer_class = TaxaListTaxonSerializer
+    permission_classes = []  # Allow public access for now
+
+    def get_taxa_list(self):
+        """Get the parent taxa list from URL parameters."""
+        taxa_list_id = self.kwargs.get("taxalist_pk")
         try:
-            return Taxon.objects.get(id=taxon_id)
-        except Taxon.DoesNotExist:
-            raise api_exceptions.NotFound(detail=f"Taxon with id {taxon_id} not found")
+            return TaxaList.objects.get(pk=taxa_list_id)
+        except TaxaList.DoesNotExist:
+            raise api_exceptions.NotFound("Taxa list not found.")
 
-    @action(detail=True, methods=["post"], name="add_taxon")
-    def add_taxon(self, request, pk=None):
-        """
-        Add a taxon to a taxa list.
-        """
-        taxa_list: TaxaList = self.get_object()
-        taxon = self._get_taxon()
+    def get_queryset(self):
+        """Return taxa in the specified taxa list."""
+        taxa_list = self.get_taxa_list()
+        return taxa_list.taxa.all()
+
+    def list(self, request, taxalist_pk=None):
+        """List all taxa in the taxa list."""
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({"count": queryset.count(), "results": serializer.data})
+
+    def create(self, request, taxalist_pk=None):
+        """Add a taxon to the taxa list."""
+        taxa_list = self.get_taxa_list()
+
+        # Validate input
+        input_serializer = TaxaListTaxonInputSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        taxon_id = input_serializer.validated_data["taxon_id"]
+
+        # Check if already exists
+        if taxa_list.taxa.filter(pk=taxon_id).exists():
+            return Response(
+                {"non_field_errors": ["Taxon is already in this taxa list."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Add taxon
+        taxon = Taxon.objects.get(pk=taxon_id)
         taxa_list.taxa.add(taxon)
 
-        return Response(
-            {
-                "taxa_list_id": taxa_list.pk,
-                "taxon_id": taxon.pk,
-                "taxa_count": taxa_list.taxa.count(),
-            }
-        )
+        # Return the added taxon
+        serializer = self.get_serializer(taxon)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    @action(detail=True, methods=["post"], name="remove_taxon")
-    def remove_taxon(self, request, pk=None):
+    @action(detail=False, methods=["delete"], url_path=r"by-taxon/(?P<taxon_id>\d+)")
+    def delete_by_taxon(self, request, taxalist_pk=None, taxon_id=None):
         """
-        Remove a taxon from a taxa list.
+        Remove a taxon from the taxa list by taxon ID.
+        DELETE /taxa/lists/{taxa_list_id}/taxa/by-taxon/{taxon_id}/
         """
-        taxa_list: TaxaList = self.get_object()
-        taxon = self._get_taxon()
-        taxa_list.taxa.remove(taxon)
+        taxa_list = self.get_taxa_list()
 
-        return Response(
-            {
-                "taxa_list_id": taxa_list.pk,
-                "taxon_id": taxon.pk,
-                "taxa_count": taxa_list.taxa.count(),
-            }
-        )
+        # Check if taxon exists in list
+        if not taxa_list.taxa.filter(pk=taxon_id).exists():
+            raise api_exceptions.NotFound("Taxon is not in this taxa list.")
+
+        # Remove taxon
+        taxa_list.taxa.remove(taxon_id)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class TagViewSet(DefaultViewSet, ProjectMixin):

@@ -17,7 +17,7 @@ export const useAddTaxaListTaxon = (projectId: string) => {
       taxonId: string
     }) =>
       axios.post(
-        `${API_URL}/${API_ROUTES.TAXA_LISTS}/${taxaListId}/add_taxon/?project_id=${projectId}`,
+        `${API_URL}/${API_ROUTES.TAXA_LISTS}/${taxaListId}/taxa/?project_id=${projectId}`,
         {
           taxon_id: taxonId,
         },

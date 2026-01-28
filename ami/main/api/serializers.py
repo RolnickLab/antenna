@@ -669,6 +669,24 @@ class TaxaListSerializer(DefaultSerializer):
         return getattr(obj, "annotated_taxa_count", obj.taxa.count())
 
 
+class TaxaListTaxonInputSerializer(serializers.Serializer):
+    """Serializer for adding a taxon to a taxa list."""
+
+    taxon_id = serializers.IntegerField(required=True)
+
+    def validate_taxon_id(self, value):
+        """Validate that the taxon exists."""
+        if not Taxon.objects.filter(id=value).exists():
+            raise serializers.ValidationError("Taxon does not exist.")
+        return value
+
+
+class TaxaListTaxonSerializer(TaxonNoParentNestedSerializer):
+    """Serializer for taxa in a taxa list (simplified taxon representation)."""
+
+    pass
+
+
 class CaptureTaxonSerializer(DefaultSerializer):
     parent = TaxonNoParentNestedSerializer(read_only=True)
     parents = TaxonParentSerializer(many=True, read_only=True)
