@@ -50,8 +50,14 @@ export const DatePicker = ({
           </>
         </Button>
       </Popover.Trigger>
-      <Popover.Content className="w-auto p-0 overflow-hidden">
+      <Popover.Content
+        /* Force calendar to go below trigger to keep position stable for navigation controls */
+        avoidCollisions={false}
+        className="w-auto p-0 overflow-hidden"
+        side="bottom"
+      >
         <Calendar
+          captionLayout="dropdown"
           mode="single"
           selected={selected}
           onSelect={(date) => {
