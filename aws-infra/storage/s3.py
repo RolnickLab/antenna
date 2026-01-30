@@ -15,6 +15,7 @@ bucket_name = f"{PROJECT}-{ENVIRONMENT}-assets-pulumi"
 assets_bucket = aws.s3.Bucket(
     bucket_name,
     bucket=bucket_name,
+    force_destroy=True,
 )
 
 # ---------------------------------------------------------
