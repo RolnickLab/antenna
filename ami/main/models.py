@@ -1457,6 +1457,12 @@ class S3StorageSource(BaseModel):
 
     name = models.CharField(max_length=255)
     bucket = models.CharField(max_length=255)
+    region = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="AWS region (e.g., 'us-east-1', 'eu-west-1'). Leave blank for Swift/MinIO storage.",
+    )
     prefix = models.CharField(max_length=255, blank=True)
     access_key = models.TextField()
     secret_key = models.TextField()
@@ -1476,6 +1482,7 @@ class S3StorageSource(BaseModel):
     def config(self) -> ami.utils.s3.S3Config:
         return ami.utils.s3.S3Config(
             bucket_name=self.bucket,
+            region=self.region,
             prefix=self.prefix,
             access_key_id=self.access_key,
             secret_access_key=self.secret_key,
