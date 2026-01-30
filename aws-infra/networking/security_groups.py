@@ -60,7 +60,7 @@ eb_sg = aws.ec2.SecurityGroup(
             protocol="tcp",
             from_port=5555,                   # Port used for admin UI (e.g. Flower)
             to_port=5555,
-            cidr_blocks=["205.175.106.253/32"],  # Only allow your personal IP
+            cidr_blocks=[""],  # Only allow your personal IP
             description="Admin access (Flower)",
         ),
 
@@ -117,7 +117,7 @@ rds_sg = aws.ec2.SecurityGroup(
             protocol="tcp",
             from_port=5432,
             to_port=5432,
-            cidr_blocks=["205.175.106.253/32"],  # Replace with your IP
+            cidr_blocks=[""],  # Replace with your IP
             description="Postgres admin access",
         ),
     ],
@@ -169,7 +169,7 @@ redis_sg = aws.ec2.SecurityGroup(
             protocol="tcp",
             from_port=6379,
             to_port=6379,
-            cidr_blocks=["205.175.106.253/32"],  # Replace with your IP
+            cidr_blocks=[""],  # Replace with your IP
             description="Redis admin access",
         ),
     ],
