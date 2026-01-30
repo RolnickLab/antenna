@@ -273,7 +273,7 @@ aws ssm start-session --target <EC2_INSTANCE_ID> --region us-west-2
 ```
 
 Find the instance ID in:
-- AWS Console → EC2 → Instances (linked to the EB environment)
+- AWS Console -> EC2 -> Instances (linked to the EB environment)
 
 ---
 
@@ -345,7 +345,7 @@ Auditable: access is logged via AWS Systems Manager.
 
 ## Step 1: Find the EB EC2 Instance ID
 
-If you know the EB environment name, you can fetch the instance ID like this:
+If you know the EB environment name (for example antenna-django-eb-env-pulumi-v2), you can fetch the instance ID like this:
 ```bash
 
 aws ec2 describe-instances \
@@ -360,7 +360,7 @@ Copy the output instance ID, for example:
 
 i-050060d3e7473792b
 
-## Step 2: Start an SSM Port Forwarding Session (5555 → localhost:5555)
+## Step 2: Start an SSM Port Forwarding Session (5555 -> localhost:5555)
 
 Run this on your laptop:
 
