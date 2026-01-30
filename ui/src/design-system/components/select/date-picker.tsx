@@ -1,7 +1,7 @@
 import { format } from 'date-fns'
 import { AlertCircleIcon, Calendar as CalendarIcon } from 'lucide-react'
 import { Button, Calendar, Popover } from 'nova-ui-kit'
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 const dateToLabel = (date: Date) => {
   try {
@@ -21,7 +21,15 @@ export const DatePicker = ({
   value?: string
 }) => {
   const [open, setOpen] = useState(false)
-  const selected = value ? new Date(value) : undefined
+  const selected = useMemo(() => (value ? new Date(value) : undefined), [value])
+  const [month, setMonth] = useState(selected)
+
+  /* Reset start month on date picker close */
+  useEffect(() => {
+    if (!open) {
+      setMonth(selected)
+    }
+  }, [open, selected])
 
   const triggerLabel = (() => {
     if (!value) {
@@ -59,7 +67,9 @@ export const DatePicker = ({
         <Calendar
           captionLayout="dropdown"
           mode="single"
+          month={month}
           selected={selected}
+          onMonthChange={setMonth}
           onSelect={(date) => {
             if (date) {
               onValueChange(dateToLabel(date))
