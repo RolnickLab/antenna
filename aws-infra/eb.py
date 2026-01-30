@@ -6,6 +6,9 @@ import hashlib
 import pulumi
 import pulumi_aws as aws
 
+from pulumi import ResourceOptions, CustomTimeouts
+
+
 # ---------------------------------------------------------
 # ECR repos + docker build/push
 # ---------------------------------------------------------
@@ -420,6 +423,7 @@ env_pulumi = aws.elasticbeanstalk.Environment(
             images.ml_min_cmd,
             images.ml_ex_cmd,
         ],
+        custom_timeouts=CustomTimeouts(create="60m", update="60m"),
     ),
 )
 
