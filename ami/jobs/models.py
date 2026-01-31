@@ -322,14 +322,12 @@ class MLJob(JobType):
         """
         Procedure for an ML pipeline as a job.
         """
+        from ami.ml.orchestration.jobs import queue_images_to_nats
+
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
         job.save()
-
-        # Keep track of sub-tasks for saving results, pair with batch number
-        save_tasks: list[tuple[int, AsyncResult]] = []
-        save_tasks_completed: list[tuple[int, AsyncResult]] = []
 
         if job.delay:
             update_interval_seconds = 2
@@ -365,7 +363,7 @@ class MLJob(JobType):
             progress=0,
         )
 
-        images = list(
+        images: list[SourceImage] = list(
             # @TODO return generator plus image count
             # @TODO pass to celery group chain?
             job.pipeline.collect_images(
@@ -389,8 +387,6 @@ class MLJob(JobType):
             images = images[: job.limit]
             image_count = len(images)
             job.progress.add_stage_param("collect", "Limit", image_count)
-        else:
-            image_count = source_image_count
 
         job.progress.update_stage(
             "collect",
@@ -401,6 +397,24 @@ class MLJob(JobType):
         # End image collection stage
         job.save()
 
+        if job.project.feature_flags.async_pipeline_workers:
+            queued = queue_images_to_nats(job, images)
+            if not queued:
+                job.logger.error("Aborting job %s because images could not be queued to NATS", job.pk)
+                job.progress.update_stage("collect", status=JobState.FAILURE)
+                job.update_status(JobState.FAILURE)
+                job.finished_at = datetime.datetime.now()
+                job.save()
+                return
+        else:
+            cls.process_images(job, images)
+
+    @classmethod
+    def process_images(cls, job, images):
+        image_count = len(images)
+        # Keep track of sub-tasks for saving results, pair with batch number
+        save_tasks: list[tuple[int, AsyncResult]] = []
+        save_tasks_completed: list[tuple[int, AsyncResult]] = []
         total_captures = 0
         total_detections = 0
         total_classifications = 0

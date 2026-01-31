@@ -263,6 +263,10 @@ CACHES = {
 }
 REDIS_URL = env("REDIS_URL", default=None)
 
+# NATS
+# ------------------------------------------------------------------------------
+NATS_URL = env("NATS_URL", default="nats://localhost:4222")  # type: ignore[no-untyped-call]
+
 # ADMIN
 # ------------------------------------------------------------------------------
 # Django Admin URL.
