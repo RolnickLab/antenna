@@ -16,7 +16,7 @@ from rest_framework.response import Response
 from ami.base.permissions import ObjectPermission
 from ami.base.views import ProjectMixin
 from ami.jobs.schemas import batch_param, ids_only_param, incomplete_only_param
-from ami.jobs.tasks import process_pipeline_result
+from ami.jobs.tasks import process_nats_pipeline_result
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
 from ami.ml.schemas import PipelineTaskResult
@@ -283,7 +283,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
                 # Queue the background task
                 # Convert Pydantic model to dict for JSON serialization
-                task = process_pipeline_result.delay(
+                task = process_nats_pipeline_result.delay(
                     job_id=job.pk, result_data=result_data.dict(), reply_subject=reply_subject
                 )
 

@@ -44,7 +44,7 @@ def run_job(self, job_id: int) -> None:
     soft_time_limit=300,  # 5 minutes
     time_limit=360,  # 6 minutes
 )
-def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject: str) -> None:
+def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_subject: str) -> None:
     """
     Process a single pipeline result asynchronously.
 
