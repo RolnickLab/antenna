@@ -555,8 +555,9 @@ def get_or_create_taxon_for_classification(
 
     :return: The Taxon object
     """
-    taxa_list, created = TaxaList.objects.get_or_create(
+    taxa_list, created = TaxaList.objects.get_or_create_for_project(
         name=f"Taxa returned by {algorithm.name}",
+        project=None,  # Algorithm taxa lists are global
     )
     if created:
         logger.info(f"Created new taxa list {taxa_list}")
