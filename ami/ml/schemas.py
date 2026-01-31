@@ -241,6 +241,13 @@ class PipelineResultsResponse(pydantic.BaseModel):
     errors: list | str | None = None
 
 
+class PipelineResultsError(pydantic.BaseModel):
+    """Error result when pipeline processing fails for an image."""
+
+    error: str
+    image_id: str | None = None
+
+
 class PipelineProcessingTask(pydantic.BaseModel):
     """
     A task representing a single image or detection to be processed in an async pipeline.
@@ -258,10 +265,12 @@ class PipelineProcessingTask(pydantic.BaseModel):
 class PipelineTaskResult(pydantic.BaseModel):
     """
     The result from processing a single PipelineProcessingTask.
+
+    Note: this schema is called `AntennaTaskResult` in the ADC worker processing service.
     """
 
     reply_subject: str  # The reply_subject from the PipelineProcessingTask
-    result: PipelineResultsResponse
+    result: PipelineResultsResponse | PipelineResultsError
 
 
 class PipelineStageParam(pydantic.BaseModel):

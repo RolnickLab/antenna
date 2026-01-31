@@ -10,7 +10,7 @@ from django.db import transaction
 
 from ami.ml.orchestration.nats_queue import TaskQueueManager
 from ami.ml.orchestration.task_state import TaskStateManager
-from ami.ml.schemas import PipelineResultsResponse
+from ami.ml.schemas import PipelineResultsError, PipelineResultsResponse
 from ami.tasks import default_soft_time_limit, default_time_limit
 from config import celery_app
 
@@ -62,15 +62,16 @@ def process_pipeline_result(self, job_id: int, result_data: dict, reply_subject:
     from ami.jobs.models import Job  # avoid circular import
 
     _, t = log_time()
-    error = result_data.get("error")
-    pipeline_result = None
-    if not error:
+
+    # Validate with Pydantic - check for error response first
+    if "error" in result_data:
+        error_result = PipelineResultsError(**result_data)
+        processed_image_ids = {str(error_result.image_id)} if error_result.image_id else set()
+        logger.error(f"Pipeline returned error for job {job_id}, image {error_result.image_id}: {error_result.error}")
+        pipeline_result = None
+    else:
         pipeline_result = PipelineResultsResponse(**result_data)
         processed_image_ids = {str(img.id) for img in pipeline_result.source_images}
-    else:
-        image_id = result_data.get("image_id")
-        processed_image_ids = {str(image_id)} if image_id else set()
-        logger.error(f"Pipeline returned error for job {job_id}, image {image_id}: {error}")
 
     state_manager = TaskStateManager(job_id)
 
