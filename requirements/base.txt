@@ -8,6 +8,7 @@ celery==5.4.0  # pyup: < 6.0  # https://github.com/celery/celery
 django-celery-beat==2.5.0  # https://github.com/celery/django-celery-beat
 flower==2.0.1  # https://github.com/mher/flower
 kombu==5.4.2
+nats-py==2.10.0  # https://github.com/nats-io/nats.py
 uvicorn[standard]==0.22.0  # https://github.com/encode/uvicorn
 rich==13.5.0
 markdown==3.4.4
