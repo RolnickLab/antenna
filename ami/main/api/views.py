@@ -1712,11 +1712,11 @@ class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):
         serializer = self.get_serializer(taxon)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    @action(detail=False, methods=["delete"], url_path=r"by-taxon/(?P<taxon_id>\d+)")
+    @action(detail=False, methods=["delete"], url_path=r"(?P<taxon_id>\d+)")
     def delete_by_taxon(self, request, taxalist_pk=None, taxon_id=None):
         """
         Remove a taxon from the taxa list by taxon ID.
-        DELETE /taxa/lists/{taxa_list_id}/taxa/by-taxon/{taxon_id}/
+        DELETE /taxa/lists/{taxa_list_id}/taxa/{taxon_id}/
         """
         taxa_list = self.get_taxa_list()
 

@@ -1,6 +1,7 @@
 """
 Tests for TaxaList taxa management API endpoints (without through model).
 """
+
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -57,14 +58,14 @@ class TaxaListTaxonAPITestCase(TestCase):
     def test_delete_by_taxon_id(self):
         """Test deleting by taxon ID returns 204."""
         self.taxa_list.taxa.add(self.taxon1)
-        url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/taxa/by-taxon/{self.taxon1.pk}/?project_id={self.project.pk}"
+        url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/taxa/{self.taxon1.pk}/?project_id={self.project.pk}"
         response = self.client.delete(url)
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(self.taxa_list.taxa.filter(pk=self.taxon1.pk).exists())
 
     def test_delete_nonexistent_returns_404(self):
         """Test deleting non-existent taxon returns 404."""
-        url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/taxa/by-taxon/{self.taxon1.pk}/?project_id={self.project.pk}"
+        url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/taxa/{self.taxon1.pk}/?project_id={self.project.pk}"
         response = self.client.delete(url)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -98,7 +99,7 @@ class TaxaListTaxonAPITestCase(TestCase):
         """Test that removing one taxon doesn't affect others."""
         self.taxa_list.taxa.add(self.taxon1, self.taxon2)
 
-        url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/taxa/by-taxon/{self.taxon1.pk}/?project_id={self.project.pk}"
+        url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/taxa/{self.taxon1.pk}/?project_id={self.project.pk}"
         response = self.client.delete(url)
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
