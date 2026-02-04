@@ -32,6 +32,7 @@ export const TaxaListDetails = () => {
     pagination,
     filters: [
       { field: 'include_unobserved', value: 'true' },
+      { field: 'include_descendants', value: 'false' },
       { field: 'taxa_list_id', value: id },
     ],
   })
