@@ -1263,11 +1263,15 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
 
 class TaxonTaxaListFilter(filters.BaseFilterBackend):
     """
-    Filters taxa based on a TaxaList Similar to `OccurrenceTaxaListFilter`.
+    Filters taxa based on a TaxaList.
 
-    Queries for all taxa that are either:
-    - Directly in the requested TaxaList.
-    - A descendant (child or deeper) of any taxon in the TaxaList, recursively.
+    By default, queries for taxa that are directly in the TaxaList.
+    If include_descendants=true, also includes descendants (children or deeper) recursively.
+
+    Query parameters:
+    - taxa_list_id: ID of the taxa list to filter by
+    - include_descendants: Set to 'true' to include descendants (default: false)
+    - not_taxa_list_id: ID of taxa list to exclude
     """
 
     query_param = "taxa_list_id"
@@ -1279,11 +1283,20 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
             request.query_params.get(self.query_param_exclusive)
         )
 
+        include_descendants_default = True
+        include_descendants = request.query_params.get("include_descendants", include_descendants_default)
+        if include_descendants is not None:
+            include_descendants = BooleanField(required=False).clean(include_descendants)
+
         def _get_filter(taxa_list: TaxaList) -> models.Q:
             taxa = taxa_list.taxa.all()  # Get taxa in the taxa list
             query_filter = Q(id__in=taxa)
-            for taxon in taxa:
-                query_filter |= Q(parents_json__contains=[{"id": taxon.pk}])
+
+            # Only include descendants if explicitly requested
+            if include_descendants:
+                for taxon in taxa:
+                    query_filter |= Q(parents_json__contains=[{"id": taxon.pk}])
+
             return query_filter
 
         if taxalist_id:
