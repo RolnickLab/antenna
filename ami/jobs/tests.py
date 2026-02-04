@@ -61,6 +61,93 @@ class TestJobProgress(TestCase):
         self.assertEqual(job.progress.stages[0].progress, 1)
         self.assertEqual(job.progress.stages[0].status, JobState.SUCCESS)
 
+    def test_job_status_guard_prevents_premature_success(self):
+        """
+        Test that update_job_status guards against setting SUCCESS
+        when job stages are not complete.
+
+        This tests the fix for race conditions where Celery task completes
+        but async workers are still processing stages.
+        """
+        from unittest.mock import Mock
+
+        from ami.jobs.tasks import update_job_status
+
+        # Create job with multiple stages
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test job with incomplete stages",
+            pipeline=self.pipeline,
+            source_image_collection=self.source_image_collection,
+        )
+
+        # Add stages that are NOT complete
+        job.progress.add_stage("detection")
+        job.progress.update_stage("detection", progress=0.5, status=JobState.STARTED)
+        job.progress.add_stage("classification")
+        job.progress.update_stage("classification", progress=0.0, status=JobState.CREATED)
+        job.save()
+
+        # Verify stages are incomplete
+        self.assertFalse(job.progress.is_complete())
+
+        # Mock task object
+        mock_task = Mock()
+        mock_task.request.kwargs = {"job_id": job.pk}
+        initial_status = job.status
+
+        # Attempt to set SUCCESS while stages are incomplete
+        update_job_status(
+            sender=mock_task,
+            task_id="test-task-id",
+            task=mock_task,
+            state=JobState.SUCCESS.value,  # Pass string value, not enum
+            retval=None,
+        )
+
+        # Verify job status was NOT updated to SUCCESS (should remain CREATED)
+        job.refresh_from_db()
+        self.assertEqual(job.status, initial_status)
+        self.assertNotEqual(job.status, JobState.SUCCESS.value)
+
+    def test_job_status_allows_failure_states_immediately(self):
+        """
+        Test that FAILURE and REVOKED states bypass the completion guard
+        and are set immediately regardless of stage completion.
+        """
+        from unittest.mock import Mock
+
+        from ami.jobs.tasks import update_job_status
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test job for failure states",
+            pipeline=self.pipeline,
+            source_image_collection=self.source_image_collection,
+        )
+
+        # Add incomplete stage
+        job.progress.add_stage("detection")
+        job.progress.update_stage("detection", progress=0.3, status=JobState.STARTED)
+        job.save()
+
+        mock_task = Mock()
+        mock_task.request.kwargs = {"job_id": job.pk}
+
+        # Test FAILURE state passes through even with incomplete stages
+        update_job_status(
+            sender=mock_task,
+            task_id="test-task-id",
+            task=mock_task,
+            state=JobState.FAILURE.value,  # Pass string value, not enum
+            retval=None,
+        )
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.FAILURE.value)
+
 
 class TestJobView(APITestCase):
     """
