@@ -16,6 +16,7 @@ Planning documents for migrating the Antenna UI from Vite + React Router to a mo
 |---|----------|-------------|
 | 01 | [Current State](./01-current-state.md) | Analysis of current UI and API architecture |
 | 08 | [**Motivations**](./08-motivations.md) | Why we're considering migration (small team, patterns, maintenance) |
+| 09 | [**E2E Testing Strategy**](./09-e2e-testing-strategy.md) | Playwright setup, test generation strategies, analytics-driven prioritization |
 
 ### Next.js Assessment
 
@@ -38,6 +39,7 @@ Planning documents for migrating the Antenna UI from Vite + React Router to a mo
 | R4 | [Migration Steps](./remix/04-migration-steps.md) | Phased implementation plan (Remix) |
 | R5 | [Questions & Risks](./remix/05-questions-risks.md) | Risks, alternatives, benefits (Remix) |
 | R6 | [Testing & Evaluation](./remix/06-testing-evaluation.md) | Testing plan (Remix) |
+| R7 | [**AI-Driven Migration**](./remix/07-ai-driven-migration.md) | How Claude Code executes migration in 1-2 hours |
 
 ---
 
