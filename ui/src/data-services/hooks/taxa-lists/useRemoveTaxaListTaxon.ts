@@ -16,11 +16,8 @@ export const useRemoveTaxaListTaxon = (projectId: string) => {
       taxaListId: string
       taxonId: string
     }) =>
-      axios.post(
-        `${API_URL}/${API_ROUTES.TAXA_LISTS}/${taxaListId}/remove_taxon/?project_id=${projectId}`,
-        {
-          taxon_id: taxonId,
-        },
+      axios.delete(
+        `${API_URL}/${API_ROUTES.TAXA_LISTS}/${taxaListId}/taxa/${taxonId}/?project_id=${projectId}`,
         {
           headers: getAuthHeader(user),
         }

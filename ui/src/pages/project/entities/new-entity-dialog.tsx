@@ -70,14 +70,6 @@ export const NewEntityDialog = ({
                 projectId: projectId as string,
               }
 
-              // Taxa lists require some custom handling since a global entity
-              if (collection === API_ROUTES.TAXA_LISTS) {
-                fieldValues.customFields = {
-                  projects: [projectId as string],
-                  taxa: [],
-                }
-              }
-
               createEntity(fieldValues)
             }}
           />

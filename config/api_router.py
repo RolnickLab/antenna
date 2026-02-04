@@ -35,6 +35,13 @@ router.register(r"captures", views.SourceImageViewSet)
 router.register(r"detections", views.DetectionViewSet)
 router.register(r"occurrences", views.OccurrenceViewSet)
 router.register(r"taxa/lists", views.TaxaListViewSet)
+# NESTED: /taxa/lists/{taxalist_id}/taxa/
+taxa_lists_router = routers.NestedDefaultRouter(router, r"taxa/lists", lookup="taxalist")
+taxa_lists_router.register(
+    r"taxa",
+    views.TaxaListTaxonViewSet,
+    basename="taxalist-taxa",
+)
 router.register(r"taxa", views.TaxonViewSet)
 router.register(r"tags", views.TagViewSet)
 router.register(r"ml/algorithms", ml_views.AlgorithmViewSet)
@@ -73,5 +80,5 @@ urlpatterns = [
 ]
 
 
-urlpatterns += router.urls + projects_router.urls
+urlpatterns += router.urls + projects_router.urls + taxa_lists_router.urls
 #
