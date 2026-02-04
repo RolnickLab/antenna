@@ -2,8 +2,6 @@ import typing
 
 import requests
 from django.forms import BooleanField, FloatField
-from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter
 from requests.adapters import HTTPAdapter
 from rest_framework.request import Request
 from urllib3.util import Retry
@@ -144,30 +142,3 @@ def get_default_classification_threshold(project: "Project | None" = None, reque
         return project.default_filters_score_threshold
     else:
         return default_threshold
-
-
-project_id_doc_param = OpenApiParameter(
-    name="project_id",
-    description="Filter by project ID",
-    required=False,
-    type=int,
-)
-
-ids_only_param = OpenApiParameter(
-    name="ids_only",
-    description="Return only job IDs instead of full job objects",
-    required=False,
-    type=OpenApiTypes.BOOL,
-)
-incomplete_only_param = OpenApiParameter(
-    name="incomplete_only",
-    description="Filter to only show incomplete jobs (excludes SUCCESS, FAILURE, REVOKED)",
-    required=False,
-    type=OpenApiTypes.BOOL,
-)
-batch_param = OpenApiParameter(
-    name="batch",
-    description="Number of tasks to pull in the batch",
-    required=False,
-    type=OpenApiTypes.INT,
-)

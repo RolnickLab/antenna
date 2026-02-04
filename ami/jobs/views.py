@@ -15,7 +15,7 @@ from rest_framework.response import Response
 
 from ami.base.permissions import ObjectPermission
 from ami.base.views import ProjectMixin
-from ami.jobs.schemas import batch_param, ids_only_param, incomplete_only_param
+from ami.jobs.schemas import batch_param, ids_only_param, incomplete_only_param, processing_service_name_param
 from ami.jobs.tasks import process_nats_pipeline_result
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
@@ -203,13 +203,21 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             project_id_doc_param,
             ids_only_param,
             incomplete_only_param,
+            processing_service_name_param,
         ]
     )
     def list(self, request, *args, **kwargs):
+        # Get optional processing_service_name parameter
+        processing_service_name = request.query_params.get("processing_service_name", None)
+        if processing_service_name:
+            logger.info(f"Jobs list requested by processing service: {processing_service_name}")
+        else:
+            logger.debug("Jobs list requested without processing service name")
+
         return super().list(request, *args, **kwargs)
 
     @extend_schema(
-        parameters=[batch_param],
+        parameters=[batch_param, processing_service_name_param],
         responses={200: dict},
     )
     @action(detail=True, methods=["get"], name="tasks")
@@ -227,6 +235,13 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             batch = IntegerField(required=True, min_value=1).clean(request.query_params.get("batch"))
         except Exception as e:
             raise ValidationError({"batch": str(e)}) from e
+
+        # Get optional processing_service_name parameter
+        processing_service_name = request.query_params.get("processing_service_name", None)
+        if processing_service_name:
+            job.logger.info(f"Job {job.pk} tasks ({batch}) requested by processing service: {processing_service_name}")
+        else:
+            job.logger.warning(f"Job {job.pk} tasks ({batch}) requested without processing service name")
 
         # Validate that the job has a pipeline
         if not job.pipeline:
@@ -249,6 +264,9 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
         return Response({"tasks": tasks})
 
+    @extend_schema(
+        parameters=[processing_service_name_param],
+    )
     @action(detail=True, methods=["post"], name="result")
     def result(self, request, pk=None):
         """
@@ -260,6 +278,13 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         """
 
         job = self.get_object()
+
+        # Get optional processing_service_name parameter
+        processing_service_name = request.query_params.get("processing_service_name", None)
+        if processing_service_name:
+            job.logger.info(f"Job {job.pk} result received from processing service: {processing_service_name}")
+        else:
+            job.logger.warning(f"Job {job.pk} result received without processing service name")
 
         # Validate request data is a list
         if isinstance(request.data, list):
