@@ -1620,6 +1620,7 @@ class TaxaListViewSet(DefaultViewSet, ProjectMixin):
         "created_at",
         "updated_at",
     ]
+    require_project = True
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -1630,6 +1631,20 @@ class TaxaListViewSet(DefaultViewSet, ProjectMixin):
             return qs.filter(projects=project)
         return qs
 
+    def perform_create(self, serializer):
+        """
+        Create a TaxaList and automatically assign it to the active project.
+
+        Users cannot manually assign taxa lists to projects for security reasons.
+        A taxa list is always created in the context of the active project.
+
+        @TODO Do we need to check permissions here? Is this user allowed to add taxa lists to this project?
+        """
+        instance = serializer.save()
+        project = self.get_active_project()
+        if project:
+            instance.projects.add(project)
+
 
 class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):
     """
@@ -1639,6 +1654,7 @@ class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):
 
     serializer_class = TaxaListTaxonSerializer
     permission_classes = []  # Allow public access for now
+    require_project = True
 
     def get_taxa_list(self):
         """Get the parent taxa list from URL parameters."""
