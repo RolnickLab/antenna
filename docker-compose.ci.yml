@@ -22,6 +22,7 @@ services:
       - minio-init
       - ml_backend
       - rabbitmq
+      - nats
     env_file:
       - ./.envs/.ci/.django
       - ./.envs/.ci/.postgres
@@ -38,6 +39,17 @@ services:
 
   redis:
     image: redis:6
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: ami_ci_nats
+    hostname: nats
+    command: ["-js", "-m", "8222"] # Enable JetStream and monitoring
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   celeryworker:
     <<: *django
@@ -58,7 +70,7 @@ services:
     env_file:
       - ./.envs/.ci/.django
     healthcheck:
-      test: [ "CMD", "mc", "ready", "local" ]
+      test: ["CMD", "mc", "ready", "local"]
       interval: 5s
       timeout: 5s
       retries: 5
