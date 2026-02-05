@@ -27,7 +27,7 @@ from rest_framework.views import APIView
 from ami.base.filters import NullsLastOrderingFilter, ThresholdFilter
 from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
-from ami.base.permissions import IsActiveStaffOrReadOnly, ObjectPermission
+from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
@@ -1667,7 +1667,7 @@ class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):
     """
 
     serializer_class = TaxaListTaxonSerializer
-    permission_classes = [IsActiveStaffOrReadOnly]
+    permission_classes = [IsProjectMemberOrReadOnly]
     require_project = True
 
     def get_taxa_list(self):

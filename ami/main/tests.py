@@ -3450,7 +3450,7 @@ class TaxaListTaxonAPITestCase(TestCase):
 
     def setUp(self):
         """Set up test data."""
-        self.user = User.objects.create_user(email="test@example.com", password="testpass", is_staff=True)
+        self.user = User.objects.create_user(email="test@example.com", password="testpass")
         self.project = Project.objects.create(name="Test Project", owner=self.user)
         self.taxa_list = TaxaList.objects.create(name="Test Taxa List", description="Test description")
         self.taxa_list.projects.add(self.project)
@@ -3550,7 +3550,7 @@ class TaxaListTaxonValidationTestCase(TestCase):
 
     def setUp(self):
         """Set up test data."""
-        self.user = User.objects.create_user(email="test@example.com", password="testpass", is_staff=True)
+        self.user = User.objects.create_user(email="test@example.com", password="testpass")
         self.project = Project.objects.create(name="Test Project", owner=self.user)
         self.taxa_list = TaxaList.objects.create(name="Test Taxa List")
         self.taxa_list.projects.add(self.project)
