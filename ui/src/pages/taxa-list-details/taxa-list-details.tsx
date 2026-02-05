@@ -137,6 +137,7 @@ const SpeciesDetailsDialog = ({
         onOpenAutoFocus={(e) => {
           /* Prevent tooltip auto focus */
           e.preventDefault()
+          ;(e.currentTarget as HTMLElement).focus()
         }}
       >
         {species ? (
