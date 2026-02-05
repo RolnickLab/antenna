@@ -207,12 +207,8 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         ]
     )
     def list(self, request, *args, **kwargs):
-        # Get optional processing_service_name parameter
-        processing_service_name = request.query_params.get("processing_service_name", None)
-        if processing_service_name:
-            logger.info(f"Jobs list requested by processing service: {processing_service_name}")
-        else:
-            logger.debug("Jobs list requested without processing service name")
+        # Get optional processing_service_name parameter and log it
+        _ = _log_processing_service_name(request, "list requested", logger)
 
         return super().list(request, *args, **kwargs)
 
@@ -236,12 +232,8 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         except Exception as e:
             raise ValidationError({"batch": str(e)}) from e
 
-        # Get optional processing_service_name parameter
-        processing_service_name = request.query_params.get("processing_service_name", None)
-        if processing_service_name:
-            job.logger.info(f"Job {job.pk} tasks ({batch}) requested by processing service: {processing_service_name}")
-        else:
-            job.logger.warning(f"Job {job.pk} tasks ({batch}) requested without processing service name")
+        # Get optional processing_service_name parameter and log it
+        _ = _log_processing_service_name(request, f"tasks ({batch}) requested for job {job.pk}", job.logger)
 
         # Validate that the job has a pipeline
         if not job.pipeline:
@@ -279,12 +271,8 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
         job = self.get_object()
 
-        # Get optional processing_service_name parameter
-        processing_service_name = request.query_params.get("processing_service_name", None)
-        if processing_service_name:
-            job.logger.info(f"Job {job.pk} result received from processing service: {processing_service_name}")
-        else:
-            job.logger.warning(f"Job {job.pk} result received without processing service name")
+        # Get optional processing_service_name parameter and log it
+        _ = _log_processing_service_name(request, f"result received for job {job.pk}", job.logger)
 
         # Validate request data is a list
         if isinstance(request.data, list):
@@ -345,3 +333,22 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                 },
                 status=500,
             )
+
+
+def _log_processing_service_name(request, context: str, logger: logging.Logger) -> str:
+    """
+    Log the processing_service_name from query parameters.
+
+    Args:
+        request: The HTTP request object
+        context: A string describing the operation (e.g., "tasks requested", "result received")
+        logger: A logging.Logger instance to use for logging
+    """
+    processing_service_name = request.query_params.get("processing_service_name", None)
+
+    if processing_service_name:
+        logger.info(f"Jobs {context} by processing service: {processing_service_name}")
+    else:
+        logger.debug(f"Jobs {context} without processing service name")
+
+    return processing_service_name
