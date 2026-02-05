@@ -207,7 +207,6 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         ]
     )
     def list(self, request, *args, **kwargs):
-        # Get optional processing_service_name parameter and log it
         _ = _log_processing_service_name(request, "list requested", logger)
 
         return super().list(request, *args, **kwargs)
@@ -232,7 +231,6 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         except Exception as e:
             raise ValidationError({"batch": str(e)}) from e
 
-        # Get optional processing_service_name parameter and log it
         _ = _log_processing_service_name(request, f"tasks ({batch}) requested for job {job.pk}", job.logger)
 
         # Validate that the job has a pipeline
@@ -271,7 +269,6 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
         job = self.get_object()
 
-        # Get optional processing_service_name parameter and log it
         _ = _log_processing_service_name(request, f"result received for job {job.pk}", job.logger)
 
         # Validate request data is a list
