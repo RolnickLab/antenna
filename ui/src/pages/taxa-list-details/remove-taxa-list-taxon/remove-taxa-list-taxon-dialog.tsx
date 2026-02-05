@@ -54,7 +54,7 @@ export const RemoveTaxaListTaxonDialog = ({
               <span>{translate(STRING.CANCEL)}</span>
             </Button>
             <Button
-              disabled={isSuccess}
+              disabled={isLoading || isSuccess}
               onClick={() => removeTaxaListTaxon({ taxaListId, taxonId })}
               size="small"
               variant="destructive"

@@ -66,7 +66,9 @@ export const TaxaListDetails = () => {
           setSort={setSort}
           sort={sort}
         />
-        <AddTaxaListTaxonPopover taxaListId={id as string} />
+        {taxaList?.canUpdate ? (
+          <AddTaxaListTaxonPopover taxaListId={id as string} />
+        ) : null}
       </PageHeader>
       <Table
         columns={columns({
