@@ -14,6 +14,13 @@ incomplete_only_param = OpenApiParameter(
     type=bool,
 )
 
+async_only_param = OpenApiParameter(
+    name="async_only",
+    description="Filter to only jobs with async_api backend",
+    required=False,
+    type=bool,
+)
+
 batch_param = OpenApiParameter(
     name="batch",
     description="Number of tasks to retrieve",
