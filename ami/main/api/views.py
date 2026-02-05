@@ -1666,7 +1666,7 @@ class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):
     """
 
     serializer_class = TaxaListTaxonSerializer
-    permission_classes = []  # Allow public access for now
+    permission_classes = [IsActiveStaffOrReadOnly]
     require_project = True
 
     def get_taxa_list(self):
