@@ -372,17 +372,135 @@ This is 3 quick checks, ~5 min each.
 
 ---
 
+## Recommended: Set Up E2E Tests First
+
+**The lack of E2E tests is the biggest verification gap.** Before starting the migration, invest ~3-5 hours to create a test safety net.
+
+See [E2E Testing Strategy](../09-e2e-testing-strategy.md) for full details.
+
+### Quick E2E Setup (3-5 hours before migration)
+
+#### Step 1: Install Playwright (15 min)
+```bash
+cd ui
+npm init playwright@latest
+# Choose TypeScript, add to CI, install browsers
+```
+
+#### Step 2: Record Critical Path Tests (2 hours)
+```bash
+# Start backend
+docker compose up -d
+
+# Record tests interactively
+npx playwright codegen http://localhost:3000
+```
+
+Record these 7 flows:
+| Flow | Time | Priority |
+|------|------|----------|
+| Login → Projects | 15 min | Critical |
+| Filter occurrences | 20 min | Critical |
+| View occurrence detail | 15 min | Critical |
+| Agree with ML prediction | 15 min | Critical |
+| Create job | 20 min | High |
+| View job progress | 15 min | High |
+| Logout | 5 min | Medium |
+
+#### Step 3: Capture Visual Baselines (1 hour)
+```typescript
+// e2e/visual.spec.ts
+const pages = [
+  '/projects',
+  '/projects/1/occurrences',
+  '/projects/1/occurrences/1',
+  '/projects/1/jobs',
+  '/projects/1/deployments',
+]
+
+for (const path of pages) {
+  test(`visual: ${path}`, async ({ page }) => {
+    await page.goto(path)
+    await page.waitForLoadState('networkidle')
+    await expect(page).toHaveScreenshot()
+  })
+}
+```
+
+```bash
+# Generate baseline screenshots
+npx playwright test --update-snapshots
+```
+
+#### Step 4: Verify Setup (15 min)
+```bash
+# Run all E2E tests
+npx playwright test
+
+# Should see: 7+ tests passing
+```
+
+### E2E Tests During Migration
+
+After each migration phase:
+```bash
+# Run E2E tests to verify nothing broke
+npx playwright test
+
+# If tests fail, investigate before proceeding
+```
+
+### Benefits of E2E-First Approach
+
+| Without E2E | With E2E |
+|-------------|----------|
+| Hope pages render correctly | **Know** pages render correctly |
+| Manual spot-checking | Automated verification |
+| Subtle bugs slip through | Regressions caught immediately |
+| Nervous about deployment | Confident deployment |
+| Human time: 15-30 min checking | Human time: 0 (automated) |
+
+### Updated Timeline with E2E
+
+| Task | Duration |
+|------|----------|
+| **E2E Setup (one-time)** | **3-5 hours** |
+| Migration Phase 1-8 | 1.5-2 hours |
+| E2E verification after each phase | Automated |
+| **Total** | **5-7 hours** |
+
+The E2E investment pays for itself by:
+1. Eliminating manual verification time
+2. Catching bugs immediately
+3. Enabling confident, fast iteration
+4. Remaining valuable after migration
+
+---
+
 ## Pre-Migration Checklist
 
 Before AI starts migration:
 
-- [ ] `npm install` completed
-- [ ] `npm run test` passes (29 tests)
+### Environment
+- [ ] `docker compose up` running (Django backend)
+- [ ] `cd ui && npm install` completed
+- [ ] `npm run test` passes (29 unit tests)
 - [ ] `npm run lint` passes
-- [ ] Backend available (docker compose up) OR mock strategy decided
-- [ ] Parallel dev server strategy set up
-- [ ] Git branch created for migration
-- [ ] This document reviewed and approved
+
+### E2E Tests (Highly Recommended)
+- [ ] Playwright installed (`npm init playwright@latest`)
+- [ ] Critical path tests recorded (7 flows)
+- [ ] Visual baselines captured
+- [ ] `npx playwright test` passes
+
+### Git
+- [ ] Migration branch created
+- [ ] Clean working tree
+- [ ] Parallel dev server scripts set up (optional)
+
+### Documentation
+- [ ] This document reviewed
+- [ ] Team aware of migration timeline
 
 ---
 
@@ -393,16 +511,21 @@ Migration is complete when:
 1. **Structural:**
    - [ ] All routes accessible
    - [ ] Lint passes
-   - [ ] Tests pass (existing 29)
+   - [ ] Unit tests pass (existing 29)
    - [ ] Dev server starts without errors
 
-2. **Functional (requires backend):**
+2. **E2E Tests (if set up):**
+   - [ ] All critical path tests pass
+   - [ ] Visual regression: no unexpected changes
+   - [ ] `npx playwright test` green
+
+3. **Functional (requires backend):**
    - [ ] Login works
    - [ ] Projects list loads
    - [ ] Occurrences load with filters
    - [ ] Form submissions work
 
-3. **Code Quality:**
+4. **Code Quality:**
    - [ ] No React Query hooks remain (except intentional keeps)
    - [ ] Loaders/actions follow patterns
    - [ ] Old router config removed
