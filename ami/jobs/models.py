@@ -209,7 +209,7 @@ class JobProgress(pydantic.BaseModel):
         It's used by the Celery task_postrun signal to determine whether to
         set the job's final SUCCESS status, or defer to async progress handlers.
 
-        Related: Job.update_progress() (lines 924-947) calculates the aggregate
+        Related: Job.update_progress() calculates the aggregate
         progress percentage across all stages for display purposes. This method
         is a binary check for completion that considers both progress AND status.
 
