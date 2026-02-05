@@ -19,7 +19,7 @@ export class Entity {
   }
 
   get createdAt(): string | undefined {
-    if (!this._data.updated_at) {
+    if (!this._data.created_at) {
       return undefined
     }
 

@@ -75,7 +75,7 @@ export const TaxaListDetails = () => {
           taxaListId: id as string,
         })}
         error={error}
-        isLoading={!id && isLoading}
+        isLoading={isLoading}
         items={species}
         onSortSettingsChange={setSort}
         sortable

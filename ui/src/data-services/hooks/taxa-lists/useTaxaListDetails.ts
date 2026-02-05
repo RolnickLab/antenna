@@ -14,8 +14,8 @@ export const useTaxaListDetails = (
   isFetching: boolean
   error?: unknown
 } => {
-  const { data, isLoading, isFetching, error } = useAuthorizedQuery<TaxaList>({
-    queryKey: [API_ROUTES.TAXA_LISTS, id],
+  const { data, isLoading, isFetching, error } = useAuthorizedQuery<ServerTaxaList>({
+    queryKey: [API_ROUTES.TAXA_LISTS, projectId, id],
     url: `${API_URL}/${API_ROUTES.TAXA_LISTS}/${id}/?project_id=${projectId}`,
   })
 
