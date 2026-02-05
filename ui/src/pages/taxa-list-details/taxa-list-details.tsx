@@ -45,7 +45,7 @@ export const TaxaListDetails = () => {
     return () => {
       setDetailBreadcrumb(undefined)
     }
-  }, [taxaList])
+  }, [taxaList, setDetailBreadcrumb])
 
   return (
     <>

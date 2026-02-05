@@ -1671,10 +1671,11 @@ class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):
     require_project = True
 
     def get_taxa_list(self):
-        """Get the parent taxa list from URL parameters."""
+        """Get the parent taxa list from URL parameters, scoped to the active project."""
         taxa_list_id = self.kwargs.get("taxalist_pk")
+        project = self.get_active_project()
         try:
-            return TaxaList.objects.get(pk=taxa_list_id)
+            return TaxaList.objects.get(pk=taxa_list_id, projects=project)
         except TaxaList.DoesNotExist:
             raise api_exceptions.NotFound("Taxa list not found.") from None
 
