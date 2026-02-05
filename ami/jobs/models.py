@@ -24,6 +24,15 @@ from ami.utils.schemas import OrderedEnum
 logger = logging.getLogger(__name__)
 
 
+class MLBackend(str, OrderedEnum):
+    """
+    Backend types for ML job execution.
+    """
+
+    SYNC_API = "sync_api"
+    ASYNC_API = "async_api"
+
+
 class JobState(str, OrderedEnum):
     """
     These come from Celery, except for CREATED, which is a custom state.
@@ -398,6 +407,8 @@ class MLJob(JobType):
         job.save()
 
         if job.project.feature_flags.async_pipeline_workers:
+            job.backend = MLBackend.ASYNC_API
+            job.save(update_fields=["backend"])
             queued = queue_images_to_nats(job, images)
             if not queued:
                 job.logger.error("Aborting job %s because images could not be queued to NATS", job.pk)
@@ -797,6 +808,12 @@ class Job(BaseModel):
         null=True,
         blank=True,
         related_name="jobs",
+    )
+    backend = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="The processing service backend that executed this job",
     )
 
     def __str__(self) -> str:
