@@ -9,6 +9,7 @@ from django.db.models import Prefetch, Q
 from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
@@ -1265,12 +1266,12 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
     """
     Filters taxa based on a TaxaList.
 
-    By default, queries for taxa that are directly in the TaxaList.
-    If include_descendants=true, also includes descendants (children or deeper) recursively.
+    By default, queries for taxa that are directly in the TaxaList and their descendants.
+    If include_descendants=false, only taxa directly in the TaxaList are returned.
 
     Query parameters:
     - taxa_list_id: ID of the taxa list to filter by
-    - include_descendants: Set to 'true' to include descendants (default: false)
+    - include_descendants: Set to 'false' to exclude descendants (default: true)
     - not_taxa_list_id: ID of taxa list to exclude
     """
 
@@ -1675,7 +1676,7 @@ class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):
         try:
             return TaxaList.objects.get(pk=taxa_list_id)
         except TaxaList.DoesNotExist:
-            raise api_exceptions.NotFound("Taxa list not found.")
+            raise api_exceptions.NotFound("Taxa list not found.") from None
 
     def get_queryset(self):
         """Return taxa in the specified taxa list."""
@@ -1705,7 +1706,7 @@ class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):
             )
 
         # Add taxon
-        taxon = Taxon.objects.get(pk=taxon_id)
+        taxon = get_object_or_404(Taxon, pk=taxon_id)
         taxa_list.taxa.add(taxon)
 
         # Return the added taxon
