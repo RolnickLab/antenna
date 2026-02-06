@@ -332,7 +332,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             )
 
 
-def _log_processing_service_name(request, context: str, logger: logging.Logger) -> str:
+def _log_processing_service_name(request, context: str, logger: logging.Logger) -> str | None:
     """
     Log the processing_service_name from query parameters.
 
@@ -340,6 +340,8 @@ def _log_processing_service_name(request, context: str, logger: logging.Logger) 
         request: The HTTP request object
         context: A string describing the operation (e.g., "tasks requested", "result received")
         logger: A logging.Logger instance to use for logging
+    Returns:
+        The processing_service_name if provided, otherwise None
     """
     processing_service_name = request.query_params.get("processing_service_name", None)
 
