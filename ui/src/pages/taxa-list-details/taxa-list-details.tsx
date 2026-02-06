@@ -45,7 +45,7 @@ export const TaxaListDetails = () => {
     return () => {
       setDetailBreadcrumb(undefined)
     }
-  }, [taxaList])
+  }, [taxaList, setDetailBreadcrumb])
 
   return (
     <>
@@ -66,7 +66,9 @@ export const TaxaListDetails = () => {
           setSort={setSort}
           sort={sort}
         />
-        <AddTaxaListTaxonPopover taxaListId={id as string} />
+        {taxaList?.canUpdate ? (
+          <AddTaxaListTaxonPopover taxaListId={id as string} />
+        ) : null}
       </PageHeader>
       <Table
         columns={columns({
@@ -75,7 +77,7 @@ export const TaxaListDetails = () => {
           taxaListId: id as string,
         })}
         error={error}
-        isLoading={!id && isLoading}
+        isLoading={isLoading}
         items={species}
         onSortSettingsChange={setSort}
         sortable
@@ -132,10 +134,6 @@ const SpeciesDetailsDialog = ({
         ariaCloselabel={translate(STRING.CLOSE)}
         error={error}
         isLoading={isLoading}
-        onOpenAutoFocus={(e) => {
-          /* Prevent tooltip auto focus */
-          e.preventDefault()
-        }}
       >
         {species ? (
           <SpeciesDetails

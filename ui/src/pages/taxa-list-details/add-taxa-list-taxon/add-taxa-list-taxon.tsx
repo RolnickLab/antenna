@@ -42,7 +42,7 @@ export const AddTaxaListTaxon = ({
             <span>{translate(STRING.CANCEL)}</span>
           </Button>
           <Button
-            disabled={!taxon}
+            disabled={!taxon || isLoading}
             onClick={async () => {
               if (taxon) {
                 await addTaxaListTaxon({ taxaListId, taxonId: taxon.id })

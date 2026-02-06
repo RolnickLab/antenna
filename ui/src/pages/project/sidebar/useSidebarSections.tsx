@@ -144,10 +144,5 @@ export const useSidebarSections = (project: ProjectDetails) => {
     )
   }, [location.pathname, sidebarSections])
 
-  sidebarSections
-    .map(({ items }) => items)
-    .flat()
-    .find((item) => !!matchPath(item.path, location.pathname))
-
   return { sidebarSections, activeItem }
 }

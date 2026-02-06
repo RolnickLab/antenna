@@ -198,10 +198,6 @@ const SpeciesDetailsDialog = ({ id }: { id: string }) => {
         ariaCloselabel={translate(STRING.CLOSE)}
         error={error}
         isLoading={isLoading}
-        onOpenAutoFocus={(e) => {
-          /* Prevent tooltip auto focus */
-          e.preventDefault()
-        }}
       >
         {species ? (
           <SpeciesDetails

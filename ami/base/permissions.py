@@ -77,6 +77,29 @@ def add_collection_level_permissions(user: User | None, response_data: dict, mod
     return response_data
 
 
+class IsProjectMemberOrReadOnly(permissions.BasePermission):
+    """
+    Safe methods are allowed for everyone.
+    Unsafe methods (POST, PUT, PATCH, DELETE) require the requesting user to be
+    a member of the active project (resolved via ProjectMixin.get_active_project).
+    """
+
+    def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        # view must provide get_active_project (i.e. use ProjectMixin)
+        get_active_project = getattr(view, "get_active_project", None)
+        if not get_active_project:
+            return False
+
+        project = get_active_project()
+        if not project:
+            return False
+
+        return project.members.filter(pk=request.user.pk).exists()
+
+
 class ObjectPermission(permissions.BasePermission):
     """
     Generic permission class that delegates to the model's `check_permission(user, action)` method.
