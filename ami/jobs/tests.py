@@ -463,7 +463,7 @@ class TestJobBackendFiltering(APITestCase):
             name="Sync API Job",
             pipeline=self.pipeline,
             source_image_collection=self.source_image_collection,
-            backend=MLBackend.SYNC_API.value,
+            backend=MLBackend.SYNC_API,
         )
 
         async_job = Job.objects.create(
@@ -472,7 +472,7 @@ class TestJobBackendFiltering(APITestCase):
             name="Async API Job",
             pipeline=self.pipeline,
             source_image_collection=self.source_image_collection,
-            backend=MLBackend.ASYNC_API.value,
+            backend=MLBackend.ASYNC_API,
         )
 
         # Create a job with no backend set (should be None)
@@ -489,20 +489,20 @@ class TestJobBackendFiltering(APITestCase):
         jobs_list_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk})
 
         # Test filtering by sync_api backend
-        resp = self.client.get(jobs_list_url, {"backend": MLBackend.SYNC_API.value})
+        resp = self.client.get(jobs_list_url, {"backend": MLBackend.SYNC_API})
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["count"], 1)
         self.assertEqual(data["results"][0]["id"], sync_job.pk)
-        self.assertEqual(data["results"][0]["backend"], MLBackend.SYNC_API.value)
+        self.assertEqual(data["results"][0]["backend"], MLBackend.SYNC_API)
 
         # Test filtering by async_api backend
-        resp = self.client.get(jobs_list_url, {"backend": MLBackend.ASYNC_API.value})
+        resp = self.client.get(jobs_list_url, {"backend": MLBackend.ASYNC_API})
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["count"], 1)
         self.assertEqual(data["results"][0]["id"], async_job.pk)
-        self.assertEqual(data["results"][0]["backend"], MLBackend.ASYNC_API.value)
+        self.assertEqual(data["results"][0]["backend"], MLBackend.ASYNC_API)
 
         # Test filtering by non-existent backend (should return empty)
         resp = self.client.get(jobs_list_url, {"backend": "non_existent_backend"})

@@ -24,7 +24,7 @@ from ami.utils.schemas import OrderedEnum
 logger = logging.getLogger(__name__)
 
 
-class MLBackend(str, OrderedEnum):
+class MLBackend(str):
     """
     Backend types for ML job execution.
     """
