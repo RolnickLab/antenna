@@ -278,11 +278,6 @@ const OccurrenceDetailsDialog = ({
         ariaCloselabel={translate(STRING.CLOSE)}
         error={error}
         isLoading={isLoading}
-        onOpenAutoFocus={(e) => {
-          /* Prevent tooltip auto focus */
-          e.preventDefault()
-          ;(e.currentTarget as HTMLElement).focus()
-        }}
       >
         {occurrence ? (
           <OccurrenceDetails
