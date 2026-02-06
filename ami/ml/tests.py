@@ -880,6 +880,8 @@ class TestTaskStateManager(TestCase):
         self.assertEqual(progress.remaining, len(image_ids))
         self.assertEqual(progress.processed, 0)
         self.assertEqual(progress.percentage, 0.0)
+        self.assertEqual(progress.detections, 0)
+        self.assertEqual(progress.classifications, 0)
         return progress
 
     def test_initialize_job(self):
@@ -891,6 +893,8 @@ class TestTaskStateManager(TestCase):
             progress = self.manager._get_progress(set(), stage)
             assert progress is not None
             self.assertEqual(progress.total, len(self.image_ids))
+            self.assertEqual(progress.detections, 0)
+            self.assertEqual(progress.classifications, 0)
 
     def test_progress_tracking(self):
         """Test progress updates correctly as images are processed."""
@@ -902,6 +906,8 @@ class TestTaskStateManager(TestCase):
         self.assertEqual(progress.remaining, 3)
         self.assertEqual(progress.processed, 2)
         self.assertEqual(progress.percentage, 0.4)
+        self.assertEqual(progress.detections, 0)  # No counts added yet
+        self.assertEqual(progress.classifications, 0)
 
         # Process 2 more images
         progress = self.manager._get_progress({"img3", "img4"}, "process")
@@ -927,6 +933,8 @@ class TestTaskStateManager(TestCase):
         progress = self.manager.update_state({"img1", "img2"}, "process", "task1")
         assert progress is not None
         self.assertEqual(progress.processed, 2)
+        self.assertEqual(progress.detections, 0)
+        self.assertEqual(progress.classifications, 0)
 
         # Simulate concurrent update by holding the lock
         lock_key = f"job:{self.job_id}:process_results_lock"
@@ -964,6 +972,8 @@ class TestTaskStateManager(TestCase):
         assert progress is not None
         self.assertEqual(progress.total, 0)
         self.assertEqual(progress.percentage, 1.0)  # Empty job is 100% complete
+        self.assertEqual(progress.detections, 0)
+        self.assertEqual(progress.classifications, 0)
 
     def test_cleanup(self):
         """Test cleanup removes all tracking keys."""
@@ -979,3 +989,105 @@ class TestTaskStateManager(TestCase):
         # Verify keys are gone
         progress = self.manager._get_progress(set(), "process")
         self.assertIsNone(progress)
+
+    def test_cumulative_detection_counting(self):
+        """Test that detection counts accumulate correctly across updates."""
+        self._init_and_verify(self.image_ids)
+
+        # Process first batch with some detections
+        progress = self.manager._get_progress({"img1", "img2"}, "process", detections_count=3)
+        assert progress is not None
+        self.assertEqual(progress.detections, 3)
+        self.assertEqual(progress.classifications, 0)
+
+        # Process second batch with more detections
+        progress = self.manager._get_progress({"img3"}, "process", detections_count=2)
+        assert progress is not None
+        self.assertEqual(progress.detections, 5)  # Should be cumulative
+        self.assertEqual(progress.classifications, 0)
+
+        # Process with both detections and classifications
+        progress = self.manager._get_progress({"img4"}, "results", detections_count=1, classifications_count=4)
+        assert progress is not None
+        self.assertEqual(progress.detections, 6)  # Should accumulate
+        self.assertEqual(progress.classifications, 4)
+
+    def test_cumulative_classification_counting(self):
+        """Test that classification counts accumulate correctly across updates."""
+        self._init_and_verify(self.image_ids)
+
+        # Process first batch with some classifications
+        progress = self.manager._get_progress({"img1"}, "results", classifications_count=5)
+        assert progress is not None
+        self.assertEqual(progress.detections, 0)
+        self.assertEqual(progress.classifications, 5)
+
+        # Process second batch with more classifications
+        progress = self.manager._get_progress({"img2", "img3"}, "results", classifications_count=8)
+        assert progress is not None
+        self.assertEqual(progress.detections, 0)
+        self.assertEqual(progress.classifications, 13)  # Should be cumulative
+
+    def test_update_state_with_counts(self):
+        """Test update_state method properly handles detection and classification counts."""
+        self._init_and_verify(self.image_ids)
+
+        # Update with counts
+        progress = self.manager.update_state(
+            {"img1", "img2"}, "process", "task1", detections_count=4, classifications_count=8
+        )
+        assert progress is not None
+        self.assertEqual(progress.processed, 2)
+        self.assertEqual(progress.detections, 4)
+        self.assertEqual(progress.classifications, 8)
+
+        # Update with more counts
+        progress = self.manager.update_state({"img3"}, "results", "task2", detections_count=2, classifications_count=6)
+        assert progress is not None
+        self.assertEqual(progress.detections, 6)  # Should accumulate
+        self.assertEqual(progress.classifications, 14)  # Should accumulate
+
+    def test_counts_persist_across_stages(self):
+        """Test that detection and classification counts persist across different stages."""
+        self._init_and_verify(self.image_ids)
+
+        # Add counts during process stage
+        progress_process = self.manager._get_progress({"img1"}, "process", detections_count=3)
+        assert progress_process is not None
+        self.assertEqual(progress_process.detections, 3)
+
+        # Verify counts are available in results stage
+        progress_results = self.manager._get_progress(set(), "results")
+        assert progress_results is not None
+        self.assertEqual(progress_results.detections, 3)  # Should persist
+        self.assertEqual(progress_results.classifications, 0)
+
+        # Add more counts in results stage
+        progress_results = self.manager._get_progress({"img2"}, "results", detections_count=1, classifications_count=5)
+        assert progress_results is not None
+        self.assertEqual(progress_results.detections, 4)  # Should accumulate
+        self.assertEqual(progress_results.classifications, 5)
+
+    def test_cleanup_removes_count_keys(self):
+        """Test that cleanup removes detection and classification count keys."""
+        from django.core.cache import cache
+
+        self._init_and_verify(self.image_ids)
+
+        # Add some counts
+        self.manager._get_progress({"img1"}, "process", detections_count=5, classifications_count=10)
+
+        # Verify count keys exist
+        detections = cache.get(self.manager._detections_key)
+        classifications = cache.get(self.manager._classifications_key)
+        self.assertEqual(detections, 5)
+        self.assertEqual(classifications, 10)
+
+        # Cleanup
+        self.manager.cleanup()
+
+        # Verify count keys are gone
+        detections = cache.get(self.manager._detections_key)
+        classifications = cache.get(self.manager._classifications_key)
+        self.assertIsNone(detections)
+        self.assertIsNone(classifications)

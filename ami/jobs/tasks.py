@@ -84,7 +84,13 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         raise self.retry(countdown=5, max_retries=10)
 
     try:
-        _update_job_progress(job_id, "process", progress_info.percentage)
+        _update_job_progress(
+            job_id,
+            "process",
+            progress_info.percentage,
+            processed=progress_info.processed,
+            remaining=progress_info.remaining,
+        )
 
         _, t = t(f"TIME: Updated job {job_id} progress in PROCESS stage progress to {progress_info.percentage*100}%")
         job = Job.objects.get(pk=job_id)
@@ -115,7 +121,20 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
 
         _ack_task_via_nats(reply_subject, job.logger)
         # Update job stage with calculated progress
-        progress_info = state_manager.update_state(processed_image_ids, stage="results", request_id=self.request.id)
+
+        # Calculate detection and classification counts from this result
+        detections_count = len(pipeline_result.detections) if pipeline_result else 0
+        classifications_count = (
+            sum(len(detection.classifications) for detection in pipeline_result.detections) if pipeline_result else 0
+        )
+
+        progress_info = state_manager.update_state(
+            processed_image_ids,
+            stage="results",
+            request_id=self.request.id,
+            detections_count=detections_count,
+            classifications_count=classifications_count,
+        )
 
         if not progress_info:
             logger.warning(
@@ -123,7 +142,14 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
                 f"Retrying task {self.request.id} in 5 seconds..."
             )
             raise self.retry(countdown=5, max_retries=10)
-        _update_job_progress(job_id, "results", progress_info.percentage)
+
+        _update_job_progress(
+            job_id,
+            "results",
+            progress_info.percentage,
+            detections=progress_info.detections,
+            classifications=progress_info.classifications,
+        )
 
     except Exception as e:
         job.logger.error(
@@ -149,7 +175,7 @@ def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> None:
         # Don't fail the task if ACK fails - data is already saved
 
 
-def _update_job_progress(job_id: int, stage: str, progress_percentage: float) -> None:
+def _update_job_progress(job_id: int, stage: str, progress_percentage: float, **state_params) -> None:
     from ami.jobs.models import Job, JobState  # avoid circular import
 
     with transaction.atomic():
@@ -158,6 +184,7 @@ def _update_job_progress(job_id: int, stage: str, progress_percentage: float) ->
             stage,
             status=JobState.SUCCESS if progress_percentage >= 1.0 else JobState.STARTED,
             progress=progress_percentage,
+            **state_params,
         )
         if stage == "results" and progress_percentage >= 1.0:
             job.status = JobState.SUCCESS
