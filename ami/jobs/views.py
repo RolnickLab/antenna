@@ -15,14 +15,14 @@ from rest_framework.response import Response
 
 from ami.base.permissions import ObjectPermission
 from ami.base.views import ProjectMixin
-from ami.jobs.schemas import async_only_param, batch_param, ids_only_param, incomplete_only_param
+from ami.jobs.schemas import batch_param, ids_only_param, incomplete_only_param
 from ami.jobs.tasks import process_nats_pipeline_result
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
 from ami.ml.schemas import PipelineTaskResult
 from ami.utils.fields import url_boolean_param
 
-from .models import Job, JobState, MLBackend
+from .models import Job, JobState
 from .serializers import JobListSerializer, JobSerializer, MinimalJobSerializer
 
 logger = logging.getLogger(__name__)
@@ -43,6 +43,7 @@ class JobFilterSet(filters.FilterSet):
             "source_image_single",
             "pipeline",
             "job_type_key",
+            "backend",
         ]
 
 
@@ -65,18 +66,6 @@ class IncompleteJobFilter(BaseFilterBackend):
                 exclude_conditions |= Q(progress__stages__contains=[{"key": "results", "status": state}])
 
             queryset = queryset.exclude(exclude_conditions)
-        return queryset
-
-
-class AsyncOnlyJobFilter(BaseFilterBackend):
-    """Filter backend to filter jobs by async_api backend."""
-
-    def filter_queryset(self, request, queryset, view):
-        # Check if async_only parameter is set
-        async_only = url_boolean_param(request, "async_only", default=False)
-        # Filter to async_api jobs if requested
-        if async_only:
-            queryset = queryset.filter(backend=MLBackend.ASYNC_API.value)
         return queryset
 
 
@@ -107,7 +96,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
     )
     serializer_class = JobSerializer
     filterset_class = JobFilterSet
-    filter_backends = [*DefaultViewSet.filter_backends, IncompleteJobFilter, AsyncOnlyJobFilter]
+    filter_backends = [*DefaultViewSet.filter_backends, IncompleteJobFilter]
     search_fields = ["name", "pipeline__name"]
     ordering_fields = [
         "name",
@@ -215,7 +204,6 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             project_id_doc_param,
             ids_only_param,
             incomplete_only_param,
-            async_only_param,
         ]
     )
     def list(self, request, *args, **kwargs):

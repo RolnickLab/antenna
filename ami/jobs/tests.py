@@ -8,7 +8,7 @@ from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
-from ami.jobs.models import Job, JobProgress, JobState, MLJob, SourceImageCollectionPopulateJob
+from ami.jobs.models import Job, JobProgress, JobState, MLBackend, MLJob, SourceImageCollectionPopulateJob
 from ami.main.models import Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.ml.orchestration.jobs import queue_images_to_nats
@@ -423,3 +423,100 @@ class TestJobView(APITestCase):
         resp = self.client.post(result_url, invalid_data, format="json")
         self.assertEqual(resp.status_code, 400)
         self.assertIn("result", resp.json()[0].lower())
+
+
+class TestJobBackendFiltering(APITestCase):
+    """Test job filtering by backend."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(  # type: ignore
+            email="testuser-backend@insectai.org",
+            is_staff=True,
+            is_active=True,
+            is_superuser=True,
+        )
+        self.project = Project.objects.create(name="Test Backend Project")
+
+        # Create pipeline for ML jobs
+        self.pipeline = Pipeline.objects.create(
+            name="Test ML Pipeline",
+            slug="test-ml-pipeline",
+            description="Test ML pipeline for backend filtering",
+        )
+        self.pipeline.projects.add(self.project)
+
+        # Create source image collection for jobs
+        self.source_image_collection = SourceImageCollection.objects.create(
+            name="Test Collection",
+            project=self.project,
+        )
+
+        # Give the user necessary permissions
+        assign_perm(Project.Permissions.VIEW_PROJECT, self.user, self.project)
+
+    def test_backend_filtering(self):
+        """Test that jobs can be filtered by backend parameter."""
+        # Create two ML jobs with different backends
+        sync_job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Sync API Job",
+            pipeline=self.pipeline,
+            source_image_collection=self.source_image_collection,
+            backend=MLBackend.SYNC_API.value,
+        )
+
+        async_job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Async API Job",
+            pipeline=self.pipeline,
+            source_image_collection=self.source_image_collection,
+            backend=MLBackend.ASYNC_API.value,
+        )
+
+        # Create a job with no backend set (should be None)
+        no_backend_job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="No Backend Job",
+            pipeline=self.pipeline,
+            source_image_collection=self.source_image_collection,
+            backend=None,
+        )
+
+        self.client.force_authenticate(user=self.user)
+        jobs_list_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk})
+
+        # Test filtering by sync_api backend
+        resp = self.client.get(jobs_list_url, {"backend": MLBackend.SYNC_API.value})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["results"][0]["id"], sync_job.pk)
+        self.assertEqual(data["results"][0]["backend"], MLBackend.SYNC_API.value)
+
+        # Test filtering by async_api backend
+        resp = self.client.get(jobs_list_url, {"backend": MLBackend.ASYNC_API.value})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["results"][0]["id"], async_job.pk)
+        self.assertEqual(data["results"][0]["backend"], MLBackend.ASYNC_API.value)
+
+        # Test filtering by non-existent backend (should return empty)
+        resp = self.client.get(jobs_list_url, {"backend": "non_existent_backend"})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["count"], 0)
+
+        # Test without backend filter (should return all jobs)
+        resp = self.client.get(jobs_list_url)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["count"], 3)  # All three jobs
+
+        # Verify the job IDs returned include all jobs
+        returned_ids = {job["id"] for job in data["results"]}
+        expected_ids = {sync_job.pk, async_job.pk, no_backend_job.pk}
+        self.assertEqual(returned_ids, expected_ids)
