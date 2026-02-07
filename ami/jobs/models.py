@@ -223,6 +223,30 @@ class JobProgress(pydantic.BaseModel):
             stage.progress = 0
             stage.status = status
 
+    def is_complete(self) -> bool:
+        """
+        Check if all stages have finished processing.
+
+        A job is considered complete when ALL of its stages have:
+        - progress >= 1.0 (fully processed)
+        - status in a final state (SUCCESS, FAILURE, or REVOKED)
+
+        This method works for any job type regardless of which stages it has.
+        It's used by the Celery task_postrun signal to determine whether to
+        set the job's final SUCCESS status, or defer to async progress handlers.
+
+        Related: Job.update_progress() calculates the aggregate
+        progress percentage across all stages for display purposes. This method
+        is a binary check for completion that considers both progress AND status.
+
+        Returns:
+            True if all stages are complete, False otherwise.
+            Returns False if job has no stages (shouldn't happen in practice).
+        """
+        if not self.stages:
+            return False
+        return all(stage.progress >= 1.0 and stage.status in JobState.final_states() for stage in self.stages)
+
     class Config:
         use_enum_values = True
         as_dict = True
