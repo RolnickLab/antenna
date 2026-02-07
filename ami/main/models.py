@@ -426,6 +426,11 @@ class Project(ProjectSettingsMixin, BaseModel):
         UPDATE_DATA_EXPORT = "update_dataexport"
         DELETE_DATA_EXPORT = "delete_dataexport"
 
+        # Pipeline configuration permissions
+        CREATE_PROJECT_PIPELINE_CONFIG = "create_projectpipelineconfig"
+        UPDATE_PROJECT_PIPELINE_CONFIG = "update_projectpipelineconfig"
+        DELETE_PROJECT_PIPELINE_CONFIG = "delete_projectpipelineconfig"
+
         # Other permissions
         VIEW_PRIVATE_DATA = "view_private_data"
         DELETE_OCCURRENCES = "delete_occurrences"
@@ -489,6 +494,10 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("create_dataexport", "Can create a data export"),
             ("update_dataexport", "Can update a data export"),
             ("delete_dataexport", "Can delete a data export"),
+            # Pipeline configuration permissions
+            ("create_projectpipelineconfig", "Can register pipelines for the project"),
+            ("update_projectpipelineconfig", "Can update pipeline configurations"),
+            ("delete_projectpipelineconfig", "Can remove pipelines from the project"),
             # Other permissions
             ("view_private_data", "Can view private data"),
         ]

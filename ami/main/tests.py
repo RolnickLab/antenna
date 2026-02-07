@@ -3449,16 +3449,18 @@ class TestProjectPipelinesAPI(APITestCase):
     """Test the project pipelines API endpoint."""
 
     def setUp(self):
-        from ami.users.roles import ProjectManager
+        from ami.users.roles import ProjectManager, create_roles_for_project
 
-        self.user = User.objects.create_user(email="test@example.com", is_staff=True)  # type: ignore
+        self.user = User.objects.create_user(email="test@example.com")  # type: ignore
         self.other_user = User.objects.create_user(email="other@example.com")  # type: ignore
 
         # Create projects with explicit ownership
         self.project = Project.objects.create(name="Test Project", owner=self.user, create_defaults=True)
         self.other_project = Project.objects.create(name="Other Project", owner=self.other_user, create_defaults=True)
 
-        # Assign ProjectManager role to user for this project
+        # Create role groups and assign permissions
+        create_roles_for_project(self.project)
+        create_roles_for_project(self.other_project)
         ProjectManager.assign_user(self.user, self.project)
 
     def _get_pipelines_url(self, project_id):
@@ -3469,7 +3471,7 @@ class TestProjectPipelinesAPI(APITestCase):
         """Get a minimal test payload for pipeline registration."""
         return {
             "processing_service_name": service_name,
-            "pipeline_response": {"timestamp": "2024-01-01T00:00:00Z", "pipelines": [], "success": True},
+            "pipelines": [],
         }
 
     def test_create_new_service_success(self):
@@ -3480,14 +3482,14 @@ class TestProjectPipelinesAPI(APITestCase):
         self.client.force_authenticate(user=self.user)
         response = self.client.post(url, payload, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         # Verify service was created and associated
         service = ProcessingService.objects.get(name="NewService")
         self.assertIn(self.project, service.projects.all())
 
-    def test_service_already_associated_returns_400(self):
-        """Test 400 when service already exists and is associated with project."""
+    def test_reregistration_is_idempotent(self):
+        """Test that re-registering a service already associated with the project succeeds."""
         # Create and associate service
         service = ProcessingService.objects.create(name="ExistingService")
         service.projects.add(self.project)
@@ -3498,8 +3500,7 @@ class TestProjectPipelinesAPI(APITestCase):
         self.client.force_authenticate(user=self.user)
         response = self.client.post(url, payload, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("Processing service already exists", response.data["detail"])
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_associate_existing_service_success(self):
         """Test associating existing service with project when not yet associated."""
@@ -3512,7 +3513,7 @@ class TestProjectPipelinesAPI(APITestCase):
         self.client.force_authenticate(user=self.user)
         response = self.client.post(url, payload, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertIn(self.project, service.projects.all())
 
     def test_unauthorized_project_access_returns_403(self):
@@ -3534,3 +3535,48 @@ class TestProjectPipelinesAPI(APITestCase):
         response = self.client.post(url, invalid_payload, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_list_pipelines(self):
+        """Test listing pipelines for a project returns the project's enabled pipelines."""
+        url = self._get_pipelines_url(self.project.pk)
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.json()["results"]
+        self.assertGreater(len(results), 0)
+
+        # All returned pipelines should belong to this project
+        project_pipeline_names = set(
+            Pipeline.objects.filter(projects=self.project, project_pipeline_configs__enabled=True)
+            .values_list("name", flat=True)
+            .distinct()
+        )
+        response_names = {p["name"] for p in results}
+        self.assertEqual(response_names, project_pipeline_names)
+
+    def test_list_pipelines_draft_project_non_member(self):
+        """Non-members cannot list pipelines on draft projects."""
+        self.project.draft = True
+        self.project.save()
+
+        non_member = User.objects.create_user(email="nonmember@example.com")  # type: ignore
+        url = self._get_pipelines_url(self.project.pk)
+        self.client.force_authenticate(user=non_member)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_unauthenticated_write_returns_401(self):
+        """Unauthenticated users cannot register pipelines."""
+        url = self._get_pipelines_url(self.project.pk)
+        payload = self._get_test_payload("AnonService")
+        response = self.client.post(url, payload, format="json")
+        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+
+    def test_list_pipelines_public_project_non_member(self):
+        """Non-members can list pipelines on public projects."""
+        non_member = User.objects.create_user(email="reader@example.com")  # type: ignore
+        url = self._get_pipelines_url(self.project.pk)
+        self.client.force_authenticate(user=non_member)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)

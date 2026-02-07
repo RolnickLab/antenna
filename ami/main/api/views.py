@@ -13,7 +13,6 @@ from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
-from pydantic import ValidationError
 from rest_framework import exceptions as api_exceptions
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
@@ -32,8 +31,6 @@ from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.serializers import TagSerializer
-from ami.ml.models.processing_service import ProcessingService
-from ami.ml.schemas import AsyncPipelineRegistrationRequest, PipelineRegistrationResponse
 from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
@@ -208,79 +205,6 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
         """
         project = self.get_object()
         return Response({"summary_data": project.summary_data()})
-
-    @extend_schema(
-        operation_id="projects_pipelines_create",
-        summary="Register pipelines for a project",
-        description=(
-            "Receive pipeline registrations for a project. This endpoint is called by the "
-            "V2 ML processing services to register available pipelines for a project."
-        ),
-        request=AsyncPipelineRegistrationRequest,
-        responses={
-            200: PipelineRegistrationResponse,
-            400: {"type": "object", "properties": {"detail": {"type": "string"}}},
-        },
-        tags=["projects"],
-    )
-    @action(detail=True, methods=["post"], url_path="pipelines")
-    def pipelines(self, request, pk=None):
-        """
-        Receive pipeline registrations for a project. This endpoint is called by the
-        V2 ML processing services to register available pipelines for a project.
-
-        Expected payload: AsyncPipelineRegistrationRequest (pydantic schema) containing a
-        list of PipelineConfigResponse objects under the `pipeline_response.pipelines` key.
-
-        Behavior:
-        - If the project has no associated ProcessingService, create one and
-          associate it with the project.
-        - Call ProcessingService.create_pipelines() with the provided pipeline configs
-          and limit the operation to this project.
-
-        Returns the PipelineRegistrationResponse returned by create_pipelines().
-        """
-        # Parse the incoming payload using the pydantic schema so we convert dicts to
-        # the expected PipelineConfigResponse models
-
-        try:
-            parsed: AsyncPipelineRegistrationRequest = AsyncPipelineRegistrationRequest.parse_obj(request.data)
-        except ValidationError as err:
-            logger.debug(f"Invalid pipeline registration payload: {err}")
-            return Response({"detail": str(err)}, status=status.HTTP_400_BAD_REQUEST)
-
-        project: Project = self.get_object()
-
-        # Atomically get or create the processing service
-        processing_service, created = ProcessingService.objects.get_or_create(
-            name=parsed.processing_service_name,
-            defaults={
-                "endpoint_url": None,
-            },
-        )
-
-        # Check if the service is already associated with this project
-        if not created and project in processing_service.projects.all():
-            error_msg = f"Processing service already exists and is associated with project {project.pk}"
-            logger.warning(error_msg)
-            return Response({"detail": error_msg}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Associate with the project
-        processing_service.projects.add(project)
-
-        if created:
-            logger.info(f"Created processing service {processing_service} for project {project.pk}")
-        else:
-            logger.info(f"Associated processing service {processing_service} with project {project.pk}")
-
-        # Call create_pipelines limited to this project
-        response = processing_service.create_pipelines(
-            pipeline_configs=parsed.pipelines,
-            projects=Project.objects.filter(pk=project.pk),
-        )
-
-        # response is a pydantic model; return its dict representation
-        return Response(response.dict())
 
     @extend_schema(
         parameters=[
