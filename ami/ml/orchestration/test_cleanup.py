@@ -3,6 +3,7 @@
 from asgiref.sync import async_to_sync
 from django.core.cache import cache
 from django.test import TestCase
+from nats.js.errors import NotFoundError
 
 from ami.jobs.models import Job, JobState, MLJob
 from ami.jobs.tasks import _update_job_progress, update_job_failure, update_job_status
@@ -75,14 +76,14 @@ class TestCleanupAsyncJobResources(TestCase):
                 stream_exists = True
                 try:
                     await manager.js.stream_info(stream_name)
-                except Exception:
+                except NotFoundError:
                     stream_exists = False
 
                 # Try to get consumer info - should succeed if created
                 consumer_exists = True
                 try:
                     await manager.js.consumer_info(stream_name, consumer_name)
-                except Exception:
+                except NotFoundError:
                     consumer_exists = False
 
                 return stream_exists, consumer_exists
@@ -140,14 +141,14 @@ class TestCleanupAsyncJobResources(TestCase):
                 stream_exists = True
                 try:
                     await manager.js.stream_info(stream_name)
-                except Exception:
+                except NotFoundError:
                     stream_exists = False
 
                 # Try to get consumer info - should fail if deleted
                 consumer_exists = True
                 try:
                     await manager.js.consumer_info(stream_name, consumer_name)
-                except Exception:
+                except NotFoundError:
                     consumer_exists = False
 
                 return stream_exists, consumer_exists
