@@ -48,8 +48,8 @@ class ProcessingService(BaseModel):
     objects = ProcessingServiceManager()
 
     def __str__(self):
-        endpoint_display = self.endpoint_url or "No endpoint configured"
-        return f'#{self.pk} "{self.name}" at {endpoint_display}'
+        endpoint_display = self.endpoint_url or "async"
+        return f'#{self.pk} "{self.name}" ({endpoint_display})'
 
     class Meta:
         verbose_name = "Processing Service"
