@@ -20,3 +20,10 @@ batch_param = OpenApiParameter(
     required=False,
     type=int,
 )
+
+processing_service_name_param = OpenApiParameter(
+    name="processing_service_name",
+    description="Name of the calling processing service",
+    required=False,
+    type=str,
+)
