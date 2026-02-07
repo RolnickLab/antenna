@@ -255,7 +255,7 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
         processing_service, created = ProcessingService.objects.get_or_create(
             name=parsed.processing_service_name,
             defaults={
-                "endpoint_url": None,  # TODO: depends on https://github.com/RolnickLab/antenna/pull/1090
+                "endpoint_url": None,
             },
         )
 
