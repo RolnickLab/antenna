@@ -213,6 +213,15 @@ def update_job_status(sender, task_id, task, state: str, retval=None, **kwargs):
             logger.error(f"No job found for task {task_id} or job_id {job_id}")
             return
 
+    # Guard only SUCCESS state - let FAILURE, REVOKED, RETRY pass through immediately
+    # SUCCESS should only be set when all stages are actually complete
+    # This prevents premature SUCCESS when async workers are still processing
+    if state == JobState.SUCCESS and not job.progress.is_complete():
+        job.logger.info(
+            f"Job {job.pk} task completed but stages not finished - " "deferring SUCCESS status to progress handler"
+        )
+        return
+
     job.update_status(state)
 
     # Clean up async resources for revoked jobs
