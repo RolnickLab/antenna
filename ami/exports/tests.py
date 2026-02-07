@@ -155,3 +155,150 @@ class DataExportTest(TestCase):
     def test_json_export_record_count(self):
         """Test JSON export record count."""
         self.run_and_validate_export("occurrences_api_json")
+
+    def test_csv_export_has_detection_fields(self):
+        """Test that CSV export includes best detection fields."""
+        # Create a DataExport instance
+        data_export = DataExport.objects.create(
+            user=self.user,
+            project=self.project,
+            format="occurrences_simple_csv",
+            filters={"collection_id": self.collection.pk},
+            job=None,
+        )
+
+        # Run export and get the file URL
+        file_url = data_export.run_export()
+
+        # Ensure the file is generated
+        self.assertIsNotNone(file_url)
+        file_path = file_url.replace("/media/", "")
+        self.assertTrue(default_storage.exists(file_path))
+
+        # Read and validate the exported data
+        with default_storage.open(file_path, "r") as f:
+            csv_reader = csv.DictReader(f)
+            rows = list(csv_reader)
+
+            # Ensure we have rows to test
+            self.assertGreater(len(rows), 0, "No rows exported")
+
+            # Check that the new fields are present in the header
+            first_row = rows[0]
+            self.assertIn("best_detection_url", first_row.keys(), "best_detection_url field missing from CSV")
+            self.assertIn("best_detection_width", first_row.keys(), "best_detection_width field missing from CSV")
+            self.assertIn("best_detection_height", first_row.keys(), "best_detection_height field missing from CSV")
+
+            # Check that at least one row has non-empty values for the new fields
+            # (Some occurrences might not have detections, so we check if any row has values)
+            has_url = any(row.get("best_detection_url") for row in rows)
+            has_dimensions = any(row.get("best_detection_width") and row.get("best_detection_height") for row in rows)
+
+            # Assert that at least one row has detection data
+            self.assertTrue(
+                has_url,
+                f"No detection URLs found in {len(rows)} exported rows. "
+                "At least one occurrence should have a detection URL.",
+            )
+            self.assertTrue(
+                has_dimensions,
+                f"No detection dimensions found in {len(rows)} exported rows. "
+                "At least one occurrence should have detection width and height.",
+            )
+
+        # Clean up the exported file after the test
+        default_storage.delete(file_path)
+
+
+class DataExportPermissionTest(TestCase):
+    """Test data export permissions (create, update, delete)."""
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.owner = self.project.owner
+
+        # Create a researcher (project member with Researcher role)
+        from ami.users.models import User
+        from ami.users.roles import Researcher
+
+        self.researcher = User.objects.create_user(email="researcher@test.org")
+        self.project.members.add(self.researcher)
+        Researcher.assign_user(self.researcher, self.project)
+
+        # Create a basic member (no Researcher role)
+        from ami.users.roles import BasicMember
+
+        self.basic_member = User.objects.create_user(email="basic@test.org")
+        self.project.members.add(self.basic_member)
+        BasicMember.assign_user(self.basic_member, self.project)
+
+        # Create a superuser
+        self.superuser = User.objects.create_superuser(email="super@test.org", password="test123")
+
+        # Create a non-member
+        self.non_member = User.objects.create_user(email="nonmember@test.org")
+
+        self.client = APIClient()
+
+    def _create_export(self, user):
+        """Helper to create an export owned by the given user."""
+        return DataExport.objects.create(
+            user=user,
+            project=self.project,
+            format="occurrences_simple_csv",
+        )
+
+    def test_researcher_can_create_export(self):
+        """Researcher role should be able to create data exports."""
+        from ami.main.models import Project
+
+        self.assertTrue(
+            self.researcher.has_perm(Project.Permissions.CREATE_DATA_EXPORT, self.project),
+            "Researcher should have create_dataexport permission",
+        )
+
+    def test_researcher_can_delete_export(self):
+        """Researcher role should be able to delete data exports."""
+        from ami.main.models import Project
+
+        self.assertTrue(
+            self.researcher.has_perm(Project.Permissions.DELETE_DATA_EXPORT, self.project),
+            "Researcher should have delete_dataexport permission",
+        )
+
+    def test_researcher_cannot_update_export(self):
+        """Researcher role should NOT be able to update data exports (admin-only)."""
+        from ami.main.models import Project
+
+        self.assertFalse(
+            self.researcher.has_perm(Project.Permissions.UPDATE_DATA_EXPORT, self.project),
+            "Researcher should NOT have update_dataexport permission (admin-only)",
+        )
+
+    def test_basic_member_cannot_create_export(self):
+        """Basic member (without Researcher role) should not be able to create exports."""
+        from ami.main.models import Project
+
+        self.assertFalse(
+            self.basic_member.has_perm(Project.Permissions.CREATE_DATA_EXPORT, self.project),
+            "Basic member should not have create_dataexport permission",
+        )
+
+    def test_superuser_can_update_export(self):
+        """Superuser should be able to update data exports."""
+        from ami.main.models import Project
+
+        # Superusers bypass object-level permissions via has_perm
+        self.assertTrue(
+            self.superuser.has_perm(Project.Permissions.UPDATE_DATA_EXPORT, self.project),
+            "Superuser should have update_dataexport permission",
+        )
+
+    def test_non_member_cannot_create_export(self):
+        """Non-members should not be able to create exports."""
+        from ami.main.models import Project
+
+        self.assertFalse(
+            self.non_member.has_perm(Project.Permissions.CREATE_DATA_EXPORT, self.project),
+            "Non-member should not have create_dataexport permission",
+        )
