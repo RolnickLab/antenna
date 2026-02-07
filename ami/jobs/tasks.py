@@ -202,7 +202,7 @@ def pre_update_job_status(sender, task_id, task, **kwargs):
 
 @task_postrun.connect(sender=run_job)
 def update_job_status(sender, task_id, task, state: str, retval=None, **kwargs):
-    from ami.jobs.models import Job
+    from ami.jobs.models import Job, JobState
 
     job_id = task.request.kwargs["job_id"]
     if job_id is None:
@@ -216,6 +216,15 @@ def update_job_status(sender, task_id, task, state: str, retval=None, **kwargs):
         except Job.DoesNotExist:
             logger.error(f"No job found for task {task_id} or job_id {job_id}")
             return
+
+    # Guard only SUCCESS state - let FAILURE, REVOKED, RETRY pass through immediately
+    # SUCCESS should only be set when all stages are actually complete
+    # This prevents premature SUCCESS when async workers are still processing
+    if state == JobState.SUCCESS and not job.progress.is_complete():
+        job.logger.info(
+            f"Job {job.pk} task completed but stages not finished - " "deferring SUCCESS status to progress handler"
+        )
+        return
 
     job.update_status(state)
 
