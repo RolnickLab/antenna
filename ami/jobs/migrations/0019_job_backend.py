@@ -11,12 +11,12 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name="job",
-            name="backend",
+            name="execution_mode",
             field=models.CharField(
-                blank=True,
-                help_text="The processing service backend that executed this job",
+                choices=[("internal", "Internal"), ("sync_api", "Sync API"), ("async_api", "Async API")],
+                default="internal",
+                help_text="How the job executes its workload: internal, sync_api, or async_api.",
                 max_length=255,
-                null=True,
             ),
         ),
     ]

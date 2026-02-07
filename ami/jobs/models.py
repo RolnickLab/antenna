@@ -24,13 +24,30 @@ from ami.utils.schemas import OrderedEnum
 logger = logging.getLogger(__name__)
 
 
-class MLBackend(str):
+class JobExecutionMode(models.TextChoices):
     """
-    Backend types for ML job execution.
+    How a job executes its workload.
+
+    Jobs are configured and launched by users in the UI, then dispatched to
+    Celery workers. This enum describes what the worker does with the work:
+
+    - INTERNAL: All work happens within the platform (Celery worker handles it directly).
+    - SYNC_API: Worker calls an external processing service API and waits for each response.
+    - ASYNC_API: Worker queues items to a message broker (NATS) for external processing
+      service workers to pick up and process independently.
     """
 
-    SYNC_API = "sync_api"
-    ASYNC_API = "async_api"
+    # Work is handled entirely within the platform, no external service calls.
+    # e.g. DataStorageSyncJob, DataExportJob, SourceImageCollectionPopulateJob
+    INTERNAL = "internal", "Internal"
+
+    # Worker loops over items, sends each to an external processing service
+    # endpoint synchronously, and waits for the response before continuing.
+    SYNC_API = "sync_api", "Sync API"
+
+    # Worker publishes all items to a message broker (NATS). External processing
+    # service workers consume and process them independently, reporting results back.
+    ASYNC_API = "async_api", "Async API"
 
 
 class JobState(str, OrderedEnum):
@@ -407,8 +424,8 @@ class MLJob(JobType):
         job.save()
 
         if job.project.feature_flags.async_pipeline_workers:
-            job.backend = MLBackend.ASYNC_API
-            job.save(update_fields=["backend"])
+            job.execution_mode = JobExecutionMode.ASYNC_API
+            job.save(update_fields=["execution_mode"])
             queued = queue_images_to_nats(job, images)
             if not queued:
                 job.logger.error("Aborting job %s because images could not be queued to NATS", job.pk)
@@ -418,6 +435,8 @@ class MLJob(JobType):
                 job.save()
                 return
         else:
+            job.execution_mode = JobExecutionMode.SYNC_API
+            job.save(update_fields=["execution_mode"])
             cls.process_images(job, images)
 
     @classmethod
@@ -809,11 +828,11 @@ class Job(BaseModel):
         blank=True,
         related_name="jobs",
     )
-    backend = models.CharField(
+    execution_mode = models.CharField(
         max_length=255,
-        null=True,
-        blank=True,
-        help_text="The processing service backend that executed this job",
+        choices=JobExecutionMode.choices,
+        default=JobExecutionMode.INTERNAL,
+        help_text="How the job executes its workload: internal, sync_api, or async_api.",
     )
 
     def __str__(self) -> str:

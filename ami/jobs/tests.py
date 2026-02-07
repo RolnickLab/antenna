@@ -8,7 +8,7 @@ from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
-from ami.jobs.models import Job, JobProgress, JobState, MLBackend, MLJob, SourceImageCollectionPopulateJob
+from ami.jobs.models import Job, JobExecutionMode, JobProgress, JobState, MLJob, SourceImageCollectionPopulateJob
 from ami.main.models import Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.ml.orchestration.jobs import queue_images_to_nats
@@ -425,8 +425,8 @@ class TestJobView(APITestCase):
         self.assertIn("result", resp.json()[0].lower())
 
 
-class TestJobBackendFiltering(APITestCase):
-    """Test job filtering by backend."""
+class TestJobExecutionModeFiltering(APITestCase):
+    """Test job filtering by execution_mode."""
 
     def setUp(self):
         self.user = User.objects.create_user(  # type: ignore
@@ -441,7 +441,7 @@ class TestJobBackendFiltering(APITestCase):
         self.pipeline = Pipeline.objects.create(
             name="Test ML Pipeline",
             slug="test-ml-pipeline",
-            description="Test ML pipeline for backend filtering",
+            description="Test ML pipeline for execution_mode filtering",
         )
         self.pipeline.projects.add(self.project)
 
@@ -454,16 +454,16 @@ class TestJobBackendFiltering(APITestCase):
         # Give the user necessary permissions
         assign_perm(Project.Permissions.VIEW_PROJECT, self.user, self.project)
 
-    def test_backend_filtering(self):
-        """Test that jobs can be filtered by backend parameter."""
-        # Create two ML jobs with different backends
+    def test_execution_mode_filtering(self):
+        """Test that jobs can be filtered by execution_mode parameter."""
+        # Create two ML jobs with different execution modes
         sync_job = Job.objects.create(
             job_type_key=MLJob.key,
             project=self.project,
             name="Sync API Job",
             pipeline=self.pipeline,
             source_image_collection=self.source_image_collection,
-            backend=MLBackend.SYNC_API,
+            execution_mode=JobExecutionMode.SYNC_API,
         )
 
         async_job = Job.objects.create(
@@ -472,45 +472,42 @@ class TestJobBackendFiltering(APITestCase):
             name="Async API Job",
             pipeline=self.pipeline,
             source_image_collection=self.source_image_collection,
-            backend=MLBackend.ASYNC_API,
+            execution_mode=JobExecutionMode.ASYNC_API,
         )
 
-        # Create a job with no backend set (should be None)
-        no_backend_job = Job.objects.create(
+        # Create a job with default execution_mode (should be "internal")
+        internal_job = Job.objects.create(
             job_type_key=MLJob.key,
             project=self.project,
-            name="No Backend Job",
+            name="Internal Job",
             pipeline=self.pipeline,
             source_image_collection=self.source_image_collection,
-            backend=None,
         )
 
         self.client.force_authenticate(user=self.user)
         jobs_list_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk})
 
-        # Test filtering by sync_api backend
-        resp = self.client.get(jobs_list_url, {"backend": MLBackend.SYNC_API})
+        # Test filtering by sync_api execution_mode
+        resp = self.client.get(jobs_list_url, {"execution_mode": JobExecutionMode.SYNC_API})
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["count"], 1)
         self.assertEqual(data["results"][0]["id"], sync_job.pk)
-        self.assertEqual(data["results"][0]["backend"], MLBackend.SYNC_API)
+        self.assertEqual(data["results"][0]["execution_mode"], JobExecutionMode.SYNC_API)
 
-        # Test filtering by async_api backend
-        resp = self.client.get(jobs_list_url, {"backend": MLBackend.ASYNC_API})
+        # Test filtering by async_api execution_mode
+        resp = self.client.get(jobs_list_url, {"execution_mode": JobExecutionMode.ASYNC_API})
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["count"], 1)
         self.assertEqual(data["results"][0]["id"], async_job.pk)
-        self.assertEqual(data["results"][0]["backend"], MLBackend.ASYNC_API)
+        self.assertEqual(data["results"][0]["execution_mode"], JobExecutionMode.ASYNC_API)
 
-        # Test filtering by non-existent backend (should return empty)
-        resp = self.client.get(jobs_list_url, {"backend": "non_existent_backend"})
-        self.assertEqual(resp.status_code, 200)
-        data = resp.json()
-        self.assertEqual(data["count"], 0)
+        # Test filtering by invalid execution_mode (should return 400 due to choices validation)
+        resp = self.client.get(jobs_list_url, {"execution_mode": "non_existent_mode"})
+        self.assertEqual(resp.status_code, 400)
 
-        # Test without backend filter (should return all jobs)
+        # Test without execution_mode filter (should return all jobs)
         resp = self.client.get(jobs_list_url)
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
@@ -518,5 +515,5 @@ class TestJobBackendFiltering(APITestCase):
 
         # Verify the job IDs returned include all jobs
         returned_ids = {job["id"] for job in data["results"]}
-        expected_ids = {sync_job.pk, async_job.pk, no_backend_job.pk}
+        expected_ids = {sync_job.pk, async_job.pk, internal_job.pk}
         self.assertEqual(returned_ids, expected_ids)

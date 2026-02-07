@@ -43,7 +43,7 @@ class JobFilterSet(filters.FilterSet):
             "source_image_single",
             "pipeline",
             "job_type_key",
-            "backend",
+            "execution_mode",
         ]
 
 
