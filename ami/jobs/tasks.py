@@ -166,6 +166,29 @@ def _update_job_progress(job_id: int, stage: str, progress_percentage: float) ->
         job.logger.info(f"Updated job {job_id} progress in stage '{stage}' to {progress_percentage*100}%")
         job.save()
 
+    # Clean up async resources for completed jobs that use NATS/Redis
+    # Only ML jobs with async_pipeline_workers enabled use these resources
+    if stage == "results" and progress_percentage >= 1.0:
+        job = Job.objects.get(pk=job_id)  # Re-fetch outside transaction
+        _cleanup_job_if_needed(job)
+
+
+def _cleanup_job_if_needed(job) -> None:
+    """
+    Clean up async resources (NATS/Redis) if this job type uses them.
+
+    Only ML jobs with async_pipeline_workers enabled use NATS/Redis resources.
+    This function is safe to call for any job - it checks if cleanup is needed.
+
+    Args:
+        job: The Job instance
+    """
+    if job.job_type_key == "ml" and job.project and job.project.feature_flags.async_pipeline_workers:
+        # import here to avoid circular imports
+        from ami.ml.orchestration.jobs import cleanup_async_job_resources
+
+        cleanup_async_job_resources(job)
+
 
 @task_prerun.connect(sender=run_job)
 def pre_update_job_status(sender, task_id, task, **kwargs):
@@ -201,6 +224,10 @@ def update_job_status(sender, task_id, task, state: str, retval=None, **kwargs):
 
     job.update_status(state)
 
+    # Clean up async resources for revoked jobs
+    if state == JobState.REVOKED:
+        _cleanup_job_if_needed(job)
+
 
 @task_failure.connect(sender=run_job, retry=False)
 def update_job_failure(sender, task_id, exception, *args, **kwargs):
@@ -212,6 +239,9 @@ def update_job_failure(sender, task_id, exception, *args, **kwargs):
     job.logger.error(f'Job #{job.pk} "{job.name}" failed: {exception}')
 
     job.save()
+
+    # Clean up async resources for failed jobs
+    _cleanup_job_if_needed(job)
 
 
 def log_time(start: float = 0, msg: str | None = None) -> tuple[float, Callable]:
