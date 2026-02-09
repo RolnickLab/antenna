@@ -8,7 +8,7 @@ from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
-from ami.jobs.models import Job, JobProgress, JobState, MLJob, SourceImageCollectionPopulateJob
+from ami.jobs.models import Job, JobDispatchMode, JobProgress, JobState, MLJob, SourceImageCollectionPopulateJob
 from ami.main.models import Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.ml.orchestration.jobs import queue_images_to_nats
@@ -414,6 +414,8 @@ class TestJobView(APITestCase):
     def _task_batch_helper(self, value: Any, expected_status: int):
         pipeline = self._create_pipeline()
         job = self._create_ml_job("Job for batch test", pipeline)
+        job.dispatch_mode = JobDispatchMode.ASYNC_API
+        job.save(update_fields=["dispatch_mode"])
         images = [
             SourceImage.objects.create(
                 path=f"image_{i}.jpg",
@@ -447,12 +449,19 @@ class TestJobView(APITestCase):
 
     def test_tasks_endpoint_without_pipeline(self):
         """Test the tasks endpoint returns error when job has no pipeline."""
-        # Use the existing job which doesn't have a pipeline
-        job_data = self._create_job("Job without pipeline", start_now=False)
+        # Create a job without a pipeline but with async_api dispatch mode
+        # so the dispatch_mode guard passes and the pipeline check is reached
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Job without pipeline",
+            source_image_collection=self.source_image_collection,
+            dispatch_mode=JobDispatchMode.ASYNC_API,
+        )
 
         self.client.force_authenticate(user=self.user)
         tasks_url = reverse_with_params(
-            "api:job-tasks", args=[job_data["id"]], params={"project_id": self.project.pk, "batch": 1}
+            "api:job-tasks", args=[job.pk], params={"project_id": self.project.pk, "batch": 1}
         )
         resp = self.client.get(tasks_url)
 
@@ -510,3 +519,118 @@ class TestJobView(APITestCase):
         resp = self.client.post(result_url, invalid_data, format="json")
         self.assertEqual(resp.status_code, 400)
         self.assertIn("result", resp.json()[0].lower())
+
+
+class TestJobDispatchModeFiltering(APITestCase):
+    """Test job filtering by dispatch_mode."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(  # type: ignore
+            email="testuser-backend@insectai.org",
+            is_staff=True,
+            is_active=True,
+            is_superuser=True,
+        )
+        self.project = Project.objects.create(name="Test Backend Project")
+
+        # Create pipeline for ML jobs
+        self.pipeline = Pipeline.objects.create(
+            name="Test ML Pipeline",
+            slug="test-ml-pipeline",
+            description="Test ML pipeline for dispatch_mode filtering",
+        )
+        self.pipeline.projects.add(self.project)
+
+        # Create source image collection for jobs
+        self.source_image_collection = SourceImageCollection.objects.create(
+            name="Test Collection",
+            project=self.project,
+        )
+
+        # Give the user necessary permissions
+        assign_perm(Project.Permissions.VIEW_PROJECT, self.user, self.project)
+
+    def test_dispatch_mode_filtering(self):
+        """Test that jobs can be filtered by dispatch_mode parameter."""
+        # Create two ML jobs with different dispatch modes
+        sync_job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Sync API Job",
+            pipeline=self.pipeline,
+            source_image_collection=self.source_image_collection,
+            dispatch_mode=JobDispatchMode.SYNC_API,
+        )
+
+        async_job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Async API Job",
+            pipeline=self.pipeline,
+            source_image_collection=self.source_image_collection,
+            dispatch_mode=JobDispatchMode.ASYNC_API,
+        )
+
+        # Create a job with default dispatch_mode (should be "internal")
+        internal_job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Internal Job",
+            pipeline=self.pipeline,
+            source_image_collection=self.source_image_collection,
+        )
+
+        self.client.force_authenticate(user=self.user)
+        jobs_list_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk})
+
+        # Test filtering by sync_api dispatch_mode
+        resp = self.client.get(jobs_list_url, {"dispatch_mode": JobDispatchMode.SYNC_API})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["results"][0]["id"], sync_job.pk)
+        self.assertEqual(data["results"][0]["dispatch_mode"], JobDispatchMode.SYNC_API)
+
+        # Test filtering by async_api dispatch_mode
+        resp = self.client.get(jobs_list_url, {"dispatch_mode": JobDispatchMode.ASYNC_API})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["results"][0]["id"], async_job.pk)
+        self.assertEqual(data["results"][0]["dispatch_mode"], JobDispatchMode.ASYNC_API)
+
+        # Test filtering by invalid dispatch_mode (should return 400 due to choices validation)
+        resp = self.client.get(jobs_list_url, {"dispatch_mode": "non_existent_mode"})
+        self.assertEqual(resp.status_code, 400)
+
+        # Test without dispatch_mode filter (should return all jobs)
+        resp = self.client.get(jobs_list_url)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["count"], 3)  # All three jobs
+
+        # Verify the job IDs returned include all jobs
+        returned_ids = {job["id"] for job in data["results"]}
+        expected_ids = {sync_job.pk, async_job.pk, internal_job.pk}
+        self.assertEqual(returned_ids, expected_ids)
+
+    def test_tasks_endpoint_rejects_non_async_jobs(self):
+        """Test that /tasks endpoint returns 400 for non-async_api jobs."""
+        from ami.base.serializers import reverse_with_params
+
+        sync_job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Sync Job for tasks test",
+            pipeline=self.pipeline,
+            source_image_collection=self.source_image_collection,
+            dispatch_mode=JobDispatchMode.SYNC_API,
+        )
+
+        self.client.force_authenticate(user=self.user)
+        tasks_url = reverse_with_params(
+            "api:job-tasks", args=[sync_job.pk], params={"project_id": self.project.pk, "batch": 1}
+        )
+        resp = self.client.get(tasks_url)
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("async_api", resp.json()[0].lower())
