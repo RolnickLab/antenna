@@ -76,7 +76,7 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
   },
   {
     id: 'source-image',
-    name: translate(STRING.FIELD_LABEL_SOURCE_IMAGE),
+    name: translate(STRING.FIELD_LABEL_CAPTURE),
     renderCell: (item: Job) =>
       item.sourceImage?.sessionId ? (
         <Link

@@ -114,7 +114,7 @@ const JobSummary = ({ job }: { job: Job }) => {
         ) : null}
         {job.sourceImage ? (
           <InputValue
-            label={translate(STRING.FIELD_LABEL_SOURCE_IMAGE)}
+            label={translate(STRING.FIELD_LABEL_CAPTURE)}
             value={job.sourceImage.label}
             to={
               job.sourceImage.sessionId

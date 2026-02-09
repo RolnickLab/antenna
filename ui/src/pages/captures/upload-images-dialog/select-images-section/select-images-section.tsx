@@ -19,7 +19,7 @@ const CAPTURE_CONFIG = {
   RATIO: 16 / 9,
 }
 
-const TITLE = 'Select images'
+const TITLE = 'Select captures'
 
 const DESCRIPTION = [
   translate(STRING.MESSAGE_CAPTURE_LIMIT, {
@@ -68,7 +68,7 @@ export const SelectImagesSection = ({
             <FileInput
               accept={FileInputAccept.Images}
               multiple
-              name="select-images"
+              name="select-captures"
               renderInput={(props) => (
                 <IconButton
                   {...props}
