@@ -144,9 +144,13 @@ pip install -r requirements/local.txt
 
 #### Helpful Commands
 
-##### Run the docker compose stack in the background
+##### Run the Docker compose stack in the background
 
     docker compose up -d
+
+##### Rebuild Docker images
+
+    docker compose build
 
 ##### Watch the logs of Django & the backend workers
 
@@ -324,6 +328,7 @@ Antenna supports remote debugging with debugpy for both Django and Celery servic
 
 ### Troubleshooting
 
+- **Problems after pull**: If Dockerfiles or dependencies have been updated, make sure to rebuild the Docker images: `docker compose build`. For source code changes, this is not needed.
 - **Connection refused**: Make sure you copied `docker-compose.override-example.yml` to `docker-compose.override.yml`
 - **Debugger not stopping**: Verify breakpoints are set in code that actually executes
 - **Port conflicts**: Check that ports 5678 and 5679 aren't already in use on your host machine
