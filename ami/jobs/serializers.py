@@ -127,7 +127,7 @@ class JobListSerializer(DefaultSerializer):
             "job_type",
             "job_type_key",
             "data_export",
-            "execution_mode",
+            "dispatch_mode",
             # "duration",
             # "duration_label",
             # "progress_label",
@@ -142,7 +142,7 @@ class JobListSerializer(DefaultSerializer):
             "started_at",
             "finished_at",
             "duration",
-            "execution_mode",
+            "dispatch_mode",
         ]
 
 

@@ -11,12 +11,12 @@ class Migration(migrations.Migration):
     operations = [
         migrations.AddField(
             model_name="job",
-            name="execution_mode",
+            name="dispatch_mode",
             field=models.CharField(
                 choices=[("internal", "Internal"), ("sync_api", "Sync API"), ("async_api", "Async API")],
                 default="internal",
-                help_text="How the job executes its workload: internal, sync_api, or async_api.",
-                max_length=255,
+                help_text="How the job dispatches its workload: internal, sync_api, or async_api.",
+                max_length=32,
             ),
         ),
     ]

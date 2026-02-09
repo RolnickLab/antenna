@@ -24,9 +24,9 @@ from ami.utils.schemas import OrderedEnum
 logger = logging.getLogger(__name__)
 
 
-class JobExecutionMode(models.TextChoices):
+class JobDispatchMode(models.TextChoices):
     """
-    How a job executes its workload.
+    How a job dispatches its workload.
 
     Jobs are configured and launched by users in the UI, then dispatched to
     Celery workers. This enum describes what the worker does with the work:
@@ -448,8 +448,8 @@ class MLJob(JobType):
         job.save()
 
         if job.project.feature_flags.async_pipeline_workers:
-            job.execution_mode = JobExecutionMode.ASYNC_API
-            job.save(update_fields=["execution_mode"])
+            job.dispatch_mode = JobDispatchMode.ASYNC_API
+            job.save(update_fields=["dispatch_mode"])
             queued = queue_images_to_nats(job, images)
             if not queued:
                 job.logger.error("Aborting job %s because images could not be queued to NATS", job.pk)
@@ -459,8 +459,8 @@ class MLJob(JobType):
                 job.save()
                 return
         else:
-            job.execution_mode = JobExecutionMode.SYNC_API
-            job.save(update_fields=["execution_mode"])
+            job.dispatch_mode = JobDispatchMode.SYNC_API
+            job.save(update_fields=["dispatch_mode"])
             cls.process_images(job, images)
 
     @classmethod
@@ -852,11 +852,11 @@ class Job(BaseModel):
         blank=True,
         related_name="jobs",
     )
-    execution_mode = models.CharField(
-        max_length=255,
-        choices=JobExecutionMode.choices,
-        default=JobExecutionMode.INTERNAL,
-        help_text="How the job executes its workload: internal, sync_api, or async_api.",
+    dispatch_mode = models.CharField(
+        max_length=32,
+        choices=JobDispatchMode.choices,
+        default=JobDispatchMode.INTERNAL,
+        help_text="How the job dispatches its workload: internal, sync_api, or async_api.",
     )
 
     def __str__(self) -> str:
