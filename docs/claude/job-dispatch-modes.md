@@ -1,10 +1,10 @@
-# Job Execution Modes
+# Job Dispatch Modes
 
 ## Overview
 
-The `Job` model is a user-facing CMS feature. Users configure jobs in the UI (selecting images, a processing pipeline, etc.), click start, and watch progress. The actual work is dispatched to background workers. The `execution_mode` field on `Job` describes *how* that work gets executed.
+The `Job` model is a user-facing CMS feature. Users configure jobs in the UI (selecting images, a processing pipeline, etc.), click start, and watch progress. The actual work is dispatched to background workers. The `dispatch_mode` field on `Job` describes *how* that work gets dispatched.
 
-## The Three Execution Modes
+## The Three Dispatch Modes
 
 ### `internal`
 
@@ -36,7 +36,7 @@ The Celery worker publishes all items to a message broker (NATS). External proce
 User (UI)
   │
   ▼
-Job (Django model) ─── execution_mode: internal | sync_api | async_api
+Job (Django model) ─── dispatch_mode: internal | sync_api | async_api
   │
   ▼
 Celery Worker
@@ -57,13 +57,13 @@ Celery Worker
 - **Why not `task_backend`?** "Task backend" is specifically a Celery concept (where task results are stored).
 - **Why not `local`?** Ambiguous with local development environments.
 - **Why `internal`?** Clean contrast with the two external API modes. "Internal" means the work stays within the platform; `sync_api` and `async_api` both involve external processing services.
-- **Why `execution_mode`?** The field describes *how* the job runs, not *where* or *what*. The values map to execution strategies, not infrastructure choices.
+- **Why `dispatch_mode`?** The field describes *how* the Celery worker dispatches work to processing services, not how the job itself executes (all jobs execute via Celery). "Dispatch" is more precise than "execution" which is ambiguous.
 
 ## Code Locations
 
-- Enum: `ami/jobs/models.py` — `JobExecutionMode`
-- Field: `ami/jobs/models.py` — `Job.execution_mode`
+- Enum: `ami/jobs/models.py` — `JobDispatchMode`
+- Field: `ami/jobs/models.py` — `Job.dispatch_mode`
 - Serializer: `ami/jobs/serializers.py` — exposed in `JobListSerializer` and read-only
-- API filter: `ami/jobs/views.py` — filterable via `?execution_mode=sync_api`
-- Migration: `ami/jobs/migrations/0019_job_backend.py`
-- Tests: `ami/jobs/tests.py` — `TestJobExecutionModeFiltering`
+- API filter: `ami/jobs/views.py` — filterable via `?dispatch_mode=sync_api`
+- Migration: `ami/jobs/migrations/0019_job_dispatch_mode.py`
+- Tests: `ami/jobs/tests.py` — `TestJobDispatchModeFiltering`
