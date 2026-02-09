@@ -16,7 +16,7 @@ export const CollectionFilter = ({ value, onAdd }: FilterProps) => {
       onValueChange={onAdd}
     >
       <Select.Trigger loading={isLoading}>
-        <Select.Value placeholder="All collections" />
+        <Select.Value placeholder="All capture sets" />
       </Select.Trigger>
       <Select.Content className="max-h-72">
         {collections.map((c) => (

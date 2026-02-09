@@ -51,6 +51,7 @@ export enum STRING {
   ENTITY_DETAILS,
   ENTITY_EDIT,
   ENTITY_TYPE_ALGORITHM,
+  ENTITY_TYPE_CAPTURE_SET,
   ENTITY_TYPE_CAPTURE,
   ENTITY_TYPE_DEPLOYMENT,
   ENTITY_TYPE_EXPORT,
@@ -68,6 +69,7 @@ export enum STRING {
   FIELD_LABEL_ALGORITHM_URI,
   FIELD_LABEL_AVG_TEMP,
   FIELD_LABEL_BEST_SCORE,
+  FIELD_LABEL_CAPTURE_SET,
   FIELD_LABEL_CAPTURES_WITH_DETECTIONS,
   FIELD_LABEL_CAPTURES,
   FIELD_LABEL_CATEGORY_COUNT,
@@ -136,7 +138,6 @@ export enum STRING {
   FIELD_LABEL_SLUG,
   FIELD_LABEL_SNAPSHOTS,
   FIELD_LABEL_SOURCE_IMAGE,
-  FIELD_LABEL_SOURCE_IMAGES_COLLECTION,
   FIELD_LABEL_SOURCE_IMAGES,
   FIELD_LABEL_STARTED_AT,
   FIELD_LABEL_STATUS,
@@ -195,9 +196,9 @@ export enum STRING {
   /* NAV_ITEM */
   NAV_ITEM_ABOUT,
   NAV_ITEM_ALGORITHMS,
+  NAV_ITEM_CAPTURE_SETS,
   NAV_ITEM_CAPTURES,
   NAV_ITEM_CODE_OF_CONDUCT,
-  NAV_ITEM_COLLECTIONS,
   NAV_ITEM_DEFAULT_FILTERS,
   NAV_ITEM_DEPLOYMENTS,
   NAV_ITEM_DEVICES,
@@ -240,7 +241,7 @@ export enum STRING {
 
   /* TOOLTIPS */
   TOOLTIP_ALGORITHM,
-  TOOLTIP_COLLECTION,
+  TOOLTIP_CAPTURE_SET,
   TOOLTIP_DEPLOYMENT,
   TOOLTIP_DEVICE,
   TOOLTIP_JOB,
@@ -338,8 +339,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SEARCH_MAP]: 'Search on the map',
   [STRING.SEND_INSTRUCTIONS]: 'Send instructions',
   [STRING.SIGN_UP]: 'Sign up',
-  [STRING.STAR]: 'Add to starred collection',
-  [STRING.STARRED]: 'Remove from starred collection',
+  [STRING.STAR]: 'Add to starred captures',
+  [STRING.STARRED]: 'Remove from starred captures',
   [STRING.START]: 'Start',
   [STRING.SUBMIT]: 'Submit',
   [STRING.SUGGEST_ID_SHORT]: 'Suggest',
@@ -352,6 +353,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_ALGORITHM_URI]: 'Algorithm source',
   [STRING.FIELD_LABEL_AVG_TEMP]: 'Avg temp',
   [STRING.FIELD_LABEL_BEST_SCORE]: 'Best score',
+  [STRING.FIELD_LABEL_CAPTURE_SET]: 'Capture set',
   [STRING.FIELD_LABEL_CAPTURES_WITH_DETECTIONS]: 'Captures with detections',
   [STRING.FIELD_LABEL_CAPTURES]: 'Captures',
   [STRING.FIELD_LABEL_CATEGORY_COUNT]: 'Taxa',
@@ -420,7 +422,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_SLUG]: 'Slug',
   [STRING.FIELD_LABEL_SNAPSHOTS]: 'Snapshots',
   [STRING.FIELD_LABEL_SOURCE_IMAGE]: 'Source image',
-  [STRING.FIELD_LABEL_SOURCE_IMAGES_COLLECTION]: 'Source images collection',
   [STRING.FIELD_LABEL_SOURCE_IMAGES]: 'Source images',
   [STRING.FIELD_LABEL_STARTED_AT]: 'Started at',
   [STRING.FIELD_LABEL_STATUS]: 'Status',
@@ -450,6 +451,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.ENTITY_DETAILS]: '{{type}} details',
   [STRING.ENTITY_EDIT]: 'Edit {{type}}',
   [STRING.ENTITY_TYPE_ALGORITHM]: 'algorithm',
+  [STRING.ENTITY_TYPE_CAPTURE_SET]: 'capture set',
   [STRING.ENTITY_TYPE_CAPTURE]: 'capture',
   [STRING.ENTITY_TYPE_DEPLOYMENT]: 'station',
   [STRING.ENTITY_TYPE_EXPORT]: 'export',
@@ -516,9 +518,9 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* NAV_ITEM */
   [STRING.NAV_ITEM_ABOUT]: 'About',
   [STRING.NAV_ITEM_ALGORITHMS]: 'Algorithms',
+  [STRING.NAV_ITEM_CAPTURE_SETS]: 'Capture sets',
   [STRING.NAV_ITEM_CAPTURES]: 'Captures',
   [STRING.NAV_ITEM_CODE_OF_CONDUCT]: 'Code of conduct',
-  [STRING.NAV_ITEM_COLLECTIONS]: 'Collections',
   [STRING.NAV_ITEM_DEFAULT_FILTERS]: 'Default filters',
   [STRING.NAV_ITEM_DEPLOYMENTS]: 'Stations',
   [STRING.NAV_ITEM_DEVICES]: 'Device types',
@@ -561,9 +563,9 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
 
   /* TOOLTIPS */
   [STRING.TOOLTIP_ALGORITHM]:
-    'An algorithm is used in a pipeline for processing image/collections.',
-  [STRING.TOOLTIP_COLLECTION]:
-    'A collection is a group of source images. A collection contains all or some images in a project. When a processing job is registered, a collection is picked. This list defines the collection options available.',
+    'An algorithm is used in a pipeline for processing captures.',
+  [STRING.TOOLTIP_CAPTURE_SET]:
+    'A capture set is a group of captures. A capture set contains all or some captures in a project. When a processing job is registered, a capture set is picked. This list defines the capture set options available.',
   [STRING.TOOLTIP_DEPLOYMENT]:
     'A monitoring station is a location where a device is deployed to take images of insects in the wild (at a “Site”).',
   [STRING.TOOLTIP_DEVICE]:
@@ -575,7 +577,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TOOLTIP_PIPELINE]:
     'A pipeline is a set of algorithms used for processing. A pipeline is picked from a list of algorithm bundle options when a processing job is defined.',
   [STRING.TOOLTIP_PROCESSING_SERVICE]:
-    'A processing service is a group of pipelines used for processing images/collections.',
+    'A processing service is a group of pipelines used for processing captures.',
   [STRING.TOOLTIP_SESSION]:
     'A session is a fixed period of time of monitoring for one station. The period is typically one night.',
   [STRING.TOOLTIP_SITE]:

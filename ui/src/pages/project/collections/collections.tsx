@@ -60,13 +60,13 @@ export const Collections = () => {
   return (
     <>
       <PageHeader
-        title={translate(STRING.NAV_ITEM_COLLECTIONS)}
+        title={translate(STRING.NAV_ITEM_CAPTURE_SETS)}
         subTitle={translate(STRING.RESULTS, {
           total,
         })}
         isLoading={isLoading}
         isFetching={isFetching}
-        tooltip={translate(STRING.TOOLTIP_COLLECTION)}
+        tooltip={translate(STRING.TOOLTIP_CAPTURE_SET)}
       >
         <ColumnSettings
           columns={columns(projectId as string)}
@@ -76,7 +76,7 @@ export const Collections = () => {
         {canCreate && (
           <NewEntityDialog
             collection={API_ROUTES.COLLECTIONS}
-            type="collection"
+            type={translate(STRING.ENTITY_TYPE_CAPTURE_SET)}
           />
         )}
       </PageHeader>

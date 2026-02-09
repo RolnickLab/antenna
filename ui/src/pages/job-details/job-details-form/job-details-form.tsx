@@ -45,7 +45,7 @@ const config: FormConfig = {
     label: translate(STRING.FIELD_LABEL_PIPELINE),
   },
   sourceImages: {
-    label: translate(STRING.FIELD_LABEL_SOURCE_IMAGES_COLLECTION),
+    label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
   },
   startNow: {
     label: 'Start immediately',

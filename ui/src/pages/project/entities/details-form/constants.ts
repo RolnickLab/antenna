@@ -7,8 +7,8 @@ import { DetailsFormProps } from './types'
 export const customFormMap: {
   [key: string]: (props: DetailsFormProps) => JSX.Element
 } = {
+  'capture set': CollectionDetailsForm,
   export: ExportDetailsForm,
-  storage: StorageDetailsForm,
-  collection: CollectionDetailsForm,
   service: ProcessingServiceDetailsForm,
+  storage: StorageDetailsForm,
 }

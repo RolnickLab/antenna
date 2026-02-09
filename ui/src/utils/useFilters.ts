@@ -1,5 +1,6 @@
 import { isBefore, isValid } from 'date-fns'
 import { useSearchParams } from 'react-router-dom'
+import { STRING, translate } from './language'
 import { SEARCH_PARAM_KEY_PAGE } from './usePagination'
 
 export const AVAILABLE_FILTERS: {
@@ -15,16 +16,16 @@ export const AVAILABLE_FILTERS: {
     field: 'algorithm',
   },
   {
-    label: 'Collection',
-    field: 'collection', // This is for viewing Occurrences by collection
+    label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
+    field: 'collection', // This is for viewing occurrences by capture set. @TODO: Can we update this key to "capture_set_id" to streamline?
   },
   {
-    label: 'Collection',
-    field: 'source_image_collection', // This is for viewing Jobs by collection. @TODO: Can we update this key to "collection" to streamline?
+    label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
+    field: 'source_image_collection', // This is for viewing jobs by capture set. @TODO: Can we update this key to "capture_set_id" streamline?
   },
   {
-    label: 'Collection',
-    field: 'collections', // This is for viewing Captures by collection @TODO: Can we update this key to "collection" to streamline?
+    label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
+    field: 'collections', // This is for viewing captures by capture set. @TODO: Can we update this key to "capture_set_id" to streamline?
   },
   {
     label: 'Station',

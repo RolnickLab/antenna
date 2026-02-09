@@ -29,7 +29,7 @@ const config: FormConfig = {
     },
   },
   sourceImages: {
-    label: translate(STRING.FIELD_LABEL_SOURCE_IMAGES_COLLECTION),
+    label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
   },
 }
 

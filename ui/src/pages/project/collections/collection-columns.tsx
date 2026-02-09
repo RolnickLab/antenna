@@ -157,14 +157,14 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
           <UpdateEntityDialog
             collection={API_ROUTES.COLLECTIONS}
             entity={item}
-            type="collection"
+            type={translate(STRING.ENTITY_TYPE_CAPTURE_SET)}
           />
         )}
         {item.canDelete && (
           <DeleteEntityDialog
             collection={API_ROUTES.COLLECTIONS}
             id={item.id}
-            type="collection"
+            type={translate(STRING.ENTITY_TYPE_CAPTURE_SET)}
           />
         )}
       </div>
