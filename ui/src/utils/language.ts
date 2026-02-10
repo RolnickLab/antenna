@@ -240,6 +240,7 @@ export enum STRING {
   /* TOOLTIPS */
   TOOLTIP_ALGORITHM,
   TOOLTIP_CAPTURE_SET,
+  TOOLTIP_CAPTURE,
   TOOLTIP_DEPLOYMENT,
   TOOLTIP_DEVICE,
   TOOLTIP_JOB,
@@ -562,7 +563,9 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TOOLTIP_ALGORITHM]:
     'An algorithm is used in a pipeline for processing captures.',
   [STRING.TOOLTIP_CAPTURE_SET]:
-    'A capture set is a group of captures. A capture set contains all or some captures in a project. When a processing job is registered, a capture set is picked. This list defines the capture set options available.',
+    'A capture set is a group of captures. A capture set contains all or some captures in a project. Capture sets are useful when specifying what captures to process.',
+  [STRING.TOOLTIP_CAPTURE]:
+    'A capture is a source image, collected from a monitoring station. During processing, detections are extracted from captures.',
   [STRING.TOOLTIP_DEPLOYMENT]:
     'A monitoring station is a location where a device is deployed to collect captures of insects in the wild.',
   [STRING.TOOLTIP_DEVICE]:
