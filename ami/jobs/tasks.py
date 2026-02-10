@@ -159,12 +159,36 @@ def _update_job_progress(job_id: int, stage: str, progress_percentage: float) ->
             status=JobState.SUCCESS if progress_percentage >= 1.0 else JobState.STARTED,
             progress=progress_percentage,
         )
-        if stage == "results" and progress_percentage >= 1.0:
+        if job.progress.is_complete():
             job.status = JobState.SUCCESS
             job.progress.summary.status = JobState.SUCCESS
             job.finished_at = datetime.datetime.now()  # Use naive datetime in local time
         job.logger.info(f"Updated job {job_id} progress in stage '{stage}' to {progress_percentage*100}%")
         job.save()
+
+    # Clean up async resources for completed jobs that use NATS/Redis
+    if job.progress.is_complete():
+        job = Job.objects.get(pk=job_id)  # Re-fetch outside transaction
+        _cleanup_job_if_needed(job)
+
+
+def _cleanup_job_if_needed(job) -> None:
+    """
+    Clean up async resources (NATS/Redis) if this job uses them.
+
+    Only jobs with ASYNC_API dispatch mode use NATS/Redis resources.
+    This function is safe to call for any job - it checks if cleanup is needed.
+
+    Args:
+        job: The Job instance
+    """
+    from ami.jobs.models import JobDispatchMode
+
+    if job.dispatch_mode == JobDispatchMode.ASYNC_API:
+        # import here to avoid circular imports
+        from ami.ml.orchestration.jobs import cleanup_async_job_resources
+
+        cleanup_async_job_resources(job)
 
 
 @task_prerun.connect(sender=run_job)
@@ -175,7 +199,7 @@ def pre_update_job_status(sender, task_id, task, **kwargs):
 
 @task_postrun.connect(sender=run_job)
 def update_job_status(sender, task_id, task, state: str, retval=None, **kwargs):
-    from ami.jobs.models import Job
+    from ami.jobs.models import Job, JobState
 
     job_id = task.request.kwargs["job_id"]
     if job_id is None:
@@ -190,7 +214,20 @@ def update_job_status(sender, task_id, task, state: str, retval=None, **kwargs):
             logger.error(f"No job found for task {task_id} or job_id {job_id}")
             return
 
+    # Guard only SUCCESS state - let FAILURE, REVOKED, RETRY pass through immediately
+    # SUCCESS should only be set when all stages are actually complete
+    # This prevents premature SUCCESS when async workers are still processing
+    if state == JobState.SUCCESS and not job.progress.is_complete():
+        job.logger.info(
+            f"Job {job.pk} task completed but stages not finished - " "deferring SUCCESS status to progress handler"
+        )
+        return
+
     job.update_status(state)
+
+    # Clean up async resources for revoked jobs
+    if state == JobState.REVOKED:
+        _cleanup_job_if_needed(job)
 
 
 @task_failure.connect(sender=run_job, retry=False)
@@ -203,6 +240,9 @@ def update_job_failure(sender, task_id, exception, *args, **kwargs):
     job.logger.error(f'Job #{job.pk} "{job.name}" failed: {exception}')
 
     job.save()
+
+    # Clean up async resources for failed jobs
+    _cleanup_job_if_needed(job)
 
 
 def log_time(start: float = 0, msg: str | None = None) -> tuple[float, Callable]:
