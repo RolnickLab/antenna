@@ -7,7 +7,7 @@ import {
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
-import { Collection } from 'data-services/models/capture-set'
+import { CaptureSet } from 'data-services/models/capture-set'
 import { SaveButton } from 'design-system/components/button/save-button'
 import { InputContent } from 'design-system/components/input/input'
 import { DatePicker } from 'design-system/components/select/date-picker'
@@ -26,7 +26,7 @@ import { snakeCaseToSentenceCase } from 'utils/snakeCaseToSentenceCase'
 import { useFormError } from 'utils/useFormError'
 import { DetailsFormProps, FormValues } from './types'
 
-type CollectionFormValues = FormValues & {
+type CaptureSetFormValues = FormValues & {
   method: string
   kwargs: {
     date_start: string | undefined
@@ -125,16 +125,16 @@ const config: FormConfig = {
   },
 }
 
-export const CollectionDetailsForm = ({
+export const CaptureSetDetailsForm = ({
   entity,
   error,
   isLoading,
   isSuccess,
   onSubmit,
 }: DetailsFormProps) => {
-  const collection = entity as Collection | undefined
+  const captureSet = entity as CaptureSet | undefined
   const { control, handleSubmit, setError, watch } =
-    useForm<CollectionFormValues>({
+    useForm<CaptureSetFormValues>({
       defaultValues: {
         name: entity?.name ?? '',
         description: entity?.description ?? '',
@@ -142,7 +142,7 @@ export const CollectionDetailsForm = ({
           minute_interval: 10,
           size: 100,
           ...Object.fromEntries(
-            Object.entries(collection?.kwargs || {}).map(([key, value]) => {
+            Object.entries(captureSet?.kwargs || {}).map(([key, value]) => {
               const fieldConfig = config[`kwargs.${key}`]
               const formValue = fieldConfig?.toFormValue
                 ? fieldConfig.toFormValue(value)
@@ -151,7 +151,7 @@ export const CollectionDetailsForm = ({
             })
           ),
         },
-        method: collection?.method ?? SERVER_SAMPLING_METHODS[0],
+        method: captureSet?.method ?? SERVER_SAMPLING_METHODS[0],
       },
       mode: 'onChange',
     })

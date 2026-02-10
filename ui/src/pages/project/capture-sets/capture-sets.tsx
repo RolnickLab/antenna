@@ -49,7 +49,7 @@ export const CaptureSets = () => {
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
   useEffect(() => {
-    // If any collection has a job in progress, we want to poll the endpoint so we can show job updates
+    // If any capture set has a job in progress, we want to poll the endpoint so we can show job updates
     if (captureSets?.some(({ hasJobInProgress }) => hasJobInProgress)) {
       setPoll(true)
     } else {

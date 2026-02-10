@@ -290,7 +290,7 @@ const SectionUpload = ({
       description="Your captures will be uploaded and added to the selected monitoring station. If processing is enabled, a job will start in the background."
     >
       <div className="grid grid-cols-2 gap-8">
-        <InputValue label="Images" value={images.length} />
+        <InputValue label="Captures" value={images.length} />
         <InputValue label="Station" value={deployment?.name} />
         <div className="space-y-4">
           <div className="flex items-center gap-2">

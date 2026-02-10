@@ -21,7 +21,7 @@ export const AVAILABLE_FILTERS: {
   },
   {
     label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
-    field: 'source_image_collection', // This is for viewing jobs by capture set. @TODO: Can we update this key to "capture_set_id" streamline?
+    field: 'source_image_collection', // This is for viewing jobs by capture set. @TODO: Can we update this key to "capture_set_id" to streamline?
   },
   {
     label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
@@ -70,8 +70,8 @@ export const AVAILABLE_FILTERS: {
     },
   },
   {
-    label: 'Source image',
-    field: 'detections__source_image', // This is for viewing Occurrences by source image. @TODO: Can we update this key to "source_image" to streamline?
+    label: translate(STRING.FIELD_LABEL_CAPTURE),
+    field: 'detections__source_image', // This is for viewing occurrences by capture. @TODO: Can we update this key to "capture_id" to streamline?
   },
   {
     label: 'Session',
@@ -106,8 +106,8 @@ export const AVAILABLE_FILTERS: {
     field: 'not_taxa_list_id',
   },
   {
-    label: 'Source image',
-    field: 'source_image_single', // This is for viewing Jobs by source image. @TODO: Can we update this key to "source_image" to streamline?
+    label: translate(STRING.FIELD_LABEL_CAPTURE),
+    field: 'source_image_single', // This is for viewing jobs by capture. @TODO: Can we update this key to "capture_id" to streamline?
   },
   {
     label: 'Status',

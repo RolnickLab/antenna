@@ -43,7 +43,7 @@ export const SelectImagesSection = ({
 
   return (
     <FormSection title={TITLE} description={DESCRIPTION}>
-      <div className={styles.collection}>
+      <div className={styles.captures}>
         {images.map(({ file }) => (
           <Card key={file.name}>
             <div className={styles.cardContent}>
