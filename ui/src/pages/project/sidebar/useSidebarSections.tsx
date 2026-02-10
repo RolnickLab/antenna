@@ -24,7 +24,7 @@ const getSidebarSections = (
       {
         id: 'capture-sets',
         title: translate(STRING.NAV_ITEM_CAPTURE_SETS),
-        path: APP_ROUTES.COLLECTIONS({ projectId: project.id }),
+        path: APP_ROUTES.CAPTURE_SETS({ projectId: project.id }),
       },
       {
         id: 'exports',

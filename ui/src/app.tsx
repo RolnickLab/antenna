@@ -110,8 +110,8 @@ export const App = () => (
               element={<Navigate to={{ pathname: 'summary' }} replace={true} />}
             />
             <Route path="summary" element={<Summary />} />
-            <Route path="collections" element={<Collections />} />
-            <Route path="collections/:id" element={<CollectionDetails />} />
+            <Route path="capture-sets" element={<Collections />} />
+            <Route path="capture-sets/:id" element={<CollectionDetails />} />
             <Route path="exports/:id?" element={<Exports />} />
             <Route
               path="processing-services/:id?"
