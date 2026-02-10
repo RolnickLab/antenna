@@ -5,7 +5,7 @@ from django.core.cache import cache
 from django.test import TestCase
 from nats.js.errors import NotFoundError
 
-from ami.jobs.models import Job, JobState, MLJob
+from ami.jobs.models import Job, JobDispatchMode, JobState, MLJob
 from ami.jobs.tasks import _update_job_progress, update_job_failure, update_job_status
 from ami.main.models import Project, ProjectFeatureFlags, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
@@ -106,6 +106,7 @@ class TestCleanupAsyncJobResources(TestCase):
             name="Test Cleanup Job",
             pipeline=self.pipeline,
             source_image_collection=self.collection,
+            dispatch_mode=JobDispatchMode.ASYNC_API,
         )
 
         # Queue images to NATS (also initializes Redis state)
@@ -162,7 +163,9 @@ class TestCleanupAsyncJobResources(TestCase):
         """Test that resources are cleaned up when job completes successfully."""
         job = self._create_job_with_queued_images()
 
-        # Simulate job completion by updating progress to 100% in results stage
+        # Simulate job completion: complete all stages (collect, process, then results)
+        _update_job_progress(job.pk, stage="collect", progress_percentage=1.0)
+        _update_job_progress(job.pk, stage="process", progress_percentage=1.0)
         _update_job_progress(job.pk, stage="results", progress_percentage=1.0)
 
         # Verify cleanup happened
