@@ -159,7 +159,7 @@ def _update_job_progress(job_id: int, stage: str, progress_percentage: float) ->
             status=JobState.SUCCESS if progress_percentage >= 1.0 else JobState.STARTED,
             progress=progress_percentage,
         )
-        if stage == "results" and progress_percentage >= 1.0:
+        if job.progress.is_complete():
             job.status = JobState.SUCCESS
             job.progress.summary.status = JobState.SUCCESS
             job.finished_at = datetime.datetime.now()  # Use naive datetime in local time
@@ -167,23 +167,24 @@ def _update_job_progress(job_id: int, stage: str, progress_percentage: float) ->
         job.save()
 
     # Clean up async resources for completed jobs that use NATS/Redis
-    # Only ML jobs with async_pipeline_workers enabled use these resources
-    if stage == "results" and progress_percentage >= 1.0:
+    if job.progress.is_complete():
         job = Job.objects.get(pk=job_id)  # Re-fetch outside transaction
         _cleanup_job_if_needed(job)
 
 
 def _cleanup_job_if_needed(job) -> None:
     """
-    Clean up async resources (NATS/Redis) if this job type uses them.
+    Clean up async resources (NATS/Redis) if this job uses them.
 
-    Only ML jobs with async_pipeline_workers enabled use NATS/Redis resources.
+    Only jobs with ASYNC_API dispatch mode use NATS/Redis resources.
     This function is safe to call for any job - it checks if cleanup is needed.
 
     Args:
         job: The Job instance
     """
-    if job.job_type_key == "ml" and job.project and job.project.feature_flags.async_pipeline_workers:
+    from ami.jobs.models import JobDispatchMode
+
+    if job.dispatch_mode == JobDispatchMode.ASYNC_API:
         # import here to avoid circular imports
         from ami.ml.orchestration.jobs import cleanup_async_job_resources
 
