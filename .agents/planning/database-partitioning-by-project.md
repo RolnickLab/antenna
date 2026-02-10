@@ -338,14 +338,116 @@ Keep `_old` tables for at least one release cycle.
 
 ---
 
+## Are We Missing the Mark?
+
+Partitioning is a big investment. Before committing, we need to honestly ask: is the database even the bottleneck? At 4M rows with proper indexes and 5.4GB shared_buffers, PostgreSQL should handle this workload without partitioning. The "sluggishness" could come from several layers.
+
+### Likely bottleneck candidates (ranked by probability)
+
+**1. Infrastructure / I/O (especially Compute Canada cluster)**
+The old Compute Canada cluster uses shared storage (likely NFS or Lustre). Network-attached storage adds 1-10ms latency per I/O operation vs. 0.1ms for local NVMe. If the database's WAL writes, checkpoint flushes, or index reads hit slow storage, *every* query suffers regardless of table size. Partitioning won't fix slow disks.
+
+How to check:
+- `iostat -x 1 10` on the DB host -- look for high `await` (>5ms) or `%util` (>80%)
+- New Relic Infrastructure > Disk I/O graphs
+- `SELECT * FROM pg_stat_bgwriter;` -- high `buffers_backend` means shared_buffers is too small or I/O can't keep up
+
+**2. Missing indexes / bad query plans**
+A single missing index on a 4M row table causes a sequential scan that reads the entire table. This is the most common cause of "everything got slow" at scale. Adding one index can be a 1000x improvement.
+
+How to check:
+- Run `scripts/db_diagnostics.sql` -- section 4 shows seq scans on large tables
+- New Relic Database tab > slowest queries by total time
+- `EXPLAIN ANALYZE` on the specific slow API endpoints
+
+**3. N+1 queries**
+Django's ORM silently generates hundreds of queries per request when `select_related`/`prefetch_related` is missing. A page that runs 200 queries at 5ms each takes 1 second, but no single query looks slow.
+
+How to check:
+- Django Debug Toolbar shows query count per request
+- New Relic transaction traces show total DB time vs. number of queries
+- Look for endpoints where DB time is high but individual queries are fast
+
+**4. Connection exhaustion / pooling**
+Without pgbouncer, each Django worker and Celery worker holds a persistent database connection. With 10 Django workers + 8 Celery workers + Flower + Beat, that's 20+ connections doing nothing most of the time but preventing new connections.
+
+How to check:
+- Run `scripts/db_diagnostics.sql` -- section 9 shows active connections
+- Intermittent "connection refused" or timeout errors in logs
+
+**5. Large OFFSET pagination**
+`OFFSET 10000 LIMIT 100` forces PostgreSQL to scan and discard 10,000 rows. Deep pagination on large tables is slow regardless of indexes.
+
+How to check:
+- New Relic slow queries -- look for large OFFSET values
+- API endpoints that paginate with page numbers (not cursor-based)
+
+**6. Aggregate queries without materialized views**
+Count queries, taxa-with-occurrence-counts, and dashboard summaries scan large portions of tables. These get proportionally slower as data grows.
+
+How to check:
+- `EXPLAIN ANALYZE` on the summary/dashboard endpoints
+- New Relic -- are dashboard page loads slow?
+
+### Decision tree
+
+```
+Is the DB host disk I/O saturated? (iostat await >5ms)
+  YES → Migrate to faster storage / local NVMe. Partitioning won't help.
+  NO ↓
+
+Are there sequential scans on large tables? (db_diagnostics.sql section 4)
+  YES → Add missing indexes first. Cheaper fix, may solve the problem.
+  NO ↓
+
+Is cache hit ratio <95% on target tables? (db_diagnostics.sql section 2)
+  YES → Partitioning will help (smaller per-partition indexes fit in cache)
+  Also → Consider increasing shared_buffers if host has RAM headroom
+  NO ↓
+
+Is the problem specific API endpoints? (New Relic transaction traces)
+  YES → Profile those endpoints. Likely N+1 or missing prefetch_related.
+  NO ↓
+
+Are aggregate/count queries the bottleneck?
+  YES → Materialized views or cached counters. Partitioning helps marginally.
+  NO ↓
+
+Is the problem intermittent? (sometimes fast, sometimes slow)
+  YES → Likely connection pooling, autovacuum blocking, or noisy neighbors.
+  NO → Partitioning is probably the right call. Proceed with Phase 2.
+```
+
+### Diagnostic script
+
+Run `scripts/db_diagnostics.sql` against production to collect all the data needed for the decision tree above:
+
+```bash
+# Production (adjust connection string)
+psql $DATABASE_URL -f scripts/db_diagnostics.sql > diagnostics_$(date +%Y%m%d).txt
+
+# Local Docker
+docker compose exec postgres psql -U ami -f /app/scripts/db_diagnostics.sql
+```
+
+The script collects: table sizes, cache hit ratios, index usage, sequential scan counts, bloat estimates, connection counts, per-project row distribution, and more.
+
+---
+
 ## Alternative / Complementary Approaches
 
-If Phase 0 diagnosis reveals the bottleneck is NOT query execution on large tables, consider:
+If diagnosis reveals the bottleneck is NOT query execution on large tables:
 
-1. **pgbouncer** - Connection pooling if connection exhaustion is the issue
-2. **Read replicas** - If the DB server CPU is saturated
-3. **Materialized views** - For expensive aggregate queries (taxa counts, summary stats)
-4. **Query optimization** - Missing indexes, N+1 fixes, denormalization
-5. **Infrastructure upgrade** - If disk I/O or network is the bottleneck (especially on Compute Canada cluster with shared storage)
-6. **Object storage CDN** - If image serving through S3/MinIO is slow due to network
-7. **API response caching** - Redis/Varnish for read-heavy endpoints that don't change often
+| Problem | Fix | Effort | Impact |
+|---|---|---|---|
+| Slow disk I/O | Migrate DB to local NVMe or managed PostgreSQL | Medium | High |
+| Missing indexes | Add targeted indexes | Low | High |
+| N+1 queries | Add select_related/prefetch_related | Low | High |
+| Connection exhaustion | Add pgbouncer | Low | Medium |
+| Slow aggregates | Materialized views or cached counters | Medium | Medium |
+| Deep pagination | Switch to cursor-based pagination (keyset) | Medium | Medium |
+| Image loading slow | CDN or object storage optimization | Medium | Medium (UX) |
+| General read load | Read replica | High | High |
+| API response time | Redis caching for hot endpoints | Low | Medium |
+
+Several of these can (and should) be done regardless of whether we partition.
