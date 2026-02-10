@@ -1,0 +1,1149 @@
+# GitHub Index: PRs & Issues
+
+Generated: 2026-02-09
+Total PRs: 699 | Total Issues: 422
+
+Legend: [S] = summarized, [ ] = title only, state = O(pen)/M(erged)/C(losed)
+
+## Pull Requests
+
+### Open PRs (44)
+
+- [S] #1124 (O 2026-02-09) Update README with build command
+- [S] #1121 (O 2026-02-06) Carlos/trackcounts
+- [S] #1119 (O 2026-02-05) fix: address taxa-list PR review feedback
+- [S] #1117 (O 2026-02-05) Handle processing_service_name parameters in requests from workers
+- [S] #1116 (O 2026-02-04) Assessment and migration proposal of the UI to Remix
+- [S] #1110 (O 2026-01-31) feat: Add model-level permissions framework (rebase test - no not merge)
+- [S] #1108 (O 2026-01-31) Fix duplicate TaxaList names causing MultipleObjectsReturned
+- [S] #1101 (O 2026-01-24) refactor: optimize log_invalid query pattern in UserProjectMembership.with_role()
+- [S] #1097 (O 2026-01-22) [Draft] Optimize role creation signal with schema version tracking
+- [S] #1096 (O 2026-01-22) refactor: nest role fields in UserProjectMembership API response
+- [S] #1094 (O 2026-01-20) Configurable taxa lists
+- [S] #1093 (O 2026-01-20) Add null detections test; update save_results
+- [S] #1089 (O 2026-01-16) Flat bug integration
+- [S] #1076 (O 2025-12-17) PSV2: endpoint to register pipelines
+- [S] #1075 (O 2025-12-08) feat: normalize datetimes with deployment time zones
+- [S] #1052 (O 2025-11-14) feat(pulumi): add AWS infrastructure code and deployment guide
+- [S] #1050 (O 2025-11-14) Refactor docker healthchecks from Redis to RabbitMQ and add worker protections
+- [S] #1047 (O 2025-11-13) Fix: Update station edit form 3rd section header to show 'Data Source'
+- [S] #1045 (O 2025-11-11) Default taxa filter follow-up: handle cached counts and add default taxa to projects
+- [S] #1026 (O 2025-10-31) [Draft] Don't overwrite logs & status in concurrent background tasks
+- [S] #1025 (O 2025-10-31) Add periodic status check for incomplete jobs 
+- [S] #1024 (O 2025-10-30) Docker healthcheck and auto-restart for Celery workers
+- [S] #1020 (O 2025-10-29) Add taxa from UI
+- [S] #1011 (O 2025-10-18) Enhance processing service templates to consume from pipeline queues
+- [S] #1010 (O 2025-10-17) Extend permissions framework to support model-level permissions
+- [S] #999 (O 2025-10-14) Implement class masking using the post-processing framework
+- [S] #992 (O 2025-10-11) Add general detector + global moth model to example pipeline
+- [S] #981 (O 2025-10-07) Update status of disconnected and stale jobs
+- [S] #952 (O 2025-09-17) Enable real classifiers in local dev by default
+- [S] #916 (O 2025-08-08) Import existing pipeline results
+- [S] #915 (O 2025-08-07) Add class masking (draft)
+- [S] #910 (O 2025-08-04) [integration] Enable async and distributed processing for the ML backend [VISS-SSEC]
+- [S] #904 (O 2025-07-22) Fix incorrect session grouping 
+- [S] #863 (O 2025-05-27) Add support for occurrence tracking
+- [S] #858 (O 2025-05-25) [Draft] Filter images before clustering
+- [S] #857 (O 2025-05-23) [Draft] Taxon rank classifications
+- [S] #839 (O 2025-05-10) [Draft] Add project-based representative occurrence for Taxon 
+- [S] #820 (O 2025-04-30) [integration] OOD Features
+- [S] #581 (O 2024-09-17) [Draft] Summarize all todos in the codebase
+- [S] #490 (O 2024-08-05) [Draft] New Taxon models for faster species views
+- [S] #377 (O 2024-04-17) [Draft] Explore and test the use of pixel area to determine detected insect size
+- [S] #345 (O 2024-02-08) [Draft] Patchable updates from the latest Django Cookiecutter template
+- [S] #337 (O 2024-01-20) [Draft] Initial support for inventory source images from CSV file
+- [S] #253 (O 2023-09-28) [Draft] Test using new image resizing service
+
+### Merged/Closed: Last 6 months (Aug 2025 - Feb 2026) (110)
+
+- [S] #1125 (M 2026-02-10) PSv2 cleanup: use is_complete() and dispatch_mode in job progress handler
+- [S] #1118 (M 2026-02-09) fix: PSv2: Workers should not try to fetch tasks from v1 jobs
+- [ ] #1115 (C 2026-02-04) Handle `processing_service_name` parameters in requests from workers
+- [S] #1114 (M 2026-02-07) fix: Properly handle async job state with celery tasks 
+- [S] #1113 (M 2026-02-07) PSv2: Implement queue clean-up upon job completion
+- [S] #1109 (M 2026-01-31) fix: add host alias to NATS in production
+- [S] #1105 (M 2026-02-06) Update date picker version and tweak layout logic
+- [S] #1104 (M 2026-02-04) Refactor taxa list endpoints to follow the project-user membership API
+- [ ] #1103 (C 2026-01-27) Document capture-to-session linking feature already implemented
+- [S] #1099 (M 2026-01-22) Small layout tweaks after "Teams" page release
+- [ ] #1098 (C 2026-01-22) Address design feedback on role schema optimization
+- [S] #1091 (M 2026-01-20) Add detection URL and dimensions to Occurrence Tabular export formats (Simple CSV)
+- [ ] #1090 (C 2026-01-16) Make the ProcessingService endpoint_url nullable
+- [S] #1082 (M 2026-01-15) Add sorting, timestamps, and taxa count to TaxaList API
+- [S] #1077 (M 2026-01-20) Fix permissions for data exports
+- [S] #1074 (M 2026-01-15) Fix the "null" string in the station update form
+- [S] #1073 (M 2025-12-04) Celery settings to prevent long running tasks from being silently canceled 
+- [S] #1071 (M 2025-12-03) Cleanup for Fix session interval sampling (#1067)
+- [S] #1070 (M 2025-12-03) Chore(deps): bump actions/checkout from 5 to 6 [dependencies,github_actions]
+- [S] #1068 (M 2025-11-27) Fix stations sorting
+- [S] #1067 (M 2025-12-03) Fix interval sampling for source image collections / sets [bug,backend]
+- [S] #1066 (M 2025-11-26) Missing tips for the docs
+- [S] #1065 (M 2025-11-26) Add first links to docs
+- [S] #1064 (M 2025-11-26) Refactor tooltip code
+- [S] #1062 (M 2025-12-03) fix: Job status update task signals
+- [S] #1060 (M 2025-11-20) Increase the length a job can run in RabbitMQ
+- [S] #1058 (M 2025-11-20) Handle missing occurrence image
+- [S] #1057 (M 2025-11-21) Fix map zoom
+- [S] #1056 (M 2025-11-18) Make it possible to download plots as PNG
+- [S] #1055 (M 2025-11-16) Celery options to improve stability
+- [S] #1054 (M 2025-11-16) Disable session auth to avoid cookie conflicts
+- [S] #1053 (M 2025-11-20) feat: Project feature flag for reprocessing all images
+- [S] #1051 (M 2025-11-16) Add Celery worker memory and task limits for leak prevention
+- [S] #1049 (M 2025-11-14) fix: add rabbitmq hostname config to prod worker compose
+- [S] #1048 (M 2025-11-14) Update debugging support for Django and Celery
+- [S] #1046 (M 2025-12-09) New jobs API for accessing the ML task queue and posting back results [backend,ml]
+- [S] #1044 (M 2025-11-18) Apply Plotly code splitting
+- [S] #1043 (M 2025-11-11) Optionally hide counts & charts to speed up views
+- [ ] #1042 (C 2025-11-10) Fix/collections list view speed
+- [S] #1041 (M 2025-11-14) Set up RabbitMQ as Celery broker
+- [S] #1039 (M 2025-11-11) Taxon details tweaks
+- [S] #1038 (M 2025-11-11) Include last day of the year in "Occurrences per day" chart
+- [S] #1036 (M 2025-11-07) Speed up default captures list view
+- [S] #1034 (M 2025-11-14) chore: Dev tooling improvements to test ML jobs
+- [S] #1033 (M 2025-11-13) feat: Command to test saving pipeline results
+- [S] #1031 (M 2025-11-18) Fix source image filter
+- [S] #1029 (M 2025-11-08) Apply missing default filters to charts in project summary, taxon details, and event details pages
+- [S] #1028 (M 2025-11-03) Chore(deps): bump actions/setup-node from 5 to 6 [dependencies,github_actions]
+- [ ] #1027 (C 2025-10-31) 📝 Add docstrings to `feat/model-level-permissions`
+- [S] #1023 (M 2025-10-30) Instructions for LLM agents
+- [S] #1022 (M 2025-10-30) Add retry mechanism and improved error handling for processing services
+- [ ] #1021 (C 2025-10-29) chore(infra): add iam:PassRole for App Runner service-linked role
+- [S] #1019 (M 2025-10-30) Add support for seasonal header
+- [S] #1014 (M 2025-10-29) Add labeling support to gallery view
+- [ ] #1013 (C 2025-10-22) Bump occurrences page size
+- [S] #1012 (M 2025-10-29) Mark new projects as drafts
+- [S] #1009 (M 2025-10-16) Update station table column order
+- [S] #1008 (M 2025-10-29) Inverted taxa list filter
+- [S] #1007 (M 2025-10-16) Update deployment models
+- [S] #1005 (M 2025-10-22) Fine grained species charts
+- [S] #1004 (M 2025-10-16) UI for projects drafts
+- [S] #1003 (M 2025-10-16) Chart tabs
+- [S] #1002 (M 2025-10-16) Table tweaks
+- [S] #1001 (M 2025-10-15) Use taxa list name as page title
+- [ ] #1000 (C 2025-10-14) Feat/implenting ruff
+- [S] #993 (M 2025-10-15) Add support for species charts
+- [S] #990 (M 2025-10-13) Update terms of service
+- [S] #989 (M 2025-10-09) Cleanup and format current info pages
+- [S] #988 (M 2025-11-03) feat: allow using the browsable API as an authenticated user
+- [S] #987 (M 2026-01-31) Distributed Worker Architecture for ML Processing (Processing Service V2) pt. 1
+- [S] #983 (M 2025-10-08) Better guide users to export data
+- [S] #980 (M 2025-10-07) Quick start tweaks
+- [S] #979 (M 2025-10-07) Pipeline picker updates
+- [S] #974 (M 2025-10-06) Chore(deps): bump actions/setup-python from 5 to 6 [dependencies,github_actions]
+- [S] #973 (M 2025-10-08) Chore(deps): bump actions/setup-node from 4 to 5 [dependencies,github_actions]
+- [S] #962 (M 2026-01-27) Add support for S3 regions
+- [S] #961 (M 2025-10-04) Make it possible to automatically process captures after upload
+- [S] #960 (M 2025-09-26) Enable API root page & path extensions in production
+- [ ] #959 (C 2025-09-23) Add comprehensive summary of features merged to main in 2025
+- [S] #954 (M 2025-10-16) Introduce generic post-processing framework
+- [ ] #953 (C 2025-09-17) Enable python debugger for main Django container
+- [S] #951 (M 2025-10-10) Apply taxa filters
+- [ ] #950 (C 2025-09-16) Apply taxa filter
+- [S] #949 (M 2025-09-17) Make it possible to configure default pipeline from UI
+- [S] #947 (M 2025-09-16) Capture tweaks
+- [S] #946 (M 2025-09-16) Add missing migrations
+- [ ] #945 (C 2025-09-15) Apply project default taxa filter
+- [S] #944 (M 2025-10-09) Apply score threshold filter
+- [S] #943 (M 2025-09-16) Make it easier for users to upload and explore captures
+- [S] #942 (M 2025-09-18) Require Algorithms & CategoryMaps to be registered before processing
+- [S] #940 (M 2025-09-17) Taxon cover images and external references
+- [S] #939 (M 2025-09-17) Update command for importing taxa from external lists
+- [S] #937 (M 2025-09-04) Fix jobs initialized with wrong status
+- [S] #935 (M 2025-09-17) Chore(deps): bump actions/checkout from 4 to 5 [dependencies,github_actions]
+- [S] #934 (M 2025-09-02) fix: ML processing that is causing jobs to fail for medium-large jobs (issue #782)
+- [S] #932 (M 2025-09-03) Add missing custom permissions for test storage and sync deployment actions
+- [ ] #930 (C 2025-08-28) [Draft] Introduce default filters feature
+- [S] #929 (M 2025-08-29) Setup default filters form
+- [S] #921 (M 2025-08-15) Bring compose file for CI tests into parity with main env
+- [S] #919 (M 2025-08-15) Check export job status instead of progress
+- [S] #918 (M 2025-08-13) Storage and retrieval of project settings
+- [S] #917 (M 2025-09-16) Support for draft projects & private draft permissions
+- [S] #914 (M 2025-08-08) Make project description optional
+- [S] #909 (M 2025-08-13) Auto-process manually uploaded images (if enabled)
+- [S] #895 (M 2025-08-05) Advanced collection filters 
+- [S] #892 (M 2025-08-05) Make it possible to add tags to taxa
+- [S] #891 (M 2025-08-20) Permissions based on job type
+- [S] #836 (M 2025-11-14) Streamline developer experience by making UI load faster by default
+- [S] #815 (M 2025-08-16) Support re-processing detections and skipping localizer
+- [S] #801 (M 2026-01-22) Role Management API and UI
+
+### Merged/Closed: 6-18 months ago (Aug 2024 - Jul 2025) (204)
+
+- [S] #908 (M 2025-07-31) Update when event regrouping takes place
+- [S] #905 (M 2025-07-28) Configure default related models for new projects
+- [S] #898 (M 2025-07-21) Fix deployment sessions creation &  counts 
+- [S] #897 (M 2025-07-08) Add missing migration
+- [S] #896 (M 2025-07-22) Tweak collection views
+- [ ] #894 (C 2025-07-04) Advanced collection filters - DELETE
+- [ ] #893 (C 2025-07-04) Setup default filters for project
+- [S] #889 (M 2025-07-03) Show batch processing warning
+- [S] #888 (M 2025-07-03) Include taxa view updates from OOD branch
+- [S] #887 (M 2025-07-02) Fix permission denied errors when accessing local files
+- [S] #861 (M 2025-05-26) Filter out occurrences without determination
+- [S] #860 (M 2025-05-25) fix: increase number of connections allowed in staging DB
+- [S] #859 (M 2025-05-25) Fix missing example images after clustering
+- [S] #856 (M 2025-05-23) Add best score filtering and column settings support
+- [S] #855 (M 2025-05-22) Make it possible to register new clusters from UI
+- [S] #854 (M 2025-05-23) Update pagination logic
+- [S] #853 (M 2025-05-23) Clean up global vs. project taxa & API responses
+- [S] #851 (M 2025-05-16) Add thumbnails to taxa search
+- [S] #850 (M 2025-05-16) Add unknown species filter control
+- [S] #849 (M 2025-05-16) Improve representation of generated clusters 
+- [S] #848 (M 2025-05-15) Handle undefined OOD scores in UI
+- [S] #847 (M 2025-05-14) Make it possible to suggest ID in bulk
+- [S] #843 (M 2025-05-16) Make it possible to edit unknown species from UI
+- [S] #842 (M 2025-05-13) UI tweaks for OOD project
+- [S] #841 (M 2025-05-12) Improve bulk identification workflow
+- [S] #840 (M 2025-05-11) Backend support for OOD score threshold filter
+- [S] #838 (M 2025-05-08) Import cover images & external references
+- [S] #837 (M 2025-05-13) Update Occurrence model to determine & save best examples 
+- [S] #835 (M 2025-05-07) Revert "Modify docker compose configuration for local development"
+- [S] #830 (M 2025-05-16) Add support for Taxa Tags
+- [S] #829 (M 2025-05-07) Modify docker compose configuration for local development [backend]
+- [S] #828 (M 2025-05-13) Add frontend support for taxa tags
+- [S] #823 (M 2025-05-05) Fix broken docker compose start-up
+- [S] #822 (M 2025-05-01) Fields for Taxon reference images
+- [S] #821 (M 2025-04-30) Support for saving Classification embeddings (re-merge)
+- [S] #819 (M 2025-04-30) fix: change name of the new docker network
+- [S] #818 (M 2025-05-07) Support for clustering detections
+- [S] #817 (M 2025-05-14) Adjust default font seen on slow connections
+- [S] #814 (M 2025-04-30) Save and display OOD scores
+- [S] #813 (M 2025-05-01) Prepare species details view for print mode
+- [S] #809 (M 2025-04-29) Expand support for date formats in image filenames
+- [S] #807 (M 2025-04-30) Support for saving Classification embeddings
+- [S] #803 (M 2025-04-09) Fix production build
+- [S] #800 (M 2025-07-04) Improve collection form
+- [ ] #799 (C 2025-04-05) Add affiliation field to user profile and update admin & UI
+- [S] #798 (M 2025-04-30) Implement complete example of an ML backend
+- [S] #794 (M 2025-04-03) Make session info optional for occurrences
+- [S] #792 (M 2025-04-09) Enable basic type checking for Python by default in VS Code project
+- [S] #790 (M 2025-04-09) Make it possible for project managers to manually upload captures
+- [S] #786 (M 2025-04-09) Make it possible to export data from UI
+- [S] #785 (M 2025-04-11) New section for algorithms and category maps
+- [S] #784 (M 2025-03-28) Support for a default Pipeline config
+- [S] #783 (M 2025-03-19) fix: lower pipeline batch size to 1 until msg size is fixed
+- [S] #781 (M 2025-03-19) fix: update invalid filters in Project admin
+- [S] #780 (M 2025-03-21) Update project overview layout
+- [ ] #779 (C 2025-03-18) Add affiliation field to user profile, update admin, UI, and migration
+- [S] #778 (M 2025-03-15) Updates to Celery & Flower config
+- [S] #777 (M 2025-03-25) Species of Interest TaxaList Filter
+- [S] #772 (M 2025-03-13) Add page "Code of conduct" to UI
+- [ ] #771 (C 2025-03-12) Fix pre-commit configuration warnings
+- [S] #768 (M 2025-03-13) Fix processing service error handling
+- [S] #765 (M 2025-03-13) Handle undefined detections
+- [S] #764 (M 2025-03-13) Adjust page size based on page width to avoid gallery gaps
+- [S] #762 (M 2025-03-10) fix: unusable views in the interactive api browser, and new filters
+- [S] #759 (M 2025-03-05) Fix taxa pages
+- [S] #756 (M 2025-03-07) Handle UI runtime problems reported on Sentry
+- [S] #744 (M 2025-02-27) Streamline project entity columns
+- [S] #743 (M 2025-03-10) Present more job details and allow live updates when processing a single capture
+- [S] #742 (M 2025-03-03) Add flower to .gitignore
+- [S] #741 (M 2025-04-09) Update UI for identifications and show multiple suggestions per classification
+- [S] #740 (M 2025-02-25) Allow collections to be filtered by station
+- [S] #738 (M 2025-03-19) Disable a pipeline for a given project
+- [S] #736 (M 2025-02-25) Fix connection loop when getting status of processing service
+- [ ] #733 (C 2025-02-19) [Draft] Add reference images from Fieldguide to Taxa views
+- [S] #725 (M 2025-04-08) Framework for exporting data
+- [S] #722 (M 2025-02-17) Fix: added missing migration file
+- [S] #719 (M 2025-03-15) Fix reprocessing of existing results
+- [S] #717 (M 2025-02-06) Updates to collection sampling methods [bug,enhancement]
+- [S] #715 (M 2025-02-25) Improving status indicators for processing services and pipelines
+- [S] #712 (M 2025-02-19) Support for order-level taxon ranks & improved search
+- [S] #711 (M 2025-02-17) Remove actual numbers from `Related Issues` section in PR template
+- [S] #705 (M 2025-03-11) Fix the list of online processing services per project
+- [S] #704 (M 2025-02-17) Create periodic task to check processing services
+- [S] #702 (M 2025-01-28) Update styling for identification cards to fit some more information
+- [S] #698 (M 2025-01-27) Reset pagination on project tab change
+- [S] #697 (M 2025-01-27) hotfix: snafu from renaming ml_backends to processing_services
+- [S] #696 (M 2025-01-27) Improve the lookup & usage of Taxon names
+- [S] #693 (M 2025-03-06) Framework for User Permissions & Roles
+- [S] #692 (M 2025-01-23) Make it possible to inspect full occurrence details directly from the session details view
+- [S] #691 (M 2025-01-23) Disable snap behavior for sessions with no detections
+- [S] #690 (M 2025-01-22) fix: cannot use storage source for deployments
+- [S] #689 (M 2025-01-22) Fix updates to deployments and session grouping
+- [S] #688 (M 2025-01-22) Fix background tasks from disappearing  [bug,backend,infrastructure]
+- [S] #684 (M 2025-01-26) ML Pipeline v2 [backend,infrastructure]
+- [S] #675 (M 2025-01-17) hotfix: only reuse test project when intended.
+- [S] #674 (M 2025-01-17) Add Pull Request Template to the Project
+- [S] #670 (M 2025-01-17) Fix update password form [bug,frontend]
+- [S] #669 (M 2025-01-19) Update issue templates [documentation]
+- [S] #668 (M 2025-01-16) Renamed `project` filter query parameter to `project_id` for Project Summary entities
+- [S] #666 (M 2025-01-13) Helpful flag for speeding up test development
+- [S] #665 (M 2025-01-23) Show occurrence raw data
+- [S] #664 (M 2025-01-13) Handle occurrence detail view tab state as a search param
+- [S] #661 (M 2024-12-20) Update filter logic to fix capture collection filtering
+- [S] #659 (M 2024-12-19) Make it easier to go to prev/next occurrence
+- [S] #657 (M 2025-01-17) Present latest job status in collections table and update populate button logic
+- [S] #656 (M 2024-12-17) Skip detection counts
+- [S] #654 (M 2024-12-06) Tweak logout logic to clear token on all types of errors
+- [S] #653 (M 2024-12-07) fix: standardize line-length settings for auto-formatting & checks (python)
+- [S] #652 (M 2024-12-05) Ensure minio and proxy containers are ready before permissions are set
+- [S] #647 (M 2024-12-04) [Hotfix] Handle undefined identifications response
+- [S] #645 (M 2024-12-05) Add missing job filters
+- [S] #644 (M 2024-12-04) Add new filter "Verified by" and update logic for agreements
+- [S] #643 (M 2024-12-17) Add client side error handling to date filters
+- [S] #642 (M 2024-12-03) Fix user data form bug
+- [S] #641 (M 2024-12-04) Update README for local backend setup
+- [S] #636 (M 2024-11-28) fix: missing collections filter
+- [ ] #635 (C 2024-11-28) Refactor and enhancements to saving of ML pipeline results [bug,enhancement,backend,response time,ml]
+- [ ] #634 (C 2024-11-27) [Draft] Framework for exporting data (with initial data formats)
+- [S] #632 (M 2025-01-26) Enable users to register Processing Services & Pipelines
+- [S] #631 (M 2024-11-28) Improve initial setup for local dev
+- [S] #627 (M 2024-11-28) Update wording from "species" -> "taxa"
+- [S] #626 (M 2024-11-28) Add filter UI to jobs (+ some more job related updates)
+- [ ] #623 (C 2024-11-19) ML Pipeline Registry
+- [S] #620 (M 2024-11-28) Use inverted colors for score sliders (+ some refactoring)
+- [S] #613 (M 2024-11-14) Remove default classification threshold
+- [S] #612 (M 2024-11-13) Use job system to populate capture collections
+- [S] #610 (M 2024-11-12) Updated interface for filtering
+- [S] #609 (M 2024-11-06) Add deprecated styling to environment label
+- [S] #608 (M 2024-11-14) New filters for Occurrences
+- [S] #606 (M 2024-11-01) Lazy load activity plot
+- [S] #605 (M 2024-11-12) Refactor app to use new UI Kit and update interface for filtering
+- [S] #604 (M 2024-10-22) Allow filtering occurrences by capture collection
+- [S] #603 (M 2024-10-25) Setup score threshold filter for list views
+- [S] #602 (M 2024-10-20) Add show detections below threshold setting
+- [S] #600 (M 2024-10-08) Add meta images
+- [S] #599 (M 2024-09-29) Save results in a separate background task during processing
+- [S] #598 (M 2024-09-29) Show a proxy count of images processed in a collection
+- [S] #596 (M 2024-09-26) Snap to tick with detections
+- [S] #595 (M 2024-09-26) Updates to overview tabs
+- [S] #592 (M 2024-09-26) Make email usernames case-insensitive
+- [S] #588 (M 2024-09-19) Fix UI dev container, again
+- [S] #587 (M 2024-09-26) Ensure that collection querysets always filter from project
+- [S] #586 (M 2024-09-26) Move backend tests into main module
+- [S] #584 (M 2024-09-26) Handle captures that have no associated Event / Session
+- [S] #582 (M 2024-09-18) Fix UI container in compose conifg
+- [S] #580 (M 2025-03-07) Add top species chart to overview page
+- [S] #579 (M 2024-09-17) Filter processed images before each batch is sent
+- [S] #578 (M 2024-09-17) Add taxon search to species table view
+- [S] #577 (M 2024-09-17) Update top species chart
+- [S] #576 (M 2024-10-22) Template for an ML backend in the compose stack
+- [S] #575 (M 2024-09-16) Restore search params after login
+- [S] #574 (M 2024-09-13) fix: keep the oldest classifications not the other way around
+- [S] #573 (M 2024-09-13) Fixes for duplicate classifications and other optimizations
+- [S] #571 (M 2024-09-11) Small screen adjustments
+- [S] #569 (M 2024-09-11) Link to landing page from platform
+- [S] #568 (M 2024-09-11) Session details improvements
+- [S] #567 (M 2024-09-11) Frontend workarounds for demo
+- [S] #566 (M 2024-09-11) Show license info for images
+- [S] #565 (M 2024-09-10) Fixes for demo launch
+- [S] #564 (M 2024-09-11) Configure image backend for detection crops 
+- [S] #563 (M 2024-09-09) Update style scheme, logo and metadata
+- [S] #561 (M 2024-09-07) Make it possible to read version info from env
+- [S] #559 (M 2024-09-07) Update terminology
+- [S] #558 (M 2024-09-07) Add taxonomy search to occurrence page (+ empty state)
+- [S] #557 (M 2024-09-07) FE cleanup for demo
+- [S] #555 (M 2024-09-05) Fix broken thumbnails for detections without crops
+- [S] #554 (M 2024-09-05) Fix yarn dependencies for fresh installs
+- [ ] #553 (C 2024-09-04) Require open source license for project creation
+- [S] #552 (M 2024-09-16) Updates to README and initial project setup
+- [S] #551 (M 2024-09-04) Make sure cover images are not overflowing frame
+- [S] #550 (M 2024-09-05) Setup page "Terms of service"
+- [S] #546 (M 2024-08-28) Add UI to docker compose stack
+- [S] #544 (M 2024-08-30) Implement handling of cookie consent and related logic
+- [S] #542 (M 2024-08-23) [Draft] Increase performance of Session list view
+- [S] #537 (M 2024-08-22) Only call endpoint /me if user is logged in
+- [S] #536 (M 2024-09-05) Disable sign up
+- [S] #534 (M 2024-08-22) Updates to the README for getting started
+- [S] #530 (M 2024-08-21) Fix pagination bar appearance on info dialog open
+- [S] #527 (M 2024-08-21) Update password reset confirm URL
+- [S] #526 (M 2024-08-22) Setup UI for password reset
+- [S] #525 (M 2024-08-22) Make it possible for logged in users to update email and password
+- [S] #524 (M 2024-08-17) Updates for production environment & deployments
+- [S] #522 (M 2024-08-22) Update and clarify logic to fix capture upload duplicates
+- [S] #521 (M 2024-08-16) Load main view and detail view in parallel
+- [S] #506 (M 2024-08-13) Increase max database connections on staging database
+- [S] #502 (M 2024-08-13) Complete full stack environment for dev & CI
+- [S] #500 (M 2024-08-08) Fix custom action for "liking" a source image
+- [S] #499 (M 2024-08-08) Fixes to the session captures timeline data
+- [S] #497 (M 2024-08-08) Format numbers based on browser locale
+- [S] #496 (M 2024-08-13) Fixes & features for higher taxon ranks
+- [S] #495 (M 2024-08-07) Make sticky table header clickable
+- [S] #494 (M 2024-08-06) Tweak tick config for plots
+- [S] #493 (M 2024-08-06) Make all checkboxes controlled
+- [S] #492 (M 2024-08-06) Adjust deployment map info
+- [S] #491 (M 2024-08-06) Expose all Taxon parents [backend]
+- [S] #488 (M 2024-08-05) Tweak occurrence duration label
+- [S] #486 (M 2024-08-05) Present error to users if fetching entity details fails
+- [S] #481 (M 2024-08-04) Fix deployment date labels
+- [ ] #480 (C 2024-08-02) [Draft] Display access key as a regular string
+- [S] #479 (M 2024-08-05) Show pipeline ID
+- [S] #478 (M 2024-08-04) Disable populate for starred collection
+- [S] #460 (M 2024-08-05) Bulk actions
+- [S] #453 (M 2024-08-04) Refactor session details [next up!]
+- [S] #275 (M 2025-01-24) Improve Project-User Management and Accessibility
+
+### Merged/Closed: Older than 18 months (before Aug 2024) (341)
+
+- [S] #463 (M 2024-07-30) Update storage tab layout
+- [S] #459 (M 2024-07-23) Handle missing capture size
+- [S] #458 (M 2024-07-23) Pass auth header when calling cancel job
+- [S] #454 (M 2024-07-23) Add tooltips to page header
+- [S] #450 (M 2024-07-08) Agree to rank
+- [S] #449 (M 2024-07-03) Add pagination to project page [enhancement,frontend]
+- [S] #448 (M 2024-07-03) Make applied filters more visible in UI [enhancement,frontend]
+- [S] #444 (M 2024-07-01) Update page layout to support new features
+- [S] #442 (M 2024-06-25) Specify and show default sorting
+- [S] #441 (M 2024-07-01) Small UI tweaks
+- [S] #437 (M 2024-06-18) Bump express from 4.18.2 to 4.19.2 in /ui [dependencies,javascript]
+- [S] #436 (M 2024-06-17) Bump vite from 4.5.2 to 4.5.3 in /ui [dependencies,javascript]
+- [S] #435 (M 2024-06-17) Bump tar from 6.2.0 to 6.2.1 in /ui [dependencies,javascript]
+- [S] #434 (M 2024-06-17) Bump braces from 3.0.2 to 3.0.3 in /ui [dependencies,javascript]
+- [S] #433 (M 2024-06-17) Bump ejs from 3.1.9 to 3.1.10 in /ui [dependencies,javascript]
+- [S] #432 (M 2024-06-18) Fix: Make reject options easy to access
+- [S] #429 (M 2024-06-18) Some improvements to table columns (occurrence and species)
+- [S] #422 (M 2024-06-14) Small tweaks to deployment location
+- [S] #420 (M 2024-06-14) Tweak gallery layout for large screens
+- [S] #417 (M 2024-06-12) Tweak UI for identifications
+- [S] #409 (M 2024-06-10) Fix: Support sort params in URL
+- [S] #408 (M 2024-06-10) Fix: Single bar looks very wide
+- [S] #401 (M 2024-06-10) Fix small UI bugs after feedback
+- [S] #396 (M 2024-06-10) Fix failing pre commit hook
+- [S] #395 (M 2024-06-05) Make FE code formatting more clear
+- [S] #394 (M 2024-06-04) Make visible table links more visible
+- [S] #392 (M 2024-05-20) Add automatic query caching
+- [ ] #391 (C 2024-05-07) [Draft] Ready project for external developers
+- [S] #389 (M 2024-05-14) Show softmax score in session detail view
+- [S] #383 (M 2024-04-25) Fix spelling error
+- [S] #382 (M 2024-04-25) Update README
+- [S] #381 (M 2024-04-25) Introduce spelling error
+- [S] #380 (M 2024-04-22) Small tweaks based on feedback
+- [S] #379 (M 2024-07-25) Allow data sources to be synced from the UI
+- [S] #378 (M 2024-04-18) [AMI-268] Show more algorithm details in occurrence identification history
+- [S] #376 (M 2024-04-18) [AMI-268] Enable comments field when suggesting ID
+- [S] #375 (M 2024-04-19) [AMI-267] Enable collections to be defined & populated from UI
+- [S] #374 (M 2024-04-01) Initial methods to skip already-processed images.
+- [S] #373 (M 2024-03-26) Fix missing auth headers when starting job
+- [S] #368 (M 2024-03-25) Error handling for jobs
+- [S] #367 (M 2024-03-22) Small fixes for deployment form logic
+- [S] #366 (M 2024-03-15) Fix various onboarding issues
+- [S] #365 (M 2024-06-19) Bump pre-commit/action from 3.0.0 to 3.0.1 [dependencies,github_actions]
+- [S] #363 (M 2024-02-29) Method to manually approve new users for write operations
+- [S] #362 (M 2024-02-27) Fix timeout on session detail pages with many species
+- [S] #360 (M 2024-02-22) Fix incorrect dates of occurrences & detections 
+- [S] #359 (M 2024-02-20) Fix counts, Don't show occurrences from other projects
+- [S] #358 (M 2024-02-20) Fixes and tests for backgound Jobs
+- [S] #356 (M 2024-02-19) Filter occurrences & taxa to fix counts and missing related objects
+- [S] #355 (M 2024-02-19) Container & monitoring tweaks
+- [S] #353 (M 2024-02-18) Make it possible to set deployment image
+- [S] #349 (M 2024-02-17) Production environment
+- [S] #348 (M 2024-02-11) Make thumbnails clickable
+- [S] #347 (M 2024-02-13) Fix session details navigation
+- [S] #346 (M 2024-02-18) Consider job permissions in UI
+- [S] #342 (M 2024-02-01) Bump vite from 4.5.0 to 4.5.2 in /ui [dependencies,javascript]
+- [S] #341 (M 2024-02-01) Bump plotly.js from 2.20.0 to 2.25.2 in /ui [dependencies,javascript]
+- [S] #340 (M 2024-02-01) Show beta info in header
+- [ ] #339 (C 2024-01-29) Feedback Preview v1 [Jan29]
+- [S] #338 (M 2024-02-16) Add Google Analytics
+- [S] #335 (M 2024-06-19) Bump actions/setup-python from 4 to 5 [dependencies,github_actions]
+- [S] #334 (M 2023-12-11) Options for project visibility, speed up session views
+- [S] #333 (M 2024-02-03) Add device, site and data source to Deployment responses
+- [S] #332 (M 2023-12-05) Conditionally enable Sentry
+- [S] #331 (M 2024-01-17) Introduce related entities
+- [S] #330 (M 2023-12-03) Cache and filter counts & scores. Improve determination calculation.
+- [S] #327 (M 2023-12-02) Initial methods for saving results from ML backend API
+- [S] #326 (M 2023-11-29) Add control for marking captures as starred
+- [S] #325 (M 2023-11-24) New endpoints for Storage Source, Sites & Devices
+- [S] #324 (M 2023-11-28) Setup error boundaries
+- [S] #323 (M 2023-11-22) Bump semver from 6.3.0 to 6.3.1 in /ui [dependencies]
+- [S] #322 (M 2023-11-22) Resolve semver
+- [S] #321 (M 2023-11-20) Bump word-wrap from 1.2.3 to 1.2.5 in /ui [dependencies]
+- [S] #320 (M 2023-11-20) Bump @adobe/css-tools from 4.2.0 to 4.3.1 in /ui [dependencies]
+- [S] #319 (M 2023-11-20) Bump @babel/traverse from 7.21.2 to 7.23.3 in /ui [dependencies]
+- [S] #318 (M 2023-11-22) Lazy load Plotly
+- [S] #316 (M 2023-11-17) Migrate from CRA -> Vite + update Storybook + update Yarn
+- [S] #315 (M 2023-11-23) Setup UI for pipelines (+ related tweaks)
+- [S] #312 (M 2023-11-24) Prototype of ML backend
+- [S] #306 (M 2023-11-06) API Backend for Background Jobs
+- [S] #305 (M 2023-11-04) Fix small bugs
+- [S] #303 (M 2023-11-02) Setup job forms
+- [ ] #302 (C 2023-11-02) API for background jobs
+- [S] #301 (M 2023-11-06) Bump actions/setup-node from 3 to 4 [dependencies]
+- [S] #300 (M 2023-11-02) Implement new views for source image collections
+- [S] #296 (M 2023-10-31) Fix ordering in API
+- [S] #295 (M 2023-10-31) Update pagination
+- [S] #294 (M 2023-10-25) Update meta description on project change
+- [S] #293 (M 2023-10-31) Update sorting
+- [S] #292 (M 2023-10-31) Taxonomy import & display v2
+- [S] #291 (M 2023-10-25) Fix sorting in API
+- [S] #288 (M 2023-10-31) Add detailed page titles
+- [S] #287 (M 2023-10-24) Cleanup translations
+- [S] #286 (M 2023-11-09) Playback controls + trigger job for capture + job forms and more!
+- [S] #285 (M 2023-10-19) Initial support for object detection ML backend
+- [ ] #284 (C 2023-10-19) October demo branch
+- [S] #283 (M 2023-10-19) Source Image Collections API and new sampling methods
+- [S] #282 (M 2023-10-19) [Minor]: Handle sessions with no captures
+- [S] #281 (M 2023-10-19) Upload example captures from web interface
+- [ ] #280 (C 2023-10-12) Initial support for inventory source images from CSV file
+- [S] #278 (M 2023-10-12) [Minor]: Add taxon ranks to species details view
+- [S] #277 (M 2023-10-12) [Minor]: Fix delete permission for projects
+- [S] #276 (M 2023-10-11) Update FE README
+- [ ] #274 (C 2023-10-11) New model & views for manually uploading example captures
+- [S] #271 (M 2023-10-12) Make it possible to delete deployment
+- [S] #270 (M 2023-10-11) Setup project forms
+- [S] #269 (M 2023-10-05) Setup (more) generic form helpers
+- [S] #268 (M 2023-10-05) Make it possible to inspect job details
+- [S] #267 (M 2023-10-03) Fix bug with "About" and "Help" buttons
+- [S] #266 (M 2023-10-05) Pass "agreed with" params (if applicable) when creating an identification
+- [S] #262 (M 2023-10-17) Taxonomic hierarchy
+- [S] #261 (M 2023-10-05) Bump actions/checkout from 3 to 4 [dependencies]
+- [S] #256 (M 2023-09-28) Remove unused user agreement check on backend
+- [S] #255 (M 2023-09-28) Taxon search tweaks
+- [S] #250 (M 2023-09-28) Identifications part 2
+- [S] #249 (M 2023-09-26) Taxa search API
+- [S] #248 (M 2023-09-20) Tweak profile image UI
+- [S] #247 (M 2023-09-15) Update taxonomy import
+- [S] #246 (M 2023-09-14) Updates to build triggers
+- [S] #245 (M 2023-09-20) Models, views & serializes dedicated to Label Studio integration
+- [S] #244 (M 2023-09-15) Add master checklist taxa file for label studio
+- [S] #243 (M 2023-09-14) Update example taxon schema
+- [S] #241 (M 2023-09-20) Initial models & endpoints for human identifications
+- [S] #240 (M 2023-09-12) Update auth URLs
+- [S] #238 (M 2023-09-12) Add unit tests for auth related code
+- [S] #235 (M 2023-09-08) Add user profile image
+- [S] #234 (M 2023-09-08) Update users endpoints to use Djoser only
+- [S] #232 (M 2023-09-14) Setup user info form
+- [S] #231 (M 2023-09-08) Refactor handling of app routes
+- [S] #230 (M 2023-09-13) Tweak logic for register new deployment
+- [S] #228 (M 2023-09-07) Query speedups
+- [S] #227 (M 2023-09-06) Update how dimensions for imported images are set
+- [S] #223 (M 2023-09-06) Methods and URL for sampling captures based on time interval
+- [S] #222 (M 2023-09-06) Move "create" permission to the collection/list view
+- [S] #221 (M 2023-09-06) Implement auth on FE
+- [S] #218 (M 2023-09-02) Add endpoints for user authentication
+- [S] #214 (M 2023-09-22) Setup UI for identifications
+- [S] #213 (M 2023-08-30) Add project relationship to additional models
+- [S] #211 (M 2023-08-24) Add projects to page hierachy
+- [S] #210 (M 2023-08-23) Skip proxy and update geo search URL
+- [S] #205 (M 2023-08-23) Investigate issues in session details
+- [S] #204 (M 2023-08-22) Tweak project map
+- [S] #203 (M 2023-08-25) Import Captures from S3 Data Storage
+- [S] #202 (M 2023-08-14) Label Studio integration & taxonomy models
+- [S] #201 (M 2023-08-10) Control info dialogs from URL
+- [S] #200 (M 2023-08-03) Add logo and info pages
+- [S] #199 (M 2023-08-01) Add basic Page model and endpoints
+- [S] #197 (M 2023-07-10) Add some adjustments for small screens
+- [S] #195 (M 2023-07-09) Link to a specific capture in session detail view
+- [S] #194 (M 2023-07-09) Small plot tweaks
+- [ ] #193 (C 2023-07-08) Suggestion: Skip connection status
+- [S] #192 (M 2023-07-08) Mixed fixes for FE
+- [S] #191 (M 2023-07-07) Hook up jobs with BE
+- [S] #190 (M 2023-07-07) Add initial job models & endpoints
+- [S] #189 (M 2023-07-07) Additional data for projects & sessions
+- [S] #188 (M 2023-07-07) Real project data and loading states
+- [S] #187 (M 2023-07-06) Infinte scroll captures
+- [S] #186 (M 2023-07-06) Mixed UI tweaks
+- [S] #185 (M 2023-07-05) Filtering and adding more data
+- [S] #184 (M 2023-07-05) Update UI for occurrence details
+- [S] #183 (M 2023-07-04) Nested detections in event capture list API response
+- [S] #182 (M 2023-07-04) Remove settings
+- [S] #181 (M 2023-07-04) Consume API v.2
+- [S] #180 (M 2023-07-04) Initial models and API endpoints
+- [S] #179 (M 2023-06-30) Change backend to use Django Rest Framework
+- [S] #178 (M 2023-06-29) Update to new installation method for Poetry
+- [S] #177 (M 2023-06-30) Setup interface for jobs
+- [S] #176 (M 2023-06-29) Capture picker
+- [ ] #175 (C 2023-06-26) Bump react-admin from 4.8.4 to 4.11.4 in /frontend [dependencies]
+- [ ] #174 (C 2023-06-26) Bump ra-data-simple-rest from 4.9.0 to 4.11.4 in /frontend [dependencies]
+- [ ] #173 (C 2023-06-26) Bump sqlalchemy from 2.0.8 to 2.0.17 in /backend [dependencies]
+- [ ] #172 (C 2023-06-26) Bump pytest from 7.2.2 to 7.4.0 in /backend [dependencies]
+- [ ] #171 (C 2023-06-19) Bump ra-data-simple-rest from 4.9.0 to 4.11.3 in /frontend [dependencies]
+- [ ] #170 (C 2023-06-19) Bump react-admin from 4.8.4 to 4.11.3 in /frontend [dependencies]
+- [ ] #169 (C 2023-06-12) Bump ra-data-simple-rest from 4.9.0 to 4.11.2 in /frontend [dependencies]
+- [ ] #168 (C 2023-06-12) Bump react-admin from 4.8.4 to 4.11.2 in /frontend [dependencies]
+- [ ] #167 (C 2023-06-12) Bump pytest from 7.2.2 to 7.3.2 in /backend [dependencies]
+- [ ] #166 (C 2023-06-12) Bump sqlalchemy from 2.0.8 to 2.0.16 in /backend [dependencies]
+- [ ] #165 (C 2023-06-05) Bump react-admin from 4.8.4 to 4.11.1 in /frontend [dependencies]
+- [ ] #164 (C 2023-06-05) Bump ra-data-simple-rest from 4.9.0 to 4.11.1 in /frontend [dependencies]
+- [ ] #163 (C 2023-06-05) Bump typescript from 5.0.3 to 5.1.3 in /frontend [dependencies]
+- [S] #162 (M 2023-06-02) Web UI source images
+- [S] #161 (M 2023-06-01) New combo box components + more advanced map features
+- [ ] #160 (C 2023-05-29) Bump react-admin from 4.8.4 to 4.11.0 in /frontend [dependencies]
+- [ ] #159 (C 2023-05-29) Bump ra-data-simple-rest from 4.9.0 to 4.11.0 in /frontend [dependencies]
+- [S] #158 (M 2023-05-30) Setup deployment forms (+ define some generic form patterns)
+- [ ] #157 (C 2023-05-22) Bump alembic from 1.10.2 to 1.11.1 in /backend [dependencies]
+- [ ] #156 (C 2023-05-22) Bump react-admin from 4.8.4 to 4.10.5 in /frontend [dependencies]
+- [ ] #155 (C 2023-05-22) Bump httpx from 0.23.3 to 0.24.1 in /backend [dependencies]
+- [ ] #154 (C 2023-05-22) Bump sqlalchemy from 2.0.8 to 2.0.15 in /backend [dependencies]
+- [ ] #153 (C 2023-05-22) Bump ra-data-simple-rest from 4.9.0 to 4.10.5 in /frontend [dependencies]
+- [S] #152 (M 2023-05-26) Deployment details + map component
+- [ ] #151 (C 2023-05-15) Bump sqlalchemy from 2.0.8 to 2.0.13 in /backend [dependencies]
+- [ ] #150 (C 2023-05-15) Bump alembic from 1.10.2 to 1.11.0 in /backend [dependencies]
+- [ ] #149 (C 2023-05-08) Bump react-admin from 4.8.4 to 4.10.2 in /frontend [dependencies]
+- [ ] #148 (C 2023-05-08) Bump ra-data-simple-rest from 4.9.0 to 4.10.2 in /frontend [dependencies]
+- [S] #147 (M 2023-05-10) Add favicons
+- [S] #146 (M 2023-05-08) Setup and use React Query
+- [ ] #145 (C 2023-05-01) Bump ra-data-simple-rest from 4.9.0 to 4.10.1 in /frontend [dependencies]
+- [ ] #144 (C 2023-05-01) Bump axios from 0.21.4 to 1.4.0 in /frontend [dependencies]
+- [ ] #143 (C 2023-05-01) Bump react-admin from 4.8.4 to 4.10.1 in /frontend [dependencies]
+- [ ] #142 (C 2023-05-01) Bump fastapi-users from 10.4.1 to 11.0.0 in /backend [dependencies]
+- [ ] #141 (C 2023-05-01) Bump eslint-plugin-cypress from 2.12.1 to 2.13.3 in /frontend [dependencies]
+- [ ] #140 (C 2023-05-01) Bump sqlalchemy from 2.0.8 to 2.0.12 in /backend [dependencies]
+- [ ] #139 (C 2023-04-24) Bump axios from 0.21.4 to 1.3.6 in /frontend [dependencies]
+- [ ] #138 (C 2023-04-24) Bump react-admin from 4.8.4 to 4.9.4 in /frontend [dependencies]
+- [ ] #137 (C 2023-04-24) Bump node from 19 to 20 [dependencies]
+- [ ] #136 (C 2023-04-24) Bump alembic from 1.10.2 to 1.10.4 in /backend [dependencies]
+- [ ] #135 (C 2023-04-24) Bump sqlalchemy from 2.0.8 to 2.0.10 in /backend [dependencies]
+- [ ] #134 (C 2023-04-24) Bump node from 16 to 20 in /frontend [dependencies]
+- [ ] #133 (C 2023-04-17) Bump ra-data-simple-rest from 4.9.0 to 4.9.3 in /frontend [dependencies]
+- [ ] #132 (C 2023-04-17) Bump react-admin from 4.8.4 to 4.9.3 in /frontend [dependencies]
+- [ ] #131 (C 2023-04-17) Bump fastapi-users from 10.4.1 to 10.4.2 in /backend [dependencies]
+- [ ] #130 (C 2023-04-17) Bump httpx from 0.23.3 to 0.24.0 in /backend [dependencies]
+- [ ] #129 (C 2023-04-17) Bump pytest from 7.2.2 to 7.3.1 in /backend [dependencies]
+- [S] #128 (M 2023-04-15) Setup species table
+- [S] #127 (M 2023-04-15) Setup overview page with some example plots
+- [S] #126 (M 2023-04-16) Add occurrence details dialog
+- [S] #125 (M 2023-04-14) Add breadcrumbs
+- [S] #124 (M 2023-04-13) Minor tweaks for data layer
+- [S] #123 (M 2023-04-13) Replace fake API with real API
+- [ ] #122 (C 2023-04-10) Bump pytest from 7.2.2 to 7.3.0 in /backend [dependencies]
+- [ ] #121 (C 2023-04-10) Bump sqlalchemy from 2.0.8 to 2.0.9 in /backend [dependencies]
+- [ ] #120 (C 2023-04-10) Bump alembic from 1.10.2 to 1.10.3 in /backend [dependencies]
+- [ ] #119 (C 2023-04-10) Bump ra-data-simple-rest from 4.9.0 to 4.9.1 in /frontend [dependencies]
+- [ ] #118 (C 2023-04-10) Bump react-admin from 4.8.4 to 4.9.1 in /frontend [dependencies]
+- [ ] #117 (C 2023-04-10) Bump axios from 0.21.4 to 1.3.5 in /frontend [dependencies]
+- [ ] #116 (C 2023-04-10) Bump typescript from 5.0.3 to 5.0.4 in /frontend [dependencies]
+- [S] #115 (M 2023-04-12) Show detection ids and some additional UI tweaks
+- [S] #114 (M 2023-04-05) Setup session details view
+- [S] #113 (M 2023-04-05) Bump typescript from 5.0.2 to 5.0.3 in /frontend [dependencies]
+- [S] #112 (M 2023-04-05) Bump cypress from 12.8.1 to 12.9.0 in /frontend [dependencies]
+- [S] #111 (M 2023-04-05) Bump cypress-localstorage-commands from 2.2.2 to 2.2.3 in /frontend [dependencies]
+- [ ] #110 (C 2023-04-03) Bump eslint-plugin-cypress from 2.12.1 to 2.13.2 in /frontend [dependencies]
+- [S] #109 (M 2023-04-05) Bump @types/node from 18.15.10 to 18.15.11 in /frontend [dependencies]
+- [S] #108 (M 2023-04-05) Bump psycopg2-binary from 2.9.5 to 2.9.6 in /backend [dependencies]
+- [S] #107 (M 2023-04-05) Bump ipython from 8.11.0 to 8.12.0 in /backend [dependencies]
+- [S] #106 (M 2023-04-05) Bump sqlalchemy from 2.0.7 to 2.0.8 in /backend [dependencies]
+- [S] #105 (M 2023-04-05) Bump black from 23.1.0 to 23.3.0 in /backend [dependencies]
+- [S] #103 (M 2023-03-29) Some table view tweaks for demo
+- [ ] #102 (C 2023-03-28) Bump axios from 0.21.4 to 1.3.4 in /frontend
+- [S] #101 (M 2023-03-28) Bump ra-data-simple-rest from 4.8.4 to 4.9.0 in /frontend [dependencies]
+- [S] #100 (M 2023-03-28) Bump ra-data-json-server from 4.8.4 to 4.9.0 in /frontend [dependencies]
+- [S] #99 (M 2023-03-28) Bump prettier from 2.8.5 to 2.8.7 in /frontend [dependencies]
+- [S] #98 (M 2023-03-28) Bump @types/node from 18.15.3 to 18.15.10 in /frontend [dependencies]
+- [S] #97 (M 2023-03-28) Bump pydantic from 1.10.6 to 1.10.7 in /backend [dependencies]
+- [S] #96 (M 2023-03-28) Introduce API calls, server side sorting and pagination
+- [S] #94 (M 2023-03-23) Settings page and layout tweaks
+- [ ] #93 (C 2023-03-21) Bump @types/node from 18.15.3 to 18.15.5 in /frontend [dependencies]
+- [ ] #92 (C 2023-03-21) Bump python from 3.10 to 3.11 [dependencies]
+- [S] #91 (M 2023-03-28) Bump node from 16 to 19 [dependencies]
+- [S] #90 (M 2023-03-21) Update project template
+- [ ] #89 (C 2023-03-20) Bump @types/jest from 29.4.0 to 29.5.0 in /frontend [dependencies]
+- [ ] #88 (C 2023-03-20) Bump ra-data-simple-rest from 4.5.1 to 4.8.4 in /frontend [dependencies]
+- [ ] #87 (C 2023-03-20) Bump react-admin from 4.2.2 to 4.8.4 in /frontend [dependencies]
+- [ ] #86 (C 2023-03-20) Bump uvicorn from 0.20.0 to 0.21.1 in /backend [dependencies]
+- [ ] #85 (C 2023-03-20) Bump prettier from 2.8.3 to 2.8.5 in /frontend [dependencies]
+- [ ] #84 (C 2023-03-20) Bump sqlalchemy from 1.4.46 to 1.4.47 in /backend [dependencies]
+- [ ] #83 (C 2023-03-20) Bump fastapi-users from 10.3.0 to 10.4.1 in /backend [dependencies]
+- [ ] #82 (C 2023-03-20) Bump fastapi from 0.89.1 to 0.95.0 in /backend [dependencies]
+- [ ] #81 (C 2023-03-20) Bump axios from 0.21.4 to 1.3.4 in /frontend [dependencies]
+- [ ] #80 (C 2023-03-20) Bump pytest from 7.2.1 to 7.2.2 in /backend [dependencies]
+- [S] #79 (M 2023-03-20) Further develop web app table views
+- [S] #78 (M 2023-03-20) Redirect all paths to the SPA root
+- [ ] #77 (C 2023-03-17) Web UI setup table views
+- [S] #76 (M 2023-03-15) Setup web app table views
+- [S] #75 (M 2023-03-20) Bump @types/node from 18.11.9 to 18.15.0 in /frontend [dependencies]
+- [S] #74 (M 2023-03-10) Setup web app for AMI Platform
+- [S] #73 (M 2023-03-20) Bump pydantic from 1.10.4 to 1.10.6 in /backend [dependencies]
+- [ ] #72 (C 2023-03-08) Bump alembic from 1.9.2 to 1.10.2 in /backend [dependencies]
+- [ ] #71 (C 2023-03-07) Bump alembic from 1.9.2 to 1.10.1 in /backend [dependencies]
+- [ ] #70 (C 2023-03-07) Bump fastapi from 0.89.1 to 0.93.0 in /backend [dependencies]
+- [ ] #69 (C 2023-03-06) Bump ra-data-json-server from 4.1.2 to 4.8.2 in /frontend [dependencies]
+- [ ] #68 (C 2023-03-06) Bump ra-data-simple-rest from 4.5.1 to 4.8.2 in /frontend [dependencies]
+- [ ] #67 (C 2023-03-06) Bump react-admin from 4.2.2 to 4.8.2 in /frontend [dependencies]
+- [ ] #66 (C 2023-03-06) Bump alembic from 1.9.2 to 1.10.0 in /backend [dependencies]
+- [ ] #65 (C 2023-03-03) Bump @types/node from 18.11.9 to 18.14.6 in /frontend [dependencies]
+- [ ] #64 (C 2023-03-02) Bump @types/node from 18.11.9 to 18.14.4 in /frontend [dependencies]
+- [ ] #63 (C 2023-02-28) Bump ipython from 8.9.0 to 8.11.0 in /backend [dependencies]
+- [ ] #62 (C 2023-02-27) Bump @types/node from 18.11.9 to 18.14.2 in /frontend [dependencies]
+- [ ] #61 (C 2023-02-23) Bump @types/node from 18.11.9 to 18.14.1 in /frontend [dependencies]
+- [ ] #60 (C 2023-02-20) Bump react-admin from 4.2.2 to 4.8.1 in /frontend [dependencies]
+- [ ] #59 (C 2023-02-20) Bump ra-data-simple-rest from 4.5.1 to 4.8.1 in /frontend [dependencies]
+- [ ] #58 (C 2023-02-20) Bump ra-data-json-server from 4.1.2 to 4.8.1 in /frontend [dependencies]
+- [ ] #57 (C 2023-02-17) Bump @types/node from 18.11.9 to 18.14.0 in /frontend [dependencies]
+- [ ] #56 (C 2023-02-16) Bump alembic from 1.9.2 to 1.9.4 in /backend [dependencies]
+- [ ] #55 (C 2023-02-15) Bump pydantic from 1.10.4 to 1.10.5 in /backend [dependencies]
+- [ ] #54 (C 2023-02-14) Bump ra-data-json-server from 4.1.2 to 4.8.0 in /frontend [dependencies]
+- [ ] #53 (C 2023-02-14) Bump ra-data-simple-rest from 4.5.1 to 4.8.0 in /frontend [dependencies]
+- [ ] #52 (C 2023-02-14) Bump react-admin from 4.2.2 to 4.8.0 in /frontend [dependencies]
+- [ ] #51 (C 2023-02-14) Bump fastapi-users from 10.3.0 to 10.4.0 in /backend [dependencies]
+- [ ] #50 (C 2023-02-14) Bump fastapi from 0.89.1 to 0.92.0 in /backend [dependencies]
+- [ ] #49 (C 2023-02-10) Bump react-admin from 4.2.2 to 4.7.5 in /frontend [dependencies]
+- [ ] #48 (C 2023-02-10) Bump fastapi from 0.89.1 to 0.91.0 in /backend [dependencies]
+- [ ] #47 (C 2023-02-10) Bump ipython from 8.9.0 to 8.10.0 in /backend [dependencies]
+- [ ] #46 (C 2023-02-09) Bump fastapi from 0.89.1 to 0.90.1 in /backend [dependencies]
+- [ ] #45 (C 2023-02-08) Bump fastapi from 0.89.1 to 0.90.0 in /backend [dependencies]
+- [ ] #44 (C 2023-02-07) Bump @types/node from 18.11.9 to 18.13.0 in /frontend [dependencies]
+- [ ] #43 (C 2023-02-07) Bump alembic from 1.9.2 to 1.9.3 in /backend [dependencies]
+- [ ] #42 (C 2023-02-06) Bump ra-data-json-server from 4.1.2 to 4.7.2 in /frontend [dependencies]
+- [ ] #41 (C 2023-02-06) Bump @types/react-router from 5.1.19 to 5.1.20 in /frontend [dependencies]
+- [ ] #40 (C 2023-02-06) Bump ra-data-simple-rest from 4.5.1 to 4.7.2 in /frontend [dependencies]
+- [ ] #39 (C 2023-02-06) Bump react-admin from 4.2.2 to 4.7.4 in /frontend [dependencies]
+- [ ] #38 (C 2023-02-06) Bump @types/node from 18.11.9 to 18.11.19 in /frontend [dependencies]
+- [ ] #37 (C 2023-02-01) Bump black from 22.10.0 to 23.1.0 in /backend [dependencies]
+- [ ] #36 (C 2023-01-31) Bump react-admin from 4.2.2 to 4.7.3 in /frontend [dependencies]
+- [ ] #35 (C 2023-01-30) Bump typescript from 4.7.4 to 4.9.5 in /frontend [dependencies]
+- [ ] #34 (C 2023-01-30) Bump docker/build-push-action from 2 to 4 [dependencies]
+- [ ] #33 (C 2023-01-27) Bump react-admin from 4.2.2 to 4.7.2 in /frontend [dependencies]
+- [ ] #32 (C 2023-01-27) Bump ipython from 8.6.0 to 8.9.0 in /backend [dependencies]
+- [ ] #31 (C 2023-01-16) Bump react-admin from 4.2.2 to 4.7.1 in /frontend [dependencies]
+- [ ] #30 (C 2023-01-16) Bump alembic from 1.8.1 to 1.9.2 in /backend [dependencies]
+- [ ] #29 (C 2023-01-10) Bump fastapi from 0.85.0 to 0.89.1 in /backend [dependencies]
+- [ ] #28 (C 2023-01-09) Bump fastapi from 0.85.0 to 0.89.0 in /backend [dependencies]
+- [ ] #27 (C 2023-01-06) Bump react-admin from 4.2.2 to 4.7.0 in /frontend [dependencies]
+- [ ] #26 (C 2023-01-05) Bump react-admin from 4.2.2 to 4.6.3 in /frontend [dependencies]
+- [ ] #25 (C 2023-01-03) Bump ipython from 8.6.0 to 8.8.0 in /backend [dependencies]
+- [ ] #24 (C 2023-01-03) Bump sqlalchemy from 1.4.44 to 1.4.46 in /backend [dependencies]
+- [ ] #23 (C 2022-12-26) Bump @types/node from 18.11.9 to 18.11.18 in /frontend [dependencies]
+- [ ] #22 (C 2022-12-23) Bump alembic from 1.8.1 to 1.9.1 in /backend [dependencies]
+- [ ] #21 (C 2022-12-19) Bump @types/node from 18.11.9 to 18.11.17 in /frontend [dependencies]
+- [ ] #20 (C 2022-12-16) Bump @types/node from 18.11.9 to 18.11.16 in /frontend [dependencies]
+- [ ] #19 (C 2022-12-16) Bump react-admin from 4.2.2 to 4.6.2 in /frontend [dependencies]
+- [ ] #18 (C 2022-12-15) Bump alembic from 1.8.1 to 1.9.0 in /backend [dependencies]
+- [ ] #17 (C 2022-12-13) Bump @types/node from 18.11.9 to 18.11.15 in /frontend [dependencies]
+- [ ] #16 (C 2022-12-12) Bump @types/node from 18.11.9 to 18.11.13 in /frontend [dependencies]
+- [ ] #15 (C 2022-12-12) Bump sqlalchemy from 1.4.44 to 1.4.45 in /backend [dependencies]
+- [ ] #14 (C 2022-12-10) Bump typescript from 4.7.4 to 4.9.4 in /frontend [dependencies]
+- [ ] #13 (C 2022-12-10) Bump cypress-localstorage-commands from 2.2.1 to 2.2.2 in /frontend [dependencies]
+- [ ] #12 (C 2022-12-10) Bump ipython from 8.6.0 to 8.7.0 in /backend [dependencies]
+- [ ] #11 (C 2022-12-10) Bump @types/node from 18.11.9 to 18.11.12 in /frontend [dependencies]
+- [ ] #10 (C 2022-12-10) Bump black from 22.10.0 to 22.12.0 in /backend [dependencies]
+- [ ] #9 (C 2022-12-10) Bump react-admin from 4.2.2 to 4.6.1 in /frontend [dependencies]
+- [ ] #8 (C 2022-12-10) Bump @openapitools/openapi-generator-cli from 2.5.1 to 2.5.2 in /frontend [dependencies]
+- [ ] #7 (C 2022-12-10) Bump fastapi from 0.85.0 to 0.88.0 in /backend [dependencies]
+- [ ] #6 (C 2022-12-10) Bump python from 3.10-slim to 3.11-slim in /backend [dependencies]
+- [ ] #5 (C 2022-12-10) Bump docker/build-push-action from 2 to 3 [dependencies]
+- [ ] #4 (C 2022-12-10) Bump docker/setup-buildx-action from 1 to 2 [dependencies]
+- [ ] #3 (C 2022-12-10) Bump node from 16 to 19 in /frontend [dependencies]
+- [ ] #2 (C 2022-12-10) Bump pre-commit/action from 2.0.0 to 3.0.0 [dependencies]
+- [ ] #1 (C 2022-12-10) Bump cypress-io/github-action from 2 to 5 [dependencies]
+
+## Issues
+
+### Open Issues (189)
+
+- [S] #1123 (O 2026-02-08) fix: PSv2 - Tasks are queued, worker sees job but no tasks [bug]
+- [S] #1122 (O 2026-02-07) Update how the status of processing services are checked & reported
+- [S] #1120 (O 2026-02-06) Review M2M permissions for things that belong to multiple projects [backend,security]
+- [S] #1112 (O 2026-02-03) feat: PSv2 - Have visibility into which workers are subscribed to a job
+- [S] #1111 (O 2026-02-03) PSv2: Workers should not try to fetch tasks from v1 jobs [bug]
+- [S] #1107 (O 2026-01-31) Use timezone.now() for Django CMS timestamps while keeping local times for SourceImage
+- [S] #1106 (O 2026-01-31) Standardize exception logging to use logger.exception() across codebase
+- [S] #1100 (O 2026-01-22) Refactor role-project relationship to use foreign key instead of string parsing
+- [S] #1095 (O 2026-01-21) Support for non-time series data [enhancement]
+- [S] #1092 (O 2026-01-20) Save detection images as PNG instead of JPG
+- [S] #1088 (O 2026-01-16) [IaC] Pulumi scripts for AWS deployment [VISS-SSEC]
+- [S] #1087 (O 2026-01-16) PSv2: Service "live" status for async processing services [VISS-SSEC]
+- [S] #1086 (O 2026-01-16) PSv2: Pipeline registration for async processing services [VISS-SSEC]
+- [S] #1085 (O 2026-01-16) PSv2: Integrate with the incomplete job monitoring [VISS-SSEC]
+- [S] #1081 (O 2026-01-14) Backend extensions needed for taxa lists [backend]
+- [S] #1080 (O 2025-12-24) Discuss taxa management internally & draft workflow
+- [S] #1063 (O 2025-11-24) Add date range filters to Captures & Sessions list views [good first issue]
+- [S] #1061 (O 2025-11-20) Handle Job.DoesNotExist exception properly in process_source_images_async
+- [S] #1059 (O 2025-11-19) Crops not saved during processing [bug]
+- [S] #1040 (O 2025-11-07) Expose taxon admin_url in API and consume in frontend
+- [S] #1037 (O 2025-11-07) Add filters to Captures view [frontend,backend]
+- [S] #1035 (O 2025-11-06) Manage permissions for models with many-to-many relationships to Project
+- [S] #1032 (O 2025-11-05) Better display backend filter errors [enhancement,frontend]
+- [S] #1030 (O 2025-11-04) Make it possible for users to manage project members and roles from UI [enhancement,needs design,frontend]
+- [S] #1018 (O 2025-10-29) [Issue draft] Update remaining hard-coded strings in UI and add aria labels
+- [S] #1015 (O 2025-10-28) [Issue draft] Make it possible for users to manage taxa and taxa lists as scale
+- [S] #1006 (O 2025-10-15) Enable all users to create projects
+- [S] #997 (O 2025-10-14) Design & discuss frontend component for Class Masking feature
+- [S] #995 (O 2025-10-13) Migrate the Python linter & formatter to Ruff [good first issue]
+- [S] #994 (O 2025-10-13) Follow-up fixes to default filters [bug]
+- [S] #982 (O 2025-10-07) Define recommended pipelines backend side [enhancement,backend]
+- [S] #978 (O 2025-10-05) Transition API urls to require a project prefix @Cleanup, technical debt and nice to haves
+- [S] #977 (O 2025-10-04) Update or remove the "Upload images" section in Deployment edit modal
+- [S] #975 (O 2025-10-03) Make it possible for users to add missing species [needs design,needs elaboration,frontend]
+- [S] #972 (O 2025-10-01) Update AWS deployment with PSv2 [VISS-SSEC]
+- [S] #967 (O 2025-10-01) Deploy Antenna V1 and ADC on AWS [VISS-SSEC]
+- [S] #966 (O 2025-10-01) Perf: Measure V2 PS throughput [VISS-SSEC]
+- [S] #965 (O 2025-10-01) Perf: Measure V1 PS throughput [VISS-SSEC]
+- [S] #964 (O 2025-10-01) Authentication workflow for Processing Service V2 [VISS-SSEC]
+- [S] #958 (O 2025-09-23) Explore making the status of a device available in Antenna
+- [S] #956 (O 2025-09-23) Explore showing accuracy metrics after some verification
+- [S] #955 (O 2025-09-18) OpenAPI docs and schema are out of date [bug] @Platform Documentation
+- [S] #948 (O 2025-09-16) Total capture count not adding up [bug,backend]
+- [S] #938 (O 2025-09-04) Fix processing services are not always marked online after being offline [bug]
+- [S] #936 (O 2025-09-03) Fix deleting a processing service from project should disconnect not delete [bug]
+- [S] #933 (O 2025-08-28) Document how to import a species list
+- [S] #928 (O 2025-08-27) Investigate Database optimization options to better scale up our database operations @Processing & data infrastructure improvements
+- [S] #922 (O 2025-08-18) Make a separate action for run single image job
+- [S] #912 (O 2025-08-05) Add location awareness to pipelines
+- [S] #907 (O 2025-07-25) Support for collections that update automatically
+- [S] #906 (O 2025-07-24) Make max_time_gap a configurable Project setting
+- [S] #890 (O 2025-07-02) A user should only be presented with results that are accurate and useful @Self-service improvements
+- [S] #884 (O 2025-06-17) A user should be able to download the data @Self-service improvements
+- [S] #883 (O 2025-06-17) A user should be able to visualize general data/statistics from the project @Self-service improvements
+- [S] #882 (O 2025-06-17) A user should be able to validate the data @Self-service improvements
+- [S] #881 (O 2025-06-17) A user should be able to browse and explore the data and the processing results @Self-service improvements
+- [S] #880 (O 2025-06-17) A user should be able to run the uploaded data through a processing pipeline @Self-service improvements
+- [S] #879 (O 2025-06-17) A user should be able to review the uploaded data @Self-service improvements
+- [S] #878 (O 2025-06-17) A user should be able to upload data to their project @Self-service improvements
+- [S] #877 (O 2025-06-17) A user should be able to create a project - according to their user permissions @Self-service improvements
+- [S] #876 (O 2025-06-17) A user should be able to log in
+- [S] #875 (O 2025-06-17) A user should be able to create an account @Self-service improvements
+- [S] #871 (O 2025-06-17) Import reference images for taxa @Post Panama feature integration
+- [S] #870 (O 2025-06-09) Register new taxon should require explicit save [frontend] @Self-service improvements
+- [S] #867 (O 2025-06-09) Context is lost when navigating between occurrences and taxa [frontend] @Self-service improvements
+- [S] #866 (O 2025-06-09) Don't hide quick actions on multi select [frontend] @Self-service improvements
+- [S] #865 (O 2025-06-09) Page size 20 is too small for occurrences [frontend,backend] @Self-service improvements
+- [S] #862 (O 2025-05-27) Ensure image batches only contain images of the same dimensions before processing @Cleanup, technical debt and nice to haves
+- [S] #852 (O 2025-05-16) Add tests for tags @Cleanup, technical debt and nice to haves
+- [S] #845 (O 2025-05-14) Method to recall species predictions after clustering @ML features
+- [S] #844 (O 2025-05-13) Pick the most similar known taxon for each cluster @Up for revision and reassignment
+- [S] #834 (O 2025-05-06) Support for reprocessing in AMI data companion @Self-service improvements
+- [S] #832 (O 2025-05-06) Automatically pick best representative occurrence for Taxon @Self-service improvements
+- [S] #816 (O 2025-04-28) Create test projects using evaluation data @High-priority issues
+- [S] #806 (O 2025-04-12) Add accuracy metrics to Algorithm details (model card) [enhancement] @Cleanup, technical debt and nice to haves
+- [S] #805 (O 2025-04-10) Add python type checking to pre-commit hooks [good first issue] @Cleanup, technical debt and nice to haves
+- [S] #797 (O 2025-04-03) Support for "geo-fencing" approach to improve prediction accuracy for regional species list @ML features
+- [S] #793 (O 2025-04-02) Quirks when captures are added to sessions manually [bug,backend] @Self-service improvements
+- [S] #788 (O 2025-03-27) Show the species-wise accuracy in the machine prediction component @Up for revision and reassignment
+- [S] #775 (O 2025-03-12) Update ML backend fastAPI wrapper to support the clustering algorithm @Up for revision and reassignment
+- [S] #769 (O 2025-03-11) New footer @Self-service improvements
+- [S] #767 (O 2025-03-11) Frontend changes for disabling pipelines @Cleanup, technical debt and nice to haves
+- [S] #766 (O 2025-03-11) Show offline/online pipeline status indicators in the jobs tab @Cleanup, technical debt and nice to haves
+- [S] #763 (O 2025-03-07) Support for Occurrence collections (datasets) @Up for revision and reassignment
+- [S] #761 (O 2025-03-05) Re-open user registration @Self-service improvements
+- [S] #760 (O 2025-03-05) Create environment variable for setting the logging level @Cleanup, technical debt and nice to haves
+- [S] #757 (O 2025-03-04) Feature for masking predictions to a species list @Canadian Forest Pest Pipeline
+- [S] #755 (O 2025-03-04) Plan updates for captures/collections/sessions [needs elaboration,frontend,backend] @Self-service improvements
+- [S] #750 (O 2025-02-27) Investigate feasibility of Mobile run inference @ML features
+- [S] #746 (O 2025-02-27) Method for importing species of interest lists @Self-service improvements
+- [S] #739 (O 2025-02-24) Add affiliation field to user model [good first issue,frontend,backend] @Self-service improvements
+- [S] #735 (O 2025-02-19) Setup time-limited queries for production @High-priority issues
+- [S] #734 (O 2025-02-19) Require project ID in all API list views @High-priority issues
+- [S] #732 (O 2025-02-19) Dedicated inference demo page [needs design,ml]
+- [S] #730 (O 2025-02-19) Rename Collections to "Datasets", "Batches" or "Lists" @Self-service improvements
+- [S] #729 (O 2025-02-19) Consider making all Celery tasks available in the jobs panel. @Cleanup, technical debt and nice to haves
+- [S] #728 (O 2025-02-19) Re-write the populate task to not use so much memory & CPU for large samples @Cleanup, technical debt and nice to haves
+- [S] #726 (O 2025-02-19) Support for multiple common names [enhancement] @Cleanup, technical debt and nice to haves
+- [S] #724 (O 2025-02-14) Improve the user experience for when the backend is not responding [enhancement,frontend] @Self-service improvements
+- [S] #721 (O 2025-02-11) Ensure that a processing job's status is always updated correctly [bug,backend] @High-priority issues
+- [S] #714 (O 2025-02-03) Fix typo in Deployment edit screen [bug,good first issue,frontend,content] @Cleanup, technical debt and nice to haves
+- [S] #708 (O 2025-01-28) Regression testing plan @High-priority issues
+- [S] #707 (O 2025-01-28) Design approach for running tracking algorithm in distributed method @ML features
+- [S] #699 (O 2025-01-27) Fix "ERROR Method Not Allowed" when processing images [bug] @Cleanup, technical debt and nice to haves
+- [S] #694 (O 2025-01-26) Use global UUIDs for pipelines & algorithms [needs elaboration] @Self-service improvements
+- [S] #687 (O 2025-01-21) Speed up syncing from data storage [needs elaboration] @Processing & data infrastructure improvements
+- [S] #686 (O 2025-01-21) Install pgbouncer to manage database connections [needs elaboration,infrastructure,ops] @Cleanup, technical debt and nice to haves
+- [S] #679 (O 2025-01-19) Improve the stages feature @ML features
+- [S] #678 (O 2025-01-19) Update Register Pipelines Functionality (UUIDs) @ML features
+- [S] #671 (O 2025-01-15) Not possible to reset the password [bug,backend] @High-priority issues
+- [S] #655 (O 2024-12-12) Add upper taxa for Insecta and others to taxonomy choices [good first issue,content] @Cleanup, technical debt and nice to haves
+- [S] #648 (O 2024-12-04) Documentation for Releases & Deployment  [documentation] @Cleanup, technical debt and nice to haves
+- [S] #646 (O 2024-12-04) Ensure all field validators return 400 with helpful message @Cleanup, technical debt and nice to haves
+- [S] #639 (O 2024-12-02) Rework project structure and clarify the collection concept [enhancement,needs design,needs elaboration] @Self-service improvements
+- [S] #638 (O 2024-12-02) Add view option "group by" [enhancement,frontend] @Cleanup, technical debt and nice to haves
+- [S] #637 (O 2024-12-02) Update Node and FE app package manager from yarn -> npm [frontend,infrastructure] @Cleanup, technical debt and nice to haves
+- [S] #630 (O 2024-11-22) Proxy ML backends for HuggingFace & Roboflow models [needs elaboration,VISS-SSEC] @ML features
+- [S] #629 (O 2024-11-22) First version of in app notifications [frontend,backend] @Cleanup, technical debt and nice to haves
+- [S] #625 (O 2024-11-20) Updating the public base URL of a data source should update source images [backend] @Cleanup, technical debt and nice to haves
+- [S] #624 (O 2024-11-20) Support for organizations & org-level permissions @Self-service improvements
+- [S] #611 (O 2024-11-07) Create training plan for Antenna support personnel at each partner org [documentation] @Self-service improvements
+- [S] #601 (O 2024-10-08) BE extensions needed for filtering [backend] @Up for revision and reassignment
+- [S] #597 (O 2024-09-25) Handle images processed by multiple pipelines (session detail view) [frontend,backend] @Cleanup, technical debt and nice to haves
+- [S] #593 (O 2024-09-20) Add automatic branch previews for the full-stack [infrastructure] @Cleanup, technical debt and nice to haves
+- [S] #590 (O 2024-09-19) Update demo video (missing thumbs and new features)
+- [S] #589 (O 2024-09-19) MEE Paper
+- [S] #570 (O 2024-09-11) Add multiple controls to highlighted occurrences [enhancement,needs design] @Cleanup, technical debt and nice to haves
+- [S] #562 (O 2024-09-07) Add support for temperature data [enhancement] @Cleanup, technical debt and nice to haves
+- [S] #560 (O 2024-09-06) Add tooltips for "score" @Cleanup, technical debt and nice to haves
+- [S] #556 (O 2024-09-05) Handle ToS for logged in users [frontend,backend] @Cleanup, technical debt and nice to haves
+- [S] #545 (O 2024-08-27) Disclose species list for each model @Cleanup, technical debt and nice to haves
+- [S] #543 (O 2024-08-24) Summarize all @TODOs in the codebase [good first issue] @Cleanup, technical debt and nice to haves
+- [S] #539 (O 2024-08-22) Pipeline requests should have a cancellation method @Self-service improvements
+- [S] #538 (O 2024-08-22) Stage Implementation Monitoring @Up for revision and reassignment
+- [S] #532 (O 2024-08-21) Define the registry for ML Backend Services & Models [good first issue,needs design,needs elaboration] @Up for revision and reassignment
+- [S] #531 (O 2024-08-21) Issue with Vite HMR [frontend] @Up for revision and reassignment
+- [S] #529 (O 2024-08-21) Make sure password update is working together with password managers [bug,frontend] @Cleanup, technical debt and nice to haves
+- [S] #520 (O 2024-08-15) Update landing page stats and graphs in real-time @Self-service improvements
+- [S] #519 (O 2024-08-15) Protect trap location specifics @Cleanup, technical debt and nice to haves
+- [S] #515 (O 2024-08-15) New async & distributed ML backend  @Processing & data infrastructure improvements
+- [S] #514 (O 2024-08-14) Add simple support for Draft / Test projects @Self-service improvements
+- [S] #512 (O 2024-08-14) "Accept invitation and create an account" user flow @Self-service improvements
+- [S] #510 (O 2024-08-14) Account and project deletion @Self-service improvements
+- [S] #509 (O 2024-08-13) Explore publishing snapshots to cloud data providers [needs elaboration] @Cleanup, technical debt and nice to haves
+- [S] #508 (O 2024-08-13) Plan out publishing to GBIF [needs elaboration] @Cleanup, technical debt and nice to haves
+- [S] #507 (O 2024-08-13) Add generic metadata JSON fields @Cleanup, technical debt and nice to haves
+- [S] #505 (O 2024-08-12) Update platform to use upcoming asynchronous ML backend API @ML features
+- [S] #504 (O 2024-08-12) Generate images and other test data to dev environment @Up for revision and reassignment
+- [S] #501 (O 2024-08-09) Add single-sign on @Cleanup, technical debt and nice to haves
+- [S] #498 (O 2024-08-07) Light security audit [security] @Self-service improvements
+- [S] #487 (O 2024-08-04) Formalize sampling methods for collections [documentation,enhancement,needs elaboration] @Cleanup, technical debt and nice to haves
+- [S] #484 (O 2024-08-04) Make it clear what images have not been processed  [frontend,backend] @Self-service improvements
+- [S] #482 (O 2024-08-04) Add vertical markers every hour [frontend] @ML features
+- [S] #477 (O 2024-08-01) Is it possible to highlight when a deployment needs sync with data source? [backend] @Self-service improvements
+- [S] #476 (O 2024-08-01) If image src is broken, make it easy to inspect the URL? [frontend] @Cleanup, technical debt and nice to haves
+- [S] #474 (O 2024-08-01) Do not display access key as a secret [frontend,backend] @Self-service improvements
+- [S] #473 (O 2024-08-01) Detections and detections count not always adding up for capture details @Cleanup, technical debt and nice to haves
+- [S] #471 (O 2024-08-01) Some FE issues in need of BE tweaks @Cleanup, technical debt and nice to haves
+- [S] #469 (O 2024-07-31) Explore options for watermarking [needs design,needs elaboration] @Cleanup, technical debt and nice to haves
+- [S] #467 (O 2024-07-30) Support for SFTP data sources [enhancement,needs elaboration] @Cleanup, technical debt and nice to haves
+- [S] #465 (O 2024-07-30) Support for additional languages [enhancement] @Cleanup, technical debt and nice to haves
+- [S] #457 (O 2024-07-09) Bring back occurrence tracking @ML features
+- [S] #456 (O 2024-07-09) Update data syncing to delete missing images @Up for revision and reassignment
+- [S] #455 (O 2024-07-09) Improvements for viewing data sync jobs @Cleanup, technical debt and nice to haves
+- [S] #452 (O 2024-07-03) Add details about current filter & sort params in the API list view responses @Cleanup, technical debt and nice to haves
+- [S] #451 (O 2024-07-02) Streamline the batch processing workflow (rethinking Collections) [needs design] @Self-service improvements
+- [S] #446 (O 2024-07-01) Default cover image for Deployments [enhancement,good first issue,backend] @Self-service improvements
+- [S] #440 (O 2024-06-19) Images for taxa in list view do not add up with detail view [bug,backend] @Cleanup, technical debt and nice to haves
+- [S] #439 (O 2024-06-18) Data source in Deployment details view is n/a @Up for revision and reassignment
+- [S] #438 (O 2024-06-18) Review and update options for Reject ID @Cleanup, technical debt and nice to haves
+- [S] #419 (O 2024-06-11) Thumbnail not showing under Deployments @Cleanup, technical debt and nice to haves
+- [S] #413 (O 2024-06-10) Automatic deployments of backend [infrastructure] @Cleanup, technical debt and nice to haves
+- [S] #412 (O 2024-06-10) Add support for FlatBug model [enhancement] @ML features
+- [S] #398 (O 2024-06-06) Inconsistency on edit and save [enhancement,frontend] @Cleanup, technical debt and nice to haves
+- [S] #388 (O 2024-05-03) Allow opening links in new tabs/windows [frontend] @Cleanup, technical debt and nice to haves
+- [S] #386 (O 2024-05-03) More details about ML predictions in session detail view [needs design,frontend] @ML features
+- [S] #384 (O 2024-05-01) Support for grouping results by upper taxon levels [needs elaboration] @ML features
+- [S] #317 (O 2023-11-17) Share common types & data structures in frontend & backend [needs elaboration] @Cleanup, technical debt and nice to haves
+- [S] #307 (O 2023-11-09) Allow meta data to be configured for Deployments [needs elaboration,frontend,backend] @Self-service improvements
+- [S] #304 (O 2023-11-03) Add support for scale bars [needs design,frontend,backend] @ML features
+- [S] #298 (O 2023-10-31) Exporting: Occurrences to Darwin Core Archive format (w/Camtrap DP) @Self-service improvements
+- [S] #273 (O 2023-10-10) Explore using logical IDs (timestamps and slugs) in URLs  [security] @Cleanup, technical debt and nice to haves
+- [S] #272 (O 2023-10-05) Support for soft delete @Up for revision and reassignment
+- [S] #260 (O 2023-09-29) Split ami.main into multiple modules [next up!] @Cleanup, technical debt and nice to haves
+- [S] #258 (O 2023-09-29) New component: Choose or create related object [needs design,frontend] @Cleanup, technical debt and nice to haves
+- [S] #252 (O 2023-09-28) Change `determination_deails` to `determination` @Cleanup, technical debt and nice to haves
+- [S] #237 (O 2023-09-08) Some sessions are incorrectly grouped [bug,next up!] @Self-service improvements
+- [S] #236 (O 2023-09-08) Add general support for image thumbnails & media serving [response time] @High-priority issues
+- [S] #229 (O 2023-09-07) Issue with example captures URL [bug] @Cleanup, technical debt and nice to haves
+
+### Closed Issues (233)
+
+- [S] #1102 (C 2026-01-27) Link a single capture to a detail view
+- [S] #1084 (C 2026-02-07) PSv2: Decouple the celery task state from the job state [VISS-SSEC]
+- [S] #1083 (C 2026-02-07) PSv2: Implement queue clean-up upon job completion [VISS-SSEC]
+- [S] #1078 (C 2026-01-20) Project managers and researchers cannot create data exports [bug]
+- [S] #1072 (C 2025-12-04) Fix dangling processing jobs by adding TCP keepalives [bug]
+- [S] #1069 (C 2025-12-04) Local jobs remain in pending state after completion [backend]
+- [S] #1017 (C 2025-12-24) Clarify intake process on insectai.org (landing page)
+- [S] #1016 (C 2025-12-24) Inline help for users (establish framework & workflow)
+- [S] #998 (C 2025-11-17) Handle documentation and links for the Entsoc Conference
+- [S] #991 (C 2025-11-24) Fix linking to occurrences from a single image [bug,frontend,backend]
+- [S] #986 (C 2025-10-13) The data exports feature is difficult to find and initiate [bug] @Self-service improvements
+- [S] #985 (C 2026-01-20) Add requested fields to default export format
+- [S] #984 (C 2025-11-06) Reprocess some or all of data for forest pest pipeline @Canadian Forest Pest Pipeline
+- [S] #976 (C 2025-10-29) Update occurrence grid view with bulk select and labelling controls [needs design,frontend]
+- [S] #971 (C 2026-01-31) PSv2 Job scheduler [VISS-SSEC]
+- [S] #970 (C 2025-12-09) Implement PSv2 pull API [VISS-SSEC]
+- [S] #969 (C 2026-01-31) Reference PSv2 implementation [VISS-SSEC]
+- [S] #968 (C 2026-01-31) PSv2 Pull API design and specification [VISS-SSEC]
+- [S] #963 (C 2026-01-16) Reduce Job results saving overhead [VISS-SSEC]
+- [S] #957 (C 2025-10-16) Implement a reusable post-processing framework
+- [S] #941 (C 2025-09-18) Fix "get() returned more than one AlgorithmCategoryMap" error [bug]
+- [S] #931 (C 2025-09-03) Project managers cannot test storage or sync deployment [bug]
+- [S] #927 (C 2025-10-10) Implement the Taxa filters in the backend  [backend] @Project Quick Start
+- [S] #926 (C 2025-10-09) Implement the Score threshold filter in the backend [backend] @Project Quick Start
+- [S] #925 (C 2025-10-01) Define personas and user stories (draft for Sept 2025) @Self-service improvements
+- [S] #924 (C 2025-09-17) Enable the configuration of the default pipeline from UI at the project level [frontend] @Self-service improvements
+- [S] #923 (C 2025-10-04) Implement the new UI views for Project Quick Start feature [frontend] @Project Quick Start
+- [S] #920 (C 2025-08-29) Setup MkDocs for Antenna documentation @Platform Documentation
+- [S] #913 (C 2025-09-16) Restrict view permissions for draft projects @Project Quick Start
+- [S] #911 (C 2025-08-13) Project setting for default processing pipeline @Project Quick Start
+- [S] #903 (C 2025-08-13) Read EXIF data from images in certain cases @Project Quick Start
+- [S] #902 (C 2025-08-25) Design new UI screen for project quick start [needs design] @Project Quick Start
+- [S] #901 (C 2025-08-26) Automate processing with current interface (prototype) @Project Quick Start
+- [S] #900 (C 2025-08-05) New sandbox server environment @Project Quick Start
+- [S] #899 (C 2025-09-16) Support for draft/scratch projects @Project Quick Start
+- [S] #886 (C 2025-07-15) Identify gaps in the expected workflow for most researchers @High-priority issues
+- [S] #874 (C 2025-08-20) Disable ability to start ML jobs for non-admins @High-priority issues
+- [S] #873 (C 2025-08-28) Make score threshold a project setting [enhancement,frontend,backend]
+- [S] #872 (C 2025-07-21) Sessions not auto updated when captures are synced [bug,backend] @High-priority issues
+- [S] #869 (C 2025-10-22) Make ID quick actions available in gallery view [frontend] @Self-service improvements
+- [S] #868 (C 2025-08-28) Exclude "Not a Moth" by default [frontend,backend] @Self-service improvements
+- [S] #864 (C 2025-10-22) Flight charts for taxa & taxa lists [needs design,frontend,backend] @Canadian Forest Pest Pipeline
+- [S] #846 (C 2025-06-19) Method to remove cluster ID from multiple detections @Up for revision and reassignment
+- [S] #833 (C 2025-08-27) Add fields for example Occurrence per Taxon @Self-service improvements
+- [S] #831 (C 2025-05-12) Show more recently used Taxa during bulk ID @OOD Integration
+- [S] #827 (C 2025-06-10) Create documentation for researcher [documentation] @OOD Integration
+- [S] #826 (C 2025-05-22) User Story : Field work support [needs design] @OOD Integration
+- [S] #825 (C 2025-06-09) Make it possible to add tags to taxa [frontend,backend] @OOD Integration
+- [S] #824 (C 2025-05-14) Suggest ID in bulk [frontend] @OOD Integration
+- [S] #812 (C 2025-06-09) Add UI for job configuring params [frontend] @OOD Integration
+- [S] #811 (C 2025-05-13) Make it possible to inspect OOD score in UI [frontend] @OOD Integration
+- [S] #810 (C 2025-05-05) Include more information in the taxon detail view [frontend] @OOD Integration
+- [S] #808 (C 2025-06-09) Create new offline web view for new species summaries [frontend] @OOD Integration
+- [S] #804 (C 2025-04-12) Follow up Model Zoo Features and Fixes
+- [S] #802 (C 2025-05-06) Implement complete example of an ML backend @OOD Integration
+- [S] #796 (C 2025-10-16) Add real CFIA species list to "Species of Concern" [bug] @Canadian Forest Pest Pipeline
+- [S] #795 (C 2025-04-09) ValueError: Classification must have a category map to get top N.
+- [S] #791 (C 2025-04-08) Allow UI to handle Occurrences with no event/session
+- [S] #789 (C 2025-06-17) Fix project manager permission to allow uploading captures [bug] @Priority stability issues
+- [S] #787 (C 2025-05-13) Create wireframes of OOD feature in action @OOD Integration
+- [S] #782 (C 2025-09-02) Fix ML processing that is causing jobs to fail for medium-large jobs [bug] @High-priority issues
+- [S] #776 (C 2025-04-09) Vector database or Store embeddings in existing Antenna database (with logits, etc) @OOD Integration
+- [S] #774 (C 2025-05-12) Add clustering algo to Antenna @OOD Integration
+- [S] #773 (C 2025-03-15) Error while reading from redis:6379 : (104, 'Connection reset by peer') [bug] @Priority stability issues
+- [S] #770 (C 2025-11-18) Collection counts can take a long time to load [bug] @High-priority issues
+- [S] #758 (C 2025-03-05) Model Zoo: Add Algorithms Overview and Details Modal @Self-Service Core Features
+- [S] #754 (C 2025-03-21) Make project entities part of new settings view [enhancement,frontend] @Permissions & Roles
+- [S] #753 (C 2025-03-21) Design UI for basic project settings [needs design,frontend] @Permissions & Roles
+- [S] #752 (C 2025-05-12) Store vector embeddings @OOD Integration
+- [S] #751 (C 2025-06-10) OOD: Implement missing features/processes @OOD Integration
+- [S] #749 (C 2025-05-06) Test documented workflows @OOD Integration
+- [S] #748 (C 2025-03-25) OOD: Document the workflow that will be used @OOD Integration
+- [S] #747 (C 2025-06-10) Get antenna to work locally on laptops for Panama trip @OOD Integration
+- [S] #745 (C 2025-03-25) Add filtering options for Taxa Lists @Canadian Forest Pest Pipeline
+- [S] #737 (C 2025-04-09) UI for creating & downloading data exports [enhancement,frontend] @Self-Service Core Features
+- [S] #731 (C 2025-06-11) Public readiness for Moth week @Ready for Moth Week 2025
+- [S] #727 (C 2026-01-22) API For managing project membership & roles @Self-service improvements
+- [S] #723 (C 2025-03-10) Backend not responding [bug,backend] @Priority stability issues
+- [S] #720 (C 2025-04-08) Exporting: Support for trigger background exports [enhancement] @Self-Service Core Features
+- [S] #718 (C 2025-03-15) Regression: Fix unnecessary reprocessing of all images [bug] @Priority stability issues
+- [S] #716 (C 2025-02-06) Fix error when populating collections [bug] @Priority stability issues
+- [S] #713 (C 2025-03-05) Fix Project Summary Endpoint [bug] @Priority stability issues
+- [S] #710 (C 2025-02-17) Fix issue with issue links in Pull Request Template [bug] @Priority stability issues
+- [S] #706 (C 2025-08-16) Support for reprocessing detections and skipping detector @Priority stability issues
+- [S] #703 (C 2025-03-06) Add roles for different user actions (permission groups) [enhancement,backend] @Permissions & Roles
+- [S] #701 (C 2025-02-25) Fix connection loop when getting status of Processing Service [bug] @Priority stability issues
+- [S] #700 (C 2025-03-11) Fix the list of online processing services per-project [bug] @Priority stability issues
+- [S] #695 (C 2025-03-19) Ability to disable a pipeline for a given project [backend] @Self-Service Core Features
+- [S] #685 (C 2025-02-06) Configure scheduled backups in TeamCity [backend,ops] @Priority stability issues
+- [S] #683 (C 2025-04-11) New section for Algorithms and Category Maps [frontend] @Self-service improvements
+- [S] #682 (C 2025-01-23) Show response details for occurrences [needs design,frontend] @Self-Service Core Features
+- [S] #681 (C 2025-03-05) Update Pipeline model Algorithm Field [next up!] @ML features v2
+- [S] #680 (C 2025-02-25) Improve test_process pipeline view and status indicators @ML features v2
+- [S] #677 (C 2025-04-15) Add section to pipeline details with a json field of pipeline parameters [next up!] @ML features v2
+- [S] #676 (C 2025-02-17) Create periodic task to check processing services [next up!] @Priority stability issues
+- [S] #673 (C 2025-01-16) Background workers are disappearing [backend,infrastructure] @Priority stability issues
+- [S] #672 (C 2025-01-23) Disable "Snap to detections" if there are no detections in a session [frontend] @Self-service improvements
+- [S] #667 (C 2025-01-15) Test [frontend,backend] @Ready for Moth Week 2025
+- [S] #663 (C 2025-03-07) Look into runtime issues reported on Sentry [bug,frontend] @Priority stability issues
+- [S] #662 (C 2025-01-13) Make the state of Occurrence detail tabs details sticky [frontend] @Ready for labeling projects (AMBER & Insectarium)
+- [S] #660 (C 2025-01-16) Change param name from "project" to "project_id" for Entities  [good first issue] @Cleanup, technical debt and nice to haves
+- [S] #658 (C 2024-12-19) Make it possible to navigate to next/prev occurrence [frontend] @Self-Service Core Features
+- [S] #651 (C 2025-01-23) New actions & tooltips for clearer linking between session detail & occurrence details @Ready for labeling projects (AMBER & Insectarium)
+- [S] #650 (C 2025-03-10) Use job status to update UI for collections, captures & deployments @Self-Service Core Features
+- [S] #649 (C 2024-12-06) If the user intends to Logout, always clear the token in local storage [frontend,security]
+- [S] #640 (C 2024-12-04) Broken image links during local development [question]
+- [S] #633 (C 2024-12-05) Add missing backend filters for jobs [backend] @Self-Service Core Features
+- [S] #628 (C 2024-11-22) Fix ml backend from creating duplicate classifications @Priority stability issues
+- [S] #622 (C 2025-08-26) Import taxonomy from new classifiers [next up!] @ML features
+- [S] #621 (C 2025-01-28) Make a pipeline for only the binary classifier @Ready for labeling projects (AMBER & Insectarium)
+- [S] #619 (C 2024-12-17) Add some error handling to date filters [enhancement,frontend]
+- [S] #618 (C 2025-01-06) Is number of detections relevant to present in the interface? [question,frontend]
+- [S] #617 (C 2024-12-02) Update tab "Species" -> "Taxa" [enhancement,frontend]
+- [S] #616 (C 2024-12-04) If multiple labelers are involved, user verification status might be incorrectly updated [bug,frontend]
+- [S] #615 (C 2024-12-04) Add filters UI to "identified by" filters [next up!,frontend]
+- [S] #614 (C 2024-11-28) Add filters UI to jobs [frontend]
+- [S] #607 (C 2025-01-26) Populate Antenna database with classifier scores from every class for each prediction @ML Pipeline out of beta
+- [S] #594 (C 2024-09-26) Add project overview tabs to URL params & auto-refresh [frontend]
+- [S] #591 (C 2024-09-20) Design for filters [needs design]
+- [S] #585 (C 2024-10-09) Option to skip or hide unprocessed captures [enhancement,frontend]
+- [S] #583 (C 2025-02-19) Improve the "populate collection" task [next up!,backend] @ML features v2
+- [S] #572 (C 2024-11-07) Create dummy ML backend for the dev compose stack @Cleanup, technical debt and nice to haves
+- [S] #549 (C 2024-09-19) Cleanup for demo [bug,frontend,backend] @Limited Public Launch
+- [S] #548 (C 2024-11-20) Collection sampler is pulls images from wrong project [bug,backend] @Limited Public Launch
+- [S] #547 (C 2024-09-19) Populate data in Demo environment @Limited Public Launch
+- [S] #541 (C 2024-08-30) Column selection in Occurrences view does not save [bug] @Cleanup, technical debt and nice to haves
+- [S] #540 (C 2024-08-23) Status endpoint on the controller, for checking the status of a request
+- [S] #535 (C 2024-08-29) Configure email service and email FROM address for production @Production Environment v1
+- [S] #533 (C 2024-09-16) Test README & initial project setup [good first issue]
+- [S] #528 (C 2024-08-21) On info page open, pagination numbers get messed up [bug,frontend]
+- [S] #523 (C 2025-05-13) Integrate reference examples from Fieldguide [enhancement,needs design,needs elaboration] @OOD Integration
+- [S] #518 (C 2025-01-27) Make it easier to find your project  @Ready for labeling projects (AMBER & Insectarium)
+- [S] #517 (C 2024-08-22) Add docs for registering new consumers for new & existing models (regional classifiers)
+- [S] #516 (C 2024-08-22) Fix truncated requests for images with many insects
+- [S] #513 (C 2024-09-05) Require existing users to accept the ToS @Limited Public Launch
+- [S] #511 (C 2025-01-06) Add monetization disclosure message [frontend] @Cleanup, technical debt and nice to haves
+- [S] #503 (C 2025-02-19) Add template for ML pipeline API to docker compose stack @ML features v2
+- [S] #489 (C 2024-08-07) Click actions are ignored in sticky header [bug,frontend]
+- [S] #485 (C 2024-08-06) Species detail links are often broken [backend]
+- [S] #483 (C 2025-03-10) Auto-refresh session details if the user processes the current image [frontend]
+- [S] #475 (C 2024-08-05) Show pipeline ID [frontend]
+- [S] #472 (C 2025-07-04) Choose sampling from dropdown (+ improve UI in general for registering a collection) [frontend] @Self-service improvements
+- [S] #470 (C 2024-09-19) Update type-face & easy details from upcoming design [frontend] @Limited Public Launch
+- [S] #468 (C 2024-09-16) Finalize and add logo [content] @Limited Public Launch
+- [S] #466 (C 2024-08-16) Render detail modals before data tables [frontend,response time] @Performance Enhancements (graduating features)
+- [S] #464 (C 2024-11-18) Design & spec out blind labeling feature [documentation,needs design] @Ready for labeling projects (AMBER & Insectarium)
+- [S] #462 (C 2024-07-30) Update Storage source tab on project overview page to newer style of entity tabs [good first issue] @Limited Public Launch
+- [S] #461 (C 2024-08-13) Deployments with no images show Dec 1969 for the start & end date [bug,good first issue] @Limited Public Launch
+- [S] #447 (C 2024-07-08) Allow agreeing to higher taxon ranks [frontend] @Internal Beta V2 Release
+- [S] #445 (C 2024-09-17) Small backend issues related to plots [bug,good first issue,backend]
+- [S] #443 (C 2025-06-19) Occurrence to session link wrong @Up for revision and reassignment
+- [S] #431 (C 2024-06-18) Make reject options easy to access [enhancement,frontend] @Internal Beta V2 Release
+- [S] #430 (C 2024-06-25) Show default sorting [enhancement,frontend] @Internal Beta V2 Release
+- [S] #428 (C 2025-07-15) Occurrence determination score is not updated on verification delete [bug,backend] @Cleanup, technical debt and nice to haves
+- [S] #427 (C 2024-06-18) Show quick actions even though we have verification by human [enhancement,frontend] @Internal Beta V2 Release
+- [S] #426 (C 2024-08-13) OperationalError: connection failed: FATAL:  remaining connection slots are reserved for non-replication superuser ... [bug,backend,infrastructure]
+- [S] #425 (C 2025-10-01) Fix the display of Device Types to show all device types used in a project [bug,backend] @Cleanup, technical debt and nice to haves
+- [S] #424 (C 2025-03-25) Add Delete permissions  [bug,backend] @Permissions & Roles
+- [S] #423 (C 2024-07-29) Editing Storage description does not stick [bug,frontend] @Internal Beta V2 Release
+- [S] #421 (C 2024-08-06) Always show family when displaying upper taxon levels, omit genus [backend] @Internal Beta V2 Release
+- [S] #418 (C 2024-11-20) Leaflet deployment popup not showing all stats [bug,backend] @Limited Public Launch
+- [S] #416 (C 2024-09-16) Create video walkthrough [documentation] @Limited Public Launch
+- [S] #415 (C 2024-09-16) Create public Home/About page [documentation] @Limited Public Launch
+- [S] #414 (C 2024-11-07) Update classification models to latest versions  [ml] @ML Pipeline Ready for Production
+- [S] #411 (C 2025-03-05) Increase performance of species view (remaining changes that require refactoring) [backend,response time] @Priority stability issues
+- [S] #410 (C 2024-08-12) Increase performance of session detail API response [backend,response time] @Production Environment v1
+- [S] #407 (C 2024-08-22) When uploading multiple example captures, some captures might get duplicated [bug,needs elaboration] @ML Pipeline Ready for Production
+- [S] #406 (C 2024-07-08) Some UI label inconsistency [enhancement,frontend] @Internal Beta V2 Release
+- [S] #405 (C 2024-06-10) Single bar looks very wide [enhancement,frontend] @Internal Beta V2 Release
+- [S] #404 (C 2024-06-10) Strange job details [bug,backend]
+- [S] #403 (C 2024-11-07) Missing detection count in event response [bug,backend,response time]
+- [S] #402 (C 2025-01-27) Add project<->user association [good first issue,security] @Permissions & Roles
+- [S] #400 (C 2024-07-29) Some issues with saving deployments [bug,frontend] @Internal Beta V2 Release
+- [S] #399 (C 2024-07-23) Clarify entity types and terminology in UI [enhancement,needs design,frontend] @Internal Beta V2 Release
+- [S] #397 (C 2024-07-03) Add pagination to project overview [needs design,frontend] @Internal Beta V2 Release
+- [S] #393 (C 2024-06-04) Make filter links more visible  [frontend] @Internal Beta V2 Release
+- [S] #390 (C 2024-08-13) Complete Docker compose setup for development [documentation,infrastructure] @Production Environment v1
+- [S] #387 (C 2025-03-07) Add top species chart to overview page [good first issue,backend] @Canadian Forest Pest Pipeline
+- [S] #385 (C 2024-06-10) Sign up button should not be visible when logged in [good first issue,frontend] @Internal Beta V2 Release
+- [S] #372 (C 2024-06-06) Make linked numbers more visible  [good first issue,frontend] @Internal Beta V2 Release
+- [S] #371 (C 2024-06-10) Support sort parameters in URL [frontend] @Internal Beta V2 Release
+- [S] #370 (C 2024-06-10) Job processing/processed counts go up and down [backend]
+- [S] #369 (C 2024-11-28) Forbidden error, Jobs fail to start [bug,good first issue,frontend] @Post-launch Maintenance 
+- [S] #364 (C 2024-08-26) Add UI for reseting password [frontend] @Limited Public Launch
+- [S] #361 (C 2024-08-05) Show all detections in session detail view [frontend] @Internal Beta V2 Release
+- [S] #357 (C 2024-11-14) Pass confidence threshold param to other views [needs design,frontend,backend] @Cleanup, technical debt and nice to haves
+- [S] #354 (C 2025-01-27) Consider moving permissions to user object [needs elaboration,frontend,backend,security] @Permissions & Roles
+- [S] #352 (C 2025-04-09) Show more than the first prediction in UI [needs design,frontend,backend] @ML features v2
+- [S] #351 (C 2024-08-30) Use React library for Google Analytics  [frontend] @Limited Public Launch
+- [S] #350 (C 2024-08-30) Add GDPR / cookie acceptance modal [needs design,needs elaboration,frontend] @Limited Public Launch
+- [S] #344 (C 2024-02-03) Deployment does save Site & Device
+- [S] #343 (C 2024-06-10) Use Ecological Metadata Language (EML) for Site fields
+- [S] #336 (C 2024-02-01) Banner indicating beta/testing status of app [enhancement,frontend]
+- [S] #329 (C 2024-02-13) Back button broken when navigating from occurrences table to session detail [bug,frontend]
+- [S] #328 (C 2024-02-18) Add permissions boundary for jobs [frontend]
+- [S] #314 (C 2024-02-18) Add image upload field for Deployments [frontend]
+- [S] #313 (C 2024-02-11) Make list view thumbnails clickable [frontend]
+- [S] #311 (C 2023-11-22) Update frontend packages
+- [S] #310 (C 2025-01-26) Fixes & updates to jobs [bug] @ML Pipeline out of beta
+- [S] #309 (C 2023-11-23) Add table for ML models & pipelines
+- [S] #308 (C 2024-07-29) Update configuration of data sources @Internal Beta V2 Release
+- [S] #299 (C 2024-11-14) Add choices & details to Filters  [needs design,frontend] @Cleanup, technical debt and nice to haves
+- [S] #297 (C 2023-11-02) New view for source image collections
+- [S] #290 (C 2023-10-31) Fix column sorting for table views
+- [S] #289 (C 2023-10-31) URL params for pagination [next up!]
+- [S] #279 (C 2024-08-13) Show children species when viewing higher taxon ranks [frontend,backend] @Limited Public Launch
+- [S] #265 (C 2023-10-31) Method to add sample images from front-end [needs design]
+- [S] #264 (C 2024-11-07) Implement efficient way to cache all parents for taxa [response time]
+- [S] #263 (C 2024-08-05) Need faster way to browse through captured images [needs design,response time] @Internal Beta V2 Release
+- [S] #259 (C 2024-08-13) Sketch out new ML backend @ML Pipeline Ready for Production
+- [S] #257 (C 2024-06-10) Add comments field to BE for identifications [next up!]
+- [S] #254 (C 2023-11-17) Create React App -> Vite
+- [S] #251 (C 2023-10-05) Populate new "agreed_with_" fields on identifications on create [next up!]
+- [S] #242 (C 2024-06-10) Add image uploading to other models with progress indicator
+- [S] #239 (C 2023-11-22) Plotly is huge
+- [S] #233 (C 2023-10-11) Add ability to create & edit a project [next up!]
+- [S] #226 (C 2023-09-12) Add some tests for auth (FE)
+- [S] #225 (C 2023-09-28) Add page for editing user details
+- [S] #224 (C 2023-09-06) Event duration is incorrect
+- [S] #220 (C 2023-09-20) Label Studio integration
+- [S] #219 (C 2025-03-06) Add object-level permissions for Projects & related entities [security] @Permissions & Roles
+- [S] #217 (C 2023-09-29) Add endpoint for searching taxa (species)
+- [S] #216 (C 2023-09-29) Add endpoints for species identification
+- [S] #215 (C 2023-09-02) Add endpoints for user authentication
+- [S] #212 (C 2023-08-30) Add project filters
+- [S] #209 (C 2023-08-24) Detections are no longer showing in session playback
+- [S] #208 (C 2023-11-09) Add threshold control [needs design]
+- [S] #207 (C 2023-08-23) Location search API no longer working
+- [S] #206 (C 2023-08-24) Offset for session view is incorrect
+- [S] #198 (C 2024-07-30) Update the interface for the captures timeline in session detail view [needs design] @Limited Public Launch
+- [S] #196 (C 2023-10-31) Add specific page titles 
+- [S] #104 (C 2023-07-07) Responsive adjustments for small screens
+- [S] #95 (C 2023-07-07) Solution for wide tables

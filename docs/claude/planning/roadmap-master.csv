@@ -1,0 +1,756 @@
+proposed_horizon,category,description,mention_count,github_refs,status,status_notes,type,size,source_rows
+now-3mo,Analytics/Viz,Confidence & Uncertainty in UI (displaying species-level accuracy),1,,untracked,No matching GitHub issues or PRs found,feature,M,806
+now-3mo,Data-Management,Reworking collections - clarifying & solidifying dynamic filters vs. fixed datasets,4,#730(OPEN); PR#895(MERGED); PR#636(MERGED); #716(CLOSED); #297(CLOSED); PR#375(MERGED); PR#300(MERGED); #451(OPEN); PR#1067(MERGED); PR#283(MERGED),partial,"6 merged PR(s): #895, #636, #375; 2 open: #730, #451; 2 closed: #716, #297",improvement,L,"376, 642, 790, 831"
+now-3mo,Data-Management,Data uploader (Technician),2,PR#379(MERGED); #687(OPEN); #879(OPEN); #878(OPEN); #562(OPEN); #640(CLOSED); PR#909(MERGED); #242(CLOSED); #455(OPEN); #477(OPEN),partial,"2 merged PR(s): #379, #909; 4 open: #687, #879, #878; 2 closed: #640, #242",feature,L,"150, 171"
+now-3mo,Data-Management,Collaborate on data uploader and image database,1,PR#379(MERGED); #687(OPEN); #879(OPEN); #878(OPEN); #640(CLOSED); #242(CLOSED); #928(OPEN); #776(CLOSED); #562(OPEN); #900(CLOSED),partial,"1 merged PR(s): #379; 5 open: #687, #879, #878; 4 closed: #640, #242",feature,L,20
+now-3mo,Data-Management,Manual image uploading from UI or background sync of large datasets,1,PR#584(MERGED); #242(CLOSED); #730(OPEN); #297(CLOSED); PR#300(MERGED); PR#1067(MERGED); PR#283(MERGED); PR#895(MERGED); #640(CLOSED); #614(CLOSED),partial,"5 merged PR(s): #584, #300, #1067; 1 open: #730; 4 closed: #242, #297",feature,L,88
+now-3mo,Data-Management,Desktop data uploading tool,1,PR#379(MERGED); #687(OPEN); #879(OPEN); #878(OPEN); #242(CLOSED); #562(OPEN); #640(CLOSED); PR#909(MERGED); #455(OPEN); #789(CLOSED),partial,"2 merged PR(s): #379, #909; 4 open: #687, #879, #878; 2 closed: #242, #640",feature,L,163
+now-3mo,Data-Management,Need a way to upload a bunch of images without full config,1,PR#909(MERGED); #878(OPEN); #640(CLOSED); PR#379(MERGED); #879(OPEN); #687(OPEN); #562(OPEN); #242(CLOSED); #314(CLOSED); PR#281(MERGED),partial,"2 merged PR(s): #909, #379; 4 open: #878, #879, #687; 2 closed: #640, #242",feature,M,166
+now-3mo,Data-Management,Antenna Go - offline mobile companion app,1,#457(OPEN); #878(OPEN); #757(OPEN); #259(CLOSED); PR#76(MERGED); PR#79(MERGED); #808(CLOSED); #485(CLOSED); PR#201(MERGED); PR#983(MERGED),tracked,"3 open: #457, #878, #757",feature,XL,168
+now-3mo,Data-Management,Easy desktop application for uploading data from machines to Antenna,1,#878(OPEN); #757(OPEN); PR#379(MERGED); #687(OPEN); #879(OPEN); #242(CLOSED); #562(OPEN); #640(CLOSED); #1078(CLOSED); PR#983(MERGED),tracked,"2 open: #878, #757",feature,L,172
+now-3mo,Data-Management,Fix issues with timestamps not being recognized in the current format,1,PR#781(MERGED); #273(OPEN); PR#778(MERGED); #1107(OPEN); #398(OPEN); #233(CLOSED); #723(CLOSED); PR#644(MERGED); #462(CLOSED); PR#1105(MERGED),partial,"4 merged PR(s): #781, #778, #644; 3 open: #273, #1107, #398; 3 closed: #233, #723",bug,M,544
+now-3mo,Data-Management,Sample captures only valid when image file name is in YYYYMMDDHHMMSS format,1,PR#326(MERGED); PR#187(MERGED); #1037(OPEN); #229(OPEN); PR#1036(MERGED); #585(CLOSED); PR#162(MERGED); PR#947(MERGED); PR#287(MERGED); #890(OPEN),partial,"6 merged PR(s): #326, #187, #1036; 3 open: #1037, #229, #890; 1 closed: #585",bug,S,753
+now-3mo,Data-Management,Data Integrity Issues (sessions not auto-created/null in data sync view),1,#549(CLOSED); #793(OPEN); #872(CLOSED); PR#282(MERGED); PR#584(MERGED); PR#689(MERGED); PR#898(MERGED); PR#189(MERGED); #879(OPEN); PR#379(MERGED),partial,"3 merged PR(s): #282, #584, #689; 1 open: #793; 2 closed: #549, #872",bug,M,815
+now-3mo,DevEx,Better db snapshots for automated and manual testing,2,#749(CLOSED); #514(OPEN); #533(CLOSED); #411(CLOSED); #253(OPEN); #708(OPEN); #414(CLOSED); PR#980(MERGED); PR#835(MERGED); #900(CLOSED),tracked,"1 open: #514; 2 closed: #749, #533",improvement,M,"359, 756"
+now-3mo,DevEx,Michael onboarded Tessa to the data companion code and she has committed several enhancements,1,#834(OPEN); #317(OPEN); #1106(OPEN); PR#929(MERGED); PR#448(MERGED); PR#74(MERGED); #254(CLOSED); #260(OPEN); #336(CLOSED),tracked,1 open: #834,documentation,XS,148
+now-3mo,Export/Interop,Data Exports (Yves needed for writing grant),1,,untracked,No matching GitHub items found,feature,M,147
+now-3mo,Export/Interop,Exports & Downloads (Self-service feature remaining),1,,untracked,No matching GitHub items found,feature,M,483
+now-3mo,Infrastructure,Processing stability/stabilization,3,#370(CLOSED); #1072(CLOSED); #782(CLOSED); PR#934(MERGED); #1117(OPEN); PR#1060(MERGED); PR#1046(MERGED); PR#554(MERGED); #633(CLOSED); #1025(OPEN),partial,"4 merged PR(s): #934, #1060, #1046; 2 open: #1117, #1025; 4 closed: #370, #1072",improvement,L,"641, 794, 836"
+now-3mo,Infrastructure,Implement more algorithms and a better worker system,1,#515(OPEN); #910(OPEN); #802(CLOSED); PR#987(MERGED); #912(OPEN); #695(CLOSED); #259(CLOSED); #1011(OPEN); PR#1109(MERGED); PR#949(MERGED),tracked,1 open: #515,feature,XL,14
+now-3mo,Infrastructure,Online/Offline functionality,1,#676(CLOSED); #538(OPEN); #766(OPEN),tracked,1 open: #538; 1 closed: #676,feature,XL,119
+now-3mo,Infrastructure,"Run a ML job (Unstable, jobs stop, status not reflected correctly, crops not saved, not all captures processed)",1,#404(CLOSED); PR#286(MERGED); #1059(OPEN); PR#1046(MERGED); PR#1060(MERGED); #370(CLOSED); PR#937(MERGED); #1025(OPEN); PR#919(MERGED); #922(OPEN),partial,"2 merged PR(s): #286, #1046; 1 open: #1059; 1 closed: #404",bug,L,297
+now-3mo,Infrastructure,Fix critical issues with processing service API (milestone #27),1,,untracked,No matching GitHub issues or PRs found,bug,L,309
+now-3mo,Infrastructure,Processing stability / Processing v2,1,#1112(OPEN); PR#1125(MERGED); PR#1113(MERGED); #1123(OPEN); #1111(OPEN); #1085(OPEN); #1084(CLOSED); #370(CLOSED); PR#987(MERGED); #910(OPEN),partial,"2 merged PR(s): #1125, #1113; 4 open: #1112, #1123, #1111; 1 closed: #1084",improvement,XL,330
+now-3mo,Infrastructure,Resizing images for the app (use prisma urls in API response),1,#419(OPEN); #729(OPEN); PR#231(MERGED); PR#76(MERGED); #593(OPEN); PR#79(MERGED); PR#146(MERGED); PR#201(MERGED); PR#688(MERGED); PR#348(MERGED),tracked,1 open: #419,feature,M,419
+now-3mo,Infrastructure,Bug: Sessions not automatically created after sync,1,#904(OPEN); #872(CLOSED); PR#898(MERGED); PR#1073(MERGED); PR#1051(MERGED); PR#803(MERGED); #640(CLOSED); #387(CLOSED); PR#194(MERGED); #455(OPEN),tracked,1 open: #904; 1 closed: #872,bug,M,428
+now-3mo,Infrastructure,Antenna Lite - mobile app for moth traps that automatically registers an annoynmous station,1,#439(OPEN); #418(CLOSED); #419(OPEN); PR#227(MERGED); #304(OPEN); PR#231(MERGED); #958(OPEN); PR#76(MERGED); PR#79(MERGED); PR#1002(MERGED),tracked,"2 open: #439, #419; 1 closed: #418",feature,XL,468
+now-3mo,Infrastructure,Processing and job failing,1,#370(CLOSED); PR#303(MERGED); #404(CLOSED); PR#1060(MERGED); PR#268(MERGED); PR#919(MERGED); #1072(CLOSED); #922(OPEN); #782(CLOSED); PR#368(MERGED),partial,"5 merged PR(s): #303, #1060, #268; 1 open: #922; 4 closed: #370, #404",bug,L,503
+now-3mo,Infrastructure,Taxa page speed (fix in progress) and Species views (too slow),1,PR#249(MERGED); PR#777(MERGED); #927(CLOSED); #825(CLOSED); PR#828(MERGED); PR#853(MERGED); #831(CLOSED); #264(CLOSED); #1045(OPEN); PR#856(MERGED),partial,"5 merged PR(s): #249, #777, #828; 1 open: #1045; 4 closed: #927, #825",bug,M,504
+now-3mo,Infrastructure,Enhance user experience for large image uploads through integration with cloud services,1,#910(OPEN); #1089(OPEN); PR#202(MERGED); #226(CLOSED); #640(CLOSED); #259(CLOSED); PR#112(MERGED); PR#111(MERGED); PR#921(MERGED); PR#835(MERGED),tracked,1 open: #910,feature,L,601
+now-3mo,Infrastructure,Processing Bugs (processing jobs stalling/status updates incorrect),1,#721(OPEN); PR#1062(MERGED); PR#934(MERGED); #773(CLOSED); #1072(CLOSED); PR#554(MERGED); PR#946(MERGED); #1107(OPEN); PR#178(MERGED); PR#1051(MERGED),partial,"6 merged PR(s): #1062, #934, #554; 2 open: #721, #1107; 2 closed: #773, #1072",bug,M,814
+now-3mo,ML/AI,Restrict to species list (Class masking),4,#915(OPEN); PR#999(OPEN); PR#573(MERGED); PR#984(CLOSED); PR#845(OPEN),tracked,In progress: PR/issue #915,feature,M,"301, 386, 662, 678"
+now-3mo,ML/AI,Order-level classifier (refinement & calibration) and size estimation,3,PR#837(MERGED); PR#814(MERGED); PR#613(MERGED); PR#845(OPEN); #774(CLOSED); PR#607(CLOSED); PR#573(MERGED); #952(OPEN); PR#840(MERGED); PR#821(MERGED),partial,Supporting infrastructure in place (11 related PRs merged),feature,L,"334, 625, 736"
+now-3mo,ML/AI,"Post processing functions (small, blurry, tracking sequential detections) / Reducing noise",2,PR#837(MERGED); PR#542(MERGED); PR#484(OPEN); #457(OPEN); #1121(OPEN); #1097(OPEN); #1093(OPEN); PR#1045(OPEN); #992(OPEN); PR#1091(MERGED),partial,Supporting infrastructure in place (32 related PRs merged),feature,L,"332, 741"
+now-3mo,ML/AI,"Size estimation (exposing in UI, centimeter calibration, incorporating into models)",2,PR#1029(MERGED); PR#944(MERGED); PR#840(MERGED); PR#837(MERGED); PR#814(MERGED); PR#620(MERGED); PR#613(MERGED); PR#603(MERGED); PR#602(MERGED); PR#389(MERGED),partial,Supporting infrastructure in place (10 related PRs merged),feature,L,"335, 737"
+now-3mo,ML/AI,Automated Quality Filters (to auto-remove blurry/dark/tiny images),2,PR#999(OPEN); PR#954(MERGED); PR#849(MERGED); PR#890(OPEN); PR#957(CLOSED),partial,Supporting infrastructure in place (2 related PRs merged),feature,M,"338, 742"
+now-3mo,ML/AI,Better Detector/Segmenter (segmentation detector/handling overlapping moths),2,#1093(OPEN); PR#1045(OPEN); #992(OPEN); PR#1091(MERGED); PR#1046(MERGED); PR#815(MERGED); PR#859(MERGED); PR#837(MERGED); PR#818(MERGED); PR#814(MERGED),partial,Supporting infrastructure in place (30 related PRs merged),feature,XL,"384, 802"
+now-3mo,ML/AI,Tracking,2,#1121(OPEN); #457(OPEN); #1097(OPEN); #863(OPEN); PR#837(MERGED); PR#542(MERGED); PR#707(OPEN); PR#484(OPEN); #264(CLOSED),tracked,In progress: PR/issue #1121,feature,L,"385, 677"
+now-3mo,ML/AI,Post processing functions – special sauce (small/blurry/tracking),2,#1121(OPEN); #1097(OPEN); PR#999(OPEN); #863(OPEN); PR#954(MERGED); PR#849(MERGED); PR#837(MERGED); PR#542(MERGED); PR#890(OPEN); PR#707(OPEN),partial,Supporting infrastructure in place (5 related PRs merged),feature,L,"644, 840"
+now-3mo,ML/AI,Experiment with multiple models (order-level classifier object detection/clustering),1,PR#818(MERGED); #774(CLOSED); PR#815(MERGED); PR#859(MERGED); PR#837(MERGED); PR#814(MERGED); PR#798(MERGED); PR#374(MERGED); PR#845(OPEN); #412(OPEN),partial,Supporting infrastructure in place (16 related PRs merged),research,L,68
+now-3mo,ML/AI,Class masking of one of the existing models,1,PR#999(OPEN); #915(OPEN); PR#573(MERGED); PR#984(CLOSED); PR#719(MERGED); #517(CLOSED),tracked,In progress: PR/issue #999,feature,M,128
+now-3mo,ML/AI,Calibration (What species can we be confident about),1,PR#788(OPEN); PR#1029(MERGED); PR#944(MERGED); PR#840(MERGED); PR#837(MERGED); PR#814(MERGED); PR#620(MERGED); PR#613(MERGED); PR#603(MERGED); PR#602(MERGED),tracked,In progress: PR/issue #788,research,M,178
+now-3mo,ML/AI,Training new regional models for improving results for regional species,1,PR#962(MERGED); #469(OPEN); #517(CLOSED); #490(OPEN); PR#327(MERGED),partial,Supporting infrastructure in place (2 related PRs merged),feature,L,242
+now-3mo,ML/AI,Class masking to regional species checklists,1,PR#999(OPEN); #915(OPEN); PR#962(MERGED); PR#573(MERGED); #469(OPEN); PR#984(CLOSED); #517(CLOSED),partial,Supporting infrastructure in place (2 related PRs merged),feature,M,277
+now-3mo,ML/AI,"Improve presented prediction results (Filtering, good defaults, post-processing)",1,PR#999(OPEN); PR#954(MERGED); PR#888(MERGED); PR#849(MERGED); PR#842(MERGED); PR#840(MERGED); PR#814(MERGED); PR#890(OPEN); PR#845(OPEN); PR#984(CLOSED),partial,Supporting infrastructure in place (6 related PRs merged),improvement,L,311
+now-3mo,ML/AI,Integrate Tracking and Feature Vectors to improve prediction results,1,PR#707(OPEN); #1121(OPEN); #1097(OPEN); PR#1050(OPEN); #863(OPEN); PR#837(MERGED); PR#821(MERGED); PR#818(MERGED); PR#807(MERGED); PR#670(MERGED),partial,Supporting infrastructure in place (6 related PRs merged),feature,XL,315
+now-3mo,ML/AI,Integrate an Order-Level Classifier with the option to replace the current binary classifier,1,#952(OPEN); #857(OPEN); PR#815(MERGED); PR#837(MERGED); PR#821(MERGED); PR#818(MERGED); PR#814(MERGED); PR#807(MERGED); PR#798(MERGED); PR#762(MERGED),partial,Supporting infrastructure in place (16 related PRs merged),feature,L,318
+now-3mo,ML/AI,Tracking for counting (biomass estimation),1,#1121(OPEN); #1097(OPEN); #863(OPEN); PR#837(MERGED); PR#542(MERGED); PR#707(OPEN); PR#484(OPEN); #457(OPEN); #264(CLOSED); PR#818(MERGED),partial,Supporting infrastructure in place (4 related PRs merged),feature,L,336
+now-3mo,ML/AI,Confidence at higher ranks (Single determination approach & New column to show predictions),1,PR#1029(MERGED); PR#944(MERGED); PR#840(MERGED); PR#837(MERGED); PR#814(MERGED); PR#712(MERGED); PR#620(MERGED); PR#613(MERGED); PR#603(MERGED); PR#602(MERGED),partial,Supporting infrastructure in place (11 related PRs merged),feature,M,423
+now-3mo,ML/AI,"How to roll up to genus, higher taxon levels",1,,untracked,,research,M,470
+now-3mo,ML/AI,"Roll up taxon ranks, Adapters, Temperature calibration",1,PR#1029(MERGED); PR#944(MERGED); PR#840(MERGED); PR#837(MERGED); PR#814(MERGED); PR#620(MERGED); PR#613(MERGED); PR#603(MERGED); PR#602(MERGED); PR#389(MERGED),partial,Supporting infrastructure in place (10 related PRs merged),feature,M,490
+now-3mo,ML/AI,Questions threshold logic for family-level identifications,1,PR#417(MERGED); PR#241(MERGED),partial,Supporting infrastructure in place (2 related PRs merged),research,S,589
+now-3mo,ML/AI,Beyond Species ID: biomass estimation/pixel-to-size calibration/tracking,1,PR#837(MERGED); #1121(OPEN); #1097(OPEN); PR#1029(MERGED); PR#944(MERGED); PR#814(MERGED); PR#620(MERGED); PR#613(MERGED); PR#603(MERGED); PR#602(MERGED),partial,Supporting infrastructure in place (11 related PRs merged),feature,XL,743
+now-3mo,ML/AI,Post-Processing Functions (Class Masking/small/blurry/darkness filter),1,PR#999(OPEN); #915(OPEN); PR#954(MERGED); PR#849(MERGED); PR#573(MERGED); PR#890(OPEN); PR#984(CLOSED); PR#957(CLOSED); PR#815(MERGED); PR#706(CLOSED),partial,Supporting infrastructure in place (4 related PRs merged),feature,M,805
+now-3mo,Onboarding,Ready for seamless live demonstrations,1,,untracked,No matching GitHub issues or PRs found,improvement,M,164
+now-3mo,Onboarding,Implement Project Quick Start feature (MVP for auto-creating draft projects and processing data),1,,untracked,No matching GitHub issues or PRs found,feature,L,310
+now-3mo,Onboarding,Quickstart designs/project (Create a quick start project),1,,untracked,No matching GitHub issues or PRs found,feature,M,488
+now-3mo,Onboarding,Quick start project / demo,1,,untracked,No matching GitHub issues or PRs found,feature,M,686
+now-3mo,Permissions/Auth,Reset password when not logged in (Backend configuration is incomplete maybe disable),5,#671(OPEN); PR#526(MERGED),partial,"Partially implemented in PR #526, additional work tracked in #671",bug,S,"287, 345, 501, 714, 784"
+now-3mo,Permissions/Auth,Role Management UI (for Project Managers to invite members and assign roles),2,PR#727(CLOSED); PR#1078(CLOSED); PR#1030(OPEN),tracked,Tracked in #1030,feature,L,"346, 725"
+now-3mo,Permissions/Auth,Bug: Sign up as new user requires admin support (currently disabled),2,,untracked,No matching GitHub items found,bug,M,"670, 728"
+now-3mo,Permissions/Auth,Add Taxa model permissions to Identifier role,1,PR#851(MERGED); PR#1035(OPEN); PR#856(MERGED),partial,"Partially implemented in PR #851, additional work tracked in #1035",feature,XS,193
+now-3mo,Permissions/Auth,Configure members for a project (Anna and Mohamed is currently working on this),1,,untracked,No matching GitHub items found,feature,M,289
+now-3mo,Permissions/Auth,Create user interface for project managers to add new users and assign roles,1,PR#1006(OPEN); PR#727(CLOSED); PR#402(CLOSED); PR#1030(OPEN); PR#233(CLOSED),partial,"Partially implemented in PR #449, additional work tracked in #1006",feature,M,314
+now-3mo,Permissions/Auth,Bug: Reset password when not logged in is unstable,1,#671(OPEN); PR#526(MERGED); PR#525(MERGED),partial,"Partially implemented in PR #526, additional work tracked in #671",bug,S,671
+now-3mo,Permissions/Auth,Issue of shared credentials,1,,untracked,No matching GitHub items found,bug,M,712
+now-3mo,Permissions/Auth,Sign up as new user on the platform,1,,untracked,No matching GitHub items found,bug,M,715
+now-3mo,Permissions/Auth,User Account Management (re-enabling self-service sign-up),1,,untracked,No matching GitHub items found,feature,M,796
+now-3mo,Permissions/Auth,Role management (what about adding new users?),1,,untracked,No matching GitHub items found,feature,M,830
+now-3mo,Research,"Trait analysis, temporal patterns, biomass, higher rank information, etc",1,PR#712(MERGED); #412(OPEN),partial,Supporting infrastructure in place (1 related PRs merged),research,L,463
+now-3mo,Taxonomy,Implement Global lists vs. Project lists for species,1,PR#580(MERGED); #746(OPEN); #871(OPEN),partial,"Partially implemented in PR #580, additional work tracked in #746",feature,L,10
+now-3mo,Taxonomy,Mapping species from classifier output to custom lists,1,,untracked,No matching GitHub items found,feature,M,11
+now-3mo,Taxonomy,Taxa list of support (makes it possible to filter on species of concern),1,PR#797(OPEN); PR#356(MERGED); #796(CLOSED); #622(CLOSED); #933(OPEN),partial,"Partially implemented in PR #356, additional work tracked in #797",feature,M,121
+now-3mo,Taxonomy,Import the full list of species of concern,1,#933(OPEN); #796(CLOSED); PR#984(CLOSED); #545(OPEN); #622(CLOSED),tracked,"Tracked in multiple items: #933, #545",feature,M,122
+now-3mo,Taxonomy,Corrected species list for Panama (mainly for identification of processed data),1,#933(OPEN); PR#984(CLOSED); PR#757(OPEN),tracked,"Tracked in multiple items: #933, #757",feature,S,125
+now-3mo,Taxonomy,Extend the list of species if needed for labellers?,1,#933(OPEN); #545(OPEN); PR#850(MERGED),partial,"Partially implemented in PR #850, additional work tracked in #933",feature,S,133
+now-3mo,Taxonomy,Missing Not Identifiable class in OOD environment,1,,untracked,No matching GitHub items found,bug,S,215
+now-3mo,Taxonomy,Features for 'Species watch list' / 'species of concern' (economic concern),1,#796(CLOSED); #933(OPEN); #545(OPEN),tracked,"Tracked in multiple items: #933, #545",feature,M,246
+now-3mo,Taxonomy,Ability to configure a species list,1,#933(OPEN); #545(OPEN),tracked,"Tracked in multiple items: #933, #545",feature,M,252
+now-3mo,Taxonomy,Extend the list of taxa when needed (Users have to reach out when taxa are missing),1,PR#356(MERGED); #1020(OPEN); #1081(OPEN),partial,"Partially implemented in PR #356, additional work tracked in #1020",improvement,L,304
+now-3mo,Taxonomy,"Bug: Can't update name, parents or tags",1,,untracked,No matching GitHub items found,bug,M,431
+now-3mo,Taxonomy,Project ID required when changing name/tags of cluster,1,,untracked,No matching GitHub items found,bug,S,447
+now-3mo,Taxonomy,Import new species & species images,1,#490(OPEN); #933(OPEN); #871(OPEN); PR#940(MERGED); PR#850(MERGED),partial,"Partially implemented in PR #940, additional work tracked in #490",feature,M,688
+now-3mo,Taxonomy,Taxonomy Features (adding new species/project-based taxonomy),1,PR#580(MERGED); #622(CLOSED); #490(OPEN); #746(OPEN),partial,"Partially implemented in PR #580, additional work tracked in #490",feature,L,807
+now-3mo,Taxonomy,Taxonomy - Mapping to algorithms (most important UI feature),1,,untracked,No matching GitHub items found,feature,M,846
+now-3mo,UI/UX,Consistent saving behavior,3,,untracked,No matching GitHub issues or PRs found,bug,M,"350, 773, 857"
+now-3mo,UI/UX,The modal window for taxon should keep on the occurrences / other context instead of sending back to taxa list,2,PR#429(MERGED); #560(OPEN),tracked,"Tracked in #560: Add tooltips for ""score""",bug,S,"224, 451"
+now-3mo,UI/UX,Tracking Progress: Knowing what's been processed/verified,2,,untracked,No matching GitHub issues or PRs found,feature,M,"355, 646"
+now-3mo,UI/UX,Filtering by what has been vetted,1,#1032(OPEN); PR#841(MERGED); #615(CLOSED),tracked,Tracked in #1032: Better display backend filter errors,feature,S,4
+now-3mo,UI/UX,Display Top 3 labels with confidence score/uncertainty measures,1,,untracked,No matching GitHub issues or PRs found,feature,S,63
+now-3mo,UI/UX,Display top N predictions,1,,untracked,No matching GitHub issues or PRs found,feature,S,95
+now-3mo,UI/UX,Good defaults & presets - hiding noise lower quality results,1,,untracked,No matching GitHub issues or PRs found,improvement,M,158
+now-3mo,UI/UX,Hide occurrences if missing detections,1,PR#214(MERGED); PR#126(MERGED); PR#1058(MERGED); #1093(OPEN),tracked,Tracked in #1093: Add null detections test; update save_results,bug,S,214
+now-3mo,UI/UX,Make detection box directly clickable,1,PR#214(MERGED); PR#126(MERGED); #1093(OPEN),tracked,Tracked in #1093: Add null detections test; update save_results,feature,S,571
+now-3mo,UI/UX,Make all detections visible,1,PR#214(MERGED); PR#126(MERGED); #1093(OPEN),tracked,Tracked in #1093: Add null detections test; update save_results,feature,S,572
+next-6mo,Analytics/Viz,"How can we highlight anomalies in the capture images (out of schedule, short schedule, strange dates, mixed resolution images)",2,,untracked,No matching GitHub issues or PRs found,feature,M,"221, 448"
+next-6mo,Analytics/Viz,Showing some evaluation & statistics within the UI,2,,untracked,No matching GitHub issues or PRs found,feature,M,"645, 841"
+next-6mo,Analytics/Viz,Stats metrics & charts for validation quality control and improving models,1,,untracked,No matching GitHub issues or PRs found,feature,L,111
+next-6mo,Analytics/Viz,Currently 'Captures per hour' is total cumulative captures from all nights on a given night,1,,untracked,No matching GitHub issues or PRs found,documentation,XS,234
+next-6mo,Analytics/Viz,Filter charts by a given year - to view whole season (Seasonal flight over the year),1,,untracked,No matching GitHub issues or PRs found,feature,S,239
+next-6mo,Analytics/Viz,X-axis for Seasonal flight charts should use dates,1,,untracked,No matching GitHub issues or PRs found,improvement,S,240
+next-6mo,Analytics/Viz,Address caveat: dynamic charts only show what is processed (but make it look like everything is processed),1,,untracked,No matching GitHub issues or PRs found,bug,M,241
+next-6mo,Analytics/Viz,Default charts feature,1,,untracked,No matching GitHub issues or PRs found,feature,M,255
+next-6mo,Analytics/Viz,Some basic analysis built in to compare these species of interest,1,,untracked,No matching GitHub issues or PRs found,feature,M,256
+next-6mo,Analytics/Viz,Michael to assist with analysis and charts for new paper,1,,untracked,No matching GitHub issues or PRs found,improvement,M,263
+next-6mo,Analytics/Viz,Show evalutation stats while validating,1,,untracked,No matching GitHub issues or PRs found,feature,M,305
+next-6mo,Analytics/Viz,Configure overview stats for a project (Needs more information and user discussions),1,,untracked,No matching GitHub issues or PRs found,feature,L,306
+next-6mo,Analytics/Viz,See charts for troubleshooting (not analysis) (Needs more information and user discussions),1,,untracked,No matching GitHub issues or PRs found,feature,M,307
+next-6mo,Analytics/Viz,Showing some evaluation & statistics within the UI / Summary metrics as you go,1,,untracked,No matching GitHub issues or PRs found,feature,M,353
+next-6mo,Analytics/Viz,Default to order level & wider metrics,1,,untracked,No matching GitHub issues or PRs found,improvement,S,354
+next-6mo,Analytics/Viz,Visualizations / aggregation (flight charts) BUT need to only show results we are confident for,1,,untracked,No matching GitHub issues or PRs found,feature,M,393
+next-6mo,Analytics/Viz,Continue to maintain and enhance automatic visualizations and data organization features,1,,untracked,No matching GitHub issues or PRs found,improvement,L,556
+next-6mo,Analytics/Viz,Features for data analysis: Flight charts and maps with data,1,,untracked,No matching GitHub issues or PRs found,feature,L,633
+next-6mo,Analytics/Viz,The ability to see where the problems are happening,1,,untracked,No matching GitHub issues or PRs found,feature,M,689
+next-6mo,Analytics/Viz,Summary metrics as you go (for troubleshooting/improving results),1,,untracked,No matching GitHub issues or PRs found,feature,M,738
+next-6mo,Analytics/Viz,Time series images (specific automated captured),1,,untracked,No matching GitHub issues or PRs found,feature,M,866
+next-6mo,Data-Management,Importing - Captures (import a list of public HTTP urls),2,PR#203(MERGED); PR#292(MERGED); #622(CLOSED); PR#838(MERGED); #796(CLOSED); #393(CLOSED); #998(CLOSED); PR#247(MERGED); #984(CLOSED); #1037(OPEN),partial,"4 merged PR(s): #203, #292, #838; 1 open: #1037; 5 closed: #622, #796",feature,M,"749, 855"
+next-6mo,Data-Management,Develop a Data connector app (MVP feature),1,PR#79(MERGED); PR#983(MERGED); PR#76(MERGED); #485(CLOSED); PR#201(MERGED); #1078(CLOSED); PR#944(MERGED); PR#918(MERGED); PR#688(MERGED); #1106(OPEN),partial,"7 merged PR(s): #79, #983, #76; 1 open: #1106; 2 closed: #485, #1078",feature,L,19
+next-6mo,Data-Management,Define if collections are reusable (design question),1,PR#636(MERGED); #730(OPEN); #716(CLOSED); #297(CLOSED); PR#375(MERGED); PR#300(MERGED); #451(OPEN); PR#1067(MERGED); PR#283(MERGED); PR#800(MERGED),partial,"6 merged PR(s): #636, #375, #300; 2 open: #730, #451; 2 closed: #716, #297",design,S,25
+next-6mo,Data-Management,Implement default or automatic collections,1,PR#300(MERGED); PR#636(MERGED); #730(OPEN); #716(CLOSED); #297(CLOSED); PR#375(MERGED); #451(OPEN); PR#1067(MERGED); PR#283(MERGED); PR#800(MERGED),partial,"6 merged PR(s): #300, #636, #375; 2 open: #730, #451; 2 closed: #716, #297",feature,S,45
+next-6mo,Data-Management,Clarify the term Collections with alternatives like Sample set Lists Datasets,1,#730(OPEN); PR#636(MERGED); #716(CLOSED); #297(CLOSED); PR#283(MERGED); PR#375(MERGED); PR#300(MERGED); #639(OPEN); #451(OPEN); PR#1067(MERGED),partial,"5 merged PR(s): #636, #283, #375; 3 open: #730, #639, #451; 2 closed: #716, #297",design,XS,70
+next-6mo,Data-Management,Registration & map of camera deployments (metadata),1,#413(OPEN); PR#492(MERGED); PR#152(MERGED); #446(OPEN); #400(CLOSED); PR#690(MERGED); #343(CLOSED); #258(OPEN); PR#158(MERGED); #611(OPEN),partial,"4 merged PR(s): #492, #152, #690; 4 open: #413, #446, #258; 2 closed: #400, #343",feature,M,84
+next-6mo,Data-Management,Occurrence tracking,1,#457(OPEN); PR#1058(MERGED); PR#665(MERGED); PR#488(MERGED); PR#126(MERGED); PR#659(MERGED); PR#214(MERGED); PR#429(MERGED); #832(OPEN); #833(CLOSED),partial,"7 merged PR(s): #1058, #665, #488; 2 open: #457, #832; 1 closed: #833",feature,M,101
+next-6mo,Data-Management,Help renaming files from new camera,1,PR#230(MERGED); PR#325(MERGED); PR#366(MERGED); #258(OPEN); PR#158(MERGED); PR#1068(MERGED); PR#1065(MERGED); PR#1002(MERGED); PR#690(MERGED); PR#492(MERGED),partial,"9 merged PR(s): #230, #325, #366; 1 open: #258",improvement,XS,149
+next-6mo,Data-Management,Label each SD card with tape them and label them,1,#562(OPEN); PR#909(MERGED); PR#379(MERGED); #879(OPEN); #878(OPEN); #687(OPEN); #640(CLOSED); #242(CLOSED); PR#1114(MERGED); PR#961(MERGED),partial,"2 merged PR(s): #909, #379; 4 open: #562, #879, #878; 2 closed: #640, #242",documentation,XS,197
+next-6mo,Data-Management,Make sure the SD card is identify to see from which camera it came from,1,#242(CLOSED); #477(OPEN); #314(CLOSED); #455(OPEN); #931(CLOSED); PR#932(MERGED); PR#281(MERGED); #407(CLOSED); PR#689(MERGED); #977(OPEN),partial,"2 merged PR(s): #932, #281; 2 open: #477, #455; 4 closed: #242, #314",documentation,XS,200
+next-6mo,Data-Management,Sync the SD cards every day to hardware 1 & 2,1,PR#909(MERGED); PR#379(MERGED); #879(OPEN); #878(OPEN); #687(OPEN); #562(OPEN); #640(CLOSED); #242(CLOSED); #455(OPEN); #477(OPEN),partial,"2 merged PR(s): #909, #379; 4 open: #879, #878, #687; 2 closed: #640, #242",documentation,XS,201
+next-6mo,Data-Management,Sync to the cloud (Anna),1,PR#909(MERGED); PR#379(MERGED); #879(OPEN); #878(OPEN); #687(OPEN); #562(OPEN); #640(CLOSED); #242(CLOSED); #455(OPEN); #477(OPEN),partial,"2 merged PR(s): #909, #379; 4 open: #879, #878, #687; 2 closed: #640, #242",documentation,XS,207
+next-6mo,Data-Management,Fresh SD cards,1,PR#909(MERGED); PR#379(MERGED); #879(OPEN); #878(OPEN); #687(OPEN); #562(OPEN); #640(CLOSED); #242(CLOSED); PR#1114(MERGED); PR#961(MERGED),partial,"2 merged PR(s): #909, #379; 4 open: #879, #878, #687; 2 closed: #640, #242",documentation,XS,210
+next-6mo,Data-Management,Project ID required when changing name/tags of cluster,1,,untracked,No matching GitHub issues or PRs found,bug,S,219
+next-6mo,Data-Management,Hide occurrences if missing detections,1,PR#818(MERGED); PR#765(MERGED); PR#596(MERGED); PR#815(MERGED); #706(CLOSED); #618(CLOSED); #473(OPEN); PR#181(MERGED); #985(CLOSED); PR#1091(MERGED),partial,"6 merged PR(s): #818, #765, #596; 1 open: #473; 3 closed: #706, #618",improvement,S,442
+next-6mo,Data-Management,Non-timeseries data - Microscopy & field photos,1,#308(CLOSED); PR#186(MERGED); #625(OPEN); PR#781(MERGED); PR#1105(MERGED); PR#1055(MERGED); PR#1048(MERGED); PR#905(MERGED); PR#829(MERGED); PR#809(MERGED),partial,"8 merged PR(s): #186, #781, #1105; 1 open: #625; 1 closed: #308",feature,L,481
+next-6mo,Data-Management,Use Google spreadsheets for collaborative updates to species lists and training data,1,PR#717(MERGED); #601(OPEN); #770(CLOSED); #907(OPEN); PR#184(MERGED); PR#661(MERGED); #755(OPEN); #864(CLOSED); PR#626(MERGED); PR#1067(MERGED),partial,"4 merged PR(s): #717, #184, #661; 3 open: #601, #907, #755; 2 closed: #770, #864",feature,M,533
+next-6mo,Data-Management,Suggests classification of derived data: Detections -> Occurrences -> Species,1,PR#818(MERGED); PR#765(MERGED); PR#596(MERGED); PR#815(MERGED); #706(CLOSED); #618(CLOSED); #473(OPEN); PR#181(MERGED); #985(CLOSED); PR#1091(MERGED),partial,"6 merged PR(s): #818, #765, #596; 1 open: #473; 3 closed: #706, #618",improvement,M,540
+next-6mo,Data-Management,Provide a more dynamic way to handle sessions and timestamps,1,#224(CLOSED); #237(OPEN); #906(OPEN); PR#1073(MERGED); PR#908(MERGED); PR#568(MERGED); PR#362(MERGED); #206(CLOSED); #1063(OPEN); #791(CLOSED),partial,"4 merged PR(s): #1073, #908, #568; 3 open: #237, #906, #1063; 3 closed: #224, #206",feature,M,546
+next-6mo,Data-Management,Continue to maintain comprehensive capabilities for managing and analyzing large datasets,1,#730(OPEN); PR#1067(MERGED); PR#1043(MERGED); PR#895(MERGED); PR#897(MERGED); PR#896(MERGED); PR#800(MERGED); PR#636(MERGED); PR#598(MERGED); PR#375(MERGED),partial,"9 merged PR(s): #1067, #1043, #895; 1 open: #730",improvement,XL,547
+next-6mo,Data-Management,Implement method for bulk updating of incorrect timestamps,1,#273(OPEN); #625(OPEN); #1107(OPEN); PR#1105(MERGED); PR#1055(MERGED); PR#1048(MERGED); PR#905(MERGED); PR#829(MERGED); PR#809(MERGED); PR#781(MERGED),partial,"7 merged PR(s): #1105, #1055, #1048; 3 open: #273, #625, #1107",feature,M,548
+next-6mo,Data-Management,Develop dynamic session partitioning for better data visualization and analysis,1,PR#542(MERGED); #410(CLOSED); PR#401(MERGED); #273(OPEN); PR#189(MERGED); #399(CLOSED); PR#568(MERGED); PR#453(MERGED); PR#347(MERGED); PR#205(MERGED),partial,"3 merged PR(s): #542, #401, #189; 1 open: #273; 1 closed: #410",feature,L,555
+next-6mo,Data-Management,Add context pictures of devices in the field,1,PR#325(MERGED); PR#333(MERGED); PR#1065(MERGED); PR#152(MERGED); #958(OPEN); #304(OPEN); PR#1068(MERGED); PR#1002(MERGED); PR#690(MERGED); PR#492(MERGED),partial,"8 merged PR(s): #325, #333, #1065; 2 open: #958, #304",feature,M,563
+next-6mo,Data-Management,Possibility of shorter deployments,1,#413(OPEN); #446(OPEN); #400(CLOSED); PR#690(MERGED); PR#158(MERGED); #611(OPEN); #304(OPEN); #258(OPEN); PR#1068(MERGED); PR#1065(MERGED),partial,"4 merged PR(s): #690, #158, #1068; 5 open: #413, #446, #611; 1 closed: #400",improvement,S,564
+next-6mo,Data-Management,Continue to maintain the ability to add and edit information about devices and deployments,1,#413(OPEN); #446(OPEN); #400(CLOSED); #714(OPEN); PR#690(MERGED); PR#325(MERGED); PR#333(MERGED); #304(OPEN); PR#1065(MERGED); PR#152(MERGED),partial,"5 merged PR(s): #690, #325, #333; 4 open: #413, #446, #714; 1 closed: #400",improvement,M,567
+next-6mo,Data-Management,Continue to maintain filename format check for manual uploads,1,PR#909(MERGED); PR#379(MERGED); #879(OPEN); #878(OPEN); #687(OPEN); #562(OPEN); #640(CLOSED); #242(CLOSED); PR#1114(MERGED); PR#961(MERGED),partial,"2 merged PR(s): #909, #379; 4 open: #879, #878, #687; 2 closed: #640, #242",improvement,S,605
+next-6mo,Data-Management,Importing already-processed data into Antenna,1,PR#203(MERGED); #622(CLOSED); PR#838(MERGED); PR#292(MERGED); #998(CLOSED); #796(CLOSED); #393(CLOSED); #703(CLOSED); #984(CLOSED); #625(OPEN),partial,"3 merged PR(s): #203, #838, #292; 1 open: #625; 6 closed: #622, #998",feature,L,668
+next-6mo,Data-Management,Tags for occurrences,1,PR#608(MERGED); #682(CLOSED); PR#861(MERGED); #865(OPEN); #570(OPEN); #991(CLOSED); #541(CLOSED); PR#1038(MERGED); PR#359(MERGED); #298(OPEN),partial,"4 merged PR(s): #608, #861, #1038; 3 open: #865, #570, #298; 3 closed: #682, #991",feature,M,700
+next-6mo,Data-Management,Missing images,1,,untracked,No matching GitHub issues or PRs found,bug,S,709
+next-6mo,Data-Management,Data management issues (rotated images/missing metadata/bad data),1,,untracked,No matching GitHub issues or PRs found,bug,M,716
+next-6mo,Data-Management,Will we always require collections for processing?,1,#451(OPEN); PR#636(MERGED); #730(OPEN); #716(CLOSED); #297(CLOSED); PR#375(MERGED); PR#300(MERGED); PR#1067(MERGED); PR#283(MERGED); PR#800(MERGED),partial,"6 merged PR(s): #636, #375, #300; 2 open: #451, #730; 2 closed: #716, #297",research,S,832
+next-6mo,Data-Management,Occurrence collections,1,#763(OPEN); #509(OPEN); PR#184(MERGED); PR#598(MERGED); PR#818(MERGED); PR#604(MERGED); #745(CLOSED); PR#613(MERGED); #864(CLOSED); PR#1058(MERGED),partial,"4 merged PR(s): #184, #598, #818; 2 open: #763, #509; 1 closed: #745",feature,M,833
+next-6mo,Data-Management,Predefined collections / Dynamic presets,1,PR#636(MERGED); #730(OPEN); #716(CLOSED); #297(CLOSED); PR#375(MERGED); PR#300(MERGED); #451(OPEN); PR#1067(MERGED); PR#283(MERGED); PR#800(MERGED),partial,"6 merged PR(s): #636, #375, #300; 2 open: #730, #451; 2 closed: #716, #297",feature,M,834
+next-6mo,DevEx,Browser-based regression / integration tests (Cypress/Playwright),2,#852(OPEN); #708(OPEN); PR#586(MERGED); PR#675(MERGED); PR#835(MERGED); PR#647(MERGED); #749(CLOSED); #667(CLOSED); #377(OPEN); PR#980(MERGED),partial,"5 merged PR(s): #586, #675, #835; 3 open: #852, #708, #377; 2 closed: #749, #667",feature,L,"358, 769"
+next-6mo,DevEx,"New sprint schedule: 3 weeks development, 1 week for documentation and planning",1,,untracked,No matching GitHub issues or PRs found,improvement,XS,320
+next-6mo,DevEx,"More full stack dev, easier integration from ML experiments to platform",1,#504(OPEN); #816(OPEN); PR#835(MERGED); PR#647(MERGED); #749(CLOSED); #667(CLOSED); #377(OPEN); PR#980(MERGED); PR#675(MERGED); PR#666(MERGED),partial,"5 merged PR(s): #835, #647, #980; 3 open: #504, #816, #377; 2 closed: #749, #667",improvement,L,394
+next-6mo,DevEx,"Inference page for easily testing all models (without project setup, etc)",1,#533(CLOSED); #708(OPEN); PR#675(MERGED); PR#980(MERGED); #816(OPEN); PR#835(MERGED); PR#647(MERGED); #749(CLOSED); #667(CLOSED); #377(OPEN),partial,"4 merged PR(s): #675, #980, #835; 3 open: #708, #816, #377; 3 closed: #533, #749",feature,M,406
+next-6mo,DevEx,Dedicated interface for testing models (e.g. using Streamlit or Solara),1,#708(OPEN); #816(OPEN); PR#980(MERGED); PR#835(MERGED); PR#647(MERGED); #749(CLOSED); #667(CLOSED); #377(OPEN); PR#675(MERGED); PR#666(MERGED),partial,"5 merged PR(s): #980, #835, #647; 3 open: #708, #816, #377; 2 closed: #749, #667",feature,L,629
+next-6mo,DevEx,Streamline form handling across app,1,#254(CLOSED); PR#74(MERGED); #1106(OPEN); #317(OPEN); PR#929(MERGED); PR#448(MERGED); #336(CLOSED); #260(OPEN); #834(OPEN),partial,"3 merged PR(s): #74, #929, #448; 2 open: #1106, #317; 1 closed: #254",improvement,M,767
+next-6mo,Documentation,Configure pipelines for a project (Needs documentation),3,,untracked,No matching GitHub items found,documentation,M,"291, 292, 786"
+next-6mo,Documentation,Documentation of how to re-train a model with data from Antenna,3,,untracked,No matching GitHub items found,documentation,M,"364, 789, 852"
+next-6mo,Documentation,"Needs documentation for configuring processing services, pipelines, storage, and data source",3,,untracked,No matching GitHub items found,documentation,M,"365, 518, 674"
+next-6mo,Documentation,Research & document plan for easier data import from cameras/SD cards,3,,untracked,No matching GitHub items found,research,M,"649, 746, 851"
+next-6mo,Documentation,Documentation for reviewing,2,,untracked,No matching GitHub items found,documentation,L,"107, 418"
+next-6mo,Documentation,Link to documentation (and write documentation!) / Documentation Sprint,2,,untracked,No matching GitHub items found,documentation,L,"362, 783"
+next-6mo,Documentation,Use LLM to help with the table of contents for documentation,2,,untracked,No matching GitHub items found,improvement,S,"363, 782"
+next-6mo,Documentation,Documentation - for users (user guide) and developers,2,,untracked,No matching GitHub items found,documentation,L,"781, 811"
+next-6mo,Documentation,Configure processing services for a project (Needs documentation),2,,untracked,No matching GitHub items found,documentation,S,"785, 787"
+next-6mo,Documentation,Clarify/flesh out what processing means when a collection is launched,1,,untracked,No matching GitHub items found,documentation,S,23
+next-6mo,Documentation,Provide more guidance/documentation on collections (definition purpose how to use strategy),1,,untracked,No matching GitHub items found,documentation,S,44
+next-6mo,Documentation,Prioritize documentation for the verification process,1,,untracked,No matching GitHub items found,documentation,M,49
+next-6mo,Documentation,Create logic diagrams for new & existing features,1,,untracked,No matching GitHub items found,documentation,M,113
+next-6mo,Documentation,Add megadector-> butterflies example.,1,,untracked,No matching GitHub items found,documentation,S,117
+next-6mo,Documentation,Complete documentation & improving self-service,1,,untracked,No matching GitHub items found,documentation,L,143
+next-6mo,Documentation,Antenna workflow/requirements,1,,untracked,No matching GitHub items found,documentation,M,153
+next-6mo,Documentation,One good case study.,1,,untracked,No matching GitHub items found,documentation,M,165
+next-6mo,Documentation,Exporting data & updating the offline guide,1,,untracked,No matching GitHub items found,documentation,S,208
+next-6mo,Documentation,Configure a data source for a station,1,#1047(OPEN),tracked,Tracked in #1047,documentation,M,293
+next-6mo,Documentation,Setup a collection of captures,1,,untracked,No matching GitHub items found,documentation,S,296
+next-6mo,Documentation,Requirements doc - Mapping the pipeline - Documentation for internal use - Showing where the gaps are in the steps,1,,untracked,No matching GitHub items found,documentation,L,381
+next-6mo,Documentation,Documentation - first for internal then for public,1,,untracked,No matching GitHub items found,documentation,L,383
+next-6mo,Documentation,"Training support team documentation/videos (Public/Private Wiki, User Manual)",1,,untracked,No matching GitHub items found,documentation,L,517
+next-6mo,Documentation,Clarify that collections are fixed queries until recalculation,1,,untracked,No matching GitHub items found,documentation,XS,534
+next-6mo,Documentation,Clarify confirmation of moth presence over multiple days,1,,untracked,No matching GitHub items found,documentation,XS,539
+next-6mo,Documentation,Clarify confusion about data flow and image processing integration,1,,untracked,No matching GitHub items found,documentation,S,543
+next-6mo,Documentation,Emphasize importance of proving data origin,1,,untracked,No matching GitHub items found,documentation,XS,549
+next-6mo,Documentation,Assumption of manual entry for first & last date,1,,untracked,No matching GitHub items found,documentation,XS,560
+next-6mo,Documentation,Clarify device and deployment hierarchies with diagrams or text explanations,1,,untracked,No matching GitHub items found,documentation,S,573
+next-6mo,Documentation,Create Wiki manual with specific process notes,1,,untracked,No matching GitHub items found,documentation,L,575
+next-6mo,Documentation,Confusion about implications of renaming folders and files within the object store,1,,untracked,No matching GitHub items found,documentation,XS,577
+next-6mo,Documentation,Suggest avoiding spaces in folder names for better compatibility,1,,untracked,No matching GitHub items found,documentation579,XS,578
+next-6mo,Documentation,Provide instructions for uploading large batches of images using Cyberduck,1,,untracked,No matching GitHub items found,documentation,XS,602
+next-6mo,Documentation,Circle back to OpenAPI docs to allow researchers to query occurrences in R,1,,untracked,No matching GitHub items found,documentation,M,637
+next-6mo,Documentation,More inline help for users,1,,untracked,No matching GitHub items found,improvement,M,696
+next-6mo,Documentation,New home for Antenna docs!,1,,untracked,No matching GitHub items found,improvement,S,718
+next-6mo,Documentation,At least one documentation ticket,1,,untracked,No matching GitHub items found,documentation,XS,720
+next-6mo,Documentation,Configure processing services/pipelines,1,,untracked,No matching GitHub items found,documentation,S,721
+next-6mo,Documentation,Configure a storage/data source,1,,untracked,No matching GitHub items found,documentation,S,722
+next-6mo,Documentation,Demonstration for self-installation,1,,untracked,No matching GitHub items found,documentation,M,723
+next-6mo,Documentation,RUNNING ANTENNA LOCALLY,1,,untracked,No matching GitHub items found,documentation,S,724
+next-6mo,Documentation,Make an instructions file about the frontend overall,1,,untracked,No matching GitHub items found,documentation,S,763
+next-6mo,Documentation,Configure a data source for a station (Needs documentation),1,,untracked,No matching GitHub items found,documentation,S,788
+next-6mo,Documentation,Documentation & doc links within app,1,,untracked,No matching GitHub items found,improvement,M,829
+next-6mo,Export/Interop,Darwincore export and Export format for ML retraining,8,#298(OPEN),tracked,Tracked in #298,feature,L,"308, 342, 343, 648, 750, 751, 849, 850"
+next-6mo,Export/Interop,Exporting data (General Topic),1,,untracked,No matching GitHub items found,feature,L,75
+next-6mo,Export/Interop,API (General Topic),1,,untracked,No matching GitHub items found,improvement,L,78
+next-6mo,Export/Interop,Exports,1,,untracked,No matching GitHub items found,feature,L,94
+next-6mo,Export/Interop,Data access for fine-tuning - ML research,1,,untracked,No matching GitHub items found,feature,M,175
+next-6mo,Export/Interop,Data Exports: Darwin Core for biologists and bioinformatics people,1,,untracked,No matching GitHub items found,feature,M,182
+next-6mo,Export/Interop,Data Exports: COCO/YOLO formats for re-training purposes (ML researchers),1,,untracked,No matching GitHub items found,feature,M,183
+next-6mo,Export/Interop,Implement a Taxa List Filter and support Darwin Core Export Format,1,#298(OPEN); PR#951(MERGED); #720(CLOSED),partial,"Partially implemented in PR #951, additional work tracked in #298",feature,M,319
+next-6mo,Export/Interop,Implement export options,1,,untracked,No matching GitHub items found,feature,M,542
+next-6mo,Export/Interop,Replicate desktop/offline version export options,1,,untracked,No matching GitHub items found,feature,M,576
+next-6mo,Export/Interop,Provide easier method to export and organize cropped images hierarchically by taxonomy,1,,untracked,No matching GitHub items found,feature,M,592
+next-6mo,Export/Interop,Add missing fields related to images when exporting to CSV,1,,untracked,No matching GitHub items found,feature,S,660
+next-6mo,Export/Interop,Download X amount of photos for a species list with high confidence,1,#933(OPEN),tracked,Tracked in #933,feature,S,663
+next-6mo,Export/Interop,New export format geared toward ML with previous predictions/corrected IDs,1,,untracked,No matching GitHub items found,feature,M,667
+next-6mo,Export/Interop,Exports to DARWIN core,1,,untracked,No matching GitHub items found,feature,M,680
+next-6mo,Export/Interop,Export Formats (Darwin Core/COCO/YOLO formats),1,,untracked,No matching GitHub items found,feature,M,800
+next-6mo,Infrastructure,"Optimization features & ""hardening"" (including Image resizing)",3,#236(OPEN); PR#348(MERGED); #419(OPEN); #729(OPEN),partial,1 merged PR(s): #348; 1 open: #236,feature,L,"331, 516, 761"
+next-6mo,Infrastructure,Bug: Increase capacity of the database in the OOD environment,2,PR#506(MERGED); #900(CLOSED); PR#860(MERGED); #776(CLOSED); #411(CLOSED); #1097(OPEN); PR#380(MERGED); #239(CLOSED); #413(OPEN); #410(CLOSED),partial,"3 merged PR(s): #506, #860, #380; 1 open: #1097; 4 closed: #900, #776",improvement,M,"220, 430"
+next-6mo,Infrastructure,DB Table partitions (Partitioning/Database Scaling/Optimization),2,PR#506(MERGED); #776(CLOSED); #1097(OPEN); #900(CLOSED); PR#380(MERGED); PR#860(MERGED); #411(CLOSED); #239(CLOSED); #607(CLOSED); PR#429(MERGED),partial,"3 merged PR(s): #506, #380, #860; 1 open: #1097; 4 closed: #776, #900",improvement,XL,"329, 755"
+next-6mo,Infrastructure,Background job system logging per job,1,PR#303(MERGED); #404(CLOSED); PR#1060(MERGED); #370(CLOSED); PR#268(MERGED); PR#919(MERGED); #922(OPEN); PR#368(MERGED); #633(CLOSED); #1117(OPEN),partial,"5 merged PR(s): #303, #1060, #268; 2 open: #922, #1117; 3 closed: #404, #370",feature,M,91
+next-6mo,Infrastructure,Speed up deployments list?,1,#413(OPEN); #446(OPEN); #307(OPEN); PR#690(MERGED); PR#333(MERGED); #611(OPEN); #304(OPEN); #258(OPEN); PR#1065(MERGED); PR#1002(MERGED),partial,"4 merged PR(s): #690, #333, #1065; 6 open: #413, #446, #307",improvement,M,116
+next-6mo,Infrastructure,Upload data to the storage (desktop app) (Currently happens outside Antenna using tools like Cyberduck),1,PR#987(MERGED); #1123(OPEN); PR#201(MERGED); PR#231(MERGED); PR#76(MERGED); PR#79(MERGED); PR#146(MERGED); #640(CLOSED); #593(OPEN); #259(CLOSED),partial,1 merged PR(s): #987; 1 open: #1123,feature,XL,294
+next-6mo,Infrastructure,Run an XL ML job (VISS project),1,PR#1060(MERGED); #922(OPEN); PR#303(MERGED); #404(CLOSED); #370(CLOSED); PR#268(MERGED); PR#919(MERGED); PR#368(MERGED); #1117(OPEN); PR#1046(MERGED),partial,"6 merged PR(s): #1060, #303, #268; 2 open: #922, #1117; 2 closed: #404, #370",feature,XL,298
+next-6mo,Infrastructure,Time for refactoring (switching to Next.js),1,PR#179(MERGED); #1010(OPEN); #723(CLOSED); PR#1055(MERGED); PR#1048(MERGED); PR#778(MERGED); PR#704(MERGED); #1122(OPEN); #1107(OPEN); #398(OPEN),partial,1 merged PR(s): #179; 1 open: #1010,improvement,XL,321
+next-6mo,Infrastructure,Migrate to React 19,1,#1010(OPEN); #999(OPEN); PR#179(MERGED),partial,"1 merged PR(s): #179; 2 open: #1010, #999",improvement,M,325
+next-6mo,Infrastructure,Migrate to Next.js (to simplify routing and code splitting),1,#1010(OPEN); #999(OPEN); PR#179(MERGED),partial,"1 merged PR(s): #179; 2 open: #1010, #999",improvement,XL,326
+next-6mo,Infrastructure,"Multiple environments and auto deployment (Dev, Staging, Branch deploys, Demo, Production)",1,#648(OPEN); PR#492(MERGED); PR#422(MERGED); PR#152(MERGED); #344(CLOSED); PR#367(MERGED); PR#353(MERGED); PR#230(MERGED); #1088(OPEN); #714(OPEN),partial,"6 merged PR(s): #492, #422, #152; 3 open: #648, #1088, #714; 1 closed: #344",improvement,L,360
+next-6mo,Infrastructure,"Focus on portability, quick install, cloud & local",1,#1069(CLOSED); PR#1060(MERGED); PR#1046(MERGED); PR#554(MERGED); #1072(CLOSED); #782(CLOSED); #633(CLOSED); #370(CLOSED); #1117(OPEN); #1025(OPEN),partial,"3 merged PR(s): #1060, #1046, #554; 2 open: #1117, #1025; 5 closed: #1069, #1072",improvement,L,375
+next-6mo,Infrastructure,Improving image quality of cameras,1,#446(OPEN); PR#353(MERGED); #344(CLOSED); #207(CLOSED); PR#1065(MERGED); PR#1002(MERGED); PR#690(MERGED); PR#492(MERGED); PR#422(MERGED); PR#367(MERGED),partial,"7 merged PR(s): #353, #1065, #1002; 1 open: #446; 2 closed: #344, #207",improvement,M,389
+next-6mo,Infrastructure,Script to fix date offsets,1,PR#778(MERGED); PR#1055(MERGED); PR#1048(MERGED); PR#704(MERGED); #1122(OPEN); #1107(OPEN); #398(OPEN); #723(CLOSED); #1124(OPEN); PR#854(MERGED),partial,"5 merged PR(s): #778, #1055, #1048; 4 open: #1122, #1107, #398; 1 closed: #723",improvement,S,457
+next-6mo,Infrastructure,Registration of pipelines (Self-service feature remaining),1,#912(OPEN); #1011(OPEN); #695(CLOSED); #259(CLOSED); PR#949(MERGED); PR#784(MERGED); PR#738(MERGED); PR#722(MERGED); PR#576(MERGED); #539(OPEN),partial,"5 merged PR(s): #949, #784, #738; 3 open: #912, #1011, #539; 2 closed: #695, #259",feature,M,491
+next-6mo,Infrastructure,Model Registry & Available Pipelines (Registry for models & ML backends),1,#532(OPEN); #912(OPEN); #695(CLOSED); PR#738(MERGED); #259(CLOSED); #1011(OPEN); PR#949(MERGED); PR#784(MERGED); PR#722(MERGED); PR#576(MERGED),partial,"5 merged PR(s): #738, #949, #784; 3 open: #532, #912, #1011; 2 closed: #695, #259",feature,L,495
+next-6mo,Infrastructure,"Speed/Performance (Top priority, scaling up processing)",1,#411(CLOSED); #239(CLOSED); PR#380(MERGED); #900(CLOSED); #776(CLOSED); #1097(OPEN); PR#860(MERGED); PR#506(MERGED); #410(CLOSED); #749(CLOSED),partial,"3 merged PR(s): #380, #860, #506; 1 open: #1097; 4 closed: #411, #239",improvement,XL,513
+next-6mo,Infrastructure,Stable production environment with automated backups & good performance,1,#900(CLOSED); #685(CLOSED); #411(CLOSED); #239(CLOSED); PR#506(MERGED); PR#380(MERGED); #776(CLOSED); #1097(OPEN); PR#860(MERGED); #410(CLOSED),partial,"3 merged PR(s): #506, #380, #860; 1 open: #1097; 6 closed: #900, #685",improvement,L,514
+next-6mo,Infrastructure,Scaling up infrastructure (robustness),1,PR#380(MERGED); #900(CLOSED); #776(CLOSED); #1097(OPEN); PR#860(MERGED); PR#506(MERGED); #411(CLOSED); #239(CLOSED); PR#429(MERGED); PR#422(MERGED),partial,"3 merged PR(s): #380, #860, #506; 1 open: #1097; 4 closed: #900, #776",improvement,XL,515
+next-6mo,Infrastructure,Setup vector database,1,#776(CLOSED); PR#506(MERGED); #1097(OPEN); #900(CLOSED); PR#380(MERGED); PR#860(MERGED); #411(CLOSED); #239(CLOSED); #607(CLOSED); PR#228(MERGED),partial,"3 merged PR(s): #506, #380, #860; 1 open: #1097; 4 closed: #776, #900",feature,M,521
+next-6mo,Infrastructure,Work on integration structure of models and training data,1,PR#202(MERGED); #1089(OPEN); #226(CLOSED); PR#112(MERGED); PR#111(MERGED); PR#921(MERGED); PR#835(MERGED); PR#647(MERGED); #749(CLOSED); #667(CLOSED),partial,"6 merged PR(s): #202, #112, #111; 1 open: #1089; 3 closed: #226, #749",improvement,L,523
+next-6mo,Infrastructure,Fix initial difficulty with configuring Amazon S3 settings,1,,untracked,No matching GitHub issues or PRs found,bug,M,538
+next-6mo,Infrastructure,Enable remote data transfer from isolated northern deployments,1,#307(OPEN); #413(OPEN); #446(OPEN); #439(OPEN); PR#690(MERGED); PR#333(MERGED); #611(OPEN); #258(OPEN); PR#367(MERGED); #304(OPEN),partial,"3 merged PR(s): #690, #333, #367; 7 open: #307, #413, #446",feature,M,554
+next-6mo,Infrastructure,Fix slower image loading,1,,untracked,No matching GitHub issues or PRs found,bug,S,594
+next-6mo,Infrastructure,Fix very slow image loading,1,,untracked,No matching GitHub issues or PRs found,bug,S,595
+next-6mo,Infrastructure,Increase image resolution threshold to accommodate high-resolution images,1,PR#1055(MERGED); PR#1048(MERGED); PR#778(MERGED); PR#704(MERGED); #1122(OPEN); #1107(OPEN); #398(OPEN); #723(CLOSED); #1124(OPEN); PR#854(MERGED),partial,"5 merged PR(s): #1055, #1048, #778; 4 open: #1122, #1107, #398; 1 closed: #723",feature,S,599
+next-6mo,Infrastructure,Note on slow overall internet affecting performance,1,#411(CLOSED); #239(CLOSED); PR#380(MERGED); #900(CLOSED); #776(CLOSED); #1097(OPEN); PR#860(MERGED); PR#506(MERGED); #410(CLOSED); #749(CLOSED),partial,"3 merged PR(s): #380, #860, #506; 1 open: #1097; 4 closed: #411, #239",research,S,614
+next-6mo,Infrastructure,Stability issues on the platform,1,,untracked,No matching GitHub issues or PRs found,bug,L,627
+next-6mo,Infrastructure,DB partitioning exploration and implementation,1,#900(CLOSED); PR#380(MERGED); #776(CLOSED); #1097(OPEN); PR#860(MERGED); PR#506(MERGED); #411(CLOSED); #239(CLOSED); PR#429(MERGED); PR#422(MERGED),partial,"3 merged PR(s): #380, #860, #506; 1 open: #1097; 4 closed: #900, #776",improvement,L,634
+next-6mo,Infrastructure,Support for web-connected devices (continuous upload & processing),1,#477(OPEN); #455(OPEN); #904(OPEN); PR#281(MERGED); #977(OPEN); PR#898(MERGED); #958(OPEN); #611(OPEN); #304(OPEN); PR#1065(MERGED),partial,"1 merged PR(s): #281; 4 open: #477, #455, #904",feature,L,658
+next-6mo,Infrastructure,IMAGE THUMBNAILING - Faster scrubbing (mp4s),1,#236(OPEN); PR#348(MERGED); #419(OPEN); #729(OPEN),partial,1 merged PR(s): #348; 1 open: #236,improvement,M,690
+next-6mo,Infrastructure,Switch from form data to application/json,1,PR#146(MERGED); PR#688(MERGED); PR#201(MERGED); PR#79(MERGED); PR#76(MERGED); #543(OPEN); PR#448(MERGED); PR#266(MERGED); PR#231(MERGED); #593(OPEN),partial,"8 merged PR(s): #146, #688, #201; 2 open: #543, #593",improvement,S,711
+next-6mo,ML/AI,More informative confidence scores (calibrated scores),2,PR#607(CLOSED); #357(CLOSED); PR#1029(MERGED); PR#944(MERGED); PR#840(MERGED); PR#837(MERGED); PR#814(MERGED); PR#620(MERGED); PR#613(MERGED); PR#603(MERGED),partial,Supporting infrastructure in place (10 related PRs merged),improvement,M,"176, 506"
+next-6mo,ML/AI,Display species lists known by each model,1,PR#999(OPEN); #915(OPEN); PR#573(MERGED); PR#984(CLOSED),partial,Supporting infrastructure in place (1 related PRs merged),feature,S,12
+next-6mo,ML/AI,Expose more details about each pipeline (ID URL version) in customizable pipelines feature,1,PR#680(CLOSED); #677(CLOSED); #309(CLOSED); PR#1117(OPEN); #1076(OPEN); PR#1011(OPEN); #992(OPEN); #916(OPEN); PR#1053(MERGED); PR#1046(MERGED),partial,Supporting infrastructure in place (24 related PRs merged),feature,S,30
+next-6mo,ML/AI,Add active/inactive field for pipelines show inactive pipelines below and make them unselectable for new data processing,1,#677(CLOSED); #309(CLOSED); PR#1117(OPEN); #1076(OPEN); PR#1011(OPEN); #992(OPEN); #916(OPEN); PR#1053(MERGED); PR#1046(MERGED); PR#1041(MERGED),partial,Supporting infrastructure in place (24 related PRs merged),feature,S,31
+next-6mo,ML/AI,Make Access Key for pipelines visible (not a password field),1,PR#1046(MERGED); PR#921(MERGED); PR#1035(OPEN); PR#964(OPEN); PR#880(OPEN); PR#1117(OPEN); #1110(OPEN); PR#1101(OPEN); #1097(OPEN); PR#1096(OPEN),partial,Supporting infrastructure in place (34 related PRs merged),improvement,XS,32
+next-6mo,ML/AI,Work on new uncertainty measurements,1,PR#1029(MERGED); PR#944(MERGED); PR#840(MERGED); PR#837(MERGED); PR#814(MERGED); PR#620(MERGED); PR#613(MERGED); PR#603(MERGED); PR#602(MERGED); PR#389(MERGED),partial,Supporting infrastructure in place (10 related PRs merged),research,L,66
+next-6mo,ML/AI,Implement Flatbug and AMBER models,1,#412(OPEN),tracked,Related work in progress,feature,M,67
+next-6mo,ML/AI,ML processing done via web API support for any language or framework,1,PR#957(CLOSED); #1110(OPEN); #1052(OPEN); #1010(OPEN); PR#999(OPEN); PR#987(MERGED); PR#954(MERGED); PR#798(MERGED); PR#693(MERGED); #875(OPEN),partial,Supporting infrastructure in place (4 related PRs merged),feature,M,87
+next-6mo,ML/AI,Model registry links to experiment details in WandB,1,PR#1055(MERGED); #758(CLOSED),partial,Supporting infrastructure in place (1 related PRs merged),feature,M,92
+next-6mo,ML/AI,Default pipelines by project/location,1,PR#979(MERGED); PR#949(MERGED); PR#784(MERGED); PR#738(MERGED); PR#705(MERGED); PR#684(MERGED); PR#479(MERGED); PR#315(MERGED); #982(OPEN); PR#936(OPEN),partial,"Core feature implemented, enhancements in progress",feature,S,99
+next-6mo,ML/AI,Support for unknown species (clustering),1,PR#859(MERGED); PR#818(MERGED); PR#845(OPEN); PR#849(MERGED); PR#832(OPEN); #775(OPEN); #846(CLOSED); #774(CLOSED); #827(CLOSED); PR#840(MERGED),partial,"Core feature implemented, enhancements in progress",feature,L,105
+next-6mo,ML/AI,Additional ML backends,1,PR#312(MERGED); PR#190(MERGED); PR#189(MERGED); PR#180(MERGED); #515(OPEN); #259(CLOSED),partial,Supporting infrastructure in place (4 related PRs merged),feature,M,112
+next-6mo,ML/AI,Feature for masking predictions to a species list (as an alternative to a regional model),1,PR#999(OPEN); #915(OPEN); PR#962(MERGED); PR#573(MERGED); #469(OPEN); PR#984(CLOSED); #517(CLOSED),partial,Supporting infrastructure in place (2 related PRs merged),feature,M,123
+next-6mo,ML/AI,New model for Panama (current models include P. interpunctella and v2 has a short species list),1,PR#999(OPEN); #915(OPEN); PR#573(MERGED); PR#984(CLOSED),partial,Supporting infrastructure in place (1 related PRs merged),feature,L,126
+next-6mo,ML/AI,Panama plus model? Needs review uses a different species list.,1,PR#999(OPEN); #915(OPEN); PR#573(MERGED); PR#984(CLOSED); #490(OPEN),partial,Supporting infrastructure in place (1 related PRs merged),research,M,127
+next-6mo,ML/AI,Deploy some of Kat's models to a server,1,PR#1007(MERGED); PR#312(MERGED); #414(CLOSED),partial,Supporting infrastructure in place (2 related PRs merged),feature,M,131
+next-6mo,ML/AI,Improving the results,1,#916(OPEN); PR#719(MERGED); PR#679(OPEN),partial,Supporting infrastructure in place (1 related PRs merged),improvement,L,152
+next-6mo,ML/AI,Retrain the model for Totumas data?,1,PR#241(MERGED),partial,Supporting infrastructure in place (1 related PRs merged),research,L,155
+next-6mo,ML/AI,Embarrassing things (IDing smudges with high confidence single subject images),1,PR#1029(MERGED); PR#944(MERGED); PR#840(MERGED); PR#837(MERGED); PR#814(MERGED); PR#620(MERGED); PR#613(MERGED); PR#603(MERGED); PR#602(MERGED); PR#389(MERGED),partial,Supporting infrastructure in place (10 related PRs merged),bug,M,159
+next-6mo,ML/AI,Estimating confidence how to present low-confidence results to users,1,PR#386(OPEN); #357(CLOSED); PR#1029(MERGED); PR#944(MERGED); PR#840(MERGED); PR#837(MERGED); PR#814(MERGED); PR#620(MERGED); PR#613(MERGED); PR#603(MERGED),tracked,In progress: PR/issue #386,research,M,188
+next-6mo,ML/AI,Geofencing using species list for improving results,1,PR#999(OPEN); #915(OPEN); PR#962(MERGED); PR#573(MERGED); #469(OPEN); PR#984(CLOSED); #517(CLOSED); PR#719(MERGED),partial,Supporting infrastructure in place (3 related PRs merged),feature,M,243
+next-6mo,ML/AI,New model on Newfoundland species list (Current Quebec model is overestimating total number of species),1,PR#999(OPEN); #915(OPEN); PR#573(MERGED); PR#984(CLOSED),partial,Supporting infrastructure in place (1 related PRs merged),feature,L,258
+next-6mo,ML/AI,Option to use model consensus instead of top confidence score (consensus between global & regional model or versions of panama models),1,PR#1029(MERGED); PR#962(MERGED); PR#944(MERGED); PR#840(MERGED); PR#837(MERGED); PR#814(MERGED); PR#620(MERGED); PR#613(MERGED); PR#603(MERGED); PR#602(MERGED),partial,Supporting infrastructure in place (11 related PRs merged),feature,M,266
+next-6mo,ML/AI,Downgrading predictions to higher taxonomic ranks until confidence is satisfactory.,1,PR#1029(MERGED); PR#944(MERGED); PR#840(MERGED); PR#837(MERGED); PR#814(MERGED); PR#620(MERGED); PR#613(MERGED); PR#603(MERGED); PR#602(MERGED); PR#389(MERGED),partial,Supporting infrastructure in place (10 related PRs merged),feature,M,278
+next-6mo,ML/AI,Species dataset made for image classification,1,#857(OPEN); PR#821(MERGED); PR#818(MERGED); PR#807(MERGED); PR#741(MERGED); PR#613(MERGED); PR#573(MERGED); PR#241(MERGED); #628(CLOSED); #621(CLOSED),partial,"Core feature implemented, enhancements in progress",research,L,280
+next-6mo,ML/AI,Configure processing services for a project,1,PR#1117(OPEN); PR#1011(OPEN); PR#1053(MERGED); PR#987(MERGED); PR#768(MERGED); PR#738(MERGED); PR#736(MERGED); PR#719(MERGED); PR#715(MERGED); PR#705(MERGED),partial,"Core feature implemented, enhancements in progress",feature,M,290
+next-6mo,ML/AI,"See results that are accurate enough (Improve filtering, post-processing, pre-configurations)",1,PR#999(OPEN); PR#954(MERGED); PR#890(OPEN); PR#957(CLOSED); PR#849(MERGED); PR#1022(MERGED),partial,"Core feature implemented, enhancements in progress",improvement,XL,299
+next-6mo,ML/AI,Post processing framework and UI,1,PR#999(OPEN); PR#954(MERGED); PR#957(CLOSED); #1110(OPEN); #1052(OPEN); #1010(OPEN); PR#987(MERGED); PR#849(MERGED); PR#798(MERGED); PR#693(MERGED),partial,"Core feature implemented, enhancements in progress",feature,L,300
+next-6mo,ML/AI,"Integrate Out-of-Distribution (OOD) features for data curation (tagging, moving occurrences between clusters)",1,PR#845(OPEN); PR#818(MERGED); #774(CLOSED); #827(CLOSED); PR#1050(OPEN); PR#888(MERGED); PR#859(MERGED); PR#849(MERGED); PR#842(MERGED); PR#814(MERGED),partial,Supporting infrastructure in place (10 related PRs merged),feature,L,316
+next-6mo,ML/AI,Detector with segmentation (for biomass estimation),1,#1093(OPEN); PR#1045(OPEN); #992(OPEN); PR#1091(MERGED); PR#815(MERGED); PR#859(MERGED); PR#837(MERGED); PR#814(MERGED); PR#765(MERGED); PR#656(MERGED),partial,Supporting infrastructure in place (30 related PRs merged),feature,XL,337
+next-6mo,ML/AI,"OOD Feature Refinement (for ""unexpected species"" flagging)",1,PR#845(OPEN); PR#888(MERGED); PR#842(MERGED); PR#840(MERGED); PR#814(MERGED); PR#984(CLOSED); #811(CLOSED); #827(CLOSED),tracked,In progress: PR/issue #845,improvement,L,339
+next-6mo,ML/AI,Post-processing based on image quality (what are we unconfident about),1,PR#999(OPEN); PR#954(MERGED); PR#849(MERGED); PR#890(OPEN); PR#957(CLOSED),partial,Supporting infrastructure in place (2 related PRs merged),feature,M,388
+next-6mo,ML/AI,Genus level prediction (? - evaluate the accuracy at genus level),1,PR#712(MERGED); #412(OPEN),partial,Supporting infrastructure in place (1 related PRs merged),research,M,395
+next-6mo,ML/AI,Continuous OOD detection (combined with clustering; how to remove the OOD species that have been verified),1,PR#859(MERGED); PR#818(MERGED); PR#814(MERGED); PR#845(OPEN); #846(CLOSED); #774(CLOSED); #827(CLOSED); #1093(OPEN); PR#1045(OPEN); #992(OPEN),partial,Supporting infrastructure in place (34 related PRs merged),feature,L,400
+next-6mo,ML/AI,"Segmentation detector (e.g., HQ Sam, GroundingSAM, Depth Anything, Flatbug, OWLv2)",1,#1093(OPEN); PR#1045(OPEN); #992(OPEN); PR#1091(MERGED); PR#1046(MERGED); PR#815(MERGED); PR#859(MERGED); PR#837(MERGED); PR#818(MERGED); PR#814(MERGED),partial,Supporting infrastructure in place (30 related PRs merged),feature,XL,402
+next-6mo,ML/AI,Handle overlapping moths,1,PR#765(MERGED); PR#459(MERGED),partial,Supporting infrastructure in place (2 related PRs merged),feature,M,403
+next-6mo,ML/AI,Discuss detector approaches,1,PR#815(MERGED); PR#818(MERGED); PR#765(MERGED); PR#656(MERGED); PR#596(MERGED); PR#285(MERGED); PR#183(MERGED); PR#115(MERGED); PR#1059(OPEN); #752(CLOSED),partial,"Core feature implemented, enhancements in progress",research,S,410
+next-6mo,ML/AI,Transparency: Knowing what we don't know - which species good and bad at,1,PR#888(MERGED); PR#842(MERGED); PR#840(MERGED); PR#814(MERGED); PR#845(OPEN); PR#984(CLOSED); #811(CLOSED); #827(CLOSED),partial,Supporting infrastructure in place (4 related PRs merged),feature,M,411
+next-6mo,ML/AI,Transparency: This region is not supported,1,PR#962(MERGED); #469(OPEN); #517(CLOSED),partial,Supporting infrastructure in place (1 related PRs merged),feature,S,412
+next-6mo,ML/AI,Determine our certainty / uncertainty at predicting that species,1,PR#386(OPEN); PR#1029(MERGED); PR#944(MERGED); PR#840(MERGED); PR#837(MERGED); PR#814(MERGED); PR#620(MERGED); PR#613(MERGED); PR#603(MERGED); PR#602(MERGED),tracked,In progress: PR/issue #386,feature,M,460
+next-6mo,ML/AI,"How to score confidence (hardness to identify visually, how many similar species, the models accuracy on this species, the number and quality of training samples (or type of images) for this species). Do we know about it at all? How likely is the species to occur at the place and time it was observed?",1,PR#1029(MERGED); PR#944(MERGED); PR#840(MERGED); PR#837(MERGED); PR#814(MERGED); PR#620(MERGED); PR#613(MERGED); PR#603(MERGED); PR#602(MERGED); PR#389(MERGED),partial,Supporting infrastructure in place (10 related PRs merged),research,L,469
+next-6mo,ML/AI,How to choose ID from a track / turboid of multiple images,1,#1121(OPEN); #1097(OPEN); #863(OPEN); PR#837(MERGED); PR#542(MERGED); PR#707(OPEN); PR#484(OPEN); #457(OPEN); #264(CLOSED); #846(CLOSED),partial,Supporting infrastructure in place (2 related PRs merged),research,M,471
+next-6mo,ML/AI,"How to incorporate geopriors exactly? Part of model, or post-filtering.",1,PR#962(MERGED); #469(OPEN); #517(CLOSED),partial,Supporting infrastructure in place (1 related PRs merged),research,M,474
+next-6mo,ML/AI,Improving/Reducing noise in results displayed by default,1,#952(OPEN),tracked,Related work in progress,improvement,L,489
+next-6mo,ML/AI,Object detector only works... (implied limitation),1,#992(OPEN); PR#183(MERGED); PR#115(MERGED); #1092(OPEN); #752(CLOSED); #1093(OPEN); PR#1045(OPEN); PR#1091(MERGED); PR#1046(MERGED); PR#815(MERGED),partial,"Core feature implemented, enhancements in progress",bug,M,500
+next-6mo,ML/AI,"Out-of-Distribution (OOD) feature (Mockups, protocol for detecting new species, feature vectors, Yuyan's model)",1,PR#845(OPEN); PR#1050(OPEN); PR#888(MERGED); PR#842(MERGED); PR#840(MERGED); PR#821(MERGED); PR#818(MERGED); PR#814(MERGED); PR#807(MERGED); PR#670(MERGED),partial,Supporting infrastructure in place (8 related PRs merged),feature,L,505
+next-6mo,ML/AI,Reprocessing detections with a new classifier,1,PR#815(MERGED); PR#837(MERGED); PR#818(MERGED); PR#814(MERGED); PR#798(MERGED); PR#719(MERGED); PR#374(MERGED); #774(CLOSED); #752(CLOSED); PR#706(CLOSED),partial,Supporting infrastructure in place (40 related PRs merged),feature,M,509
+next-6mo,ML/AI,Order level classifier (Aditya's work),1,#952(OPEN); #857(OPEN); PR#815(MERGED); PR#837(MERGED); PR#821(MERGED); PR#818(MERGED); PR#814(MERGED); PR#807(MERGED); PR#798(MERGED); PR#762(MERGED),partial,Supporting infrastructure in place (16 related PRs merged),feature,L,510
+next-6mo,ML/AI,Species of concern model (invasive & pest species),1,PR#837(MERGED),partial,Supporting infrastructure in place (1 related PRs merged),feature,L,511
+next-6mo,ML/AI,"Review current models (trained when, checklists)",1,PR#837(MERGED),partial,Supporting infrastructure in place (1 related PRs merged),improvement,M,524
+next-6mo,ML/AI,Processing pipeline for analyzing individual images,1,#916(OPEN); PR#1053(MERGED); PR#1033(MERGED); PR#949(MERGED); PR#921(MERGED); PR#815(MERGED); PR#738(MERGED); PR#719(MERGED); #982(OPEN); PR#938(OPEN),partial,"Core feature implemented, enhancements in progress",feature,M,597
+next-6mo,ML/AI,Fix gateway timeout not triggering failure in processing,1,PR#699(OPEN),tracked,Related work in progress,bug,S,616
+next-6mo,ML/AI,Fix inconsistent Processed counts in job logs,1,#904(OPEN),tracked,Related work in progress,bug,S,617
+next-6mo,ML/AI,Implement enhanced post-processing techniques (moths & insects specific),1,PR#999(OPEN); PR#954(MERGED); PR#957(CLOSED); PR#849(MERGED); PR#890(OPEN),partial,"Core feature implemented, enhancements in progress",feature,L,653
+next-6mo,ML/AI,Research focus on uncertainty metrics and UI/UX features for predictions,1,PR#845(OPEN); #774(CLOSED); PR#1050(OPEN); PR#1029(MERGED); PR#944(MERGED); PR#840(MERGED); PR#837(MERGED); PR#821(MERGED); PR#818(MERGED); PR#814(MERGED),partial,Supporting infrastructure in place (14 related PRs merged),research,XL,655
+next-6mo,ML/AI,Test sets for standard evaluation of models,1,PR#816(OPEN),tracked,Related work in progress,research,M,669
+next-6mo,ML/AI,Use the zero-shot model,1,PR#1007(MERGED),partial,Supporting infrastructure in place (1 related PRs merged),feature,L,682
+next-6mo,ML/AI,Missing Singapore classifier option,1,#952(OPEN); #857(OPEN); PR#821(MERGED); PR#807(MERGED); PR#719(MERGED); PR#613(MERGED); PR#573(MERGED); #628(CLOSED); #621(CLOSED); #517(CLOSED),partial,"Core feature implemented, enhancements in progress",bug,XS,707
+next-6mo,ML/AI,Still some sessions with unprocessed images,1,PR#691(MERGED); PR#374(MERGED); PR#718(CLOSED); PR#585(CLOSED),partial,Supporting infrastructure in place (2 related PRs merged),bug,S,708
+next-6mo,ML/AI,Partner-Specific Pipelines (e.g. dedicated forest pest pipeline),1,#916(OPEN); PR#1033(MERGED); PR#738(MERGED); PR#315(MERGED); #766(OPEN); PR#984(CLOSED); PR#695(CLOSED); #681(CLOSED); PR#680(CLOSED); #677(CLOSED),partial,"Core feature implemented, enhancements in progress",feature,L,744
+next-6mo,ML/AI,Model Management (model orchestration & revision/deploying new models),1,PR#386(OPEN),tracked,Related work in progress,feature,L,803
+next-6mo,Onboarding,Design stable & streamlined workflow: Get from Cameras to moths with few steps,1,,untracked,No matching GitHub issues or PRs found,improvement,L,157
+next-6mo,Onboarding,All-in-one test page,1,,untracked,No matching GitHub issues or PRs found,feature,S,170
+next-6mo,Onboarding,Sign up on the platform waitlist,1,,untracked,No matching GitHub issues or PRs found,feature,S,285
+next-6mo,Onboarding,Sign up as new user on the platform (Currently disabled manually add new users),1,,untracked,No matching GitHub issues or PRs found,feature,M,286
+next-6mo,Onboarding,Create a project from scratch (Currently disabled for most users soon enabled for all),1,,untracked,No matching GitHub issues or PRs found,feature,L,288
+next-6mo,Onboarding,Sign up as new user (currently requires admin support),1,,untracked,No matching GitHub issues or PRs found,feature,M,344
+next-6mo,Onboarding,"Account Sign-ups (Self-service feature remaining, currently requires admin support)",1,,untracked,No matching GitHub issues or PRs found,feature,M,484
+next-6mo,Onboarding,Onboarding Flow (Centrally Managed Antenna & UI flow),1,,untracked,No matching GitHub issues or PRs found,feature,L,485
+next-6mo,Onboarding,Create a project from scratch (Partially implemented/disabled for most),1,,untracked,No matching GitHub issues or PRs found,improvement,M,502
+next-6mo,Onboarding,Scratch/draft project based on images (upload a folder),1,,untracked,No matching GitHub issues or PRs found,feature,M,632
+next-6mo,Onboarding,Feature Rollout: Create a project from scratch is partially implemented,1,,untracked,No matching GitHub issues or PRs found,feature,M,672
+next-6mo,Onboarding,New project Wizard,1,,untracked,No matching GitHub issues or PRs found,feature,L,685
+next-6mo,Onboarding,Create a project from scratch,1,,untracked,No matching GitHub issues or PRs found,feature,M,692
+next-6mo,Onboarding,Self-service features (using feature-flags/complexity as opt-in),1,,untracked,No matching GitHub issues or PRs found,feature,L,726
+next-6mo,Onboarding,Create a project from scratch (Partially implemented),1,,untracked,No matching GitHub issues or PRs found,feature,M,729
+next-6mo,Permissions/Auth,Implement Private projects (MVP feature),1,,untracked,No matching GitHub items found,feature,M,33
+next-6mo,Permissions/Auth,Open to the public for read-only review (Next 6 months),1,,untracked,No matching GitHub items found,feature,L,73
+next-6mo,Permissions/Auth,Multiple projects & users,1,,untracked,No matching GitHub items found,feature,L,83
+next-6mo,Permissions/Auth,Make it clear who contacts are for each project (the initiator and the hands-on/technical contacts),1,,untracked,No matching GitHub items found,feature,S,136
+next-6mo,Permissions/Auth,Project manager (role/tooling),1,,untracked,No matching GitHub items found,feature,M,378
+next-6mo,Permissions/Auth,Allow inviting a collaborator to confirm IDs,1,,untracked,No matching GitHub items found,feature,M,531
+next-6mo,Permissions/Auth,Use Roles system to hide/show features and default ordering,1,,untracked,No matching GitHub items found,feature,M,727
+next-6mo,Research,Metrics for scaling - how much human validation is necessary to trust the model,1,,untracked,,research,L,265
+next-6mo,Taxonomy,Features for 'Pest species',3,,untracked,No matching GitHub items found,feature,M,"248, 250, 251"
+next-6mo,Taxonomy,Add cryptic species status to the taxonomy database: Euceron species should always be determined to genus level,2,#421(CLOSED); PR#580(MERGED); #655(OPEN); #617(CLOSED); #217(CLOSED),partial,"Partially implemented in PR #580, additional work tracked in #655",feature,M,"223, 450"
+next-6mo,Taxonomy,Add size fields to the taxonomy database (fallback to parent size category). Avg.,2,#655(OPEN),tracked,Tracked in #655,feature,M,"228, 455"
+next-6mo,Taxonomy,Add is_cryptic field (to what rank),2,#857(OPEN),tracked,Tracked in #857,feature,S,"229, 456"
+next-6mo,Taxonomy,"Taxon rank rollup (genus, family level predictions) - never show a low confidence result",2,PR#386(OPEN); #421(CLOSED); #384(OPEN); #857(OPEN); #864(CLOSED),tracked,"Tracked in multiple items: #386, #384",feature,M,"387, 808"
+next-6mo,Taxonomy,Taxonomy management (External sources/managing taxa/lists/synonyms),2,#655(OPEN); #622(CLOSED),tracked,Tracked in #655,feature,L,"647, 845"
+next-6mo,Taxonomy,Importing - Taxa lists,2,,untracked,No matching GitHub items found,feature,M,"747, 853"
+next-6mo,Taxonomy,Interface for managing species,1,,untracked,No matching GitHub items found,feature,M,9
+next-6mo,Taxonomy,Add a field to the taxa DB for unidentifiable by image alone with relation to similar taxa,1,PR#244(MERGED); #655(OPEN),partial,"Partially implemented in PR #244, additional work tracked in #655",feature,S,13
+next-6mo,Taxonomy,Add Not Identifiable and Lepidoptera entry IDs,1,,untracked,No matching GitHub items found,feature,XS,195
+next-6mo,Taxonomy,Features for 'Species of conservation concern' / 'Species of risk',1,,untracked,No matching GitHub items found,feature,M,247
+next-6mo,Taxonomy,Features for 'Non-native' species,1,,untracked,No matching GitHub items found,feature,M,249
+next-6mo,Taxonomy,Provisional lists of species (regional lists),1,,untracked,No matching GitHub items found,feature,M,257
+next-6mo,Taxonomy,Rank roll-ups,1,#857(OPEN),tracked,Tracked in #857,feature,L,302
+next-6mo,Taxonomy,Remove species that should not be classified (get checklists from experts),1,,untracked,No matching GitHub items found,feature,S,398
+next-6mo,Taxonomy,"Taxonomy database with our own metadata (Cryptic status, Size or size category, Model performance/training info)",1,,untracked,No matching GitHub items found,feature,L,399
+next-6mo,Taxonomy,Add fields for barcode bin numbers to assist with species identification,1,#216(CLOSED); PR#580(MERGED); #560(OPEN),partial,"Partially implemented in PR #580, additional work tracked in #560",feature,M,528
+next-6mo,Taxonomy,Allow viewing IDs by genus/family/etc.,1,#384(OPEN),tracked,Tracked in #384,feature,M,587
+next-6mo,Taxonomy,Rank rollups,1,#857(OPEN),tracked,Tracked in #857,feature,M,679
+next-6mo,Taxonomy,Taxonomy (Hierarchical categories/Many taxonomic ranks),1,,untracked,No matching GitHub items found,feature,L,865
+next-6mo,UI/UX,More quick buttons for processing & collections,3,,untracked,No matching GitHub issues or PRs found,feature,S,"351, 774, 858"
+next-6mo,UI/UX,"Processing convenience (buttons for process this night, process this collection)",3,,untracked,No matching GitHub issues or PRs found,feature,M,"377, 643, 838"
+next-6mo,UI/UX,Default filter: lepidoptera,2,,untracked,No matching GitHub issues or PRs found,feature,XS,"212, 440"
+next-6mo,UI/UX,Show best detection image in taxa view & occurrence view,2,PR#1036(MERGED); PR#1058(MERGED); #560(OPEN); PR#656(MERGED); PR#566(MERGED),tracked,"Tracked in #560: Add tooltips for ""score""",feature,M,"213, 441"
+next-6mo,UI/UX,"Add column for best_identification to the occurrences view (optional, next to Taxon Determination column)",2,PR#278(MERGED); #560(OPEN); PR#578(MERGED); PR#429(MERGED); PR#1036(MERGED),tracked,"Tracked in #560: Add tooltips for ""score""",feature,S,"217, 445"
+next-6mo,UI/UX,"Remove ""null"" that keeps returning to data sync view",2,,untracked,No matching GitHub issues or PRs found,bug,XS,"222, 449"
+next-6mo,UI/UX,Filter/search by previous identifications,2,,untracked,No matching GitHub issues or PRs found,feature,M,"225, 452"
+next-6mo,UI/UX,Implement drag and drop feature for manual uploads,2,,untracked,No matching GitHub issues or PRs found,feature,M,"607, 622"
+next-6mo,UI/UX,Display user's seen occurrences in My Antenna,1,PR#214(MERGED); PR#126(MERGED); #1093(OPEN),tracked,Tracked in #1093: Add null detections test; update save_results,feature,S,27
+next-6mo,UI/UX,Support experts in finding the correct species within the tool,1,,untracked,No matching GitHub issues or PRs found,feature,M,58
+next-6mo,UI/UX,Consider mitigating psychological/positional bias in accepting proposed labels,1,,untracked,No matching GitHub issues or PRs found,design,M,59
+next-6mo,UI/UX,Filtering: Find a clear way to do it yet,1,,untracked,No matching GitHub issues or PRs found,design,M,65
+next-6mo,UI/UX,User interface (General Topic),1,,untracked,No matching GitHub issues or PRs found,improvement,XL,76
+next-6mo,UI/UX,Display Images for deployments,1,PR#353(MERGED); #714(OPEN); #439(OPEN),tracked,Tracked in #714: Fix typo in Deployment edit screen,feature,S,104
+next-6mo,UI/UX,Developing new UI components (new scrolling timeline),1,,untracked,No matching GitHub issues or PRs found,feature,M,110
+next-6mo,UI/UX,Notifications,1,,untracked,No matching GitHub issues or PRs found,feature,M,118
+next-6mo,UI/UX,Notification system (Species of interest),1,,untracked,No matching GitHub issues or PRs found,feature,M,169
+next-6mo,UI/UX,Select project classifier etc. (More one-click options for processing the data),1,,untracked,No matching GitHub issues or PRs found,improvement,M,173
+next-6mo,UI/UX,Labeling at scale - entomologists,1,,untracked,No matching GitHub issues or PRs found,feature,L,174
+next-6mo,UI/UX,Alerts feature,1,,untracked,No matching GitHub issues or PRs found,feature,M,254
+next-6mo,UI/UX,How can we make the data output more satisfactory?,1,,untracked,No matching GitHub issues or PRs found,design,M,281
+next-6mo,UI/UX,Complete migration of UI components from raw Radix primitives to shadcn/ui,1,,untracked,No matching GitHub issues or PRs found,improvement,L,322
+next-6mo,UI/UX,Complete migration from style modules to Tailwind CSS,1,,untracked,No matching GitHub issues or PRs found,improvement,M,323
+next-6mo,UI/UX,Streamline form handling across app,1,,untracked,No matching GitHub issues or PRs found,improvement,M,348
+next-6mo,UI/UX,New filters: Which nights were captured by all stations? Filter out extra nights,1,,untracked,No matching GitHub issues or PRs found,feature,M,356
+next-6mo,UI/UX,Alerts & notifications (region & species),1,,untracked,No matching GitHub issues or PRs found,feature,M,479
+next-6mo,UI/UX,"""Species of Interest"" feature",1,,untracked,No matching GitHub issues or PRs found,feature,M,493
+next-6mo,UI/UX,Public splash page/landing page with a demo feature and interest form,1,,untracked,No matching GitHub issues or PRs found,feature,M,498
+next-6mo,UI/UX,Make occurrences in collections clickable,1,PR#214(MERGED); PR#126(MERGED); #1093(OPEN),tracked,Tracked in #1093: Add null detections test; update save_results,feature,S,535
+next-6mo,UI/UX,Improve explanations and add more contextual information about displayed data,1,,untracked,No matching GitHub issues or PRs found,improvement,M,541
+next-6mo,UI/UX,Expose specific data source subdirectory in Deployment edit,1,#1047(OPEN); PR#333(MERGED),tracked,Tracked in #1047: Fix: Update station edit form 3rd section header to show 'Da,feature,S,561
+next-6mo,UI/UX,Fix issue with re-choosing Site & Device when editing a Deployment,1,,untracked,No matching GitHub issues or PRs found,bug,M,565
+next-6mo,UI/UX,Allow drawing box to add missed moth in session review,1,,untracked,No matching GitHub issues or PRs found,feature,M,569
+next-6mo,UI/UX,Add advanced filtering options,1,,untracked,No matching GitHub issues or PRs found,feature,M,583
+next-6mo,UI/UX,Species page functionality/improvement,1,,untracked,No matching GitHub issues or PRs found,improvement,M,628
+next-6mo,UI/UX,Add alerts for species on user watch lists,1,,untracked,No matching GitHub issues or PRs found,feature,M,652
+next-6mo,UI/UX,Add general notifications,1,,untracked,No matching GitHub issues or PRs found,feature,M,656
+next-6mo,UI/UX,Ability to flag species outside classifier taxonomy,1,,untracked,No matching GitHub issues or PRs found,feature,M,661
+next-6mo,UI/UX,Labeling interface - Bulk labeling from the grid view,1,,untracked,No matching GitHub issues or PRs found,feature,M,665
+next-6mo,UI/UX,How to trigger post process steps from UI?,1,,untracked,No matching GitHub issues or PRs found,feature,M,676
+next-6mo,UI/UX,Default filters & project settings,1,,untracked,No matching GitHub issues or PRs found,feature,M,683
+next-6mo,UI/UX,Pipeline config from UI?,1,,untracked,No matching GitHub issues or PRs found,feature,M,684
+next-6mo,UI/UX,Project Settings & feature flags,1,,untracked,No matching GitHub issues or PRs found,feature,M,687
+next-6mo,UI/UX,Separating workflows per user category,1,,untracked,No matching GitHub issues or PRs found,design,L,698
+next-6mo,UI/UX,Make session detail more clear,1,,untracked,No matching GitHub issues or PRs found,improvement,M,699
+next-6mo,UI/UX,Showing what has been processed,1,,untracked,No matching GitHub issues or PRs found,feature,M,701
+next-6mo,UI/UX,Labeling Interface Improvements (bulk labeling/editing bounding boxes),1,,untracked,No matching GitHub issues or PRs found,feature,M,809
+next-6mo,UI/UX,How can we make collections more natural in the workflow,1,,untracked,No matching GitHub issues or PRs found,improvement,M,835
+later-12mo,Analytics/Viz,"See detections grouped as tracks (UI and data structures prepared, logic in progress)",1,,untracked,No matching GitHub issues or PRs found,feature,L,303
+later-12mo,Community,New release on GitHub,2,,untracked,No matching GitHub items found,improvement,S,"372, 861"
+later-12mo,Community,Add to Wildlabs inventory,2,,untracked,No matching GitHub items found,improvement,S,"373, 862"
+later-12mo,Community,Mailing list & regular updates,2,,untracked,No matching GitHub items found,improvement,M,"374, 863"
+later-12mo,Community,Provide an interface for citizen scientists to learn & contribute.,1,,untracked,No matching GitHub items found,feature,M,477
+later-12mo,Community,Citizen Science Version/Features,1,,untracked,No matching GitHub items found,feature,XL,693
+later-12mo,Community,Place for users to add their experience,1,,untracked,No matching GitHub items found,feature,M,719
+later-12mo,Community,LepiNoc (citizen science) - different requirements/mobile app,1,,untracked,No matching GitHub items found,research,L,826
+later-12mo,Data-Management,Define the Validation protocol and how to reach research-grade,2,PR#643(MERGED); #400(CLOSED),untracked,Only weak/related matches found,design,M,"39, 71"
+later-12mo,Data-Management,Add processing support for project data,1,,untracked,No matching GitHub issues or PRs found,feature,M,22
+later-12mo,Data-Management,Record if the suggestion was manually typed or accepted from a proposition,1,,untracked,No matching GitHub issues or PRs found,feature,XS,57
+later-12mo,Data-Management,Quality control of every stage before & after processing,1,PR#643(MERGED),untracked,Only weak/related matches found,feature,L,93
+later-12mo,Data-Management,Citation information,1,,untracked,No matching GitHub issues or PRs found,feature,S,98
+later-12mo,Data-Management,Expose info about which model and when for each machine ID,1,,untracked,No matching GitHub issues or PRs found,feature,S,108
+later-12mo,Data-Management,Data connector tool,1,,untracked,No matching GitHub issues or PRs found,feature,L,109
+later-12mo,Data-Management,Add panama trap IDs,1,,untracked,No matching GitHub issues or PRs found,feature,XS,114
+later-12mo,Data-Management,Processing all data once model is ready & agreed on,1,,untracked,No matching GitHub issues or PRs found,feature,L,129
+later-12mo,Data-Management,Help organizing & auditing the panama BCI projects,1,,untracked,No matching GitHub issues or PRs found,improvement,M,130
+later-12mo,Data-Management,Adding clear description to each project,1,,untracked,No matching GitHub issues or PRs found,improvement,XS,135
+later-12mo,Data-Management,Assign it the night before who will be doing it (Demo),1,,untracked,No matching GitHub issues or PRs found,documentation,XS,198
+later-12mo,Data-Management,Needs to be put in a boxe,1,,untracked,No matching GitHub issues or PRs found,documentation,XS,199
+later-12mo,Data-Management,Wipe them,1,,untracked,No matching GitHub issues or PRs found,documentation,XS,202
+later-12mo,Data-Management,Rename the files (Anna),1,,untracked,No matching GitHub issues or PRs found,documentation,XS,204
+later-12mo,Data-Management,Sample the files (Anna),1,,untracked,No matching GitHub issues or PRs found,documentation,XS,205
+later-12mo,Data-Management,10 minutes intervals (Sampling),1,,untracked,No matching GitHub issues or PRs found,documentation,XS,206
+later-12mo,Data-Management,Charge batteries,1,,untracked,No matching GitHub issues or PRs found,documentation,XS,209
+later-12mo,Data-Management,Filtering bad data (too small too blurry),1,,untracked,No matching GitHub issues or PRs found,improvement,M,275
+later-12mo,Data-Management,Tracking of individuals (deduplication),1,,untracked,No matching GitHub issues or PRs found,feature,L,276
+later-12mo,Data-Management,Copying projects,1,,untracked,No matching GitHub issues or PRs found,feature,M,433
+later-12mo,Data-Management,Use hierarchical folders for organizing cropped images by taxonomic order and family,1,,untracked,No matching GitHub issues or PRs found,feature,M,580
+later-12mo,Data-Management,Add more fields for detailed hardware information,1,,untracked,No matching GitHub issues or PRs found,feature,S,585
+later-12mo,Export/Interop,Implement querying images for inference from ADC API and POSTing results back,1,,untracked,No matching GitHub items found,feature,L,16
+later-12mo,Export/Interop,Implement connection to GBIF (MVP feature),1,#508(OPEN),tracked,Tracked in #508,feature,M,18
+later-12mo,Export/Interop,Which deployments which data are published to GBIF,1,#508(OPEN),tracked,Tracked in #508,feature,M,97
+later-12mo,Export/Interop,Suggests Zenodo for dataset publishing,1,,untracked,No matching GitHub items found,feature,S,550
+later-12mo,Export/Interop,Integrate or share data between software and ARISE,1,,untracked,No matching GitHub items found,feature,L,553
+later-12mo,Export/Interop,Publishing Zenodo DOI,1,#508(OPEN),tracked,Tracked in #508,feature,M,681
+later-12mo,Export/Interop,Button to publish a single observation to iNaturalist?,1,,untracked,No matching GitHub items found,feature,S,694
+later-12mo,Export/Interop,Create a user for each model on iNaturalist?,1,,untracked,No matching GitHub items found,feature,M,695
+later-12mo,Infrastructure,Implement Optimizations for speed (MVP feature),1,,untracked,No matching GitHub issues or PRs found,improvement,L,15
+later-12mo,Infrastructure,Use modularity to help divide ownership,1,,untracked,No matching GitHub issues or PRs found,design,M,36
+later-12mo,Infrastructure,Ensure platform interoperability trap agnostic and modular design,1,,untracked,No matching GitHub issues or PRs found,design,L,38
+later-12mo,Infrastructure,Use JASMIN for storage,1,,untracked,No matching GitHub issues or PRs found,feature,M,82
+later-12mo,Infrastructure,Help with processing of samples (since the feature is not stable enough yet),1,,untracked,No matching GitHub issues or PRs found,improvement,M,132
+later-12mo,Infrastructure,Focus on hardening (stability fixes speed) Processing fixing gaps in workflow,1,,untracked,No matching GitHub issues or PRs found,improvement,L,156
+later-12mo,Infrastructure,Upgrade Node.js?,1,,untracked,No matching GitHub issues or PRs found,improvement,S,327
+later-12mo,Infrastructure,Split up backend modules,1,,untracked,No matching GitHub issues or PRs found,improvement,L,328
+later-12mo,Infrastructure,Everything related to the infrastructure (accounted for),1,,untracked,No matching GitHub issues or PRs found,improvement,XL,379
+later-12mo,Infrastructure,Processing speed & stability (switch to producer/consumer model),1,,untracked,No matching GitHub issues or PRs found,improvement,XL,390
+later-12mo,Infrastructure,Capturing data (sending direct to antenna),1,,untracked,No matching GitHub issues or PRs found,feature,L,407
+later-12mo,Infrastructure,Antenna (self-hosted version),1,,untracked,No matching GitHub issues or PRs found,feature,L,487
+later-12mo,Infrastructure,Move to managed hosting (if centralized system is desired),1,,untracked,No matching GitHub issues or PRs found,feature,XL,519
+later-12mo,Infrastructure,Standardizing the model APIs,1,,untracked,No matching GitHub issues or PRs found,improvement,M,522
+later-12mo,Infrastructure,Support for per-bucket permissions for S3/Swift keys,1,,untracked,No matching GitHub issues or PRs found,feature,M,623
+later-12mo,Infrastructure,Allow more CEPHFS shares,1,,untracked,No matching GitHub issues or PRs found,feature,S,640
+later-12mo,Infrastructure,Transition to automated and centralized instance management,1,,untracked,No matching GitHub issues or PRs found,improvement,XL,654
+later-12mo,Infrastructure,Explore Kubernetes if limited by Docker Swarm,1,,untracked,No matching GitHub issues or PRs found,research,XL,657
+later-12mo,Infrastructure,Switch background tasks from long running to many short,1,,untracked,No matching GitHub issues or PRs found,improvement,M,710
+later-12mo,Infrastructure,Email sending,1,,untracked,No matching GitHub issues or PRs found,feature,M,760
+later-12mo,Infrastructure,Processing stabilization,1,,untracked,No matching GitHub issues or PRs found,improvement,L,842
+later-12mo,Onboarding,Register existing projects and process 2 years of data (Next 6 months),1,,untracked,No matching GitHub issues or PRs found,feature,XL,72
+later-12mo,Onboarding,Full support for current research projects before self-service for public,1,,untracked,No matching GitHub issues or PRs found,feature,XL,151
+later-12mo,Onboarding,Self-service ready? (Out of BETA officially),1,,untracked,No matching GitHub issues or PRs found,feature,XL,167
+later-12mo,Permissions/Auth,Implement multi-level (Curator expert etc.) point-based validation/curation (eButterfly model),1,,untracked,No matching GitHub items found,feature,L,41
+later-12mo,Permissions/Auth,Obfuscating exact device location (Sensitive/Fuzzy privacy),1,,untracked,No matching GitHub items found,feature,M,43
+later-12mo,Permissions/Auth,"Implement fine-grained Job Permissions based on job types (e.g., ML, export, sync)",1,,untracked,No matching GitHub items found,feature,M,313
+later-12mo,Permissions/Auth,Orgs & Per-project permissions (Mohamed's work),1,,untracked,No matching GitHub items found,feature,L,497
+later-12mo,Permissions/Auth,Allow users to invite categories,1,,untracked,No matching GitHub items found,feature,S,530
+later-12mo,Permissions/Auth,Support for application tokens that are not tied to a specific user,1,,untracked,No matching GitHub items found,feature,M,624
+later-12mo,Research,Few-shot learning for adding species,1,#767(OPEN); PR#911(CLOSED); #290(CLOSED),tracked,Related work in progress,research,XL,184
+later-12mo,Research,Geofencing,1,PR#962(MERGED); #469(OPEN); #517(CLOSED),partial,Supporting infrastructure in place (1 related PRs merged),research,M,187
+later-12mo,Research,Labeling behavior poses and other attributes,1,PR#691(MERGED),partial,Supporting infrastructure in place (1 related PRs merged),research,L,189
+later-12mo,Research,Explainable AI - What features did you use to ID this species? Teaching the user.,1,PR#1050(OPEN); PR#821(MERGED); PR#818(MERGED); PR#807(MERGED); PR#670(MERGED); #875(OPEN); PR#845(OPEN); PR#816(OPEN); PR#707(OPEN); #804(CLOSED),partial,Supporting infrastructure in place (4 related PRs merged),research,XL,190
+later-12mo,Research,Image classifier from infrared or hyper-spectral images,1,#952(OPEN); #857(OPEN); PR#815(MERGED); PR#837(MERGED); PR#821(MERGED); PR#818(MERGED); PR#814(MERGED); PR#807(MERGED); PR#798(MERGED); PR#762(MERGED),tracked,In progress: PR/issue #952,research,XL,191
+later-12mo,Research,Fast object detector edge deployments,1,#1093(OPEN); #992(OPEN); PR#815(MERGED); PR#837(MERGED); PR#818(MERGED); PR#656(MERGED); PR#602(MERGED); PR#596(MERGED); PR#285(MERGED); PR#115(MERGED),partial,"Core feature implemented, enhancements in progress",research,L,192
+later-12mo,Research,Do we really need a species level classifier? For which species? For which purposes?,1,#952(OPEN); #857(OPEN); PR#815(MERGED); PR#837(MERGED); PR#821(MERGED); PR#818(MERGED); PR#814(MERGED); PR#807(MERGED); PR#798(MERGED); PR#762(MERGED),partial,Supporting infrastructure in place (15 related PRs merged),research,M,283
+later-12mo,Research,Plan to review data only at end of deployment,1,#307(OPEN),tracked,Related work in progress,research,XS,551
+later-12mo,Research,Importance of long-term data for ecological and taxonomic research,1,#916(OPEN); PR#1091(MERGED); PR#1077(MERGED); PR#550(MERGED); PR#247(MERGED); PR#203(MERGED); #1015(OPEN); #298(OPEN); #985(CLOSED); PR#984(CLOSED),partial,Supporting infrastructure in place (5 related PRs merged),research,XL,621
+later-12mo,Taxonomy,Taxonomy API & shared database,1,,untracked,No matching GitHub items found,feature,L,85
+later-12mo,Taxonomy,Integrate support for barcode bin numbers for species without traditional names,1,,untracked,No matching GitHub items found,feature,M,529
+later-12mo,UI/UX,Add multilingual localization support,1,,untracked,No matching GitHub issues or PRs found,feature,L,103
+later-12mo,UI/UX,Labs page - Inference app and butterfly experiment,1,,untracked,No matching GitHub issues or PRs found,feature,L,626
+someday,Analytics/Viz,Change 'Captures per hour' to 'Average captures per hour per night',1,,untracked,No matching GitHub issues or PRs found,improvement,S,233
+someday,Analytics/Viz,Change 'Detections per hour' to 'Detections per hour per night on average',1,,untracked,No matching GitHub issues or PRs found,improvement,S,235
+someday,Analytics/Viz,Summary metrics - species richness. The accuracy of the species richness is 90% even when the classification accuracy is 60%.,1,,untracked,No matching GitHub issues or PRs found,research,M,267
+someday,Analytics/Viz,Bug: Counts per deployment,1,,untracked,No matching GitHub issues or PRs found,bug,S,429
+someday,Analytics/Viz,Summary shows capture/hr and sessions/month - suggest other relevant data,1,,untracked,No matching GitHub issues or PRs found,improvement,S,779
+someday,Community,Get contribution agreements in writing,1,,untracked,No matching GitHub items found,documentation,M,34
+someday,Community,Define how credit will be given,1,,untracked,No matching GitHub items found,documentation,S,35
+someday,Community,Decide on the platform name,1,,untracked,No matching GitHub items found,design,XS,37
+someday,Community,Online platform for ML-assisted monitoring of arthropods (Agile software pipeline new algorithms/research friendly/efficient UI),1,,untracked,No matching GitHub items found,documentation,XL,47
+someday,Community,Implement sustainable business/partner model,1,,untracked,No matching GitHub items found,research,XL,48
+someday,Community,Functionality needs for specific projects (General Topic),1,,untracked,No matching GitHub items found,research,M,79
+someday,Community,Assign and train a person at each partner org (Insectarium),1,,untracked,No matching GitHub items found,documentation,M,80
+someday,Community,Assigning someone from Antenna to be the main contact for each project,1,,untracked,No matching GitHub items found,improvement,XS,137
+someday,Community,Enforcing the use of the antenna email and add relevant people as recipients,1,,untracked,No matching GitHub items found,improvement,XS,138
+someday,Community,Regular call for all partners using Antenna,1,,untracked,No matching GitHub items found,improvement,S,140
+someday,Community,Sending out a form to be filled out before each meeting,1,,untracked,No matching GitHub items found,improvement,S,141
+someday,Community,Find project & partner manager for Antenna,1,,untracked,No matching GitHub items found,research,L,142
+someday,Community,Training others to respond to partners,1,,untracked,No matching GitHub items found,documentation,M,144
+someday,Community,Find intern and train on basic tasks,1,,untracked,No matching GitHub items found,research,M,145
+someday,Community,Training sessions for our own staff,1,,untracked,No matching GitHub items found,documentation,M,146
+someday,Community,Sustainability leadership and financial model,1,,untracked,No matching GitHub items found,research,XL,154
+someday,Community,Getting anxious for something to be working & finished soon,1,,untracked,No matching GitHub items found,documentation,XS,284
+someday,Community,Formalize Strategic Direction: Hosted Platform vs. Enterprise Portals vs. Open Source Only,1,,untracked,No matching GitHub items found,research,M,366
+someday,Community,Formally select Option A (Client Portals) as the Q1 Strategic Alignment goal (based on lean team),1,,untracked,No matching GitHub items found,research,S,367
+someday,Community,Create a user matrix and a feature matrix (for Jan 27th meeting),1,,untracked,No matching GitHub items found,research,S,369
+someday,Community,Define Milestones for 2026 (What do we want by April/July?),1,,untracked,No matching GitHub items found,research,M,370
+someday,Community,Keep track of email correspondence with current and new contacts,1,,untracked,No matching GitHub items found,improvement,XS,371
+someday,Community,Planning for meetings (accounted for),1,,untracked,No matching GitHub items found,improvement,XS,380
+someday,Community,A side goal of the platform is to increase engagement in the observation of insects.,1,,untracked,No matching GitHub items found,research,XS,475
+someday,Community,Enable & expedite new formal research.,1,,untracked,No matching GitHub items found,research,XS,476
+someday,Community,Monetization strategy/pricing (to put into grants),1,,untracked,No matching GitHub items found,research,M,520
+someday,Community,Continue to foster platform's openness and potential for collaboration,1,,untracked,No matching GitHub items found,improvement,XS,532
+someday,Community,Need for continuous funding to maintain and expand monitoring projects,1,,untracked,No matching GitHub items found,research,XL,584
+someday,Community,Mandatory Decision: Direction of platform (Client portals vs Central platform),1,,untracked,No matching GitHub items found,research,XL,639
+someday,Community,Platform Vision/Strategy (defining goals & milestones for 2026),1,,untracked,No matching GitHub items found,research,XL,797
+someday,Community,Which features before April 2026?,1,,untracked,No matching GitHub items found,research,M,816
+someday,Community,Which need to be self service from a centrally hosted platform?,1,,untracked,No matching GitHub items found,research,M,817
+someday,Community,Which need a planning & prototype sprint,1,,untracked,No matching GitHub items found,research,M,818
+someday,Community,Which features are MVP vs production-ready?,1,,untracked,No matching GitHub items found,research,M,819
+someday,Community,Which features need to be self-service vs admin-only?,1,,untracked,No matching GitHub items found,research,M,820
+someday,Community,Are we trying to make an app for everyone? Supporting 2-3 partners?,1,,untracked,No matching GitHub items found,research,M,821
+someday,Community,Simplicity vs. feature richness,1,,untracked,No matching GitHub items found,research,M,822
+someday,Community,Which partner types? Which partner types need self-service?,1,,untracked,No matching GitHub items found,research,M,823
+someday,Community,NRCAN (government/landscape scale) - custom deployment with support?,1,,untracked,No matching GitHub items found,research,M,824
+someday,Community,Mothitor project/Maxim's projects (research labs) - self-service priority,1,,untracked,No matching GitHub items found,research,M,825
+someday,Community,Which features empower & accelerate teams in what they already do?,1,,untracked,No matching GitHub items found,research,M,828
+someday,Community,Project manager,1,,untracked,No matching GitHub items found,research,XL,864
+someday,Data-Management,Implement same data process for acoustic recordings,1,,untracked,No matching GitHub issues or PRs found,research,XL,21
+someday,Data-Management,Use iNaturalist (for validation/privacy) and Creative Commons as benchmarks,1,PR#643(MERGED); #400(CLOSED),untracked,Only weak/related matches found,research,S,40
+someday,DevEx,Continuing to make tickets in ami-admin repo and track ongoing projects,1,,untracked,No matching GitHub issues or PRs found,improvement,XS,139
+someday,DevEx,Ability to demo models & techniques more easily (without setting up a research project) - Focus on internal use,1,,untracked,No matching GitHub issues or PRs found,feature,M,391
+someday,DevEx,Merge PRs - project ID filter,1,,untracked,No matching GitHub issues or PRs found,improvement,XS,424
+someday,DevEx,Automating the current interface (prototype),1,,untracked,No matching GitHub issues or PRs found,feature,L,492
+someday,DevEx,Python & R clients to interact with data already in Antenna,1,,untracked,No matching GitHub issues or PRs found,feature,L,630
+someday,DevEx,Switch to a JS framework in 2026,1,,untracked,No matching GitHub issues or PRs found,improvement,XL,636
+someday,DevEx,Split up backend modules,1,,untracked,No matching GitHub issues or PRs found,improvement,M,759
+someday,DevEx,Complete migration of UI components from raw Radix primitives to shadcn/ui,1,,untracked,No matching GitHub issues or PRs found,improvement,L,762
+someday,DevEx,Complete migration from style modules to Tailwind CSS,1,,untracked,No matching GitHub issues or PRs found,improvement,L,764
+someday,DevEx,Move UI kit back to Antenna repo,1,,untracked,No matching GitHub issues or PRs found,improvement,S,765
+someday,DevEx,Migrate to React 19,1,,untracked,No matching GitHub issues or PRs found,improvement,M,766
+someday,DevEx,Migrate to Next.js (simplify routing and code splitting),1,,untracked,No matching GitHub issues or PRs found,improvement,XL,768
+someday,DevEx,Represent Antenna UI in Figma (for high fidelity prototyping),1,,untracked,No matching GitHub issues or PRs found,improvement,M,770
+someday,DevEx,Upgrade Node.js,1,,untracked,No matching GitHub issues or PRs found,improvement,S,771
+someday,DevEx,ML Developer & researcher experience for improving ML,1,,untracked,No matching GitHub issues or PRs found,feature,L,837
+someday,Documentation,Michael to assist with technical description of methods for new paper,1,,untracked,No matching GitHub items found,documentation,M,264
+someday,Documentation,Updated diagrams for presentations in October,1,,untracked,No matching GitHub items found,documentation,M,382
+someday,Documentation,Mind map of what's to come after this,1,,untracked,No matching GitHub items found,documentation,S,420
+someday,Documentation,Difficulty with command-line interfaces and IT restrictions,1,,untracked,No matching GitHub items found,research,M,615
+someday,Documentation,Document full vision of complete AMI solution at scale,1,,untracked,No matching GitHub items found,documentation,L,827
+someday,Export/Interop,Plan for an R package to interface the API for plots stats etc.,1,,untracked,No matching GitHub items found,feature,XL,17
+someday,Export/Interop,Michael to assist with data exports for new paper,1,,untracked,No matching GitHub items found,improvement,M,262
+someday,Infrastructure,Need consumer service to scale up (Suggested: Rodrigo),1,,untracked,No matching GitHub issues or PRs found,research,XL,42
+someday,Infrastructure,Investigate/Implement containerisation for massively parallel (10000 core+) image processing,1,,untracked,No matching GitHub issues or PRs found,research,XL,46
+someday,Infrastructure,h265 encoding with regional resolution,1,,untracked,No matching GitHub issues or PRs found,research,M,717
+someday,ML/AI,"Size estimator with annotations (from normal photos, verified in Bold, iNat)",2,,untracked,,feature,L,"231, 458"
+someday,ML/AI,Model suggestions for impossible-to-ID species (confusion matrix) and handling of cryptic species split geographically,1,,untracked,,research,L,61
+someday,ML/AI,Distinguish between no more fine-grained labels available and need for more information to label prediction limitations,1,,untracked,,feature,M,62
+someday,ML/AI,Implement Better algorithms (MVP feature),1,,untracked,,feature,L,74
+someday,ML/AI,ML backend (General Topic),1,#445(CLOSED),untracked,,improvement,XL,77
+someday,ML/AI,Improving quality of results - and what gets an ID at all,1,,untracked,,improvement,L,161
+someday,ML/AI,How can we get to research grade automatically? For the ones we can,1,,untracked,,research,L,177
+someday,ML/AI,LORA adapter that is trained on a small amount of data and appended at inference time for improving results,1,,untracked,,research,L,244
+someday,ML/AI,Model zoo for insects,1,#804(CLOSED),untracked,,feature,L,269
+someday,ML/AI,Is Antenna a model zoo? Or just an index of what registered & available,1,,untracked,,design,S,270
+someday,ML/AI,"Working on the ""secret sauce"" methods to improve results for insects - external stats",1,,untracked,,research,L,273
+someday,ML/AI,Priors and adding statistical models (Logistic binning Shannon entropy),1,,untracked,,research,L,274
+someday,ML/AI,"Identify ""Tricky"" species (cannot identify the species with visual information only)",1,,untracked,,feature,M,396
+someday,ML/AI,Multiple objects in one bounding box,1,,untracked,,feature,M,404
+someday,ML/AI,Demo Flatbug,1,,untracked,,research,S,408
+someday,ML/AI,Demo other segmentation algorithms,1,,untracked,,research,S,409
+someday,ML/AI,Transparency: How many images and what images was the model trained on?,1,,untracked,,feature,M,413
+someday,ML/AI,Transparency: We don't know about this species,1,,untracked,,feature,S,414
+someday,ML/AI,Transparency: What are the stupid errors,1,,untracked,,feature,S,415
+someday,ML/AI,Somehow display which species the model is better or worse at,1,,untracked,,feature,M,435
+someday,ML/AI,Re-training panama model with fewer,1,,untracked,,improvement,M,437
+someday,ML/AI,"How to do process efficiently in batch (similarity model, etc)",1,,untracked,,research,L,472
+someday,ML/AI,"Other invertebrates - other nocturnals, and day-time polinators",1,,untracked,,feature,XL,482
+someday,ML/AI,Dataset transparency (show training data species/images for each model),1,,untracked,,feature,M,507
+someday,ML/AI,Build a retraining workflow (use verified data to improve model),1,,untracked,,feature,L,508
+someday,ML/AI,"All arthropods model (global insects, spiders, etc)",1,,untracked,,feature,XL,512
+someday,ML/AI,Continue to maintain and enhance the integration of multiple algorithms for species identification,1,,untracked,,improvement,M,586
+someday,ML/AI,Allow ability to resume job where it failed,1,#874(CLOSED); PR#233(CLOSED),untracked,,feature,M,619
+someday,ML/AI,Test semi-automated training (active learning) of models,1,,untracked,,research,XL,659
+someday,Onboarding,"Transition public ""Sign-Up"" buttons to ""Contact Us""",1,,untracked,No matching GitHub issues or PRs found,improvement,XS,368
+someday,Research,Estimation of physical size. Biomass.,1,,untracked,,research,L,185
+someday,Research,How can we confidently scale these systems beyond what humans can do?,1,,untracked,,research,XL,268
+someday,Research,Experimenting with fine-grained classification,1,#857(OPEN); PR#815(MERGED); PR#821(MERGED); PR#807(MERGED); PR#741(MERGED); PR#613(MERGED); PR#574(MERGED); PR#241(MERGED); #628(CLOSED); #621(CLOSED),partial,"Core feature implemented, enhancements in progress",research,L,271
+someday,Research,Common challenges - two lists of classes: species that exist and species that you can identify visually from a top-down image.,1,,untracked,,research,M,272
+someday,Research,Is this any more efficient than traditional monitoring,1,PR#352(CLOSED),untracked,,research,M,282
+someday,Research,Building a dataset of moth size information,1,,untracked,,research,XL,401
+someday,Research,"Ask Chris for list of any, all categories of interest",1,,untracked,,research,XS,439
+someday,Research,"Analyze morphological traits and temporal patterns, using the data we have",1,,untracked,,research,L,461
+someday,Research,What can we do with the data we have?,1,,untracked,,research,M,462
+someday,Research,Comparison with traditional monitoring data (BCI),1,,untracked,,research,L,464
+someday,Research,Clearly define the issues we see,1,,untracked,,research,S,466
+someday,Research,Propose projects to work on new methods,1,,untracked,,research,M,467
+someday,Research,Concern about handling incorrect timestamps from faulty real-time clocks,1,,untracked,,research,S,545
+someday,Research,Skeptical about speed and accuracy of integrating DNA barcoding data,1,,untracked,,research,XS,574
+someday,Taxonomy,Ask Chris for list of any all categories of interest,1,,untracked,No matching GitHub items found,documentation,XS,211
+someday,Taxonomy,How much freedom do we give projects & users for Taxonomy,1,,untracked,No matching GitHub items found,research,S,847
+someday,UI/UX,Implement date filtering,1,,untracked,No matching GitHub issues or PRs found,feature,S,7
+someday,UI/UX,Display projects user is part of/manager of in My Antenna,1,,untracked,No matching GitHub issues or PRs found,feature,S,28
+someday,UI/UX,Display user's focused species in My Antenna,1,,untracked,No matching GitHub issues or PRs found,feature,S,29
+someday,UI/UX,Not identifiable based on current image quick action,1,,untracked,No matching GitHub issues or PRs found,feature,S,50
+someday,UI/UX,Never identifiable based on image quick action,1,,untracked,No matching GitHub issues or PRs found,feature,S,51
+someday,UI/UX,I personally can not ID this quick action,1,,untracked,No matching GitHub issues or PRs found,feature,S,52
+someday,UI/UX,Incorrect (based on my knowledge) quick reaction,1,,untracked,No matching GitHub issues or PRs found,feature,S,53
+someday,UI/UX,Family/genus/tribe correct quick reaction,1,,untracked,No matching GitHub issues or PRs found,feature,S,54
+someday,UI/UX,Provide a list of species to choose from for validation/annotation,1,,untracked,No matching GitHub issues or PRs found,feature,S,56
+someday,UI/UX,Provide a mechanism for regional experts to flag instances for further investigation,1,,untracked,No matching GitHub issues or PRs found,feature,S,60
+someday,UI/UX,Quick flagging,1,,untracked,No matching GitHub issues or PRs found,feature,S,106
+someday,UI/UX,Show Num Captures column under deployments.,1,,untracked,No matching GitHub issues or PRs found,feature,XS,115
+someday,UI/UX,Represent Antenna UI in Figma (for high fidelity prototyping),1,,untracked,No matching GitHub issues or PRs found,design,L,357
+someday,UI/UX,Don't show Not a Moth by default (need project setting for these special Taxon),1,,untracked,No matching GitHub issues or PRs found,improvement,S,416
+someday,UI/UX,Bug: Cluster cover images are not automatically set,1,,untracked,No matching GitHub issues or PRs found,bug,S,427
+someday,UI/UX,Should always be encouraging and pleasurable to use.,1,,untracked,No matching GitHub issues or PRs found,improvement,XS,478
+someday,UI/UX,"Clear distinction for ""3rd party"" vs. certified models (Antenna logo!)",1,,untracked,No matching GitHub issues or PRs found,feature,S,496
+someday,UI/UX,Citizen science page with a downloadable button,1,,untracked,No matching GitHub issues or PRs found,feature,S,499
+someday,UI/UX,Clarify indication for unprocessed collections,1,,untracked,No matching GitHub issues or PRs found,improvement,S,536
+someday,UI/UX,Connect comments box,1,,untracked,No matching GitHub issues or PRs found,bug,S,537
+someday,UI/UX,Clarify saving changes (automatic vs. manual),1,,untracked,No matching GitHub issues or PRs found,improvement,S,552
+someday,UI/UX,Back button should retain selected filters,1,,untracked,No matching GitHub issues or PRs found,bug,XS,581
+someday,UI/UX,Make filters more visible for intuitive understanding,1,,untracked,No matching GitHub issues or PRs found,improvement,S,582
+someday,UI/UX,Make thumbnails clickable,1,,untracked,No matching GitHub issues or PRs found,feature,XS,593
+someday,UI/UX,Auto-refresh image after single image job completion,1,,untracked,No matching GitHub issues or PRs found,feature,S,598
+someday,UI/UX,Continue to maintain the ability to see detailed information about captured images,1,,untracked,No matching GitHub issues or PRs found,improvement,S,609
+someday,UI/UX,Continue to maintain the clean interface of the software,1,,untracked,No matching GitHub issues or PRs found,improvement,S,611
+someday,UI/UX,Continue to maintain the intuitive navigation and user-friendly interface,1,,untracked,No matching GitHub issues or PRs found,improvement,S,612
+someday,UI/UX,Make some interface elements like the filter bar fixed,1,,untracked,No matching GitHub issues or PRs found,feature,S,613
+someday,UI/UX,Expose deployment drop-down when registering a new job,1,,untracked,No matching GitHub issues or PRs found,feature,XS,618
+someday,UI/UX,Auto-open status modal when single job is started,1,,untracked,No matching GitHub issues or PRs found,feature,XS,620
+someday,UI/UX,Discussion Collections terminology,1,,untracked,No matching GitHub issues or PRs found,design,S,697
+someday,UI/UX,More prototypes,1,,untracked,No matching GitHub issues or PRs found,design,M,702
+someday,UI/UX,Getting user personas and user stories on paper,1,,untracked,No matching GitHub issues or PRs found,design,M,703
+someday,UI/UX,Need tooltips? Walkthrough dialogs?,1,,untracked,No matching GitHub issues or PRs found,feature,S,704
+someday,UI/UX,Filters vs project settings,1,,untracked,No matching GitHub issues or PRs found,design,S,705
+someday,UI/UX,Idea on how to disable filters,1,,untracked,No matching GitHub issues or PRs found,feature,S,706
+someday,UI/UX,Ability to delete a site/pipeline/or device type,1,,untracked,No matching GitHub issues or PRs found,feature,S,731
+someday,UI/UX,Search project option on the main page,1,,untracked,No matching GitHub issues or PRs found,feature,S,732
+someday,UI/UX,Register new project button hard to find,1,,untracked,No matching GitHub issues or PRs found,improvement,XS,733
+someday,UI/UX,Transition Sign-Up buttons to Contact Us (Strategic),1,,untracked,No matching GitHub issues or PRs found,improvement,XS,734
+someday,UI/UX,Software incorrectly ID'd moss/bark as moth species with no way to report,1,,untracked,No matching GitHub issues or PRs found,feature,S,776
+someday,UI/UX,Pipeline tag isn't really clear,1,,untracked,No matching GitHub issues or PRs found,improvement,XS,777
+someday,UI/UX,Image illustrating projects should be scaled to the size of rectangular window,1,,untracked,No matching GitHub issues or PRs found,bug,XS,780
+someday,UI/UX,Regex null bug (UI gap),1,,untracked,No matching GitHub issues or PRs found,bug,XS,793
+someday,UI/UX,Regex null bug,1,,untracked,No matching GitHub issues or PRs found,bug,XS,859
+--- COMPLETED (CAPABILITY INVENTORY) ---,,,,,,,,,
+done,Analytics/Viz,Antenna features to 'Generate compound flight chart per taxa list',2,PR#580(MERGED),completed,Completed in #580,feature,M,"260, 261"
+done,Analytics/Viz,Top species chart to overview page,1,PR#580(MERGED),completed,Completed in #580: Add top species chart to overview page,feature,S,120
+done,Analytics/Viz,Flight charts for taxa & taxa lists,1,PR#580(MERGED),completed,Completed in #580,feature,M,124
+done,Analytics/Viz,Add same charts (Average captures/detections per hour per night) but filtered by one specific species,1,PR#189(MERGED),completed,Completed in #189,feature,M,236
+done,Analytics/Viz,Add multiple lines to compare multiple species (compare flight times) on charts,1,PR#580(MERGED),completed,Completed in #580,feature,M,237
+done,Analytics/Viz,Be able to select any higher taxon group for filtering charts,1,PR#580(MERGED),completed,Completed in #580,feature,S,238
+done,Analytics/Viz,"Charts & Trends (Top species, flight chart/flying patterns - high-level summaries)",1,PR#580(MERGED),completed,Completed in #580,feature,L,494
+done,Analytics/Viz,Show time series of images taken,1,PR#300(MERGED),completed,Completed in #300,feature,M,557
+done,Analytics/Viz,Data Visualization (charts/stats/flight charts for taxa),1,PR#580(MERGED),completed,Completed in #580,feature,L,810
+done,Data-Management,Importing - Data processed externally (Detections/Predictions),3,#682(CLOSED); #672(CLOSED); PR#1046(MERGED); PR#1036(MERGED); PR#818(MERGED); PR#765(MERGED); PR#596(MERGED); PR#203(MERGED); PR#815(MERGED); #706(CLOSED),completed,"7 merged PR(s): #1046, #1036, #818; 3 closed: #682, #672",feature,M,"748, 799, 854"
+done,Data-Management,Define if collections are absolutely needed or more like job settings (design question),2,PR#891(MERGED); #718(CLOSED); PR#612(MERGED); #716(CLOSED); PR#657(MERGED); PR#626(MERGED); PR#286(MERGED); PR#315(MERGED); PR#632(MERGED); #614(CLOSED),completed,"7 merged PR(s): #891, #612, #657; 2 closed: #718, #716",design,S,"24, 26"
+done,Data-Management,Fix missing sessions on occurrences - can we ensure sessions are grouped before processing,2,PR#794(MERGED); #791(CLOSED); #329(CLOSED); PR#692(MERGED); PR#620(MERGED); #651(CLOSED); #443(CLOSED); PR#691(MERGED); #403(CLOSED); PR#296(MERGED),completed,"5 merged PR(s): #794, #692, #620; 5 closed: #791, #329",bug,M,"218, 446"
+done,Data-Management,"Importing Taxa lists, Data processed externally, Captures (public HTTP urls)",2,PR#203(MERGED); #864(CLOSED); #745(CLOSED); #622(CLOSED); PR#838(MERGED); PR#292(MERGED); #998(CLOSED); #796(CLOSED); #393(CLOSED); #774(CLOSED),completed,"3 merged PR(s): #203, #838, #292; 7 closed: #864, #745",feature,M,"341, 650"
+done,Data-Management,Develop a formula to extract year (YEAR function) from the date in column A to fill column C (Example Row),1,PR#809(MERGED); PR#1105(MERGED); PR#643(MERGED); PR#1055(MERGED); PR#1048(MERGED); PR#905(MERGED); PR#829(MERGED); PR#781(MERGED); PR#778(MERGED); PR#756(MERGED),completed,"10 merged PR(s): #809, #1105, #643",improvement,XS,64
+done,Data-Management,Daily morning SD cards collection of the entocam,1,PR#584(MERGED); PR#895(MERGED); PR#896(MERGED); PR#800(MERGED); PR#598(MERGED); PR#222(MERGED); #639(OPEN); #548(CLOSED); PR#1043(MERGED); #650(CLOSED),completed,1 merged PR(s): #584,documentation,XS,196
+done,Data-Management,Reinstall them,1,PR#1060(MERGED); PR#1046(MERGED); PR#891(MERGED); PR#645(MERGED); PR#554(MERGED); PR#306(MERGED); PR#190(MERGED); #1072(CLOSED); #963(CLOSED); #874(CLOSED),completed,"7 merged PR(s): #1060, #1046, #891; 3 closed: #1072, #963",documentation,XS,203
+done,Data-Management,Script to fix date offsets,1,PR#809(MERGED); PR#781(MERGED); PR#1105(MERGED); PR#643(MERGED); PR#778(MERGED); PR#652(MERGED); PR#1055(MERGED); PR#1048(MERGED); PR#905(MERGED); PR#829(MERGED),completed,"10 merged PR(s): #809, #781, #1105",improvement,S,230
+done,Data-Management,Deleting occurrences,1,PR#613(MERGED); #846(CLOSED); PR#250(MERGED); #428(CLOSED); PR#573(MERGED); PR#608(MERGED); #209(CLOSED); #682(CLOSED); PR#861(MERGED); #865(OPEN),completed,"3 merged PR(s): #613, #250, #573; 2 closed: #846, #428",feature,S,432
+done,Data-Management,Allow ability to delete deployments,1,PR#271(MERGED); PR#331(MERGED); PR#281(MERGED); PR#573(MERGED); #789(CLOSED); #977(OPEN); #413(OPEN); #446(OPEN); #400(CLOSED); PR#690(MERGED),completed,"4 merged PR(s): #271, #331, #281; 1 closed: #789",feature,S,566
+done,DevEx,Multiple environments and auto deployment,1,#400(CLOSED); #196(CLOSED); PR#1009(MERGED); #931(CLOSED),completed,1 closed: #400,feature,XL,758
+done,Export/Interop,Integration of final data into iNaturalist & GBIF,1,#217(CLOSED),completed,Resolved and closed in #217,feature,L,480
+done,Export/Interop,Integrate with iNaturalist for direct upload and validation of identified species,1,#217(CLOSED),completed,Resolved and closed in #217,feature,L,610
+done,Infrastructure,Data Uploader Tool (Desktop app to abstract S3 uploads / sync from SD cards),3,PR#987(MERGED); #1123(OPEN); PR#231(MERGED); PR#76(MERGED); PR#79(MERGED); PR#146(MERGED); PR#201(MERGED); #640(CLOSED); #593(OPEN); #259(CLOSED),completed,1 merged PR(s): #987,feature,L,"340, 392, 745"
+done,Infrastructure,Automated backups (object storage backups),2,#685(CLOSED),completed,1 closed: #685,feature,M,"361, 757"
+done,Infrastructure,Processing v2 & backend cleanup,1,PR#987(MERGED); PR#1109(MERGED); PR#1125(MERGED); #1112(OPEN); PR#1113(MERGED); #1123(OPEN); #1111(OPEN); #1085(OPEN); #1084(CLOSED); #515(OPEN),completed,"2 merged PR(s): #987, #1109",improvement,L,160
+done,Infrastructure,Improving stability (implement processing v2),1,PR#987(MERGED); PR#1109(MERGED); PR#1113(MERGED); #1112(OPEN); PR#1125(MERGED); #1123(OPEN); #1111(OPEN); #1085(OPEN); #1084(CLOSED); #1122(OPEN),completed,"2 merged PR(s): #987, #1109",improvement,L,162
+done,Infrastructure,Develop a Data Uploader Tool (starting with CLI version),1,#640(CLOSED); #455(OPEN); #477(OPEN); PR#281(MERGED); #1061(OPEN); PR#943(MERGED); #456(OPEN); PR#987(MERGED); PR#522(MERGED); #1122(OPEN),completed,1 closed: #640,feature,L,312
+done,Infrastructure,Move UI kit back to Antenna repo (to reduce complexity),1,PR#161(MERGED),completed,1 merged PR(s): #161,improvement,S,324
+done,Infrastructure,Scripts for sampling & uploading data,1,#640(CLOSED); #455(OPEN); #477(OPEN); PR#281(MERGED); #1061(OPEN); PR#943(MERGED); #456(OPEN); PR#987(MERGED); PR#522(MERGED); #1122(OPEN),completed,1 closed: #640,feature,S,425
+done,Infrastructure,AMI Data Companion (for processing batch data offline),1,PR#987(MERGED); #1123(OPEN); #259(CLOSED); PR#146(MERGED); PR#266(MERGED); #640(CLOSED); #676(CLOSED); PR#688(MERGED); PR#201(MERGED); PR#79(MERGED),completed,1 merged PR(s): #987,feature,XL,486
+done,Infrastructure,Fix challenges with uploading large batches of images due to interface limitations,1,#640(CLOSED); PR#281(MERGED); #1061(OPEN); #477(OPEN); #455(OPEN); PR#943(MERGED); #456(OPEN); PR#522(MERGED); #904(OPEN); PR#1062(MERGED),completed,1 closed: #640,bug,M,600
+done,Infrastructure,Increase file size limit for uploaded images,1,#640(CLOSED); PR#281(MERGED); #1061(OPEN); #477(OPEN); #455(OPEN); PR#943(MERGED); #456(OPEN); PR#522(MERGED); #1122(OPEN); #904(OPEN),completed,1 closed: #640,feature,S,606
+done,Infrastructure,Abstracting object store and allowing more uploading from UI and Desktop client,1,#640(CLOSED); PR#943(MERGED); PR#281(MERGED); #1061(OPEN); #477(OPEN); #455(OPEN); PR#522(MERGED); #1122(OPEN); #456(OPEN); #904(OPEN),completed,1 closed: #640,feature,L,631
+done,Infrastructure,Distributed data processing (hosting & serving models with multiple workers),1,PR#987(MERGED); PR#1109(MERGED); #1111(OPEN); #1112(OPEN); PR#1125(MERGED); PR#1113(MERGED); #1123(OPEN); #1085(OPEN); #1084(CLOSED); #515(OPEN),completed,"2 merged PR(s): #987, #1109",feature,XL,635
+done,Infrastructure,Processing v2: Move to a distributed task system,1,PR#987(MERGED); PR#1109(MERGED); #1084(CLOSED); #1112(OPEN); PR#1125(MERGED); PR#1113(MERGED); #1123(OPEN); #1111(OPEN); #1085(OPEN); #515(OPEN),completed,"2 merged PR(s): #987, #1109",feature,XL,735
+done,Infrastructure,Data Uploader (easier data import/desktop application),1,PR#292(MERGED); PR#227(MERGED); #259(CLOSED); PR#838(MERGED); PR#943(MERGED); PR#281(MERGED); #477(OPEN); PR#987(MERGED); PR#853(MERGED); PR#522(MERGED),completed,"4 merged PR(s): #292, #227, #838; 1 closed: #259",feature,L,798
+done,ML/AI,Generalized pipeline - General insect detector & Global moth classifier,5,PR#815(MERGED); PR#798(MERGED); #992(OPEN); PR#1046(MERGED); PR#837(MERGED); PR#818(MERGED); PR#814(MERGED); PR#719(MERGED); PR#374(MERGED); PR#484(OPEN),completed,Implemented in PR #815,feature,XL,"333, 638, 740, 801, 839"
+done,ML/AI,Predict to order level only by default?,2,PR#712(MERGED); #412(OPEN),completed,Implemented in PR #712,improvement,M,"417, 739"
+done,ML/AI,Support for Costa Rica and Singapore regions/models,1,PR#962(MERGED); #469(OPEN); #517(CLOSED); PR#917(MERGED); PR#821(MERGED); PR#818(MERGED); PR#195(MERGED); #412(OPEN),completed,Implemented in PR #962,feature,L,81
+done,ML/AI,Reprocessing of same objects,1,PR#719(MERGED); PR#984(CLOSED); PR#718(CLOSED); PR#706(CLOSED); PR#1053(MERGED); PR#954(MERGED); PR#451(OPEN),completed,Implemented in PR #719,feature,M,89
+done,ML/AI,Clustering,1,PR#818(MERGED); #774(CLOSED); PR#859(MERGED); PR#849(MERGED); PR#845(OPEN); PR#832(OPEN); #775(OPEN); #846(CLOSED); #827(CLOSED); PR#293(MERGED),completed,Implemented in PR #818,feature,M,279
+done,ML/AI,Cluster detections within the same family,1,PR#818(MERGED); PR#859(MERGED); #846(CLOSED); #774(CLOSED); #1093(OPEN); PR#1045(OPEN); #992(OPEN); PR#1091(MERGED); PR#1046(MERGED); PR#815(MERGED),completed,Implemented in PR #818,feature,M,397
+done,ML/AI,"Post processing filters: Blurriness, darkness, brightness (evaluating the image quality)",1,PR#849(MERGED); PR#999(OPEN); PR#954(MERGED); PR#890(OPEN); PR#957(CLOSED),completed,Implemented in PR #849,feature,M,405
+done,ML/AI,Class masking & global model - then generate rank classifications as additional classifications,1,PR#573(MERGED); PR#999(OPEN); #952(OPEN); #915(OPEN); #857(OPEN); PR#815(MERGED); PR#837(MERGED); PR#821(MERGED); PR#818(MERGED); PR#814(MERGED),completed,Implemented in PR #573,feature,L,426
+done,ML/AI,Missing Not Identifiable class in OOD environment,1,PR#842(MERGED); #811(CLOSED); PR#888(MERGED); PR#840(MERGED); PR#814(MERGED); PR#845(OPEN); PR#984(CLOSED); #827(CLOSED),completed,Implemented in PR #842,bug,S,443
+done,ML/AI,"Many to many, storing feature embedding, etc.",1,PR#821(MERGED); PR#807(MERGED); #752(CLOSED); PR#1050(OPEN); PR#818(MERGED); PR#670(MERGED); #875(OPEN); PR#845(OPEN); PR#816(OPEN); PR#707(OPEN),completed,Implemented in PR #821,research,M,473
+done,ML/AI,Continue to maintain and enhance automated detection and classification,1,PR#815(MERGED); #628(CLOSED); PR#837(MERGED); PR#818(MERGED); PR#814(MERGED); PR#798(MERGED); PR#374(MERGED); #774(CLOSED); #752(CLOSED); #220(CLOSED),completed,Implemented in PR #815,improvement,XL,527
+done,ML/AI,Clustering for labeling (vector search backend),1,PR#818(MERGED); #846(CLOSED); #774(CLOSED); #827(CLOSED); PR#859(MERGED); PR#849(MERGED); PR#845(OPEN); PR#832(OPEN); #775(OPEN); PR#185(MERGED),completed,Implemented in PR #818,feature,L,664
+done,Permissions/Auth,Feature: Configure members for a project is partially implemented,4,PR#1004(MERGED),completed,Implemented in PR #1004,feature,M,"347, 673, 691, 730"
+done,Permissions/Auth,Private vs. Public projects. Fix permission boundaries.,1,PR#277(MERGED),completed,Implemented in PR #277,feature,M,96
+done,Permissions/Auth,Setting some projects to drafts,1,PR#1012(MERGED); PR#1004(MERGED),completed,"Implemented across multiple PRs: #1012, #1004",feature,XS,134
+done,Permissions/Auth,Roles (Not only a permissions feature but a way to organize and simplify the interface for different types of users),1,PR#277(MERGED),completed,Implemented in PR #277,feature,L,181
+done,Permissions/Auth,Add is_staff to each user,1,PR#235(MERGED); PR#449(MERGED),completed,"Implemented across multiple PRs: #235, #449",feature,XS,194
+done,Permissions/Auth,Project & Team Management (UI & API for managing user roles),1,PR#727(CLOSED),completed,Resolved and closed in #727,feature,L,795
+done,Permissions/Auth,Unstable Functions (password reset/sign-up disabled),1,PR#526(MERGED),completed,Implemented in PR #526,bug,M,813
+done,Research,LoRAs for regional models,1,PR#962(MERGED); #469(OPEN); #517(CLOSED); PR#608(MERGED); PR#453(MERGED); PR#630(OPEN); #412(OPEN); #272(OPEN),completed,Implemented in PR #962,research,L,186
+done,Research,What steps can we take to improve the classifiers over the coming years?,1,PR#613(MERGED); PR#574(MERGED); PR#607(CLOSED); #952(OPEN); #857(OPEN); PR#815(MERGED); PR#837(MERGED); PR#821(MERGED); PR#818(MERGED); PR#814(MERGED),completed,Implemented in PR #613,research,M,465
+done,Research,Concern about accuracy of species detection/classification,1,PR#815(MERGED); #628(CLOSED); PR#837(MERGED); PR#818(MERGED); PR#814(MERGED); PR#798(MERGED); PR#374(MERGED); #774(CLOSED); #752(CLOSED); #220(CLOSED),completed,Implemented in PR #815,research,XS,525
+done,Taxonomy,Features for grouping & filtering species lists,1,PR#850(MERGED),completed,Implemented in PR #850,feature,M,253
+done,Taxonomy,Importing for Taxonomy (bulk import to assign to lists),1,#622(CLOSED),completed,Resolved and closed in #622,feature,M,848
+done,UI/UX,Misc. UI gaps: More obvious interlinking between occurrence and session detail,4,#651(CLOSED); PR#794(MERGED); #791(CLOSED); #443(CLOSED); PR#692(MERGED),completed,Completed in #651,improvement,S,"349, 651, 772, 856"
+done,UI/UX,Hovering toolbar in the session detail per occurrence?,3,#651(CLOSED); PR#794(MERGED); #791(CLOSED); #443(CLOSED); #585(CLOSED),completed,Completed in #651,feature,M,"352, 775, 860"
+done,UI/UX,Size filter,2,PR#1031(MERGED),completed,Completed in #1031,feature,S,"216, 444"
+done,UI/UX,Link to filter taxa by parent (from taxa detail view)?,2,PR#856(MERGED); PR#951(MERGED); PR#851(MERGED); PR#578(MERGED); PR#830(MERGED),completed,Completed in #856,feature,S,"226, 453"
+done,UI/UX,Add verification features to gallery view,2,PR#785(MERGED); PR#841(MERGED); PR#643(MERGED),completed,Completed in #785,feature,M,"227, 454"
+done,UI/UX,Make taxa detail page,2,#485(CLOSED),completed,Completed in #485,feature,M,"232, 459"
+done,UI/UX,Fix incorrect date display for all occurrences,2,PR#214(MERGED); PR#126(MERGED),completed,Completed in #214,bug,S,"558, 559"
+done,UI/UX,Knowing what's been processed (images uploaded/in a project/collection),2,PR#961(MERGED); #680(CLOSED),completed,Completed in #961,feature,M,"791, 843"
+done,UI/UX,Knowing what's been verified (progress bar reflection),2,PR#841(MERGED),completed,Completed in #841,feature,M,"792, 844"
+done,UI/UX,Bulk agree option for annotation,1,PR#841(MERGED); PR#460(MERGED),completed,Completed in #841,feature,S,2
+done,UI/UX,UI for faster verification,1,PR#841(MERGED); PR#785(MERGED); PR#460(MERGED),completed,Completed in #841,improvement,M,3
+done,UI/UX,Automatically hide vetted items as user proceeds,1,PR#841(MERGED),completed,Completed in #841,feature,S,5
+done,UI/UX,Filtering by species/genus/taco level with children levels (already in place),1,PR#951(MERGED); PR#856(MERGED); PR#851(MERGED); PR#830(MERGED),completed,Completed in #951,documentation,XS,6
+done,UI/UX,Determine where users can type in a species name for search/filtering,1,PR#951(MERGED); PR#856(MERGED); PR#851(MERGED); PR#830(MERGED); PR#578(MERGED),completed,Completed in #951,design,S,8
+done,UI/UX,Ability to validate both low-confidence and high-confidence predictions,1,PR#841(MERGED),completed,Completed in #841,feature,S,55
+done,UI/UX,Display multiple labels in a suggest ID section for re-identification,1,PR#841(MERGED); PR#460(MERGED),completed,Completed in #841,feature,S,69
+done,UI/UX,Collaborative identification or validation,1,PR#841(MERGED); PR#785(MERGED); PR#460(MERGED),completed,Completed in #841,feature,L,86
+done,UI/UX,Ability to share links to occurrences sessions or summaries,1,PR#794(MERGED); #791(CLOSED); #651(CLOSED); #443(CLOSED),completed,Completed in #794,feature,S,90
+done,UI/UX,Filtering based on model used (session view occurrence view),1,PR#185(MERGED); PR#794(MERGED); #443(CLOSED); #791(CLOSED); #651(CLOSED),completed,Completed in #185,feature,S,100
+done,UI/UX,Selection of device site etc. in Deployment,1,PR#333(MERGED),completed,Completed in #333,improvement,S,102
+done,UI/UX,Identification view (Supports multiple users keeps track of history allows for bulk ID or ID to coarser labels),1,PR#841(MERGED); PR#460(MERGED),completed,Completed in #841,feature,L,179
+done,UI/UX,Ability to share URLs (Deep links to single session captures or directions from a specific taxon group),1,PR#195(MERGED),completed,Completed in #195,feature,S,180
+done,UI/UX,Expose more features for user to manage species list and view charts (MVP for March),1,PR#580(MERGED); PR#577(MERGED),completed,Completed in #580,feature,M,245
+done,UI/UX,New filter: Show occurrences where there is any disagreement (between models or humans),1,PR#840(MERGED),completed,Completed in #840,feature,S,259
+done,UI/UX,See what captures has been processed and not (Missing data about this),1,PR#961(MERGED),completed,Completed in #961,feature,M,295
+done,UI/UX,"Add new frontend views like ""My projects"" and show multiple suggestions per classification",1,PR#741(MERGED),completed,Completed in #741,feature,M,317
+done,UI/UX,Filter for confidence in Taxa view,1,PR#856(MERGED); PR#951(MERGED); PR#851(MERGED); PR#578(MERGED); PR#830(MERGED),completed,Completed in #856,feature,S,421
+done,UI/UX,Show the Site & Device as columns in Station list view,1,PR#333(MERGED),completed,Completed in #333,feature,XS,434
+done,UI/UX,Update filter of taxa best confidence to allow None (filter out unobserved species with score of None),1,PR#856(MERGED); PR#851(MERGED); PR#951(MERGED),completed,Completed in #856,feature,S,436
+done,UI/UX,Put cursor in taxon search field after clicking the magnifying glass,1,PR#951(MERGED); PR#856(MERGED); PR#851(MERGED); PR#255(MERGED),completed,Completed in #951,bug,XS,438
+done,UI/UX,Interactive tool to manually annotate or correct detections,1,PR#214(MERGED); PR#126(MERGED),completed,Completed in #214,feature,L,526
+done,UI/UX,Fix lack of specific field validation errors when creating deployment,1,#400(CLOSED),completed,Completed in #400,bug,M,562
+done,UI/UX,Fix difficulty in saving deployment without changing a field,1,PR#1074(MERGED),completed,Completed in #1074,bug,S,568
+done,UI/UX,Show all detections regardless of score threshold,1,PR#214(MERGED); PR#126(MERGED),completed,Completed in #214,feature,S,570
+done,UI/UX,Fix missing user name in detail view of identification history,1,PR#841(MERGED); PR#785(MERGED),completed,Completed in #841,bug,XS,588
+done,UI/UX,Use clearer link text for viewing source image,1,PR#300(MERGED); PR#1031(MERGED),completed,Completed in #300,improvement,XS,590
+done,UI/UX,Uncertainty about expected image upload count,1,PR#961(MERGED),completed,Completed in #961,improvement,XS,591
+done,UI/UX,Implement auto-refresh after processing single image,1,PR#961(MERGED); #901(CLOSED),completed,Completed in #961,feature,S,596
+done,UI/UX,Continue to maintain clear indication of image upload status,1,PR#961(MERGED),completed,Completed in #961,improvement,S,603
+done,UI/UX,Clarify header image upload during deployment creation,1,#789(CLOSED); #314(CLOSED),completed,Completed in #789,improvement,XS,604
+done,UI/UX,Continue to maintain the manual upload feature for images,1,PR#961(MERGED),completed,Completed in #961,improvement,S,608
+done,UI/UX,Manually edit bounding box annotations for detections,1,PR#214(MERGED); PR#126(MERGED),completed,Completed in #214,feature,M,666
+done,UI/UX,Post processing UI,1,PR#849(MERGED),completed,Completed in #849,feature,L,675
+done,UI/UX,Cover image fields,1,PR#300(MERGED); PR#187(MERGED); PR#1058(MERGED),completed,Completed in #300,feature,XS,713
+done,UI/UX,Separate image uploading from first two steps during deployment registration,1,#789(CLOSED),completed,Completed in #789,improvement,S,752
+done,UI/UX,Being able to click the save after uploading sample capture images,1,PR#961(MERGED),completed,Completed in #961,bug,XS,754
+done,UI/UX,Add deployment count column to Device Types list,1,PR#333(MERGED),completed,Completed in #333,feature,XS,778
+done,UI/UX,Knowing What's Processed (progress bar/how many images processed),1,PR#961(MERGED),completed,Completed in #961,feature,M,804
+done,UI/UX,UI Gaps/Fixes (consistent saving/quick buttons/show best detection image),1,PR#1058(MERGED),completed,Completed in #1058,improvement,M,812

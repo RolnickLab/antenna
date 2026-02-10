@@ -1,0 +1,289 @@
+row_num,description,category,size,type
+579,Continue to foster efficient organization of files and metadata,Data-Management,S,improvement
+580,Use hierarchical folders for organizing cropped images by taxonomic order and family,Data-Management,M,feature
+581,Back button should retain selected filters,UI/UX,XS,bug
+582,Make filters more visible for intuitive understanding,UI/UX,S,improvement
+583,Add advanced filtering options,UI/UX,M,feature
+584,Need for continuous funding to maintain and expand monitoring projects,Community,XL,research
+585,Add more fields for detailed hardware information,Data-Management,S,feature
+586,Continue to maintain and enhance the integration of multiple algorithms for species identification,ML/AI,M,improvement
+587,Allow viewing IDs by genus/family/etc.,Taxonomy,M,feature
+588,Fix missing user name in detail view of identification history,UI/UX,XS,bug
+589,Questions threshold logic for family-level identifications,ML/AI,S,research
+590,Use clearer link text for viewing source image,UI/UX,XS,improvement
+591,Uncertainty about expected image upload count,UI/UX,XS,improvement
+592,Provide easier method to export and organize cropped images hierarchically by taxonomy,Export/Interop,M,feature
+593,Make thumbnails clickable,UI/UX,XS,feature
+594,Fix slower image loading,Infrastructure,S,bug
+595,Fix very slow image loading,Infrastructure,S,bug
+596,Implement auto-refresh after processing single image,UI/UX,S,feature
+597,Processing pipeline for analyzing individual images,ML/AI,M,feature
+598,Auto-refresh image after single image job completion,UI/UX,S,feature
+599,Increase image resolution threshold to accommodate high-resolution images,Infrastructure,S,feature
+600,Fix challenges with uploading large batches of images due to interface limitations,Infrastructure,M,bug
+601,Enhance user experience for large image uploads through integration with cloud services,Infrastructure,L,feature
+602,Provide instructions for uploading large batches of images using Cyberduck,Documentation,XS,documentation
+603,Continue to maintain clear indication of image upload status,UI/UX,S,improvement
+604,Clarify header image upload during deployment creation,UI/UX,XS,improvement
+605,Continue to maintain filename format check for manual uploads,Data-Management,S,improvement
+606,Increase file size limit for uploaded images,Infrastructure,S,feature
+607,Implement drag and drop feature for manual uploads,UI/UX,M,feature
+608,Continue to maintain the manual upload feature for images,UI/UX,S,improvement
+609,Continue to maintain the ability to see detailed information about captured images,UI/UX,S,improvement
+610,Integrate with iNaturalist for direct upload and validation of identified species,Export/Interop,L,feature
+611,Continue to maintain the clean interface of the software,UI/UX,S,improvement
+612,Continue to maintain the intuitive navigation and user-friendly interface,UI/UX,S,improvement
+613,Make some interface elements like the filter bar fixed,UI/UX,S,feature
+614,Note on slow overall internet affecting performance,Infrastructure,S,research
+615,Difficulty with command-line interfaces and IT restrictions,Documentation,M,research
+616,Fix gateway timeout not triggering failure in processing,ML/AI,S,bug
+617,Fix inconsistent Processed counts in job logs,ML/AI,S,bug
+618,Expose deployment drop-down when registering a new job,UI/UX,XS,feature
+619,Allow ability to resume job where it failed,ML/AI,M,feature
+620,Auto-open status modal when single job is started,UI/UX,XS,feature
+621,Importance of long-term data for ecological and taxonomic research,Research,XL,research
+622,Implement drag and drop feature for manual uploads,UI/UX,M,feature
+623,Support for per-bucket permissions for S3/Swift keys,Infrastructure,M,feature
+624,Support for application tokens that are not tied to a specific user,Permissions/Auth,M,feature
+625,Order-level classifier (refinement & calibration) and size estimation,ML/AI,L,feature
+626,Labs page - Inference app and butterfly experiment,UI/UX,L,feature
+627,Stability issues on the platform,Infrastructure,L,bug
+628,Species page functionality/improvement,UI/UX,M,improvement
+629,Dedicated interface for testing models (e.g. using Streamlit or Solara),DevEx,L,feature
+630,Python & R clients to interact with data already in Antenna,DevEx,L,feature
+631,Abstracting object store and allowing more uploading from UI and Desktop client,Infrastructure,L,feature
+632,Scratch/draft project based on images (upload a folder),Onboarding,M,feature
+633,Features for data analysis: Flight charts and maps with data,Analytics/Viz,L,feature
+634,DB partitioning exploration and implementation,Infrastructure,L,improvement
+635,Distributed data processing (hosting & serving models with multiple workers),Infrastructure,XL,feature
+636,Switch to a JS framework in 2026,DevEx,XL,improvement
+637,Circle back to OpenAPI docs to allow researchers to query occurrences in R,Documentation,M,documentation
+638,Generalized pipeline: General insect detector & Global moth classifier,ML/AI,XL,feature
+639,Mandatory Decision: Direction of platform (Client portals vs Central platform),Community,XL,research
+640,Allow more CEPHFS shares,Infrastructure,S,feature
+641,Processing stability/stabilization,Infrastructure,L,improvement
+642,Reworking collections (clarifying dynamic filters vs fixed datasets),Data-Management,L,improvement
+643,Processing convenience (buttons for process this night/collection),UI/UX,M,feature
+644,Post processing functions – special sauce (small/blurry/tracking),ML/AI,L,feature
+645,Showing some evaluation & statistics within the UI,Analytics/Viz,M,feature
+646,Tracking Progress: Knowing what's been processed/verified,UI/UX,M,feature
+647,Taxonomy management (External sources/managing taxa/lists/synonyms),Taxonomy,L,feature
+648,Darwincore export and Export format for ML retraining,Export/Interop,M,feature
+649,Research/Document plan for easier data import from cameras/SD cards,Documentation,M,research
+650,Importing taxa lists or data processed externally,Data-Management,M,feature
+651,Misc. UI gaps: More obvious interlinking between occurrence and session detail,UI/UX,S,improvement
+652,Add alerts for species on user watch lists,UI/UX,M,feature
+653,Implement enhanced post-processing techniques (moths & insects specific),ML/AI,L,feature
+654,Transition to automated and centralized instance management,Infrastructure,XL,improvement
+655,Research focus on uncertainty metrics and UI/UX features for predictions,ML/AI,XL,research
+656,Add general notifications,UI/UX,M,feature
+657,Explore Kubernetes if limited by Docker Swarm,Infrastructure,XL,research
+658,Support for web-connected devices (continuous upload & processing),Infrastructure,L,feature
+659,Test semi-automated training (active learning) of models,ML/AI,XL,research
+660,Add missing fields related to images when exporting to CSV,Export/Interop,S,feature
+661,Ability to flag species outside classifier taxonomy,UI/UX,M,feature
+662,Restrict to species list (Class masking),ML/AI,M,feature
+663,Download X amount of photos for a species list with high confidence,Export/Interop,S,feature
+664,Clustering for labeling (vector search backend),ML/AI,L,feature
+665,Labeling interface - Bulk labeling from the grid view,UI/UX,M,feature
+666,Manually edit bounding box annotations for detections,UI/UX,M,feature
+667,New export format geared toward ML with previous predictions/corrected IDs,Export/Interop,M,feature
+668,Importing already-processed data into Antenna,Data-Management,L,feature
+669,Test sets for standard evaluation of models,ML/AI,M,research
+670,Bug: Sign up as new user requires admin support (currently disabled),Permissions/Auth,M,bug
+671,Bug: Reset password when not logged in is unstable,Permissions/Auth,S,bug
+672,Feature Rollout: Create a project from scratch is partially implemented,Onboarding,M,feature
+673,Feature: Configure members for a project is partially implemented,Permissions/Auth,M,feature
+674,Needs Documentation: Configure processing services/pipelines and storage,Documentation,S,documentation
+675,Post processing UI,UI/UX,L,feature
+676,How to trigger post process steps from UI?,UI/UX,M,feature
+677,Tracking,ML/AI,M,feature
+678,Class masking,ML/AI,M,feature
+679,Rank rollups,Taxonomy,M,feature
+680,Exports to DARWIN core,Export/Interop,M,feature
+681,Publishing Zenodo DOI,Export/Interop,M,feature
+682,Use the zero-shot model,ML/AI,L,feature
+683,Default filters & project settings,UI/UX,M,feature
+684,Pipeline config from UI?,UI/UX,M,feature
+685,New project Wizard,Onboarding,L,feature
+686,Quick start project / demo,Onboarding,M,feature
+687,Project Settings & feature flags,UI/UX,M,feature
+688,Import new species & species images,Taxonomy,M,feature
+689,The ability to see where the problems are happening,Analytics/Viz,M,feature
+690,IMAGE THUMBNAILING - Faster scrubbing (mp4s),Infrastructure,M,improvement
+691,Configure members for a project,Permissions/Auth,M,feature
+692,Create a project from scratch,Onboarding,M,feature
+693,Citizen Science Version/Features,Community,XL,feature
+694,Button to publish a single observation to iNaturalist?,Export/Interop,S,feature
+695,Create a user for each model on iNaturalist?,Export/Interop,M,feature
+696,More inline help for users,Documentation,M,improvement
+697,Discussion Collections terminology,UI/UX,S,design
+698,Separating workflows per user category,UI/UX,L,design
+699,Make session detail more clear,UI/UX,M,improvement
+700,Tags for occurrences,Data-Management,M,feature
+701,Showing what has been processed,UI/UX,M,feature
+702,More prototypes,UI/UX,M,design
+703,Getting user personas and user stories on paper,UI/UX,M,design
+704,Need tooltips? Walkthrough dialogs?,UI/UX,S,feature
+705,Filters vs project settings,UI/UX,S,design
+706,Idea on how to disable filters,UI/UX,S,feature
+707,Missing Singapore classifier option,ML/AI,XS,bug
+708,Still some sessions with unprocessed images,ML/AI,S,bug
+709,Missing images,Data-Management,S,bug
+710,Switch background tasks from long running to many short,Infrastructure,M,improvement
+711,Switch from form data to application/json,Infrastructure,S,improvement
+712,Issue of shared credentials,Permissions/Auth,M,bug
+713,Cover image fields,UI/UX,XS,feature
+714,Reset password when not logged in,Permissions/Auth,S,bug
+715,Sign up as new user on the platform,Permissions/Auth,M,bug
+716,Data management issues (rotated images/missing metadata/bad data),Data-Management,M,bug
+717,h265 encoding with regional resolution,Infrastructure,M,research
+718,New home for Antenna docs!,Documentation,S,improvement
+719,Place for users to add their experience,Community,M,feature
+720,At least one documentation ticket,Documentation,XS,documentation
+721,Configure processing services/pipelines,Documentation,S,documentation
+722,Configure a storage/data source,Documentation,S,documentation
+723,Demonstration for self-installation,Documentation,M,documentation
+724,RUNNING ANTENNA LOCALLY,Documentation,S,documentation
+725,UI for Project Managers to invite members and assign roles,Permissions/Auth,L,feature
+726,Self-service features (using feature-flags/complexity as opt-in),Onboarding,L,feature
+727,Use Roles system to hide/show features and default ordering,Permissions/Auth,M,feature
+728,Sign up as new user on the platform (Requires admin support),Permissions/Auth,M,bug
+729,Create a project from scratch (Partially implemented),Onboarding,M,feature
+730,Configure members for a project (Partially implemented),Permissions/Auth,M,feature
+731,Ability to delete a site/pipeline/or device type,UI/UX,S,feature
+732,Search project option on the main page,UI/UX,S,feature
+733,Register new project button hard to find,UI/UX,XS,improvement
+734,Transition Sign-Up buttons to Contact Us (Strategic),UI/UX,XS,improvement
+735,Processing v2: Move to a distributed task system,Infrastructure,XL,feature
+736,Order-level classifier (refinement & calibration),ML/AI,L,feature
+737,Size estimation (exposing size in UI/add calibration/incorporate into models),ML/AI,L,feature
+738,Summary metrics as you go (for troubleshooting/improving results),Analytics/Viz,M,feature
+739,Default to order level & wider metrics,ML/AI,M,improvement
+740,Generalized pipeline (General insect detector/Global moth classifier),ML/AI,XL,feature
+741,Post processing functions (small/blurry/tracking sequential detections),ML/AI,L,feature
+742,Automated Quality Filters: auto-remove blurry/dark/tiny images,ML/AI,M,feature
+743,Beyond Species ID: biomass estimation/pixel-to-size calibration/tracking,ML/AI,XL,feature
+744,Partner-Specific Pipelines (e.g. dedicated forest pest pipeline),ML/AI,L,feature
+745,Data Uploader Tool (desktop app to abstract S3 uploads),Infrastructure,L,feature
+746,Research & document plan for easier data import from cameras/SD cards,Documentation,M,research
+747,Importing Taxa lists,Taxonomy,M,feature
+748,Importing Data processed externally (Detections/Predictions),Data-Management,M,feature
+749,Importing Captures (import a list of public HTTP urls),Data-Management,M,feature
+750,Darwincore export,Export/Interop,M,feature
+751,Export format for ML retraining,Export/Interop,M,feature
+752,Separate image uploading from first two steps during deployment registration,UI/UX,S,improvement
+753,Sample captures only valid when image file name is in YYYYMMDDHHMMSS format,Data-Management,S,bug
+754,Being able to click the save after uploading sample capture images,UI/UX,XS,bug
+755,DB Table partitions (Partitioning/Database Scaling/Optimization),Infrastructure,XL,improvement
+756,Better db snapshots for automated and manual testing,DevEx,M,improvement
+757,Automated backups,Infrastructure,M,feature
+758,Multiple environments and auto deployment,DevEx,XL,feature
+759,Split up backend modules,DevEx,M,improvement
+760,Email sending,Infrastructure,M,feature
+761,Image resizing (thumbnailing),Infrastructure,M,feature
+762,Complete migration of UI components from raw Radix primitives to shadcn/ui,DevEx,L,improvement
+763,Make an instructions file about the frontend overall,Documentation,S,documentation
+764,Complete migration from style modules to Tailwind CSS,DevEx,L,improvement
+765,Move UI kit back to Antenna repo,DevEx,S,improvement
+766,Migrate to React 19,DevEx,M,improvement
+767,Streamline form handling across app,DevEx,M,improvement
+768,Migrate to Next.js (simplify routing and code splitting),DevEx,XL,improvement
+769,End-to-end tests (Cypress/Playwright),DevEx,L,feature
+770,Represent Antenna UI in Figma (for high fidelity prototyping),DevEx,M,improvement
+771,Upgrade Node.js,DevEx,S,improvement
+772,More obvious interlinking between occurrence detail and session detail,UI/UX,S,improvement
+773,Consistent saving behavior,UI/UX,M,improvement
+774,More quick buttons for processing & collections,UI/UX,S,feature
+775,Hovering toolbar in the session detail per occurrence?,UI/UX,M,feature
+776,Software incorrectly ID'd moss/bark as moth species with no way to report,UI/UX,S,feature
+777,Pipeline tag isn't really clear,UI/UX,XS,improvement
+778,Add deployment count column to Device Types list,UI/UX,XS,feature
+779,Summary shows capture/hr and sessions/month - suggest other relevant data,Analytics/Viz,S,improvement
+780,Image illustrating projects should be scaled to the size of rectangular window,UI/UX,XS,bug
+781,Documentation - for users (user guide) and developers,Documentation,L,documentation
+782,Use LLM to help with the table of contents for documentation,Documentation,S,improvement
+783,Link to documentation (and write documentation),Documentation,M,documentation
+784,Reset password when not logged in (Unstable),Permissions/Auth,S,bug
+785,Configure processing services for a project (Needs documentation),Documentation,S,documentation
+786,Configure pipelines for a project (Needs documentation),Documentation,S,documentation
+787,Configure a storage for project (Needs documentation),Documentation,S,documentation
+788,Configure a data source for a station (Needs documentation),Documentation,S,documentation
+789,Documentation of how to re-train a model with data from Antenna,Documentation,M,documentation
+790,Reworking collections (dynamic filters vs fixed datasets),Data-Management,L,improvement
+791,Knowing what's been processed (images uploaded/in a project/collection),UI/UX,M,feature
+792,Knowing what's been verified (progress bar reflection),UI/UX,M,feature
+793,Regex null bug (UI gap),UI/UX,XS,bug
+794,Processing Stability & Speed,Infrastructure,L,improvement
+795,Project & Team Management (UI & API for managing user roles),Permissions/Auth,L,feature
+796,User Account Management (re-enabling self-service sign-up),Permissions/Auth,M,feature
+797,Platform Vision/Strategy (defining goals & milestones for 2026),Community,XL,research
+798,Data Uploader (easier data import/desktop application),Infrastructure,L,feature
+799,Importing Externally Processed Data (Detections/Predictions),Data-Management,M,feature
+800,Export Formats (Darwin Core/COCO/YOLO formats),Export/Interop,M,feature
+801,Generalized Pipeline (general insect detector/global moth classifier),ML/AI,XL,feature
+802,Better Detector/Segmenter (segmentation detector/handling overlapping moths),ML/AI,L,feature
+803,Model Management (model orchestration & revision/deploying new models),ML/AI,L,feature
+804,Knowing What's Processed (progress bar/how many images processed),UI/UX,M,feature
+805,Post-Processing Functions (Class Masking/small/blurry/darkness filter),ML/AI,M,feature
+806,Confidence & Uncertainty in UI (displaying species-level accuracy),Analytics/Viz,M,feature
+807,Taxonomy Features (adding new species/project-based taxonomy),Taxonomy,L,feature
+808,Rank Rollup & Prediction (Taxon rank rollup for low confidence),Taxonomy,M,feature
+809,Labeling Interface Improvements (bulk labeling/editing bounding boxes),UI/UX,M,feature
+810,Data Visualization (charts/stats/flight charts for taxa),Analytics/Viz,L,feature
+811,Documentation (User Guide v1/ML developer guide),Documentation,L,documentation
+812,UI Gaps/Fixes (consistent saving/quick buttons/show best detection image),UI/UX,M,improvement
+813,Unstable Functions (password reset/sign-up disabled),Permissions/Auth,M,bug
+814,Processing Bugs (processing jobs stalling/status updates incorrect),Infrastructure,M,bug
+815,Data Integrity Issues (sessions not auto-created/null in data sync view),Data-Management,M,bug
+816,Which features before April 2026?,Community,M,research
+817,Which need to be self service from a centrally hosted platform?,Community,M,research
+818,Which need a planning & prototype sprint,Community,M,research
+819,Which features are MVP vs production-ready?,Community,M,research
+820,Which features need to be self-service vs admin-only?,Community,M,research
+821,Are we trying to make an app for everyone? Supporting 2-3 partners?,Community,M,research
+822,Simplicity vs. feature richness,Community,M,research
+823,Which partner types? Which partner types need self-service?,Community,M,research
+824,NRCAN (government/landscape scale) - custom deployment with support?,Community,M,research
+825,Mothitor project/Maxim's projects (research labs) - self-service priority,Community,M,research
+826,LepiNoc (citizen science) - different requirements/mobile app,Community,L,research
+827,Document full vision of complete AMI solution at scale,Documentation,L,documentation
+828,Which features empower & accelerate teams in what they already do?,Community,M,research
+829,Documentation & doc links within app,Documentation,M,improvement
+830,Role management (what about adding new users?),Permissions/Auth,M,feature
+831,Reworking collections - clarifying dynamic filters vs fixed datasets,Data-Management,L,improvement
+832,Will we always require collections for processing?,Data-Management,S,research
+833,Occurrence collections,Data-Management,M,feature
+834,Predefined collections / Dynamic presets,Data-Management,M,feature
+835,How can we make collections more natural in the workflow,UI/UX,M,improvement
+836,Processing stability,Infrastructure,L,improvement
+837,ML Developer & researcher experience for improving ML,DevEx,L,feature
+838,Processing convenience (buttons for process this night/collection),UI/UX,S,feature
+839,Generalized pipeline - General insect detector & Global moth classifier,ML/AI,XL,feature
+840,Post processing functions - special sauce (small/blurry/tracking),ML/AI,L,feature
+841,Showing evaluation & statistics within the UI,Analytics/Viz,M,feature
+842,Processing stabilization,Infrastructure,L,improvement
+843,Knowing what's been processed (images uploaded/in project/collection),UI/UX,M,feature
+844,Knowing what's been verified (progress bar reflection),UI/UX,M,feature
+845,Taxonomy direction and features (External sources/managing taxa),Taxonomy,L,research
+846,Taxonomy - Mapping to algorithms (most important UI feature),Taxonomy,M,feature
+847,How much freedom do we give projects & users for Taxonomy,Taxonomy,S,research
+848,Importing for Taxonomy (bulk import to assign to lists),Taxonomy,M,feature
+849,Darwincore export,Export/Interop,M,feature
+850,Export format for ML retraining,Export/Interop,M,feature
+851,Research & document plan for easier data import from cameras/SD cards,Documentation,M,research
+852,Documentation of how to re-train a model with data from Antenna,Documentation,M,documentation
+853,Importing - Taxa lists,Taxonomy,M,feature
+854,Importing - Data processed externally (Detections/Predictions),Data-Management,M,feature
+855,Importing - Captures (import a list of public HTTP urls),Data-Management,M,feature
+856,More obvious interlinking between occurrence detail and session detail,UI/UX,S,improvement
+857,Consistent saving behavior,UI/UX,M,improvement
+858,More quick buttons for processing & collections,UI/UX,S,feature
+859,Regex null bug,UI/UX,XS,bug
+860,Hovering toolbar in the session detail per occurrence?,UI/UX,M,feature
+861,New release on GitHub,Community,S,improvement
+862,Add to Wildlabs inventory,Community,S,improvement
+863,Mailing list & regular updates,Community,M,improvement
+864,Project manager,Community,XL,research
+865,Taxonomy (Hierarchical categories/Many taxonomic ranks),Taxonomy,L,feature
+866,Time series images (specific automated captured),Analytics/Viz,M,feature

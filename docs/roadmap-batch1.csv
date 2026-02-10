@@ -1,0 +1,290 @@
+row_num,description,category,size,type
+2,Bulk agree option for annotation,UI/UX,S,feature
+3,UI for faster verification,UI/UX,M,improvement
+4,Filtering by what has been vetted,UI/UX,S,feature
+5,Automatically hide vetted items as user proceeds,UI/UX,S,feature
+6,Filtering by species/genus/taco level with children levels (already in place),UI/UX,XS,documentation
+7,Implement date filtering,UI/UX,S,feature
+8,Determine where users can type in a species name for search/filtering,UI/UX,S,design
+9,Interface for managing species,Taxonomy,M,feature
+10,Implement Global lists vs. Project lists for species,Taxonomy,L,feature
+11,Mapping species from classifier output to custom lists,Taxonomy,M,feature
+12,Display species lists known by each model,ML/AI,S,feature
+13,Add a field to the taxa DB for unidentifiable by image alone with relation to similar taxa,Taxonomy,S,feature
+14,Implement more algorithms and a better worker system,Infrastructure,XL,feature
+15,Implement Optimizations for speed (MVP feature),Infrastructure,L,improvement
+16,Implement querying images for inference from ADC API and POSTing results back,Export/Interop,L,feature
+17,Plan for an R package to interface the API for plots stats etc.,Export/Interop,XL,feature
+18,Implement connection to GBIF (MVP feature),Export/Interop,M,feature
+19,Develop a Data connector app (MVP feature),Data-Management,L,feature
+20,Collaborate on data uploader and image database,Data-Management,L,feature
+21,Implement same data process for acoustic recordings,Data-Management,XL,research
+22,Add processing support for project data,Data-Management,M,feature
+23,Clarify/flesh out what processing means when a collection is launched,Documentation,S,documentation
+24,Clarify if collections should be defined inside or outside the job (design question),Data-Management,S,design
+25,Define if collections are reusable (design question),Data-Management,S,design
+26,Define if collections are absolutely needed or more like job settings (design question),Data-Management,S,design
+27,Display user's seen occurrences in My Antenna,UI/UX,S,feature
+28,Display projects user is part of/manager of in My Antenna,UI/UX,S,feature
+29,Display user's focused species in My Antenna,UI/UX,S,feature
+30,Expose more details about each pipeline (ID URL version) in customizable pipelines feature,ML/AI,S,feature
+31,Add active/inactive field for pipelines show inactive pipelines below and make them unselectable for new data processing,ML/AI,S,feature
+32,Make Access Key for pipelines visible (not a password field),ML/AI,XS,improvement
+33,Implement Private projects (MVP feature),Permissions/Auth,M,feature
+34,Get contribution agreements in writing,Community,M,documentation
+35,Define how credit will be given,Community,S,documentation
+36,Use modularity to help divide ownership,Infrastructure,M,design
+37,Decide on the platform name,Community,XS,design
+38,Ensure platform interoperability trap agnostic and modular design,Infrastructure,L,design
+39,Define validation protocol to reach research-grade,Data-Management,M,design
+40,Use iNaturalist (for validation/privacy) and Creative Commons as benchmarks,Data-Management,S,research
+41,Implement multi-level (Curator expert etc.) point-based validation/curation (eButterfly model),Permissions/Auth,L,feature
+42,Need consumer service to scale up (Suggested: Rodrigo),Infrastructure,XL,research
+43,Obfuscating exact device location (Sensitive/Fuzzy privacy),Permissions/Auth,M,feature
+44,Provide more guidance/documentation on collections (definition purpose how to use strategy),Documentation,S,documentation
+45,Implement default or automatic collections,Data-Management,S,feature
+46,Investigate/Implement containerisation for massively parallel (10000 core+) image processing,Infrastructure,XL,research
+47,Online platform for ML-assisted monitoring of arthropods (Agile software pipeline new algorithms/research friendly/efficient UI),Community,XL,documentation
+48,Implement sustainable business/partner model,Community,XL,research
+49,Prioritize documentation for the verification process,Documentation,M,documentation
+50,Not identifiable based on current image quick action,UI/UX,S,feature
+51,Never identifiable based on image quick action,UI/UX,S,feature
+52,I personally can not ID this quick action,UI/UX,S,feature
+53,Incorrect (based on my knowledge) quick reaction,UI/UX,S,feature
+54,Family/genus/tribe correct quick reaction,UI/UX,S,feature
+55,Ability to validate both low-confidence and high-confidence predictions,UI/UX,S,feature
+56,Provide a list of species to choose from for validation/annotation,UI/UX,S,feature
+57,Record if the suggestion was manually typed or accepted from a proposition,Data-Management,XS,feature
+58,Support experts in finding the correct species within the tool,UI/UX,M,feature
+59,Consider mitigating psychological/positional bias in accepting proposed labels,UI/UX,M,design
+60,Provide a mechanism for regional experts to flag instances for further investigation,UI/UX,S,feature
+61,Model suggestions for impossible-to-ID species (confusion matrix) and handling of cryptic species split geographically,ML/AI,L,research
+62,Distinguish between no more fine-grained labels available and need for more information to label prediction limitations,ML/AI,M,feature
+63,Display Top 3 labels with confidence score/uncertainty measures,UI/UX,S,feature
+64,Develop a formula to extract year (YEAR function) from the date in column A to fill column C (Example Row),Data-Management,XS,improvement
+65,Filtering: Find a clear way to do it yet,UI/UX,M,design
+66,Work on new uncertainty measurements,ML/AI,L,research
+67,Implement Flatbug and AMBER models,ML/AI,M,feature
+68,Experiment with multiple models (order-level classifier object detection/clustering),ML/AI,L,research
+69,Display multiple labels in a suggest ID section for re-identification,UI/UX,S,feature
+70,Clarify the term Collections with alternatives like Sample set Lists Datasets,Data-Management,XS,design
+71,Define the Validation protocol and how to reach research-grade,Data-Management,M,design
+72,Register existing projects and process 2 years of data (Next 6 months),Onboarding,XL,feature
+73,Open to the public for read-only review (Next 6 months),Permissions/Auth,L,feature
+74,Implement Better algorithms (MVP feature),ML/AI,L,feature
+75,Exporting data (General Topic),Export/Interop,L,feature
+76,User interface (General Topic),UI/UX,XL,improvement
+77,ML backend (General Topic),ML/AI,XL,improvement
+78,API (General Topic),Export/Interop,L,improvement
+79,Functionality needs for specific projects (General Topic),Community,M,research
+80,Assign and train a person at each partner org (Insectarium),Community,M,documentation
+81,Support for Costa Rica and Singapore regions/models,ML/AI,L,feature
+82,Use JASMIN for storage,Infrastructure,M,feature
+83,Multiple projects & users,Permissions/Auth,L,feature
+84,Registration & map of camera deployments (metadata),Data-Management,M,feature
+85,Taxonomy API & shared database,Taxonomy,L,feature
+86,Collaborative identification or validation,UI/UX,L,feature
+87,ML processing done via web API support for any language or framework,ML/AI,M,feature
+88,Manual image uploading from UI or background sync of large datasets,Data-Management,L,feature
+89,Reprocessing of same objects,ML/AI,M,feature
+90,Ability to share links to occurrences sessions or summaries,UI/UX,S,feature
+91,Background job system logging per job,Infrastructure,M,feature
+92,Model registry links to experiment details in WandB,ML/AI,M,feature
+93,Quality control of every stage before & after processing,Data-Management,L,feature
+94,Exports,Export/Interop,L,feature
+95,Display top N predictions,UI/UX,S,feature
+96,Private vs. Public projects. Fix permission boundaries.,Permissions/Auth,M,feature
+97,Which deployments which data are published to GBIF,Export/Interop,M,feature
+98,Citation information,Data-Management,S,feature
+99,Default pipelines by project/location,ML/AI,S,feature
+100,Filtering based on model used (session view occurrence view),UI/UX,S,feature
+101,Occurrence tracking,Data-Management,M,feature
+102,Selection of device site etc. in Deployment,UI/UX,S,improvement
+103,Add multilingual localization support,UI/UX,L,feature
+104,Display Images for deployments,UI/UX,S,feature
+105,Support for unknown species (clustering),ML/AI,L,feature
+106,Quick flagging,UI/UX,S,feature
+107,Documentation!,Documentation,L,documentation
+108,Expose info about which model and when for each machine ID,Data-Management,S,feature
+109,Data connector tool,Data-Management,L,feature
+110,Developing new UI components (new scrolling timeline),UI/UX,M,feature
+111,Stats metrics & charts for validation quality control and improving models,Analytics/Viz,L,feature
+112,Additional ML backends,ML/AI,M,feature
+113,Create logic diagrams for new & existing features,Documentation,M,documentation
+114,Add panama trap IDs,Data-Management,XS,feature
+115,Show Num Captures column under deployments.,UI/UX,XS,feature
+116,Speed up deployments list?,Infrastructure,M,improvement
+117,Add megadector-> butterflies example.,Documentation,S,documentation
+118,Notifications,UI/UX,M,feature
+119,Online/Offline functionality,Infrastructure,XL,feature
+120,Top species chart to overview page,Analytics/Viz,S,feature
+121,Taxa list of support (makes it possible to filter on species of concern),Taxonomy,M,feature
+122,Import the full list of species of concern,Taxonomy,M,feature
+123,Feature for masking predictions to a species list (as an alternative to a regional model),ML/AI,M,feature
+124,Flight charts for taxa & taxa lists,Analytics/Viz,M,feature
+125,Corrected species list for Panama (mainly for identification of processed data),Taxonomy,S,feature
+126,New model for Panama (current models include P. interpunctella and v2 has a short species list),ML/AI,L,feature
+127,Panama plus model? Needs review uses a different species list.,ML/AI,M,research
+128,Class masking of one of the existing models,ML/AI,M,feature
+129,Processing all data once model is ready & agreed on,Data-Management,L,feature
+130,Help organizing & auditing the panama BCI projects,Data-Management,M,improvement
+131,Deploy some of Kat's models to a server,ML/AI,M,feature
+132,Help with processing of samples (since the feature is not stable enough yet),Infrastructure,M,improvement
+133,Extend the list of species if needed for labellers?,Taxonomy,S,feature
+134,Setting some projects to drafts,Permissions/Auth,XS,feature
+135,Adding clear description to each project,Data-Management,XS,improvement
+136,Make it clear who contacts are for each project (the initiator and the hands-on/technical contacts),Permissions/Auth,S,feature
+137,Assigning someone from Antenna to be the main contact for each project,Community,XS,improvement
+138,Enforcing the use of the antenna email and add relevant people as recipients,Community,XS,improvement
+139,Continuing to make tickets in ami-admin repo and track ongoing projects,DevEx,XS,improvement
+140,Regular call for all partners using Antenna,Community,S,improvement
+141,Sending out a form to be filled out before each meeting,Community,S,improvement
+142,Find project & partner manager for Antenna,Community,L,research
+143,Complete documentation & improving self-service,Documentation,L,documentation
+144,Training others to respond to partners,Community,M,documentation
+145,Find intern and train on basic tasks,Community,M,research
+146,Training sessions for our own staff,Community,M,documentation
+147,Data Exports (Yves needed for writing grant),Export/Interop,M,feature
+148,Michael onboarded Tessa to the data companion code and she has committed several enhancements,DevEx,XS,documentation
+149,Help renaming files from new camera,Data-Management,XS,improvement
+150,Data uploader,Data-Management,L,feature
+151,Full support for current research projects before self-service for public,Onboarding,XL,feature
+152,Improving the results,ML/AI,L,improvement
+153,Antenna workflow/requirements,Documentation,M,documentation
+154,Sustainability leadership and financial model,Community,XL,research
+155,Retrain the model for Totumas data?,ML/AI,L,research
+156,Focus on hardening (stability fixes speed) Processing fixing gaps in workflow,Infrastructure,L,improvement
+157,Design stable & streamlined workflow: Get from Cameras to moths with few steps,Onboarding,L,improvement
+158,Good defaults & presets - hiding noise lower quality results,UI/UX,M,improvement
+159,Embarrassing things (IDing smudges with high confidence single subject images),ML/AI,M,bug
+160,Processing v2 & backend cleanup,Infrastructure,L,improvement
+161,Improving quality of results - and what gets an ID at all,ML/AI,L,improvement
+162,Improving stability (implement processing v2),Infrastructure,L,improvement
+163,Desktop data uploading tool,Data-Management,L,feature
+164,Ready for seamless live demonstrations,Onboarding,M,improvement
+165,One good case study.,Documentation,M,documentation
+166,Need a way to upload a bunch of images without full config,Data-Management,M,feature
+167,Self-service ready? (Out of BETA officially),Onboarding,XL,feature
+168,Antenna Go - offline mobile companion app,Data-Management,XL,feature
+169,Notification system (Species of interest),UI/UX,M,feature
+170,All-in-one test page,Onboarding,S,feature
+171,Data uploader (Technician),Data-Management,L,feature
+172,Easy desktop application for uploading data from machines to Antenna,Data-Management,L,feature
+173,Select project classifier etc. (More one-click options for processing the data),UI/UX,M,improvement
+174,Labeling at scale - entomologists,UI/UX,L,feature
+175,Data access for fine-tuning - ML research,Export/Interop,M,feature
+176,Categorical labels for high confidence results,ML/AI,M,feature
+177,How can we get to research grade automatically? For the ones we can,ML/AI,L,research
+178,Calibration (What species can we be confident about),ML/AI,M,research
+179,Identification view (Supports multiple users keeps track of history allows for bulk ID or ID to coarser labels),UI/UX,L,feature
+180,Ability to share URLs (Deep links to single session captures or directions from a specific taxon group),UI/UX,S,feature
+181,Roles (Not only a permissions feature but a way to organize and simplify the interface for different types of users),Permissions/Auth,L,feature
+182,Data Exports: Darwin Core for biologists and bioinformatics people,Export/Interop,M,feature
+183,Data Exports: COCO/YOLO formats for re-training purposes (ML researchers),Export/Interop,M,feature
+184,Few-shot learning for adding species,Research,XL,research
+185,Estimation of physical size. Biomass.,Research,L,research
+186,LoRAs for regional models,Research,L,research
+187,Geofencing,Research,M,research
+188,Estimating confidence how to present low-confidence results to users,ML/AI,M,research
+189,Labeling behavior poses and other attributes,Research,L,research
+190,Explainable AI - What features did you use to ID this species? Teaching the user.,Research,XL,research
+191,Image classifier from infrared or hyper-spectral images,Research,XL,research
+192,Fast object detector edge deployments,Research,L,research
+193,Add Taxa model permissions to Identifier role,Permissions/Auth,XS,feature
+194,Add is_staff to each user,Permissions/Auth,XS,feature
+195,Add Not Identifiable and Lepidoptera entry IDs,Taxonomy,XS,feature
+196,Daily morning SD cards collection of the entocam,Data-Management,XS,documentation
+197,Label each SD card with tape them and label them,Data-Management,XS,documentation
+198,Assign it the night before who will be doing it (Demo),Data-Management,XS,documentation
+199,Needs to be put in a boxe,Data-Management,XS,documentation
+200,Make sure the SD card is identify to see from which camera it came from,Data-Management,XS,documentation
+201,Sync the SD cards every day to hardware 1 & 2,Data-Management,XS,documentation
+202,Wipe them,Data-Management,XS,documentation
+203,Reinstall them,Data-Management,XS,documentation
+204,Rename the files (Anna),Data-Management,XS,documentation
+205,Sample the files (Anna),Data-Management,XS,documentation
+206,10 minutes intervals (Sampling),Data-Management,XS,documentation
+207,Sync to the cloud (Anna),Data-Management,XS,documentation
+208,Exporting data & updating the offline guide,Documentation,S,documentation
+209,Charge batteries,Data-Management,XS,documentation
+210,Fresh SD cards,Data-Management,XS,documentation
+211,Ask Chris for list of any all categories of interest,Taxonomy,XS,documentation
+212,Default filter: lepidoptera,UI/UX,XS,feature
+213,Show best detection image in taxa view & occurrence view,UI/UX,S,feature
+214,Hide occurrences if missing detections,UI/UX,S,bug
+215,Missing Not Identifiable class in OOD environment,Taxonomy,S,bug
+216,Size filter,UI/UX,S,feature
+217,Add column for best_identification to the occurrences view (optional next to Taxon Determination column),UI/UX,S,feature
+218,Fix missing sessions on occurrences - can we ensure sessions are grouped before processing,Data-Management,M,bug
+219,Project ID required when changing name/tags of cluster,Data-Management,S,bug
+220,Increase capacity of the database in the OOD environment,Infrastructure,M,improvement
+221,How can we highlight anomalies in the capture images (out of schedule short schedule strange dates mixed resolution images),Analytics/Viz,M,feature
+222,Remove null that keeps returning to data sync view,UI/UX,XS,bug
+223,Add cryptic species status to the taxonomy database: Euceron species should always be determined to genus level,Taxonomy,S,feature
+224,The modal window for taxon should keep on the occurrences / other context instead of sending back to taxa list,UI/UX,S,bug
+225,Filter/search by previous identifications,UI/UX,S,feature
+226,Link to filter taxa by parent (from taxa detail view)?,UI/UX,S,feature
+227,Add verification features to gallery view,UI/UX,M,feature
+228,Add size fields to taxonomy database (fallback to parent size category). Avg.,Taxonomy,S,feature
+229,Add is_cryptic field (to what rank),Taxonomy,S,feature
+230,Script to fix date offsets,Data-Management,S,improvement
+231,Size estimator with annotations (from normal photos verified in Bold iNat),ML/AI,L,research
+232,Make taxa detail page,UI/UX,M,feature
+233,Change 'Captures per hour' to 'Average captures per hour per night',Analytics/Viz,S,improvement
+234,Currently 'Captures per hour' is total cumulative captures from all nights on a given night,Analytics/Viz,XS,documentation
+235,Change 'Detections per hour' to 'Detections per hour per night on average',Analytics/Viz,S,improvement
+236,Add same charts (Average captures/detections per hour per night) but filtered by one specific species,Analytics/Viz,M,feature
+237,Add multiple lines to compare multiple species (compare flight times) on charts,Analytics/Viz,M,feature
+238,Be able to select any higher taxon group for filtering charts,Analytics/Viz,S,feature
+239,Filter charts by a given year - to view whole season (Seasonal flight over the year),Analytics/Viz,S,feature
+240,X-axis for Seasonal flight charts should use dates,Analytics/Viz,S,improvement
+241,Address caveat: dynamic charts only show what is processed (but make it look like everything is processed),Analytics/Viz,M,bug
+242,Training new regional models for improving results for regional species,ML/AI,L,feature
+243,Geofencing using species list for improving results,ML/AI,M,feature
+244,LORA adapter that is trained on a small amount of data and appended at inference time for improving results,ML/AI,L,research
+245,Expose more features for user to manage species list and view charts (MVP for March),UI/UX,M,feature
+246,Features for 'Species watch list' / 'species of concern' (economic concern),Taxonomy,M,feature
+247,Features for 'Species of conservation concern' / 'Species of risk',Taxonomy,M,feature
+248,Features for 'Pest species',Taxonomy,M,feature
+249,Features for 'Non-native' species,Taxonomy,M,feature
+250,Features for 'Rare species',Taxonomy,M,feature
+251,Features for 'New species',Taxonomy,M,feature
+252,Ability to configure a species list,Taxonomy,M,feature
+253,Features for grouping & filtering species lists,Taxonomy,M,feature
+254,Alerts feature,UI/UX,M,feature
+255,Default charts feature,Analytics/Viz,M,feature
+256,Some basic analysis built in to compare these species of interest,Analytics/Viz,M,feature
+257,Provisional lists of species (regional lists),Taxonomy,M,feature
+258,New model on Newfoundland species list (Current Quebec model is overestimating total number of species),ML/AI,L,feature
+259,New filter: Show occurrences where there is any disagreement (between models or humans),UI/UX,S,feature
+260,Antenna features to 'Generate flight chart per species',Analytics/Viz,M,feature
+261,Antenna features to 'Generate compound flight chart per taxa list',Analytics/Viz,M,feature
+262,Michael to assist with data exports for new paper,Export/Interop,M,improvement
+263,Michael to assist with analysis and charts for new paper,Analytics/Viz,M,improvement
+264,Michael to assist with technical description of methods for new paper,Documentation,M,documentation
+265,Metrics for scaling - how much human validation is necessary to trust the model,Research,L,research
+266,Option to use model consensus instead of top confidence score (consensus between global & regional model or versions of panama models),ML/AI,M,feature
+267,Summary metrics - species richness. The accuracy of the species richness is 90% even when the classification accuracy is 60%.,Analytics/Viz,M,research
+268,How can we confidently scale these systems beyond what humans can do?,Research,XL,research
+269,Model zoo for insects,ML/AI,L,feature
+270,Is Antenna a model zoo? Or just an index of what registered & available,ML/AI,S,design
+271,Experimenting with fine-grained classification,Research,L,research
+272,Common challenges - two lists of classes: species that exist and species that you can identify visually from a top-down image.,Research,M,research
+273,Working on the "secret sauce" methods to improve results for insects - external stats,ML/AI,L,research
+274,Priors and adding statistical models (Logistic binning Shannon entropy),ML/AI,L,research
+275,Filtering bad data (too small too blurry),Data-Management,M,improvement
+276,Tracking of individuals (deduplication),Data-Management,L,feature
+277,Class masking to regional species checklists,ML/AI,M,feature
+278,Downgrading predictions to higher taxonomic ranks until confidence is satisfactory.,ML/AI,M,feature
+279,Clustering,ML/AI,M,feature
+280,Species dataset made for image classification,ML/AI,L,research
+281,How can we make the data output more satisfactory?,UI/UX,M,design
+282,Is this any more efficient than traditional monitoring,Research,M,research
+283,Do we really need a species level classifier? For which species? For which purposes?,Research,M,research
+284,Getting anxious for something to be working & finished soon,Community,XS,documentation
+285,Sign up on the platform waitlist,Onboarding,S,feature
+286,Sign up as new user on the platform (Currently disabled manually add new users),Onboarding,M,feature
+287,Reset password when not logged in (Backend configuration is incomplete maybe disable),Permissions/Auth,S,bug
+288,Create a project from scratch (Currently disabled for most users soon enabled for all),Onboarding,L,feature
+289,Configure members for a project (Anna and Mohamed is currently working on this),Permissions/Auth,M,feature
+290,Configure processing services for a project,ML/AI,M,feature
