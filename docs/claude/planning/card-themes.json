@@ -1,0 +1,455 @@
+[
+  {
+    "id": "1a",
+    "horizon": "now-3mo",
+    "title": "Filter Results to Your Region",
+    "oneliner": "Restrict predictions to plausible species using regional checklists, geofencing, and class masking.",
+    "user_stories": [
+      "As a field ecologist, I want predictions restricted to species in my region so I don't waste time on impossible IDs.",
+      "As a project manager, I want geofenced results so partner reports only include locally plausible species."
+    ],
+    "keywords": ["class masking", "geofencing", "species list", "restrict", "regional", "filter prediction", "geoprior", "checklist"]
+  },
+  {
+    "id": "1b",
+    "horizon": "now-3mo",
+    "title": "Honest Results at the Right Level",
+    "oneliner": "Roll up to genus or family when the model is uncertain — coarser-but-confident predictions beat wrong species IDs.",
+    "user_stories": [
+      "As a taxonomist, I want the system to roll up to genus when it can't confidently identify to species, so results are honest rather than wrong.",
+      "As a project manager, I want confidence-appropriate results in reports so partners trust the data."
+    ],
+    "keywords": ["rank rollup", "genus", "order-level", "coarser", "downgrade", "top N", "temperature calibration", "rank prediction", "confidence at higher ranks"]
+  },
+  {
+    "id": "1c",
+    "horizon": "now-3mo",
+    "title": "Pipeline and Model Management",
+    "oneliner": "Configure, deploy, and manage ML pipelines — model registry, processing service UI, reprocessing, active/inactive pipelines.",
+    "user_stories": [
+      "As a project manager, I want to choose which ML pipelines run on my data without developer help.",
+      "As an ML researcher, I want to register new models and track their lineage in the platform."
+    ],
+    "keywords": ["pipeline", "model registry", "processing service", "reprocessing", "configure", "backend", "active/inactive", "WandB", "deploy model", "pipeline config"]
+  },
+  {
+    "id": 2,
+    "horizon": "now-3mo",
+    "title": "Confidence You Can Measure",
+    "oneliner": "Estimate and display how confident the system is about each prediction using accuracy metrics per species, region, and camera.",
+    "user_stories": [
+      "As a field ecologist, I want to see how accurate the model is on my specific data so I know when to trust it.",
+      "As a project manager, I want auto-generated accuracy reports so I can include reliability statements in publications.",
+      "As an ML researcher, I want per-class confidence calibration so I can identify where the model needs improvement."
+    ],
+    "keywords": ["confidence estimation", "uncertainty", "accuracy", "mAP", "calibration", "error rate", "error characterization", "transparency", "how confident", "trust"]
+  },
+  {
+    "id": 3,
+    "horizon": "now-3mo",
+    "title": "Track Insects Across Frames",
+    "oneliner": "Use multiple detections of the same individual across frames to improve species identification of occurrences.",
+    "user_stories": [
+      "As a field ecologist, I want the system to combine evidence from multiple photos of the same insect to get a more reliable ID.",
+      "As an ML researcher, I want temporal tracking to aggregate classification scores across detections for better occurrence-level predictions."
+    ],
+    "keywords": ["tracking", "multi-frame", "temporal", "occurrence tracking", "multiple detections", "aggregate", "combine evidence"]
+  },
+  {
+    "id": 4,
+    "horizon": "now-3mo",
+    "title": "Remove Bad Data Automatically",
+    "oneliner": "Filter out blurry, cut-off, or too-small detections before classification so results aren't polluted by junk.",
+    "user_stories": [
+      "As a field ecologist, I want the system to skip images that are too blurry or partial so I only review real observations.",
+      "As a project manager, I want cleaner results by default so species counts reflect actual biodiversity, not image artifacts."
+    ],
+    "keywords": ["bad data", "blurry", "cut-off", "too small", "quality filter", "not identifiable", "artifact", "image quality", "remove bad"]
+  },
+  {
+    "id": 5,
+    "horizon": "now-3mo",
+    "title": "Better Default Settings",
+    "oneliner": "Ship sensible defaults that hide noise — confidence thresholds, non-insect class hiding, and per-project configuration.",
+    "user_stories": [
+      "As a new user, I want the system to show useful results out of the box without needing to configure thresholds manually.",
+      "As a project manager, I want project-level default filters so my team sees clean results without individual setup."
+    ],
+    "keywords": ["good defaults", "default filter", "default threshold", "hide", "not-a-moth", "project settings", "configuration", "out of the box"]
+  },
+  {
+    "id": 6,
+    "horizon": "now-3mo",
+    "title": "Improved Insect Detector",
+    "oneliner": "Reduce duplicate detections, handle more camera types, and skip non-insect artifacts in high-volume scenarios.",
+    "user_stories": [
+      "As a field ecologist, I want fewer false detections so I spend less time dismissing non-insects.",
+      "As an ML researcher, I want the detector to handle overlapping detections better so downstream classification isn't confused."
+    ],
+    "keywords": ["detector", "detection model", "overlapping", "duplicate detection", "non-insect", "camera type", "false positive", "improved detector"]
+  },
+  {
+    "id": 7,
+    "horizon": "now-3mo",
+    "title": "New Processing Pipeline",
+    "oneliner": "Get the new async processing pipeline running and tested with partner data for real-world feedback.",
+    "user_stories": [
+      "As a project manager, I want reliable automated processing so results arrive without manual intervention.",
+      "As an ML researcher, I want to test new models on partner data to validate improvements before wider rollout."
+    ],
+    "keywords": ["new pipeline", "processing service", "NATS", "async processing", "PSv2", "processing v2", "pipeline running", "process images"]
+  },
+  {
+    "id": 8,
+    "horizon": "now-3mo",
+    "title": "Fix Critical Bugs",
+    "oneliner": "Resolve trust-killing issues: password reset, dangling jobs, processing failures, and milestone #27 items.",
+    "user_stories": [
+      "As a user, I want to reset my password without contacting a developer so I can recover my account independently.",
+      "As a project manager, I want processing jobs to complete reliably without hanging indefinitely.",
+      "As any user, I want basic platform operations to work consistently so I can trust the system with my research."
+    ],
+    "keywords": ["password reset", "bug", "dangling job", "error", "crash", "broken", "fix", "milestone #27", "critical", "reliability", "stability"]
+  },
+  {
+    "id": 9,
+    "horizon": "now-3mo",
+    "title": "Project Quick Start",
+    "oneliner": "Let new users go from 'I have images' to 'I see results' in minutes with a single guided form.",
+    "user_stories": [
+      "As a new user at a conference, I want to upload sample images and see results immediately so I know if Antenna works for my data.",
+      "As a field ecologist, I want to create a project with minimal setup so I can evaluate the platform quickly.",
+      "As a project manager, I want a demo project that showcases the platform's capabilities to potential partners."
+    ],
+    "keywords": ["quick start", "onboarding", "demo project", "sandbox", "try", "new user", "first time", "wizard", "single form", "auto-create", "auto-process", "getting started"]
+  },
+  {
+    "id": 10,
+    "horizon": "now-3mo",
+    "title": "Verification That Scales",
+    "oneliner": "Suggest which occurrences to verify for maximum calibration value instead of verifying everything one by one.",
+    "user_stories": [
+      "As a taxonomist, I want the system to suggest which identifications need my attention most so I use my time efficiently.",
+      "As a field ecologist, I want to know when I've verified enough to trust the overall results so I can stop checking every record.",
+      "As an ML researcher, I want to identify which verified records would be most valuable for model retraining."
+    ],
+    "keywords": ["verification", "active learning", "calibration", "spot-check", "statistical", "which to verify", "verification intelligence", "conveyor belt", "enough", "retraining value"]
+  },
+  {
+    "id": 11,
+    "horizon": "now-3mo",
+    "title": "Processing Reliability",
+    "oneliner": "Make jobs complete consistently — fix timeouts, improve error handling, and add progress visibility.",
+    "user_stories": [
+      "As a project manager, I want to see real-time progress of processing jobs so I know what's happening.",
+      "As a field ecologist, I want failed jobs to recover gracefully instead of losing all progress."
+    ],
+    "keywords": ["processing stability", "job progress", "timeout", "retry", "error handling", "job status", "hang", "celery", "task queue", "stabilization"]
+  },
+  {
+    "id": 12,
+    "horizon": "now-3mo",
+    "title": "Species List Management",
+    "oneliner": "Create, edit, and assign regional species lists to projects for class masking and result filtering.",
+    "user_stories": [
+      "As a taxonomist, I want to maintain a regional species checklist so predictions are restricted to plausible species.",
+      "As a project manager, I want to assign different species lists to different deployments based on their location."
+    ],
+    "keywords": ["taxa list", "species list", "checklist", "regional list", "taxa management", "class masking setup", "configurable taxa"]
+  },
+  {
+    "id": 13,
+    "horizon": "now-3mo",
+    "title": "Data Upload and Import",
+    "oneliner": "Upload images from cameras and import externally processed data without developer help.",
+    "user_stories": [
+      "As a field ecologist, I want to upload images from my camera's SD card to the platform without command-line tools.",
+      "As a project manager, I want to import detection results from another system so I can use Antenna for verification and analysis."
+    ],
+    "keywords": ["upload", "import", "camera", "SD card", "data import", "external data", "camera-utils", "cli upload", "import predictions", "import detections"]
+  },
+  {
+    "id": 14,
+    "horizon": "now-3mo",
+    "title": "Model Retraining for Partners",
+    "oneliner": "Retrain and deploy regional models using partner-verified data to improve accuracy for specific use cases.",
+    "user_stories": [
+      "As an ML researcher, I want to retrain the classifier on Panama-verified data so results improve for tropical species.",
+      "As a project manager, I want a regional model tuned to my camera's data so accuracy reflects my specific conditions."
+    ],
+    "keywords": ["retrain", "retraining", "regional model", "train", "training", "fine-tune", "Panama model", "new model", "model improvement"]
+  },
+  {
+    "id": 15,
+    "horizon": "now-3mo",
+    "title": "Auth and Account Basics",
+    "oneliner": "Fix password reset, sign-up flow, and basic role management so users can manage their own accounts.",
+    "user_stories": [
+      "As a user, I want to reset my password via email without needing developer assistance.",
+      "As a project manager, I want to invite team members and assign roles so the right people have the right access."
+    ],
+    "keywords": ["password reset", "signup", "sign up", "auth", "login", "roles", "permissions", "member", "invite", "account"]
+  },
+  {
+    "id": 16,
+    "horizon": "next-6mo",
+    "title": "User Guide and Tutorials",
+    "oneliner": "Step-by-step documentation for common workflows: project setup, reviewing results, exporting data.",
+    "user_stories": [
+      "As a field ecologist, I want a guide that walks me through setting up a new monitoring project from start to finish.",
+      "As a new user, I want tutorial videos or walkthroughs so I can learn the platform without live training."
+    ],
+    "keywords": ["user guide", "tutorial", "walkthrough", "how-to", "workflow documentation", "getting started guide", "user documentation"]
+  },
+  {
+    "id": 17,
+    "horizon": "next-6mo",
+    "title": "Self-Hosting Documentation",
+    "oneliner": "Installation guides, configuration docs, and one-click deploy options for community self-hosting.",
+    "user_stories": [
+      "As a university IT admin, I want clear installation docs so I can deploy Antenna for our ecology department.",
+      "As a community user, I want a one-click deploy option (Digital Ocean, etc.) so I can run my own instance."
+    ],
+    "keywords": ["self-host", "install guide", "installation", "deploy", "docker", "one-click", "Digital Ocean", "self-install", "setup guide", "configuration docs"]
+  },
+  {
+    "id": 18,
+    "horizon": "next-6mo",
+    "title": "Developer and API Documentation",
+    "oneliner": "Technical docs for building integrations, custom processing services, and contributing to Antenna.",
+    "user_stories": [
+      "As an ML researcher, I want API docs so I can build a custom processing service that integrates with Antenna.",
+      "As a developer, I want contributor guidelines so I can add features to the open-source project."
+    ],
+    "keywords": ["API docs", "developer guide", "developer documentation", "contributing", "processing service docs", "pipeline docs", "technical docs", "OpenAPI"]
+  },
+  {
+    "id": 19,
+    "horizon": "next-6mo",
+    "title": "Darwin Core and Data Export",
+    "oneliner": "Export occurrence data in Darwin Core, CSV, and other formats for GBIF submission and ecological analysis.",
+    "user_stories": [
+      "As a field ecologist, I want to export my data in Darwin Core format so I can submit it to GBIF.",
+      "As a project manager, I want CSV exports with flexible column selection so I can use the data in R or Python.",
+      "As an ML researcher, I want to export training data with annotations for model development."
+    ],
+    "keywords": ["Darwin Core", "export", "GBIF", "CSV export", "data export", "retraining export", "download", "format"]
+  },
+  {
+    "id": 20,
+    "horizon": "next-6mo",
+    "title": "Annotation and Bounding Box Editing",
+    "oneliner": "Let users edit bounding boxes, add new detections manually, and annotate directly in the gallery view.",
+    "user_stories": [
+      "As a taxonomist, I want to draw or adjust bounding boxes so I can correct detection errors.",
+      "As an ML researcher, I want to add manual annotations so I can create training data for underrepresented species."
+    ],
+    "keywords": ["annotation", "bounding box", "bbox", "edit detection", "draw", "manual detection", "label", "annotate"]
+  },
+  {
+    "id": 21,
+    "horizon": "next-6mo",
+    "title": "Gallery and Review Experience",
+    "oneliner": "Improve the image gallery with better navigation, filtering, linking between views, and keyboard shortcuts.",
+    "user_stories": [
+      "As a taxonomist, I want to navigate between occurrence detail and session views with one click so I can review in context.",
+      "As a field ecologist, I want to filter the gallery by species, confidence, and date so I find what I need quickly."
+    ],
+    "keywords": ["gallery", "review", "navigation", "filter", "sort", "interlink", "occurrence detail", "session detail", "keyboard shortcut", "UI", "grid view", "image viewer"]
+  },
+  {
+    "id": 22,
+    "horizon": "next-6mo",
+    "title": "Dashboard and Project Overview",
+    "oneliner": "Project landing pages with processing status, species counts, data quality indicators, and activity summaries.",
+    "user_stories": [
+      "As a project manager, I want a dashboard showing processing status across all deployments so I know what needs attention.",
+      "As a field ecologist, I want to see species count trends over time so I can track survey progress."
+    ],
+    "keywords": ["dashboard", "overview", "summary", "landing page", "status", "project page", "activity", "progress"]
+  },
+  {
+    "id": 23,
+    "horizon": "next-6mo",
+    "title": "Phenology and Abundance Charts",
+    "oneliner": "Visualize species occurrence over time — flight periods, seasonal patterns, abundance trends, co-occurrence.",
+    "user_stories": [
+      "As a field ecologist, I want phenology charts showing when species appear so I can compare across years.",
+      "As a conservation decision-maker, I want abundance trend graphs so I can assess population changes."
+    ],
+    "keywords": ["phenology", "abundance", "chart", "visualization", "temporal", "seasonal", "trend", "co-occurrence", "biomass", "species richness", "analytics"]
+  },
+  {
+    "id": 24,
+    "horizon": "next-6mo",
+    "title": "Collections and Dynamic Datasets",
+    "oneliner": "Rework image collections into dynamic, filter-based datasets for flexible grouping and batch operations.",
+    "user_stories": [
+      "As a field ecologist, I want to create a dataset from filter criteria (date range, deployment, species) so I can batch-process specific subsets.",
+      "As an ML researcher, I want dynamic collections so I can create training sets that update as new data arrives."
+    ],
+    "keywords": ["collection", "dataset", "dynamic filter", "batch", "group", "subset", "rework collections"]
+  },
+  {
+    "id": 25,
+    "horizon": "next-6mo",
+    "title": "Permissions and Team Roles",
+    "oneliner": "Fine-grained roles (viewer, reviewer, admin) and object-level permissions for multi-team collaboration.",
+    "user_stories": [
+      "As a project manager, I want to grant reviewers access to verify identifications without being able to change project settings.",
+      "As an admin, I want to manage team membership and permissions per project so each team controls their own data."
+    ],
+    "keywords": ["permission", "role", "team", "access control", "viewer", "reviewer", "admin", "object-level", "guardian", "member management"]
+  },
+  {
+    "id": 26,
+    "horizon": "next-6mo",
+    "title": "Deployment and Event Management",
+    "oneliner": "Better tools for managing monitoring stations, sites, devices, and temporal event grouping.",
+    "user_stories": [
+      "As a field ecologist, I want to manage multiple camera stations with their locations and time periods from the UI.",
+      "As a project manager, I want to see which deployments have recent data and which need attention."
+    ],
+    "keywords": ["deployment", "event", "station", "site", "device", "location", "temporal grouping", "session", "monitoring station", "camera"]
+  },
+  {
+    "id": 27,
+    "horizon": "next-6mo",
+    "title": "Performance at Scale",
+    "oneliner": "Handle 500K+ images per project with fast loading, efficient queries, and responsive UI.",
+    "user_stories": [
+      "As a project manager with a large dataset, I want the gallery and dashboards to load quickly even with hundreds of thousands of images.",
+      "As a field ecologist, I want search and filtering to return results in seconds, not minutes."
+    ],
+    "keywords": ["performance", "scale", "optimization", "speed", "slow", "pagination", "caching", "large", "500K", "query optimization", "fast"]
+  },
+  {
+    "id": 28,
+    "horizon": "next-6mo",
+    "title": "Taxonomy Hierarchy and Display",
+    "oneliner": "Improved taxonomy tree navigation, display names, common names, and parent-child relationship management.",
+    "user_stories": [
+      "As a taxonomist, I want to browse the taxonomy tree and see common names alongside scientific names.",
+      "As a field ecologist, I want to navigate from a species to all its occurrences across my project."
+    ],
+    "keywords": ["taxonomy", "taxon tree", "hierarchy", "common name", "display name", "parent", "rank", "taxonomic", "species page"]
+  },
+  {
+    "id": 29,
+    "horizon": "next-6mo",
+    "title": "Notification and Communication",
+    "oneliner": "Notify users about processing completion, identification requests, and project activity via email or in-app alerts.",
+    "user_stories": [
+      "As a field ecologist, I want email notifications when processing completes so I don't have to keep checking.",
+      "As a taxonomist, I want to be notified when someone requests my verification on an occurrence."
+    ],
+    "keywords": ["notification", "email", "alert", "notify", "message", "communication", "activity feed"]
+  },
+  {
+    "id": 30,
+    "horizon": "next-6mo",
+    "title": "UI Polish and Consistency",
+    "oneliner": "Fix layout issues, improve date pickers, make responsive design work, and standardize component patterns.",
+    "user_stories": [
+      "As any user, I want the interface to be consistent and predictable so I can learn it once and navigate confidently.",
+      "As a field ecologist working on a tablet, I want the UI to work well on smaller screens."
+    ],
+    "keywords": ["UI polish", "layout", "responsive", "date picker", "consistent", "design", "CSS", "theme", "mobile", "interface", "component"]
+  },
+  {
+    "id": 31,
+    "horizon": "next-6mo",
+    "title": "Infrastructure and DevOps",
+    "oneliner": "Improve CI/CD, monitoring, logging, and deployment automation for reliability and developer productivity.",
+    "user_stories": [
+      "As a developer, I want reliable CI/CD so I can deploy with confidence.",
+      "As an admin, I want monitoring dashboards so I can detect issues before users report them."
+    ],
+    "keywords": ["CI/CD", "monitoring", "logging", "infrastructure", "docker", "deploy", "automation", "DevOps", "observability", "health check"]
+  },
+  {
+    "id": 32,
+    "horizon": "later",
+    "title": "Non-Time-Series Data Support",
+    "oneliner": "Support lab microscopes, specimen drawers, and other non-camera-trap image sources.",
+    "user_stories": [
+      "As an entomologist, I want to process specimen drawer photos so I can digitize museum collections.",
+      "As an ML researcher, I want to use Antenna for lab microscope images so one platform handles all insect imaging."
+    ],
+    "keywords": ["non-time-series", "microscope", "specimen", "drawer", "lab", "museum", "different data type", "other data"]
+  },
+  {
+    "id": 33,
+    "horizon": "later",
+    "title": "Pollinator and General Detection",
+    "oneliner": "Expand beyond moths to pollinators, general insects, and broader ecological monitoring use cases.",
+    "user_stories": [
+      "As a field ecologist, I want to detect pollinators visiting flowers so I can study plant-pollinator interactions.",
+      "As a conservation decision-maker, I want general insect monitoring data, not just moths."
+    ],
+    "keywords": ["pollinator", "general insect", "not just moths", "broader", "other taxa", "general detection", "plant-pollinator"]
+  },
+  {
+    "id": 34,
+    "horizon": "later",
+    "title": "Ecosystem Integrations",
+    "oneliner": "Connect with iNaturalist, GBIF, and external ML platforms for data exchange and community science.",
+    "user_stories": [
+      "As a community scientist, I want to sync observations with iNaturalist so both platforms benefit.",
+      "As a project manager, I want automatic GBIF submission so our data is publicly discoverable."
+    ],
+    "keywords": ["iNaturalist", "GBIF", "integration", "external platform", "sync", "API", "interoperability", "community science"]
+  },
+  {
+    "id": 35,
+    "horizon": "later",
+    "title": "Advanced ML Features",
+    "oneliner": "Clustering support, multi-model ensembles, active learning loops, and advanced post-processing.",
+    "user_stories": [
+      "As an ML researcher, I want to run multiple models and ensemble their results for better accuracy.",
+      "As a project manager, I want the system to actively learn from corrections to improve over time."
+    ],
+    "keywords": ["clustering", "ensemble", "active learning", "advanced ML", "multi-model", "post-processing", "advanced pipeline"]
+  },
+  {
+    "id": 36,
+    "horizon": "later",
+    "title": "Multi-Tenant and Cloud Scaling",
+    "oneliner": "Support multiple organizations on shared infrastructure with proper isolation and resource management.",
+    "user_stories": [
+      "As an admin, I want to host multiple organizations on one deployment with proper data isolation.",
+      "As a cloud operator, I want auto-scaling so the platform handles load spikes during processing."
+    ],
+    "keywords": ["multi-tenant", "cloud", "scaling", "auto-scale", "SaaS", "organization", "isolation", "resource", "shared infrastructure"]
+  },
+  {
+    "id": 37,
+    "horizon": "later",
+    "title": "Research and Experimental Features",
+    "oneliner": "Exploratory work: new ecological metrics, experimental UI patterns, academic collaboration features.",
+    "user_stories": [
+      "As an ML researcher, I want experimental features behind feature flags so I can test ideas without affecting production users.",
+      "As a field ecologist, I want to pilot new analysis methods on my data before they become standard features."
+    ],
+    "keywords": ["research", "experimental", "exploratory", "academic", "pilot", "prototype", "new metric", "experimental feature"]
+  },
+  {
+    "id": 38,
+    "horizon": "later",
+    "title": "Community Building",
+    "oneliner": "Forums, shared resources, community events, and collaboration tools for the broader Antenna ecosystem.",
+    "user_stories": [
+      "As a community member, I want a forum to share experiences and help others set up their monitoring programs.",
+      "As a project manager, I want to discover and connect with other teams using Antenna in my region."
+    ],
+    "keywords": ["community", "forum", "collaboration", "outreach", "open science", "shared resources", "networking", "events"]
+  },
+  {
+    "id": 39,
+    "horizon": "done",
+    "title": "Completed Work (Reference)",
+    "oneliner": "Capability inventory: features already built and shipped. Not on the board — for context only.",
+    "user_stories": [],
+    "keywords": ["completed", "done", "shipped", "merged", "existing"]
+  }
+]
