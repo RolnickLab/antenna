@@ -1,51 +1,67 @@
 {
-    "version": "0.2.0",
-    "compounds": [
+  "version": "0.2.0",
+  "compounds": [
+    {
+      "name": "Attach: Django + Celery",
+      "configurations": ["Attach: Django", "Attach: Celeryworker"],
+      "stopAll": true
+    }
+  ],
+  "configurations": [
+    {
+      "name": "Attach: Django",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "localhost",
+        "port": 5678
+      },
+      "pathMappings": [
         {
-            "name": "Attach: Django + Celery",
-            "configurations": ["Attach: Django", "Attach: Celeryworker"],
-            "stopAll": true
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "/app"
         }
-    ],
-    "configurations": [
+      ],
+      "justMyCode": true
+    },
+    {
+      "name": "Attach: Celeryworker",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "localhost",
+        "port": 5679
+      },
+      "pathMappings": [
         {
-            "name": "Attach: Django",
-            "type": "debugpy",
-            "request": "attach",
-            "connect": {
-                "host": "localhost",
-                "port": 5678
-            },
-            "pathMappings": [
-                {
-                    "localRoot": "${workspaceFolder}",
-                    "remoteRoot": "/app"
-                }
-            ],
-            "justMyCode": true
-        },
-        {
-            "name": "Attach: Celeryworker",
-            "type": "debugpy",
-            "request": "attach",
-            "connect": {
-                "host": "localhost",
-                "port": 5679
-            },
-            "pathMappings": [
-                {
-                    "localRoot": "${workspaceFolder}",
-                    "remoteRoot": "/app"
-                }
-            ],
-            "justMyCode": true
-        },
-        {
-            "name": "Current File",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${file}",
-            "console": "integratedTerminal"
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "/app"
         }
-    ]
+      ],
+      "justMyCode": true
+    },
+    {
+      "name": "Attach: Tests",
+      "type": "debugpy",
+      "request": "attach",
+      "connect": {
+        "host": "localhost",
+        "port": 5680
+      },
+      "pathMappings": [
+        {
+          "localRoot": "${workspaceFolder}",
+          "remoteRoot": "/app"
+        }
+      ],
+      "justMyCode": true
+    },
+    {
+      "name": "Current File",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal"
+    }
+  ]
 }

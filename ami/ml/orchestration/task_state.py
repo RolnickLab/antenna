@@ -14,6 +14,10 @@ logger = logging.getLogger(__name__)
 TaskProgress = namedtuple("TaskProgress", ["remaining", "total", "processed", "percentage"])
 
 
+def _lock_key(job_id: int) -> str:
+    return f"job:{job_id}:process_results_lock"
+
+
 class TaskStateManager:
     """
     Manages job progress tracking state in Redis.
@@ -64,7 +68,7 @@ class TaskStateManager:
             processed_image_ids: Set of image IDs that have just been processed
         """
         # Create a unique lock key for this job
-        lock_key = f"job:{self.job_id}:process_results_lock"
+        lock_key = _lock_key(self.job_id)
         lock_timeout = 360  # 6 minutes (matches task time_limit)
         lock_acquired = cache.add(lock_key, request_id, timeout=lock_timeout)
         if not lock_acquired:
