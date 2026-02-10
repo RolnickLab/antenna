@@ -186,24 +186,6 @@ DELETE /api/v2/{resource}/{id}/    # Delete
 
 ## Current Pain Points
 
-### Development Experience
-1. **No SSR**: Initial page load shows blank screen, then hydrates
-2. **No Static Generation**: All pages require client-side data fetching
-3. **Manual Route Management**: Route constants must match router config
-4. **No Built-in API Routes**: Can't add BFF (Backend for Frontend) endpoints
-5. **Environment Config**: Manual Vite environment variable setup
-
-### Performance
-1. **Client-side Rendering Only**: No server-side rendering for SEO or performance
-2. **Large Bundle**: Single bundle for entire app (no automatic code splitting by route)
-3. **Image Optimization**: Manual image handling, no built-in optimization
-
-### SEO/Accessibility
-1. **Dynamic Titles**: Managed via react-helmet-async instead of native
-2. **No Metadata API**: Must manually manage Open Graph tags
-3. **Crawler Issues**: SPA content not visible to crawlers without JS
-
-### Architecture
-1. **Proxy Dependency**: Development requires Vite proxy to Django
+needs rewriting - pain points are about where to put X, and relying more on external opensource community rather than writing custom aspects.
 2. **No Edge/Middleware**: Can't intercept requests at edge
 3. **Manual Caching**: No built-in data caching beyond React Query
