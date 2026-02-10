@@ -7,13 +7,13 @@ import {
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
-import { Collection } from 'data-services/models/collection'
+import { Collection } from 'data-services/models/capture-set'
 import { SaveButton } from 'design-system/components/button/save-button'
 import { InputContent } from 'design-system/components/input/input'
 import { DatePicker } from 'design-system/components/select/date-picker'
 import { XIcon } from 'lucide-react'
 import { Button, Select } from 'nova-ui-kit'
-import { SERVER_SAMPLING_METHODS } from 'pages/project/collections/constants'
+import { SERVER_SAMPLING_METHODS } from 'pages/project/capture-sets/constants'
 import { useForm } from 'react-hook-form'
 import {
   formatIntegerList,

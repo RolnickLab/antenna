@@ -9,8 +9,8 @@ import {
 import { FormConfig } from 'components/form/types'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { SaveButton } from 'design-system/components/button/save-button'
+import { CaptureSetPicker } from 'design-system/components/capture-set-picker'
 import { Checkbox } from 'design-system/components/checkbox/checkbox'
-import { CollectionsPicker } from 'design-system/components/collections-picker'
 import { InputContent } from 'design-system/components/input/input'
 import { useForm } from 'react-hook-form'
 import { useParams } from 'react-router-dom'
@@ -122,7 +122,7 @@ export const JobDetailsForm = ({
                 label={config[field.name].label}
                 error={fieldState.error?.message}
               >
-                <CollectionsPicker
+                <CaptureSetPicker
                   value={field.value}
                   onValueChange={field.onChange}
                 />

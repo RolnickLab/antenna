@@ -1,17 +1,17 @@
-import { useCollections } from 'data-services/hooks/collections/useCollections'
+import { useCaptureSets } from 'data-services/hooks/capture-sets/useCaptureSets'
 import { Select } from 'nova-ui-kit'
 import { useParams } from 'react-router-dom'
 import { FilterProps } from './types'
 
-export const CollectionFilter = ({ value, onAdd }: FilterProps) => {
+export const CaptureSetFilter = ({ value, onAdd }: FilterProps) => {
   const { projectId } = useParams()
-  const { collections = [], isLoading } = useCollections({
+  const { captureSets = [], isLoading } = useCaptureSets({
     projectId: projectId as string,
   })
 
   return (
     <Select.Root
-      disabled={collections.length === 0}
+      disabled={captureSets.length === 0}
       value={value ?? ''}
       onValueChange={onAdd}
     >
@@ -19,7 +19,7 @@ export const CollectionFilter = ({ value, onAdd }: FilterProps) => {
         <Select.Value placeholder="All capture sets" />
       </Select.Trigger>
       <Select.Content className="max-h-72">
-        {collections.map((c) => (
+        {captureSets.map((c) => (
           <Select.Item key={c.id} value={c.id}>
             {c.name}
           </Select.Item>

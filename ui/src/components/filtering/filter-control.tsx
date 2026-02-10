@@ -3,7 +3,7 @@ import { Button } from 'nova-ui-kit'
 import { useFilters } from 'utils/useFilters'
 import { AlgorithmFilter, NotAlgorithmFilter } from './filters/algorithm-filter'
 import { BooleanFilter } from './filters/boolean-filter'
-import { CollectionFilter } from './filters/collection-filter'
+import { CaptureSetFilter } from './filters/capture-set-filter'
 import { DateFilter } from './filters/date-filter'
 import { ImageFilter } from './filters/image-filter'
 import { PipelineFilter } from './filters/pipeline-filter'
@@ -22,8 +22,8 @@ const ComponentMap: {
   [key: string]: (props: FilterProps) => JSX.Element
 } = {
   algorithm: AlgorithmFilter,
-  collection: CollectionFilter,
-  collections: CollectionFilter,
+  collection: CaptureSetFilter,
+  collections: CaptureSetFilter,
   date_end: DateFilter,
   date_start: DateFilter,
   deployment: StationFilter,
@@ -35,7 +35,7 @@ const ComponentMap: {
   not_tag_id: TagFilter,
   not_taxa_list_id: TaxaListFilter,
   pipeline: PipelineFilter,
-  source_image_collection: CollectionFilter,
+  source_image_collection: CaptureSetFilter,
   source_image_single: ImageFilter,
   status: StatusFilter,
   tag_id: TagFilter,
