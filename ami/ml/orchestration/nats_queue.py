@@ -65,7 +65,6 @@ def retry_on_connection_error(max_retries: int = 2, backoff_seconds: float = 0.5
                     OSError,  # Network errors
                 ) as e:
                     last_error = e
-
                     # Don't retry on last attempt
                     if attempt == max_retries:
                         logger.error(
@@ -73,13 +72,11 @@ def retry_on_connection_error(max_retries: int = 2, backoff_seconds: float = 0.5
                             exc_info=True,
                         )
                         break
-
                     # Reset the connection pool so next attempt gets a fresh connection
                     from ami.ml.orchestration.nats_connection_pool import get_pool
 
                     pool = get_pool()
                     pool.reset()
-
                     # Exponential backoff
                     wait_time = backoff_seconds * (2**attempt)
                     logger.warning(
@@ -87,7 +84,6 @@ def retry_on_connection_error(max_retries: int = 2, backoff_seconds: float = 0.5
                         f"Retrying in {wait_time}s..."
                     )
                     await asyncio.sleep(wait_time)
-
             # If we exhausted retries, raise the last error
             raise last_error  # type: ignore
 
