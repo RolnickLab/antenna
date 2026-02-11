@@ -15,8 +15,35 @@ class BoundingBox(pydantic.BaseModel):
     y2: float
 
     @classmethod
-    def from_coords(cls, coords: list[float]) -> "BoundingBox":
-        return cls(x1=coords[0], y1=coords[1], x2=coords[2], y2=coords[3])
+    def from_coords(cls, coords: typing.Any, raise_on_error: bool = True) -> "BoundingBox | None":
+        """
+        Create BoundingBox from coordinate list [x1, y1, x2, y2].
+
+        Args:
+            coords: List of 4 float coordinates
+            raise_on_error: If True (default), raises ValueError on invalid input.
+                           If False, returns None on invalid input.
+        """
+        if not isinstance(coords, list) or len(coords) != 4:
+            if raise_on_error:
+                if not isinstance(coords, list):
+                    raise ValueError(f"BoundingBox coords must be a list, got {type(coords).__name__}")
+                raise ValueError(f"BoundingBox coords must have 4 elements, got {len(coords)}")
+            return None
+        try:
+            return cls(x1=coords[0], y1=coords[1], x2=coords[2], y2=coords[3])
+        except (TypeError, pydantic.ValidationError) as e:
+            if raise_on_error:
+                raise ValueError(f"Invalid BoundingBox coordinates: {e}") from e
+            return None
+
+    @property
+    def width(self) -> float:
+        return abs(self.x2 - self.x1)
+
+    @property
+    def height(self) -> float:
+        return abs(self.y2 - self.y1)
 
     def to_string(self) -> str:
         return f"{self.x1},{self.y1},{self.x2},{self.y2}"
@@ -214,6 +241,13 @@ class PipelineResultsResponse(pydantic.BaseModel):
     errors: list | str | None = None
 
 
+class PipelineResultsError(pydantic.BaseModel):
+    """Error result when pipeline processing fails for an image."""
+
+    error: str
+    image_id: str | None = None
+
+
 class PipelineProcessingTask(pydantic.BaseModel):
     """
     A task representing a single image or detection to be processed in an async pipeline.
@@ -222,7 +256,6 @@ class PipelineProcessingTask(pydantic.BaseModel):
     id: str
     image_id: str
     image_url: str
-    queue_timestamp: str
     reply_subject: str | None = None  # The NATS subject to send the result to
     # TODO: Do we need these?
     # detections: list[DetectionRequest] | None = None
@@ -232,10 +265,12 @@ class PipelineProcessingTask(pydantic.BaseModel):
 class PipelineTaskResult(pydantic.BaseModel):
     """
     The result from processing a single PipelineProcessingTask.
+
+    Note: this schema is called `AntennaTaskResult` in the ADC worker processing service.
     """
 
     reply_subject: str  # The reply_subject from the PipelineProcessingTask
-    result: PipelineResultsResponse
+    result: PipelineResultsResponse | PipelineResultsError
 
 
 class PipelineStageParam(pydantic.BaseModel):

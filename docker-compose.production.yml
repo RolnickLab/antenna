@@ -20,6 +20,7 @@ services:
       - "db:${DATABASE_IP}"
       - "rabbitmq:${RABBITMQ_IP}"
       - "redis:${REDIS_IP}"
+      - "nats:${NATS_IP}"
     command: /start
     scale: 1  # Can't scale until the load balancer is within the compose config
     restart: always

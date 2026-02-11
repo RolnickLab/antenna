@@ -5,7 +5,7 @@ from django.db import transaction
 from django.db.models.signals import m2m_changed
 from django.dispatch import receiver
 
-from ami.main.models import Project
+from ami.main.models import Project, UserProjectMembership
 from ami.users.roles import Role, create_roles_for_project
 
 logger = logging.getLogger(__name__)
@@ -55,17 +55,22 @@ def manage_project_membership(sender, instance, action, reverse, model, pk_set, 
 
                 user = instance
                 if action == "post_add":
-                    # Add user to project members if not already in
-                    if not project.members.filter(id=user.id).exists():
-                        project.members.add(user)
+                    # Use get_or_create on UserProjectMembership directly to avoid duplicates
+                    # This ensures we don't create duplicates when roles are assigned
+                    # outside of the API (e.g., admin page)
+                    _, created = UserProjectMembership.objects.get_or_create(project=project, user=user)
+                    if created:
                         logger.info(f"Added {user.email} to project {project.name} members.")
+                    else:
+                        logger.info(f"User {user.email} already a member of project {project.name}.")
 
                 elif action == "post_remove":
-                    # Check if user still has any role in this project and they exist in the project members
+                    # Check if user still has any role in this project
                     has_any_role = Role.user_has_any_role(user, project)
-                    if not has_any_role and project.members.filter(id=user.id).exists():
-                        project.members.remove(user)
-                        logger.info(f"Removed {user.email} from project {project.name} members (no remaining roles).")
+                    if not has_any_role:
+                        # User has no roles left, remove membership using UserProjectMembership model
+                        UserProjectMembership.objects.filter(project=project, user=user).delete()
+                        logger.info(f"Removed {user.email} from project {project.name} members")
 
     finally:
         # Reconnect the signal after updating members

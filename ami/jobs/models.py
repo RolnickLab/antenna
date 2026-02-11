@@ -24,6 +24,32 @@ from ami.utils.schemas import OrderedEnum
 logger = logging.getLogger(__name__)
 
 
+class JobDispatchMode(models.TextChoices):
+    """
+    How a job dispatches its workload.
+
+    Jobs are configured and launched by users in the UI, then dispatched to
+    Celery workers. This enum describes what the worker does with the work:
+
+    - INTERNAL: All work happens within the platform (Celery worker handles it directly).
+    - SYNC_API: Worker calls an external processing service API and waits for each response.
+    - ASYNC_API: Worker queues items to a message broker (NATS) for external processing
+      service workers to pick up and process independently.
+    """
+
+    # Work is handled entirely within the platform, no external service calls.
+    # e.g. DataStorageSyncJob, DataExportJob, SourceImageCollectionPopulateJob
+    INTERNAL = "internal", "Internal"
+
+    # Worker loops over items, sends each to an external processing service
+    # endpoint synchronously, and waits for the response before continuing.
+    SYNC_API = "sync_api", "Sync API"
+
+    # Worker publishes all items to a message broker (NATS). External processing
+    # service workers consume and process them independently, reporting results back.
+    ASYNC_API = "async_api", "Async API"
+
+
 class JobState(str, OrderedEnum):
     """
     These come from Celery, except for CREATED, which is a custom state.
@@ -197,6 +223,30 @@ class JobProgress(pydantic.BaseModel):
             stage.progress = 0
             stage.status = status
 
+    def is_complete(self) -> bool:
+        """
+        Check if all stages have finished processing.
+
+        A job is considered complete when ALL of its stages have:
+        - progress >= 1.0 (fully processed)
+        - status in a final state (SUCCESS, FAILURE, or REVOKED)
+
+        This method works for any job type regardless of which stages it has.
+        It's used by the Celery task_postrun signal to determine whether to
+        set the job's final SUCCESS status, or defer to async progress handlers.
+
+        Related: Job.update_progress() calculates the aggregate
+        progress percentage across all stages for display purposes. This method
+        is a binary check for completion that considers both progress AND status.
+
+        Returns:
+            True if all stages are complete, False otherwise.
+            Returns False if job has no stages (shouldn't happen in practice).
+        """
+        if not self.stages:
+            return False
+        return all(stage.progress >= 1.0 and stage.status in JobState.final_states() for stage in self.stages)
+
     class Config:
         use_enum_values = True
         as_dict = True
@@ -322,14 +372,12 @@ class MLJob(JobType):
         """
         Procedure for an ML pipeline as a job.
         """
+        from ami.ml.orchestration.jobs import queue_images_to_nats
+
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
         job.save()
-
-        # Keep track of sub-tasks for saving results, pair with batch number
-        save_tasks: list[tuple[int, AsyncResult]] = []
-        save_tasks_completed: list[tuple[int, AsyncResult]] = []
 
         if job.delay:
             update_interval_seconds = 2
@@ -365,7 +413,7 @@ class MLJob(JobType):
             progress=0,
         )
 
-        images = list(
+        images: list[SourceImage] = list(
             # @TODO return generator plus image count
             # @TODO pass to celery group chain?
             job.pipeline.collect_images(
@@ -389,8 +437,6 @@ class MLJob(JobType):
             images = images[: job.limit]
             image_count = len(images)
             job.progress.add_stage_param("collect", "Limit", image_count)
-        else:
-            image_count = source_image_count
 
         job.progress.update_stage(
             "collect",
@@ -401,6 +447,28 @@ class MLJob(JobType):
         # End image collection stage
         job.save()
 
+        if job.project.feature_flags.async_pipeline_workers:
+            job.dispatch_mode = JobDispatchMode.ASYNC_API
+            job.save(update_fields=["dispatch_mode"])
+            queued = queue_images_to_nats(job, images)
+            if not queued:
+                job.logger.error("Aborting job %s because images could not be queued to NATS", job.pk)
+                job.progress.update_stage("collect", status=JobState.FAILURE)
+                job.update_status(JobState.FAILURE)
+                job.finished_at = datetime.datetime.now()
+                job.save()
+                return
+        else:
+            job.dispatch_mode = JobDispatchMode.SYNC_API
+            job.save(update_fields=["dispatch_mode"])
+            cls.process_images(job, images)
+
+    @classmethod
+    def process_images(cls, job, images):
+        image_count = len(images)
+        # Keep track of sub-tasks for saving results, pair with batch number
+        save_tasks: list[tuple[int, AsyncResult]] = []
+        save_tasks_completed: list[tuple[int, AsyncResult]] = []
         total_captures = 0
         total_detections = 0
         total_classifications = 0
@@ -783,6 +851,12 @@ class Job(BaseModel):
         null=True,
         blank=True,
         related_name="jobs",
+    )
+    dispatch_mode = models.CharField(
+        max_length=32,
+        choices=JobDispatchMode.choices,
+        default=JobDispatchMode.INTERNAL,
+        help_text="How the job dispatches its workload: internal, sync_api, or async_api.",
     )
 
     def __str__(self) -> str:

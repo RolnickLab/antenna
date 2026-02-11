@@ -1,6 +1,7 @@
 import logging
 
 import pydantic
+from asgiref.sync import async_to_sync
 from django.db.models import Q
 from django.db.models.query import QuerySet
 from django.forms import IntegerField
@@ -15,14 +16,13 @@ from rest_framework.response import Response
 from ami.base.permissions import ObjectPermission
 from ami.base.views import ProjectMixin
 from ami.jobs.schemas import batch_param, ids_only_param, incomplete_only_param
+from ami.jobs.tasks import process_nats_pipeline_result
 from ami.main.api.schemas import project_id_doc_param
-
-# from ami.jobs.tasks import process_pipeline_result  # TODO: Uncomment when available in main
 from ami.main.api.views import DefaultViewSet
-from ami.ml.schemas import PipelineProcessingTask, PipelineTaskResult
+from ami.ml.schemas import PipelineTaskResult
 from ami.utils.fields import url_boolean_param
 
-from .models import Job, JobState
+from .models import Job, JobDispatchMode, JobState
 from .serializers import JobListSerializer, JobSerializer, MinimalJobSerializer
 
 logger = logging.getLogger(__name__)
@@ -43,6 +43,7 @@ class JobFilterSet(filters.FilterSet):
             "source_image_single",
             "pipeline",
             "job_type_key",
+            "dispatch_mode",
         ]
 
 
@@ -228,37 +229,42 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         except Exception as e:
             raise ValidationError({"batch": str(e)}) from e
 
+        # Only async_api jobs have tasks fetchable from NATS
+        if job.dispatch_mode != JobDispatchMode.ASYNC_API:
+            raise ValidationError("Only async_api jobs have fetchable tasks")
+
         # Validate that the job has a pipeline
         if not job.pipeline:
             raise ValidationError("This job does not have a pipeline configured")
 
-        # TODO: Implement task queue integration
-        logger.warning(f"Task queue endpoint called for job {job.pk} but the implementation is not yet available.")
+        # Get tasks from NATS JetStream
+        from ami.ml.orchestration.nats_queue import TaskQueueManager
 
-        dummy_task = PipelineProcessingTask(
-            id="1",
-            image_id="1",
-            image_url="http://example.com/image1",
-            queue_timestamp=timezone.now().isoformat(),
-        )
+        async def get_tasks():
+            tasks = []
+            async with TaskQueueManager() as manager:
+                for _ in range(batch):
+                    task = await manager.reserve_task(job.pk, timeout=0.1)
+                    if task:
+                        tasks.append(task.dict())
+            return tasks
 
-        # @TODO when this gets fully implemented, use a Serializer or Pydantic schema
-        # for the full repsponse structure.
-        return Response({"tasks": [task.dict() for task in [dummy_task] * batch]})
+        # Use async_to_sync to properly handle the async call
+        tasks = async_to_sync(get_tasks)()
+
+        return Response({"tasks": tasks})
 
     @action(detail=True, methods=["post"], name="result")
     def result(self, request, pk=None):
         """
-        Submit pipeline results for asynchronous processing.
+        The request body should be a list of results: list[PipelineTaskResult]
 
         This endpoint accepts a list of pipeline results and queues them for
-        background processing. Each result will be validated and saved.
-
-        The request body should be a list of results: list[PipelineTaskResult]
+        background processing. Each result will be validated, saved to the database,
+        and acknowledged via NATS in a Celery task.
         """
 
         job = self.get_object()
-        job_id = job.pk
 
         # Validate request data is a list
         if isinstance(request.data, list):
@@ -267,32 +273,55 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             results = [request.data]
 
         try:
-            queued_tasks = []
+            # Pre-validate all results before enqueuing any tasks
+            # This prevents partial queueing and duplicate task processing
+            validated_results = []
             for item in results:
                 task_result = PipelineTaskResult(**item)
-                # Stub: Log that we received the result but don't process it yet
-                logger.warning(
-                    f"Result endpoint called for job {job_id} (reply_subject: {task_result.reply_subject}) "
-                    "but result processing not yet available."
+                validated_results.append(task_result)
+
+            # All validation passed, now queue all tasks
+            queued_tasks = []
+            for task_result in validated_results:
+                reply_subject = task_result.reply_subject
+                result_data = task_result.result
+
+                # Queue the background task
+                # Convert Pydantic model to dict for JSON serialization
+                task = process_nats_pipeline_result.delay(
+                    job_id=job.pk, result_data=result_data.dict(), reply_subject=reply_subject
                 )
 
-                # TODO: Implement result storage and processing
                 queued_tasks.append(
                     {
-                        "reply_subject": task_result.reply_subject,
-                        "status": "pending_implementation",
-                        "message": "Result processing not yet implemented.",
+                        "reply_subject": reply_subject,
+                        "status": "queued",
+                        "task_id": task.id,
                     }
                 )
+
+                logger.info(
+                    f"Queued pipeline result processing for job {job.pk}, "
+                    f"task_id: {task.id}, reply_subject: {reply_subject}"
+                )
+
+            return Response(
+                {
+                    "status": "accepted",
+                    "job_id": job.pk,
+                    "results_queued": len([t for t in queued_tasks if t["status"] == "queued"]),
+                    "tasks": queued_tasks,
+                }
+            )
         except pydantic.ValidationError as e:
             raise ValidationError(f"Invalid result data: {e}") from e
 
-        return Response(
-            {
-                "status": "received",
-                "job_id": job_id,
-                "results_received": len(queued_tasks),
-                "tasks": queued_tasks,
-                "message": "Result processing not yet implemented.",
-            }
-        )
+        except Exception as e:
+            logger.error(f"Failed to queue pipeline results for job {job.pk}: {e}")
+            return Response(
+                {
+                    "status": "error",
+                    "job_id": job.pk,
+                },
+                status=500,
+            )
