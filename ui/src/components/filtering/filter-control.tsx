@@ -1,5 +1,7 @@
-import { XIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
+import classNames from 'classnames'
+import { ChevronRightIcon, InfoIcon, XIcon } from 'lucide-react'
+import { Button, buttonVariants, Tooltip } from 'nova-ui-kit'
+import { Link } from 'react-router-dom'
 import { useFilters } from 'utils/useFilters'
 import { AlgorithmFilter, NotAlgorithmFilter } from './filters/algorithm-filter'
 import { BooleanFilter } from './filters/boolean-filter'
@@ -72,9 +74,14 @@ export const FilterControl = ({
 
   return (
     <div>
-      <label className="flex pl-2 pb-3 text-muted-foreground body-overline-small font-bold">
-        {filter.label}
-      </label>
+      <div className="min-h-8 flex items-center gap-1">
+        <span className="text-muted-foreground body-overline-small font-bold pt-0.5">
+          {filter.label}
+        </span>
+        {filter.info ? (
+          <FilterInfo text={filter.info.text} to={filter.info.to} />
+        ) : null}
+      </div>
       <div className="flex items-center justify-between gap-2">
         <FilterComponent
           data={data}
@@ -102,3 +109,30 @@ export const FilterControl = ({
     </div>
   )
 }
+
+export const FilterInfo = ({ text, to }: { text: string; to?: string }) => (
+  <Tooltip.Provider delayDuration={0}>
+    <Tooltip.Root>
+      <Tooltip.Trigger asChild>
+        <Button className="text-muted-foreground" size="icon" variant="ghost">
+          <InfoIcon className="w-4 h-4" />
+        </Button>
+      </Tooltip.Trigger>
+      <Tooltip.Content side="bottom" className="p-4 space-y-4 max-w-xs">
+        <p className="whitespace-normal">{text}</p>
+        {to ? (
+          <Link
+            className={classNames(
+              buttonVariants({ size: 'small', variant: 'outline' }),
+              '!w-auto'
+            )}
+            to={to}
+          >
+            <span>Configure</span>
+            <ChevronRightIcon className="w-4 h-4" />
+          </Link>
+        ) : null}
+      </Tooltip.Content>
+    </Tooltip.Root>
+  </Tooltip.Provider>
+)
