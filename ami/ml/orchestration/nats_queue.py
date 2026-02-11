@@ -38,17 +38,13 @@ T = TypeVar("T")
 
 def retry_on_connection_error(max_retries: int = 2, backoff_seconds: float = 0.5):
     """
-    Decorator that retries NATS operations on connection errors.
-
-    When a connection error is detected:
+    Decorator that retries NATS operations on connection errors. When a connection error is detected:
     1. Resets the connection pool (clears stale connection)
     2. Waits with exponential backoff
     3. Retries the operation (which will get a fresh connection)
-
     Args:
         max_retries: Maximum number of retry attempts (default: 2)
         backoff_seconds: Initial backoff time in seconds (default: 0.5)
-
     Returns:
         Decorated async function with retry logic
     """
@@ -103,7 +99,6 @@ def retry_on_connection_error(max_retries: int = 2, backoff_seconds: float = 0.5
 class TaskQueueManager:
     """
     Manager for NATS JetStream task queue operations.
-
     Always uses the process-local connection pool for efficiency.
     Note: The connection pool is shared across all instances in the same process,
     so there's no overhead creating multiple TaskQueueManager instances.
@@ -179,16 +174,12 @@ class TaskQueueManager:
     async def publish_task(self, job_id: int, data: PipelineProcessingTask) -> bool:
         """
         Publish a task to it's job queue.
-
         Automatically retries on connection errors with exponential backoff.
-
         Args:
             job_id: The job ID (integer primary key)
             data: PipelineProcessingTask object to be published
-
         Returns:
             bool: True if successful, False otherwise
-
         Raises:
             Connection errors are retried by decorator, other errors are raised
         """
@@ -213,14 +204,11 @@ class TaskQueueManager:
     async def reserve_task(self, job_id: int, timeout: float | None = None) -> PipelineProcessingTask | None:
         """
         Reserve a task from the specified stream.
-
         Automatically retries on connection errors with exponential backoff.
         Note: TimeoutError from fetch() (no messages) is NOT retried - only connection errors.
-
         Args:
             job_id: The job ID (integer primary key) to pull tasks from
             timeout: Timeout in seconds for reservation (default: 5 seconds)
-
         Returns:
             PipelineProcessingTask with reply_subject set for acknowledgment, or None if no task available
         """
@@ -268,16 +256,11 @@ class TaskQueueManager:
     async def acknowledge_task(self, reply_subject: str) -> bool:
         """
         Acknowledge (delete) a completed task using its reply subject.
-
         Automatically retries on connection errors with exponential backoff.
-        Uses a lock to serialize ACK operations to prevent concurrent access issues.
-
         Args:
             reply_subject: The reply subject from reserve_task
-
         Returns:
             bool: True if successful
-
         Raises:
             Connection errors are retried by decorator, other errors are logged
         """
@@ -302,15 +285,11 @@ class TaskQueueManager:
     async def delete_consumer(self, job_id: int) -> bool:
         """
         Delete the consumer for a job.
-
         Automatically retries on connection errors with exponential backoff.
-
         Args:
             job_id: The job ID (integer primary key)
-
         Returns:
             bool: True if successful
-
         Raises:
             Connection errors are retried by decorator, other errors are raised
         """
@@ -327,15 +306,11 @@ class TaskQueueManager:
     async def delete_stream(self, job_id: int) -> bool:
         """
         Delete the stream for a job.
-
         Automatically retries on connection errors with exponential backoff.
-
         Args:
             job_id: The job ID (integer primary key)
-
         Returns:
             bool: True if successful
-
         Raises:
             Connection errors are retried by decorator, other errors are raised
         """
@@ -350,13 +325,10 @@ class TaskQueueManager:
     async def cleanup_job_resources(self, job_id: int) -> bool:
         """
         Clean up all NATS resources (consumer and stream) for a job.
-
         This should be called when a job completes or is cancelled.
         Best-effort cleanup - logs errors but doesn't fail if cleanup fails.
-
         Args:
             job_id: The job ID (integer primary key)
-
         Returns:
             bool: True if both cleanup operations succeeded, False otherwise
         """
