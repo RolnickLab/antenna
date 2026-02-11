@@ -178,13 +178,13 @@ class TaskQueueManager:
     @retry_on_connection_error(max_retries=2, backoff_seconds=0.5)
     async def publish_task(self, job_id: int, data: PipelineProcessingTask) -> bool:
         """
-        Publish a task to it's job queue.
+        Publish a task to its job queue.
         Automatically retries on connection errors with exponential backoff.
         Args:
             job_id: The job ID (integer primary key)
             data: PipelineProcessingTask object to be published
         Returns:
-            bool: True if successful, False otherwise
+            bool: True if successful
         Raises:
             Connection errors are retried by decorator, other errors are raised
         """
@@ -267,7 +267,7 @@ class TaskQueueManager:
         Returns:
             bool: True if successful
         Raises:
-            Connection errors are retried by decorator, other errors are logged
+            Connection errors are retried by decorator, other errors are raised
         """
         nc, _ = await self._get_connection()
 
@@ -324,7 +324,7 @@ class TaskQueueManager:
         stream_name = self._get_stream_name(job_id)
 
         await js.delete_stream(stream_name)
-        logger.info(f"Deleted stream {stream_name} for job'{job_id}'")
+        logger.info(f"Deleted stream {stream_name} for job '{job_id}'")
         return True
 
     async def cleanup_job_resources(self, job_id: int) -> bool:
