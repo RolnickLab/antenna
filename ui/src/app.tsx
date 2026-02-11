@@ -110,6 +110,7 @@ export const App = () => (
             />
             <Route path="summary" element={<Summary />} />
             <Route path="capture-sets" element={<CaptureSets />} />
+            <Route path="collections" element={<Collections />} />
             <Route path="exports/:id?" element={<Exports />} />
             <Route
               path="processing-services/:id?"
@@ -282,3 +283,15 @@ const NotFound = () => (
     </main>
   </>
 )
+
+/* We have changed the wording from "Collections" to "Capture sets". This will redirect users to the new route. */
+const Collections = () => {
+  const { projectId } = useParams()
+
+  return (
+    <Navigate
+      replace
+      to={APP_ROUTES.CAPTURE_SETS({ projectId: projectId as string })}
+    />
+  )
+}
