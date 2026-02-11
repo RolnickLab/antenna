@@ -164,9 +164,9 @@ class TestCleanupAsyncJobResources(TestCase):
         job = self._create_job_with_queued_images()
 
         # Simulate job completion: complete all stages (collect, process, then results)
-        _update_job_progress(job.pk, stage="collect", progress_percentage=1.0)
-        _update_job_progress(job.pk, stage="process", progress_percentage=1.0)
-        _update_job_progress(job.pk, stage="results", progress_percentage=1.0)
+        _update_job_progress(job.pk, stage="collect", progress_percentage=1.0, complete_state=JobState.SUCCESS)
+        _update_job_progress(job.pk, stage="process", progress_percentage=1.0, complete_state=JobState.SUCCESS)
+        _update_job_progress(job.pk, stage="results", progress_percentage=1.0, complete_state=JobState.SUCCESS)
 
         # Verify cleanup happened
         self._verify_resources_cleaned(job.pk)

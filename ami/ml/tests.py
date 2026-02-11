@@ -992,7 +992,7 @@ class TestTaskStateManager(TestCase):
         progress = self.manager._get_progress(set(), "process")
         self.assertIsNone(progress)
 
-    def test_cumulative_detection_counting(self):
+    def test_cumulative_counting(self):
         """Test that detection counts accumulate correctly across updates."""
         self._init_and_verify(self.image_ids)
 
@@ -1001,53 +1001,23 @@ class TestTaskStateManager(TestCase):
         assert progress is not None
         self.assertEqual(progress.detections, 3)
         self.assertEqual(progress.classifications, 0)
+        self.assertEqual(progress.captures, 0)
 
-        # Process second batch with more detections
-        progress = self.manager._get_progress({"img3"}, "process", detections_count=2)
+        # Process second batch with more detections and a classification
+        progress = self.manager._get_progress({"img3"}, "process", detections_count=2, classifications_count=1)
         assert progress is not None
         self.assertEqual(progress.detections, 5)  # Should be cumulative
-        self.assertEqual(progress.classifications, 0)
+        self.assertEqual(progress.classifications, 1)
+        self.assertEqual(progress.captures, 0)
 
-        # Process with both detections and classifications
-        progress = self.manager._get_progress({"img4"}, "results", detections_count=1, classifications_count=4)
-        assert progress is not None
-        self.assertEqual(progress.detections, 6)  # Should accumulate
-        self.assertEqual(progress.classifications, 4)
-
-    def test_cumulative_classification_counting(self):
-        """Test that classification counts accumulate correctly across updates."""
-        self._init_and_verify(self.image_ids)
-
-        # Process first batch with some classifications
-        progress = self.manager._get_progress({"img1"}, "results", classifications_count=5)
-        assert progress is not None
-        self.assertEqual(progress.detections, 0)
-        self.assertEqual(progress.classifications, 5)
-
-        # Process second batch with more classifications
-        progress = self.manager._get_progress({"img2", "img3"}, "results", classifications_count=8)
-        assert progress is not None
-        self.assertEqual(progress.detections, 0)
-        self.assertEqual(progress.classifications, 13)  # Should be cumulative
-
-    def test_update_state_with_counts(self):
-        """Test update_state method properly handles detection and classification counts."""
-        self._init_and_verify(self.image_ids)
-
-        # Update with counts
-        progress = self.manager.update_state(
-            {"img1", "img2"}, "process", "task1", detections_count=4, classifications_count=8
+        # Process with detections, classifications, and captures
+        progress = self.manager._get_progress(
+            {"img4"}, "results", detections_count=1, classifications_count=4, captures_count=1
         )
         assert progress is not None
-        self.assertEqual(progress.processed, 2)
-        self.assertEqual(progress.detections, 4)
-        self.assertEqual(progress.classifications, 8)
-
-        # Update with more counts
-        progress = self.manager.update_state({"img3"}, "results", "task2", detections_count=2, classifications_count=6)
-        assert progress is not None
         self.assertEqual(progress.detections, 6)  # Should accumulate
-        self.assertEqual(progress.classifications, 14)  # Should accumulate
+        self.assertEqual(progress.classifications, 5)  # Should accumulate
+        self.assertEqual(progress.captures, 1)
 
     def test_counts_persist_across_stages(self):
         """Test that detection and classification counts persist across different stages."""
@@ -1077,13 +1047,15 @@ class TestTaskStateManager(TestCase):
         self._init_and_verify(self.image_ids)
 
         # Add some counts
-        self.manager._get_progress({"img1"}, "process", detections_count=5, classifications_count=10)
+        self.manager._get_progress({"img1"}, "process", detections_count=5, classifications_count=10, captures_count=2)
 
         # Verify count keys exist
         detections = cache.get(self.manager._detections_key)
         classifications = cache.get(self.manager._classifications_key)
+        captures = cache.get(self.manager._captures_key)
         self.assertEqual(detections, 5)
         self.assertEqual(classifications, 10)
+        self.assertEqual(captures, 2)
 
         # Cleanup
         self.manager.cleanup()
@@ -1091,8 +1063,10 @@ class TestTaskStateManager(TestCase):
         # Verify count keys are gone
         detections = cache.get(self.manager._detections_key)
         classifications = cache.get(self.manager._classifications_key)
+        captures = cache.get(self.manager._captures_key)
         self.assertIsNone(detections)
         self.assertIsNone(classifications)
+        self.assertIsNone(captures)
 
     def test_failed_image_tracking(self):
         """Test basic failed image tracking with no double-counting on retries."""

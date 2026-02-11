@@ -16,6 +16,7 @@ from ami.tasks import default_soft_time_limit, default_time_limit
 from config import celery_app
 
 logger = logging.getLogger(__name__)
+FAILURE_THRESHOLD = 0.5  # threshold for marking a job as failed based on the percentage of failed images.
 
 
 @celery_app.task(bind=True, soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
@@ -65,11 +66,11 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
     _, t = log_time()
 
     # Validate with Pydantic - check for error response first
+    error_result = None
     if "error" in result_data:
         error_result = PipelineResultsError(**result_data)
         processed_image_ids = {str(error_result.image_id)} if error_result.image_id else set()
         failed_image_ids = processed_image_ids  # Same as processed for errors
-        logger.error(f"Pipeline returned error for job {job_id}, image {error_result.image_id}: {error_result.error}")
         pipeline_result = None
     else:
         pipeline_result = PipelineResultsResponse(**result_data)
@@ -89,9 +90,8 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         raise self.retry(countdown=5, max_retries=10)
 
     try:
-        FAILURE_THRESHOLD = 0.5
         complete_state = JobState.SUCCESS
-        if (progress_info.failed / progress_info.total) >= FAILURE_THRESHOLD:
+        if progress_info.total > 0 and (progress_info.failed / progress_info.total) >= FAILURE_THRESHOLD:
             complete_state = JobState.FAILURE
         _update_job_progress(
             job_id,
@@ -111,6 +111,10 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
             f"({progress_info.percentage*100}%), {progress_info.remaining} remaining, {progress_info.failed} failed, "
             f"{len(processed_image_ids)} just processed"
         )
+        if error_result:
+            job.logger.error(
+                f"Pipeline returned error for job {job_id}, image {error_result.image_id}: {error_result.error}"
+            )
     except Job.DoesNotExist:
         # don't raise and ack so that we don't retry since the job doesn't exists
         logger.error(f"Job {job_id} not found")
@@ -157,6 +161,11 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
                 f"Retrying task {self.request.id} in 5 seconds..."
             )
             raise self.retry(countdown=5, max_retries=10)
+
+        # update complete state based on latest progress info after saving results
+        complete_state = JobState.SUCCESS
+        if progress_info.total > 0 and (progress_info.failed / progress_info.total) >= FAILURE_THRESHOLD:
+            complete_state = JobState.FAILURE
 
         _update_job_progress(
             job_id,
