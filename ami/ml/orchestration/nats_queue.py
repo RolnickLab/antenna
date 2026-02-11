@@ -39,9 +39,13 @@ T = TypeVar("T")
 def retry_on_connection_error(max_retries: int = 2, backoff_seconds: float = 0.5):
     """
     Decorator that retries NATS operations on connection errors. When a connection error is detected:
-    1. Resets the connection pool (clears stale connection)
+    1. Resets the event-loop-local connection pool (clears stale connection and lock)
     2. Waits with exponential backoff
-    3. Retries the operation (which will get a fresh connection)
+    3. Retries the operation (which will get a fresh connection from the same event loop)
+
+    This works correctly with async_to_sync() because the pool is keyed by event loop,
+    ensuring each retry uses the connection bound to the current loop.
+
     Args:
         max_retries: Maximum number of retry attempts (default: 2)
         backoff_seconds: Initial backoff time in seconds (default: 0.5)
@@ -53,6 +57,7 @@ def retry_on_connection_error(max_retries: int = 2, backoff_seconds: float = 0.5
         @functools.wraps(func)
         async def wrapper(self, *args, **kwargs) -> T:
             last_error = None
+            assert max_retries >= 0, "max_retries must be non-negative"
 
             for attempt in range(max_retries + 1):
                 try:
@@ -76,7 +81,7 @@ def retry_on_connection_error(max_retries: int = 2, backoff_seconds: float = 0.5
                     from ami.ml.orchestration.nats_connection_pool import get_pool
 
                     pool = get_pool()
-                    pool.reset()
+                    await pool.reset()
                     # Exponential backoff
                     wait_time = backoff_seconds * (2**attempt)
                     logger.warning(
@@ -84,7 +89,8 @@ def retry_on_connection_error(max_retries: int = 2, backoff_seconds: float = 0.5
                         f"Retrying in {wait_time}s..."
                     )
                     await asyncio.sleep(wait_time)
-            # If we exhausted retries, raise the last error
+            # If we exhausted retries, raise the last error, guaranteed to be not None here
+            assert last_error is not None, "last_error should not be None if we exhausted retries"
             raise last_error  # type: ignore
 
         return wrapper
@@ -95,13 +101,16 @@ def retry_on_connection_error(max_retries: int = 2, backoff_seconds: float = 0.5
 class TaskQueueManager:
     """
     Manager for NATS JetStream task queue operations.
-    Always uses the process-local connection pool for efficiency.
-    Note: The connection pool is shared across all instances in the same process,
-    so there's no overhead creating multiple TaskQueueManager instances.
+    Always uses the event-loop-local connection pool for efficiency.
+
+    Note: The connection pool is keyed by event loop, so each event loop gets its own
+    connection. This prevents "attached to a different loop" errors when using async_to_sync()
+    in Celery tasks or Django views. There's no overhead creating multiple TaskQueueManager
+    instances as they all share the same event-loop-keyed pool.
     """
 
     async def _get_connection(self) -> tuple["NATSClient", JetStreamContext]:
-        """Get connection from the process-local pool."""
+        """Get connection from the event-loop-local pool."""
         from ami.ml.orchestration.nats_connection_pool import get_pool
 
         pool = get_pool()

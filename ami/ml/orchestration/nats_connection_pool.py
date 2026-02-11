@@ -1,16 +1,18 @@
 """
 NATS connection pool for both Celery workers and Django processes.
 
-Maintains a persistent NATS connection per process to avoid
+Maintains a persistent NATS connection per event loop to avoid
 the overhead of creating/closing connections for every operation.
 
-The connection pool is lazily initialized on first use and shared
-across all operations in the same process.
+The connection pool is lazily initialized on first use and keyed by event loop
+to prevent "attached to a different loop" errors when using async_to_sync().
 """
 
 import asyncio
 import logging
+import threading
 from typing import TYPE_CHECKING
+from weakref import WeakKeyDictionary
 
 import nats
 from django.conf import settings
@@ -24,23 +26,30 @@ logger = logging.getLogger(__name__)
 
 class ConnectionPool:
     """
-    Manages a single NATS connection per process (Celery worker or Django web worker).
+    Manages a single NATS connection per event loop.
 
     This is safe because:
-    - Each process gets its own isolated connection
-    - NATS connections are async-safe (can be used by multiple coroutines)
-    - Works in both Celery prefork and Django WSGI/ASGI contexts
+    - asyncio.Lock and NATS Client are bound to the event loop they were created on
+    - Each event loop gets its own isolated connection and lock
+    - Works correctly with async_to_sync() which creates per-thread event loops
+    - Prevents "attached to a different loop" errors in Celery tasks and Django views
     """
 
     def __init__(self):
         self._nc: "NATSClient | None" = None
         self._js: JetStreamContext | None = None
         self._nats_url: str | None = None
-        self._lock = asyncio.Lock()
+        self._lock: asyncio.Lock | None = None  # Lazy-initialized when needed
+
+    def _ensure_lock(self) -> asyncio.Lock:
+        """Lazily create lock bound to current event loop."""
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     async def get_connection(self) -> tuple["NATSClient", JetStreamContext]:
         """
-        Get or create the worker's NATS connection. Checks connection health and recreates if stale.
+        Get or create the event loop's NATS connection. Checks connection health and recreates if stale.
 
         Returns:
             Tuple of (NATS connection, JetStream context)
@@ -58,7 +67,8 @@ class ConnectionPool:
             self._js = None
 
         # Slow path: need to create/recreate connection
-        async with self._lock:
+        lock = self._ensure_lock()
+        async with lock:
             # Double-check after acquiring lock
             if self._nc is not None and not self._nc.is_closed and self._nc.is_connected:
                 return self._nc, self._js  # type: ignore
@@ -85,28 +95,59 @@ class ConnectionPool:
             self._nc = None
             self._js = None
 
-    def reset(self):
+    async def reset(self):
         """
-        Reset the connection pool (mark connection as stale).
+        Async version of reset that properly closes the connection before clearing references.
 
-        This should be called when a connection error is detected.
+        This should be called when a connection error is detected from an async context.
         The next call to get_connection() will create a fresh connection.
         """
         logger.warning("Resetting NATS connection pool due to connection error")
+        if self._nc is not None:
+            try:
+                # Attempt to close the connection gracefully
+                if not self._nc.is_closed:
+                    await self._nc.close()
+                    logger.debug("Successfully closed existing NATS connection during reset")
+            except Exception as e:
+                # Swallow errors - connection may already be broken
+                logger.debug(f"Error closing connection during reset (expected): {e}")
         self._nc = None
         self._js = None
+        self._lock = None  # Clear lock so new one is created for fresh connection
 
 
-# Global pool instance - one per process (Celery worker or Django process)
-_connection_pool: ConnectionPool | None = None
+# Event-loop-keyed pools: one ConnectionPool per event loop
+# WeakKeyDictionary automatically cleans up when event loops are garbage collected
+_pools: WeakKeyDictionary[asyncio.AbstractEventLoop, ConnectionPool] = WeakKeyDictionary()
+_pools_lock = threading.Lock()
 
 
 def get_pool() -> ConnectionPool:
     """
-    Get the process-local connection pool.
+    Get or create the connection pool for the current event loop.
+
+    Each event loop gets its own ConnectionPool to prevent "attached to a different loop" errors.
+    This is critical when using async_to_sync() in Celery tasks or Django views, as each call
+    may run on a different event loop.
+
+    Returns:
+        ConnectionPool bound to the current event loop
+
+    Raises:
+        RuntimeError: If called outside of an async context (no running event loop)
     """
-    global _connection_pool
-    if _connection_pool is None:
-        _connection_pool = ConnectionPool()
-        logger.debug("Lazily initialized NATS connection pool")
-    return _connection_pool
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        raise RuntimeError(
+            "get_pool() must be called from an async context with a running event loop. "
+            "If calling from sync code, use async_to_sync() to wrap the async function."
+        )
+
+    # Thread-safe lookup/creation of pool for this event loop
+    with _pools_lock:
+        if loop not in _pools:
+            _pools[loop] = ConnectionPool()
+            logger.debug(f"Created NATS connection pool for event loop {id(loop)}")
+        return _pools[loop]
