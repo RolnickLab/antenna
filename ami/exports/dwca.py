@@ -236,7 +236,7 @@ def generate_meta_xml(
     core.set("encoding", "UTF-8")
     core.set("fieldsTerminatedBy", "\\t")
     core.set("linesTerminatedBy", "\\n")
-    core.set("fieldsEnclosedBy", "")
+    core.set("fieldsEnclosedBy", '"')
     core.set("ignoreHeaderLines", "1")
 
     files = ET.SubElement(core, "files")
@@ -247,9 +247,7 @@ def generate_meta_xml(
     id_elem = ET.SubElement(core, "id")
     id_elem.set("index", "0")
 
-    for i, (term_uri, header, _) in enumerate(event_fields):
-        if i == 0:
-            continue  # Already declared as <id>
+    for i, (term_uri, _header, _) in enumerate(event_fields):
         field = ET.SubElement(core, "field")
         field.set("index", str(i))
         field.set("term", term_uri)
@@ -260,7 +258,7 @@ def generate_meta_xml(
     extension.set("encoding", "UTF-8")
     extension.set("fieldsTerminatedBy", "\\t")
     extension.set("linesTerminatedBy", "\\n")
-    extension.set("fieldsEnclosedBy", "")
+    extension.set("fieldsEnclosedBy", '"')
     extension.set("ignoreHeaderLines", "1")
 
     files = ET.SubElement(extension, "files")
@@ -271,9 +269,7 @@ def generate_meta_xml(
     coreid = ET.SubElement(extension, "coreid")
     coreid.set("index", "0")
 
-    for i, (term_uri, header, _) in enumerate(occurrence_fields):
-        if i == 0:
-            continue  # Already declared as <coreid>
+    for i, (term_uri, _header, _) in enumerate(occurrence_fields):
         field = ET.SubElement(extension, "field")
         field.set("index", str(i))
         field.set("term", term_uri)

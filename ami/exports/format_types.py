@@ -256,6 +256,10 @@ class DwCAExporter(BaseExporter):
             )
             logger.info(f"DwC-A: wrote {occ_count} occurrences")
 
+            # Ensure final progress update for small exports (<500 records)
+            if self.total_records:
+                self.update_job_progress(occ_count)
+
             # Generate metadata
             meta_xml = generate_meta_xml(EVENT_FIELDS, OCCURRENCE_FIELDS)
             eml_xml = generate_eml_xml(self.project)
