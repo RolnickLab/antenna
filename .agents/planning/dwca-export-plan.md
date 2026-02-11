@@ -170,3 +170,38 @@ No changes needed to `DataExport` model.
 2. Run new DwC-A tests
 3. Manual test: create a DwC-A export via the API or admin, download the ZIP, inspect contents
 4. Validate with GBIF Data Validator: https://www.gbif.org/tools/data-validator
+
+## Known issues to fix before merge
+
+1. **Occurrences without events produce empty `coreid`** — GBIF rejects orphaned extension rows. Need `.filter(event__isnull=False)` on occurrence queryset. (`ami/exports/format_types.py:199`)
+2. **Occurrences without determinations produce empty `scientificName`** — GBIF treats this as required. Need `.filter(determination__isnull=False)`. (`ami/exports/format_types.py:199`)
+3. **`individualCount` semantics wrong** — `detections_count` = bounding boxes across frames, not individuals. Each AMI occurrence is one individual. Should emit `1` or omit. (`ami/exports/dwca.py:87`)
+4. **`vernacularName` operator precedence** — `x or "" if y else ""` should be `(x or "") if y else ""`. (`ami/exports/dwca.py:78-79`)
+5. **Temp files never cleaned up** — event.txt, occurrence.txt, zip temp file leak on worker. (`ami/exports/format_types.py:238-264`)
+
+## Near follow-up (before real GBIF submission)
+
+- **Apply project default filters** to occurrence queryset — without this, low-confidence ML determinations get published to GBIF. Biggest data quality risk.
+- **Add `license` field** on events — GBIF requires a dataset license for reuse terms.
+- **Add `identifiedBy` / `dateIdentified`** — provenance for who/what made the determination.
+- **Add `associatedMedia`** — detection image URLs (pipe-separated). Primary evidence for an image-based platform.
+- **Runtime validation before packaging** — check for missing required fields, orphaned references, before creating the ZIP.
+- **Upgrade EML to 2.2.0** — current code uses 2.1.1, GBIF recommends 2.2.0. The reference doc already shows 2.2.0.
+
+## Eventual follow-up
+
+- EML geographic/temporal coverage computed from actual data (bounding box, date range)
+- `country`, `stateProvince`, `locality` on events (requires reverse geocoding or Site model fields)
+- `coordinateUncertaintyInMeters`
+- `institutionCode`, `collectionCode` (project-level settings)
+- `scientificNameAuthorship` from `Taxon.author`
+- `eventType` field
+- Multimedia extension file (`multimedia.txt`)
+- GBIF Data Validator automated integration test
+- IPT server integration / acting as IPT endpoint for GBIF crawling
+
+## Nice to haves
+
+- Use `default` attribute in meta.xml for constant fields (`basisOfRecord`, `geodeticDatum`, etc.) to reduce file size
+- Filter events to only those that have occurrences in the export
+- Guard against `ZeroDivisionError` in progress callback when `total_records` is 0
