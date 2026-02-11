@@ -388,8 +388,14 @@ class DwCAExportTest(TestCase):
                 self.assertIn("decimalLatitude", reader.fieldnames)
                 self.assertIn("samplingProtocol", reader.fieldnames)
 
-                # Row count should match project events
-                expected_count = self.project.events.count()
+                # Row count should match events referenced by valid occurrences
+                expected_count = (
+                    Occurrence.objects.valid()  # type: ignore[union-attr]
+                    .filter(project=self.project, event__isnull=False, determination__isnull=False)
+                    .values("event_id")
+                    .distinct()
+                    .count()
+                )
                 self.assertEqual(len(rows), expected_count, "Event row count mismatch")
 
     def test_occurrence_headers_and_row_count(self):
@@ -523,3 +529,83 @@ class DwCAExportTest(TestCase):
                 title = dataset.find("eml:title", ns) or dataset.find("title")
                 self.assertIsNotNone(title)
                 self.assertEqual(title.text, self.project.name)
+
+    def test_dwca_export_with_collection_filter(self):
+        """DwC-A export with collection_id filter should only include matching occurrences and their events."""
+        # Create a collection with a subset of images
+        images = self.project.captures.all()
+        collection_images = images[: images.count() // 2]
+        self.assertGreater(len(collection_images), 0)
+
+        collection = SourceImageCollection.objects.create(
+            name="DwCA Filter Test Collection",
+            project=self.project,
+            method="manual",
+            kwargs={"image_ids": [img.pk for img in collection_images]},
+        )
+        collection.populate_sample()
+
+        # Run filtered export
+        data_export = DataExport.objects.create(
+            user=self.user,
+            project=self.project,
+            format="dwca",
+            filters={"collection_id": collection.pk},
+            job=None,
+        )
+        file_url = data_export.run_export()
+        self.assertIsNotNone(file_url)
+
+        from django.conf import settings
+
+        file_path = file_url.replace(settings.MEDIA_URL, "")
+        self.assertTrue(default_storage.exists(file_path))
+
+        try:
+            # Count expected filtered occurrences
+            expected_occ_count = (
+                Occurrence.objects.valid()  # type: ignore[union-attr]
+                .filter(
+                    project=self.project,
+                    event__isnull=False,
+                    determination__isnull=False,
+                    detections__source_image__collections=collection,
+                )
+                .distinct()
+                .count()
+            )
+            total_occ_count = (
+                Occurrence.objects.valid()  # type: ignore[union-attr]
+                .filter(project=self.project, event__isnull=False, determination__isnull=False)
+                .count()
+            )
+            self.assertGreater(expected_occ_count, 0, "Filtered occurrences should not be empty")
+            self.assertLess(expected_occ_count, total_occ_count, "Filtered should be fewer than total")
+
+            with default_storage.open(file_path, "rb") as f:
+                with zipfile.ZipFile(f, "r") as zf:
+                    # Verify occurrence count
+                    occ_data = zf.read("occurrence.txt").decode("utf-8")
+                    occ_reader = csv.DictReader(StringIO(occ_data), delimiter="\t")
+                    occ_rows = list(occ_reader)
+                    self.assertEqual(len(occ_rows), expected_occ_count, "Filtered occurrence count mismatch")
+
+                    # Verify event count matches only events from filtered occurrences
+                    event_data = zf.read("event.txt").decode("utf-8")
+                    event_reader = csv.DictReader(StringIO(event_data), delimiter="\t")
+                    event_rows = list(event_reader)
+                    event_ids_in_file = {row["eventID"] for row in event_rows}
+
+                    # Events should only be those referenced by filtered occurrences
+                    occ_event_ids = {row["eventID"] for row in occ_rows if row["eventID"]}
+                    self.assertEqual(
+                        event_ids_in_file,
+                        occ_event_ids,
+                        "Event IDs should match exactly those referenced by filtered occurrences",
+                    )
+
+                    # Referential integrity: no orphaned eventIDs in occurrences
+                    orphaned = occ_event_ids - event_ids_in_file
+                    self.assertEqual(len(orphaned), 0, f"Orphaned occurrence eventIDs: {orphaned}")
+        finally:
+            default_storage.delete(file_path)
