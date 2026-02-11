@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 
 # Define a namedtuple for a TaskProgress with the image counts
 TaskProgress = namedtuple(
-    "TaskProgress", ["remaining", "total", "processed", "percentage", "detections", "classifications"]
+    "TaskProgress",
+    ["remaining", "total", "processed", "percentage", "detections", "classifications", "captures", "failed"],
 )
 
 
@@ -37,8 +38,10 @@ class TaskStateManager:
         self.job_id = job_id
         self._pending_key = f"job:{job_id}:pending_images"
         self._total_key = f"job:{job_id}:pending_images_total"
+        self._failed_key = f"job:{job_id}:failed_images"
         self._detections_key = f"job:{job_id}:total_detections"
         self._classifications_key = f"job:{job_id}:total_classifications"
+        self._captures_key = f"job:{job_id}:total_captures"
 
     def initialize_job(self, image_ids: list[str]) -> None:
         """
@@ -50,11 +53,15 @@ class TaskStateManager:
         for stage in self.STAGES:
             cache.set(self._get_pending_key(stage), image_ids, timeout=self.TIMEOUT)
 
+        # Initialize failed images set for process stage only
+        cache.set(self._failed_key, set(), timeout=self.TIMEOUT)
+
         cache.set(self._total_key, len(image_ids), timeout=self.TIMEOUT)
 
         # Initialize detection and classification counters
         cache.set(self._detections_key, 0, timeout=self.TIMEOUT)
         cache.set(self._classifications_key, 0, timeout=self.TIMEOUT)
+        cache.set(self._captures_key, 0, timeout=self.TIMEOUT)
 
     def _get_pending_key(self, stage: str) -> str:
         return f"{self._pending_key}:{stage}"
@@ -66,6 +73,8 @@ class TaskStateManager:
         request_id: str,
         detections_count: int = 0,
         classifications_count: int = 0,
+        captures_count: int = 0,
+        failed_image_ids: set[str] | None = None,
     ) -> None | TaskProgress:
         """
         Update the task state with newly processed images.
@@ -76,6 +85,8 @@ class TaskStateManager:
             request_id: Unique identifier for this processing request
             detections_count: Number of detections to add to cumulative count
             classifications_count: Number of classifications to add to cumulative count
+            captures_count: Number of captures to add to cumulative count
+            failed_image_ids: Set of image IDs that failed processing (optional)
         """
         # Create a unique lock key for this job
         lock_key = f"job:{self.job_id}:process_results_lock"
@@ -86,7 +97,9 @@ class TaskStateManager:
 
         try:
             # Update progress tracking in Redis
-            progress_info = self._get_progress(processed_image_ids, stage, detections_count, classifications_count)
+            progress_info = self._get_progress(
+                processed_image_ids, stage, detections_count, classifications_count, captures_count, failed_image_ids
+            )
             return progress_info
         finally:
             # Always release the lock when done
@@ -97,7 +110,13 @@ class TaskStateManager:
                 logger.debug(f"Released lock for job {self.job_id}, task {request_id}")
 
     def _get_progress(
-        self, processed_image_ids: set[str], stage: str, detections_count: int = 0, classifications_count: int = 0
+        self,
+        processed_image_ids: set[str],
+        stage: str,
+        detections_count: int = 0,
+        classifications_count: int = 0,
+        captures_count: int = 0,
+        failed_image_ids: set[str] | None = None,
     ) -> TaskProgress | None:
         """
         Get current progress information for the job.
@@ -108,6 +127,10 @@ class TaskStateManager:
                 - total: Total number of images (or None if not tracked)
                 - processed: Number of images processed (or None if not tracked)
                 - percentage: Progress as float 0.0-1.0 (or None if not tracked)
+                - detections: Cumulative count of detections
+                - classifications: Cumulative count of classifications
+                - captures: Cumulative count of captures
+                - failed: Number of unique failed images
         """
         pending_images = cache.get(self._get_pending_key(stage))
         total_images = cache.get(self._total_key)
@@ -121,15 +144,29 @@ class TaskStateManager:
         processed = total_images - remaining
         percentage = float(processed) / total_images if total_images > 0 else 1.0
 
-        # Update cumulative detection and classification counts
+        # Update cumulative detection, classification, and capture counts
         current_detections = cache.get(self._detections_key, 0)
         current_classifications = cache.get(self._classifications_key, 0)
+        current_captures = cache.get(self._captures_key, 0)
 
         new_detections = current_detections + detections_count
         new_classifications = current_classifications + classifications_count
+        new_captures = current_captures + captures_count
 
         cache.set(self._detections_key, new_detections, timeout=self.TIMEOUT)
         cache.set(self._classifications_key, new_classifications, timeout=self.TIMEOUT)
+        cache.set(self._captures_key, new_captures, timeout=self.TIMEOUT)
+
+        # Update failed images set if provided
+        if failed_image_ids:
+            existing_failed = cache.get(self._failed_key) or set()
+            updated_failed = existing_failed | failed_image_ids  # Union to prevent duplicates
+            cache.set(self._failed_key, updated_failed, timeout=self.TIMEOUT)
+            failed_set = updated_failed
+        else:
+            failed_set = cache.get(self._failed_key) or set()
+
+        failed_count = len(failed_set)
 
         logger.info(
             f"Pending images from Redis for job {self.job_id} {stage}: "
@@ -143,6 +180,8 @@ class TaskStateManager:
             percentage=percentage,
             detections=new_detections,
             classifications=new_classifications,
+            captures=new_captures,
+            failed=failed_count,
         )
 
     def cleanup(self) -> None:
@@ -151,6 +190,8 @@ class TaskStateManager:
         """
         for stage in self.STAGES:
             cache.delete(self._get_pending_key(stage))
+        cache.delete(self._failed_key)
         cache.delete(self._total_key)
         cache.delete(self._detections_key)
         cache.delete(self._classifications_key)
+        cache.delete(self._captures_key)

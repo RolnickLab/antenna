@@ -3,6 +3,7 @@ import functools
 import logging
 import time
 from collections.abc import Callable
+from typing import Any
 
 from asgiref.sync import async_to_sync
 from celery.signals import task_failure, task_postrun, task_prerun
@@ -59,7 +60,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         result_data: Dictionary containing the pipeline result
         reply_subject: NATS reply subject for acknowledgment
     """
-    from ami.jobs.models import Job  # avoid circular import
+    from ami.jobs.models import Job, JobState  # avoid circular import
 
     _, t = log_time()
 
@@ -67,15 +68,19 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
     if "error" in result_data:
         error_result = PipelineResultsError(**result_data)
         processed_image_ids = {str(error_result.image_id)} if error_result.image_id else set()
+        failed_image_ids = processed_image_ids  # Same as processed for errors
         logger.error(f"Pipeline returned error for job {job_id}, image {error_result.image_id}: {error_result.error}")
         pipeline_result = None
     else:
         pipeline_result = PipelineResultsResponse(**result_data)
         processed_image_ids = {str(img.id) for img in pipeline_result.source_images}
+        failed_image_ids = set()  # No failures for successful results
 
     state_manager = TaskStateManager(job_id)
 
-    progress_info = state_manager.update_state(processed_image_ids, stage="process", request_id=self.request.id)
+    progress_info = state_manager.update_state(
+        processed_image_ids, stage="process", request_id=self.request.id, failed_image_ids=failed_image_ids
+    )
     if not progress_info:
         logger.warning(
             f"Another task is already processing results for job {job_id}. "
@@ -84,12 +89,18 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         raise self.retry(countdown=5, max_retries=10)
 
     try:
+        FAILURE_THRESHOLD = 0.5
+        complete_state = JobState.SUCCESS
+        if (progress_info.failed / progress_info.total) >= FAILURE_THRESHOLD:
+            complete_state = JobState.FAILURE
         _update_job_progress(
             job_id,
             "process",
             progress_info.percentage,
+            complete_state=complete_state,
             processed=progress_info.processed,
             remaining=progress_info.remaining,
+            failed=progress_info.failed,
         )
 
         _, t = t(f"TIME: Updated job {job_id} progress in PROCESS stage progress to {progress_info.percentage*100}%")
@@ -97,8 +108,8 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         job.logger.info(f"Processing pipeline result for job {job_id}, reply_subject: {reply_subject}")
         job.logger.info(
             f" Job {job_id} progress: {progress_info.processed}/{progress_info.total} images processed "
-            f"({progress_info.percentage*100}%), {progress_info.remaining} remaining, {len(processed_image_ids)} just "
-            "processed"
+            f"({progress_info.percentage*100}%), {progress_info.remaining} remaining, {progress_info.failed} failed, "
+            f"{len(processed_image_ids)} just processed"
         )
     except Job.DoesNotExist:
         # don't raise and ack so that we don't retry since the job doesn't exists
@@ -108,6 +119,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
 
     try:
         # Save to database (this is the slow operation)
+        detections_count, classifications_count, captures_count = 0, 0, 0
         if pipeline_result:
             # should never happen since otherwise we could not be processing results here
             assert job.pipeline is not None, "Job pipeline is None"
@@ -118,15 +130,17 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
                 f"Saved pipeline results to database with {len(pipeline_result.detections)} detections"
                 f", percentage: {progress_info.percentage*100}%"
             )
+            # Calculate detection and classification counts from this result
+            detections_count = len(pipeline_result.detections) if pipeline_result else 0
+            classifications_count = (
+                sum(len(detection.classifications) for detection in pipeline_result.detections)
+                if pipeline_result
+                else 0
+            )
+            captures_count = len(pipeline_result.source_images)
 
         _ack_task_via_nats(reply_subject, job.logger)
         # Update job stage with calculated progress
-
-        # Calculate detection and classification counts from this result
-        detections_count = len(pipeline_result.detections) if pipeline_result else 0
-        classifications_count = (
-            sum(len(detection.classifications) for detection in pipeline_result.detections) if pipeline_result else 0
-        )
 
         progress_info = state_manager.update_state(
             processed_image_ids,
@@ -134,6 +148,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
             request_id=self.request.id,
             detections_count=detections_count,
             classifications_count=classifications_count,
+            captures_count=captures_count,
         )
 
         if not progress_info:
@@ -147,8 +162,10 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
             job_id,
             "results",
             progress_info.percentage,
+            complete_state=complete_state,
             detections=progress_info.detections,
             classifications=progress_info.classifications,
+            captures=progress_info.captures,
         )
 
     except Exception as e:
@@ -175,20 +192,22 @@ def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> None:
         # Don't fail the task if ACK fails - data is already saved
 
 
-def _update_job_progress(job_id: int, stage: str, progress_percentage: float, **state_params) -> None:
+def _update_job_progress(
+    job_id: int, stage: str, progress_percentage: float, complete_state: Any, **state_params
+) -> None:
     from ami.jobs.models import Job, JobState  # avoid circular import
 
     with transaction.atomic():
         job = Job.objects.select_for_update().get(pk=job_id)
         job.progress.update_stage(
             stage,
-            status=JobState.SUCCESS if progress_percentage >= 1.0 else JobState.STARTED,
+            status=complete_state if progress_percentage >= 1.0 else JobState.STARTED,
             progress=progress_percentage,
             **state_params,
         )
         if job.progress.is_complete():
-            job.status = JobState.SUCCESS
-            job.progress.summary.status = JobState.SUCCESS
+            job.status = complete_state
+            job.progress.summary.status = complete_state
             job.finished_at = datetime.datetime.now()  # Use naive datetime in local time
         job.logger.info(f"Updated job {job_id} progress in stage '{stage}' to {progress_percentage*100}%")
         job.save()

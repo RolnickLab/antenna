@@ -882,6 +882,7 @@ class TestTaskStateManager(TestCase):
         self.assertEqual(progress.percentage, 0.0)
         self.assertEqual(progress.detections, 0)
         self.assertEqual(progress.classifications, 0)
+        self.assertEqual(progress.failed, 0)
         return progress
 
     def test_initialize_job(self):
@@ -895,6 +896,7 @@ class TestTaskStateManager(TestCase):
             self.assertEqual(progress.total, len(self.image_ids))
             self.assertEqual(progress.detections, 0)
             self.assertEqual(progress.classifications, 0)
+            self.assertEqual(progress.failed, 0)
 
     def test_progress_tracking(self):
         """Test progress updates correctly as images are processed."""
@@ -1091,3 +1093,56 @@ class TestTaskStateManager(TestCase):
         classifications = cache.get(self.manager._classifications_key)
         self.assertIsNone(detections)
         self.assertIsNone(classifications)
+
+    def test_failed_image_tracking(self):
+        """Test basic failed image tracking with no double-counting on retries."""
+        self._init_and_verify(self.image_ids)
+
+        # Mark 2 images as failed in process stage
+        progress = self.manager._get_progress({"img1", "img2"}, "process", failed_image_ids={"img1", "img2"})
+        assert progress is not None
+        self.assertEqual(progress.failed, 2)
+
+        # Retry same 2 images (fail again) - should not double-count
+        progress = self.manager._get_progress(set(), "process", failed_image_ids={"img1", "img2"})
+        assert progress is not None
+        self.assertEqual(progress.failed, 2)
+
+        # Fail a different image
+        progress = self.manager._get_progress(set(), "process", failed_image_ids={"img3"})
+        assert progress is not None
+        self.assertEqual(progress.failed, 3)
+
+    def test_failed_and_processed_mixed(self):
+        """Test mixed successful and failed processing in same batch."""
+        self._init_and_verify(self.image_ids)
+
+        # Process 2 successfully, 2 fail, 1 remains pending
+        progress = self.manager._get_progress(
+            {"img1", "img2", "img3", "img4"}, "process", failed_image_ids={"img3", "img4"}
+        )
+        assert progress is not None
+        self.assertEqual(progress.processed, 4)
+        self.assertEqual(progress.failed, 2)
+        self.assertEqual(progress.remaining, 1)
+        self.assertEqual(progress.percentage, 0.8)
+
+    def test_cleanup_removes_failed_set(self):
+        """Test that cleanup removes failed image set."""
+        from django.core.cache import cache
+
+        self._init_and_verify(self.image_ids)
+
+        # Add failed images
+        self.manager._get_progress({"img1", "img2"}, "process", failed_image_ids={"img1", "img2"})
+
+        # Verify failed set exists
+        failed_set = cache.get(self.manager._failed_key)
+        self.assertEqual(len(failed_set), 2)
+
+        # Cleanup
+        self.manager.cleanup()
+
+        # Verify failed set is gone
+        failed_set = cache.get(self.manager._failed_key)
+        self.assertIsNone(failed_set)
