@@ -157,9 +157,9 @@ export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
 export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   const { projectId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
-  const avaibleFilters = AVAILABLE_FILTERS(projectId as string)
+  const availableFilters = AVAILABLE_FILTERS(projectId as string)
 
-  const _filters = avaibleFilters.map(({ field, ...rest }) => {
+  const _filters = availableFilters.map(({ field, ...rest }) => {
     const value = searchParams.get(field) ?? defaultFilters?.[field]
 
     return {
@@ -182,7 +182,7 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   const activeFilters = filters.filter((filter) => !!filter.value?.length)
 
   const addFilter = (field: string, value: string) => {
-    if (avaibleFilters.some((filter) => filter.field === field)) {
+    if (availableFilters.some((filter) => filter.field === field)) {
       searchParams.set(field, value)
 
       // Reset page param if set, when filters are updated
@@ -195,7 +195,7 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   }
 
   const clearFilter = (field: string) => {
-    if (avaibleFilters.some((filter) => filter.field === field)) {
+    if (availableFilters.some((filter) => filter.field === field)) {
       searchParams.delete(field)
 
       // Reset page param if set, when filters are updated
