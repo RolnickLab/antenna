@@ -201,7 +201,7 @@ def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> None:
 
 
 def _update_job_progress(
-    job_id: int, stage: str, progress_percentage: float, complete_state: JobState, **state_params
+    job_id: int, stage: str, progress_percentage: float, complete_state: "JobState", **state_params
 ) -> None:
     from ami.jobs.models import Job, JobState  # avoid circular import
 
