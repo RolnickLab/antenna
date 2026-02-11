@@ -60,7 +60,11 @@ OCCURRENCE_FIELDS: list[tuple[str, str, object]] = [
     (DWC + "basisOfRecord", "basisOfRecord", lambda o, slug: "MachineObservation"),
     (DWC + "occurrenceStatus", "occurrenceStatus", lambda o, slug: "present"),
     (DWC + "scientificName", "scientificName", lambda o, slug: o.determination.name if o.determination else ""),
-    (DWC + "taxonRank", "taxonRank", lambda o, slug: o.determination.rank.lower() if o.determination else ""),
+    (
+        DWC + "taxonRank",
+        "taxonRank",
+        lambda o, slug: (o.determination.rank.lower() if o.determination and o.determination.rank else ""),
+    ),
     (DWC + "kingdom", "kingdom", lambda o, slug: _get_rank_from_parents(o, "KINGDOM")),
     (DWC + "phylum", "phylum", lambda o, slug: _get_rank_from_parents(o, "PHYLUM")),
     (DWC + "class", "class", lambda o, slug: _get_rank_from_parents(o, "CLASS")),
@@ -75,7 +79,7 @@ OCCURRENCE_FIELDS: list[tuple[str, str, object]] = [
     (
         DWC + "vernacularName",
         "vernacularName",
-        lambda o, slug: o.determination.common_name_en or "" if o.determination else "",
+        lambda o, slug: (o.determination.common_name_en or "") if o.determination else "",
     ),
     (
         DWC + "taxonID",
@@ -84,7 +88,7 @@ OCCURRENCE_FIELDS: list[tuple[str, str, object]] = [
         if o.determination and o.determination.gbif_taxon_key
         else "",
     ),
-    (DWC + "individualCount", "individualCount", lambda o, slug: str(getattr(o, "detections_count", 0) or 0)),
+    (DWC + "individualCount", "individualCount", lambda o, slug: "1"),
     (
         DWC + "identificationVerificationStatus",
         "identificationVerificationStatus",
@@ -135,6 +139,8 @@ def _format_duration(event) -> str:
         return ""
     delta = event.end - event.start
     total_seconds = int(delta.total_seconds())
+    if total_seconds < 0:
+        return ""
     hours, remainder = divmod(total_seconds, 3600)
     minutes, _ = divmod(remainder, 60)
     if hours > 0:
@@ -158,7 +164,7 @@ def _get_rank_from_parents(occurrence, rank: str) -> str:
             return parent.name if hasattr(parent, "name") else parent.get("name", "")
     # Also check the determination itself if it matches the requested rank
     det_rank = occurrence.determination.rank
-    if det_rank.upper() == rank:
+    if det_rank and det_rank.upper() == rank:
         return occurrence.determination.name
     return ""
 
