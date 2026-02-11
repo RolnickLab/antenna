@@ -93,9 +93,10 @@ Describes the dataset: title, abstract, creators, geographic/temporal coverage, 
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<eml:eml xmlns:eml="https://eml.ecoinformatics.org/eml-2.2.0"
+<!-- Note: AMI currently exports EML 2.1.1 -->
+<eml:eml xmlns:eml="eml://ecoinformatics.org/eml-2.1.1"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="https://eml.ecoinformatics.org/eml-2.2.0 https://eml.ecoinformatics.org/eml-2.2.0/eml.xsd"
+         xsi:schemaLocation="eml://ecoinformatics.org/eml-2.1.1 https://eml.ecoinformatics.org/eml-2.1.1/eml.xsd"
          packageId="urn:ami:dataset:{project_id}" system="AMI">
   <dataset>
     <title>{project.name}</title>

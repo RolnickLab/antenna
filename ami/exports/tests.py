@@ -328,6 +328,8 @@ class DwCAExportTest(TestCase):
 
     def _run_export(self):
         """Run a DwC-A export and return the file path."""
+        from django.conf import settings
+
         data_export = DataExport.objects.create(
             user=self.user,
             project=self.project,
@@ -336,7 +338,7 @@ class DwCAExportTest(TestCase):
         )
         file_url = data_export.run_export()
         self.assertIsNotNone(file_url)
-        file_path = file_url.replace("/media/", "")
+        file_path = file_url.replace(settings.MEDIA_URL, "")
         self.assertTrue(default_storage.exists(file_path))
         return file_path
 
@@ -402,9 +404,11 @@ class DwCAExportTest(TestCase):
                     self.assertIn("basisOfRecord", reader.fieldnames)
                     self.assertIn("taxonRank", reader.fieldnames)
 
-                    # Row count should match valid occurrences
+                    # Row count should match valid occurrences with event and determination
                     expected_count = (
-                        Occurrence.objects.valid().filter(project=self.project).count()  # type: ignore[union-attr]
+                        Occurrence.objects.valid()  # type: ignore[union-attr]
+                        .filter(project=self.project, event__isnull=False, determination__isnull=False)
+                        .count()
                     )
                     self.assertEqual(len(rows), expected_count, "Occurrence row count mismatch")
 
@@ -492,14 +496,15 @@ class DwCAExportTest(TestCase):
         taxon.save(update_calculated_fields=True)
         taxon.refresh_from_db()
 
-        # If the taxon has parents, at least one rank should resolve
-        if taxon.parents_json:
-            ranks_found = []
-            for rank in ["KINGDOM", "PHYLUM", "CLASS", "ORDER", "FAMILY", "GENUS"]:
-                value = _get_rank_from_parents(occurrence, rank)
-                if value:
-                    ranks_found.append(rank)
-            self.assertGreater(len(ranks_found), 0, "No taxonomy ranks extracted from parents_json")
+        # Ensure parents_json is populated so this test doesn't pass vacuously
+        self.assertTrue(taxon.parents_json, "Test taxon should have parents_json populated")
+
+        ranks_found = []
+        for rank in ["KINGDOM", "PHYLUM", "CLASS", "ORDER", "FAMILY", "GENUS"]:
+            value = _get_rank_from_parents(occurrence, rank)
+            if value:
+                ranks_found.append(rank)
+        self.assertGreater(len(ranks_found), 0, "No taxonomy ranks extracted from parents_json")
 
     def test_specific_epithet_extraction(self):
         """get_specific_epithet should extract the second word of a binomial name."""

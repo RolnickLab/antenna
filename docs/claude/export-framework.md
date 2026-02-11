@@ -10,7 +10,7 @@ The export system uses a registry pattern where format-specific exporters regist
 |------|---------|
 | `ami/exports/base.py` | `BaseExporter` ABC - all exporters inherit from this |
 | `ami/exports/registry.py` | `ExportRegistry` - maps format strings to exporter classes |
-| `ami/exports/format_types.py` | Concrete exporters: `JSONExporter`, `CSVExporter` |
+| `ami/exports/format_types.py` | Concrete exporters: `JSONExporter`, `CSVExporter`, `DwCAExporter` |
 | `ami/exports/models.py` | `DataExport` model - tracks export jobs, files, stats |
 | `ami/exports/utils.py` | `apply_filters()`, `get_data_in_batches()`, `generate_fake_request()` |
 | `ami/exports/views.py` | `DataExportViewSet` - API endpoint for creating/listing exports |
@@ -67,7 +67,7 @@ class BaseExporter(ABC):
 ```python
 ExportRegistry.register("format_name")(ExporterClass)
 ExportRegistry.get_exporter("format_name")  # → ExporterClass
-ExportRegistry.get_supported_formats()       # → ["occurrences_api_json", "occurrences_simple_csv"]
+ExportRegistry.get_supported_formats()       # → ["occurrences_api_json", "occurrences_simple_csv", "dwca"]
 ```
 
 ### DataExport Model (ami/exports/models.py)
