@@ -289,17 +289,21 @@ def generate_meta_xml(
 # ──────────────────────────────────────────────────────────────
 
 
-def generate_eml_xml(project, events_queryset=None) -> str:
+def generate_eml_xml(project) -> str:
     """Generate minimal EML 2.1.1 metadata XML for the dataset."""
+    from django.utils import timezone
 
     project_slug = slugify(project.name)
-    now = datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    now = timezone.now().strftime("%Y-%m-%dT%H:%M:%S")
 
     eml = ET.Element("eml:eml")
     eml.set("xmlns:eml", "eml://ecoinformatics.org/eml-2.1.1")
     eml.set("xmlns:dc", "http://purl.org/dc/terms/")
     eml.set("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance")
-    eml.set("xsi:schemaLocation", "eml://ecoinformatics.org/eml-2.1.1 eml.xsd")
+    eml.set(
+        "xsi:schemaLocation",
+        "eml://ecoinformatics.org/eml-2.1.1 https://eml.ecoinformatics.org/eml-2.1.1/eml.xsd",
+    )
     eml.set("packageId", f"urn:ami:dataset:{project_slug}:{now}")
     eml.set("system", "AMI")
 

@@ -1,6 +1,7 @@
 import csv
 import json
 import logging
+import os
 import tempfile
 
 from django.core.serializers.json import DjangoJSONEncoder
@@ -237,28 +238,36 @@ class DwCAExporter(BaseExporter):
         # Write event.txt
         event_file = tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8")
         event_file.close()
-        events_qs = self.get_events_queryset()
-        event_count = write_tsv(event_file.name, EVENT_FIELDS, events_qs, project_slug)
-        logger.info(f"DwC-A: wrote {event_count} events")
-
         # Write occurrence.txt
         occ_file = tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8")
         occ_file.close()
-        occ_count = write_tsv(
-            occ_file.name,
-            OCCURRENCE_FIELDS,
-            self.queryset,
-            project_slug,
-            progress_callback=lambda n: self.update_job_progress(n),
-        )
-        logger.info(f"DwC-A: wrote {occ_count} occurrences")
 
-        # Generate metadata
-        meta_xml = generate_meta_xml(EVENT_FIELDS, OCCURRENCE_FIELDS)
-        eml_xml = generate_eml_xml(self.project, events_qs)
+        try:
+            events_qs = self.get_events_queryset()
+            event_count = write_tsv(event_file.name, EVENT_FIELDS, events_qs, project_slug)
+            logger.info(f"DwC-A: wrote {event_count} events")
 
-        # Package into ZIP
-        zip_path = create_dwca_zip(event_file.name, occ_file.name, meta_xml, eml_xml)
+            occ_count = write_tsv(
+                occ_file.name,
+                OCCURRENCE_FIELDS,
+                self.queryset,
+                project_slug,
+                progress_callback=self.update_job_progress,
+            )
+            logger.info(f"DwC-A: wrote {occ_count} occurrences")
 
-        self.update_export_stats(file_temp_path=zip_path)
-        return zip_path
+            # Generate metadata
+            meta_xml = generate_meta_xml(EVENT_FIELDS, OCCURRENCE_FIELDS)
+            eml_xml = generate_eml_xml(self.project)
+
+            # Package into ZIP
+            zip_path = create_dwca_zip(event_file.name, occ_file.name, meta_xml, eml_xml)
+
+            self.update_export_stats(file_temp_path=zip_path)
+            return zip_path
+        finally:
+            for path in [event_file.name, occ_file.name]:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
