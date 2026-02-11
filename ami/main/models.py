@@ -1656,6 +1656,17 @@ class SourceImageQuerySet(BaseQuerySet):
             taxa_count=Coalesce(models.Subquery(taxa_subquery, output_field=models.IntegerField()), 0)
         )
 
+    def with_was_processed(self):
+        """
+        Annotate each SourceImage with a boolean `was_processed` indicating
+        whether any detections exist for that image.
+
+        This mirrors `SourceImage.get_was_processed()` but as a queryset
+        annotation for efficient bulk queries.
+        """
+        processed_exists = models.Exists(Detection.objects.filter(source_image_id=models.OuterRef("pk")))
+        return self.annotate(was_processed=processed_exists)
+
 
 class SourceImageManager(models.Manager.from_queryset(SourceImageQuerySet)):
     pass
@@ -1755,7 +1766,15 @@ class SourceImage(BaseModel):
             return filesizeformat(self.size)
 
     def get_detections_count(self) -> int:
-        return self.detections.distinct().count()
+        # Detections count excludes detections without bounding boxes
+        # Detections with null bounding boxes are valid and indicates the image was successfully processed
+        return self.detections.exclude(Q(bbox__isnull=True) | Q(bbox=None) | Q(bbox=[])).count()
+
+    def get_was_processed(self, algorithm_key: str | None = None) -> bool:
+        if algorithm_key:
+            return self.detections.filter(detection_algorithm__key=algorithm_key).exists()
+        else:
+            return self.detections.exists()
 
     def get_base_url(self) -> str | None:
         """
@@ -3603,7 +3622,23 @@ class SourceImageCollectionQuerySet(BaseQuerySet):
     def with_source_images_with_detections_count(self):
         return self.annotate(
             source_images_with_detections_count=models.Count(
-                "images", filter=models.Q(images__detections__isnull=False), distinct=True
+                "images",
+                filter=(
+                    models.Q(images__detections__isnull=False)
+                    & ~models.Q(images__detections__bbox__isnull=True)
+                    & ~models.Q(images__detections__bbox=None)
+                    & ~models.Q(images__detections__bbox=[])
+                ),
+                distinct=True,
+            )
+        )
+
+    def with_source_images_processed_count(self):
+        return self.annotate(
+            source_images_processed_count=models.Count(
+                "images",
+                filter=models.Q(images__detections__isnull=False),
+                distinct=True,
             )
         )
 
@@ -3714,7 +3749,10 @@ class SourceImageCollection(BaseModel):
 
     def source_images_with_detections_count(self) -> int | None:
         # This should always be pre-populated using queryset annotations
-        # return self.images.filter(detections__isnull=False).count()
+        return None
+
+    def source_images_processed_count(self) -> int | None:
+        # This should always be pre-populated using queryset annotations
         return None
 
     def occurrences_count(self) -> int | None:

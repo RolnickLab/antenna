@@ -105,6 +105,16 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
     ),
   },
   {
+    id: 'total-processed-captures',
+    name: translate(STRING.FIELD_LABEL_TOTAL_PROCESSED_CAPTURES),
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Collection) => (
+      <BasicTableCell value={item.numImagesProccessed} />
+    ),
+  },
+  {
     id: 'occurrences',
     name: translate(STRING.FIELD_LABEL_OCCURRENCES),
     sortField: 'occurrences_count',

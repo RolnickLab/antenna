@@ -1178,6 +1178,7 @@ class SourceImageCollectionSerializer(DefaultSerializer):
             "source_images",
             "source_images_count",
             "source_images_with_detections_count",
+            "source_images_processed_count",
             "occurrences_count",
             "taxa_count",
             "description",
@@ -1479,6 +1480,7 @@ class EventTimelineIntervalSerializer(serializers.Serializer):
     captures_count = serializers.IntegerField()
     detections_count = serializers.IntegerField()
     detections_avg = serializers.IntegerField()
+    was_processed = serializers.BooleanField()
 
 
 class EventTimelineMetaSerializer(serializers.Serializer):
