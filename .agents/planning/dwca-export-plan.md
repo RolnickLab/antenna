@@ -1,14 +1,25 @@
 # Plan: Add DwC-A (Darwin Core Archive) Export Format
 
+## Why
+
+AMI projects produce biodiversity occurrence data (species observations from automated insect monitoring stations). To make this data discoverable and citable in the global biodiversity research community, it needs to be published to GBIF (Global Biodiversity Information Facility). GBIF's standard ingestion format is the Darwin Core Archive (DwC-A).
+
+**Roadmap:**
+1. **This PR** — Static DwC-A export: user triggers an export, downloads a ZIP file. Validates against GBIF's data validator. Serves as the foundation for all downstream GBIF integration.
+2. **Near follow-up** — Enrich the archive with additional DwC extensions (multimedia, measurement/fact) and a more complete EML metadata profile. Apply project default filters to the export.
+3. **Eventual** — Automated publishing: either push archives to a hosted GBIF IPT (Integrated Publishing Toolkit) server, or implement the IPT's RSS/DwC-A endpoint protocol directly within Antenna so it can act as its own IPT, serving a feed that GBIF crawls on a schedule.
+
 ## Context
 
-The project needs to export biodiversity data as Darwin Core Archives for sharing with GBIF and other aggregators. The export framework already exists (`ami/exports/`) with JSON and CSV formats registered. We need to add a new DwC-A exporter that produces a ZIP containing event.txt (core), occurrence.txt (extension), meta.xml, and eml.xml.
+The export framework already exists (`ami/exports/`) with JSON and CSV formats registered via a simple registry pattern. Adding a new format requires: an exporter class, field mappings, and a one-line registration. The `DataExport` model and async job infrastructure handle storage, progress tracking, and file serving.
 
 **Decisions made:**
-- Event-core architecture (events as core, occurrences as extension)
-- URN format for IDs: `urn:ami:event:{project_slug}:{id}`, `urn:ami:occurrence:{project_slug}:{id}`
-- Coordinates from Deployment lat/lon only (text locality fields deferred)
-- `basisOfRecord` = `"MachineObservation"` for all records
+- **Event-core architecture** (events as core, occurrences as extension) — This matches AMI's data model (monitoring sessions containing species observations) and is the recommended GBIF pattern for sampling-event datasets, which enables richer ecological analysis than occurrence-only archives.
+- **URN format for IDs**: `urn:ami:event:{project_slug}:{id}`, `urn:ami:occurrence:{project_slug}:{id}` — Globally unique, stable, and human-readable. The project slug provides namespacing across AMI instances.
+- **Coordinates from Deployment lat/lon only** (text locality fields like country/stateProvince deferred) — Deployments store coordinates; reverse geocoding for text fields is a separate concern.
+- **`basisOfRecord` = `"MachineObservation"`** — GBIF's standard term for automated/sensor-derived observations, distinct from `HumanObservation`.
+- **No DRF serializer** — DwC fields are flat extractions, not nested API representations. Direct TSV writing is simpler and faster.
+- **Taxonomy from `parents_json`** — Avoids N+1 parent chain queries by walking the pre-computed `parents_json` list on each Taxon.
 
 ## Implementation Steps
 
