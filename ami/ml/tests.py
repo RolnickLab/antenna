@@ -882,6 +882,7 @@ class TestTaskStateManager(TestCase):
         self.assertEqual(progress.percentage, 0.0)
         self.assertEqual(progress.detections, 0)
         self.assertEqual(progress.classifications, 0)
+        self.assertEqual(progress.captures, 0)
         self.assertEqual(progress.failed, 0)
         return progress
 

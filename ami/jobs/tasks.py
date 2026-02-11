@@ -3,7 +3,7 @@ import functools
 import logging
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING
 
 from asgiref.sync import async_to_sync
 from celery.signals import task_failure, task_postrun, task_prerun
@@ -14,6 +14,9 @@ from ami.ml.orchestration.task_state import TaskStateManager
 from ami.ml.schemas import PipelineResultsError, PipelineResultsResponse
 from ami.tasks import default_soft_time_limit, default_time_limit
 from config import celery_app
+
+if TYPE_CHECKING:
+    from ami.jobs.models import JobState
 
 logger = logging.getLogger(__name__)
 FAILURE_THRESHOLD = 0.5  # threshold for marking a job as failed based on the percentage of failed images.
@@ -135,12 +138,8 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
                 f", percentage: {progress_info.percentage*100}%"
             )
             # Calculate detection and classification counts from this result
-            detections_count = len(pipeline_result.detections) if pipeline_result else 0
-            classifications_count = (
-                sum(len(detection.classifications) for detection in pipeline_result.detections)
-                if pipeline_result
-                else 0
-            )
+            detections_count = len(pipeline_result.detections)
+            classifications_count = sum(len(detection.classifications) for detection in pipeline_result.detections)
             captures_count = len(pipeline_result.source_images)
 
         _ack_task_via_nats(reply_subject, job.logger)
@@ -202,7 +201,7 @@ def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> None:
 
 
 def _update_job_progress(
-    job_id: int, stage: str, progress_percentage: float, complete_state: Any, **state_params
+    job_id: int, stage: str, progress_percentage: float, complete_state: JobState, **state_params
 ) -> None:
     from ami.jobs.models import Job, JobState  # avoid circular import
 
