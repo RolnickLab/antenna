@@ -211,14 +211,14 @@ class DwCAExporter(BaseExporter):
     def get_events_queryset(self):
         from ami.main.models import Event
 
-        return Event.objects.filter(project=self.project).select_related(
+        event_ids = self.queryset.values_list("event_id", flat=True).distinct()
+        return Event.objects.filter(
+            project=self.project,
+            id__in=event_ids,
+        ).select_related(
             "deployment",
             "project",
         )
-
-    def get_filter_backends(self):
-        # DwC-A exports events + occurrences; the collection-based filter doesn't apply
-        return []
 
     def export(self):
         """Export project data as a Darwin Core Archive ZIP."""
