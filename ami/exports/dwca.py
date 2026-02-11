@@ -312,10 +312,10 @@ def generate_eml_xml(project, events_queryset=None) -> str:
     creator = ET.SubElement(dataset, "creator")
     org = ET.SubElement(creator, "organizationName")
     org.text = "Automated Monitoring of Insects (AMI)"
-    if project.owner:
+    if project.owner and project.owner.name:
         individual = ET.SubElement(creator, "individualName")
         surname = ET.SubElement(individual, "surName")
-        surname.text = project.owner.email
+        surname.text = project.owner.name
 
     # Abstract
     abstract = ET.SubElement(dataset, "abstract")

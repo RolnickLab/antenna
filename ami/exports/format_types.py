@@ -197,7 +197,7 @@ class DwCAExporter(BaseExporter):
         """Return the occurrence queryset (used by BaseExporter for record count)."""
         return (
             Occurrence.objects.valid()  # type: ignore[union-attr]
-            .filter(project=self.project)
+            .filter(project=self.project, event__isnull=False, determination__isnull=False)
             .select_related(
                 "determination",
                 "event",
