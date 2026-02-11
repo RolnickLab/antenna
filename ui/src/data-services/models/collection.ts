@@ -75,6 +75,10 @@ export class Collection extends Entity {
     return this._data.source_images_with_detections_count
   }
 
+  get numImagesProcessed(): number | undefined {
+    return this._data.source_images_processed_count
+  }
+
   get numImagesWithDetectionsLabel(): string {
     const pct =
       this.numImagesWithDetections && this.numImages
@@ -84,6 +88,16 @@ export class Collection extends Entity {
     return `${this.numImagesWithDetections?.toLocaleString()} (${pct.toFixed(
       0
     )}%)`
+  }
+
+  get numImagesProccessed(): string {
+    const numProcessed = this.numImagesProcessed ?? 0
+    const pct =
+      this.numImages && this.numImages > 0
+        ? (numProcessed / this.numImages) * 100
+        : 0
+
+    return `${numProcessed.toLocaleString()} (${pct.toFixed(0)}%)`
   }
 
   get numJobs(): number | undefined {
