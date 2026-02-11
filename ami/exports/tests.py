@@ -1,6 +1,9 @@
 import csv
 import json
 import logging
+import zipfile
+from io import StringIO
+from xml.etree import ElementTree as ET
 
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
@@ -302,3 +305,228 @@ class DataExportPermissionTest(TestCase):
             self.non_member.has_perm(Project.Permissions.CREATE_DATA_EXPORT, self.project),
             "Non-member should not have create_dataexport permission",
         )
+
+
+class DwCAExportTest(TestCase):
+    """Tests for Darwin Core Archive (DwC-A) export format."""
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.user = self.project.owner
+        create_captures(deployment=self.deployment, num_nights=2, images_per_night=4, interval_minutes=1)
+        group_images_into_events(self.deployment)
+        create_taxa(self.project)
+        create_occurrences(num=10, deployment=self.deployment)
+
+        # Verify test data was created
+        self.assertGreater(self.project.events.count(), 0, "No events created for testing.")
+        self.assertGreater(
+            Occurrence.objects.valid().filter(project=self.project).count(),  # type: ignore[union-attr]
+            0,
+            "No valid occurrences created for testing.",
+        )
+
+    def _run_export(self):
+        """Run a DwC-A export and return the file path."""
+        data_export = DataExport.objects.create(
+            user=self.user,
+            project=self.project,
+            format="dwca",
+            job=None,
+        )
+        file_url = data_export.run_export()
+        self.assertIsNotNone(file_url)
+        file_path = file_url.replace("/media/", "")
+        self.assertTrue(default_storage.exists(file_path))
+        return file_path
+
+    def test_dwca_exporter_is_registered(self):
+        """DwC-A exporter should be registered and retrievable."""
+        from ami.exports.registry import ExportRegistry
+
+        exporter_cls = ExportRegistry.get_exporter("dwca")
+        self.assertIsNotNone(exporter_cls, "DwC-A exporter not found in registry")
+        self.assertEqual(exporter_cls.file_format, "zip")
+
+    def test_export_produces_valid_zip(self):
+        """Export should produce a valid ZIP with expected files."""
+        file_path = self._run_export()
+        try:
+            with default_storage.open(file_path, "rb") as f:
+                self.assertTrue(zipfile.is_zipfile(f))
+                f.seek(0)
+                with zipfile.ZipFile(f, "r") as zf:
+                    names = zf.namelist()
+                    self.assertIn("event.txt", names)
+                    self.assertIn("occurrence.txt", names)
+                    self.assertIn("meta.xml", names)
+                    self.assertIn("eml.xml", names)
+        finally:
+            default_storage.delete(file_path)
+
+    def test_event_headers_and_row_count(self):
+        """event.txt should have correct headers and row count matching events."""
+        file_path = self._run_export()
+        try:
+            with default_storage.open(file_path, "rb") as f:
+                with zipfile.ZipFile(f, "r") as zf:
+                    event_data = zf.read("event.txt").decode("utf-8")
+                    reader = csv.DictReader(StringIO(event_data), delimiter="\t")
+                    rows = list(reader)
+
+                    # Check headers
+                    self.assertIn("eventID", reader.fieldnames)
+                    self.assertIn("eventDate", reader.fieldnames)
+                    self.assertIn("decimalLatitude", reader.fieldnames)
+                    self.assertIn("samplingProtocol", reader.fieldnames)
+
+                    # Row count should match project events
+                    expected_count = self.project.events.count()
+                    self.assertEqual(len(rows), expected_count, "Event row count mismatch")
+        finally:
+            default_storage.delete(file_path)
+
+    def test_occurrence_headers_and_row_count(self):
+        """occurrence.txt should have correct headers and row count matching valid occurrences."""
+        file_path = self._run_export()
+        try:
+            with default_storage.open(file_path, "rb") as f:
+                with zipfile.ZipFile(f, "r") as zf:
+                    occ_data = zf.read("occurrence.txt").decode("utf-8")
+                    reader = csv.DictReader(StringIO(occ_data), delimiter="\t")
+                    rows = list(reader)
+
+                    # Check headers
+                    self.assertIn("occurrenceID", reader.fieldnames)
+                    self.assertIn("scientificName", reader.fieldnames)
+                    self.assertIn("basisOfRecord", reader.fieldnames)
+                    self.assertIn("taxonRank", reader.fieldnames)
+
+                    # Row count should match valid occurrences
+                    expected_count = (
+                        Occurrence.objects.valid().filter(project=self.project).count()  # type: ignore[union-attr]
+                    )
+                    self.assertEqual(len(rows), expected_count, "Occurrence row count mismatch")
+
+                    # All rows should have basisOfRecord = MachineObservation
+                    for row in rows:
+                        self.assertEqual(row["basisOfRecord"], "MachineObservation")
+        finally:
+            default_storage.delete(file_path)
+
+    def test_meta_xml_structure(self):
+        """meta.xml should be valid XML with correct core/extension structure."""
+        file_path = self._run_export()
+        try:
+            with default_storage.open(file_path, "rb") as f:
+                with zipfile.ZipFile(f, "r") as zf:
+                    meta_xml = zf.read("meta.xml").decode("utf-8")
+                    root = ET.fromstring(meta_xml)
+
+                    # Default namespace
+                    ns = "http://rs.tdwg.org/dwc/text/"
+
+                    # Should have a core element with Event rowType
+                    core = root.find(f"{{{ns}}}core")
+                    self.assertIsNotNone(core, "meta.xml missing <core> element")
+                    self.assertIn("Event", core.get("rowType", ""))
+
+                    # Should have an extension element with Occurrence rowType
+                    ext = root.find(f"{{{ns}}}extension")
+                    self.assertIsNotNone(ext, "meta.xml missing <extension> element")
+                    self.assertIn("Occurrence", ext.get("rowType", ""))
+
+                    # Core should reference event.txt
+                    core_location = core.find(f".//{{{ns}}}location")
+                    self.assertIsNotNone(core_location, "meta.xml core missing <location>")
+                    self.assertEqual(core_location.text, "event.txt")
+
+                    # Extension should reference occurrence.txt
+                    ext_location = ext.find(f".//{{{ns}}}location")
+                    self.assertIsNotNone(ext_location, "meta.xml extension missing <location>")
+                    self.assertEqual(ext_location.text, "occurrence.txt")
+        finally:
+            default_storage.delete(file_path)
+
+    def test_referential_integrity(self):
+        """All occurrence eventIDs should reference existing event eventIDs."""
+        file_path = self._run_export()
+        try:
+            with default_storage.open(file_path, "rb") as f:
+                with zipfile.ZipFile(f, "r") as zf:
+                    # Read event IDs
+                    event_data = zf.read("event.txt").decode("utf-8")
+                    event_reader = csv.DictReader(StringIO(event_data), delimiter="\t")
+                    event_ids = {row["eventID"] for row in event_reader}
+
+                    # Read occurrence eventIDs
+                    occ_data = zf.read("occurrence.txt").decode("utf-8")
+                    occ_reader = csv.DictReader(StringIO(occ_data), delimiter="\t")
+                    occ_event_ids = {row["eventID"] for row in occ_reader if row["eventID"]}
+
+                    # All occurrence eventIDs should exist in events
+                    orphaned = occ_event_ids - event_ids
+                    self.assertEqual(
+                        len(orphaned),
+                        0,
+                        f"Orphaned occurrence eventIDs (not in events): {orphaned}",
+                    )
+        finally:
+            default_storage.delete(file_path)
+
+    def test_taxonomy_hierarchy_extraction(self):
+        """Taxonomy fields should be extracted from parents_json."""
+        from ami.exports.dwca import _get_rank_from_parents
+
+        # Get an occurrence with a determination that has parents
+        occurrence = (
+            Occurrence.objects.valid()  # type: ignore[union-attr]
+            .filter(project=self.project, determination__isnull=False)
+            .select_related("determination")
+            .first()
+        )
+        self.assertIsNotNone(occurrence, "No occurrence with determination found")
+
+        # Update parents_json on the taxon so we can test extraction
+        taxon = occurrence.determination
+        taxon.save(update_calculated_fields=True)
+        taxon.refresh_from_db()
+
+        # If the taxon has parents, at least one rank should resolve
+        if taxon.parents_json:
+            ranks_found = []
+            for rank in ["KINGDOM", "PHYLUM", "CLASS", "ORDER", "FAMILY", "GENUS"]:
+                value = _get_rank_from_parents(occurrence, rank)
+                if value:
+                    ranks_found.append(rank)
+            self.assertGreater(len(ranks_found), 0, "No taxonomy ranks extracted from parents_json")
+
+    def test_specific_epithet_extraction(self):
+        """get_specific_epithet should extract the second word of a binomial name."""
+        from ami.exports.dwca import get_specific_epithet
+
+        self.assertEqual(get_specific_epithet("Vanessa cardui"), "cardui")
+        self.assertEqual(get_specific_epithet("Vanessa"), "")
+        self.assertEqual(get_specific_epithet(""), "")
+        self.assertEqual(get_specific_epithet("Homo sapiens sapiens"), "sapiens")
+
+    def test_eml_xml_valid(self):
+        """eml.xml should be valid XML with project metadata."""
+        file_path = self._run_export()
+        try:
+            with default_storage.open(file_path, "rb") as f:
+                with zipfile.ZipFile(f, "r") as zf:
+                    eml_xml = zf.read("eml.xml").decode("utf-8")
+                    root = ET.fromstring(eml_xml)
+
+                    # Should have a dataset element
+                    ns = {"eml": "eml://ecoinformatics.org/eml-2.1.1"}
+                    dataset = root.find("eml:dataset", ns) or root.find("dataset")
+                    self.assertIsNotNone(dataset, "eml.xml missing <dataset> element")
+
+                    # Title should match project name
+                    title = dataset.find("eml:title", ns) or dataset.find("title")
+                    self.assertIsNotNone(title)
+                    self.assertEqual(title.text, self.project.name)
+        finally:
+            default_storage.delete(file_path)
