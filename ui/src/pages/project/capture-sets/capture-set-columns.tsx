@@ -1,5 +1,5 @@
 import { API_ROUTES } from 'data-services/constants'
-import { Collection } from 'data-services/models/collection'
+import { CaptureSet } from 'data-services/models/capture-set'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import {
@@ -14,28 +14,28 @@ import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
-import { PopulateCollection } from './collection-actions'
 import { SERVER_SAMPLING_METHODS } from './constants'
+import { PopulateCaptureSet } from './populate-capture-set'
 
-export const columns: (projectId: string) => TableColumn<Collection>[] = (
+export const columns: (projectId: string) => TableColumn<CaptureSet>[] = (
   projectId: string
 ) => [
   {
     id: 'id',
     name: translate(STRING.FIELD_LABEL_ID),
     sortField: 'id',
-    renderCell: (item: Collection) => <BasicTableCell value={item.id} />,
+    renderCell: (item: CaptureSet) => <BasicTableCell value={item.id} />,
   },
   {
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
     sortField: 'name',
-    renderCell: (item: Collection) => <BasicTableCell value={item.name} />,
+    renderCell: (item: CaptureSet) => <BasicTableCell value={item.name} />,
   },
   {
     id: 'settings',
     name: 'Settings',
-    renderCell: (item: Collection) => (
+    renderCell: (item: CaptureSet) => (
       <BasicTableCell
         value={item.settingsDisplay}
         details={item.settingsDetailsDisplay}
@@ -45,7 +45,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
   {
     id: 'status',
     name: 'Latest job status',
-    renderCell: (item: Collection) => {
+    renderCell: (item: CaptureSet) => {
       if (!item.currentJob) {
         return <></>
       }
@@ -65,7 +65,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Collection) => (
+    renderCell: (item: CaptureSet) => (
       <Link
         to={getAppRoute({
           to: APP_ROUTES.JOBS({ projectId }),
@@ -83,7 +83,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Collection) => (
+    renderCell: (item: CaptureSet) => (
       <Link
         to={getAppRoute({
           to: APP_ROUTES.CAPTURES({ projectId }),
@@ -100,7 +100,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Collection) => (
+    renderCell: (item: CaptureSet) => (
       <BasicTableCell value={item.numImagesWithDetectionsLabel} />
     ),
   },
@@ -111,7 +111,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Collection) => (
+    renderCell: (item: CaptureSet) => (
       <Link
         to={getAppRoute({
           to: APP_ROUTES.OCCURRENCES({ projectId }),
@@ -129,19 +129,19 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Collection) => <BasicTableCell value={item.numTaxa} />,
+    renderCell: (item: CaptureSet) => <BasicTableCell value={item.numTaxa} />,
   },
   {
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
-    renderCell: (item: Collection) => <BasicTableCell value={item.createdAt} />,
+    renderCell: (item: CaptureSet) => <BasicTableCell value={item.createdAt} />,
   },
   {
     id: 'updated-at',
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
-    renderCell: (item: Collection) => <BasicTableCell value={item.updatedAt} />,
+    renderCell: (item: CaptureSet) => <BasicTableCell value={item.updatedAt} />,
   },
   {
     id: 'actions',
@@ -150,21 +150,21 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
       padding: '16px',
       width: '100%',
     },
-    renderCell: (item: Collection) => (
+    renderCell: (item: CaptureSet) => (
       <div className={styles.entityActions}>
-        {item.canPopulate && <PopulateCollection collection={item} />}
+        {item.canPopulate && <PopulateCaptureSet captureSet={item} />}
         {item.canUpdate && SERVER_SAMPLING_METHODS.includes(item.method) && (
           <UpdateEntityDialog
-            collection={API_ROUTES.COLLECTIONS}
+            collection={API_ROUTES.CAPTURE_SETS}
             entity={item}
-            type="collection"
+            type={translate(STRING.ENTITY_TYPE_CAPTURE_SET)}
           />
         )}
         {item.canDelete && (
           <DeleteEntityDialog
-            collection={API_ROUTES.COLLECTIONS}
+            collection={API_ROUTES.CAPTURE_SETS}
             id={item.id}
-            type="collection"
+            type={translate(STRING.ENTITY_TYPE_CAPTURE_SET)}
           />
         )}
       </div>

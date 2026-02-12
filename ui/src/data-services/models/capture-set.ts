@@ -3,12 +3,12 @@ import { UserPermission } from 'utils/user/types'
 import { Entity } from './entity'
 import { Job } from './job'
 
-export type ServerCollection = any // TODO: Update this type
+export type ServerCaptureSet = any // TODO: Update this type
 
-export class Collection extends Entity {
+export class CaptureSet extends Entity {
   private readonly _jobs: Job[] = []
 
-  public constructor(entity: ServerCollection) {
+  public constructor(entity: ServerCaptureSet) {
     super(entity)
 
     if (this._data.jobs) {

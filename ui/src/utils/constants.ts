@@ -17,11 +17,11 @@ export const APP_ROUTES = {
   ALGORITHMS: (params: { projectId: string }) =>
     `/projects/${params.projectId}/algorithms`,
 
+  CAPTURE_SETS: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/capture-sets`,
+
   CAPTURES: (params: { projectId: string }) =>
     `/projects/${params.projectId}/captures`,
-
-  COLLECTIONS: (params: { projectId: string }) =>
-    `/projects/${params.projectId}/collections`,
 
   DEFAULT_FILTERS: (params: { projectId: string }) =>
     `/projects/${params.projectId}/default-filters`,

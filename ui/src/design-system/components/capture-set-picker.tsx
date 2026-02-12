@@ -1,8 +1,8 @@
-import { useCollections } from 'data-services/hooks/collections/useCollections'
+import { useCaptureSets } from 'data-services/hooks/capture-sets/useCaptureSets'
 import { Select } from 'design-system/components/select/select'
 import { useParams } from 'react-router-dom'
 
-export const CollectionsPicker = ({
+export const CaptureSetPicker = ({
   onValueChange,
   showClear,
   value,
@@ -12,7 +12,7 @@ export const CollectionsPicker = ({
   value?: string
 }) => {
   const { projectId } = useParams()
-  const { collections = [], isLoading } = useCollections({
+  const { captureSets = [], isLoading } = useCaptureSets({
     projectId: projectId as string,
   })
 
@@ -20,7 +20,7 @@ export const CollectionsPicker = ({
     <Select
       loading={isLoading}
       onValueChange={onValueChange}
-      options={collections.map((c) => ({
+      options={captureSets.map((c) => ({
         value: c.id,
         label: c.name,
       }))}

@@ -80,7 +80,7 @@ export const DeploymentDetailsInfo = ({
           </FormRow>
         </FormSection>
 
-        <FormSection title={translate(STRING.FIELD_LABEL_SOURCE_IMAGES)}>
+        <FormSection title={translate(STRING.FIELD_LABEL_CAPTURES)}>
           <FormRow>
             <InputValue
               label={translate(STRING.FIELD_LABEL_DATA_SOURCE)}
