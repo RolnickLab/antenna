@@ -101,7 +101,7 @@ class TaskStateManager:
 
         try:
             # Update progress tracking in Redis
-            progress_info = self._get_progress(
+            progress_info = self._commit_update(
                 processed_image_ids, stage, detections_count, classifications_count, captures_count, failed_image_ids
             )
             return progress_info
@@ -134,7 +134,7 @@ class TaskStateManager:
             failed=len(failed_set),
         )
 
-    def _get_progress(
+    def _commit_update(
         self,
         processed_image_ids: set[str],
         stage: str,

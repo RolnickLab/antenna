@@ -874,7 +874,7 @@ class TestTaskStateManager(TestCase):
     def _init_and_verify(self, image_ids):
         """Helper to initialize job and verify initial state."""
         self.manager.initialize_job(image_ids)
-        progress = self.manager._get_progress(set(), "process")
+        progress = self.manager._commit_update(set(), "process")
         assert progress is not None
         self.assertEqual(progress.total, len(image_ids))
         self.assertEqual(progress.remaining, len(image_ids))
@@ -892,7 +892,7 @@ class TestTaskStateManager(TestCase):
 
         # Verify both stages are initialized
         for stage in self.manager.STAGES:
-            progress = self.manager._get_progress(set(), stage)
+            progress = self.manager._commit_update(set(), stage)
             assert progress is not None
             self.assertEqual(progress.total, len(self.image_ids))
             self.assertEqual(progress.detections, 0)
@@ -904,7 +904,7 @@ class TestTaskStateManager(TestCase):
         self._init_and_verify(self.image_ids)
 
         # Process 2 images
-        progress = self.manager._get_progress({"img1", "img2"}, "process")
+        progress = self.manager._commit_update({"img1", "img2"}, "process")
         assert progress is not None
         self.assertEqual(progress.remaining, 3)
         self.assertEqual(progress.processed, 2)
@@ -913,14 +913,14 @@ class TestTaskStateManager(TestCase):
         self.assertEqual(progress.classifications, 0)
 
         # Process 2 more images
-        progress = self.manager._get_progress({"img3", "img4"}, "process")
+        progress = self.manager._commit_update({"img3", "img4"}, "process")
         assert progress is not None
         self.assertEqual(progress.remaining, 1)
         self.assertEqual(progress.processed, 4)
         self.assertEqual(progress.percentage, 0.8)
 
         # Process last image
-        progress = self.manager._get_progress({"img5"}, "process")
+        progress = self.manager._commit_update({"img5"}, "process")
         assert progress is not None
         self.assertEqual(progress.remaining, 0)
         self.assertEqual(progress.processed, 5)
@@ -958,20 +958,20 @@ class TestTaskStateManager(TestCase):
         self._init_and_verify(self.image_ids)
 
         # Update process stage
-        self.manager._get_progress({"img1", "img2"}, "process")
-        progress_process = self.manager._get_progress(set(), "process")
+        self.manager._commit_update({"img1", "img2"}, "process")
+        progress_process = self.manager._commit_update(set(), "process")
         assert progress_process is not None
         self.assertEqual(progress_process.remaining, 3)
 
         # Results stage should still have all images pending
-        progress_results = self.manager._get_progress(set(), "results")
+        progress_results = self.manager._commit_update(set(), "results")
         assert progress_results is not None
         self.assertEqual(progress_results.remaining, 5)
 
     def test_empty_job(self):
         """Test handling of job with no images."""
         self.manager.initialize_job([])
-        progress = self.manager._get_progress(set(), "process")
+        progress = self.manager._commit_update(set(), "process")
         assert progress is not None
         self.assertEqual(progress.total, 0)
         self.assertEqual(progress.percentage, 1.0)  # Empty job is 100% complete
@@ -983,14 +983,14 @@ class TestTaskStateManager(TestCase):
         self._init_and_verify(self.image_ids)
 
         # Verify keys exist
-        progress = self.manager._get_progress(set(), "process")
+        progress = self.manager._commit_update(set(), "process")
         self.assertIsNotNone(progress)
 
         # Cleanup
         self.manager.cleanup()
 
         # Verify keys are gone
-        progress = self.manager._get_progress(set(), "process")
+        progress = self.manager._commit_update(set(), "process")
         self.assertIsNone(progress)
 
     def test_cumulative_counting(self):
@@ -998,21 +998,21 @@ class TestTaskStateManager(TestCase):
         self._init_and_verify(self.image_ids)
 
         # Process first batch with some detections
-        progress = self.manager._get_progress({"img1", "img2"}, "process", detections_count=3)
+        progress = self.manager._commit_update({"img1", "img2"}, "process", detections_count=3)
         assert progress is not None
         self.assertEqual(progress.detections, 3)
         self.assertEqual(progress.classifications, 0)
         self.assertEqual(progress.captures, 0)
 
         # Process second batch with more detections and a classification
-        progress = self.manager._get_progress({"img3"}, "process", detections_count=2, classifications_count=1)
+        progress = self.manager._commit_update({"img3"}, "process", detections_count=2, classifications_count=1)
         assert progress is not None
         self.assertEqual(progress.detections, 5)  # Should be cumulative
         self.assertEqual(progress.classifications, 1)
         self.assertEqual(progress.captures, 0)
 
         # Process with detections, classifications, and captures
-        progress = self.manager._get_progress(
+        progress = self.manager._commit_update(
             {"img4"}, "results", detections_count=1, classifications_count=4, captures_count=1
         )
         assert progress is not None
@@ -1025,18 +1025,20 @@ class TestTaskStateManager(TestCase):
         self._init_and_verify(self.image_ids)
 
         # Add counts during process stage
-        progress_process = self.manager._get_progress({"img1"}, "process", detections_count=3)
+        progress_process = self.manager._commit_update({"img1"}, "process", detections_count=3)
         assert progress_process is not None
         self.assertEqual(progress_process.detections, 3)
 
         # Verify counts are available in results stage
-        progress_results = self.manager._get_progress(set(), "results")
+        progress_results = self.manager._commit_update(set(), "results")
         assert progress_results is not None
         self.assertEqual(progress_results.detections, 3)  # Should persist
         self.assertEqual(progress_results.classifications, 0)
 
         # Add more counts in results stage
-        progress_results = self.manager._get_progress({"img2"}, "results", detections_count=1, classifications_count=5)
+        progress_results = self.manager._commit_update(
+            {"img2"}, "results", detections_count=1, classifications_count=5
+        )
         assert progress_results is not None
         self.assertEqual(progress_results.detections, 4)  # Should accumulate
         self.assertEqual(progress_results.classifications, 5)
@@ -1048,7 +1050,9 @@ class TestTaskStateManager(TestCase):
         self._init_and_verify(self.image_ids)
 
         # Add some counts
-        self.manager._get_progress({"img1"}, "process", detections_count=5, classifications_count=10, captures_count=2)
+        self.manager._commit_update(
+            {"img1"}, "process", detections_count=5, classifications_count=10, captures_count=2
+        )
 
         # Verify count keys exist
         detections = cache.get(self.manager._detections_key)
@@ -1074,17 +1078,17 @@ class TestTaskStateManager(TestCase):
         self._init_and_verify(self.image_ids)
 
         # Mark 2 images as failed in process stage
-        progress = self.manager._get_progress({"img1", "img2"}, "process", failed_image_ids={"img1", "img2"})
+        progress = self.manager._commit_update({"img1", "img2"}, "process", failed_image_ids={"img1", "img2"})
         assert progress is not None
         self.assertEqual(progress.failed, 2)
 
         # Retry same 2 images (fail again) - should not double-count
-        progress = self.manager._get_progress(set(), "process", failed_image_ids={"img1", "img2"})
+        progress = self.manager._commit_update(set(), "process", failed_image_ids={"img1", "img2"})
         assert progress is not None
         self.assertEqual(progress.failed, 2)
 
         # Fail a different image
-        progress = self.manager._get_progress(set(), "process", failed_image_ids={"img3"})
+        progress = self.manager._commit_update(set(), "process", failed_image_ids={"img3"})
         assert progress is not None
         self.assertEqual(progress.failed, 3)
 
@@ -1093,7 +1097,7 @@ class TestTaskStateManager(TestCase):
         self._init_and_verify(self.image_ids)
 
         # Process 2 successfully, 2 fail, 1 remains pending
-        progress = self.manager._get_progress(
+        progress = self.manager._commit_update(
             {"img1", "img2", "img3", "img4"}, "process", failed_image_ids={"img3", "img4"}
         )
         assert progress is not None
@@ -1109,7 +1113,7 @@ class TestTaskStateManager(TestCase):
         self._init_and_verify(self.image_ids)
 
         # Add failed images
-        self.manager._get_progress({"img1", "img2"}, "process", failed_image_ids={"img1", "img2"})
+        self.manager._commit_update({"img1", "img2"}, "process", failed_image_ids={"img1", "img2"})
 
         # Verify failed set exists
         failed_set = cache.get(self.manager._failed_key)
