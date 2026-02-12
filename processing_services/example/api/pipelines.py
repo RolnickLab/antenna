@@ -9,6 +9,7 @@ from .algorithms import (
     RandomSpeciesClassifier,
     ZeroShotObjectDetector,
 )
+from .global_moth_classifier import GlobalMothClassifier
 from .schemas import (
     Detection,
     DetectionResponse,
@@ -344,5 +345,66 @@ class ZeroShotObjectDetectorWithConstantClassifierPipeline(Pipeline):
             detections_with_classifications, elapsed_time
         )
         logger.info(f"Successfully processed {len(detections_with_classifications)} detections.")
+
+        return pipeline_response
+
+
+class ZeroShotObjectDetectorWithGlobalMothClassifierPipeline(Pipeline):
+    """
+    A pipeline that uses the HuggingFace zero shot object detector and the global moth classifier.
+    This provides high-quality moth species identification with 29,176+ species support.
+    """
+
+    batch_sizes = [1, 4]  # Detector batch=1, Classifier batch=4
+    config = PipelineConfigResponse(
+        name="Zero Shot Object Detector With Global Moth Classifier Pipeline",
+        slug="zero-shot-object-detector-with-global-moth-classifier-pipeline",
+        description=(
+            "HF zero shot object detector with global moth species classifier. "
+            "Supports 29,176+ moth species trained on global data."
+        ),
+        version=1,
+        algorithms=[],  # Will be populated in get_stages()
+    )
+
+    def get_stages(self) -> list[Algorithm]:
+        zero_shot_object_detector = ZeroShotObjectDetector()
+        if "candidate_labels" in self.request_config:
+            zero_shot_object_detector.candidate_labels = self.request_config["candidate_labels"]
+
+        global_moth_classifier = GlobalMothClassifier()
+
+        self.config.algorithms = [
+            zero_shot_object_detector.algorithm_config_response,
+            global_moth_classifier.algorithm_config_response,
+        ]
+
+        return [zero_shot_object_detector, global_moth_classifier]
+
+    def run(self) -> PipelineResultsResponse:
+        start_time = datetime.datetime.now()
+        detections: list[Detection] = []
+
+        if self.existing_detections:
+            logger.info("[1/2] Skipping the localizer, use existing detections...")
+            detections = self.existing_detections
+        else:
+            logger.info("[1/2] No existing detections, generating detections...")
+            detections = self._get_detections(self.stages[0], self.source_images, self.batch_sizes[0])
+
+        logger.info("[2/2] Running the global moth classifier...")
+        detections_with_classifications: list[Detection] = self._get_detections(
+            self.stages[1], detections, self.batch_sizes[1]
+        )
+
+        end_time = datetime.datetime.now()
+        elapsed_time = (end_time - start_time).total_seconds()
+
+        pipeline_response: PipelineResultsResponse = self._get_pipeline_response(
+            detections_with_classifications, elapsed_time
+        )
+        logger.info(
+            f"Successfully processed {len(detections_with_classifications)} detections with global moth classifier."
+        )
 
         return pipeline_response
