@@ -1,5 +1,6 @@
 export enum STRING {
   /* BUTTON */
+  ADD,
   ADMIN,
   BACK,
   CANCEL,
@@ -61,6 +62,8 @@ export enum STRING {
   ENTITY_TYPE_PROCESSING_SERVICE,
   ENTITY_TYPE_PROJECT_DETAILS,
   ENTITY_TYPE_PROJECT,
+  ENTITY_TYPE_TAXA_LIST,
+  ENTITY_TYPE_TAXON,
   ENTITY_VIEW,
 
   /* FIELD_LABEL */
@@ -186,6 +189,7 @@ export enum STRING {
   MESSAGE_PERMISSIONS_MISSING,
   MESSAGE_PROCESS_NOW_TOOLTIP,
   MESSAGE_REMOVE_MEMBER_CONFIRM,
+  MESSAGE_MESSAGE_REMOVE_TAXA_LIST_TAXON_CONFIRM,
   MESSAGE_RESET_INSTRUCTIONS_SENT,
   MESSAGE_RESULT_RANGE,
   MESSAGE_SIGNED_UP,
@@ -216,6 +220,7 @@ export enum STRING {
   NAV_ITEM_SITES,
   NAV_ITEM_STORAGE,
   NAV_ITEM_SUMMARY,
+  NAV_ITEM_TAXA_LISTS,
   NAV_ITEM_TAXA,
   NAV_ITEM_TEAM,
   NAV_ITEM_TERMS_OF_SERVICE,
@@ -281,6 +286,7 @@ export enum STRING {
   REJECT_ID_SHORT,
   REJECT_ID,
   REMOVE_MEMBER,
+  REMOVE_TAXA_LIST_TAXON,
   RESULTS_MEMBERS,
   RESULTS,
   SELECT_COLUMNS,
@@ -303,6 +309,7 @@ export enum STRING {
 
 const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* BUTTON */
+  [STRING.ADD]: 'Add',
   [STRING.ADMIN]: 'Admin',
   [STRING.BACK]: 'Back',
   [STRING.CANCEL]: 'Cancel',
@@ -460,6 +467,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.ENTITY_TYPE_PROCESSING_SERVICE]: 'processing service',
   [STRING.ENTITY_TYPE_PROJECT_DETAILS]: 'project details',
   [STRING.ENTITY_TYPE_PROJECT]: 'project',
+  [STRING.ENTITY_TYPE_TAXA_LIST]: 'taxa list',
+  [STRING.ENTITY_TYPE_TAXON]: 'taxon',
   [STRING.ENTITY_VIEW]: 'View {{type}}',
 
   /* MESSAGE */
@@ -505,6 +514,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'Process this single image with presets',
   [STRING.MESSAGE_REMOVE_MEMBER_CONFIRM]:
     'Are you sure you want to remove {{user}} from the team?',
+  [STRING.MESSAGE_MESSAGE_REMOVE_TAXA_LIST_TAXON_CONFIRM]:
+    'Are you sure you want to remove this taxon from the taxa list?',
   [STRING.MESSAGE_RESET_INSTRUCTIONS_SENT]:
     'Reset intructions has been sent to {{email}}!',
   [STRING.MESSAGE_RESULT_RANGE]:
@@ -537,6 +548,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NAV_ITEM_SITES]: 'Sites',
   [STRING.NAV_ITEM_STORAGE]: 'Storage',
   [STRING.NAV_ITEM_SUMMARY]: 'Summary',
+  [STRING.NAV_ITEM_TAXA_LISTS]: 'Taxa lists',
   [STRING.NAV_ITEM_TAXA]: 'Taxa',
   [STRING.NAV_ITEM_TEAM]: 'Team',
   [STRING.NAV_ITEM_TERMS_OF_SERVICE]: 'Terms of service',
@@ -614,6 +626,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.REJECT_ID_SHORT]: 'Reject',
   [STRING.REJECT_ID]: 'Reject ID',
   [STRING.REMOVE_MEMBER]: 'Remove member',
+  [STRING.REMOVE_TAXA_LIST_TAXON]: 'Remove taxon',
   [STRING.RESULTS_MEMBERS]: '{{total}} member(s)',
   [STRING.RESULTS]: '{{total}} result(s)',
   [STRING.SELECT_COLUMNS]: 'Select columns',

@@ -40,6 +40,8 @@ import { Projects } from 'pages/projects/projects'
 import SessionDetails from 'pages/session-details/session-details'
 import { Sessions } from 'pages/sessions/sessions'
 import { Species } from 'pages/species/species'
+import { TaxaListDetails } from 'pages/taxa-list-details/taxa-list-details'
+import { TaxaLists } from 'pages/taxa-lists/taxa-lists'
 import { ReactNode, useContext, useEffect } from 'react'
 import { Helmet, HelmetProvider } from 'react-helmet-async'
 import {
@@ -112,6 +114,12 @@ export const App = () => (
             <Route path="summary" element={<Summary />} />
             <Route path="collections" element={<Collections />} />
             <Route path="collections/:id" element={<CollectionDetails />} />
+            <Route path="taxa-lists" element={<TaxaLists />} />
+            <Route path="taxa-lists/:id?" element={<TaxaListDetails />} />
+            <Route
+              path="taxa-lists/:id?/taxa/:taxonId"
+              element={<TaxaListDetails />}
+            />
             <Route path="exports/:id?" element={<Exports />} />
             <Route
               path="processing-services/:id?"
