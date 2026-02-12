@@ -23,6 +23,11 @@ projects_router.register(
     UserProjectMembershipViewSet,
     basename="project-members",
 )
+projects_router.register(
+    r"pipelines",
+    ml_views.ProjectPipelineViewSet,
+    basename="project-pipelines",
+)
 
 router.register(r"deployments/devices", views.DeviceViewSet)
 router.register(r"deployments/sites", views.SiteViewSet)

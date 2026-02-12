@@ -331,7 +331,7 @@ class ProcessingServiceStatusResponse(pydantic.BaseModel):
     error: str | None = None
     server_live: bool | None = None
     pipelines_online: list[str] = []
-    endpoint_url: str
+    endpoint_url: str | None = None
     latency: float
 
 
@@ -342,3 +342,12 @@ class PipelineRegistrationResponse(pydantic.BaseModel):
     pipelines: list[PipelineConfigResponse] = []
     pipelines_created: list[str] = []
     algorithms_created: list[str] = []
+
+
+class AsyncPipelineRegistrationRequest(pydantic.BaseModel):
+    """
+    Request to register pipelines from an async processing service
+    """
+
+    processing_service_name: str
+    pipelines: list[PipelineConfigResponse] = []

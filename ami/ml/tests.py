@@ -115,6 +115,51 @@ class TestProcessingServiceAPI(APITestCase):
 
         self.assertEqual(pipelines_queryset.count(), len(response["pipelines"]))
 
+    def test_create_processing_service_without_endpoint_url(self):
+        """Test creating a ProcessingService without endpoint_url (pull mode)"""
+        processing_services_create_url = reverse_with_params("api:processingservice-list")
+        self.client.force_authenticate(user=self.user)
+        processing_service_data = {
+            "project": self.project.pk,
+            "name": "Pull Mode Service",
+            "description": "Service without endpoint",
+        }
+        resp = self.client.post(processing_services_create_url, processing_service_data)
+        self.client.force_authenticate(user=None)
+
+        self.assertEqual(resp.status_code, 201)
+        data = resp.json()
+
+        # Check that endpoint_url is null
+        self.assertIsNone(data["instance"]["endpoint_url"])
+
+        # Check that status indicates no endpoint configured
+        self.assertFalse(data["status"]["request_successful"])
+        self.assertIn("No endpoint URL configured", data["status"]["error"])
+        self.assertIsNone(data["status"]["endpoint_url"])
+
+    def test_get_status_with_null_endpoint_url(self):
+        """Test get_status method when endpoint_url is None"""
+        service = ProcessingService.objects.create(name="Pull Mode Service", endpoint_url=None)
+        service.projects.add(self.project)
+
+        status = service.get_status()
+
+        self.assertFalse(status.request_successful)
+        self.assertIsNone(status.server_live)
+        self.assertIsNone(status.endpoint_url)
+        self.assertIsNotNone(status.error)
+        self.assertIn("No endpoint URL configured", (status.error or ""))
+        self.assertEqual(status.pipelines_online, [])
+
+    def test_get_pipeline_configs_with_null_endpoint_url(self):
+        """Test get_pipeline_configs method when endpoint_url is None"""
+        service = ProcessingService.objects.create(name="Pull Mode Service", endpoint_url=None)
+
+        configs = service.get_pipeline_configs()
+
+        self.assertEqual(configs, [])
+
 
 class TestPipelineWithProcessingService(TestCase):
     def test_run_pipeline_with_errors_from_processing_service(self):
