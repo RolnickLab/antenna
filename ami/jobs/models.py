@@ -1024,7 +1024,7 @@ class Job(BaseModel):
         if self.progress.summary.status != self.status:
             logger.warning(f"Job {self} status mismatches progress: {self.progress.summary.status} != {self.status}")
 
-    def check_custom_permission(self, user, action: str) -> bool:
+    def check_custom_object_level_permission(self, user, action: str) -> bool:
         job_type = self.job_type_key.lower()
         if self.source_image_single:
             action = "run_single_image"
@@ -1036,7 +1036,7 @@ class Job(BaseModel):
         project = self.get_project() if hasattr(self, "get_project") else None
         return user.has_perm(permission_codename, project)
 
-    def get_custom_user_permissions(self, user) -> list[str]:
+    def get_custom_object_level_permissions(self, user) -> list[str]:
         project = self.get_project()
         if not project:
             return []
@@ -1052,7 +1052,9 @@ class Job(BaseModel):
                 # make sure to exclude standard CRUD actions
                 if action not in ["view", "create", "update", "delete"]:
                     custom_perms.add(action)
-        logger.debug(f"Custom permissions for user {user} on project {self}, with jobtype {job_type}: {custom_perms}")
+        logger.debug(
+            f"Custom object permissions for user {user} on project {self}, with jobtype {job_type}: {custom_perms}"
+        )
         return list(custom_perms)
 
     @classmethod

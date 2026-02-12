@@ -2,17 +2,18 @@ import logging
 
 from django.contrib.auth.models import Group
 from django.db import transaction
-from django.db.models.signals import m2m_changed
+from django.db.models.signals import m2m_changed, post_save
 from django.dispatch import receiver
 
 from ami.main.models import Project, UserProjectMembership
-from ami.users.roles import Role, create_roles_for_project
+from ami.users.models import User
+from ami.users.roles import AuthorizedUser, GlobalRole, Role, create_roles_for_project
 
 logger = logging.getLogger(__name__)
 
 
-def create_roles(sender, **kwargs):
-    """Creates predefined roles with specific permissions ."""
+def create_project_based_roles(sender, **kwargs):
+    """Creates predefined project based roles with specific permissions ."""
 
     logger.info("Creating roles for all projects")
     try:
@@ -26,6 +27,25 @@ def create_roles(sender, **kwargs):
         logger.warning(
             f"Failed to create roles during migration: {e}. This can be run manually via management command."
         )
+
+
+def create_global_roles(sender, **kwargs):
+    """
+    Create or update all global role groups and synchronize their permissions.
+
+    This function iterates through every subclass of `GlobalRole` (e.g. AuthorizedUser),
+    ensures each role group exists, and syncs its assigned permissions according to
+    the `model_level_permissions` list defined on the role class.
+    """
+    logger.info("Ensuring all global role groups and permissions are up to date")
+
+    for role_cls in GlobalRole.__subclasses__():
+        try:
+            group, created = Group.objects.get_or_create(name=role_cls.get_group_name())
+            role_cls.sync_group_permissions()
+            logger.info(f"Synchronized global role: {role_cls.__name__} ({group.name})")
+        except Exception as e:
+            logger.warning(f"Failed to sync global role {role_cls.__name__}: {e}")
 
 
 @receiver(m2m_changed, sender=Group.user_set.through)
@@ -76,3 +96,10 @@ def manage_project_membership(sender, instance, action, reverse, model, pk_set, 
         # Reconnect the signal after updating members
         m2m_changed.connect(manage_project_membership, sender=Group.user_set.through)
         logger.debug("Reconnecting signal after updating project members.")
+
+
+@receiver(post_save, sender=User)
+def assign_authorized_user_group(sender, instance, created, **kwargs):
+    if created:
+        logger.info(f"Assigning AuthorizedUser role to new user {instance.email}")
+        AuthorizedUser.assign_user(instance)
