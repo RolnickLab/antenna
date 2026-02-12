@@ -392,10 +392,12 @@ class TestResultEndpointWithError(APITestCase):
         # Assert: Celery task was queued
         mock_apply_async.assert_called_once()
 
-        # Verify the task was called with correct arguments
-        # .delay() calls .apply_async(args, kwargs) with positional arguments
-        # args[0] = positional args tuple (empty in this case)
-        # args[1] = keyword args dict (contains our task parameters)
+        # Verify the task was called with correct arguments.
+        # NOTE on Celery calling convention:
+        # .delay(k1=v1, k2=v2) calls .apply_async((), {k1: v1, k2: v2})
+        # i.e. two *positional* args to apply_async: an empty args tuple and a kwargs dict.
+        # This is NOT the same as apply_async(kwargs={...}) which uses a keyword argument.
+        # So mock.call_args[0] == ((), {task kwargs}) — a 2-element tuple.
         call_args = mock_apply_async.call_args[0]
         self.assertEqual(len(call_args), 2, "apply_async should be called with (args, kwargs)")
         task_kwargs = call_args[1]  # Second positional arg is the kwargs dict
