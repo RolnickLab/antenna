@@ -91,7 +91,7 @@ class TestProcessNatsPipelineResultError(TestCase):
     ):
         """Assert TaskStateManager state is correct."""
         manager = TaskStateManager(job_id)
-        progress = manager._get_progress(set(), stage)
+        progress = manager.get_progress(stage)
         self.assertIsNotNone(progress, f"Progress not found for stage '{stage}'")
         self.assertEqual(progress.processed, expected_processed)
         self.assertEqual(progress.total, expected_total)
@@ -158,7 +158,7 @@ class TestProcessNatsPipelineResultError(TestCase):
         # Assert: Progress was NOT updated (empty set of processed images)
         # Since no image_id was provided, processed_image_ids = set()
         manager = TaskStateManager(self.job.pk)
-        progress = manager._get_progress(set(), "process")
+        progress = manager.get_progress("process")
         self.assertEqual(progress.processed, 0)  # No images marked as processed
 
         mock_manager.acknowledge_task.assert_called_once_with(reply_subject)
@@ -209,13 +209,13 @@ class TestProcessNatsPipelineResultError(TestCase):
 
         # Assert: All 3 images marked as processed in TaskStateManager
         manager = TaskStateManager(self.job.pk)
-        process_progress = manager._get_progress(set(), "process")
+        process_progress = manager.get_progress("process")
         self.assertIsNotNone(process_progress)
         self.assertEqual(process_progress.processed, 3)
         self.assertEqual(process_progress.total, 3)
         self.assertEqual(process_progress.percentage, 1.0)
 
-        results_progress = manager._get_progress(set(), "results")
+        results_progress = manager.get_progress("results")
         self.assertIsNotNone(results_progress)
         self.assertEqual(results_progress.processed, 3)
         self.assertEqual(results_progress.total, 3)
@@ -267,7 +267,7 @@ class TestProcessNatsPipelineResultError(TestCase):
 
         # Assert: Progress was NOT updated (lock not acquired)
         manager = TaskStateManager(self.job.pk)
-        progress = manager._get_progress(set(), "process")
+        progress = manager.get_progress("process")
         self.assertEqual(progress.processed, 0)
 
     @patch("ami.jobs.tasks.TaskQueueManager")

@@ -86,16 +86,22 @@ class TaskStateManager:
                 cache.delete(lock_key)
                 logger.debug(f"Released lock for job {self.job_id}, task {request_id}")
 
+    def get_progress(self, stage: str) -> TaskProgress | None:
+        """Read-only progress snapshot for the given stage. Does not acquire a lock or mutate state."""
+        pending_images = cache.get(self._get_pending_key(stage))
+        total_images = cache.get(self._total_key)
+        if pending_images is None or total_images is None:
+            return None
+        remaining = len(pending_images)
+        processed = total_images - remaining
+        percentage = float(processed) / total_images if total_images > 0 else 1.0
+        return TaskProgress(remaining=remaining, total=total_images, processed=processed, percentage=percentage)
+
     def _get_progress(self, processed_image_ids: set[str], stage: str) -> TaskProgress | None:
         """
-        Get current progress information for the job.
+        Update pending images and return progress. Must be called under lock.
 
-        Returns:
-            TaskProgress namedtuple with fields:
-                - remaining: Number of images still pending (or None if not tracked)
-                - total: Total number of images (or None if not tracked)
-                - processed: Number of images processed (or None if not tracked)
-                - percentage: Progress as float 0.0-1.0 (or None if not tracked)
+        Removes processed_image_ids from the pending set and persists the update.
         """
         pending_images = cache.get(self._get_pending_key(stage))
         total_images = cache.get(self._total_key)
