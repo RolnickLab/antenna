@@ -1,7 +1,7 @@
 """Unit tests for TaskQueueManager."""
 
 import unittest
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from ami.ml.orchestration.nats_queue import TaskQueueManager
@@ -19,15 +19,16 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
             image_url="https://example.com/image.jpg",
         )
 
-    @contextmanager
-    def _mock_nats_setup(self):
-        """Helper to create and mock NATS connection with connection pool.
+    @asynccontextmanager
+    async def _mock_nats_setup(self):
+        """Helper to create and mock NATS connection.
 
         Yields:
-            tuple: (nc, js, mock_pool) - NATS connection, JetStream context, and mock pool
+            tuple: (nc, js) - mock NATS client and JetStream context
         """
         nc = MagicMock()
         nc.is_closed = False
+        nc.is_connected = True
         nc.close = AsyncMock()
 
         js = MagicMock()
@@ -40,22 +41,24 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
         js.delete_consumer = AsyncMock()
         js.delete_stream = AsyncMock()
 
-        with patch("ami.ml.orchestration.nats_connection_pool.get_pool") as mock_get_pool:
-            mock_pool = MagicMock()
-            mock_pool.get_connection = AsyncMock(return_value=(nc, js))
-            mock_get_pool.return_value = mock_pool
-            yield nc, js, mock_pool
+        mock_nc = AsyncMock(return_value=nc)
+        nc.jetstream.return_value = js
+
+        with patch("ami.ml.orchestration.nats_queue.nats.connect", mock_nc):
+            yield nc, js
 
     async def test_publish_task_creates_stream_and_consumer(self):
         """Test that publish_task ensures stream and consumer exist."""
+        from nats.js.errors import NotFoundError
+
         sample_task = self._create_sample_task()
 
-        with self._mock_nats_setup() as (_, js, _):
-            js.stream_info.side_effect = Exception("Not found")
-            js.consumer_info.side_effect = Exception("Not found")
+        async with self._mock_nats_setup() as (_, js):
+            js.stream_info.side_effect = NotFoundError
+            js.consumer_info.side_effect = NotFoundError
 
-            manager = TaskQueueManager()
-            await manager.publish_task(456, sample_task)
+            async with TaskQueueManager() as manager:
+                await manager.publish_task(456, sample_task)
 
             js.add_stream.assert_called_once()
             self.assertIn("job_456", str(js.add_stream.call_args))
@@ -71,14 +74,14 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
         mock_msg.reply = "reply.subject.123"
         mock_msg.metadata = MagicMock(sequence=MagicMock(stream=1))
 
-        with self._mock_nats_setup() as (_, js, _):
+        async with self._mock_nats_setup() as (_, js):
             mock_psub = MagicMock()
             mock_psub.fetch = AsyncMock(return_value=[mock_msg])
             mock_psub.unsubscribe = AsyncMock()
             js.pull_subscribe = AsyncMock(return_value=mock_psub)
 
-            manager = TaskQueueManager()
-            task = await manager.reserve_task(123)
+            async with TaskQueueManager() as manager:
+                task = await manager.reserve_task(123)
 
             self.assertIsNotNone(task)
             self.assertEqual(task.id, sample_task.id)
@@ -87,26 +90,26 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
 
     async def test_reserve_task_no_messages(self):
         """Test reserve_task when no messages are available."""
-        with self._mock_nats_setup() as (_, js, _):
+        async with self._mock_nats_setup() as (_, js):
             mock_psub = MagicMock()
             mock_psub.fetch = AsyncMock(return_value=[])
             mock_psub.unsubscribe = AsyncMock()
             js.pull_subscribe = AsyncMock(return_value=mock_psub)
 
-            manager = TaskQueueManager()
-            task = await manager.reserve_task(123)
+            async with TaskQueueManager() as manager:
+                task = await manager.reserve_task(123)
 
             self.assertIsNone(task)
             mock_psub.unsubscribe.assert_called_once()
 
     async def test_acknowledge_task_success(self):
         """Test successful task acknowledgment."""
-        with self._mock_nats_setup() as (nc, _, _):
+        async with self._mock_nats_setup() as (nc, _):
             nc.publish = AsyncMock()
             nc.flush = AsyncMock()
 
-            manager = TaskQueueManager()
-            result = await manager.acknowledge_task("reply.subject.123")
+            async with TaskQueueManager() as manager:
+                result = await manager.acknowledge_task("reply.subject.123")
 
             self.assertTrue(result)
             nc.publish.assert_called_once_with("reply.subject.123", b"+ACK")
@@ -114,9 +117,9 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
 
     async def test_cleanup_job_resources(self):
         """Test cleanup of job resources (consumer and stream)."""
-        with self._mock_nats_setup() as (_, js, _):
-            manager = TaskQueueManager()
-            result = await manager.cleanup_job_resources(123)
+        async with self._mock_nats_setup() as (_, js):
+            async with TaskQueueManager() as manager:
+                result = await manager.cleanup_job_resources(123)
 
             self.assertTrue(result)
             js.delete_consumer.assert_called_once()
