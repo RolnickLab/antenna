@@ -19,7 +19,9 @@ if TYPE_CHECKING:
     from ami.jobs.models import JobState
 
 logger = logging.getLogger(__name__)
-FAILURE_THRESHOLD = 0.5  # threshold for marking a job as failed based on the percentage of failed images.
+# Minimum success rate. Jobs with fewer than this fraction of images
+# processed successfully are marked as failed. Also used in MLJob.process_images().
+FAILURE_THRESHOLD = 0.5
 
 
 @celery_app.task(bind=True, soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
@@ -94,7 +96,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
 
     try:
         complete_state = JobState.SUCCESS
-        if progress_info.total > 0 and (progress_info.failed / progress_info.total) >= FAILURE_THRESHOLD:
+        if progress_info.total > 0 and (progress_info.failed / progress_info.total) > FAILURE_THRESHOLD:
             complete_state = JobState.FAILURE
         _update_job_progress(
             job_id,
@@ -163,7 +165,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
 
         # update complete state based on latest progress info after saving results
         complete_state = JobState.SUCCESS
-        if progress_info.total > 0 and (progress_info.failed / progress_info.total) >= FAILURE_THRESHOLD:
+        if progress_info.total > 0 and (progress_info.failed / progress_info.total) > FAILURE_THRESHOLD:
             complete_state = JobState.FAILURE
 
         _update_job_progress(

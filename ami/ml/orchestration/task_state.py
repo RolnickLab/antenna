@@ -3,18 +3,25 @@ Task state management for job progress tracking using Redis.
 """
 
 import logging
-from collections import namedtuple
+from dataclasses import dataclass
 
 from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
 
-# Define a namedtuple for a TaskProgress with the image counts
-TaskProgress = namedtuple(
-    "TaskProgress",
-    ["remaining", "total", "processed", "percentage", "detections", "classifications", "captures", "failed"],
-)
+@dataclass
+class TaskProgress:
+    """Progress snapshot for a job stage tracked in Redis."""
+
+    remaining: int = 0
+    total: int = 0
+    processed: int = 0
+    percentage: float = 0.0
+    detections: int = 0
+    classifications: int = 0
+    captures: int = 0
+    failed: int = 0
 
 
 def _lock_key(job_id: int) -> str:

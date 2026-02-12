@@ -561,7 +561,8 @@ class MLJob(JobType):
 
         job.logger.info(f"All tasks completed for job {job.pk}")
 
-        FAILURE_THRESHOLD = 0.5
+        from ami.jobs.tasks import FAILURE_THRESHOLD
+
         if image_count and (percent_successful < FAILURE_THRESHOLD):
             job.progress.update_stage("process", status=JobState.FAILURE)
             job.save()
