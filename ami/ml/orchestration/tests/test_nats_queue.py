@@ -42,11 +42,9 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
         js.delete_consumer = AsyncMock()
         js.delete_stream = AsyncMock()
 
-        with patch("ami.ml.orchestration.nats_connection.get_provider") as mock_get_provider:
-            mock_provider = MagicMock()
-            mock_provider.get_connection = AsyncMock(return_value=(nc, js))
-            mock_get_provider.return_value = mock_provider
-            yield nc, js, mock_provider
+        with patch("ami.ml.orchestration.nats_connection.get_connection", new_callable=AsyncMock) as mock_get_conn:
+            mock_get_conn.return_value = (nc, js)
+            yield nc, js, mock_get_conn
 
     async def test_publish_task_creates_stream_and_consumer(self):
         """Test that publish_task ensures stream and consumer exist."""
@@ -144,8 +142,8 @@ class TestRetryOnConnectionError(unittest.IsolatedAsyncioTestCase):
             image_url="https://example.com/retry.jpg",
         )
 
-    async def test_retry_resets_provider_on_connection_error(self):
-        """On connection error, the decorator should call provider.reset() before retrying."""
+    async def test_retry_resets_connection_on_error(self):
+        """On connection error, the decorator should call reset_connection() before retrying."""
         from nats.errors import ConnectionClosedError
 
         nc = MagicMock()
@@ -159,12 +157,17 @@ class TestRetryOnConnectionError(unittest.IsolatedAsyncioTestCase):
         js.publish = AsyncMock(side_effect=[ConnectionClosedError(), MagicMock(seq=1)])
         js.pull_subscribe = AsyncMock()
 
-        with patch("ami.ml.orchestration.nats_connection.get_provider") as mock_get_provider:
-            mock_provider = MagicMock()
-            mock_provider.get_connection = AsyncMock(return_value=(nc, js))
-            mock_provider.reset = AsyncMock()
-            mock_get_provider.return_value = mock_provider
-
+        with (
+            patch(
+                "ami.ml.orchestration.nats_connection.get_connection",
+                new_callable=AsyncMock,
+                return_value=(nc, js),
+            ),
+            patch(
+                "ami.ml.orchestration.nats_connection.reset_connection",
+                new_callable=AsyncMock,
+            ) as mock_reset,
+        ):
             manager = TaskQueueManager()
             sample_task = self._create_sample_task()
 
@@ -173,8 +176,8 @@ class TestRetryOnConnectionError(unittest.IsolatedAsyncioTestCase):
                 result = await manager.publish_task(456, sample_task)
 
             self.assertTrue(result)
-            # provider.reset() should have been called once (after first failure)
-            mock_provider.reset.assert_called_once()
+            # reset_connection() should have been called once (after first failure)
+            mock_reset.assert_called_once()
 
     async def test_retry_raises_after_max_retries(self):
         """After exhausting retries, the last error should be raised."""
@@ -190,12 +193,17 @@ class TestRetryOnConnectionError(unittest.IsolatedAsyncioTestCase):
         # All attempts fail
         js.publish = AsyncMock(side_effect=ConnectionClosedError())
 
-        with patch("ami.ml.orchestration.nats_connection.get_provider") as mock_get_provider:
-            mock_provider = MagicMock()
-            mock_provider.get_connection = AsyncMock(return_value=(nc, js))
-            mock_provider.reset = AsyncMock()
-            mock_get_provider.return_value = mock_provider
-
+        with (
+            patch(
+                "ami.ml.orchestration.nats_connection.get_connection",
+                new_callable=AsyncMock,
+                return_value=(nc, js),
+            ),
+            patch(
+                "ami.ml.orchestration.nats_connection.reset_connection",
+                new_callable=AsyncMock,
+            ) as mock_reset,
+        ):
             manager = TaskQueueManager()
             sample_task = self._create_sample_task()
 
@@ -203,8 +211,8 @@ class TestRetryOnConnectionError(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(ConnectionClosedError):
                     await manager.publish_task(456, sample_task)
 
-            # reset() called twice (max_retries=2, so 2 retries means 2 resets)
-            self.assertEqual(mock_provider.reset.call_count, 2)
+            # reset_connection() called twice (max_retries=2, so 2 retries means 2 resets)
+            self.assertEqual(mock_reset.call_count, 2)
 
     async def test_non_connection_errors_are_not_retried(self):
         """Non-connection errors (e.g. ValueError) should propagate immediately without retry."""
@@ -217,17 +225,22 @@ class TestRetryOnConnectionError(unittest.IsolatedAsyncioTestCase):
         js.add_consumer = AsyncMock()
         js.publish = AsyncMock(side_effect=ValueError("bad data"))
 
-        with patch("ami.ml.orchestration.nats_connection.get_provider") as mock_get_provider:
-            mock_provider = MagicMock()
-            mock_provider.get_connection = AsyncMock(return_value=(nc, js))
-            mock_provider.reset = AsyncMock()
-            mock_get_provider.return_value = mock_provider
-
+        with (
+            patch(
+                "ami.ml.orchestration.nats_connection.get_connection",
+                new_callable=AsyncMock,
+                return_value=(nc, js),
+            ),
+            patch(
+                "ami.ml.orchestration.nats_connection.reset_connection",
+                new_callable=AsyncMock,
+            ) as mock_reset,
+        ):
             manager = TaskQueueManager()
             sample_task = self._create_sample_task()
 
             with self.assertRaises(ValueError):
                 await manager.publish_task(456, sample_task)
 
-            # reset() should NOT have been called
-            mock_provider.reset.assert_not_called()
+            # reset_connection() should NOT have been called
+            mock_reset.assert_not_called()

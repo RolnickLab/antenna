@@ -47,6 +47,16 @@ def retry_on_connection_error(max_retries: int = 2, backoff_seconds: float = 0.5
     This works correctly with async_to_sync() because the pool is keyed by event loop,
     ensuring each retry uses the connection bound to the current loop.
 
+    Retried error types:
+        - ConnectionClosedError: server closed the connection
+        - NoServersError: cannot reach any NATS server
+        - TimeoutError: NATS operation timed out
+        - ConnectionReconnectingError: client is mid-reconnect
+        - StaleConnectionError: client detected a stale connection
+        - OSError: network-level failures — includes ConnectionRefusedError,
+          ConnectionResetError, BrokenPipeError, socket.timeout, and other
+          OS-level socket/DNS errors
+
     Args:
         max_retries: Maximum number of retry attempts (default: 2)
         backoff_seconds: Initial backoff time in seconds (default: 0.5)
@@ -68,7 +78,8 @@ def retry_on_connection_error(max_retries: int = 2, backoff_seconds: float = 0.5
                     nats_errors.NoServersError,
                     nats_errors.TimeoutError,
                     nats_errors.ConnectionReconnectingError,
-                    OSError,  # Network errors
+                    nats_errors.StaleConnectionError,
+                    OSError,  # ConnectionRefusedError, ConnectionResetError, BrokenPipeError, etc.
                 ) as e:
                     last_error = e
                     # Don't retry on last attempt
@@ -78,11 +89,10 @@ def retry_on_connection_error(max_retries: int = 2, backoff_seconds: float = 0.5
                             exc_info=True,
                         )
                         break
-                    # Reset the connection provider so next attempt gets a fresh connection
-                    from ami.ml.orchestration.nats_connection import get_provider
+                    # Reset the connection so next attempt gets a fresh one
+                    from ami.ml.orchestration.nats_connection import reset_connection
 
-                    provider = get_provider()
-                    await provider.reset()
+                    await reset_connection()
                     # Exponential backoff
                     wait_time = backoff_seconds * (2**attempt)
                     logger.warning(
@@ -119,11 +129,10 @@ class TaskQueueManager:
     """
 
     async def _get_connection(self) -> tuple["NATSClient", JetStreamContext]:
-        """Get connection from the event-loop-local provider."""
-        from ami.ml.orchestration.nats_connection import get_provider
+        """Get connection from the event-loop-local pool."""
+        from ami.ml.orchestration.nats_connection import get_connection
 
-        provider = get_provider()
-        return await provider.get_connection()
+        return await get_connection()
 
     def _get_stream_name(self, job_id: int) -> str:
         """Get stream name from job_id."""

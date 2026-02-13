@@ -1,42 +1,34 @@
 """
 NATS connection management for both Celery workers and Django processes.
 
-Provides two connection strategies, selectable via NATS_CONNECTION_STRATEGY setting:
+Uses a persistent connection pool (one NATS connection per event loop) for all
+TaskQueueManager operations. A 1000-image job generates ~1500+ NATS operations
+(1 for queuing, 250-500 for task fetches, 1000 for ACKs). The pool keeps one
+connection alive per event loop and reuses it for all of them.
 
-  "pool" (default):
-    Maintains a persistent NATS connection per event loop and reuses it across
-    all TaskQueueManager operations. A 1000-image job generates ~1500+ NATS
-    operations (1 for queuing, 250-500 for task fetches, 1000 for ACKs). The
-    pool keeps one connection alive per event loop and reuses it for all of them.
-
-  "per_operation":
-    Creates a fresh TCP connection for every get_connection() call. Simple but
-    expensive — the same 1000-image job opens ~1500 TCP connections. Use this
-    only for debugging connection issues or when pooling causes problems.
-
-Why keyed by event loop (pool strategy):
+Why keyed by event loop:
   Django views and Celery tasks use async_to_sync(), which creates a new event
   loop per thread. asyncio.Lock and nats.Client are bound to the loop they were
   created on, so sharing them across loops causes "attached to a different loop"
   errors. Keying by loop ensures isolation. WeakKeyDictionary auto-cleans when
   loops are garbage collected, so short-lived loops don't leak.
 
-Connection lifecycle (pool strategy):
+Connection lifecycle:
   - Created lazily on first use within an event loop
   - Reused for all subsequent operations on that loop
-  - On connection error: retry decorator calls pool.reset() to close the stale
-    connection; next operation creates a fresh one (see retry_on_connection_error
-    in nats_queue.py)
+  - On connection error: retry decorator calls reset_connection() to close the
+    stale connection; next operation creates a fresh one (see
+    retry_on_connection_error in nats_queue.py)
   - Cleaned up automatically when the event loop is garbage collected
 
-Both strategies implement the same interface (get_connection, reset, close) so
-TaskQueueManager is agnostic to which one is active.
+Archived alternative:
+  ContextManagerConnection preserves the original pre-pool implementation
+  (one connection per `async with` block) as a drop-in fallback.
 """
 
 import asyncio
 import logging
 import threading
-import typing
 from typing import TYPE_CHECKING
 from weakref import WeakKeyDictionary
 
@@ -48,19 +40,6 @@ if TYPE_CHECKING:
     from nats.aio.client import Client as NATSClient
 
 logger = logging.getLogger(__name__)
-
-
-class ConnectionProvider(typing.Protocol):
-    """Interface that all NATS connection strategies must implement."""
-
-    async def get_connection(self) -> tuple["NATSClient", JetStreamContext]:
-        ...
-
-    async def reset(self) -> None:
-        ...
-
-    async def close(self) -> None:
-        ...
 
 
 class ConnectionPool:
@@ -158,93 +137,86 @@ class ConnectionPool:
         self._lock = None  # Clear lock so new one is created for fresh connection
 
 
-class PerOperationConnection:
+class ContextManagerConnection:
     """
-    Creates a fresh NATS connection on every get_connection() call.
+    Archived pre-pool implementation: one NATS connection per `async with` block.
 
-    Each call closes the previous connection (if any) and opens a new one.
-    This avoids any shared state but is expensive: ~1500 TCP round-trips per
-    1000-image job vs. 1 with the pool strategy.
+    This was the original approach before the connection pool was added. It creates
+    a fresh connection on get_connection() and expects the caller to close it when
+    done. There is no connection reuse and no retry logic at this layer.
 
-    Use for debugging connection lifecycle issues or when the pool causes
-    problems (e.g. event loop mismatch edge cases).
+    Trade-offs vs ConnectionPool:
+    - Simpler: no shared state, no locking, no event-loop keying
+    - Expensive: ~1500 TCP connections per 1000-image job vs 1 with the pool
+    - No automatic reconnection — caller must handle connection failures
+
+    Kept as a drop-in fallback. To switch, change the class used in
+    _create_pool() below from ConnectionPool to ContextManagerConnection.
     """
-
-    def __init__(self):
-        self._nc: "NATSClient | None" = None
-        self._js: JetStreamContext | None = None
 
     async def get_connection(self) -> tuple["NATSClient", JetStreamContext]:
-        """Create a fresh NATS connection, closing any previous one."""
-        # Close previous connection if it exists
-        await self.close()
-
+        """Create a fresh NATS connection."""
         nats_url = settings.NATS_URL
         try:
-            logger.debug(f"Creating transient NATS connection to {nats_url}")
-            self._nc = await nats.connect(nats_url)
-            self._js = self._nc.jetstream()
-            return self._nc, self._js
+            logger.debug(f"Creating per-operation NATS connection to {nats_url}")
+            nc = await nats.connect(nats_url)
+            js = nc.jetstream()
+            return nc, js
         except Exception as e:
             logger.error(f"Failed to connect to NATS: {e}")
             raise RuntimeError(f"Could not establish NATS connection: {e}") from e
 
     async def close(self):
-        """Close the current connection if it exists."""
-        if self._nc is not None and not self._nc.is_closed:
-            try:
-                await self._nc.close()
-            except Exception as e:
-                logger.debug(f"Error closing transient connection (expected): {e}")
-        self._nc = None
-        self._js = None
+        """No-op — connections are not tracked."""
+        pass
 
     async def reset(self):
-        """Close and clear — next get_connection() creates a fresh one."""
-        await self.close()
+        """No-op — connections are not tracked."""
+        pass
 
 
-# Event-loop-keyed providers: one per event loop.
+# Event-loop-keyed pools: one ConnectionPool per event loop.
 # WeakKeyDictionary automatically cleans up when event loops are garbage collected.
-_providers: WeakKeyDictionary[asyncio.AbstractEventLoop, ConnectionProvider] = WeakKeyDictionary()
-_providers_lock = threading.Lock()
+_pools: WeakKeyDictionary[asyncio.AbstractEventLoop, ConnectionPool] = WeakKeyDictionary()
+_pools_lock = threading.Lock()
 
 
-def _create_provider() -> ConnectionProvider:
-    """Create a connection provider based on the NATS_CONNECTION_STRATEGY setting."""
-    strategy = settings.NATS_CONNECTION_STRATEGY
-    if strategy == "per_operation":
-        logger.info("Using NATS connection strategy: per_operation")
-        return PerOperationConnection()
-    logger.info("Using NATS connection strategy: pool (persistent)")
-    return ConnectionPool()
-
-
-def get_provider() -> ConnectionProvider:
-    """
-    Get or create the connection provider for the current event loop.
-
-    Each event loop gets its own provider to prevent "attached to a different loop"
-    errors. The provider type is determined by the NATS_CONNECTION_STRATEGY setting:
-    - "pool" (default): persistent connection reuse via ConnectionPool
-    - "per_operation": fresh connection each time via PerOperationConnection
-
-    Returns:
-        ConnectionProvider bound to the current event loop
-
-    Raises:
-        RuntimeError: If called outside of an async context (no running event loop)
-    """
+def _get_pool() -> ConnectionPool:
+    """Get or create the ConnectionPool for the current event loop."""
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         raise RuntimeError(
-            "get_provider() must be called from an async context with a running event loop. "
+            "get_connection() must be called from an async context with a running event loop. "
             "If calling from sync code, use async_to_sync() to wrap the async function."
         )
 
-    with _providers_lock:
-        if loop not in _providers:
-            _providers[loop] = _create_provider()
-            logger.debug(f"Created NATS connection provider for event loop {id(loop)}")
-        return _providers[loop]
+    with _pools_lock:
+        if loop not in _pools:
+            _pools[loop] = ConnectionPool()
+            logger.debug(f"Created NATS connection pool for event loop {id(loop)}")
+        return _pools[loop]
+
+
+async def get_connection() -> tuple["NATSClient", JetStreamContext]:
+    """
+    Get or create a NATS connection for the current event loop.
+
+    Returns:
+        Tuple of (NATS connection, JetStream context)
+    Raises:
+        RuntimeError: If called outside of an async context (no running event loop)
+    """
+    pool = _get_pool()
+    return await pool.get_connection()
+
+
+async def reset_connection() -> None:
+    """
+    Reset the NATS connection for the current event loop.
+
+    Closes the current connection and clears all state so the next call to
+    get_connection() creates a fresh one.
+    """
+    pool = _get_pool()
+    await pool.reset()

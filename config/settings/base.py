@@ -266,8 +266,6 @@ REDIS_URL = env("REDIS_URL", default=None)
 # NATS
 # ------------------------------------------------------------------------------
 NATS_URL = env("NATS_URL", default="nats://localhost:4222")  # type: ignore[no-untyped-call]
-# Connection strategy: "pool" (persistent, default) or "per_operation" (fresh connection each time)
-NATS_CONNECTION_STRATEGY = env("NATS_CONNECTION_STRATEGY", default="pool")  # type: ignore[no-untyped-call]
 
 # ADMIN
 # ------------------------------------------------------------------------------
