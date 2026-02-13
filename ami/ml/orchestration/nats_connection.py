@@ -194,7 +194,7 @@ def _get_pool() -> ConnectionPool:
         raise RuntimeError(
             "get_connection() must be called from an async context with a running event loop. "
             "If calling from sync code, use async_to_sync() to wrap the async function."
-        )
+        ) from None
 
     with _pools_lock:
         if loop not in _pools:
