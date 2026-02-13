@@ -248,9 +248,9 @@ def _update_job_progress(
             )
 
             # Add new counts to existing counts
-            new_detections = state_params.get("detections", 0) or 0
-            new_classifications = state_params.get("classifications", 0) or 0
-            new_captures = state_params.get("captures", 0) or 0
+            new_detections = state_params.get("detections", 0)
+            new_classifications = state_params.get("classifications", 0)
+            new_captures = state_params.get("captures", 0)
 
             state_params["detections"] = current_detections + new_detections
             state_params["classifications"] = current_classifications + new_classifications
