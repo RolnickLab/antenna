@@ -68,28 +68,28 @@ class TestCleanupAsyncJobResources(TestCase):
 
         # Verify NATS stream and consumer exist
         async def check_nats_resources():
-            async with TaskQueueManager() as manager:
-                stream_name = manager._get_stream_name(job_id)
-                consumer_name = manager._get_consumer_name(job_id)
+            manager = TaskQueueManager()
+            stream_name = manager._get_stream_name(job_id)
+            consumer_name = manager._get_consumer_name(job_id)
 
-                # Get JetStream context
-                _, js = await manager._get_connection()
+            # Get JetStream context
+            _, js = await manager._get_connection()
 
-                # Try to get stream info - should succeed if created
-                stream_exists = True
-                try:
-                    await js.stream_info(stream_name)
-                except NotFoundError:
-                    stream_exists = False
+            # Try to get stream info - should succeed if created
+            stream_exists = True
+            try:
+                await js.stream_info(stream_name)
+            except NotFoundError:
+                stream_exists = False
 
-                # Try to get consumer info - should succeed if created
-                consumer_exists = True
-                try:
-                    await js.consumer_info(stream_name, consumer_name)
-                except NotFoundError:
-                    consumer_exists = False
+            # Try to get consumer info - should succeed if created
+            consumer_exists = True
+            try:
+                await js.consumer_info(stream_name, consumer_name)
+            except NotFoundError:
+                consumer_exists = False
 
-                return stream_exists, consumer_exists
+            return stream_exists, consumer_exists
 
         stream_exists, consumer_exists = async_to_sync(check_nats_resources)()
 
@@ -137,28 +137,28 @@ class TestCleanupAsyncJobResources(TestCase):
 
         # Verify NATS stream and consumer are deleted
         async def check_nats_resources():
-            async with TaskQueueManager() as manager:
-                stream_name = manager._get_stream_name(job_id)
-                consumer_name = manager._get_consumer_name(job_id)
+            manager = TaskQueueManager()
+            stream_name = manager._get_stream_name(job_id)
+            consumer_name = manager._get_consumer_name(job_id)
 
-                # Get JetStream context
-                _, js = await manager._get_connection()
+            # Get JetStream context
+            _, js = await manager._get_connection()
 
-                # Try to get stream info - should fail if deleted
-                stream_exists = True
-                try:
-                    await js.stream_info(stream_name)
-                except NotFoundError:
-                    stream_exists = False
+            # Try to get stream info - should fail if deleted
+            stream_exists = True
+            try:
+                await js.stream_info(stream_name)
+            except NotFoundError:
+                stream_exists = False
 
-                # Try to get consumer info - should fail if deleted
-                consumer_exists = True
-                try:
-                    await js.consumer_info(stream_name, consumer_name)
-                except NotFoundError:
-                    consumer_exists = False
+            # Try to get consumer info - should fail if deleted
+            consumer_exists = True
+            try:
+                await js.consumer_info(stream_name, consumer_name)
+            except NotFoundError:
+                consumer_exists = False
 
-                return stream_exists, consumer_exists
+            return stream_exists, consumer_exists
 
         stream_exists, consumer_exists = async_to_sync(check_nats_resources)()
 

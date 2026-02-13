@@ -17,12 +17,9 @@ import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, TypeVar
 
-import nats
-from django.conf import settings
 from nats import errors as nats_errors
 from nats.js import JetStreamContext
 from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy
-from nats.js.errors import NotFoundError
 
 from ami.ml.schemas import PipelineProcessingTask
 
@@ -41,9 +38,13 @@ T = TypeVar("T")
 
 def retry_on_connection_error(max_retries: int = 2, backoff_seconds: float = 0.5):
     """
-    Decorator that retries NATS operations on connection errors. When a connection error
-    is detected, the manager's connection is cleared so the next call to _get_connection()
-    creates a fresh one.
+    Decorator that retries NATS operations on connection errors. When a connection error is detected:
+    1. Resets the event-loop-local connection pool (clears stale connection and lock)
+    2. Waits with exponential backoff
+    3. Retries the operation (which will get a fresh connection from the same event loop)
+
+    This works correctly with async_to_sync() because the pool is keyed by event loop,
+    ensuring each retry uses the connection bound to the current loop.
 
     Args:
         max_retries: Maximum number of retry attempts (default: 2)
@@ -54,7 +55,7 @@ def retry_on_connection_error(max_retries: int = 2, backoff_seconds: float = 0.5
 
     def decorator(func: Callable[..., "Awaitable[T]"]) -> Callable[..., "Awaitable[T]"]:
         @functools.wraps(func)
-        async def wrapper(self: "TaskQueueManager", *args, **kwargs) -> T:
+        async def wrapper(self, *args, **kwargs) -> T:
             last_error = None
             assert max_retries >= 0, "max_retries must be non-negative"
 
@@ -76,8 +77,11 @@ def retry_on_connection_error(max_retries: int = 2, backoff_seconds: float = 0.5
                             exc_info=True,
                         )
                         break
-                    # Close stale connection so next attempt creates a fresh one
-                    await self._close_connection()
+                    # Reset the connection pool so next attempt gets a fresh connection
+                    from ami.ml.orchestration.nats_connection_pool import get_pool
+
+                    pool = get_pool()
+                    await pool.reset()
                     # Exponential backoff
                     wait_time = backoff_seconds * (2**attempt)
                     logger.warning(
@@ -97,66 +101,20 @@ def retry_on_connection_error(max_retries: int = 2, backoff_seconds: float = 0.5
 class TaskQueueManager:
     """
     Manager for NATS JetStream task queue operations.
+    Always uses the event-loop-local connection pool for efficiency.
 
-    Use as an async context manager to scope a single connection to a block of operations:
-
-        async with TaskQueueManager() as manager:
-            await manager.publish_task(job_id, task)
-
-    The connection is created on entry and closed on exit. Within the block, the retry
-    decorator handles transient connection errors by clearing and recreating the connection.
+    Note: The connection pool is keyed by event loop, so each event loop gets its own
+    connection. This prevents "attached to a different loop" errors when using async_to_sync()
+    in Celery tasks or Django views. There's no overhead creating multiple TaskQueueManager
+    instances as they all share the same event-loop-keyed pool.
     """
 
-    def __init__(self):
-        self._nc: "NATSClient | None" = None
-        self._js: JetStreamContext | None = None
-
-    async def __aenter__(self) -> "TaskQueueManager":
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        await self._close_connection()
-
     async def _get_connection(self) -> tuple["NATSClient", JetStreamContext]:
-        """Get or create a NATS connection."""
-        # Fast path: connection exists and is healthy
-        if self._nc is not None and not self._nc.is_closed and self._nc.is_connected:
-            return self._nc, self._js  # type: ignore
+        """Get connection from the event-loop-local pool."""
+        from ami.ml.orchestration.nats_connection_pool import get_pool
 
-        # Connection is stale, clear it
-        if self._nc is not None:
-            logger.warning("NATS connection is closed or disconnected, will reconnect")
-            await self._close_connection()
-
-        nats_url = getattr(settings, "NATS_URL", "nats://nats:4222")
-        logger.info(f"Connecting to NATS at {nats_url}")
-        self._nc = await nats.connect(
-            nats_url,
-            reconnected_cb=self._on_reconnected,
-            disconnected_cb=self._on_disconnected,
-        )
-        self._js = self._nc.jetstream()
-        logger.info(f"Connected to NATS at {nats_url}")
-        return self._nc, self._js
-
-    async def _close_connection(self) -> None:
-        """Close the NATS connection if open."""
-        if self._nc is not None:
-            try:
-                if not self._nc.is_closed:
-                    await self._nc.close()
-            except Exception as e:
-                logger.debug(f"Error closing NATS connection (expected during error recovery): {e}")
-            self._nc = None
-            self._js = None
-
-    @staticmethod
-    async def _on_reconnected():
-        logger.info("NATS client reconnected")
-
-    @staticmethod
-    async def _on_disconnected():
-        logger.warning("NATS client disconnected")
+        pool = get_pool()
+        return await pool.get_connection()
 
     def _get_stream_name(self, job_id: int) -> str:
         """Get stream name from job_id."""
@@ -180,7 +138,9 @@ class TaskQueueManager:
         try:
             await js.stream_info(stream_name)
             logger.debug(f"Stream {stream_name} already exists")
-        except NotFoundError:
+        except Exception as e:
+            logger.warning(f"Stream {stream_name} does not exist: {e}")
+            # Stream doesn't exist, create it
             await js.add_stream(
                 name=stream_name,
                 subjects=[subject],
@@ -199,7 +159,8 @@ class TaskQueueManager:
         try:
             info = await js.consumer_info(stream_name, consumer_name)
             logger.debug(f"Consumer {consumer_name} already exists: {info}")
-        except NotFoundError:
+        except Exception:
+            # Consumer doesn't exist, create it
             await js.add_consumer(
                 stream=stream_name,
                 config=ConsumerConfig(
