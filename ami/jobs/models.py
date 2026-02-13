@@ -222,6 +222,10 @@ class JobProgress(pydantic.BaseModel):
         for stage in self.stages:
             stage.progress = 0
             stage.status = status
+            # Reset numeric param values to 0
+            for param in stage.params:
+                if isinstance(param.value, (int, float)):
+                    param.value = 0
 
     def is_complete(self) -> bool:
         """
