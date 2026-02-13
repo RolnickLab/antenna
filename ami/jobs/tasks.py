@@ -9,8 +9,8 @@ from asgiref.sync import async_to_sync
 from celery.signals import task_failure, task_postrun, task_prerun
 from django.db import transaction
 
+from ami.ml.orchestration.async_job_state import AsyncJobStateManager
 from ami.ml.orchestration.nats_queue import TaskQueueManager
-from ami.ml.orchestration.task_state import TaskStateManager
 from ami.ml.schemas import PipelineResultsError, PipelineResultsResponse
 from ami.tasks import default_soft_time_limit, default_time_limit
 from config import celery_app
@@ -82,7 +82,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         processed_image_ids = {str(img.id) for img in pipeline_result.source_images}
         failed_image_ids = set()  # No failures for successful results
 
-    state_manager = TaskStateManager(job_id)
+    state_manager = AsyncJobStateManager(job_id)
 
     progress_info = state_manager.update_state(
         processed_image_ids, stage="process", request_id=self.request.id, failed_image_ids=failed_image_ids

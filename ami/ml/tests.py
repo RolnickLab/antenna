@@ -864,11 +864,11 @@ class TestTaskStateManager(TestCase):
         """Set up test fixtures."""
         from django.core.cache import cache
 
-        from ami.ml.orchestration.task_state import TaskStateManager
+        from ami.ml.orchestration.async_job_state import AsyncJobStateManager
 
         cache.clear()
         self.job_id = 123
-        self.manager = TaskStateManager(self.job_id)
+        self.manager = AsyncJobStateManager(self.job_id)
         self.image_ids = ["img1", "img2", "img3", "img4", "img5"]
 
     def _init_and_verify(self, image_ids):

@@ -9,9 +9,9 @@ from ami.jobs.models import Job, JobDispatchMode, JobState, MLJob
 from ami.jobs.tasks import _update_job_progress, update_job_failure, update_job_status
 from ami.main.models import Project, ProjectFeatureFlags, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
+from ami.ml.orchestration.async_job_state import AsyncJobStateManager
 from ami.ml.orchestration.jobs import queue_images_to_nats
 from ami.ml.orchestration.nats_queue import TaskQueueManager
-from ami.ml.orchestration.task_state import TaskStateManager
 
 
 class TestCleanupAsyncJobResources(TestCase):
@@ -59,7 +59,7 @@ class TestCleanupAsyncJobResources(TestCase):
             job_id: The job ID to check
         """
         # Verify Redis keys exist
-        state_manager = TaskStateManager(job_id)
+        state_manager = AsyncJobStateManager(job_id)
         for stage in state_manager.STAGES:
             pending_key = state_manager._get_pending_key(stage)
             self.assertIsNotNone(cache.get(pending_key), f"Redis key {pending_key} should exist")
@@ -125,7 +125,7 @@ class TestCleanupAsyncJobResources(TestCase):
             job_id: The job ID to check
         """
         # Verify Redis keys are deleted
-        state_manager = TaskStateManager(job_id)
+        state_manager = AsyncJobStateManager(job_id)
         for stage in state_manager.STAGES:
             pending_key = state_manager._get_pending_key(stage)
             self.assertIsNone(cache.get(pending_key), f"Redis key {pending_key} should be deleted")

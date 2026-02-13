@@ -28,7 +28,7 @@ def _lock_key(job_id: int) -> str:
     return f"job:{job_id}:process_results_lock"
 
 
-class TaskStateManager:
+class AsyncJobStateManager:
     """
     Manages job progress tracking state in Redis.
 
