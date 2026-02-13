@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, TypeVar
 from nats import errors as nats_errors
 from nats.js import JetStreamContext
 from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy
+from nats.js.errors import NotFoundError
 
 from ami.ml.schemas import PipelineProcessingTask
 
@@ -77,11 +78,11 @@ def retry_on_connection_error(max_retries: int = 2, backoff_seconds: float = 0.5
                             exc_info=True,
                         )
                         break
-                    # Reset the connection pool so next attempt gets a fresh connection
-                    from ami.ml.orchestration.nats_connection_pool import get_pool
+                    # Reset the connection provider so next attempt gets a fresh connection
+                    from ami.ml.orchestration.nats_connection import get_provider
 
-                    pool = get_pool()
-                    await pool.reset()
+                    provider = get_provider()
+                    await provider.reset()
                     # Exponential backoff
                     wait_time = backoff_seconds * (2**attempt)
                     logger.warning(
@@ -101,20 +102,28 @@ def retry_on_connection_error(max_retries: int = 2, backoff_seconds: float = 0.5
 class TaskQueueManager:
     """
     Manager for NATS JetStream task queue operations.
-    Always uses the event-loop-local connection pool for efficiency.
 
-    Note: The connection pool is keyed by event loop, so each event loop gets its own
-    connection. This prevents "attached to a different loop" errors when using async_to_sync()
-    in Celery tasks or Django views. There's no overhead creating multiple TaskQueueManager
-    instances as they all share the same event-loop-keyed pool.
+    This class is a stateless wrapper — it holds no connection state itself.
+    All connections come from the event-loop-keyed provider in
+    nats_connection.py, so instantiating TaskQueueManager() is cheap
+    and multiple instances share the same underlying connection.
+
+    Usage pattern (no context manager needed):
+        manager = TaskQueueManager()
+        await manager.publish_task(job_id, task)
+        await manager.acknowledge_task(reply_subject)
+
+    Error handling:
+        The @retry_on_connection_error decorator on each method handles transient
+        connection failures by resetting the provider and retrying with backoff.
     """
 
     async def _get_connection(self) -> tuple["NATSClient", JetStreamContext]:
-        """Get connection from the event-loop-local pool."""
-        from ami.ml.orchestration.nats_connection_pool import get_pool
+        """Get connection from the event-loop-local provider."""
+        from ami.ml.orchestration.nats_connection import get_provider
 
-        pool = get_pool()
-        return await pool.get_connection()
+        provider = get_provider()
+        return await provider.get_connection()
 
     def _get_stream_name(self, job_id: int) -> str:
         """Get stream name from job_id."""
@@ -138,7 +147,7 @@ class TaskQueueManager:
         try:
             await js.stream_info(stream_name)
             logger.debug(f"Stream {stream_name} already exists")
-        except Exception as e:
+        except NotFoundError as e:
             logger.warning(f"Stream {stream_name} does not exist: {e}")
             # Stream doesn't exist, create it
             await js.add_stream(
@@ -159,7 +168,7 @@ class TaskQueueManager:
         try:
             info = await js.consumer_info(stream_name, consumer_name)
             logger.debug(f"Consumer {consumer_name} already exists: {info}")
-        except Exception:
+        except NotFoundError:
             # Consumer doesn't exist, create it
             await js.add_consumer(
                 stream=stream_name,

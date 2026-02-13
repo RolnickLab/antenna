@@ -4,6 +4,8 @@ import unittest
 from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from nats.js.errors import NotFoundError
+
 from ami.ml.orchestration.nats_queue import TaskQueueManager
 from ami.ml.schemas import PipelineProcessingTask
 
@@ -40,19 +42,19 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
         js.delete_consumer = AsyncMock()
         js.delete_stream = AsyncMock()
 
-        with patch("ami.ml.orchestration.nats_connection_pool.get_pool") as mock_get_pool:
-            mock_pool = MagicMock()
-            mock_pool.get_connection = AsyncMock(return_value=(nc, js))
-            mock_get_pool.return_value = mock_pool
-            yield nc, js, mock_pool
+        with patch("ami.ml.orchestration.nats_connection.get_provider") as mock_get_provider:
+            mock_provider = MagicMock()
+            mock_provider.get_connection = AsyncMock(return_value=(nc, js))
+            mock_get_provider.return_value = mock_provider
+            yield nc, js, mock_provider
 
     async def test_publish_task_creates_stream_and_consumer(self):
         """Test that publish_task ensures stream and consumer exist."""
         sample_task = self._create_sample_task()
 
         with self._mock_nats_setup() as (_, js, _):
-            js.stream_info.side_effect = Exception("Not found")
-            js.consumer_info.side_effect = Exception("Not found")
+            js.stream_info.side_effect = NotFoundError
+            js.consumer_info.side_effect = NotFoundError
 
             manager = TaskQueueManager()
             await manager.publish_task(456, sample_task)
@@ -129,3 +131,103 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(manager._get_stream_name(123), "job_123")
         self.assertEqual(manager._get_subject(123), "job.123.tasks")
         self.assertEqual(manager._get_consumer_name(123), "job-123-consumer")
+
+
+class TestRetryOnConnectionError(unittest.IsolatedAsyncioTestCase):
+    """Test retry_on_connection_error decorator behavior."""
+
+    def _create_sample_task(self):
+        """Helper to create a sample PipelineProcessingTask."""
+        return PipelineProcessingTask(
+            id="task-retry-test",
+            image_id="img-retry",
+            image_url="https://example.com/retry.jpg",
+        )
+
+    async def test_retry_resets_provider_on_connection_error(self):
+        """On connection error, the decorator should call provider.reset() before retrying."""
+        from nats.errors import ConnectionClosedError
+
+        nc = MagicMock()
+        nc.is_closed = False
+        js = MagicMock()
+        js.stream_info = AsyncMock()
+        js.add_stream = AsyncMock()
+        js.consumer_info = AsyncMock()
+        js.add_consumer = AsyncMock()
+        # First publish fails with connection error, second succeeds
+        js.publish = AsyncMock(side_effect=[ConnectionClosedError(), MagicMock(seq=1)])
+        js.pull_subscribe = AsyncMock()
+
+        with patch("ami.ml.orchestration.nats_connection.get_provider") as mock_get_provider:
+            mock_provider = MagicMock()
+            mock_provider.get_connection = AsyncMock(return_value=(nc, js))
+            mock_provider.reset = AsyncMock()
+            mock_get_provider.return_value = mock_provider
+
+            manager = TaskQueueManager()
+            sample_task = self._create_sample_task()
+
+            # Should succeed after retry
+            with patch("ami.ml.orchestration.nats_queue.asyncio.sleep", new_callable=AsyncMock):
+                result = await manager.publish_task(456, sample_task)
+
+            self.assertTrue(result)
+            # provider.reset() should have been called once (after first failure)
+            mock_provider.reset.assert_called_once()
+
+    async def test_retry_raises_after_max_retries(self):
+        """After exhausting retries, the last error should be raised."""
+        from nats.errors import ConnectionClosedError
+
+        nc = MagicMock()
+        nc.is_closed = False
+        js = MagicMock()
+        js.stream_info = AsyncMock()
+        js.add_stream = AsyncMock()
+        js.consumer_info = AsyncMock()
+        js.add_consumer = AsyncMock()
+        # All attempts fail
+        js.publish = AsyncMock(side_effect=ConnectionClosedError())
+
+        with patch("ami.ml.orchestration.nats_connection.get_provider") as mock_get_provider:
+            mock_provider = MagicMock()
+            mock_provider.get_connection = AsyncMock(return_value=(nc, js))
+            mock_provider.reset = AsyncMock()
+            mock_get_provider.return_value = mock_provider
+
+            manager = TaskQueueManager()
+            sample_task = self._create_sample_task()
+
+            with patch("ami.ml.orchestration.nats_queue.asyncio.sleep", new_callable=AsyncMock):
+                with self.assertRaises(ConnectionClosedError):
+                    await manager.publish_task(456, sample_task)
+
+            # reset() called twice (max_retries=2, so 2 retries means 2 resets)
+            self.assertEqual(mock_provider.reset.call_count, 2)
+
+    async def test_non_connection_errors_are_not_retried(self):
+        """Non-connection errors (e.g. ValueError) should propagate immediately without retry."""
+        nc = MagicMock()
+        nc.is_closed = False
+        js = MagicMock()
+        js.stream_info = AsyncMock()
+        js.add_stream = AsyncMock()
+        js.consumer_info = AsyncMock()
+        js.add_consumer = AsyncMock()
+        js.publish = AsyncMock(side_effect=ValueError("bad data"))
+
+        with patch("ami.ml.orchestration.nats_connection.get_provider") as mock_get_provider:
+            mock_provider = MagicMock()
+            mock_provider.get_connection = AsyncMock(return_value=(nc, js))
+            mock_provider.reset = AsyncMock()
+            mock_get_provider.return_value = mock_provider
+
+            manager = TaskQueueManager()
+            sample_task = self._create_sample_task()
+
+            with self.assertRaises(ValueError):
+                await manager.publish_task(456, sample_task)
+
+            # reset() should NOT have been called
+            mock_provider.reset.assert_not_called()
