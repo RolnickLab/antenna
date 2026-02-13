@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class TaskProgress:
+class JobStateProgress:
     """Progress snapshot for a job stage tracked in Redis."""
 
     remaining: int = 0
@@ -86,7 +86,7 @@ class AsyncJobStateManager:
         classifications_count: int = 0,
         captures_count: int = 0,
         failed_image_ids: set[str] | None = None,
-    ) -> None | TaskProgress:
+    ) -> None | JobStateProgress:
         """
         Update the task state with newly processed images.
 
@@ -120,7 +120,7 @@ class AsyncJobStateManager:
                 cache.delete(lock_key)
                 logger.debug(f"Released lock for job {self.job_id}, task {request_id}")
 
-    def get_progress(self, stage: str) -> TaskProgress | None:
+    def get_progress(self, stage: str) -> JobStateProgress | None:
         """Read-only progress snapshot for the given stage. Does not acquire a lock or mutate state."""
         pending_images = cache.get(self._get_pending_key(stage))
         total_images = cache.get(self._total_key)
@@ -130,7 +130,7 @@ class AsyncJobStateManager:
         processed = total_images - remaining
         percentage = float(processed) / total_images if total_images > 0 else 1.0
         failed_set = cache.get(self._failed_key) or set()
-        return TaskProgress(
+        return JobStateProgress(
             remaining=remaining,
             total=total_images,
             processed=processed,
@@ -149,7 +149,7 @@ class AsyncJobStateManager:
         classifications_count: int = 0,
         captures_count: int = 0,
         failed_image_ids: set[str] | None = None,
-    ) -> TaskProgress | None:
+    ) -> JobStateProgress | None:
         """
         Update pending images and return progress. Must be called under lock.
 
@@ -196,7 +196,7 @@ class AsyncJobStateManager:
             f"{remaining}/{total_images}: {percentage*100}%"
         )
 
-        return TaskProgress(
+        return JobStateProgress(
             remaining=remaining,
             total=total_images,
             processed=processed,
