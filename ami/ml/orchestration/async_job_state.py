@@ -3,22 +3,29 @@ Task state management for job progress tracking using Redis.
 """
 
 import logging
-from collections import namedtuple
+from dataclasses import dataclass
 
 from django.core.cache import cache
 
 logger = logging.getLogger(__name__)
 
 
-# Define a namedtuple for a TaskProgress with the image counts
-TaskProgress = namedtuple("TaskProgress", ["remaining", "total", "processed", "percentage"])
+@dataclass
+class JobStateProgress:
+    """Progress snapshot for a job stage tracked in Redis."""
+
+    remaining: int = 0
+    total: int = 0
+    processed: int = 0
+    percentage: float = 0.0
+    failed: int = 0
 
 
 def _lock_key(job_id: int) -> str:
     return f"job:{job_id}:process_results_lock"
 
 
-class TaskStateManager:
+class AsyncJobStateManager:
     """
     Manages job progress tracking state in Redis.
 
@@ -39,6 +46,7 @@ class TaskStateManager:
         self.job_id = job_id
         self._pending_key = f"job:{job_id}:pending_images"
         self._total_key = f"job:{job_id}:pending_images_total"
+        self._failed_key = f"job:{job_id}:failed_images"
 
     def initialize_job(self, image_ids: list[str]) -> None:
         """
@@ -50,6 +58,9 @@ class TaskStateManager:
         for stage in self.STAGES:
             cache.set(self._get_pending_key(stage), image_ids, timeout=self.TIMEOUT)
 
+        # Initialize failed images set for process stage only
+        cache.set(self._failed_key, set(), timeout=self.TIMEOUT)
+
         cache.set(self._total_key, len(image_ids), timeout=self.TIMEOUT)
 
     def _get_pending_key(self, stage: str) -> str:
@@ -60,12 +71,19 @@ class TaskStateManager:
         processed_image_ids: set[str],
         stage: str,
         request_id: str,
-    ) -> None | TaskProgress:
+        failed_image_ids: set[str] | None = None,
+    ) -> None | JobStateProgress:
         """
         Update the task state with newly processed images.
 
         Args:
             processed_image_ids: Set of image IDs that have just been processed
+            stage: The processing stage ("process" or "results")
+            request_id: Unique identifier for this processing request
+            detections_count: Number of detections to add to cumulative count
+            classifications_count: Number of classifications to add to cumulative count
+            captures_count: Number of captures to add to cumulative count
+            failed_image_ids: Set of image IDs that failed processing (optional)
         """
         # Create a unique lock key for this job
         lock_key = _lock_key(self.job_id)
@@ -76,7 +94,7 @@ class TaskStateManager:
 
         try:
             # Update progress tracking in Redis
-            progress_info = self._get_progress(processed_image_ids, stage)
+            progress_info = self._commit_update(processed_image_ids, stage, failed_image_ids)
             return progress_info
         finally:
             # Always release the lock when done
@@ -86,7 +104,7 @@ class TaskStateManager:
                 cache.delete(lock_key)
                 logger.debug(f"Released lock for job {self.job_id}, task {request_id}")
 
-    def get_progress(self, stage: str) -> TaskProgress | None:
+    def get_progress(self, stage: str) -> JobStateProgress | None:
         """Read-only progress snapshot for the given stage. Does not acquire a lock or mutate state."""
         pending_images = cache.get(self._get_pending_key(stage))
         total_images = cache.get(self._total_key)
@@ -95,9 +113,21 @@ class TaskStateManager:
         remaining = len(pending_images)
         processed = total_images - remaining
         percentage = float(processed) / total_images if total_images > 0 else 1.0
-        return TaskProgress(remaining=remaining, total=total_images, processed=processed, percentage=percentage)
+        failed_set = cache.get(self._failed_key) or set()
+        return JobStateProgress(
+            remaining=remaining,
+            total=total_images,
+            processed=processed,
+            percentage=percentage,
+            failed=len(failed_set),
+        )
 
-    def _get_progress(self, processed_image_ids: set[str], stage: str) -> TaskProgress | None:
+    def _commit_update(
+        self,
+        processed_image_ids: set[str],
+        stage: str,
+        failed_image_ids: set[str] | None = None,
+    ) -> JobStateProgress | None:
         """
         Update pending images and return progress. Must be called under lock.
 
@@ -114,16 +144,29 @@ class TaskStateManager:
         remaining = len(remaining_images)
         processed = total_images - remaining
         percentage = float(processed) / total_images if total_images > 0 else 1.0
+
+        # Update failed images set if provided
+        if failed_image_ids:
+            existing_failed = cache.get(self._failed_key) or set()
+            updated_failed = existing_failed | failed_image_ids  # Union to prevent duplicates
+            cache.set(self._failed_key, updated_failed, timeout=self.TIMEOUT)
+            failed_set = updated_failed
+        else:
+            failed_set = cache.get(self._failed_key) or set()
+
+        failed_count = len(failed_set)
+
         logger.info(
             f"Pending images from Redis for job {self.job_id} {stage}: "
             f"{remaining}/{total_images}: {percentage*100}%"
         )
 
-        return TaskProgress(
+        return JobStateProgress(
             remaining=remaining,
             total=total_images,
             processed=processed,
             percentage=percentage,
+            failed=failed_count,
         )
 
     def cleanup(self) -> None:
@@ -132,4 +175,5 @@ class TaskStateManager:
         """
         for stage in self.STAGES:
             cache.delete(self._get_pending_key(stage))
+        cache.delete(self._failed_key)
         cache.delete(self._total_key)

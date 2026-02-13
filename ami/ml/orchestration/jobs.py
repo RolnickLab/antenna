@@ -4,8 +4,8 @@ from asgiref.sync import async_to_sync
 
 from ami.jobs.models import Job, JobState
 from ami.main.models import SourceImage
+from ami.ml.orchestration.async_job_state import AsyncJobStateManager
 from ami.ml.orchestration.nats_queue import TaskQueueManager
-from ami.ml.orchestration.task_state import TaskStateManager
 from ami.ml.schemas import PipelineProcessingTask
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ def cleanup_async_job_resources(job: "Job") -> bool:
 
     # Cleanup Redis state
     try:
-        state_manager = TaskStateManager(job.pk)
+        state_manager = AsyncJobStateManager(job.pk)
         state_manager.cleanup()
         job.logger.info(f"Cleaned up Redis state for job {job.pk}")
         redis_success = True
@@ -88,7 +88,7 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
         tasks.append((image.pk, task))
 
     # Store all image IDs in Redis for progress tracking
-    state_manager = TaskStateManager(job.pk)
+    state_manager = AsyncJobStateManager(job.pk)
     state_manager.initialize_job(image_ids)
     job.logger.info(f"Initialized task state tracking for {len(image_ids)} images")
 
