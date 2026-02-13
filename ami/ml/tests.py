@@ -880,9 +880,6 @@ class TestTaskStateManager(TestCase):
         self.assertEqual(progress.remaining, len(image_ids))
         self.assertEqual(progress.processed, 0)
         self.assertEqual(progress.percentage, 0.0)
-        self.assertEqual(progress.detections, 0)
-        self.assertEqual(progress.classifications, 0)
-        self.assertEqual(progress.captures, 0)
         self.assertEqual(progress.failed, 0)
         return progress
 
@@ -895,8 +892,6 @@ class TestTaskStateManager(TestCase):
             progress = self.manager._commit_update(set(), stage)
             assert progress is not None
             self.assertEqual(progress.total, len(self.image_ids))
-            self.assertEqual(progress.detections, 0)
-            self.assertEqual(progress.classifications, 0)
             self.assertEqual(progress.failed, 0)
 
     def test_progress_tracking(self):
@@ -909,8 +904,6 @@ class TestTaskStateManager(TestCase):
         self.assertEqual(progress.remaining, 3)
         self.assertEqual(progress.processed, 2)
         self.assertEqual(progress.percentage, 0.4)
-        self.assertEqual(progress.detections, 0)  # No counts added yet
-        self.assertEqual(progress.classifications, 0)
 
         # Process 2 more images
         progress = self.manager._commit_update({"img3", "img4"}, "process")
@@ -936,8 +929,6 @@ class TestTaskStateManager(TestCase):
         progress = self.manager.update_state({"img1", "img2"}, "process", "task1")
         assert progress is not None
         self.assertEqual(progress.processed, 2)
-        self.assertEqual(progress.detections, 0)
-        self.assertEqual(progress.classifications, 0)
 
         # Simulate concurrent update by holding the lock
         lock_key = f"job:{self.job_id}:process_results_lock"
@@ -975,8 +966,6 @@ class TestTaskStateManager(TestCase):
         assert progress is not None
         self.assertEqual(progress.total, 0)
         self.assertEqual(progress.percentage, 1.0)  # Empty job is 100% complete
-        self.assertEqual(progress.detections, 0)
-        self.assertEqual(progress.classifications, 0)
 
     def test_cleanup(self):
         """Test cleanup removes all tracking keys."""
@@ -992,86 +981,6 @@ class TestTaskStateManager(TestCase):
         # Verify keys are gone
         progress = self.manager._commit_update(set(), "process")
         self.assertIsNone(progress)
-
-    def test_cumulative_counting(self):
-        """Test that detection counts accumulate correctly across updates."""
-        self._init_and_verify(self.image_ids)
-
-        # Process first batch with some detections
-        progress = self.manager._commit_update({"img1", "img2"}, "process", detections_count=3)
-        assert progress is not None
-        self.assertEqual(progress.detections, 3)
-        self.assertEqual(progress.classifications, 0)
-        self.assertEqual(progress.captures, 0)
-
-        # Process second batch with more detections and a classification
-        progress = self.manager._commit_update({"img3"}, "process", detections_count=2, classifications_count=1)
-        assert progress is not None
-        self.assertEqual(progress.detections, 5)  # Should be cumulative
-        self.assertEqual(progress.classifications, 1)
-        self.assertEqual(progress.captures, 0)
-
-        # Process with detections, classifications, and captures
-        progress = self.manager._commit_update(
-            {"img4"}, "results", detections_count=1, classifications_count=4, captures_count=1
-        )
-        assert progress is not None
-        self.assertEqual(progress.detections, 6)  # Should accumulate
-        self.assertEqual(progress.classifications, 5)  # Should accumulate
-        self.assertEqual(progress.captures, 1)
-
-    def test_counts_persist_across_stages(self):
-        """Test that detection and classification counts persist across different stages."""
-        self._init_and_verify(self.image_ids)
-
-        # Add counts during process stage
-        progress_process = self.manager._commit_update({"img1"}, "process", detections_count=3)
-        assert progress_process is not None
-        self.assertEqual(progress_process.detections, 3)
-
-        # Verify counts are available in results stage
-        progress_results = self.manager._commit_update(set(), "results")
-        assert progress_results is not None
-        self.assertEqual(progress_results.detections, 3)  # Should persist
-        self.assertEqual(progress_results.classifications, 0)
-
-        # Add more counts in results stage
-        progress_results = self.manager._commit_update(
-            {"img2"}, "results", detections_count=1, classifications_count=5
-        )
-        assert progress_results is not None
-        self.assertEqual(progress_results.detections, 4)  # Should accumulate
-        self.assertEqual(progress_results.classifications, 5)
-
-    def test_cleanup_removes_count_keys(self):
-        """Test that cleanup removes detection and classification count keys."""
-        from django.core.cache import cache
-
-        self._init_and_verify(self.image_ids)
-
-        # Add some counts
-        self.manager._commit_update(
-            {"img1"}, "process", detections_count=5, classifications_count=10, captures_count=2
-        )
-
-        # Verify count keys exist
-        detections = cache.get(self.manager._detections_key)
-        classifications = cache.get(self.manager._classifications_key)
-        captures = cache.get(self.manager._captures_key)
-        self.assertEqual(detections, 5)
-        self.assertEqual(classifications, 10)
-        self.assertEqual(captures, 2)
-
-        # Cleanup
-        self.manager.cleanup()
-
-        # Verify count keys are gone
-        detections = cache.get(self.manager._detections_key)
-        classifications = cache.get(self.manager._classifications_key)
-        captures = cache.get(self.manager._captures_key)
-        self.assertIsNone(detections)
-        self.assertIsNone(classifications)
-        self.assertIsNone(captures)
 
     def test_failed_image_tracking(self):
         """Test basic failed image tracking with no double-counting on retries."""

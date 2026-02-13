@@ -151,9 +151,6 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
             processed_image_ids,
             stage="results",
             request_id=self.request.id,
-            detections_count=detections_count,
-            classifications_count=classifications_count,
-            captures_count=captures_count,
         )
 
         if not progress_info:
@@ -173,9 +170,9 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
             "results",
             progress_info.percentage,
             complete_state=complete_state,
-            detections=progress_info.detections,
-            classifications=progress_info.classifications,
-            captures=progress_info.captures,
+            detections=detections_count,
+            classifications=classifications_count,
+            captures=captures_count,
         )
 
     except Exception as e:
@@ -202,6 +199,40 @@ def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> None:
         # Don't fail the task if ACK fails - data is already saved
 
 
+def _get_current_counts_from_job_progress(job, stage: str) -> tuple[int, int, int]:
+    """
+    Get current detections, classifications, and captures counts from job progress.
+
+    Args:
+        job: The Job instance
+        stage: The stage name to read counts from
+
+    Returns:
+        Tuple of (detections, classifications, captures) counts, defaulting to 0 if not found
+    """
+    try:
+        stage_obj = job.progress.get_stage(stage)
+
+        # Initialize defaults
+        detections = 0
+        classifications = 0
+        captures = 0
+
+        # Search through the params list for our count values
+        for param in stage_obj.params:
+            if param.key == "detections":
+                detections = param.value or 0
+            elif param.key == "classifications":
+                classifications = param.value or 0
+            elif param.key == "captures":
+                captures = param.value or 0
+
+        return detections, classifications, captures
+    except (ValueError, AttributeError):
+        # Stage doesn't exist or doesn't have these attributes yet
+        return 0, 0, 0
+
+
 def _update_job_progress(
     job_id: int, stage: str, progress_percentage: float, complete_state: "JobState", **state_params
 ) -> None:
@@ -209,6 +240,22 @@ def _update_job_progress(
 
     with transaction.atomic():
         job = Job.objects.select_for_update().get(pk=job_id)
+
+        # For results stage, accumulate detections/classifications/captures counts
+        if stage == "results":
+            current_detections, current_classifications, current_captures = _get_current_counts_from_job_progress(
+                job, stage
+            )
+
+            # Add new counts to existing counts
+            new_detections = state_params.get("detections", 0) or 0
+            new_classifications = state_params.get("classifications", 0) or 0
+            new_captures = state_params.get("captures", 0) or 0
+
+            state_params["detections"] = current_detections + new_detections
+            state_params["classifications"] = current_classifications + new_classifications
+            state_params["captures"] = current_captures + new_captures
+
         job.progress.update_stage(
             stage,
             status=complete_state if progress_percentage >= 1.0 else JobState.STARTED,

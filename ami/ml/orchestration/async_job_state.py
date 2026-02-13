@@ -18,9 +18,6 @@ class JobStateProgress:
     total: int = 0
     processed: int = 0
     percentage: float = 0.0
-    detections: int = 0
-    classifications: int = 0
-    captures: int = 0
     failed: int = 0
 
 
@@ -50,9 +47,6 @@ class AsyncJobStateManager:
         self._pending_key = f"job:{job_id}:pending_images"
         self._total_key = f"job:{job_id}:pending_images_total"
         self._failed_key = f"job:{job_id}:failed_images"
-        self._detections_key = f"job:{job_id}:total_detections"
-        self._classifications_key = f"job:{job_id}:total_classifications"
-        self._captures_key = f"job:{job_id}:total_captures"
 
     def initialize_job(self, image_ids: list[str]) -> None:
         """
@@ -69,11 +63,6 @@ class AsyncJobStateManager:
 
         cache.set(self._total_key, len(image_ids), timeout=self.TIMEOUT)
 
-        # Initialize detection and classification counters
-        cache.set(self._detections_key, 0, timeout=self.TIMEOUT)
-        cache.set(self._classifications_key, 0, timeout=self.TIMEOUT)
-        cache.set(self._captures_key, 0, timeout=self.TIMEOUT)
-
     def _get_pending_key(self, stage: str) -> str:
         return f"{self._pending_key}:{stage}"
 
@@ -82,9 +71,6 @@ class AsyncJobStateManager:
         processed_image_ids: set[str],
         stage: str,
         request_id: str,
-        detections_count: int = 0,
-        classifications_count: int = 0,
-        captures_count: int = 0,
         failed_image_ids: set[str] | None = None,
     ) -> None | JobStateProgress:
         """
@@ -108,9 +94,7 @@ class AsyncJobStateManager:
 
         try:
             # Update progress tracking in Redis
-            progress_info = self._commit_update(
-                processed_image_ids, stage, detections_count, classifications_count, captures_count, failed_image_ids
-            )
+            progress_info = self._commit_update(processed_image_ids, stage, failed_image_ids)
             return progress_info
         finally:
             # Always release the lock when done
@@ -135,9 +119,6 @@ class AsyncJobStateManager:
             total=total_images,
             processed=processed,
             percentage=percentage,
-            detections=cache.get(self._detections_key, 0),
-            classifications=cache.get(self._classifications_key, 0),
-            captures=cache.get(self._captures_key, 0),
             failed=len(failed_set),
         )
 
@@ -145,9 +126,6 @@ class AsyncJobStateManager:
         self,
         processed_image_ids: set[str],
         stage: str,
-        detections_count: int = 0,
-        classifications_count: int = 0,
-        captures_count: int = 0,
         failed_image_ids: set[str] | None = None,
     ) -> JobStateProgress | None:
         """
@@ -166,19 +144,6 @@ class AsyncJobStateManager:
         remaining = len(remaining_images)
         processed = total_images - remaining
         percentage = float(processed) / total_images if total_images > 0 else 1.0
-
-        # Update cumulative detection, classification, and capture counts
-        current_detections = cache.get(self._detections_key, 0)
-        current_classifications = cache.get(self._classifications_key, 0)
-        current_captures = cache.get(self._captures_key, 0)
-
-        new_detections = current_detections + detections_count
-        new_classifications = current_classifications + classifications_count
-        new_captures = current_captures + captures_count
-
-        cache.set(self._detections_key, new_detections, timeout=self.TIMEOUT)
-        cache.set(self._classifications_key, new_classifications, timeout=self.TIMEOUT)
-        cache.set(self._captures_key, new_captures, timeout=self.TIMEOUT)
 
         # Update failed images set if provided
         if failed_image_ids:
@@ -201,9 +166,6 @@ class AsyncJobStateManager:
             total=total_images,
             processed=processed,
             percentage=percentage,
-            detections=new_detections,
-            classifications=new_classifications,
-            captures=new_captures,
             failed=failed_count,
         )
 
@@ -215,6 +177,3 @@ class AsyncJobStateManager:
             cache.delete(self._get_pending_key(stage))
         cache.delete(self._failed_key)
         cache.delete(self._total_key)
-        cache.delete(self._detections_key)
-        cache.delete(self._classifications_key)
-        cache.delete(self._captures_key)
