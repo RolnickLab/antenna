@@ -1,25 +1,30 @@
 """
 NATS connection management for both Celery workers and Django processes.
 
-Uses a persistent connection pool (one NATS connection per event loop) for all
-TaskQueueManager operations. A 1000-image job generates ~1500+ NATS operations
-(1 for queuing, 250-500 for task fetches, 1000 for ACKs). The pool keeps one
-connection alive per event loop and reuses it for all of them.
+Provides a ConnectionPool keyed by event loop. The pool reuses a single NATS
+connection for all async operations *within* one async_to_sync() boundary.
+It does NOT provide reuse across separate async_to_sync() calls — each call
+creates a new event loop, so a new connection is established.
+
+Where the pool helps:
+  The main beneficiary is queue_images_to_nats() in jobs.py, which wraps
+  1000+ publish_task() awaits in a single async_to_sync() call. All of those
+  awaits share one event loop and therefore one NATS connection. Without the
+  pool, each publish would open its own TCP connection (~1500 per job).
+  Similarly, JobViewSet.tasks() batches multiple reserve_task() calls in one
+  async_to_sync() boundary.
+
+Where it doesn't help:
+  Single-operation boundaries like _ack_task_via_nats() (one ACK per call)
+  get no reuse — the pool is effectively single-use there. The overhead is
+  negligible (one dict lookup), and the retry_on_connection_error decorator
+  provides resilience regardless.
 
 Why keyed by event loop:
-  Django views and Celery tasks use async_to_sync(), which creates a new event
-  loop per thread. asyncio.Lock and nats.Client are bound to the loop they were
-  created on, so sharing them across loops causes "attached to a different loop"
-  errors. Keying by loop ensures isolation. WeakKeyDictionary auto-cleans when
-  loops are garbage collected, so short-lived loops don't leak.
-
-Connection lifecycle:
-  - Created lazily on first use within an event loop
-  - Reused for all subsequent operations on that loop
-  - On connection error: retry decorator calls reset_connection() to close the
-    stale connection; next operation creates a fresh one (see
-    retry_on_connection_error in nats_queue.py)
-  - Cleaned up automatically when the event loop is garbage collected
+  asyncio.Lock and nats.Client are bound to the loop they were created on.
+  Sharing them across loops causes "attached to a different loop" errors.
+  Keying by loop ensures isolation. WeakKeyDictionary auto-cleans when loops
+  are garbage collected, so short-lived loops don't leak.
 
 Archived alternative:
   ContextManagerConnection preserves the original pre-pool implementation
