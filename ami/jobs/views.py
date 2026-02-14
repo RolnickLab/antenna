@@ -242,11 +242,11 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
         async def get_tasks():
             tasks = []
-            async with TaskQueueManager() as manager:
-                for _ in range(batch):
-                    task = await manager.reserve_task(job.pk, timeout=0.1)
-                    if task:
-                        tasks.append(task.dict())
+            manager = TaskQueueManager()
+            for _ in range(batch):
+                task = await manager.reserve_task(job.pk, timeout=0.1)
+                if task:
+                    tasks.append(task.dict())
             return tasks
 
         # Use async_to_sync to properly handle the async call
