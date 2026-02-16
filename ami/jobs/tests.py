@@ -520,6 +520,54 @@ class TestJobView(APITestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertIn("result", resp.json()[0].lower())
 
+    def test_processing_service_name_parameter(self):
+        """Test that processing_service_name parameter is accepted on job endpoints."""
+        self.client.force_authenticate(user=self.user)
+        test_service_name = "Test Service"
+
+        # Test list endpoint
+        list_url = reverse_with_params(
+            "api:job-list", params={"project_id": self.project.pk, "processing_service_name": test_service_name}
+        )
+        resp = self.client.get(list_url)
+        self.assertEqual(resp.status_code, 200)
+
+        # Test tasks endpoint (requires job with pipeline)
+        pipeline = self._create_pipeline()
+        job = self._create_ml_job("Job for service name test", pipeline)
+        job.dispatch_mode = JobDispatchMode.ASYNC_API
+        job.save(update_fields=["dispatch_mode"])
+
+        tasks_url = reverse_with_params(
+            "api:job-tasks",
+            args=[job.pk],
+            params={"project_id": self.project.pk, "batch": 1, "processing_service_name": test_service_name},
+        )
+        resp = self.client.get(tasks_url)
+        self.assertEqual(resp.status_code, 200)
+
+        # Test result endpoint
+        result_url = reverse_with_params(
+            "api:job-result",
+            args=[job.pk],
+            params={"project_id": self.project.pk, "processing_service_name": test_service_name},
+        )
+        result_data = [
+            {
+                "reply_subject": "test.reply.1",
+                "result": {
+                    "pipeline": "test-pipeline",
+                    "algorithms": {},
+                    "total_time": 1.5,
+                    "source_images": [],
+                    "detections": [],
+                    "errors": None,
+                },
+            }
+        ]
+        resp = self.client.post(result_url, result_data, format="json")
+        self.assertEqual(resp.status_code, 200)
+
 
 class TestJobDispatchModeFiltering(APITestCase):
     """Test job filtering by dispatch_mode."""
