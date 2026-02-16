@@ -73,10 +73,8 @@ class TestProcessNatsPipelineResultError(TestCase):
 
     def _setup_mock_nats(self, mock_manager_class):
         """Helper to setup mock NATS manager."""
-        mock_manager = AsyncMock()
+        mock_manager = mock_manager_class.return_value
         mock_manager.acknowledge_task = AsyncMock(return_value=True)
-        mock_manager_class.return_value.__aenter__.return_value = mock_manager
-        mock_manager_class.return_value.__aexit__.return_value = AsyncMock()
         return mock_manager
 
     def _create_error_result(self, image_id: str | None = None, error_msg: str = "Processing failed") -> dict:
