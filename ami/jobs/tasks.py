@@ -6,6 +6,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from asgiref.sync import async_to_sync
+from celery.exceptions import Retry as CeleryRetry
 from celery.signals import task_failure, task_postrun, task_prerun
 from django.db import transaction
 
@@ -57,9 +58,10 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
 
     This task:
     1. Deserializes the pipeline result
-    2. Saves it to the database
-    3. Updates progress by removing processed image IDs from Redis
-    4. Acknowledges the task via NATS
+    2. Updates process stage progress in Redis
+    3. Saves results to the database
+    4. Updates results stage progress in Redis
+    5. Acknowledges the NATS message (after progress is persisted)
 
     Args:
         job_id: The job ID
@@ -96,7 +98,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
 
     try:
         complete_state = JobState.SUCCESS
-        if progress_info.total > 0 and (progress_info.failed / progress_info.total) > FAILURE_THRESHOLD:
+        if progress_info.total > 0 and (progress_info.failed / progress_info.total) >= FAILURE_THRESHOLD:
             complete_state = JobState.FAILURE
         _update_job_progress(
             job_id,
@@ -144,9 +146,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
             classifications_count = sum(len(detection.classifications) for detection in pipeline_result.detections)
             captures_count = len(pipeline_result.source_images)
 
-        _ack_task_via_nats(reply_subject, job.logger)
         # Update job stage with calculated progress
-
         progress_info = state_manager.update_state(
             processed_image_ids,
             stage="results",
@@ -162,7 +162,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
 
         # update complete state based on latest progress info after saving results
         complete_state = JobState.SUCCESS
-        if progress_info.total > 0 and (progress_info.failed / progress_info.total) > FAILURE_THRESHOLD:
+        if progress_info.total > 0 and (progress_info.failed / progress_info.total) >= FAILURE_THRESHOLD:
             complete_state = JobState.FAILURE
 
         _update_job_progress(
@@ -175,6 +175,12 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
             captures=captures_count,
         )
 
+        # ACK NATS after progress is saved — if we crash before this, NATS will redeliver
+        _ack_task_via_nats(reply_subject, job.logger)
+
+    except CeleryRetry:
+        # Don't swallow Celery retry exceptions
+        raise
     except Exception as e:
         job.logger.error(
             f"Failed to process pipeline result for job {job_id}: {e}. NATS will redeliver the task message."

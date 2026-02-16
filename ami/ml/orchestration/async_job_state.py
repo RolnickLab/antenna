@@ -1,5 +1,5 @@
 """
-Task state management for job progress tracking using Redis.
+Async job state management for progress tracking using Redis.
 """
 
 import logging
@@ -74,16 +74,16 @@ class AsyncJobStateManager:
         failed_image_ids: set[str] | None = None,
     ) -> None | JobStateProgress:
         """
-        Update the task state with newly processed images.
+        Update the job state with newly processed images.
 
         Args:
             processed_image_ids: Set of image IDs that have just been processed
             stage: The processing stage ("process" or "results")
-            request_id: Unique identifier for this processing request
-            detections_count: Number of detections to add to cumulative count
-            classifications_count: Number of classifications to add to cumulative count
-            captures_count: Number of captures to add to cumulative count
+            request_id: Unique identifier for this processing request (used for locking)
             failed_image_ids: Set of image IDs that failed processing (optional)
+
+        Returns:
+            JobStateProgress if update succeeded, None if lock could not be acquired.
         """
         # Create a unique lock key for this job
         lock_key = _lock_key(self.job_id)
