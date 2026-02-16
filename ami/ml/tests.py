@@ -909,22 +909,23 @@ class TestTaskStateManager(TestCase):
         """Set up test fixtures."""
         from django.core.cache import cache
 
-        from ami.ml.orchestration.task_state import TaskStateManager
+        from ami.ml.orchestration.async_job_state import AsyncJobStateManager
 
         cache.clear()
         self.job_id = 123
-        self.manager = TaskStateManager(self.job_id)
+        self.manager = AsyncJobStateManager(self.job_id)
         self.image_ids = ["img1", "img2", "img3", "img4", "img5"]
 
     def _init_and_verify(self, image_ids):
         """Helper to initialize job and verify initial state."""
         self.manager.initialize_job(image_ids)
-        progress = self.manager._get_progress(set(), "process")
+        progress = self.manager._commit_update(set(), "process")
         assert progress is not None
         self.assertEqual(progress.total, len(image_ids))
         self.assertEqual(progress.remaining, len(image_ids))
         self.assertEqual(progress.processed, 0)
         self.assertEqual(progress.percentage, 0.0)
+        self.assertEqual(progress.failed, 0)
         return progress
 
     def test_initialize_job(self):
@@ -933,30 +934,31 @@ class TestTaskStateManager(TestCase):
 
         # Verify both stages are initialized
         for stage in self.manager.STAGES:
-            progress = self.manager._get_progress(set(), stage)
+            progress = self.manager._commit_update(set(), stage)
             assert progress is not None
             self.assertEqual(progress.total, len(self.image_ids))
+            self.assertEqual(progress.failed, 0)
 
     def test_progress_tracking(self):
         """Test progress updates correctly as images are processed."""
         self._init_and_verify(self.image_ids)
 
         # Process 2 images
-        progress = self.manager._get_progress({"img1", "img2"}, "process")
+        progress = self.manager._commit_update({"img1", "img2"}, "process")
         assert progress is not None
         self.assertEqual(progress.remaining, 3)
         self.assertEqual(progress.processed, 2)
         self.assertEqual(progress.percentage, 0.4)
 
         # Process 2 more images
-        progress = self.manager._get_progress({"img3", "img4"}, "process")
+        progress = self.manager._commit_update({"img3", "img4"}, "process")
         assert progress is not None
         self.assertEqual(progress.remaining, 1)
         self.assertEqual(progress.processed, 4)
         self.assertEqual(progress.percentage, 0.8)
 
         # Process last image
-        progress = self.manager._get_progress({"img5"}, "process")
+        progress = self.manager._commit_update({"img5"}, "process")
         assert progress is not None
         self.assertEqual(progress.remaining, 0)
         self.assertEqual(progress.processed, 5)
@@ -992,20 +994,20 @@ class TestTaskStateManager(TestCase):
         self._init_and_verify(self.image_ids)
 
         # Update process stage
-        self.manager._get_progress({"img1", "img2"}, "process")
-        progress_process = self.manager._get_progress(set(), "process")
+        self.manager._commit_update({"img1", "img2"}, "process")
+        progress_process = self.manager._commit_update(set(), "process")
         assert progress_process is not None
         self.assertEqual(progress_process.remaining, 3)
 
         # Results stage should still have all images pending
-        progress_results = self.manager._get_progress(set(), "results")
+        progress_results = self.manager._commit_update(set(), "results")
         assert progress_results is not None
         self.assertEqual(progress_results.remaining, 5)
 
     def test_empty_job(self):
         """Test handling of job with no images."""
         self.manager.initialize_job([])
-        progress = self.manager._get_progress(set(), "process")
+        progress = self.manager._commit_update(set(), "process")
         assert progress is not None
         self.assertEqual(progress.total, 0)
         self.assertEqual(progress.percentage, 1.0)  # Empty job is 100% complete
@@ -1015,12 +1017,65 @@ class TestTaskStateManager(TestCase):
         self._init_and_verify(self.image_ids)
 
         # Verify keys exist
-        progress = self.manager._get_progress(set(), "process")
+        progress = self.manager._commit_update(set(), "process")
         self.assertIsNotNone(progress)
 
         # Cleanup
         self.manager.cleanup()
 
         # Verify keys are gone
-        progress = self.manager._get_progress(set(), "process")
+        progress = self.manager._commit_update(set(), "process")
         self.assertIsNone(progress)
+
+    def test_failed_image_tracking(self):
+        """Test basic failed image tracking with no double-counting on retries."""
+        self._init_and_verify(self.image_ids)
+
+        # Mark 2 images as failed in process stage
+        progress = self.manager._commit_update({"img1", "img2"}, "process", failed_image_ids={"img1", "img2"})
+        assert progress is not None
+        self.assertEqual(progress.failed, 2)
+
+        # Retry same 2 images (fail again) - should not double-count
+        progress = self.manager._commit_update(set(), "process", failed_image_ids={"img1", "img2"})
+        assert progress is not None
+        self.assertEqual(progress.failed, 2)
+
+        # Fail a different image
+        progress = self.manager._commit_update(set(), "process", failed_image_ids={"img3"})
+        assert progress is not None
+        self.assertEqual(progress.failed, 3)
+
+    def test_failed_and_processed_mixed(self):
+        """Test mixed successful and failed processing in same batch."""
+        self._init_and_verify(self.image_ids)
+
+        # Process 2 successfully, 2 fail, 1 remains pending
+        progress = self.manager._commit_update(
+            {"img1", "img2", "img3", "img4"}, "process", failed_image_ids={"img3", "img4"}
+        )
+        assert progress is not None
+        self.assertEqual(progress.processed, 4)
+        self.assertEqual(progress.failed, 2)
+        self.assertEqual(progress.remaining, 1)
+        self.assertEqual(progress.percentage, 0.8)
+
+    def test_cleanup_removes_failed_set(self):
+        """Test that cleanup removes failed image set."""
+        from django.core.cache import cache
+
+        self._init_and_verify(self.image_ids)
+
+        # Add failed images
+        self.manager._commit_update({"img1", "img2"}, "process", failed_image_ids={"img1", "img2"})
+
+        # Verify failed set exists
+        failed_set = cache.get(self.manager._failed_key)
+        self.assertEqual(len(failed_set), 2)
+
+        # Cleanup
+        self.manager.cleanup()
+
+        # Verify failed set is gone
+        failed_set = cache.get(self.manager._failed_key)
+        self.assertIsNone(failed_set)
