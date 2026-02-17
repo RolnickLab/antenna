@@ -89,6 +89,32 @@ class ObjectPermission(permissions.BasePermission):
         return obj.check_permission(request.user, view.action)
 
 
+class ProjectPipelineConfigPermission(ObjectPermission):
+    """
+    Permission for the nested project pipelines route (/projects/{pk}/pipelines/).
+
+    Extends ObjectPermission to handle list/create actions where no object exists yet.
+    Creates a temporary ProjectPipelineConfig instance to leverage BaseModel.check_permission(),
+    which handles draft project visibility and guardian permission checks automatically.
+
+    Follows the same pattern as UserMembershipPermission.
+    """
+
+    def has_permission(self, request, view):
+        from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
+
+        if view.action in ("list", "create"):
+            project = view.get_active_project()
+            if not project:
+                return False
+
+            config = ProjectPipelineConfig(project=project)
+            action = "retrieve" if view.action == "list" else "create"
+            return config.check_permission(request.user, action)
+
+        return super().has_permission(request, view)
+
+
 class UserMembershipPermission(ObjectPermission):
     """
     Custom permission for UserProjectMembershipViewSet.
