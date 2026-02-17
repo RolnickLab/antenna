@@ -106,19 +106,37 @@ Key items:
 9. **GitHub #1122** — processing service online status
 10. **GitHub #1112** — worker tracking in logs
 
+## Test Run #3 — SUCCESS (22:51 - 23:03)
+
+After restarting Django/Celery (stale AMQP connection), the test passed end-to-end:
+- Job 1380: 20/20 images processed, status=SUCCESS
+- Total time: ~11 minutes (including ~5 min NATS ack_wait delay)
+- Detection + classification + result posting all worked
+
+**Performance issue found:** Both GPU processes race for tasks from the same NATS consumer. One gets all 20 messages, the other gets nothing. The unacked messages wait for `ack_wait=300s` to expire before redelivery. This added ~5 minutes of idle time.
+
+**Fix needed:** Either:
+1. Reduce `ack_wait` from 300s to something smaller (30-60s) for dev
+2. Ensure only one GPU process fetches tasks per batch (ADC-side coordination)
+3. Use NATS NAK to immediately release unfetchable tasks
+
+**ADC trailing slashes:** Fixed on `fix/trailing-slashes` branch in ami-data-companion.
+
 ## Next Session Prompt
 
 ```
-Continue PSv2 integration testing. Key files changed (uncommitted):
-- ami/ml/orchestration/nats_queue.py:26-32 (NATS connection safety)
-- ami/jobs/views.py:59,237-238 (stale job filtering + /tasks guard)
-- scripts/psv2_integration_test.sh:135 (reduced worker count)
+PSv2 integration test PASSED on main (job 1380, 20 images, SUCCESS).
 
-The 0-detections issue was caused by a stale ADC worker from test run #1
-consuming all NATS messages. Not a code bug. Kill ALL "ami worker" processes
-before re-running.
+Committed fixes on branch fix/nats-connection-safety (PR #1135):
+- NATS connection safety (connect_timeout, no reconnect)
+- Stale job filtering + /tasks terminal status guard
+- Test script stale worker cleanup
 
-Add pkill cleanup to test script, commit fixes, re-run test.
+Key remaining issue: NATS ack_wait=300s causes ~5min idle time when
+GPU processes race for tasks. Consider reducing ack_wait or adding
+NAK for unfetchable tasks.
+
+ADC trailing slashes fixed on fix/trailing-slashes branch (ami-data-companion).
 
 Full findings: docs/claude/planning/nats-flooding-prevention.md
 Session notes: docs/claude/sessions/2026-02-16-psv2-integration-test.md
