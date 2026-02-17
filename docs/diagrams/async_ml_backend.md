@@ -40,7 +40,7 @@ sequenceDiagram
 
     loop For each image
         Celery->>NATS: publish_task(job_id, PipelineProcessingTask)
-        Note over NATS: Task contains:<br/>- image_id<br/>- image_url<br/>- reply_subject (for ACK)
+        Note over NATS: Task contains:<br/>- id<br/>- image_id<br/>- image_url<br/><br/>Note: reply_subject is added when the task is reserved via reserve_task().
     end
 
     Note over Celery: Celery task completes<br/>(images queued, not processed)
@@ -60,7 +60,7 @@ sequenceDiagram
 
             %% Result Processing
             Django->>Celery: process_nats_pipeline_result.delay(<br/>job_id, result_data, reply_subject)
-            Django-->>Worker: {"status": "queued", "task_id": "..."}
+            Django-->>Worker: {"status": "accepted", "job_id": "...", "results_queued": ..., "tasks": [...]}
 
             %% Celery processes result
             Celery->>Redis: Acquire lock for job
@@ -155,7 +155,7 @@ Worker endpoint to fetch tasks from NATS queue.
 }
 ```
 
-### POST /jobs/{id}/result
+### POST /api/v2/jobs/{id}/result/
 
 Worker endpoint to post processing results.
 
