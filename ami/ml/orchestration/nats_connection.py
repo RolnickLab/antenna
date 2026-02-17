@@ -103,7 +103,7 @@ class ConnectionPool:
             nats_url = settings.NATS_URL
             try:
                 logger.info(f"Creating NATS connection to {nats_url}")
-                self._nc = await nats.connect(nats_url)
+                self._nc = await nats.connect(nats_url, allow_reconnect=False, connect_timeout=5)
                 self._js = self._nc.jetstream()
                 logger.info(f"Successfully connected to NATS at {nats_url}")
                 return self._nc, self._js
@@ -164,7 +164,7 @@ class ContextManagerConnection:
         nats_url = settings.NATS_URL
         try:
             logger.debug(f"Creating per-operation NATS connection to {nats_url}")
-            nc = await nats.connect(nats_url)
+            nc = await nats.connect(nats_url, allow_reconnect=False, connect_timeout=5)
             js = nc.jetstream()
             return nc, js
         except Exception as e:
