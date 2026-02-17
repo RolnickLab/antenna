@@ -132,7 +132,7 @@ This pattern enables:
 
 ## API Endpoints
 
-### GET /jobs/{id}/tasks
+### GET /api/v2/jobs/{id}/tasks
 
 Worker endpoint to fetch tasks from NATS queue.
 
