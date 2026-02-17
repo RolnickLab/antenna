@@ -24,7 +24,12 @@ logger = logging.getLogger(__name__)
 
 
 async def get_connection(nats_url: str):
-    nc = await nats.connect(nats_url)
+    nc = await nats.connect(
+        nats_url,
+        connect_timeout=5,
+        allow_reconnect=False,
+        max_reconnect_attempts=0,
+    )
     js = nc.jetstream()
     return nc, js
 

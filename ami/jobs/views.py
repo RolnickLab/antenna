@@ -55,11 +55,12 @@ class IncompleteJobFilter(BaseFilterBackend):
         incomplete_only = url_boolean_param(request, "incomplete_only", default=False)
         # Filter to incomplete jobs if requested (checks "results" stage status)
         if incomplete_only:
-            # Create filters for each final state to exclude
+            # Exclude jobs with a terminal top-level status
+            queryset = queryset.exclude(status__in=JobState.final_states())
+
+            # Also exclude jobs where the "results" stage has a final state status
             final_states = JobState.final_states()
             exclude_conditions = Q()
-
-            # Exclude jobs where the "results" stage has a final state status
             for state in final_states:
                 # JSON path query to check if results stage status is in final states
                 # @TODO move to a QuerySet method on Job model if/when this needs to be reused elsewhere
@@ -232,6 +233,10 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         # Only async_api jobs have tasks fetchable from NATS
         if job.dispatch_mode != JobDispatchMode.ASYNC_API:
             raise ValidationError("Only async_api jobs have fetchable tasks")
+
+        # Don't fetch tasks from completed/failed/revoked jobs
+        if job.status in JobState.final_states():
+            return Response({"tasks": []})
 
         # Validate that the job has a pipeline
         if not job.pipeline:
