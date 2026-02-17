@@ -88,6 +88,12 @@ class IsProjectMemberOrReadOnly(permissions.BasePermission):
         if request.method in permissions.SAFE_METHODS:
             return True
 
+        if not request.user or not request.user.is_authenticated:
+            return False
+
+        if request.user.is_superuser:  # type: ignore[union-attr]
+            return True
+
         # view must provide get_active_project (i.e. use ProjectMixin)
         get_active_project = getattr(view, "get_active_project", None)
         if not get_active_project:
