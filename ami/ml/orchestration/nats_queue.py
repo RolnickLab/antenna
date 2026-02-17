@@ -44,8 +44,8 @@ class TaskQueueManager:
     Use as an async context manager:
         async with TaskQueueManager() as manager:
             await manager.publish_task('job123', {'data': 'value'})
-            task = await manager.reserve_task('job123')
-            await manager.acknowledge_task(task['reply_subject'])
+            tasks = await manager.reserve_tasks('job123', count=64)
+            await manager.acknowledge_task(tasks[0].reply_subject)
     """
 
     def __init__(self, nats_url: str | None = None):
@@ -161,62 +161,52 @@ class TaskQueueManager:
             logger.error(f"Failed to publish task to stream for job '{job_id}': {e}")
             return False
 
-    async def reserve_task(self, job_id: int, timeout: float | None = None) -> PipelineProcessingTask | None:
+    async def reserve_tasks(self, job_id: int, count: int, timeout: float = 5) -> list[PipelineProcessingTask]:
         """
-        Reserve a task from the specified stream.
+        Reserve up to `count` tasks from the specified stream in a single NATS fetch.
 
         Args:
             job_id: The job ID (integer primary key) to pull tasks from
-            timeout: Timeout in seconds for reservation (default: 5 seconds)
+            count: Maximum number of tasks to reserve
+            timeout: Timeout in seconds waiting for messages (default: 5 seconds)
 
         Returns:
-            PipelineProcessingTask with reply_subject set for acknowledgment, or None if no task available
+            List of PipelineProcessingTask objects with reply_subject set for acknowledgment.
+            May return fewer than `count` if the queue has fewer messages available.
         """
         if self.js is None:
             raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
 
-        if timeout is None:
-            timeout = 5
-
         try:
-            # Ensure stream and consumer exist
             await self._ensure_stream(job_id)
             await self._ensure_consumer(job_id)
 
             consumer_name = self._get_consumer_name(job_id)
             subject = self._get_subject(job_id)
 
-            # Create ephemeral subscription for this pull
             psub = await self.js.pull_subscribe(subject, consumer_name)
 
             try:
-                # Fetch a single message
-                msgs = await psub.fetch(1, timeout=timeout)
-
-                if msgs:
-                    msg = msgs[0]
-                    task_data = json.loads(msg.data.decode())
-                    metadata = msg.metadata
-
-                    # Parse the task data into PipelineProcessingTask
-                    task = PipelineProcessingTask(**task_data)
-                    # Set the reply_subject for acknowledgment
-                    task.reply_subject = msg.reply
-
-                    logger.debug(f"Reserved task from stream for job '{job_id}', sequence {metadata.sequence.stream}")
-                    return task
-
+                msgs = await psub.fetch(count, timeout=timeout)
             except nats.errors.TimeoutError:
-                # No messages available
                 logger.debug(f"No tasks available in stream for job '{job_id}'")
-                return None
+                return []
             finally:
-                # Always unsubscribe
                 await psub.unsubscribe()
 
+            tasks = []
+            for msg in msgs:
+                task_data = json.loads(msg.data.decode())
+                task = PipelineProcessingTask(**task_data)
+                task.reply_subject = msg.reply
+                tasks.append(task)
+
+            logger.info(f"Reserved {len(tasks)} tasks from stream for job '{job_id}'")
+            return tasks
+
         except Exception as e:
-            logger.error(f"Failed to reserve task from stream for job '{job_id}': {e}")
-            return None
+            logger.error(f"Failed to reserve tasks from stream for job '{job_id}': {e}")
+            return []
 
     async def acknowledge_task(self, reply_subject: str) -> bool:
         """

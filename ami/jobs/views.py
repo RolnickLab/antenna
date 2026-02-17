@@ -246,13 +246,8 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         from ami.ml.orchestration.nats_queue import TaskQueueManager
 
         async def get_tasks():
-            tasks = []
             async with TaskQueueManager() as manager:
-                for _ in range(batch):
-                    task = await manager.reserve_task(job.pk, timeout=0.1)
-                    if task:
-                        tasks.append(task.dict())
-            return tasks
+                return [task.dict() for task in await manager.reserve_tasks(job.pk, count=batch)]
 
         # Use async_to_sync to properly handle the async call
         tasks = async_to_sync(get_tasks)()
