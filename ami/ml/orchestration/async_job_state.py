@@ -1,5 +1,27 @@
 """
-Async job state management for progress tracking using Redis.
+Internal progress tracking for async (NATS) job processing, backed by Redis.
+
+Multiple Celery workers process image batches concurrently and report progress
+here using Redis for atomic updates with locking. This module is purely internal
+— nothing outside the worker pipeline reads from it directly.
+
+How this relates to the Job model (ami/jobs/models.py):
+
+  The **Job model** is the primary, external-facing record. It is what users see
+  in the UI, what external APIs interact with (listing open jobs, fetching tasks
+  to process), and what persists as history in the CMS. It has two relevant fields:
+
+  - **Job.status** (JobState enum) — lifecycle state (CREATED → STARTED → SUCCESS/FAILURE)
+  - **Job.progress** (JobProgress JSONB) — detailed stage progress with params
+    like detections, classifications, captures counts
+
+  This Redis layer exists only because concurrent NATS workers need atomic
+  counters that PostgreSQL row locks would serialize too aggressively. After each
+  batch, _update_job_progress() in ami/jobs/tasks.py copies the Redis snapshot
+  into the Job model, which is the source of truth for everything external.
+
+Flow: NATS result → AsyncJobStateManager.update_state() (Redis, internal)
+      → _update_job_progress() (writes to Job model) → UI / API reads Job
 """
 
 import logging
@@ -12,13 +34,20 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class JobStateProgress:
-    """Progress snapshot for a job stage tracked in Redis."""
+    """
+    Progress snapshot for a job stage, read from Redis.
 
-    remaining: int = 0
-    total: int = 0
-    processed: int = 0
-    percentage: float = 0.0
-    failed: int = 0
+    All counts refer to source images (captures), not detections or occurrences.
+    Currently specific to ML pipeline jobs — if other job types are made available
+    for external processing, the unit of work ("source image") and failure semantics
+    may need to be generalized.
+    """
+
+    remaining: int = 0  # source images not yet processed in this stage
+    total: int = 0  # total source images in the job
+    processed: int = 0  # source images completed (success + failed)
+    percentage: float = 0.0  # processed / total
+    failed: int = 0  # source images that returned an error from the processing service
 
 
 def _lock_key(job_id: int) -> str:
@@ -27,10 +56,14 @@ def _lock_key(job_id: int) -> str:
 
 class AsyncJobStateManager:
     """
-    Manages job progress tracking state in Redis.
+    Manages real-time job progress in Redis for concurrent NATS workers.
 
-    Tracks pending images for jobs to calculate progress percentages
-    as workers process images asynchronously.
+    Each job has per-stage pending image lists and a shared failed image set.
+    Workers acquire a Redis lock before mutating state, ensuring atomic updates
+    even when multiple Celery tasks process batches in parallel.
+
+    The results are ephemeral — _update_job_progress() in ami/jobs/tasks.py
+    copies each snapshot into the persistent Job.progress JSONB field.
     """
 
     TIMEOUT = 86400 * 7  # 7 days in seconds
