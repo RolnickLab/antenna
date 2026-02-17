@@ -116,6 +116,7 @@ This pattern enables:
 - Worker posts `PipelineResultsError` instead of `PipelineResultsResponse`
 - Error is logged but task is still ACK'd (prevents infinite retries for bad data)
 - Failed images tracked separately in Redis
+- If worker crashes and never reports a result or error NATS will redeliver after visibility timeout
 
 **Database Errors:**
 
@@ -137,7 +138,7 @@ Worker endpoint to fetch tasks from NATS queue.
 
 **Query Parameters:**
 
-- `batch`: Number of tasks to fetch (1-100)
+- `batch`: Number of tasks to fetch
 
 **Response:**
 
@@ -166,22 +167,5 @@ Worker endpoint to post processing results.
   "result": {
     // PipelineResultsResponse or PipelineResultsError
   }
-}
-```
-
-**Response:**
-
-```json
-{
-  "status": "accepted",
-  "job_id": 1,
-  "results_queued": 1,
-  "tasks": [
-    {
-      "reply_subject": "$JS.ACK.job_1.job-1-consumer.1.2.3",
-      "status": "queued",
-      "task_id": "celery-task-uuid"
-    }
-  ]
 }
 ```
