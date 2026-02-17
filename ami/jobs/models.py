@@ -109,7 +109,7 @@ def python_slugify(value: str) -> str:
 
 
 class JobProgressSummary(pydantic.BaseModel):
-    """Summary of all stages of a job"""
+    """Top-level status and progress for a job, shown in the UI."""
 
     status: JobState = JobState.CREATED
     progress: float = 0
@@ -132,7 +132,17 @@ stage_parameters = JobProgressStageDetail.__fields__.keys()
 
 
 class JobProgress(pydantic.BaseModel):
-    """The full progress of a job and its stages."""
+    """
+    The user-facing progress of a job, stored as JSONB on the Job model.
+
+    This is what the UI displays and what external APIs read. Contains named
+    stages ("process", "results") with per-stage params (progress percentage,
+    detections/classifications/captures counts, failed count).
+
+    For async (NATS) jobs, updated by _update_job_progress() in ami/jobs/tasks.py
+    which copies snapshots from the internal Redis-backed AsyncJobStateManager.
+    For sync jobs, updated directly in MLJob.process_images().
+    """
 
     summary: JobProgressSummary
     stages: list[JobProgressStageDetail]
@@ -222,6 +232,10 @@ class JobProgress(pydantic.BaseModel):
         for stage in self.stages:
             stage.progress = 0
             stage.status = status
+            # Reset numeric param values to 0
+            for param in stage.params:
+                if isinstance(param.value, (int, float)):
+                    param.value = 0
 
     def is_complete(self) -> bool:
         """
@@ -561,7 +575,8 @@ class MLJob(JobType):
 
         job.logger.info(f"All tasks completed for job {job.pk}")
 
-        FAILURE_THRESHOLD = 0.5
+        from ami.jobs.tasks import FAILURE_THRESHOLD
+
         if image_count and (percent_successful < FAILURE_THRESHOLD):
             job.progress.update_stage("process", status=JobState.FAILURE)
             job.save()
