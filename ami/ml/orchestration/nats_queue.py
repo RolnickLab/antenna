@@ -267,13 +267,18 @@ class TaskQueueManager:
                 logger.debug(f"Reserved task from stream for job '{job_id}', sequence {metadata.sequence.stream}")
                 return task
 
+            return None
+
         except nats_errors.TimeoutError:
             # No messages available (expected behavior)
             logger.debug(f"No tasks available in stream for job '{job_id}'")
             return None
         finally:
-            # Always unsubscribe
-            await psub.unsubscribe()
+            # Unsubscribe in its own try/except so it never masks exceptions from above
+            try:
+                await psub.unsubscribe()
+            except Exception as e:
+                logger.warning(f"Failed to unsubscribe pull subscription for job '{job_id}': {e}")
 
     @retry_on_connection_error(max_retries=2, backoff_seconds=0.5)
     async def acknowledge_task(self, reply_subject: str) -> bool:

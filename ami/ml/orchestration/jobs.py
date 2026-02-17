@@ -105,7 +105,7 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
                     data=task,
                 )
             except Exception as e:
-                logger.error(f"Failed to queue image {image_pk} to stream for job '{job.pk}': {e}")
+                logger.exception(f"Failed to queue image {image_pk} to stream for job '{job.pk}': {e}")
                 success = False
 
             if success:

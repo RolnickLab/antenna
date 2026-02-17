@@ -6,29 +6,77 @@ connection for all async operations *within* one async_to_sync() boundary.
 It does NOT provide reuse across separate async_to_sync() calls — each call
 creates a new event loop, so a new connection is established.
 
-Where the pool helps:
-  The main beneficiary is queue_images_to_nats() in jobs.py, which wraps
-  1000+ publish_task() awaits in a single async_to_sync() call. All of those
-  awaits share one event loop and therefore one NATS connection. Without the
-  pool, each publish would open its own TCP connection (~1500 per job).
-  Similarly, JobViewSet.tasks() batches multiple reserve_task() calls in one
-  async_to_sync() boundary.
+Call paths and connection reuse
+-------------------------------
 
-Where it doesn't help:
-  Single-operation boundaries like _ack_task_via_nats() (one ACK per call)
-  get no reuse — the pool is effectively single-use there. The overhead is
-  negligible (one dict lookup), and the retry_on_connection_error decorator
-  provides resilience regardless.
+1. Queue images (high-value reuse):
+   POST /api/v2/jobs/{id}/run/ → Celery run_job → MLJob.run()
+   → queue_images_to_nats() wraps 1000+ sequential publish_task() awaits in
+   a single async_to_sync() call. All share one event loop → one connection.
+   Without the pool each publish would open its own TCP connection.
 
-Why keyed by event loop:
-  asyncio.Lock and nats.Client are bound to the loop they were created on.
-  Sharing them across loops causes "attached to a different loop" errors.
-  Keying by loop ensures isolation. WeakKeyDictionary auto-cleans when loops
-  are garbage collected, so short-lived loops don't leak.
+2. Reserve tasks (moderate reuse):
+   GET /api/v2/jobs/{id}/tasks/?batch=N → JobViewSet.tasks()
+   → async_to_sync() wraps N sequential reserve_task() calls. Typical N=5-10.
 
-Archived alternative:
-  ContextManagerConnection preserves the original pre-pool implementation
-  (one connection per `async with` block) as a drop-in fallback.
+3. Acknowledge (single-use, no reuse):
+   POST /api/v2/jobs/{id}/result/ → Celery process_nats_pipeline_result
+   → _ack_task_via_nats() wraps a single acknowledge_task() in its own
+   async_to_sync() call. Each ACK gets its own event loop → new connection.
+   Pool overhead is negligible (one dict lookup). retry_on_connection_error
+   provides resilience.
+
+4. Cleanup (modest reuse):
+   Job completion → cleanup_async_job_resources()
+   → async_to_sync() wraps delete_consumer + delete_stream (2 ops, 1 conn).
+
+Concurrency model
+-----------------
+
+All call paths use sequential for-loops, never asyncio.gather(). Within a
+single async_to_sync() boundary there is only one coroutine running at a time.
+This means:
+
+- The asyncio.Lock in ConnectionPool is defensive but never actually contends.
+- reset() is only called from retry_on_connection_error between sequential
+  retries. No other coroutine races with it.
+- Fast-path checks and state mutations outside the lock (lines ~87-94) are
+  safe because cooperative scheduling guarantees no preemption between
+  synchronous Python statements.
+- Clearing self._lock in reset() is intentional — it ensures the replacement
+  lock is created bound to the current event loop state.
+
+Why NOT check is_reconnecting
+-----------------------------
+
+Connections live inside short-lived async_to_sync() event loops. If the NATS
+client enters RECONNECTING state, the event loop will typically be destroyed
+before reconnection completes. Clearing the client and creating a fresh
+connection is correct for this lifecycle. The retry_on_connection_error
+decorator provides the real resilience layer, not nats.py's built-in
+reconnection (which is designed for long-lived event loops).
+
+Why keyed by event loop
+-----------------------
+
+asyncio.Lock and nats.Client are bound to the loop they were created on.
+Sharing them across loops causes "attached to a different loop" errors.
+Keying by loop ensures isolation. WeakKeyDictionary auto-cleans when loops
+are garbage collected, so short-lived loops don't leak.
+
+Thread safety
+-------------
+
+_pools_lock (threading.Lock) serializes access to the global _pools dict.
+Multiple Celery worker threads can create pools concurrently — the lock
+prevents races. Within a single event loop, the asyncio.Lock serializes
+connection creation (though in practice it never contends, see above).
+
+Archived alternative
+--------------------
+
+ContextManagerConnection preserves the original pre-pool implementation
+(one connection per `async with` block) as a drop-in fallback.
 """
 
 import asyncio

@@ -99,6 +99,22 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
             self.assertIsNone(task)
             mock_psub.unsubscribe.assert_called_once()
 
+    async def test_reserve_task_timeout(self):
+        """Test reserve_task when fetch raises TimeoutError (no messages available)."""
+        from nats import errors as nats_errors
+
+        with self._mock_nats_setup() as (_, js, _):
+            mock_psub = MagicMock()
+            mock_psub.fetch = AsyncMock(side_effect=nats_errors.TimeoutError)
+            mock_psub.unsubscribe = AsyncMock()
+            js.pull_subscribe = AsyncMock(return_value=mock_psub)
+
+            manager = TaskQueueManager()
+            task = await manager.reserve_task(123)
+
+            self.assertIsNone(task)
+            mock_psub.unsubscribe.assert_called_once()
+
     async def test_acknowledge_task_success(self):
         """Test successful task acknowledgment."""
         with self._mock_nats_setup() as (nc, _, _):
