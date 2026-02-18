@@ -276,8 +276,8 @@ const OccurrenceDetailsDialog = ({
     >
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
-        isLoading={isLoading}
         error={error}
+        isLoading={isLoading}
       >
         {occurrence ? (
           <OccurrenceDetails

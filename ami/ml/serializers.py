@@ -2,7 +2,6 @@ from django_pydantic_field.rest_framework import SchemaField
 from rest_framework import serializers
 
 from ami.main.api.serializers import DefaultSerializer, MinimalNestedModelSerializer
-from ami.main.models import Project
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline, PipelineStage
@@ -134,11 +133,7 @@ class PipelineNestedSerializer(DefaultSerializer):
 
 class ProcessingServiceSerializer(DefaultSerializer):
     pipelines = PipelineNestedSerializer(many=True, read_only=True)
-    project = serializers.PrimaryKeyRelatedField(
-        write_only=True,
-        queryset=Project.objects.all(),
-        required=False,
-    )
+    projects = serializers.SerializerMethodField()
 
     class Meta:
         model = ProcessingService
@@ -148,7 +143,6 @@ class ProcessingServiceSerializer(DefaultSerializer):
             "name",
             "description",
             "projects",
-            "project",
             "endpoint_url",
             "pipelines",
             "created_at",
@@ -157,14 +151,12 @@ class ProcessingServiceSerializer(DefaultSerializer):
             "last_checked_live",
         ]
 
-    def create(self, validated_data):
-        project = validated_data.pop("project", None)
-        instance = super().create(validated_data)
-
-        if project:
-            instance.projects.add(project)
-
-        return instance
+    def get_projects(self, obj):
+        """
+        Return list of project IDs this processing service belongs to.
+        This is read-only and managed by the server.
+        """
+        return list(obj.projects.values_list("id", flat=True))
 
 
 class PipelineRegistrationSerializer(serializers.Serializer):

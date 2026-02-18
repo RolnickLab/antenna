@@ -27,6 +27,15 @@ const getSidebarSections = (
         path: APP_ROUTES.COLLECTIONS({ projectId: project.id }),
       },
       {
+        id: 'taxa-lists',
+        title: translate(STRING.NAV_ITEM_TAXA_LISTS),
+        path: APP_ROUTES.TAXA_LISTS({ projectId: project.id }),
+        matchPath: APP_ROUTES.TAXA_LIST_DETAILS({
+          projectId: ':projectId',
+          taxaListId: '*',
+        }),
+      },
+      {
         id: 'exports',
         title: translate(STRING.NAV_ITEM_EXPORTS),
         path: APP_ROUTES.EXPORTS({ projectId: project.id }),
@@ -134,11 +143,6 @@ export const useSidebarSections = (project: ProjectDetails) => {
       (item) => !!matchPath(item.matchPath ?? item.path, location.pathname)
     )
   }, [location.pathname, sidebarSections])
-
-  sidebarSections
-    .map(({ items }) => items)
-    .flat()
-    .find((item) => !!matchPath(item.path, location.pathname))
 
   return { sidebarSections, activeItem }
 }

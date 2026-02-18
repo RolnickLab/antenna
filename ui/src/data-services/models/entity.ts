@@ -11,14 +11,18 @@ export class Entity {
   }
 
   get canUpdate(): boolean {
-    return this._data.user_permissions.includes(UserPermission.Update)
+    return this._data.user_permissions?.includes(UserPermission.Update)
   }
 
   get canDelete(): boolean {
-    return this._data.user_permissions.includes(UserPermission.Delete)
+    return this._data.user_permissions?.includes(UserPermission.Delete)
   }
 
-  get createdAt(): string {
+  get createdAt(): string | undefined {
+    if (!this._data.created_at) {
+      return undefined
+    }
+
     return getFormatedDateTimeString({
       date: new Date(this._data.created_at),
     })
