@@ -41,9 +41,7 @@ export const RemoveTaxaListTaxonDialog = ({
         )}
         <FormSection
           title={translate(STRING.REMOVE_TAXA_LIST_TAXON)}
-          description={translate(
-            STRING.MESSAGE_REMOVE_TAXA_LIST_TAXON_CONFIRM
-          )}
+          description={translate(STRING.MESSAGE_REMOVE_TAXA_LIST_TAXON_CONFIRM)}
         >
           <div className="flex justify-end gap-4">
             <Button
