@@ -1640,7 +1640,7 @@ class ClassificationViewSet(DefaultViewSet, ProjectMixin):
     API endpoint for viewing and adding classification results from a model.
     """
 
-    queryset = Classification.objects.all().select_related("taxon", "algorithm")  # , "detection")
+    queryset = Classification.objects.all().select_related("taxon", "algorithm", "applied_to__algorithm")
     serializer_class = ClassificationSerializer
     filterset_fields = [
         # Docs about slow loading API browser because of large choice fields
