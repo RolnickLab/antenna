@@ -7,6 +7,7 @@ from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline, PipelineStage
 from .models.processing_service import ProcessingService
 from .models.project_pipeline_config import ProjectPipelineConfig
+from .schemas import PipelineConfigResponse
 
 
 class AlgorithmCategoryMapSerializer(DefaultSerializer):
@@ -156,3 +157,17 @@ class ProcessingServiceSerializer(DefaultSerializer):
         This is read-only and managed by the server.
         """
         return list(obj.projects.values_list("id", flat=True))
+
+    def create(self, validated_data):
+        project = validated_data.pop("project", None)
+        instance = super().create(validated_data)
+
+        if project:
+            instance.projects.add(project)
+
+        return instance
+
+
+class PipelineRegistrationSerializer(serializers.Serializer):
+    processing_service_name = serializers.CharField()
+    pipelines = SchemaField(schema=list[PipelineConfigResponse], default=[])

@@ -27,6 +27,10 @@ __pycache__/
 *.egg
 *.whl
 
+# IPython / Jupyter
+.ipython/
+.jupyter/
+
 
 # Django / runtime artifacts
 *.log
@@ -54,6 +58,12 @@ yarn-error.log
 # IDE / editor
 .vscode/
 *.iml
+
+# Development / testing
+.pytest_cache/
+.coverage
+.tox/
+.cache/
 
 # OS cruft
 .DS_Store

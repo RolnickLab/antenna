@@ -22,7 +22,7 @@ from ami.main.api.views import DefaultViewSet
 from ami.ml.schemas import PipelineTaskResult
 from ami.utils.fields import url_boolean_param
 
-from .models import Job, JobState
+from .models import Job, JobDispatchMode, JobState
 from .serializers import JobListSerializer, JobSerializer, MinimalJobSerializer
 
 logger = logging.getLogger(__name__)
@@ -43,6 +43,7 @@ class JobFilterSet(filters.FilterSet):
             "source_image_single",
             "pipeline",
             "job_type_key",
+            "dispatch_mode",
         ]
 
 
@@ -227,6 +228,10 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             batch = IntegerField(required=True, min_value=1).clean(request.query_params.get("batch"))
         except Exception as e:
             raise ValidationError({"batch": str(e)}) from e
+
+        # Only async_api jobs have tasks fetchable from NATS
+        if job.dispatch_mode != JobDispatchMode.ASYNC_API:
+            raise ValidationError("Only async_api jobs have fetchable tasks")
 
         # Validate that the job has a pipeline
         if not job.pipeline:
