@@ -1634,6 +1634,7 @@ class TaxaListViewSet(DefaultViewSet, ProjectMixin):
         "created_at",
         "updated_at",
     ]
+    permission_classes = [ObjectPermission]
     require_project = True
 
     def get_queryset(self):
