@@ -18,16 +18,14 @@
     <p>
       You are about to run class masking on <strong>{{ occurrence_count }}</strong> selected occurrence{{ occurrence_count|pluralize }}.
     </p>
-    <p>
-      This will:
-      <ul>
-        <li>Mark existing terminal classifications as non-terminal</li>
-        <li>
-          Create new classifications with logits masked for species <em>not</em> in the selected taxa list
-        </li>
-        <li>Update occurrence determinations based on the new top predictions</li>
-      </ul>
-    </p>
+    <p>This will:</p>
+    <ul>
+      <li>Mark existing terminal classifications as non-terminal</li>
+      <li>
+        Create new classifications with logits masked for species <em>not</em> in the selected taxa list
+      </li>
+      <li>Update occurrence determinations based on the new top predictions</li>
+    </ul>
     <fieldset>
       <legend>Select parameters</legend>
       <div class="form-row">

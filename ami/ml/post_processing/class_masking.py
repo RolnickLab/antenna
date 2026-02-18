@@ -109,7 +109,7 @@ def make_classifications_filtered_by_taxa_list(
     logger.info(
         f"Category map has {len(category_map_with_taxa)} categories, "
         f"{len(excluded_category_map_with_taxa)} categories excluded, "
-        f"{len(classifications)} classifications to check"
+        f"{classification_count} classifications to check"
     )
 
     classifications_to_add = []

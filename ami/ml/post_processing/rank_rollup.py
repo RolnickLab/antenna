@@ -60,10 +60,22 @@ class RankRollupTask(BasePostProcessingTask):
             terminal=True,
             taxon__isnull=False,
             detection__source_image__collections__id=collection_id,
-        )
+        ).distinct()
 
         total = qs.count()
         self.logger.info(f"Found {total} terminal classifications to process for collection {collection_id}")
+
+        # Pre-load all labels from category maps to avoid N+1 queries
+        all_labels: set[str] = set()
+        for clf in qs.only("category_map"):
+            if clf.category_map and clf.category_map.labels:
+                all_labels.update(label for label in clf.category_map.labels if label)
+
+        label_to_taxon = {}
+        if all_labels:
+            for taxon in Taxon.objects.filter(name__in=all_labels).select_related("parent"):
+                label_to_taxon[taxon.name] = taxon
+        self.logger.info(f"Pre-loaded {len(label_to_taxon)} taxa from {len(all_labels)} unique labels")
 
         updated_occurrences = []
 
@@ -86,9 +98,9 @@ class RankRollupTask(BasePostProcessingTask):
                     if not label:
                         continue
 
-                    taxon = Taxon.objects.filter(name=label).first()
+                    taxon = label_to_taxon.get(label)
                     if not taxon:
-                        self.logger.info(f"Skipping label '{label}' (no matching Taxon Found)")
+                        self.logger.debug(f"Skipping label '{label}' (no matching Taxon found)")
                         continue
 
                     for rank in rollup_order:

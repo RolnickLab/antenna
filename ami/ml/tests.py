@@ -941,7 +941,7 @@ class TestPostProcessingTasks(TestCase):
 
     def _create_category_map_with_algorithm(self):
         """Create a simple AlgorithmCategoryMap and Algorithm to attach to classifications."""
-        species_taxa = list(self.project.taxa.filter(rank=TaxonRank.SPECIES.name)[:3])
+        species_taxa = list(self.project.taxa.filter(rank=TaxonRank.SPECIES.name).order_by("name")[:3])
         assert species_taxa, "No species taxa found in project; run create_taxa() first."
 
         data = [
