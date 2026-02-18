@@ -890,6 +890,7 @@ class ClassificationSerializer(DefaultSerializer):
             "scores",
             "logits",
             "top_n",
+            "applied_to",
             "created_at",
             "updated_at",
         ]
@@ -920,6 +921,7 @@ class ClassificationListSerializer(DefaultSerializer):
             "taxon",
             "score",
             "algorithm",
+            "applied_to",
             "created_at",
             "updated_at",
         ]
@@ -939,6 +941,7 @@ class ClassificationNestedSerializer(ClassificationSerializer):
             "score",
             "terminal",
             "algorithm",
+            "applied_to",
             "created_at",
         ]
 
