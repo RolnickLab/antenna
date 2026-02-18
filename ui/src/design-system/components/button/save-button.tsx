@@ -11,7 +11,13 @@ export const SaveButton = ({
   isSuccess?: boolean
   onClick?: () => void
 }) => (
-  <Button onClick={onClick} size="small" type="submit" variant="success">
+  <Button
+    disabled={isLoading}
+    onClick={onClick}
+    size="small"
+    type="submit"
+    variant="success"
+  >
     <span>{isSuccess ? translate(STRING.SAVED) : translate(STRING.SAVE)}</span>
     {isSuccess ? (
       <CheckIcon className="w-4 h-4" />
