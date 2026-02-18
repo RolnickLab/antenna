@@ -739,7 +739,7 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
     def run_rank_rollup(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
         """Trigger the Rank Rollup post-processing job asynchronously."""
         jobs = []
-        DEFAULT_THRESHOLDS = {"species": 0.8, "genus": 0.6, "family": 0.4}
+        DEFAULT_THRESHOLDS = {"SPECIES": 0.8, "GENUS": 0.6, "FAMILY": 0.4}
 
         for collection in queryset:
             job = Job.objects.create(

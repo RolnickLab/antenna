@@ -931,7 +931,7 @@ class TestPostProcessingTasks(TestCase):
                 detection=det,
                 taxon=self.species_taxon,
                 score=0.5,
-                scores=[0.5, 0.3, 0.2],
+                scores=[0.5, 0.2, 0.1],
                 terminal=True,
                 timestamp=now,
                 algorithm=self.algorithm,
@@ -975,7 +975,7 @@ class TestPostProcessingTasks(TestCase):
 
         task = RankRollupTask(
             source_image_collection_id=self.collection.pk,
-            thresholds={"species": 0.8, "genus": 0.6, "family": 0.4},
+            thresholds={"SPECIES": 0.8, "GENUS": 0.6, "FAMILY": 0.4},
         )
         task.run()
 

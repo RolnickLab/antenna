@@ -44,7 +44,8 @@ class RankRollupTask(BasePostProcessingTask):
         # ---- Read config parameters ----
         config = self.config or {}
         collection_id = config.get("source_image_collection_id")
-        thresholds = config.get("thresholds", self.DEFAULT_THRESHOLDS)
+        raw_thresholds = config.get("thresholds", self.DEFAULT_THRESHOLDS)
+        thresholds = {k.upper(): v for k, v in raw_thresholds.items()}
         rollup_order = config.get("rollup_order", self.ROLLUP_ORDER)
 
         if not collection_id:
@@ -68,7 +69,8 @@ class RankRollupTask(BasePostProcessingTask):
 
         with transaction.atomic():
             for i, clf in enumerate(qs.iterator(), start=1):
-                self.logger.info(f"Processing classification #{clf.pk} (taxon={clf.taxon}, score={clf.score:.3f})")
+                score_str = f"{clf.score:.3f}" if clf.score is not None else "N/A"
+                self.logger.info(f"Processing classification #{clf.pk} (taxon={clf.taxon}, score={score_str})")
 
                 if not clf.scores:
                     self.logger.info(f"Skipping classification #{clf.pk}: no scores available")
@@ -101,9 +103,6 @@ class RankRollupTask(BasePostProcessingTask):
                 self.logger.info(f"Aggregated taxon scores: {scores_str}")
                 for rank in rollup_order:
                     threshold = thresholds.get(rank, 1.0)
-                    # import pdb
-
-                    # pdb.set_trace()
                     candidates = {t: s for t, s in taxon_scores.items() if t.rank == rank}
 
                     if not candidates:
@@ -136,11 +135,14 @@ class RankRollupTask(BasePostProcessingTask):
                     )
 
                     occurrence = clf.detection.occurrence
-                    updated_occurrences.append(occurrence)
-                    self.logger.info(
-                        f"Rolled up occurrence {occurrence.pk}: {clf.taxon} => {new_taxon} "
-                        f"({new_taxon.rank}) with rolled-up score={new_score:.3f}"
-                    )
+                    if occurrence:
+                        updated_occurrences.append(occurrence)
+                        self.logger.info(
+                            f"Rolled up occurrence {occurrence.pk}: {clf.taxon} => {new_taxon} "
+                            f"({new_taxon.rank}) with rolled-up score={new_score:.3f}"
+                        )
+                    else:
+                        self.logger.warning(f"Detection #{clf.detection.pk} has no occurrence; skipping.")
                 else:
                     self.logger.info(f"No rollup applied for classification #{clf.pk} (taxon={clf.taxon})")
 

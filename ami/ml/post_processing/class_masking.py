@@ -1,5 +1,7 @@
 import logging
 
+import numpy as np
+from django.db import transaction
 from django.db.models import QuerySet
 from django.utils import timezone
 
@@ -24,6 +26,7 @@ def update_single_occurrence(
         terminal=True,
         algorithm=algorithm,
         scores__isnull=False,
+        logits__isnull=False,
     ).distinct()
 
     # Make a new Algorithm for the filtered classifications
@@ -56,15 +59,12 @@ def update_occurrences_in_collection(
 ):
     task_logger.info(f"Recalculating classifications based on a taxa list. Params: {params}")
 
-    # Make new AlgorithmCategoryMap with the taxa in the list
-    # @TODO
-
     classifications = Classification.objects.filter(
         detection__source_image__collections=collection,
         terminal=True,
-        # algorithm__task_type="classification",
         algorithm=algorithm,
         scores__isnull=False,
+        logits__isnull=False,
     ).distinct()
 
     make_classifications_filtered_by_taxa_list(
@@ -81,32 +81,26 @@ def make_classifications_filtered_by_taxa_list(
     algorithm: Algorithm,
     new_algorithm: Algorithm,
 ):
-    taxa_in_list = taxa_list.taxa.all()
+    taxa_in_list = set(taxa_list.taxa.all())
 
     occurrences_to_update: set[Occurrence] = set()
-    logger.info(f"Found {len(classifications)} terminal classifications with scores to update.")
+    classification_count = classifications.count()
+    logger.info(f"Found {classification_count} terminal classifications with scores to update.")
 
-    if not classifications:
+    if classification_count == 0:
         raise ValueError("No terminal classifications with scores found to update.")
 
     if not algorithm.category_map:
         raise ValueError(f"Algorithm {algorithm} does not have a category map.")
     category_map: AlgorithmCategoryMap = algorithm.category_map
 
-    # Consider moving this to a method on the Classification model
-
     # @TODO find a more efficient way to get the category map with taxa. This is slow!
     logger.info(f"Retrieving category map with Taxa instances for algorithm {algorithm}")
     category_map_with_taxa = category_map.with_taxa()
-    # Filter the category map to only include taxa that are in the taxa list
-    # included_category_map_with_taxa = [
-    #     category for category in category_map_with_taxa if category["taxon"] in taxa_in_list
-    # ]
     excluded_category_map_with_taxa = [
         category for category in category_map_with_taxa if category["taxon"] not in taxa_in_list
     ]
 
-    # included_category_indices = [int(category["index"]) for category in category_map_with_taxa]
     excluded_category_indices = [
         int(category["index"]) for category in excluded_category_map_with_taxa  # type: ignore
     ]
@@ -124,9 +118,6 @@ def make_classifications_filtered_by_taxa_list(
     timestamp = timezone.now()
     for classification in classifications:
         scores, logits = classification.scores, classification.logits
-        # Set scores and logits to zero if they are not in the filtered category indices
-
-        import numpy as np
 
         # Assert that all scores & logits are lists of numbers
         if not isinstance(scores, list) or not all(isinstance(score, (int, float)) for score in scores):
@@ -137,26 +128,17 @@ def make_classifications_filtered_by_taxa_list(
         logger.debug(f"Processing classification {classification.pk} with {len(scores)} scores")
         logger.info(f"Previous totals: {sum(scores)} scores, {sum(logits)} logits")
 
-        # scores_np_filtered = np.array(scores)
         logits_np = np.array(logits)
 
-        # scores_np_filtered[excluded_category_indices] = 0.0
-
-        # @TODO can we use np.NAN instead of 0.0? zero will NOT calculate correctly in softmax.
-        # @TODO delete the excluded categories from the scores and logits instead of setting to 0.0
-        # logits_np[excluded_category_indices] = 0.0
-        # logits_np[excluded_category_indices] = np.nan
+        # Mask excluded logits with -100 (effectively zero probability after softmax)
+        # @TODO consider using -np.inf for mathematically exact masking
         logits_np[excluded_category_indices] = -100
 
         logits: list[float] = logits_np.tolist()
 
-        from numpy import exp
-        from numpy import sum as np_sum
-
-        # @TODO add test to see if this is correct, or needed!
         # Recalculate the softmax scores based on the filtered logits
-        scores_np: np.ndarray = exp(logits_np - np.max(logits_np))  # Subtract max for numerical stability
-        scores_np /= np_sum(scores_np)  # Normalize to get probabilities
+        scores_np: np.ndarray = np.exp(logits_np - np.max(logits_np))  # Subtract max for numerical stability
+        scores_np /= np.sum(scores_np)  # Normalize to get probabilities
 
         scores: list = scores_np.tolist()  # Convert back to list
 
@@ -164,11 +146,8 @@ def make_classifications_filtered_by_taxa_list(
 
         # Get the taxon with the highest score  using the index of the max score
         top_index = scores.index(max(scores))
-        top_taxon = category_map_with_taxa[top_index][
-            "taxon"
-        ]  # @TODO: This doesn't work if the taxon has never been classified
-        print("Top taxon: ", category_map_with_taxa[top_index])  # @TODO: REMOVE
-        print("Top index: ", top_index)  # @TODO: REMOVE
+        top_taxon = category_map_with_taxa[top_index]["taxon"]
+        logger.debug(f"Top taxon: {category_map_with_taxa[top_index]}, index: {top_index}")
 
         # check if needs updating
         if classification.scores == scores and classification.logits == logits:
@@ -189,12 +168,15 @@ def make_classifications_filtered_by_taxa_list(
             detection=classification.detection,
             timestamp=classification.timestamp,
             terminal=True,
-            category_map=None,  # @TODO need a new category map with the filtered taxa
+            category_map=new_algorithm.category_map,
             created_at=timestamp,
             updated_at=timestamp,
         )
         if new_classification.taxon is None:
-            raise (ValueError("Classification isn't registered yet. Aborting"))  # @TODO remove or fail gracefully
+            raise ValueError(
+                f"Unable to determine top taxon after class masking for classification {classification.pk}. "
+                "No allowed classes found in taxa list."
+            )
 
         classifications_to_update.append(classification)
         classifications_to_add.append(new_classification)
@@ -203,27 +185,27 @@ def make_classifications_filtered_by_taxa_list(
         assert new_classification.detection.occurrence is not None
         occurrences_to_update.add(new_classification.detection.occurrence)
 
-        logging.info(
+        logger.info(
             f"Adding new classification for Taxon {top_taxon} to occurrence {new_classification.detection.occurrence}"
         )
 
-    # Bulk update the existing classifications
-    if classifications_to_update:
-        logger.info(f"Bulk updating {len(classifications_to_update)} existing classifications")
-        Classification.objects.bulk_update(classifications_to_update, ["terminal", "updated_at"])
-        logger.info(f"Updated {len(classifications_to_update)} existing classifications")
+    # Bulk update/create in a single transaction for atomicity
+    with transaction.atomic():
+        if classifications_to_update:
+            logger.info(f"Bulk updating {len(classifications_to_update)} existing classifications")
+            Classification.objects.bulk_update(classifications_to_update, ["terminal", "updated_at"])
+            logger.info(f"Updated {len(classifications_to_update)} existing classifications")
 
-    if classifications_to_add:
-        # Bulk create the new classifications
-        logger.info(f"Bulk creating {len(classifications_to_add)} new classifications")
-        Classification.objects.bulk_create(classifications_to_add)
-        logger.info(f"Added {len(classifications_to_add)} new classifications")
+        if classifications_to_add:
+            logger.info(f"Bulk creating {len(classifications_to_add)} new classifications")
+            Classification.objects.bulk_create(classifications_to_add)
+            logger.info(f"Added {len(classifications_to_add)} new classifications")
 
-    # Update the occurrence determinations
-    logger.info(f"Updating the determinations for {len(occurrences_to_update)} occurrences")
-    for occurrence in occurrences_to_update:
-        occurrence.save(update_determination=True)
-    logger.info(f"Updated determinations for {len(occurrences_to_update)} occurrences")
+        # Update the occurrence determinations
+        logger.info(f"Updating the determinations for {len(occurrences_to_update)} occurrences")
+        for occurrence in occurrences_to_update:
+            occurrence.save(update_determination=True)
+        logger.info(f"Updated determinations for {len(occurrences_to_update)} occurrences")
 
 
 class ClassMaskingTask(BasePostProcessingTask):
