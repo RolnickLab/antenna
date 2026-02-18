@@ -5,7 +5,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from ami.main.models import Classification, Taxon
-from ami.ml.post_processing.base import BasePostProcessingTask, register_postprocessing_task
+from ami.ml.post_processing.base import BasePostProcessingTask
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,6 @@ def find_ancestor_by_parent_chain(taxon, target_rank: str):
     return None
 
 
-@register_postprocessing_task
 class RankRollupTask(BasePostProcessingTask):
     """Post-processing task that rolls up low-confidence classifications
     to higher ranks using aggregated scores.
@@ -98,7 +97,8 @@ class RankRollupTask(BasePostProcessingTask):
 
                 new_taxon = None
                 new_score = None
-                self.logger.info(f"Aggregated taxon scores: { {t.name: s for t, s in taxon_scores.items()} }")
+                scores_str = {t.name: s for t, s in taxon_scores.items()}
+                self.logger.info(f"Aggregated taxon scores: {scores_str}")
                 for rank in rollup_order:
                     threshold = thresholds.get(rank, 1.0)
                     # import pdb
