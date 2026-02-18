@@ -12,7 +12,7 @@ export const SaveButton = ({
   onClick?: () => void
 }) => (
   <Button
-    disabled={isLoading}
+    disabled={isLoading || isSuccess}
     onClick={onClick}
     size="small"
     type="submit"
