@@ -159,6 +159,9 @@ class ProcessingServiceSerializer(DefaultSerializer):
         return list(obj.projects.values_list("id", flat=True))
 
     def create(self, validated_data):
+        # TODO: Remove this dead code. The `project` write field was removed from this serializer
+        # in favour of server-side assignment in ProcessingServiceViewSet.perform_create().
+        # The pop always returns None and the branch below is never reached.
         project = validated_data.pop("project", None)
         instance = super().create(validated_data)
 
