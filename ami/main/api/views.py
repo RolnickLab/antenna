@@ -1225,7 +1225,17 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         if self.action != "list":
             qs = qs.prefetch_related(
                 Prefetch(
-                    "detections", queryset=Detection.objects.order_by("-timestamp").select_related("source_image")
+                    "detections",
+                    queryset=Detection.objects.order_by("-timestamp")
+                    .select_related("source_image")
+                    .prefetch_related(
+                        Prefetch(
+                            "classifications",
+                            queryset=Classification.objects.select_related(
+                                "taxon", "algorithm", "applied_to__algorithm"
+                            ),
+                        )
+                    ),
                 )
             )
 
