@@ -3454,8 +3454,8 @@ class TaxaListTaxonAPITestCase(TestCase):
         self.project = Project.objects.create(name="Test Project", owner=self.user)
         self.taxa_list = TaxaList.objects.create(name="Test Taxa List", description="Test description")
         self.taxa_list.projects.add(self.project)
-        self.taxon1 = Taxon.objects.create(name="Taxon 1", rank="species")
-        self.taxon2 = Taxon.objects.create(name="Taxon 2", rank="species")
+        self.taxon1 = Taxon.objects.create(name="Taxon 1", rank="SPECIES")
+        self.taxon2 = Taxon.objects.create(name="Taxon 2", rank="SPECIES")
         self.client = APIClient()
         self.client.force_authenticate(self.user)
         self.base_url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/taxa/?project_id={self.project.pk}"
@@ -3554,7 +3554,7 @@ class TaxaListTaxonValidationTestCase(TestCase):
         self.project = Project.objects.create(name="Test Project", owner=self.user)
         self.taxa_list = TaxaList.objects.create(name="Test Taxa List")
         self.taxa_list.projects.add(self.project)
-        self.taxon = Taxon.objects.create(name="Test Taxon", rank="species")
+        self.taxon = Taxon.objects.create(name="Test Taxon", rank="SPECIES")
         self.client = APIClient()
         self.client.force_authenticate(self.user)
         self.base_url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/taxa/?project_id={self.project.pk}"
