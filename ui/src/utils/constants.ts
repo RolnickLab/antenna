@@ -95,6 +95,8 @@ export const APP_ROUTES = {
 
   TAXON_DETAILS: (params: { projectId: string; taxonId: string }) =>
     `/projects/${params.projectId}/taxa/${params.taxonId}`,
+
+  TEAM: (params: { projectId: string }) => `/projects/${params.projectId}/team`,
 }
 
 export const API_MAX_UPLOAD_SIZE = 1024 * 1024 * 30 // 30MB
@@ -102,6 +104,18 @@ export const API_MAX_UPLOAD_SIZE = 1024 * 1024 * 30 // 30MB
 export const LANDING_PAGE_URL = 'https://insectai.org/'
 
 export const LANDING_PAGE_WAITLIST_URL = 'https://insectai.org/waitlist'
+
+export const DOCS_URL =
+  import.meta.env.VITE_DOCS_URL ?? 'https://rolnicklab.github.io/antenna-docs'
+
+export const DOCS_LINKS = {
+  CONFIGURING_DATA_SOURCE: `${DOCS_URL}/sections/user-guide/uploading-data/#configuring-a-data-source`,
+  EXPORTING_DATA: `${DOCS_URL}/sections/user-guide/exporting-data`,
+  PROCESSING_DATA: `${DOCS_URL}/sections/user-guide/processing-data`,
+  PROJECT_CREATION: `${DOCS_URL}/sections/user-guide/project-creation`,
+  UPLOADING_DATA: `${DOCS_URL}/sections/user-guide/uploading-data`,
+  VALIDATING_DATA: `${DOCS_URL}/sections/user-guide/validating-data`,
+}
 
 export const SCORE_THRESHOLDS = {
   WARNING: 0.8,

@@ -9,9 +9,9 @@ import {
   InfoBlockField,
   InfoBlockFieldValue,
 } from 'design-system/components/info-block/info-block'
-import Plot from 'design-system/components/plot/plot'
+import { Plot } from 'design-system/components/plot/lazy-plot'
 import * as Tabs from 'design-system/components/tabs/tabs'
-import { ExternalLinkIcon } from 'lucide-react'
+import { ExternalLinkIcon, LockIcon } from 'lucide-react'
 import { buttonVariants, TaxonDetails } from 'nova-ui-kit'
 import { Helmet } from 'react-helmet-async'
 import { Link, useNavigate, useParams } from 'react-router-dom'
@@ -61,6 +61,21 @@ export const SpeciesDetails = ({
           size="lg"
           taxon={species}
         />
+        {canUpdate ? (
+          <div className="absolute bottom-6 right-6">
+            <Link
+              className={buttonVariants({
+                size: 'small',
+                variant: 'outline',
+              })}
+              to={species.adminUrl}
+              target="_blank"
+            >
+              <LockIcon className="w-4 h-4" />
+              <span>{translate(STRING.ADMIN)}</span>
+            </Link>
+          </div>
+        ) : null}
       </div>
       <div className={styles.content}>
         <div className={styles.info}>
@@ -98,6 +113,11 @@ export const SpeciesDetails = ({
                         </div>
                       ) : null}
                     </div>
+                  </InfoBlockField>
+                ) : null}
+                {species.commonNameLabel ? (
+                  <InfoBlockField label="Common name (EN)">
+                    <InfoBlockFieldValue value={species.commonNameLabel} />
                   </InfoBlockField>
                 ) : null}
                 <InfoBlockField label="Last seen">
@@ -173,6 +193,19 @@ export const SpeciesDetails = ({
                         target="_blank"
                       >
                         <span>Fieldguide</span>
+                        <ExternalLinkIcon className="w-4 h-4" />
+                      </Link>
+                    ) : null}
+                    {species.iNaturalistUrl ? (
+                      <Link
+                        className={buttonVariants({
+                          size: 'small',
+                          variant: 'outline',
+                        })}
+                        to={species.iNaturalistUrl}
+                        target="_blank"
+                      >
+                        <span>iNaturalist</span>
                         <ExternalLinkIcon className="w-4 h-4" />
                       </Link>
                     ) : null}

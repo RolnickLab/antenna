@@ -16,30 +16,62 @@ Antenna uses [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](ht
     127.0.0.1 minio
     127.0.0.1 django
 ```
+3) The following commands will build all services, run them in the background, and then stream the logs.
+   1) Standard development: will use a pre-built version of the frontend that will not have hot-reloading enabled. However, it will make startup time faster when restarting the stack.
+      ```sh
+      # Start the whole compose stack
+      docker compose up -d
 
-2) The following commands will build all services, run them in the background, and then stream the logs.
+      # To stream the logs
+      docker compose logs -f django celeryworker ui
+      # Ctrl+c to close the logs
 
-```sh
-    docker compose up -d
-    docker compose logs -f django celeryworker ui
-    # Ctrl+c to close the logs
-```
-NOTE: If you see docker build errors such as `At least one invalid signature was encountered`, these could happen if docker runs out of space. Commands like `docker image prune -f` and `docker system prune` can be helpful to clean up space.
+      NOTE: If you see docker build errors such as `At least one invalid signature was encountered`, these could happen if docker runs out of space. Commands like `docker image prune -f` and `docker system prune` can be helpful to clean up space.
 
-3) Optionally, run additional ML processing services: `processing_services` defines ML backends which wrap detections in our FastAPI response schema. The `example` app demos how to add new pipelines, algorithms, and models. See the detailed instructions in `processing_services/README.md`.
+      ```
+      To update the UI Docker container, use the following command to rebuild the frontend and
+      then refresh your browser after.
+      ```sh
+      docker compose build ui && docker compose up ui -d
+      ```
+
+   2) **With hot reloading UI**: Hot reload is enabled for frontend development, but the primary web interface will be slow to load when it first starts or restarts.
+      ```sh
+      # Stop the production ui first, then start with ui-dev profile
+      docker compose stop ui
+      docker compose --profile ui-dev up -d
+
+      # Or in one command, scale ui to 0 and start ui-dev
+      docker compose --profile ui-dev up -d --scale ui=0
+
+      # To stream the logs
+      docker compose logs -f django celeryworker ui-dev
+
+      # To stop the ui-dev container, you must specify the profile when running `down` or `stop`
+      docker compose --profile ui-dev down
+      # Or!
+      docker compose --profile "*" down
+      ```
+      _**Note that this will create a `ui/node_modules` folder if one does not exist yet. This folder is created by the mounting of the `/ui` folder
+      for the `ui-dev` service, and is written by a `root` user.
+      It will need to be removed, or you will need to modify its access permissions with the `chown` command if you later want to work on the frontend using the [instructions here](#frontend)._
+
+
+4) Optionally, run additional ML processing services: `processing_services` defines ML backends which wrap detections in our FastAPI response schema. The `example` app demos how to add new pipelines, algorithms, and models. See the detailed instructions in `processing_services/README.md`.
 
 ```
 docker compose -f processing_services/example/docker-compose.yml up -d
 # Once running, in Antenna register a new processing service called: http://ml_backend_example:2000
 ```
 
-4) Access the platform with the following URLs:
+5) Access the platform with the following URLs:
 
 - Primary web interface: http://localhost:4000
 - API browser: http://localhost:8000/api/v2/
 - Django admin: http://localhost:8000/admin/
 - OpenAPI / Swagger documentation: http://localhost:8000/api/v2/docs/
 - Minio UI: http://minio:9001, Minio service: http://minio:9000
+- NATS dashboard: https://natsdashboard.com/ (Add localhost)
 
 NOTE: If one of these services is not working properly, it could be due another process is using the port. You can check for this with `lsof -i :<PORT_NUMBER>`.
 
@@ -48,7 +80,7 @@ A default user will be created with the following credentials. Use these to log 
 - Email: `antenna@insectai.org`
 - Password: `localadmin`
 
-5) Stop all services with:
+6) Stop all services with:
 
     $ docker compose down
 
@@ -179,6 +211,12 @@ source venv/bin/activate
 pip install -r requirements/local.txt
 ```
 
+##### Build the frontend assets through Docker
+
+```bash
+docker compose run --rm ui yarn build
+```
+
 ##### Generate OpenAPI schema
 
 ```bash
@@ -252,3 +290,50 @@ The local environment uses a local PostgreSQL database in a Docker container.
 ### Load fixtures with test data
 
     docker compose run --rm django python manage.py migrate
+
+## Debugging with VS Code
+
+Antenna supports remote debugging with debugpy for both Django and Celery services.
+
+### Setup
+
+1. Copy or link the override example file:
+   ```bash
+   cp docker-compose.override-example.yml docker-compose.override.yml
+   # OR
+   ln -s docker-compose.override-example.yml docker-compose.override.yml
+   ```
+
+2. Start services normally:
+   ```bash
+   docker compose up
+   ```
+
+3. In VS Code, open the Debug panel (Ctrl+Shift+D) and select one of:
+   - **Attach: Django** - Debug the Django web server (port 5678)
+   - **Attach: Celeryworker** - Debug the Celery worker (port 5679)
+   - **Attach: Django + Celery** - Debug both simultaneously
+
+4. Click the green play button or press F5 to attach the debugger
+
+### Setting Breakpoints
+
+- Set breakpoints in your Python code by clicking in the left margin of the editor
+- When the code executes, the debugger will pause at your breakpoints
+- Use the Debug Console to inspect variables and execute expressions
+
+### Troubleshooting
+
+- **Connection refused**: Make sure you copied `docker-compose.override-example.yml` to `docker-compose.override.yml`
+- **Debugger not stopping**: Verify breakpoints are set in code that actually executes
+- **Port conflicts**: Check that ports 5678 and 5679 aren't already in use on your host machine
+- **Auto-reload**: Note that auto-reloading is disabled when debugging. You will need to manually restart the services to see code changes.
+
+### Disabling Debug Mode
+
+To disable debugging and return to normal operation:
+
+```bash
+rm docker-compose.override.yml
+docker compose restart django celeryworker
+```

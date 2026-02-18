@@ -26,7 +26,7 @@ export const getAppRoute = ({
     keepSearchParams ? window.location.search : undefined
   )
   Object.entries(filters).forEach(([name, value]) => {
-    if (value !== undefined) {
+    if (value !== undefined && value !== null) {
       searchParams.set(name, value)
     }
   })

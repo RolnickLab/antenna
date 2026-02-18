@@ -21,7 +21,7 @@ export const DeleteEntityDialog = ({
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Dialog.Trigger>
+      <Dialog.Trigger asChild>
         <Button className="shrink-0" size="icon" variant="ghost">
           <TrashIcon className="w-4 h-4" />
         </Button>

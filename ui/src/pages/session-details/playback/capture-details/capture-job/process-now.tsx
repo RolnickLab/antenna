@@ -1,6 +1,6 @@
 import { useCreateJob } from 'data-services/hooks/jobs/useCreateJob'
 import { CaptureDetails } from 'data-services/models/capture-details'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { CheckIcon, Loader2Icon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { useParams } from 'react-router-dom'
@@ -29,7 +29,7 @@ export const ProcessNow = ({
     : translate(STRING.MESSAGE_PERMISSIONS_MISSING)
 
   return (
-    <Tooltip content={tooltipContent}>
+    <BasicTooltip asChild content={tooltipContent}>
       <Button
         className="rounded-md !bg-neutral-700 text-neutral-200"
         disabled={disabled}
@@ -56,6 +56,6 @@ export const ProcessNow = ({
           <Loader2Icon className="w-4 h-4 ml-2 animate-spin" />
         ) : null}
       </Button>
-    </Tooltip>
+    </BasicTooltip>
   )
 }

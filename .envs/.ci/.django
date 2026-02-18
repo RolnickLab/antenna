@@ -19,3 +19,14 @@ MINIO_BROWSER_REDIRECT_URL=http://minio:9001
 
 DEFAULT_PROCESSING_SERVICE_NAME=Test Processing Service
 DEFAULT_PROCESSING_SERVICE_ENDPOINT=http://ml_backend:2000
+
+# RabbitMQ
+# ------------------------------------------------------------------------------
+CELERY_BROKER_URL=amqp://rabbituser:rabbitpass@rabbitmq:5672/
+CELERY_RESULT_BACKEND=rpc:// # Use RabbitMQ for results backend
+RABBITMQ_DEFAULT_USER=rabbituser
+RABBITMQ_DEFAULT_PASS=rabbitpass
+
+# NATS
+# ------------------------------------------------------------------------------
+NATS_URL=nats://nats:4222

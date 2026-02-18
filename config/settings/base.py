@@ -2,6 +2,7 @@
 Base settings to build other settings files upon.
 """
 
+import socket
 from pathlib import Path
 
 import django_stubs_ext
@@ -260,6 +261,11 @@ CACHES = {
         },
     }
 }
+REDIS_URL = env("REDIS_URL", default=None)
+
+# NATS
+# ------------------------------------------------------------------------------
+NATS_URL = env("NATS_URL", default="nats://localhost:4222")  # type: ignore[no-untyped-call]
 
 # ADMIN
 # ------------------------------------------------------------------------------
@@ -299,10 +305,13 @@ LOGGING = {
 if USE_TZ:
     # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-timezone
     CELERY_TIMEZONE = TIME_ZONE
+
+CELERY_TASK_DEFAULT_QUEUE = "antenna"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-broker_url
 CELERY_BROKER_URL = env("CELERY_BROKER_URL")
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-result_backend
-CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default=env("REDIS_URL", default=None))
+# "rpc://" means use RabbitMQ for results backend by default
+CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="rpc://")  # type: ignore[no-untyped-call]
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-extended
 CELERY_RESULT_EXTENDED = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-backend-always-retry
@@ -320,10 +329,10 @@ CELERY_TASK_COMPRESSION = "gzip"
 CELERY_RESULT_COMPRESSION = "gzip"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-time-limit
 # TODO: set to whatever value is adequate in your circumstances
-CELERY_TASK_TIME_LIMIT = 7 * 60 * 24
+CELERY_TASK_TIME_LIMIT = 4 * 60 * 60 * 24  # 4 days
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#task-soft-time-limit
 # TODO: set to whatever value is adequate in your circumstances
-CELERY_TASK_SOFT_TIME_LIMIT = 6 * 60 * 24
+CELERY_TASK_SOFT_TIME_LIMIT = 3 * 60 * 60 * 24  # 3 days
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#beat-scheduler
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-send-task-events
@@ -331,7 +340,8 @@ CELERY_WORKER_SEND_TASK_EVENTS = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std-setting-task_send_sent_event
 CELERY_TASK_SEND_SENT_EVENT = True
 
-# Health checking and retries, specific to Redis
+# Health checking and retries if using Redis as results backend
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#redis
 CELERY_REDIS_MAX_CONNECTIONS = 50  # Total connection pool limit for results backend
 CELERY_REDIS_SOCKET_TIMEOUT = 120  # Match Redis timeout
 CELERY_REDIS_SOCKET_KEEPALIVE = True
@@ -343,16 +353,34 @@ CELERY_REDIS_BACKEND_HEALTH_CHECK_INTERVAL = 30  # Check health every 30s
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_ENABLE_PREFETCH_COUNT_REDUCTION = True
 
-# Connection settings to match Redis timeout and keepalive
+# Cancel & return to queue if connection is lost
+# https://docs.celeryq.dev/en/latest/userguide/configuration.html#worker-cancel-long-running-tasks-on-connection-loss
+CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
+
+# RabbitMQ broker connection settings
+# These settings improve reliability for long-running workers with intermittent network issues
 CELERY_BROKER_TRANSPORT_OPTIONS = {
-    "visibility_timeout": 43200,  # 12 hours - default celery value
-    "socket_timeout": 120,  # Matches Redis timeout setting
-    "socket_connect_timeout": 30,  # Max time to establish connection
-    "socket_keepalive": True,  # Enable TCP keepalive
-    "retry_on_timeout": True,  # Retry operations if Redis times out
-    "max_connections": 20,  # Per process connection pool limit
+    # Custom TCP Keepalives to ensure network stack doesn't silently drop connections
+    "socket_keepalive": True,
+    "socket_settings": {
+        # Start sending Keepalive packets after 60 seconds of silence.
+        # This forces traffic on the wire, preventing the OpenStack 1-hour timeout.
+        socket.TCP_KEEPIDLE: 60,
+        # If no response, retry every 10 seconds.
+        socket.TCP_KEEPINTVL: 10,
+        # Give up and close connection after 9 failed attempts.
+        socket.TCP_KEEPCNT: 9,
+    },
+    # Connection Stability Settings
+    "socket_connect_timeout": 40,  # Max time to establish connection
+    "retry_on_timeout": True,  # Retry operations if they time out
+    "max_connections": 20,  # Connection pool limit per process
+    "heartbeat": 30,  # RabbitMQ heartbeat interval (seconds) - detects broken connections
+    # REMOVED "socket_timeout: 120" to prevent workers self-destructing during long blocking operations.
 }
 
+# Broker connection retry settings
+# Workers will retry forever on connection failures rather than crashing
 CELERY_BROKER_CONNECTION_RETRY = True
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_BROKER_CONNECTION_MAX_RETRIES = None  # Retry forever
@@ -425,6 +453,7 @@ S3_TEST_ENDPOINT = env("MINIO_ENDPOINT", default="http://minio:9000")  # type: i
 S3_TEST_KEY = env("MINIO_ROOT_USER", default=None)  # type: ignore[no-untyped-call]
 S3_TEST_SECRET = env("MINIO_ROOT_PASSWORD", default=None)  # type: ignore[no-untyped-call]
 S3_TEST_BUCKET = env("MINIO_TEST_BUCKET", default="ami-test")  # type: ignore[no-untyped-call]
+S3_TEST_REGION = env("MINIO_REGION", default=None)  # type: ignore[no-untyped-call]
 
 
 # Default processing service settings

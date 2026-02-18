@@ -5,7 +5,7 @@ import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetail
 import { CaptureDetails as Capture } from 'data-services/models/capture-details'
 import { Job } from 'data-services/models/job'
 import { ProcessingService } from 'data-services/models/processing-service'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { ExternalLinkIcon, HeartIcon, Loader2Icon } from 'lucide-react'
 import { Button, buttonVariants, Select } from 'nova-ui-kit'
 import { useState } from 'react'
@@ -159,7 +159,7 @@ const StarButton = ({
     : translate(STRING.MESSAGE_PERMISSIONS_MISSING)
 
   return (
-    <Tooltip content={tooltipContent}>
+    <BasicTooltip asChild content={tooltipContent}>
       <Button
         className="rounded-md !bg-neutral-700 text-neutral-200"
         disabled={!canStar}
@@ -175,7 +175,7 @@ const StarButton = ({
           />
         )}
       </Button>
-    </Tooltip>
+    </BasicTooltip>
   )
 }
 

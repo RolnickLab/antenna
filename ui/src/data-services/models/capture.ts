@@ -69,12 +69,15 @@ export class Capture {
       )
     }
   }
-  get canStar(): boolean {
-    const hasPermission = this._capture.user_permissions.includes(
-      UserPermission.Star
-    )
-    return hasPermission
+
+  get canDelete(): boolean {
+    return this._capture.user_permissions.includes(UserPermission.Delete)
   }
+
+  get canStar(): boolean {
+    return this._capture.user_permissions.includes(UserPermission.Star)
+  }
+
   get dateTimeLabel(): string {
     return getFormatedDateTimeString({
       date: new Date(this._capture.timestamp),
@@ -114,12 +117,31 @@ export class Capture {
     return this._capture.jobs?.length ?? 0
   }
 
-  get numOccurrences(): number {
-    return this._capture.occurrences_count ?? 0
+  get fileSize(): number | undefined {
+    return this._capture.size
   }
 
-  get numTaxa(): number {
-    return this._capture.taxa_count ?? 0
+  get fileSizeDisplay(): string | undefined {
+    return this._capture.size_display
+  }
+
+  get dimensionsLabel(): string {
+    const width = this._capture.width
+    const height = this._capture.height
+
+    if (width && height) {
+      return `${width}x${height}px`
+    }
+
+    return ''
+  }
+
+  get numOccurrences(): number | undefined {
+    return this._capture.occurrences_count ?? undefined
+  }
+
+  get numTaxa(): number | undefined {
+    return this._capture.taxa_count ?? undefined
   }
 
   get sessionId(): string | undefined {

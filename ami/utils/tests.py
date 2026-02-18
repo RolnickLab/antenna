@@ -1,5 +1,8 @@
 import datetime
 from unittest import TestCase
+from unittest.mock import Mock
+
+import requests
 
 
 class TestUtils(TestCase):
@@ -32,3 +35,33 @@ class TestUtils(TestCase):
                 self.assertEqual(
                     result, expected_date, f"Failed for {filename}: expected {expected_date}, got {result}"
                 )
+
+    def test_extract_error_message_from_response(self):
+        """Test extracting error messages from HTTP responses."""
+        from ami.utils.requests import extract_error_message_from_response
+
+        # Test with standard 'detail' field (FastAPI)
+        mock_response = Mock(spec=requests.Response)
+        mock_response.status_code = 500
+        mock_response.reason = "Internal Server Error"
+        mock_response.json.return_value = {"detail": "CUDA out of memory"}
+        result = extract_error_message_from_response(mock_response)
+        self.assertEqual(result, "HTTP 500: Internal Server Error | Detail: CUDA out of memory")
+
+        # Test fallback to non-standard fields
+        mock_response.json.return_value = {"error": "Invalid input"}
+        result = extract_error_message_from_response(mock_response)
+        self.assertIn("error: Invalid input", result)
+
+        # Test fallback to text when JSON fails
+        mock_response.json.side_effect = ValueError("No JSON")
+        mock_response.text = "Service unavailable"
+        result = extract_error_message_from_response(mock_response)
+        self.assertIn("Response text: Service unavailable", result)
+
+        # Test fallback to raw bytes when text access fails
+        mock_response.json.side_effect = ValueError("404 Not Found: Could not fetch image")
+        mock_response.text = property(lambda self: (_ for _ in ()).throw(Exception("text error")))
+        mock_response.content = b"Raw error bytes"
+        result = extract_error_message_from_response(mock_response)
+        self.assertIn("Response content: b'Raw error bytes'", result)

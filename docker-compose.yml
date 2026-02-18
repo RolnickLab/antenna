@@ -10,7 +10,6 @@ volumes:
     driver: local
   node_modules:
 
-
 services:
   django: &django
     build:
@@ -22,8 +21,10 @@ services:
     depends_on:
       - postgres
       - redis
+      - nats
       - minio-init
       - ml_backend
+      - rabbitmq
     volumes:
       - .:/app:z
     env_file:
@@ -57,44 +58,60 @@ services:
       dockerfile: ../compose/local/ui/Dockerfile
     ports:
       - "4000:4000"
-    volumes:
-      - ./.git:/app/.git:ro
-      - ./ui:/app
-      - node_modules:/app/node_modules
     depends_on:
       - django
     environment:
-      - CHOKIDAR_USEPOLLING=true
       - API_PROXY_TARGET=http://django:8000
 
-  docs:
-    image: ami_local_docs
+  ui-dev:
+    profiles:
+      - ui-dev
     build:
-      context: .
-      dockerfile: ./compose/local/docs/Dockerfile
-    env_file:
-      - ./.envs/.local/.django
-    volumes:
-      - ./docs:/docs:z
-      - ./config:/app/config:z
-      - ./ami:/app/ami:z
+      context: ./ui
+      dockerfile: ../compose/local/ui/Dockerfile
     ports:
-      - "9025:9000"
-    command: /start-docs
+      - "4000:4000"
+    depends_on:
+      - django
+    volumes:
+      - ./.git:/app/.git:ro
+      - ./ui:/app
+    entrypoint:
+      [
+        "sh",
+        "-c",
+        "yarn install && yarn start --debug --host 0.0.0.0 --port 4000",
+      ]
+    environment:
+      - API_PROXY_TARGET=http://django:8000
+      - CHOKIDAR_USEPOLLING=true
 
   redis:
     image: redis:6
     container_name: ami_local_redis
 
+  nats:
+    image: nats:2.10-alpine
+    container_name: ami_local_nats
+    hostname: nats
+    ports:
+      - "4222:4222" # Client port
+      - "8222:8222" # HTTP monitoring port
+    command: ["-js", "-m", "8222"] # Enable JetStream and monitoring
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   celeryworker:
     <<: *django
     image: ami_local_celeryworker
     scale: 1
-    # For remote debugging with debugpy, should get overridden for production
-    # Also make sure to install debugpy in your requirements/local.txt
-    ports:
-      - "5678:5678"
-    command: python -m debugpy --listen 0.0.0.0:5678 -m celery -A config.celery_app worker -l INFO
+    ports: []
+    command: /start-celeryworker
+    depends_on:
+      - rabbitmq
 
   celerybeat:
     <<: *django
@@ -111,6 +128,16 @@ services:
     volumes:
       - ./data/flower/:/data/
 
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    env_file:
+      - ./.envs/.local/.django
+    networks:
+      - antenna_network
+
   minio:
     image: minio/minio:RELEASE.2024-11-07T00-52-20Z
     command: minio server --console-address ":9001" /data
@@ -123,7 +150,7 @@ services:
     ports:
       - "9001:9001"
     healthcheck:
-      test: [ "CMD", "mc", "ready", "local" ]
+      test: ["CMD", "mc", "ready", "local"]
       interval: 5s
       timeout: 5s
       retries: 5

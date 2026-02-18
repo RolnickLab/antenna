@@ -1,12 +1,14 @@
 import classNames from 'classnames'
 import { ProjectDetails } from 'data-services/models/project-details'
-import { PenIcon } from 'lucide-react'
-import { buttonVariants } from 'nova-ui-kit'
+import { Badge } from 'design-system/components/badge/badge'
+import { ChevronRightIcon, PenIcon } from 'lucide-react'
+import { buttonVariants, Tooltip } from 'nova-ui-kit'
 import { Fragment, ReactNode, useContext, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
+import { STRING, translate } from 'utils/language'
 import { useSidebarSections } from './useSidebarSections'
 
 export const Sidebar = ({ project }: { project: ProjectDetails }) => {
@@ -43,7 +45,10 @@ export const Sidebar = ({ project }: { project: ProjectDetails }) => {
       )}
       <div className="grid gap-1 py-3">
         <div className="grid px-4 py-1 gap-2">
-          <span className="body-large">{project.name}</span>
+          <div className="flex items-start justify-between gap-2">
+            <span className="body-large">{project.name}</span>
+            {project.isDraft ? <DraftBadge project={project} /> : null}
+          </div>
           {project.description?.length ? (
             <span className="body-small text-muted-foreground">
               {project.description}
@@ -108,4 +113,29 @@ const SidebarItem = ({
   >
     {children}
   </Link>
+)
+
+export const DraftBadge = ({ project }: { project: ProjectDetails }) => (
+  <Tooltip.Provider delayDuration={0}>
+    <Tooltip.Root>
+      <Tooltip.Trigger>
+        <Badge label={translate(STRING.DRAFT)} />
+      </Tooltip.Trigger>
+      <Tooltip.Content side="bottom" className="p-4 space-y-4 max-w-xs">
+        <p className="whitespace-normal">{translate(STRING.MESSAGE_DRAFTS)}</p>
+        {project.canUpdate ? (
+          <Link
+            className={classNames(
+              buttonVariants({ size: 'small', variant: 'outline' }),
+              '!w-auto'
+            )}
+            to={APP_ROUTES.GENERAL({ projectId: project.id })}
+          >
+            <span>Configure</span>
+            <ChevronRightIcon className="w-4 h-4" />
+          </Link>
+        ) : null}
+      </Tooltip.Content>
+    </Tooltip.Root>
+  </Tooltip.Provider>
 )

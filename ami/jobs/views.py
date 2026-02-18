@@ -1,23 +1,72 @@
 import logging
 
+import pydantic
+from asgiref.sync import async_to_sync
+from django.db.models import Q
 from django.db.models.query import QuerySet
 from django.forms import IntegerField
 from django.utils import timezone
+from django_filters import rest_framework as filters
 from drf_spectacular.utils import extend_schema
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.filters import BaseFilterBackend
 from rest_framework.response import Response
 
 from ami.base.permissions import ObjectPermission
 from ami.base.views import ProjectMixin
+from ami.jobs.schemas import batch_param, ids_only_param, incomplete_only_param
+from ami.jobs.tasks import process_nats_pipeline_result
+from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
+from ami.ml.schemas import PipelineTaskResult
 from ami.utils.fields import url_boolean_param
-from ami.utils.requests import project_id_doc_param
 
-from .models import Job, JobState
-from .serializers import JobListSerializer, JobSerializer
+from .models import Job, JobDispatchMode, JobState
+from .serializers import JobListSerializer, JobSerializer, MinimalJobSerializer
 
 logger = logging.getLogger(__name__)
+
+
+class JobFilterSet(filters.FilterSet):
+    """Custom filterset to enable pipeline name filtering."""
+
+    pipeline__slug = filters.CharFilter(field_name="pipeline__slug", lookup_expr="exact")
+
+    class Meta:
+        model = Job
+        fields = [
+            "status",
+            "project",
+            "deployment",
+            "source_image_collection",
+            "source_image_single",
+            "pipeline",
+            "job_type_key",
+            "dispatch_mode",
+        ]
+
+
+class IncompleteJobFilter(BaseFilterBackend):
+    """Filter backend to filter jobs by incomplete status based on results stage."""
+
+    def filter_queryset(self, request, queryset, view):
+        # Check if incomplete_only parameter is set
+        incomplete_only = url_boolean_param(request, "incomplete_only", default=False)
+        # Filter to incomplete jobs if requested (checks "results" stage status)
+        if incomplete_only:
+            # Create filters for each final state to exclude
+            final_states = JobState.final_states()
+            exclude_conditions = Q()
+
+            # Exclude jobs where the "results" stage has a final state status
+            for state in final_states:
+                # JSON path query to check if results stage status is in final states
+                # @TODO move to a QuerySet method on Job model if/when this needs to be reused elsewhere
+                exclude_conditions |= Q(progress__stages__contains=[{"key": "results", "status": state}])
+
+            queryset = queryset.exclude(exclude_conditions)
+        return queryset
 
 
 class JobViewSet(DefaultViewSet, ProjectMixin):
@@ -46,15 +95,9 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         "source_image_single",
     )
     serializer_class = JobSerializer
-    filterset_fields = [
-        "status",
-        "project",
-        "deployment",
-        "source_image_collection",
-        "source_image_single",
-        "pipeline",
-        "job_type_key",
-    ]
+    filterset_class = JobFilterSet
+    filter_backends = [*DefaultViewSet.filter_backends, IncompleteJobFilter]
+    search_fields = ["name", "pipeline__name"]
     ordering_fields = [
         "name",
         "created_at",
@@ -75,6 +118,9 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         Return different serializers for list and detail views.
         """
         if self.action == "list":
+            # Use MinimalJobSerializer when ids_only parameter is set
+            if url_boolean_param(self.request, "ids_only", default=False):
+                return MinimalJobSerializer
             return JobListSerializer
         else:
             return JobSerializer
@@ -153,6 +199,129 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             updated_at__lt=cutoff_datetime,
         )
 
-    @extend_schema(parameters=[project_id_doc_param])
+    @extend_schema(
+        parameters=[
+            project_id_doc_param,
+            ids_only_param,
+            incomplete_only_param,
+        ]
+    )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        parameters=[batch_param],
+        responses={200: dict},
+    )
+    @action(detail=True, methods=["get"], name="tasks")
+    def tasks(self, request, pk=None):
+        """
+        Get tasks from the job queue.
+
+        Returns task data with reply_subject for acknowledgment. External workers should:
+        1. Call this endpoint to get tasks
+        2. Process the tasks
+        3. POST to /jobs/{id}/result/ with the reply_subject to acknowledge
+        """
+        job: Job = self.get_object()
+        try:
+            batch = IntegerField(required=True, min_value=1).clean(request.query_params.get("batch"))
+        except Exception as e:
+            raise ValidationError({"batch": str(e)}) from e
+
+        # Only async_api jobs have tasks fetchable from NATS
+        if job.dispatch_mode != JobDispatchMode.ASYNC_API:
+            raise ValidationError("Only async_api jobs have fetchable tasks")
+
+        # Validate that the job has a pipeline
+        if not job.pipeline:
+            raise ValidationError("This job does not have a pipeline configured")
+
+        # Get tasks from NATS JetStream
+        from ami.ml.orchestration.nats_queue import TaskQueueManager
+
+        async def get_tasks():
+            tasks = []
+            async with TaskQueueManager() as manager:
+                for _ in range(batch):
+                    task = await manager.reserve_task(job.pk, timeout=0.1)
+                    if task:
+                        tasks.append(task.dict())
+            return tasks
+
+        # Use async_to_sync to properly handle the async call
+        tasks = async_to_sync(get_tasks)()
+
+        return Response({"tasks": tasks})
+
+    @action(detail=True, methods=["post"], name="result")
+    def result(self, request, pk=None):
+        """
+        The request body should be a list of results: list[PipelineTaskResult]
+
+        This endpoint accepts a list of pipeline results and queues them for
+        background processing. Each result will be validated, saved to the database,
+        and acknowledged via NATS in a Celery task.
+        """
+
+        job = self.get_object()
+
+        # Validate request data is a list
+        if isinstance(request.data, list):
+            results = request.data
+        else:
+            results = [request.data]
+
+        try:
+            # Pre-validate all results before enqueuing any tasks
+            # This prevents partial queueing and duplicate task processing
+            validated_results = []
+            for item in results:
+                task_result = PipelineTaskResult(**item)
+                validated_results.append(task_result)
+
+            # All validation passed, now queue all tasks
+            queued_tasks = []
+            for task_result in validated_results:
+                reply_subject = task_result.reply_subject
+                result_data = task_result.result
+
+                # Queue the background task
+                # Convert Pydantic model to dict for JSON serialization
+                task = process_nats_pipeline_result.delay(
+                    job_id=job.pk, result_data=result_data.dict(), reply_subject=reply_subject
+                )
+
+                queued_tasks.append(
+                    {
+                        "reply_subject": reply_subject,
+                        "status": "queued",
+                        "task_id": task.id,
+                    }
+                )
+
+                logger.info(
+                    f"Queued pipeline result processing for job {job.pk}, "
+                    f"task_id: {task.id}, reply_subject: {reply_subject}"
+                )
+
+            return Response(
+                {
+                    "status": "accepted",
+                    "job_id": job.pk,
+                    "results_queued": len([t for t in queued_tasks if t["status"] == "queued"]),
+                    "tasks": queued_tasks,
+                }
+            )
+        except pydantic.ValidationError as e:
+            raise ValidationError(f"Invalid result data: {e}") from e
+
+        except Exception as e:
+            logger.error(f"Failed to queue pipeline results for job {job.pk}: {e}")
+            return Response(
+                {
+                    "status": "error",
+                    "job_id": job.pk,
+                },
+                status=500,
+            )

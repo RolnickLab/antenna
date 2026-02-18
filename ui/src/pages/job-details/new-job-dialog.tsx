@@ -25,7 +25,7 @@ export const NewJobDialog = () => {
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Dialog.Trigger>
+      <Dialog.Trigger asChild>
         <Button size="small" variant="outline">
           <PlusIcon className="w-4 h-4" />
           <span>{label}</span>

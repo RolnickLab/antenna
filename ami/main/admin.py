@@ -77,8 +77,7 @@ class ProjectAdmin(GuardedModelAdmin):
 
     list_display = ("name", "owner", "priority", "active", "created_at", "updated_at")
     list_filter = ("active", "owner")
-    search_fields = ("name", "owner__email", "members__email")
-    filter_horizontal = ("members",)
+    search_fields = ("name", "owner__email")
 
     inlines = [ProjectPipelineConfigInline]
     autocomplete_fields = ("default_filters_include_taxa", "default_filters_exclude_taxa")
@@ -112,7 +111,7 @@ class ProjectAdmin(GuardedModelAdmin):
         (
             "Ownership & Access",
             {
-                "fields": ("owner", "members"),
+                "fields": ("owner",),
                 "classes": ("wide",),
             },
         ),
@@ -640,10 +639,30 @@ class SiteAdmin(admin.ModelAdmin[Site]):
 class S3StorageSourceAdmin(admin.ModelAdmin[S3StorageSource]):
     """Admin panel example for ``S3StorageSource`` model."""
 
-    list_display = ("name", "bucket", "prefix", "size", "total_files", "last_checked")
+    list_display = (
+        "name",
+        "uri",
+        "size",
+        "total_files",
+        "is_private",
+        "last_checked",
+        "project",
+        "updated_at",
+    )
 
     def size(self, obj) -> str:
         return filesizeformat(obj.total_size)
+
+    @admin.display(description="S3 URI", ordering="bucket")
+    def uri(self, obj) -> str:
+        return obj.uri()
+
+    @admin.display(boolean=True)
+    def is_private(self, obj) -> bool:
+        """
+        If a public base URL is set, the source is considered public.
+        """
+        return not bool(obj.public_base_url)
 
     @admin.action()
     def calculate_size_async(self, request: HttpRequest, queryset: QuerySet[S3StorageSource]) -> None:
@@ -659,6 +678,8 @@ class S3StorageSourceAdmin(admin.ModelAdmin[S3StorageSource]):
         for source in queryset:
             source.count_files()
         self.message_user(request, f"File count calculated for {queryset.count()} source(s).")
+
+    list_filter = ("project", "bucket")
 
     actions = [calculate_size_async, count_files]
 

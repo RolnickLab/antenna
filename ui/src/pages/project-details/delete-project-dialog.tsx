@@ -19,7 +19,7 @@ export const DeleteProjectDialog = ({ id }: { id: string }) => {
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Dialog.Trigger>
+      <Dialog.Trigger asChild>
         <Button size="icon" variant="ghost">
           <TrashIcon className="w-4 h-4" />
         </Button>

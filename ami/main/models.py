@@ -20,6 +20,7 @@ from django.core.files.storage import default_storage
 from django.db import IntegrityError, models, transaction
 from django.db.models import Exists, OuterRef, Q
 from django.db.models.fields.files import ImageFieldFile
+from django.db.models.functions import Coalesce
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from django.template.defaultfilters import filesizeformat
@@ -215,6 +216,9 @@ class ProjectFeatureFlags(pydantic.BaseModel):
     tags: bool = False  # Whether the project supports tagging taxa
     reprocess_existing_detections: bool = False  # Whether to reprocess existing detections
     default_filters: bool = False  # Whether to show default filters form in UI
+    # Feature flag for jobs to reprocess all images in the project, even if already processed
+    reprocess_all_images: bool = False
+    async_pipeline_workers: bool = False  # Whether to use async pipeline workers that pull tasks from a queue
 
 
 def get_default_feature_flags() -> ProjectFeatureFlags:
@@ -229,7 +233,12 @@ class Project(ProjectSettingsMixin, BaseModel):
     description = models.TextField(blank=True)
     image = models.ImageField(upload_to="projects", blank=True, null=True)
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="projects")
-    members = models.ManyToManyField(User, related_name="user_projects", blank=True)
+    members = models.ManyToManyField(
+        User,
+        through="UserProjectMembership",
+        related_name="user_projects",
+        blank=True,
+    )
     draft = models.BooleanField(
         default=False,
         help_text="Indicates whether this project is in draft mode",
@@ -277,21 +286,32 @@ class Project(ProjectSettingsMixin, BaseModel):
         Data prepared for rendering charts with plotly.js on the overview page.
         """
 
-        plots = []
-
-        plots.append(charts.captures_per_hour(project_pk=self.pk))
-        if self.occurrences.exists():
-            plots.append(charts.detections_per_hour(project_pk=self.pk))
-            # plots.append(charts.occurrences_accumulated(project_pk=self.pk))
-        else:
-            plots.append(charts.events_per_month(project_pk=self.pk))
-            # plots.append(charts.captures_per_month(project_pk=self.pk))
-        plots.append(charts.project_top_taxa(project_pk=self.pk))
-        plots.append(charts.captures_per_month(project_pk=self.pk))
-        plots.append(charts.average_occurrences_per_month(project_pk=self.pk))
-        plots.append(charts.unique_species_per_month(project_pk=self.pk))
-
-        return plots
+        return [
+            {
+                "id": "captures",
+                "title": "Captures",
+                "plots": [
+                    charts.captures_per_hour(project_pk=self.pk),
+                    charts.captures_per_month(project_pk=self.pk),
+                ],
+            },
+            {
+                "id": "occurrences",
+                "title": "Occurrences",
+                "plots": [
+                    charts.detections_per_hour(project_pk=self.pk),
+                    charts.average_occurrences_per_month(project_pk=self.pk),
+                ],
+            },
+            {
+                "id": "taxa",
+                "title": "Taxa",
+                "plots": [
+                    charts.project_top_taxa(project_pk=self.pk),
+                    charts.unique_species_per_month(project_pk=self.pk),
+                ],
+            },
+        ]
 
     def update_related_calculated_fields(self):
         """
@@ -309,6 +329,28 @@ class Project(ProjectSettingsMixin, BaseModel):
         super().save(*args, **kwargs)
         # Add owner to members
         self.ensure_owner_membership()
+
+    def check_custom_permission(self, user, action: str) -> bool:
+        """
+        Check custom permissions for actions like 'charts'.
+        Charts is treated as a read-only operation, so it follows the same
+        permission logic as 'retrieve'.
+        """
+        from ami.users.roles import BasicMember, ProjectManager
+
+        if action == "charts":
+            # Same permission logic as retrieve action
+            if self.draft:
+                # Allow view permission for members and owners of draft projects
+                return BasicMember.has_role(user, self) or user == self.owner or user.is_superuser
+            return True
+
+        if action == "pipelines":
+            # Pipeline registration requires project management permissions
+            return ProjectManager.has_role(user, self) or user == self.owner or user.is_superuser
+
+        # Fall back to default permission checking for other actions
+        return super().check_custom_permission(user, action)
 
     class Permissions:
         """CRUD Permission names follow the convention: `create_<model>`, `update_<model>`,
@@ -373,13 +415,26 @@ class Project(ProjectSettingsMixin, BaseModel):
         CREATE_DEVICE = "create_device"
         DELETE_DEVICE = "delete_device"
         UPDATE_DEVICE = "update_device"
+        # User project membership permissions
+        VIEW_USER_PROJECT_MEMBERSHIP = "view_userprojectmembership"
+        CREATE_USER_PROJECT_MEMBERSHIP = "create_userprojectmembership"
+        UPDATE_USER_PROJECT_MEMBERSHIP = "update_userprojectmembership"
+        DELETE_USER_PROJECT_MEMBERSHIP = "delete_userprojectmembership"
+
+        # Data Export permissions
+        CREATE_DATA_EXPORT = "create_dataexport"
+        UPDATE_DATA_EXPORT = "update_dataexport"
+        DELETE_DATA_EXPORT = "delete_dataexport"
+
+        # Pipeline configuration permissions
+        CREATE_PROJECT_PIPELINE_CONFIG = "create_projectpipelineconfig"
+        UPDATE_PROJECT_PIPELINE_CONFIG = "update_projectpipelineconfig"
+        DELETE_PROJECT_PIPELINE_CONFIG = "delete_projectpipelineconfig"
 
         # Other permissions
         VIEW_PRIVATE_DATA = "view_private_data"
-        TRIGGER_EXPORT = "trigger_export"
         DELETE_OCCURRENCES = "delete_occurrences"
         IMPORT_DATA = "import_data"
-        MANAGE_MEMBERS = "manage_members"
 
     class Meta:
         ordering = ["-priority", "created_at"]
@@ -430,10 +485,63 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("create_device", "Can create a device"),
             ("delete_device", "Can delete a device"),
             ("update_device", "Can update a device"),
+            # User project membership permissions
+            ("view_userprojectmembership", "Can view project members"),
+            ("create_userprojectmembership", "Can add a user to the project"),
+            ("update_userprojectmembership", "Can update a user's project membership and role in the project"),
+            ("delete_userprojectmembership", "Can remove a user from the project"),
+            # Data Export permissions
+            ("create_dataexport", "Can create a data export"),
+            ("update_dataexport", "Can update a data export"),
+            ("delete_dataexport", "Can delete a data export"),
+            # Pipeline configuration permissions
+            ("create_projectpipelineconfig", "Can register pipelines for the project"),
+            ("update_projectpipelineconfig", "Can update pipeline configurations"),
+            ("delete_projectpipelineconfig", "Can remove pipelines from the project"),
             # Other permissions
             ("view_private_data", "Can view private data"),
-            ("trigger_exports", "Can trigger data exports"),
         ]
+
+
+class UserProjectMembership(BaseModel):
+    """
+    Through model connecting User <-> Project.
+    This model represents membership ONLY.
+    Role assignment is handled separately via permission groups.
+    """
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="project_memberships",
+    )
+
+    project = models.ForeignKey(
+        "main.Project",
+        on_delete=models.CASCADE,
+        related_name="project_memberships",
+    )
+
+    def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
+        project = self.project
+        # Allow viewing membership details if the user has view permission on the project
+        if action == "retrieve":
+            return user.has_perm(Project.Permissions.VIEW_USER_PROJECT_MEMBERSHIP, project)
+        # Allow users to delete their own membership
+        if action == "destroy" and user == self.user:
+            return True
+        return super().check_permission(user, action)
+
+    def get_user_object_permissions(self, user) -> list[str]:
+        # Return delete permission if user is the same as the membership user
+        user_permissions = super().get_user_object_permissions(user)
+        if user == self.user:
+            if "delete" not in user_permissions:
+                user_permissions.append("delete")
+        return user_permissions
+
+    class Meta:
+        unique_together = ("user", "project")
 
 
 @final
@@ -1362,6 +1470,12 @@ class S3StorageSource(BaseModel):
 
     name = models.CharField(max_length=255)
     bucket = models.CharField(max_length=255)
+    region = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="AWS region (e.g., 'us-east-1', 'eu-west-1'). Leave blank for Swift/MinIO storage.",
+    )
     prefix = models.CharField(max_length=255, blank=True)
     access_key = models.TextField()
     secret_key = models.TextField()
@@ -1381,6 +1495,7 @@ class S3StorageSource(BaseModel):
     def config(self) -> ami.utils.s3.S3Config:
         return ami.utils.s3.S3Config(
             bucket_name=self.bucket,
+            region=self.region,
             prefix=self.prefix,
             access_key_id=self.access_key,
             secret_access_key=self.secret_key,
@@ -1568,37 +1683,60 @@ def delete_source_image(sender, instance, **kwargs):
 
 
 class SourceImageQuerySet(BaseQuerySet):
-    def with_occurrences_count(self, classification_threshold: float = 0, project: Project | None = None):
+    def with_occurrences_count(self, project: Project | None = None, request=None):
         """
         Annotate each source image with the number of occurrences,
         filtered by default filters (score threshold and taxa inclusion/exclusion).
 
         Note: classification_threshold parameter is deprecated, use project default filters instead.
+
+        Uses a subquery to avoid GROUP BY in the pagination count query, which may
+        improve performance for large datasets.
         """
-        filter_q = build_occurrence_default_filters_q(project, None, "detections__occurrence")
-        return self.annotate(
-            occurrences_count=models.Count(
-                "detections__occurrence",
-                filter=filter_q,
-                distinct=True,
-            )
+        filter_q = build_occurrence_default_filters_q(project, request, "")
+
+        # Use a subquery instead of Count with joins to avoid GROUP BY in pagination count query
+        # The subquery counts distinct occurrences for each source image
+        # Use Coalesce to return 0 when the subquery returns NULL (no matching rows)
+        # @TODO update the SourceImageCollectionQuerySet to use the same approach
+        occurrences_subquery = (
+            Occurrence.objects.filter(detections__source_image_id=models.OuterRef("pk"))
+            .filter(filter_q)
+            .values("detections__source_image_id")  # Group by source_image_id to get one row per source_image
+            .annotate(count=models.Count("id", distinct=True))
+            .values("count")
         )
 
-    def with_taxa_count(self, classification_threshold: float = 0, project: Project | None = None):
+        return self.annotate(
+            occurrences_count=Coalesce(models.Subquery(occurrences_subquery, output_field=models.IntegerField()), 0)
+        )
+
+    def with_taxa_count(self, project: Project | None = None, request=None):
         """
         Annotate each source image with the number of distinct taxa,
         filtered by default filters (score threshold and taxa inclusion/exclusion).
 
         Note: classification_threshold parameter is deprecated, use project default filters instead.
+
+        Uses a subquery to avoid GROUP BY in the pagination count query, which may
+        improve performance for large datasets.
         """
-        filter_q = build_occurrence_default_filters_q(project, None, "detections__occurrence")
+        filter_q = build_occurrence_default_filters_q(project, request, "")
+
+        # Use a subquery instead of Count with joins to avoid GROUP BY in pagination count query
+        # The subquery counts distinct taxa for each source image
+        # Use Coalesce to return 0 when the subquery returns NULL (no matching rows)
+        # @TODO update the SourceImageCollectionQuerySet to use the same approach
+        taxa_subquery = (
+            Occurrence.objects.filter(detections__source_image_id=models.OuterRef("pk"))
+            .filter(filter_q)
+            .values("detections__source_image_id")  # Group by source_image_id to get one row per source_image
+            .annotate(count=models.Count("determination_id", distinct=True))
+            .values("count")
+        )
 
         return self.annotate(
-            taxa_count=models.Count(
-                "detections__occurrence__determination",
-                filter=filter_q,
-                distinct=True,
-            )
+            taxa_count=Coalesce(models.Subquery(taxa_subquery, output_field=models.IntegerField()), 0)
         )
 
 
@@ -2443,13 +2581,13 @@ class Detection(BaseModel):
     #         self.bbox_height / self.source_image.height,
     #     )
 
-    def width(self) -> int | None:
-        if self.bbox and len(self.bbox) == 4:
-            return self.bbox[2] - self.bbox[0]
+    def width(self) -> float | None:
+        """Placeholder for queryset annotation. Use BoundingBox.from_coords() for bbox validation."""
+        return None
 
-    def height(self) -> int | None:
-        if self.bbox and len(self.bbox) == 4:
-            return self.bbox[3] - self.bbox[1]
+    def height(self) -> float | None:
+        """Placeholder for queryset annotation. Use BoundingBox.from_coords() for bbox validation."""
+        return None
 
     class Meta:
         ordering = [
@@ -2547,6 +2685,36 @@ class OccurrenceQuerySet(BaseQuerySet):
             "identifications",
             "identifications__taxon",
             "identifications__user",
+        )
+
+    def with_best_detection(self):
+        """
+        Annotate the queryset with fields from the best detection.
+        The best detection is the one with the highest classification score.
+
+        Adds the following annotations:
+        - best_detection_path: The path to the detection image
+        - best_detection_bbox: The bounding box of the detection as a list [x1, y1, x2, y2]
+        """
+        # Subquery to get the path of the best detection
+        # Use id as secondary sort to ensure deterministic results
+        best_detection_path_subquery = (
+            Detection.objects.filter(occurrence=OuterRef("pk"))
+            .order_by("-classifications__score", "id")
+            .values("path")[:1]
+        )
+
+        # Subquery to get the bbox of the best detection
+        # Use id as secondary sort to ensure deterministic results
+        best_detection_bbox_subquery = (
+            Detection.objects.filter(occurrence=OuterRef("pk"))
+            .order_by("-classifications__score", "id")
+            .values("bbox")[:1]
+        )
+
+        return self.annotate(
+            best_detection_path=models.Subquery(best_detection_path_subquery),
+            best_detection_bbox=models.Subquery(best_detection_bbox_subquery),
         )
 
     def unique_taxa(self, project: Project | None = None):
@@ -3407,8 +3575,8 @@ class Taxon(BaseModel):
 
         plots = []
 
+        plots.append(charts.average_occurrences_per_day(project_pk=project.pk, taxon_pk=self.pk))
         plots.append(charts.average_occurrences_per_month(project_pk=project.pk, taxon_pk=self.pk))
-        plots.append(charts.relative_occurrences_per_month(project_pk=project.pk, taxon_pk=self.pk))
 
         return plots
 
@@ -3561,14 +3729,16 @@ class SourceImageCollectionQuerySet(BaseQuerySet):
             )
         )
 
-    def with_occurrences_count(self, classification_threshold: float = 0, project: Project | None = None):
+    def with_occurrences_count(
+        self, classification_threshold: float = 0, project: Project | None = None, request=None
+    ):
         """
         Annotate each collection with the number of occurrences,
         filtered by default filters (score threshold and taxa inclusion/exclusion).
 
         Note: classification_threshold parameter is deprecated, use project default filters instead.
         """
-        filter_q = build_occurrence_default_filters_q(project, None, "images__detections__occurrence")
+        filter_q = build_occurrence_default_filters_q(project, request, "images__detections__occurrence")
         return self.annotate(
             occurrences_count=models.Count(
                 "images__detections__occurrence",
@@ -3577,14 +3747,14 @@ class SourceImageCollectionQuerySet(BaseQuerySet):
             )
         )
 
-    def with_taxa_count(self, classification_threshold: float = 0, project: Project | None = None):
+    def with_taxa_count(self, classification_threshold: float = 0, project: Project | None = None, request=None):
         """
         Annotate each collection with the number of distinct taxa,
         filtered by default filters (score threshold and taxa inclusion/exclusion).
 
         Note: classification_threshold parameter is deprecated, use project default filters instead.
         """
-        filter_q = build_occurrence_default_filters_q(project, None, "images__detections__occurrence")
+        filter_q = build_occurrence_default_filters_q(project, request, "images__detections__occurrence")
         return self.annotate(
             taxa_count=models.Count(
                 "images__detections__occurrence__determination",
@@ -3854,11 +4024,30 @@ class SourceImageCollection(BaseModel):
         )
         if deployment_id:
             qs = qs.filter(deployment=deployment_id)
-        if exclude_events:
-            qs = qs.exclude(event__in=exclude_events)
-        qs.exclude(event__in=exclude_events)
+        qs = qs.exclude(event__in=exclude_events)
+        # Limit to project
         qs = qs.filter(project=self.project)
-        return sample_captures_by_interval(minute_interval=minute_interval, qs=qs)
+
+        # Sample per-deployment so the minute interval applies independently per station.
+        # If specific deployment ids are provided, use them; otherwise iterate over all deployments
+        # in the project and sample each separately.
+        if deployment_ids is not None:
+            deps = deployment_ids
+        elif deployment_id is not None:
+            deps = [deployment_id]
+        else:
+            deps = list(self.project.deployments.values_list("id", flat=True))
+
+        captures: set[SourceImage] = set()
+        for dep in deps:
+            dep_qs = qs.filter(deployment=dep)
+            for c in sample_captures_by_interval(minute_interval=minute_interval, qs=dep_qs):
+                captures.add(c)
+
+        # Return results in a deterministic order. Sort by timestamp (oldest first),
+        # then by primary key to stabilize ordering when timestamps are equal.
+        captures_list = sorted(captures, key=lambda s: (s.timestamp is None, s.timestamp, s.pk))
+        return captures_list
 
     def sample_positional(self, position: int = -1):
         """Sample the single nth source image from all events in the project"""

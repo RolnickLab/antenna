@@ -2,7 +2,7 @@ import { IdentificationFieldValues } from 'data-services/hooks/identifications/t
 import { useCreateIdentifications } from 'data-services/hooks/identifications/useCreateIdentifications'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { useMemo } from 'react'
 import styles from './id-quick-actions.module.scss'
 import { useRecentIdentifications } from './useRecentOptions'
@@ -34,7 +34,7 @@ export const IdButton = ({
   const { addRecentIdentification } = useRecentIdentifications()
 
   return (
-    <Tooltip content={error} contentStyle={{ zIndex: 3 }}>
+    <BasicTooltip asChild>
       <Button
         customClass={styles.idButton}
         details={details}
@@ -50,6 +50,6 @@ export const IdButton = ({
           createIdentifications(identificationParams)
         }}
       />
-    </Tooltip>
+    </BasicTooltip>
   )
 }

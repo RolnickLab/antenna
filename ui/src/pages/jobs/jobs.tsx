@@ -6,6 +6,7 @@ import * as Dialog from 'design-system/components/dialog/dialog'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
 import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
+import { SortControl } from 'design-system/components/sort-control'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import _ from 'lodash'
@@ -14,7 +15,7 @@ import { NewJobDialog } from 'pages/job-details/new-job-dialog'
 import { useContext, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
-import { APP_ROUTES } from 'utils/constants'
+import { APP_ROUTES, DOCS_LINKS } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'
@@ -59,24 +60,28 @@ export const Jobs = () => {
       </div>
       <div className="w-full overflow-hidden">
         <PageHeader
-          title={translate(STRING.NAV_ITEM_JOBS)}
-          subTitle={translate(STRING.RESULTS, {
-            total,
-          })}
-          isLoading={isLoading}
+          docsLink={DOCS_LINKS.PROCESSING_DATA}
           isFetching={isFetching}
+          isLoading={isLoading}
+          subTitle={translate(STRING.RESULTS, { total })}
+          title={translate(STRING.NAV_ITEM_JOBS)}
           tooltip={translate(STRING.TOOLTIP_JOB)}
         >
+          <SortControl
+            columns={columns(projectId as string)}
+            setSort={setSort}
+            sort={sort}
+          />
+          {canCreate ? <NewJobDialog /> : null}
           <ColumnSettings
             columns={columns(projectId as string)}
             columnSettings={columnSettings}
             onColumnSettingsChange={setColumnSettings}
           />
-          {canCreate ? <NewJobDialog /> : null}
         </PageHeader>
         <Table
           columns={columns(projectId as string).filter(
-            (column) => !!columnSettings[column.id]
+            (column) => column.id === 'actions' || !!columnSettings[column.id]
           )}
           error={error}
           items={jobs}

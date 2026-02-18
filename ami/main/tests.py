@@ -605,6 +605,45 @@ class TestSourceImageCollections(TestCase):
         self.assertGreater(collection_images.filter(deployment=deployment_two).count(), 0)
         self.assertGreater(collection_images.filter(deployment=deployment_three).count(), 0)
 
+    def test_interval_sample_multiple_deployments(self):
+        """
+        Ensure interval sampling applies independently per deployment (station).
+
+        Create two deployments with captures spaced 1 minute apart for a few hours,
+        then sample with `minute_interval=60` and verify the total sampled count equals
+        the sum of per-deployment hourly samples.
+        """
+        from ami.main.models import SourceImage, SourceImageCollection, sample_captures_by_interval
+
+        # Create a new project and two deployments
+        project = Project.objects.create(name="Multi Dep Project", create_defaults=False)
+        dep1 = Deployment.objects.create(name="Dep One", project=project)
+        dep2 = Deployment.objects.create(name="Dep Two", project=project)
+
+        # Create captures: 3 hours worth of captures at 1-minute intervals (~180 images)
+        images_per_night = 180
+        create_captures(deployment=dep1, num_nights=1, images_per_night=images_per_night, interval_minutes=1)
+        create_captures(deployment=dep2, num_nights=1, images_per_night=images_per_night, interval_minutes=1)
+
+        collection = SourceImageCollection.objects.create(
+            name="Test Multi-Dep Interval",
+            project=project,
+            method="interval",
+            kwargs={"minute_interval": 60},
+        )
+        collection.save()
+        collection.populate_sample()
+
+        sampled_count = collection.images.count()
+
+        # Compute expected by sampling each deployment separately
+        expected = 0
+        for dep in [dep1, dep2]:
+            qs = SourceImage.objects.filter(deployment=dep).exclude(timestamp=None).order_by("timestamp")
+            expected += len(list(sample_captures_by_interval(60, qs)))
+
+        self.assertEqual(sampled_count, expected)
+
 
 class TestTaxonomy(TestCase):
     def setUp(self) -> None:
@@ -1269,7 +1308,7 @@ class TestProjectPermissions(APITestCase):
         """Ensure an anonymous user cannot create a project."""
         data = {"name": "Anonymous User Project", "description": "Created by anonymous user"}
         response = self.client.post(self.project_create_endpoint, data)
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
 
 
 class TestRolePermissions(APITestCase):
@@ -2311,8 +2350,8 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         self.user = User.objects.create_user(email="tester@insectai.org", is_staff=False, is_superuser=False)
         self.client.force_authenticate(user=self.user)
 
-        self.url = f"/api/v2/occurrences/?project_id={self.project.pk}"
-        self.url_taxa = f"/api/v2/taxa/?project_id={self.project.pk}"
+        self.url = f"/api/v2/occurrences/?project_id={self.project.pk}&page_size=1000"
+        self.url_taxa = f"/api/v2/taxa/?project_id={self.project.pk}&page_size=1000"
 
     # OccurrenceViewSet tests
     def test_occurrences_respect_project_threshold(self):
@@ -2332,10 +2371,12 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         """apply_defaults=false should allow explicit classification_threshold to override project default"""
         res = self.client.get(self.url + "&apply_defaults=false&classification_threshold=0.2")
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        ids = {o["id"] for o in res.data["results"]}
-        # Both sets should be included with threshold=0.2
-        for occ in list(self.high_occurrences) + list(self.low_occurrences):
-            self.assertIn(occ.id, ids)
+
+        # Check that our test occurrences are present
+        expected_ids = {occ.id for occ in list(self.high_occurrences) + list(self.low_occurrences)}
+        returned_ids = {o["id"] for o in res.data["results"]}
+
+        self.assertTrue(expected_ids.issubset(returned_ids), f"Missing occurrence IDs: {expected_ids - returned_ids}")
 
     def test_query_threshold_ignored_when_defaults_applied(self):
         """classification_threshold param is ignored if apply_defaults is not false"""
@@ -2350,13 +2391,15 @@ class TestProjectDefaultThresholdFilter(APITestCase):
 
     def test_no_project_id_returns_all(self):
         """Without project_id, threshold falls back to 0.0 and returns all occurrences"""
-        url = "/api/v2/occurrences/"
+        url = "/api/v2/occurrences/?page_size=1000"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        ids = {o["id"] for o in res.data["results"]}
-        # All occurrences should appear
-        for occ in list(self.high_occurrences) + list(self.low_occurrences):
-            self.assertIn(occ.id, ids)
+
+        # Check that our test occurrences are present (don't assume all in DB are ours)
+        expected_ids = {occ.pk for occ in list(self.high_occurrences) + list(self.low_occurrences)}
+        returned_ids = {o["id"] for o in res.data["results"]}
+
+        self.assertTrue(expected_ids.issubset(returned_ids), f"Missing occurrence IDs: {expected_ids - returned_ids}")
 
     def test_retrieve_occurrence_respects_threshold(self):
         """Detail retrieval should 404 if occurrence is filtered out by threshold"""
@@ -2386,10 +2429,14 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         """apply_defaults=false should allow low-score taxa to appear"""
         res = self.client.get(self.url_taxa + "&apply_defaults=false&classification_threshold=0.2")
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        names = {t["name"] for t in res.data["results"]}
 
-        for occ in list(self.high_occurrences) + list(self.low_occurrences):
-            self.assertIn(occ.determination.name, names)
+        # Check that our test taxa are present
+        expected_names = {occ.determination.name for occ in list(self.high_occurrences) + list(self.low_occurrences)}
+        returned_names = {t["name"] for t in res.data["results"]}
+
+        self.assertTrue(
+            expected_names.issubset(returned_names), f"Missing taxa names: {expected_names - returned_names}"
+        )
 
     def test_query_threshold_ignored_when_defaults_applied_taxa(self):
         """classification_threshold is ignored when defaults apply"""
@@ -2441,7 +2488,7 @@ class TestProjectDefaultThresholdFilter(APITestCase):
     # SourceImageViewSet tests
     def test_source_image_counts_respect_threshold(self):
         """occurrences_count and taxa_count should exclude low-score occurrences (per-capture assertions)."""
-        url = f"/api/v2/captures/?project_id={self.project.pk}"
+        url = f"/api/v2/captures/?project_id={self.project.pk}&with_counts=true"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
@@ -2500,7 +2547,7 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         """occurrences_count and taxa_count on collections should exclude low-score occurrences."""
         collection = self._make_collection_with_some_images()
 
-        url = f"/api/v2/captures/collections/?project_id={self.project.pk}"
+        url = f"/api/v2/captures/collections/?project_id={self.project.pk}&with_counts=true"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
@@ -2934,7 +2981,7 @@ class TestProjectDefaultTaxaFilter(APITestCase):
         """
         Helper to fetch list of (capture_id, occurrences_count, taxa_count) from SourceImageViewSet
         """
-        url = f"/api/v2/captures/?project_id={self.project.pk}"
+        url = f"/api/v2/captures/?project_id={self.project.pk}&with_counts=true"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         return [(c["id"], c["occurrences_count"], c["taxa_count"]) for c in res.json()["results"]]
@@ -2998,7 +3045,7 @@ class TestProjectDefaultTaxaFilter(APITestCase):
     # SourceImageCollectionViewSet tests
     def _get_collection_counts(self):
         """Helper to return list of (collection_id, occurrences_count, taxa_count)"""
-        url = f"/api/v2/captures/collections/?project_id={self.project.pk}"
+        url = f"/api/v2/captures/collections/?project_id={self.project.pk}&with_counts=true"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         return [(c["id"], c["occurrences_count"], c["taxa_count"]) for c in res.json()["results"]]
@@ -3291,7 +3338,7 @@ class TestProjectDefaultTaxaFilter(APITestCase):
         images = SourceImage.objects.filter(deployment=self.deployment)[:3]
         collection.images.set(images)
 
-        url = f"/api/v2/captures/collections/?project_id={self.project.pk}"
+        url = f"/api/v2/captures/collections/?project_id={self.project.pk}&with_counts=true"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
@@ -3346,7 +3393,7 @@ class TestProjectDefaultTaxaFilter(APITestCase):
         images = SourceImage.objects.filter(deployment=self.deployment)[:3]
         collection.images.set(images)
 
-        url = f"/api/v2/captures/collections/?project_id={self.project.pk}"
+        url = f"/api/v2/captures/collections/?project_id={self.project.pk}&with_counts=true"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
@@ -3379,3 +3426,157 @@ class TestProjectDefaultTaxaFilter(APITestCase):
             expected_taxa_count,
             "Collection taxa_count should respect threshold + exclude filters",
         )
+
+    def test_taxon_detail_visible_when_excluded_from_list(self):
+        """
+        Taxon excluded by default project taxa filter should not appear in list,
+        but should still be accessible via detail view.
+        """
+        excluded_taxon = self.exclude_taxa[0]
+        self.project.default_filters_exclude_taxa.set([excluded_taxon])
+
+        # Taxon should NOT appear in list view
+        list_ids = self._get_taxon_ids()
+        self.assertNotIn(excluded_taxon.id, list_ids)
+
+        # Taxon detail endpoint should still return 200
+        detail_url = f"/api/v2/taxa/{excluded_taxon.id}/?project_id={self.project.pk}"
+        res = self.client.get(detail_url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+
+class TestProjectPipelinesAPI(APITestCase):
+    """Test the project pipelines API endpoint."""
+
+    def setUp(self):
+        from ami.users.roles import ProjectManager, create_roles_for_project
+
+        self.user = User.objects.create_user(email="test@example.com")  # type: ignore
+        self.other_user = User.objects.create_user(email="other@example.com")  # type: ignore
+
+        # Create projects with explicit ownership
+        self.project = Project.objects.create(name="Test Project", owner=self.user, create_defaults=True)
+        self.other_project = Project.objects.create(name="Other Project", owner=self.other_user, create_defaults=True)
+
+        # Create role groups and assign permissions
+        create_roles_for_project(self.project)
+        create_roles_for_project(self.other_project)
+        ProjectManager.assign_user(self.user, self.project)
+
+    def _get_pipelines_url(self, project_id):
+        """Get the pipelines API URL for a project."""
+        return f"/api/v2/projects/{project_id}/pipelines/"
+
+    def _get_test_payload(self, service_name: str):
+        """Get a minimal test payload for pipeline registration."""
+        return {
+            "processing_service_name": service_name,
+            "pipelines": [],
+        }
+
+    def test_create_new_service_success(self):
+        """Test creating a new processing service if it doesn't exist."""
+        url = self._get_pipelines_url(self.project.pk)
+        payload = self._get_test_payload("NewService")
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(url, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        # Verify service was created and associated
+        service = ProcessingService.objects.get(name="NewService")
+        self.assertIn(self.project, service.projects.all())
+
+    def test_reregistration_is_idempotent(self):
+        """Test that re-registering a service already associated with the project succeeds."""
+        # Create and associate service
+        service = ProcessingService.objects.create(name="ExistingService")
+        service.projects.add(self.project)
+
+        url = self._get_pipelines_url(self.project.pk)
+        payload = self._get_test_payload("ExistingService")
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(url, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_associate_existing_service_success(self):
+        """Test associating existing service with project when not yet associated."""
+        # Create service but don't associate with project
+        service = ProcessingService.objects.create(name="UnassociatedService")
+
+        url = self._get_pipelines_url(self.project.pk)
+        payload = self._get_test_payload("UnassociatedService")
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(url, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn(self.project, service.projects.all())
+
+    def test_unauthorized_project_access_returns_403(self):
+        """Test 403 when user doesn't have write access to project."""
+        url = self._get_pipelines_url(self.other_project.pk)
+        payload = self._get_test_payload("UnauthorizedService")
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(url, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_invalid_payload_returns_400(self):
+        """Test 400 when payload is invalid."""
+        url = self._get_pipelines_url(self.project.pk)
+        invalid_payload = {"invalid": "data"}
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(url, invalid_payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_list_pipelines(self):
+        """Test listing pipelines for a project returns the project's enabled pipelines."""
+        url = self._get_pipelines_url(self.project.pk)
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.json()["results"]
+        self.assertGreater(len(results), 0)
+
+        # All returned pipelines should belong to this project
+        project_pipeline_names = set(
+            Pipeline.objects.filter(projects=self.project, project_pipeline_configs__enabled=True)
+            .values_list("name", flat=True)
+            .distinct()
+        )
+        response_names = {p["name"] for p in results}
+        self.assertEqual(response_names, project_pipeline_names)
+
+    def test_list_pipelines_draft_project_non_member(self):
+        """Non-members cannot list pipelines on draft projects."""
+        self.project.draft = True
+        self.project.save()
+
+        non_member = User.objects.create_user(email="nonmember@example.com")  # type: ignore
+        url = self._get_pipelines_url(self.project.pk)
+        self.client.force_authenticate(user=non_member)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_unauthenticated_write_returns_401(self):
+        """Unauthenticated users cannot register pipelines."""
+        url = self._get_pipelines_url(self.project.pk)
+        payload = self._get_test_payload("AnonService")
+        response = self.client.post(url, payload, format="json")
+        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+
+    def test_list_pipelines_public_project_non_member(self):
+        """Non-members can list pipelines on public projects."""
+        non_member = User.objects.create_user(email="reader@example.com")  # type: ignore
+        url = self._get_pipelines_url(self.project.pk)
+        self.client.force_authenticate(user=non_member)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)

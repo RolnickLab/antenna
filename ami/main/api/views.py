@@ -29,8 +29,9 @@ from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
+from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.serializers import TagSerializer
-from ami.utils.requests import get_default_classification_threshold, project_id_doc_param
+from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
 from ..models import (
@@ -170,6 +171,24 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
         else:
             return ProjectSerializer
 
+    def get_serializer_context(self):
+        """
+        Add with_charts flag to serializer context.
+        """
+        context = super().get_serializer_context()
+        with_charts_default = False
+
+        # For detail view, include charts by default
+        if self.action == "retrieve":
+            with_charts_default = True
+
+        with_charts = self.request.query_params.get("with_charts", with_charts_default)
+        if with_charts is not None:
+            with_charts = BooleanField(required=False).clean(with_charts)
+
+        context["with_charts"] = with_charts
+        return context
+
     def perform_create(self, serializer):
         super().perform_create(serializer)
         # Check if user is authenticated
@@ -178,6 +197,14 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
 
         # Add current user as project owner
         serializer.save(owner=self.request.user)
+
+    @action(detail=True, methods=["get"], name="charts")
+    def charts(self, request, pk=None):
+        """
+        Get chart data for a project.
+        """
+        project = self.get_object()
+        return Response({"summary_data": project.summary_data()})
 
     @extend_schema(
         parameters=[
@@ -210,8 +237,9 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         "events_count",
         "occurrences_count",
         "taxa_count",
-        "first_date",
-        "last_date",
+        "first_capture_timestamp",
+        "last_capture_timestamp",
+        "name",
     ]
 
     permission_classes = [ObjectPermission]
@@ -463,6 +491,8 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         "updated_at",
         "timestamp",
         "size",
+        "width",
+        "height",
         "detections_count",
         "occurrences_count",
         "taxa_count",
@@ -486,22 +516,19 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     def get_queryset(self) -> QuerySet:
         queryset = super().get_queryset()
         with_detections_default = False
-        # If this is a retrieve request or with detections is explicitly requested, require project
-        if self.action == "retrieve" or "with_detections" in self.request.query_params:
+        with_counts_default = False
+        # If this is a retrieve request or with detections or counts are explicitly requested, require project
+        if (
+            self.action == "retrieve"
+            or "with_detections" in self.request.query_params
+            or "with_counts" in self.request.query_params
+        ):
             self.require_project = True
         project = self.get_active_project()
 
-        classification_threshold = get_default_classification_threshold(project, self.request)
-        queryset = queryset.with_occurrences_count(  # type: ignore
-            classification_threshold=classification_threshold, project=project
-        ).with_taxa_count(  # type: ignore
-            classification_threshold=classification_threshold, project=project
-        )
-
-        queryset.select_related(
+        queryset = queryset.select_related(
             "event",
             "deployment",
-            "deployment__storage",
         ).order_by("timestamp")
 
         if self.action == "list":
@@ -509,6 +536,8 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             queryset = self.filter_by_has_detections(queryset)
 
         elif self.action == "retrieve":
+            # For detail view, include storage info and additional prefetches
+            with_counts_default = True
             queryset = queryset.prefetch_related("jobs", "collections")
             queryset = self.add_adjacent_captures(queryset)
             with_detections_default = True
@@ -520,6 +549,17 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
 
         if with_detections:
             queryset = self.prefetch_detections(queryset, project)
+
+        with_counts = self.request.query_params.get("with_counts", with_counts_default)
+        if with_counts is not None:
+            with_counts = BooleanField(required=False).clean(with_counts)
+
+        if with_counts:
+            queryset = queryset.with_occurrences_count(  # type: ignore
+                project=project, request=self.request
+            ).with_taxa_count(  # type: ignore
+                project=project, request=self.request
+            )
 
         return queryset
 
@@ -685,16 +725,32 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
+        with_counts_default = False
+        # If with_counts is explicitly requested, require project
+        if "with_counts" in self.request.query_params:
+            self.require_project = True
         project = self.get_active_project()
-        classification_threshold = get_default_classification_threshold(project, self.request)
+
         if project:
             query_set = query_set.filter(project=project)
-        queryset = query_set.with_occurrences_count(  # type: ignore
-            classification_threshold=classification_threshold, project=project
-        ).with_taxa_count(  # type: ignore
-            classification_threshold=classification_threshold, project=project
-        )
-        return queryset
+
+        if self.action == "retrieve":
+            # For detail view, include counts by default
+            with_counts_default = True
+
+        with_counts = self.request.query_params.get("with_counts", with_counts_default)
+        if with_counts is not None:
+            with_counts = BooleanField(required=False).clean(with_counts)
+
+        if with_counts:
+            classification_threshold = get_default_classification_threshold(project, self.request)
+            query_set = query_set.with_occurrences_count(  # type: ignore
+                classification_threshold=classification_threshold, project=project, request=self.request
+            ).with_taxa_count(  # type: ignore
+                classification_threshold=classification_threshold, project=project, request=self.request
+            )
+
+        return query_set
 
     @action(detail=True, methods=["post"], name="populate")
     def populate(self, request, pk=None):
@@ -1050,23 +1106,41 @@ class OccurrenceTaxaListFilter(filters.BaseFilterBackend):
     """
 
     query_param = "taxa_list_id"
+    query_param_exclusive = f"not_{query_param}"
 
     def filter_queryset(self, request, queryset, view):
         taxalist_id = IntegerField(required=False).clean(request.query_params.get(self.query_param))
+        taxalist_id_exclusive = IntegerField(required=False).clean(
+            request.query_params.get(self.query_param_exclusive)
+        )
+
         if taxalist_id:
             taxa_list = TaxaList.objects.filter(id=taxalist_id).first()
             if taxa_list:
-                taxa = taxa_list.taxa.all()  # Get taxalist taxon objects
+                taxa = taxa_list.taxa.all()  # Get taxa list taxon objects
 
-                # filter by the exact determination
+                # Filter by the exact determination
                 query_filter = Q(determination__in=taxa)
 
-                # filter by the taxon's children
+                # Filter by the taxon's children
                 for taxon in taxa:
                     query_filter |= Q(determination__parents_json__contains=[{"id": taxon.pk}])
 
                 queryset = queryset.filter(query_filter)
-                return queryset
+
+        if taxalist_id_exclusive:
+            taxa_list = TaxaList.objects.filter(id=taxalist_id_exclusive).first()
+            if taxa_list:
+                taxa = taxa_list.taxa.all()  # Get taxa list taxon objects
+
+                # Filter by the exact determination
+                query_filter = Q(determination__in=taxa)
+
+                # Filter by the taxon's children
+                for taxon in taxa:
+                    query_filter |= Q(determination__parents_json__contains=[{"id": taxon.pk}])
+
+                queryset = queryset.exclude(query_filter)
 
         return queryset
 
@@ -1195,19 +1269,32 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
     """
 
     query_param = "taxa_list_id"
+    query_param_exclusive = f"not_{query_param}"
 
     def filter_queryset(self, request, queryset, view):
         taxalist_id = IntegerField(required=False).clean(request.query_params.get(self.query_param))
+        taxalist_id_exclusive = IntegerField(required=False).clean(
+            request.query_params.get(self.query_param_exclusive)
+        )
+
+        def _get_filter(taxa_list: TaxaList) -> models.Q:
+            taxa = taxa_list.taxa.all()  # Get taxa in the taxa list
+            query_filter = Q(id__in=taxa)
+            for taxon in taxa:
+                query_filter |= Q(parents_json__contains=[{"id": taxon.pk}])
+            return query_filter
+
         if taxalist_id:
             taxa_list = TaxaList.objects.filter(id=taxalist_id).first()
             if taxa_list:
-                taxa = taxa_list.taxa.all()  # Get taxa in the TaxaList
-                query_filter = Q(id__in=taxa)
-                for taxon in taxa:
-                    query_filter |= Q(parents_json__contains=[{"id": taxon.pk}])
-
+                query_filter = _get_filter(taxa_list)
                 queryset = queryset.filter(query_filter)
-                return queryset
+
+        if taxalist_id_exclusive:
+            taxa_list = TaxaList.objects.filter(id=taxalist_id_exclusive).first()
+            if taxa_list:
+                query_filter = _get_filter(taxa_list)
+                queryset = queryset.exclude(query_filter)
 
         return queryset
 
@@ -1381,21 +1468,21 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             qs = self.attach_tags_by_project(qs, project)
 
         if project:
-            # Apply default taxa filtering (respects apply_defaults flag)
-            qs = qs.filter_by_project_default_taxa(project, self.request)  # type: ignore
-
             # Allow showing detail views for unobserved taxa
             include_unobserved = True
             if self.action == "list":
                 include_unobserved = self.request.query_params.get("include_unobserved", False)
-            qs = self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)
+                # Apply default taxa filtering (respects apply_defaults flag)
+                qs = qs.filter_by_project_default_taxa(project, self.request)  # type: ignore
+                qs = self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)
             if self.action == "retrieve":
+                qs = self.get_taxa_observed(
+                    qs, project, include_unobserved=include_unobserved, apply_default_filters=False
+                )
                 qs = qs.prefetch_related(
                     Prefetch(
                         "occurrences",
-                        queryset=Occurrence.objects.apply_default_filters(  # type: ignore
-                            project, self.request
-                        ).filter(self.get_occurrence_filters(project))[:1],
+                        queryset=Occurrence.objects.filter(self.get_occurrence_filters(project))[:1],
                         to_attr="example_occurrences",
                     )
                 )
@@ -1407,7 +1494,9 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             qs = qs.annotate(events_count=models.Value(None, output_field=models.IntegerField()))
         return qs
 
-    def get_taxa_observed(self, qs: QuerySet, project: Project, include_unobserved=False) -> QuerySet:
+    def get_taxa_observed(
+        self, qs: QuerySet, project: Project, include_unobserved=False, apply_default_filters=True
+    ) -> QuerySet:
         """
         If a project is passed, only return taxa that have been observed.
         Also add the number of occurrences and the last time it was detected.
@@ -1427,13 +1516,12 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         default_filters_q = build_occurrence_default_filters_q(project, self.request, occurrence_accessor="")
 
         # Combine base occurrence filters with default filters
-        base_filter = (
-            models.Q(
-                occurrence_filters,
-                determination_id=models.OuterRef("id"),
-            )
-            & default_filters_q
+        base_filter = models.Q(
+            occurrence_filters,
+            determination_id=models.OuterRef("id"),
         )
+        if apply_default_filters:
+            base_filter = base_filter & default_filters_q
 
         # Count occurrences - uses composite index (determination_id, project_id, event_id, determination_score)
         occurrences_count_subquery = models.Subquery(

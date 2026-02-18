@@ -29,7 +29,7 @@ export const NewProjectDialog = ({
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Dialog.Trigger>
+      <Dialog.Trigger asChild>
         <Button size={buttonSize} variant={buttonVariant}>
           <PlusIcon className="w-4 h-4" />
           <span>{label}</span>

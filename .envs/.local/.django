@@ -12,9 +12,19 @@ DJANGO_SUPERUSER_PASSWORD=localadmin
 # Redis
 REDIS_URL=redis://redis:6379/0
 
+# NATS
+NATS_URL=nats://nats:4222
+
 # Celery / Flower
 CELERY_FLOWER_USER=QSocnxapfMvzLqJXSsXtnEZqRkBtsmKT
 CELERY_FLOWER_PASSWORD=BEQgmCtgyrFieKNoGTsux9YIye0I7P5Q7vEgfJD2C4jxmtHDetFaE2jhS7K7rxaf
+
+# RabbitMQ
+CELERY_BROKER_URL=amqp://rabbituser:rabbitpass@rabbitmq:5672/
+CELERY_RESULT_BACKEND=rpc:// # Use RabbitMQ for results backend
+RABBITMQ_DEFAULT_USER=rabbituser
+RABBITMQ_DEFAULT_PASS=rabbitpass
+RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit consumer_timeout 604800000
 
 # Attempting to keep Flower from showing workers as offline
 # FLOWER_BROKER_API=REDIS_URL

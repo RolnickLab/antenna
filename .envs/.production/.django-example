@@ -24,6 +24,13 @@ REDIS_URL=redis://redis:6379/0
 CELERY_FLOWER_USER=
 CELERY_FLOWER_PASSWORD=
 
+# RabbitMQ
+CELERY_BROKER_URL=
+CELERY_RESULT_BACKEND=rpc:// # Use RabbitMQ for results backend
+RABBITMQ_DEFAULT_USER=
+RABBITMQ_DEFAULT_PASS=
+RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit consumer_timeout 604800000
+
 # Sendgrid
 SENDGRID_API_KEY=
 
@@ -58,3 +65,7 @@ WEB_CONCURRENCY=4
 DEFAULT_PROCESSING_SERVICE_NAME="AMI Data Companion"
 DEFAULT_PROCESSING_SERVICE_ENDPOINT=https://ml.antenna.insectai.org/
 DEFAULT_PIPELINES_ENABLED=global_moths_2024,quebec_vermont_moths_2023,panama_moths_2023,uk_denmark_moths_2023
+
+# NATS
+# ------------------------------------------------------------------------------
+NATS_URL=nats://nats:4222

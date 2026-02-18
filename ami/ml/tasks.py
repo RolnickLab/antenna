@@ -15,12 +15,21 @@ def process_source_images_async(pipeline_choice: str, endpoint_url: str, image_i
     from ami.ml.models.pipeline import Pipeline, process_images, save_results
 
     job = None
-    try:
-        job = Job.objects.get(pk=job_id)
-        job.logger.info(f"Processing {len(image_ids)} images for job {job}")
-    except Job.DoesNotExist as e:
-        logger.error(f"Job {job_id} not found: {e}")
-        pass
+    reprocess_all_images = False
+    if job_id is not None:
+        try:
+            job = Job.objects.get(pk=job_id)
+            reprocess_all_images = job.project.feature_flags.reprocess_all_images
+            job.logger.info(
+                f"Processing {len(image_ids)} images for job {job} (reprocess_all_images={reprocess_all_images})"
+            )
+        except Job.DoesNotExist as e:
+            logger.error(f"Job {job_id} not found: {e}")
+
+    else:
+        logger.info(
+            f"Processing {len(image_ids)} images for job_id=None (reprocess_all_images={reprocess_all_images})"
+        )
 
     images = SourceImage.objects.filter(pk__in=image_ids)
     pipeline = Pipeline.objects.get(slug=pipeline_choice)
@@ -30,6 +39,7 @@ def process_source_images_async(pipeline_choice: str, endpoint_url: str, image_i
         endpoint_url=endpoint_url,
         images=images,
         job_id=job_id,
+        reprocess_all_images=reprocess_all_images,
     )
 
     try:
@@ -88,15 +98,16 @@ def remove_duplicate_classifications(project_id: int | None = None, dry_run: boo
 @celery_app.task(soft_time_limit=10, time_limit=20)
 def check_processing_services_online():
     """
-    Check the status of all processing services and update last checked.
+    Check the status of all v1 synchronous processing services and update the last_seen field.
+    We will update last_seen for asynchronous services when we receive a request from them.
 
     @TODO make this async to check all services in parallel
     """
     from ami.ml.models import ProcessingService
 
-    logger.info("Checking if processing services are online.")
+    logger.info("Checking which synchronous processing services are online.")
 
-    services = ProcessingService.objects.all()
+    services = ProcessingService.objects.exclude(endpoint_url__isnull=True).exclude(endpoint_url__exact="").all()
 
     for service in services:
         logger.info(f"Checking service {service}")

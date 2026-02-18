@@ -4,6 +4,12 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-
 python manage.py migrate
-exec uvicorn config.asgi:application --host 0.0.0.0 --reload --reload-include '*.html'
+
+# Launch VS Code debug server if DEBUGGER environment variable is set to 1
+# Note that the --reload flag is not compatible with debugpy, so manually restart the server when code changes
+if [ "${DEBUGGER:-0}" = "1" ]; then
+    exec python -Xfrozen_modules=off -m debugpy --listen 0.0.0.0:5678 -m uvicorn config.asgi:application --host 0.0.0.0
+else
+    exec uvicorn config.asgi:application --host 0.0.0.0 --reload --reload-include '*.html'
+fi

@@ -3,18 +3,6 @@ import { Project } from './project'
 
 export type ServerProject = any // TODO: Update this type
 
-interface SummaryData {
-  title: string
-  data: {
-    x: (string | number)[]
-    y: number[]
-    tickvals?: (string | number)[]
-    ticktext?: string[]
-  }
-  type: any
-  orientation: 'h' | 'v'
-}
-
 interface Settings {
   sessionTimeGapSeconds: number
   scoreThreshold: number
@@ -26,6 +14,14 @@ interface Settings {
 export class ProjectDetails extends Project {
   public constructor(project: ServerProject) {
     super(project)
+  }
+
+  get permissionsAdminUrl() {
+    return `https://api.antenna.insectai.org/bereich/main/project/${this.id}/permissions/` // TODO: Use dynamic admin URL based on environment?
+  }
+
+  get isMember(): boolean {
+    return this._project.is_member
   }
 
   get settings(): Settings {
@@ -56,10 +52,6 @@ export class ProjectDetails extends Project {
       excludeTaxa,
       defaultProcessingPipeline,
     }
-  }
-
-  get summaryData(): SummaryData[] {
-    return this._project.summary_data
   }
 
   get userPermissions(): UserPermission[] {

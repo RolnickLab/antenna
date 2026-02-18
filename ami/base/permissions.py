@@ -87,3 +87,58 @@ class ObjectPermission(permissions.BasePermission):
 
     def has_object_permission(self, request, view, obj: BaseModel):
         return obj.check_permission(request.user, view.action)
+
+
+class ProjectPipelineConfigPermission(ObjectPermission):
+    """
+    Permission for the nested project pipelines route (/projects/{pk}/pipelines/).
+
+    Extends ObjectPermission to handle list/create actions where no object exists yet.
+    Creates a temporary ProjectPipelineConfig instance to leverage BaseModel.check_permission(),
+    which handles draft project visibility and guardian permission checks automatically.
+
+    Follows the same pattern as UserMembershipPermission.
+    """
+
+    def has_permission(self, request, view):
+        from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
+
+        if view.action in ("list", "create"):
+            project = view.get_active_project()
+            if not project:
+                return False
+
+            config = ProjectPipelineConfig(project=project)
+            action = "retrieve" if view.action == "list" else "create"
+            return config.check_permission(request.user, action)
+
+        return super().has_permission(request, view)
+
+
+class UserMembershipPermission(ObjectPermission):
+    """
+    Custom permission for UserProjectMembershipViewSet.
+
+    The `list` action has no object to check against, so we treat it like a
+    `retrieve` action: we fetch the active project, create a temporary
+    membership object for it, and apply the same permission check. All other
+    actions fall back to the default ObjectPermission logic.
+    """
+
+    def has_permission(self, request, view):
+        # Special handling for the list action: treat it like retrieve action
+        from ami.main.models import UserProjectMembership
+
+        if view.action == "list":
+            project = view.get_active_project()
+            if not project:
+                return False
+
+            # Create an unsaved membership instance with only project set
+            membership = UserProjectMembership(user=None, project=project)
+
+            # Check whether the requesting user would be allowed to retrieve this
+            return membership.check_permission(request.user, "retrieve")
+
+        # Fallback to default ObjectPermission behavior
+        return super().has_permission(request, view)

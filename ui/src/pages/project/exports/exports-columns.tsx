@@ -72,7 +72,6 @@ export const columns: (projectId: string) => TableColumn<Export>[] = (
       </BasicTableCell>
     ),
   },
-
   {
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),

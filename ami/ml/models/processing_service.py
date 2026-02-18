@@ -18,6 +18,7 @@ from ami.ml.schemas import (
     ProcessingServiceInfoResponse,
     ProcessingServiceStatusResponse,
 )
+from ami.utils.requests import create_session
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ class ProcessingService(BaseModel):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     projects = models.ManyToManyField("main.Project", related_name="processing_services", blank=True)
-    endpoint_url = models.CharField(max_length=1024)
+    endpoint_url = models.CharField(max_length=1024, null=True, blank=True)
     pipelines = models.ManyToManyField("ml.Pipeline", related_name="processing_services", blank=True)
     last_checked = models.DateTimeField(null=True)
     last_checked_live = models.BooleanField(null=True)
@@ -47,7 +48,8 @@ class ProcessingService(BaseModel):
     objects = ProcessingServiceManager()
 
     def __str__(self):
-        return f'#{self.pk} "{self.name}" at {self.endpoint_url}'
+        endpoint_display = self.endpoint_url or "async"
+        return f'#{self.pk} "{self.name}" ({endpoint_display})'
 
     class Meta:
         verbose_name = "Processing Service"
@@ -137,11 +139,32 @@ class ProcessingService(BaseModel):
             algorithms_created=algorithms_created,
         )
 
-    def get_status(self, timeout=6):
+    def get_status(self, timeout=90) -> ProcessingServiceStatusResponse:
         """
         Check the status of the processing service.
         This is a simple health check that pings the /readyz endpoint of the service.
+
+        Uses urllib3 Retry with exponential backoff to handle cold starts and transient failures.
+        The timeout is set to 90s per attempt to accommodate serverless cold starts, especially for
+        services that need to load multiple models into memory. With automatic retries, transient
+        connection errors are handled gracefully.
+
+        Args:
+            timeout: Request timeout in seconds per attempt (default: 90s for serverless cold starts)
         """
+        # If no endpoint URL is configured, return a no-op response
+        if self.endpoint_url is None:
+            return ProcessingServiceStatusResponse(
+                timestamp=datetime.datetime.now(),
+                request_successful=False,
+                server_live=None,
+                pipelines_online=[],
+                pipeline_configs=[],
+                endpoint_url=self.endpoint_url,
+                error="No endpoint URL configured - service operates in pull mode",
+                latency=0.0,
+            )
+
         ready_check_url = urljoin(self.endpoint_url, "readyz")
         start_time = time.time()
         error = None
@@ -151,11 +174,17 @@ class ProcessingService(BaseModel):
         self.last_checked = timestamp
         resp = None
 
+        # Create session with retry logic for connection errors and timeouts
+        session = create_session(
+            retries=3,
+            backoff_factor=2,  # 0s, 2s, 4s delays between retries
+            status_forcelist=(500, 502, 503, 504),
+        )
+
         try:
-            resp = requests.get(ready_check_url, timeout=timeout)
+            resp = session.get(ready_check_url, timeout=timeout)
             resp.raise_for_status()
             self.last_checked_live = True
-            latency = time.time() - start_time
         except requests.exceptions.RequestException as e:
             error = f"Error connecting to {ready_check_url}: {e}"
             logger.error(error)
@@ -176,6 +205,7 @@ class ProcessingService(BaseModel):
             # but the intention is to show which ones are loaded into memory and ready to use.
             # @TODO: this may be overkill, but it is displayed in the UI now.
             try:
+                assert resp is not None
                 pipelines_online: list[str] = resp.json().get("status", [])
             except (ValueError, KeyError) as e:
                 error = f"Error parsing pipeline statuses from {ready_check_url}: {e}"
@@ -199,6 +229,9 @@ class ProcessingService(BaseModel):
         Get the pipeline configurations from the processing service.
         This can be a long response as it includes the full category map for each algorithm.
         """
+        if self.endpoint_url is None:
+            return []
+
         info_url = urljoin(self.endpoint_url, "info")
         resp = requests.get(info_url, timeout=timeout)
         resp.raise_for_status()

@@ -123,7 +123,7 @@ export const ConnectionStatus = ({
             className={styles.wizardTrigger}
             showToggle
           >
-            <StatusInfo label={label} status={status} tooltip={details} />
+            <StatusInfo status={status} tooltip={details} />
           </Wizard.Trigger>
           <Wizard.Content className={styles.wizardContent}>
             <FormRow>

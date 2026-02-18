@@ -2,7 +2,7 @@ import { useSyncDeploymentSourceImages } from 'data-services/hooks/deployments/u
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconButton } from 'design-system/components/icon-button/icon-button'
 import { IconType } from 'design-system/components/icon/icon'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -32,7 +32,8 @@ export const SyncDeploymentSourceImages = ({
         onClick={() => syncDeploymentSourceImages(deploymentId)}
       />
       {projectId && jobId && (
-        <Tooltip
+        <BasicTooltip
+          asChild
           content={`Job ${jobId} "Sync captures for deployment ${deploymentId}"`}
         >
           <Link
@@ -46,7 +47,7 @@ export const SyncDeploymentSourceImages = ({
           >
             <IconButton icon={IconType.BatchId} />
           </Link>
-        </Tooltip>
+        </BasicTooltip>
       )}
     </div>
   )
