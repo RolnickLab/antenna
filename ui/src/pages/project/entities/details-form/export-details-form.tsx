@@ -7,7 +7,7 @@ import {
 import { FormConfig } from 'components/form/types'
 import { Export, SERVER_EXPORT_TYPES } from 'data-services/models/export'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { CollectionsPicker } from 'design-system/components/collections-picker'
+import { CaptureSetPicker } from 'design-system/components/capture-set-picker'
 import { IconType } from 'design-system/components/icon/icon'
 import { InputContent } from 'design-system/components/input/input'
 import { Select } from 'design-system/components/select/select'
@@ -29,7 +29,7 @@ const config: FormConfig = {
     },
   },
   sourceImages: {
-    label: translate(STRING.FIELD_LABEL_SOURCE_IMAGES_COLLECTION),
+    label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
   },
 }
 
@@ -101,7 +101,7 @@ export const ExportDetailsForm = ({
               }
               error={fieldState.error?.message}
             >
-              <CollectionsPicker
+              <CaptureSetPicker
                 value={field.value}
                 onValueChange={field.onChange}
               />

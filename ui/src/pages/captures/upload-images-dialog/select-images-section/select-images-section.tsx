@@ -19,7 +19,7 @@ const CAPTURE_CONFIG = {
   RATIO: 16 / 9,
 }
 
-const TITLE = 'Select images'
+const TITLE = 'Select captures'
 
 const DESCRIPTION = [
   translate(STRING.MESSAGE_CAPTURE_LIMIT, {
@@ -43,7 +43,7 @@ export const SelectImagesSection = ({
 
   return (
     <FormSection title={TITLE} description={DESCRIPTION}>
-      <div className={styles.collection}>
+      <div className={styles.captures}>
         {images.map(({ file }) => (
           <Card key={file.name}>
             <div className={styles.cardContent}>
@@ -68,7 +68,7 @@ export const SelectImagesSection = ({
             <FileInput
               accept={FileInputAccept.Images}
               multiple
-              name="select-images"
+              name="select-captures"
               renderInput={(props) => (
                 <IconButton
                   {...props}
