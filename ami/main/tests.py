@@ -3445,6 +3445,57 @@ class TestProjectDefaultTaxaFilter(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
 
+class TaxaListViewSetPermissionTestCase(TestCase):
+    """Test TaxaListViewSet write permissions for project members vs non-members."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(email="owner@example.com", password="testpass")
+        self.member = User.objects.create_user(email="member@example.com", password="testpass")
+        self.non_member = User.objects.create_user(email="nonmember@example.com", password="testpass")
+        self.project = Project.objects.create(name="Test Project", owner=self.owner)
+        self.project.members.add(self.member)
+        self.taxa_list = TaxaList.objects.create(name="Existing List", description="A list")
+        self.taxa_list.projects.add(self.project)
+        self.client = APIClient()
+        self.list_url = f"/api/v2/taxa/lists/?project_id={self.project.pk}"
+        self.detail_url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/?project_id={self.project.pk}"
+
+    def test_member_can_create_taxa_list(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.post(self.list_url, {"name": "New List"})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_member_can_update_taxa_list(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.patch(self.detail_url, {"name": "Renamed"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.taxa_list.refresh_from_db()
+        self.assertEqual(self.taxa_list.name, "Renamed")
+
+    def test_member_can_delete_taxa_list(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.delete(self.detail_url)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_anonymous_cannot_create_taxa_list(self):
+        response = self.client.post(self.list_url, {"name": "Anon List"})
+        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+
+    def test_anonymous_cannot_update_taxa_list(self):
+        response = self.client.patch(self.detail_url, {"name": "Hacked"})
+        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+
+    def test_non_member_cannot_create_taxa_list(self):
+        self.client.force_authenticate(self.non_member)
+        response = self.client.post(self.list_url, {"name": "Intruder List"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_non_member_cannot_update_taxa_list(self):
+        self.client.force_authenticate(self.non_member)
+        response = self.client.patch(self.detail_url, {"name": "Hacked"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
 class TaxaListTaxonAPITestCase(TestCase):
     """Test TaxaList taxa management operations via API."""
 

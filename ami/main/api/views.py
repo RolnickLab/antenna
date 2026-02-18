@@ -1634,7 +1634,7 @@ class TaxaListViewSet(DefaultViewSet, ProjectMixin):
         "created_at",
         "updated_at",
     ]
-    permission_classes = [ObjectPermission]
+    permission_classes = [IsProjectMemberOrReadOnly]
     require_project = True
 
     def get_queryset(self):
@@ -1652,8 +1652,6 @@ class TaxaListViewSet(DefaultViewSet, ProjectMixin):
 
         Users cannot manually assign taxa lists to projects for security reasons.
         A taxa list is always created in the context of the active project.
-
-        @TODO Do we need to check permissions here? Is this user allowed to add taxa lists to this project?
         """
         instance = serializer.save()
         project = self.get_active_project()
