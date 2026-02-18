@@ -238,7 +238,7 @@ class TestJobView(APITestCase):
         self.pipeline = pipeline
         return pipeline
 
-    def _create_ml_job(self, name: str, pipeline: Pipeline) -> Job:
+    def _create_ml_job(self, name: str, pipeline: Pipeline, **kwargs) -> Job:
         """Helper to create an ML job with a pipeline."""
         return Job.objects.create(
             job_type_key=MLJob.key,
@@ -246,6 +246,7 @@ class TestJobView(APITestCase):
             name=name,
             pipeline=pipeline,
             source_image_collection=self.source_image_collection,
+            **kwargs,
         )
 
     def test_create_job(self):
@@ -413,8 +414,7 @@ class TestJobView(APITestCase):
 
     def _task_batch_helper(self, value: Any, expected_status: int):
         pipeline = self._create_pipeline()
-        job = self._create_ml_job("Job for batch test", pipeline)
-        job.dispatch_mode = JobDispatchMode.ASYNC_API
+        job = self._create_ml_job("Job for batch test", pipeline, dispatch_mode=JobDispatchMode.ASYNC_API)
         job.save(update_fields=["dispatch_mode"])
         images = [
             SourceImage.objects.create(
@@ -534,7 +534,7 @@ class TestJobView(APITestCase):
 
         # Test tasks endpoint (requires job with pipeline)
         pipeline = self._create_pipeline()
-        job = self._create_ml_job("Job for service name test", pipeline)
+        job = self._create_ml_job("Job for service name test", pipeline, dispatch_mode=JobDispatchMode.ASYNC_API)
 
         tasks_url = reverse_with_params(
             "api:job-tasks",
