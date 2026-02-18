@@ -415,7 +415,6 @@ class TestJobView(APITestCase):
     def _task_batch_helper(self, value: Any, expected_status: int):
         pipeline = self._create_pipeline()
         job = self._create_ml_job("Job for batch test", pipeline, dispatch_mode=JobDispatchMode.ASYNC_API)
-        job.save(update_fields=["dispatch_mode"])
         images = [
             SourceImage.objects.create(
                 path=f"image_{i}.jpg",
