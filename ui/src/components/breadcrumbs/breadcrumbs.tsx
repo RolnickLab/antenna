@@ -29,7 +29,7 @@ export const Breadcrumbs = ({
     return () => {
       setMainBreadcrumb(undefined)
     }
-  }, [navItems, activeNavItem])
+  }, [navItems, activeNavItem, setMainBreadcrumb])
 
   const breadcrumbs = [
     pageBreadcrumb,

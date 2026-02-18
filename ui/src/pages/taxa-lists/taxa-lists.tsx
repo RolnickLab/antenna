@@ -31,9 +31,7 @@ export const TaxaLists = () => {
     <>
       <PageHeader
         title={translate(STRING.NAV_ITEM_TAXA_LISTS)}
-        subTitle={translate(STRING.RESULTS, {
-          total: taxaLists?.length ?? 0,
-        })}
+        subTitle={translate(STRING.RESULTS, { total })}
         isLoading={isLoading}
         isFetching={isFetching}
       >

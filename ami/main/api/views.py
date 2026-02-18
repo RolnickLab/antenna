@@ -9,6 +9,7 @@ from django.db.models import Prefetch, Q
 from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
@@ -26,7 +27,7 @@ from rest_framework.views import APIView
 from ami.base.filters import NullsLastOrderingFilter, ThresholdFilter
 from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
-from ami.base.permissions import IsActiveStaffOrReadOnly, ObjectPermission
+from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
@@ -1265,12 +1266,12 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
     """
     Filters taxa based on a TaxaList.
 
-    By default, queries for taxa that are directly in the TaxaList.
-    If include_descendants=true, also includes descendants (children or deeper) recursively.
+    By default, queries for taxa that are directly in the TaxaList and their descendants.
+    If include_descendants=false, only taxa directly in the TaxaList are returned.
 
     Query parameters:
     - taxa_list_id: ID of the taxa list to filter by
-    - include_descendants: Set to 'true' to include descendants (default: false)
+    - include_descendants: Set to 'false' to exclude descendants (default: true)
     - not_taxa_list_id: ID of taxa list to exclude
     """
 
@@ -1666,16 +1667,17 @@ class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):
     """
 
     serializer_class = TaxaListTaxonSerializer
-    permission_classes = []  # Allow public access for now
+    permission_classes = [IsProjectMemberOrReadOnly]
     require_project = True
 
     def get_taxa_list(self):
-        """Get the parent taxa list from URL parameters."""
+        """Get the parent taxa list from URL parameters, scoped to the active project."""
         taxa_list_id = self.kwargs.get("taxalist_pk")
+        project = self.get_active_project()
         try:
-            return TaxaList.objects.get(pk=taxa_list_id)
+            return TaxaList.objects.get(pk=taxa_list_id, projects=project)
         except TaxaList.DoesNotExist:
-            raise api_exceptions.NotFound("Taxa list not found.")
+            raise api_exceptions.NotFound("Taxa list not found.") from None
 
     def get_queryset(self):
         """Return taxa in the specified taxa list."""
@@ -1705,7 +1707,7 @@ class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):
             )
 
         # Add taxon
-        taxon = Taxon.objects.get(pk=taxon_id)
+        taxon = get_object_or_404(Taxon, pk=taxon_id)
         taxa_list.taxa.add(taxon)
 
         # Return the added taxon
