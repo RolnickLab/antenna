@@ -6,6 +6,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from ami.base.fields import DateStringField
+from ami.base.permissions import add_m2m_object_permissions
 from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, reverse_with_params
 from ami.base.views import get_active_project
 from ami.jobs.models import Job
@@ -667,6 +668,11 @@ class TaxaListSerializer(DefaultSerializer):
         Uses annotated_taxa_count if available (from ViewSet) for performance.
         """
         return getattr(obj, "annotated_taxa_count", obj.taxa.count())
+
+    def get_permissions(self, instance, instance_data):
+        request = self.context["request"]
+        project = get_active_project(request=request)
+        return add_m2m_object_permissions(request.user, instance, project, instance_data)
 
     def get_projects(self, obj):
         """

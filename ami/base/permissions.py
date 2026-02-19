@@ -77,6 +77,44 @@ def add_collection_level_permissions(user: User | None, response_data: dict, mod
     return response_data
 
 
+def add_m2m_object_permissions(user, instance, project, response_data: dict) -> dict:
+    """
+    Add object-level permissions for models with an M2M relationship to Project.
+
+    The default permission resolution (BaseModel._get_object_perms) relies on
+    get_project(), which returns None for M2M-to-Project models (TaxaList, etc.)
+    because there's no single owning project. This function resolves permissions
+    against a specific project from the request context instead.
+
+    Validates that the instance actually belongs to the given project before
+    granting any permissions (prevents cross-project permission leaks).
+
+    This is a temporary approach for the M2M permission gap described in #1120.
+    Once that issue is resolved, this should be replaced by a generic permission
+    class (Pattern B: Bare M2M) that handles TaxaList, Taxon, ProcessingService,
+    Pipeline, and other M2M-to-Project models uniformly.
+    """
+    perms = set(response_data.get("user_permissions", []))
+
+    if not project or not instance.projects.filter(pk=project.pk).exists():
+        response_data["user_permissions"] = list(perms)
+        return response_data
+
+    if user.is_superuser:
+        perms.update(["update", "delete"])
+    else:
+        model_name = instance._meta.model_name
+        all_perms = get_perms(user, project)
+        for perm in all_perms:
+            if perm.endswith(f"_{model_name}"):
+                action = perm.split("_", 1)[0]
+                if action in {"update", "delete"}:
+                    perms.add(action)
+
+    response_data["user_permissions"] = list(perms)
+    return response_data
+
+
 class IsProjectMemberOrReadOnly(permissions.BasePermission):
     """
     Safe methods are allowed for everyone.
