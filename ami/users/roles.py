@@ -194,6 +194,9 @@ class ProjectManager(Role):
             Project.Permissions.CREATE_PROJECT_PIPELINE_CONFIG,
             Project.Permissions.UPDATE_PROJECT_PIPELINE_CONFIG,
             Project.Permissions.DELETE_PROJECT_PIPELINE_CONFIG,
+            Project.Permissions.CREATE_TAXALIST,
+            Project.Permissions.UPDATE_TAXALIST,
+            Project.Permissions.DELETE_TAXALIST,
         }
     )
 
