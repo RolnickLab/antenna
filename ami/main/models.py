@@ -1838,7 +1838,7 @@ class SourceImage(BaseModel):
     def get_detections_count(self) -> int:
         # Detections count excludes detections without bounding boxes
         # Detections with null bounding boxes are valid and indicates the image was successfully processed
-        return self.detections.exclude(Q(bbox__isnull=True) | Q(bbox=None) | Q(bbox=[])).count()
+        return self.detections.exclude(Q(bbox__isnull=True) | Q(bbox=[])).count()
 
     def get_was_processed(self, algorithm_key: str | None = None) -> bool:
         if algorithm_key:
@@ -2014,6 +2014,7 @@ def update_detection_counts(qs: models.QuerySet[SourceImage] | None = None, null
 
     subquery = models.Subquery(
         Detection.objects.filter(source_image_id=models.OuterRef("pk"))
+        .exclude(Q(bbox__isnull=True) | Q(bbox=[]))
         .values("source_image_id")
         .annotate(count=models.Count("id"))
         .values("count"),

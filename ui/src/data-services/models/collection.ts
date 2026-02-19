@@ -90,7 +90,7 @@ export class Collection extends Entity {
     )}%)`
   }
 
-  get numImagesProccessed(): string {
+  get numImagesProcessedLabel(): string {
     const numProcessed = this.numImagesProcessed ?? 0
     const pct =
       this.numImages && this.numImages > 0

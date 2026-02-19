@@ -8,7 +8,7 @@ import { useDynamicPlotWidth } from './useDynamicPlotWidth'
 const fontFamily = 'Mazzard, sans-serif'
 const lineColorCaptures = '#4E4F57'
 const lineColorDetections = '#5F8AC6'
-const lineColorProcessed = '#FF0000'
+const lineColorProcessed = '#00ff1a'
 const spikeColor = '#FFFFFF'
 const textColor = '#303137'
 const tooltipBgColor = '#FFFFFF'
@@ -75,8 +75,8 @@ const ActivityPlot = ({
               y: timeline.map((timelineTick) =>
                 timelineTick.numCaptures > 0
                   ? timelineTick.wasProcessed
-                    ? 0
-                    : 1
+                    ? timelineTick.numCaptures // Show number of captures so value is visible
+                    : 0
                   : 0
               ),
               customdata: timeline.map((timelineTick) =>

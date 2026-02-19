@@ -111,7 +111,7 @@ export const columns: (projectId: string) => TableColumn<Collection>[] = (
       textAlign: TextAlign.Right,
     },
     renderCell: (item: Collection) => (
-      <BasicTableCell value={item.numImagesProccessed} />
+      <BasicTableCell value={item.numImagesProcessedLabel} />
     ),
   },
   {

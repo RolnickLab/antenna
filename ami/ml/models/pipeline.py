@@ -8,7 +8,6 @@ if TYPE_CHECKING:
 
 import collections
 import dataclasses
-import datetime
 import logging
 import time
 import typing
@@ -815,6 +814,50 @@ class PipelineSaveResults:
     total_time: float
 
 
+def create_null_detections_for_undetected_images(
+    results: PipelineResultsResponse,
+    algorithms_known: dict[str, Algorithm],
+    logger: logging.Logger = logger,
+) -> list[DetectionResponse]:
+    """
+    Create null DetectionResponse objects (empty bbox) for images that have no detections.
+
+    :param results: The PipelineResultsResponse from the processing service
+    :param algorithms_known: Dictionary of algorithms keyed by algorithm key
+
+    :return: List of DetectionResponse objects with null bbox
+    """
+    source_images_with_detections = {int(detection.source_image_id) for detection in results.detections}
+    null_detections_to_add = []
+
+    for source_img in results.source_images:
+        if int(source_img.id) not in source_images_with_detections:
+            detector_algorithm_reference = None
+            for known_algorithm in algorithms_known.values():
+                if known_algorithm.task_type == AlgorithmTaskType.DETECTION:
+                    detector_algorithm_reference = AlgorithmReference(
+                        name=known_algorithm.name, key=known_algorithm.key
+                    )
+
+            if detector_algorithm_reference is None:
+                logger.error(
+                    f"Could not identify the detector algorithm. "
+                    f"A null detection was not created for Source Image {source_img.id}"
+                )
+                continue
+
+            null_detections_to_add.append(
+                DetectionResponse(
+                    source_image_id=source_img.id,
+                    bbox=None,
+                    algorithm=detector_algorithm_reference,
+                    timestamp=now(),
+                )
+            )
+
+    return null_detections_to_add
+
+
 @celery_app.task(soft_time_limit=60 * 4, time_limit=60 * 5)
 def save_results(
     results: PipelineResultsResponse | None = None,
@@ -873,36 +916,12 @@ def save_results(
 
     # Ensure all images have detections
     # if not, add a NULL detection (empty bbox) to the results
-    source_images_with_detections = [detection.source_image_id for detection in results.detections]
-    source_images_with_detections = set(source_images_with_detections)
-    null_detections_to_add = []
-
-    for source_img in results.source_images:
-        if source_img.id not in source_images_with_detections:
-            detector_algorithm_reference = None
-            for known_algorithm in algorithms_known.values():
-                if known_algorithm.task_type == AlgorithmTaskType.DETECTION:
-                    detector_algorithm_reference = AlgorithmReference(
-                        name=known_algorithm.name, key=known_algorithm.key
-                    )
-
-            if detector_algorithm_reference is None:
-                job_logger.error(
-                    f"Could not identify the detector algorithm. "
-                    f"A null detection was not created for Source Image {source_img.id}"
-                )
-                continue
-
-            null_detections_to_add.append(
-                DetectionResponse(
-                    source_image_id=source_img.id,
-                    bbox=None,
-                    algorithm=detector_algorithm_reference,
-                    timestamp=datetime.datetime.now(),
-                )
-            )
-
-    results.detections = results.detections + null_detections_to_add
+    null_detections = create_null_detections_for_undetected_images(
+        results=results,
+        algorithms_known=algorithms_known,
+        logger=job_logger,
+    )
+    results.detections = results.detections + null_detections
 
     detections = create_detections(
         detections=results.detections,
