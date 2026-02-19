@@ -66,11 +66,13 @@ export const UploadImagesDialog = ({
       <Dialog.Trigger asChild>
         <Button size={buttonSize} variant={buttonVariant}>
           <UploadIcon className="w-4 h-4" />
-          <span>Upload images</span>
+          <span>{translate(STRING.UPLOAD_CAPTURES)}</span>
         </Button>
       </Dialog.Trigger>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
-        <Dialog.Header title="Upload images"></Dialog.Header>
+        <Dialog.Header
+          title={translate(STRING.UPLOAD_CAPTURES)}
+        ></Dialog.Header>
         {error ? <FormError message={error} /> : null}
         <div className={styles.content}>
           {isSuccess ? (
@@ -79,7 +81,7 @@ export const UploadImagesDialog = ({
               {processNow ? (
                 <>
                   <p className="text-center body-large mb-16">
-                    Stay tuned while your images are being processed.
+                    Stay tuned while your captures are being processed.
                   </p>
                   <Link
                     className={buttonVariants({ variant: 'success' })}
@@ -92,7 +94,7 @@ export const UploadImagesDialog = ({
               ) : (
                 <>
                   <p className="text-center body-large mb-16">
-                    Your images were uploaded and added to the selected
+                    Your captures were uploaded and added to the selected
                     monitoring station.
                   </p>
                   <Link
@@ -113,7 +115,7 @@ export const UploadImagesDialog = ({
                   items={[
                     {
                       id: Section.Images,
-                      label: 'Select images',
+                      label: 'Select captures',
                     },
                     {
                       id: Section.Station,
@@ -220,7 +222,7 @@ const SectionStation = ({
     <div>
       <FormSection
         title="Select station"
-        description="The images will be added to one of your monitoring stations."
+        description="The captures will be added to one of your monitoring stations."
       >
         <Select.Root
           disabled={deployments.length === 0}
@@ -285,10 +287,10 @@ const SectionUpload = ({
   <div>
     <FormSection
       title="Summary"
-      description="Your images will be uploaded and added to the selected monitoring station. If processing is enabled, a job will start in the background."
+      description="Your captures will be uploaded and added to the selected monitoring station. If processing is enabled, a job will start in the background."
     >
       <div className="grid grid-cols-2 gap-8">
-        <InputValue label="Images" value={images.length} />
+        <InputValue label="Captures" value={images.length} />
         <InputValue label="Station" value={deployment?.name} />
         <div className="space-y-4">
           <div className="flex items-center gap-2">
@@ -298,7 +300,7 @@ const SectionUpload = ({
               onCheckedChange={setProcessNow}
             />
             <label className="pt-0.5 body-small text-muted-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-50">
-              Process images
+              Process captures
             </label>
             <DefaultPipelineInfo project={project} />
           </div>
