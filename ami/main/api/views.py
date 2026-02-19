@@ -375,7 +375,7 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
         )
         resolution = datetime.timedelta(minutes=resolution_minutes)
 
-        qs = SourceImage.objects.filter(event=event)
+        qs = SourceImage.objects.filter(event=event).with_was_processed()  # type: ignore
 
         # Bulk update all source images where detections_count is null
         update_detection_counts(qs=qs, null_only=True)
@@ -401,7 +401,7 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
         source_images = list(
             qs.filter(timestamp__range=(start_time, end_time))
             .order_by("timestamp")
-            .values("id", "timestamp", "detections_count")
+            .values("id", "timestamp", "detections_count", "was_processed")
         )
 
         timeline = []
@@ -418,6 +418,7 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
                 "captures_count": 0,
                 "detections_count": 0,
                 "detection_counts": [],
+                "was_processed": False,
             }
 
             while image_index < len(source_images) and source_images[image_index]["timestamp"] <= interval_end:
@@ -435,6 +436,7 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
             # Remove zero values and calculate the mode
             interval_data["detection_counts"] = [x for x in interval_data["detection_counts"] if x > 0]
             interval_data["detections_avg"] = mode(interval_data["detection_counts"] or [0])
+            interval_data["was_processed"] = image["was_processed"]
 
             timeline.append(interval_data)
             current_time = interval_end
@@ -705,6 +707,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         SourceImageCollection.objects.all()
         .with_source_images_count()  # type: ignore
         .with_source_images_with_detections_count()
+        .with_source_images_processed_count()
         .prefetch_related("jobs")
     )
     serializer_class = SourceImageCollectionSerializer
@@ -720,6 +723,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         "method",
         "source_images_count",
         "source_images_with_detections_count",
+        "source_images_processed_count",
         "occurrences_count",
     ]
 
@@ -894,7 +898,9 @@ class DetectionViewSet(DefaultViewSet, ProjectMixin):
     API endpoint that allows detections to be viewed or edited.
     """
 
-    queryset = Detection.objects.all().select_related("source_image", "detection_algorithm")
+    queryset = Detection.objects.exclude(Q(bbox__isnull=True) | Q(bbox=None) | Q(bbox=[])).select_related(
+        "source_image", "detection_algorithm"
+    )
     serializer_class = DetectionSerializer
     filterset_fields = ["source_image", "detection_algorithm", "source_image__project"]
     ordering_fields = ["created_at", "updated_at", "detection_score", "timestamp"]

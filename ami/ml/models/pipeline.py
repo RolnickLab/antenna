@@ -37,7 +37,7 @@ from ami.main.models import (
     update_occurrence_determination,
 )
 from ami.ml.exceptions import PipelineNotConfigured
-from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
+from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap, AlgorithmTaskType
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
     AlgorithmReference,
@@ -406,7 +406,10 @@ def get_or_create_detection(
 
     :return: A tuple of the Detection object and a boolean indicating whether it was created
     """
-    serialized_bbox = list(detection_resp.bbox.dict().values())
+    if detection_resp.bbox is not None:
+        serialized_bbox = list(detection_resp.bbox.dict().values())
+    else:
+        serialized_bbox = None
     detection_repr = f"Detection {detection_resp.source_image_id} {serialized_bbox}"
 
     assert str(detection_resp.source_image_id) == str(
@@ -485,6 +488,7 @@ def create_detections(
 
     existing_detections: list[Detection] = []
     new_detections: list[Detection] = []
+
     for detection_resp in detections:
         source_image = source_image_map.get(detection_resp.source_image_id)
         if not source_image:
@@ -810,6 +814,50 @@ class PipelineSaveResults:
     total_time: float
 
 
+def create_null_detections_for_undetected_images(
+    results: PipelineResultsResponse,
+    algorithms_known: dict[str, Algorithm],
+    logger: logging.Logger = logger,
+) -> list[DetectionResponse]:
+    """
+    Create null DetectionResponse objects (empty bbox) for images that have no detections.
+
+    :param results: The PipelineResultsResponse from the processing service
+    :param algorithms_known: Dictionary of algorithms keyed by algorithm key
+
+    :return: List of DetectionResponse objects with null bbox
+    """
+    source_images_with_detections = {int(detection.source_image_id) for detection in results.detections}
+    null_detections_to_add = []
+
+    for source_img in results.source_images:
+        if int(source_img.id) not in source_images_with_detections:
+            detector_algorithm_reference = None
+            for known_algorithm in algorithms_known.values():
+                if known_algorithm.task_type == AlgorithmTaskType.DETECTION:
+                    detector_algorithm_reference = AlgorithmReference(
+                        name=known_algorithm.name, key=known_algorithm.key
+                    )
+
+            if detector_algorithm_reference is None:
+                logger.error(
+                    f"Could not identify the detector algorithm. "
+                    f"A null detection was not created for Source Image {source_img.id}"
+                )
+                continue
+
+            null_detections_to_add.append(
+                DetectionResponse(
+                    source_image_id=source_img.id,
+                    bbox=None,
+                    algorithm=detector_algorithm_reference,
+                    timestamp=now(),
+                )
+            )
+
+    return null_detections_to_add
+
+
 @celery_app.task(soft_time_limit=60 * 4, time_limit=60 * 5)
 def save_results(
     results: PipelineResultsResponse | None = None,
@@ -865,6 +913,15 @@ def save_results(
             "they should be removed to increase performance. "
             "Algorithms and category maps must be registered before processing, using /info endpoint."
         )
+
+    # Ensure all images have detections
+    # if not, add a NULL detection (empty bbox) to the results
+    null_detections = create_null_detections_for_undetected_images(
+        results=results,
+        algorithms_known=algorithms_known,
+        logger=job_logger,
+    )
+    results.detections = results.detections + null_detections
 
     detections = create_detections(
         detections=results.detections,
