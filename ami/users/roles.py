@@ -144,6 +144,7 @@ class MLDataManager(Role):
         Project.Permissions.RUN_DATA_EXPORT_JOB,
         Project.Permissions.DELETE_JOB,
         Project.Permissions.DELETE_OCCURRENCES,
+        Project.Permissions.CREATE_PROJECT_PIPELINE_CONFIG,
     }
 
 
@@ -190,6 +191,9 @@ class ProjectManager(Role):
             Project.Permissions.CREATE_USER_PROJECT_MEMBERSHIP,
             Project.Permissions.UPDATE_USER_PROJECT_MEMBERSHIP,
             Project.Permissions.DELETE_USER_PROJECT_MEMBERSHIP,
+            Project.Permissions.CREATE_PROJECT_PIPELINE_CONFIG,
+            Project.Permissions.UPDATE_PROJECT_PIPELINE_CONFIG,
+            Project.Permissions.DELETE_PROJECT_PIPELINE_CONFIG,
         }
     )
 

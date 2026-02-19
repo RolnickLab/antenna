@@ -1,5 +1,5 @@
 import { API_ROUTES } from 'data-services/constants'
-import { useCollections } from 'data-services/hooks/collections/useCollections'
+import { useCaptureSets } from 'data-services/hooks/capture-sets/useCaptureSets'
 import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
@@ -12,16 +12,16 @@ import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'
 import { usePagination } from 'utils/usePagination'
 import { UserPermission } from 'utils/user/types'
-import { columns } from './collection-columns'
+import { columns } from './capture-set-columns'
 
-export const Collections = () => {
+export const CaptureSets = () => {
   const { projectId } = useParams()
   const [sort, setSort] = useState<TableSortSettings | undefined>({
     field: 'id',
     order: 'asc',
   })
   const { columnSettings, setColumnSettings } = useColumnSettings(
-    'collections',
+    'capture-sets',
     {
       id: true,
       name: true,
@@ -37,8 +37,8 @@ export const Collections = () => {
   const countColumnVisible = columnSettings.occurrences || columnSettings.taxa
   const sortByCountActive =
     sort?.field === 'occurrences_count' || sort?.field === 'taxa_count'
-  const { collections, userPermissions, total, isLoading, isFetching, error } =
-    useCollections(
+  const { captureSets, userPermissions, total, isLoading, isFetching, error } =
+    useCaptureSets(
       {
         projectId,
         pagination,
@@ -50,24 +50,24 @@ export const Collections = () => {
   const canCreate = userPermissions?.includes(UserPermission.Create)
 
   useEffect(() => {
-    // If any collection has a job in progress, we want to poll the endpoint so we can show job updates
-    if (collections?.some(({ hasJobInProgress }) => hasJobInProgress)) {
+    // If any capture set has a job in progress, we want to poll the endpoint so we can show job updates
+    if (captureSets?.some(({ hasJobInProgress }) => hasJobInProgress)) {
       setPoll(true)
     } else {
       setPoll(false)
     }
-  }, [collections])
+  }, [captureSets])
 
   return (
     <>
       <PageHeader
-        title={translate(STRING.NAV_ITEM_COLLECTIONS)}
+        title={translate(STRING.NAV_ITEM_CAPTURE_SETS)}
         subTitle={translate(STRING.RESULTS, {
           total,
         })}
         isLoading={isLoading}
         isFetching={isFetching}
-        tooltip={translate(STRING.TOOLTIP_COLLECTION)}
+        tooltip={translate(STRING.TOOLTIP_CAPTURE_SET)}
       >
         <ColumnSettings
           columns={columns(projectId as string)}
@@ -76,8 +76,8 @@ export const Collections = () => {
         />
         {canCreate && (
           <NewEntityDialog
-            collection={API_ROUTES.COLLECTIONS}
-            type="collection"
+            collection={API_ROUTES.CAPTURE_SETS}
+            type={translate(STRING.ENTITY_TYPE_CAPTURE_SET)}
           />
         )}
       </PageHeader>
@@ -92,12 +92,12 @@ export const Collections = () => {
         })}
         error={error}
         isLoading={isLoading}
-        items={collections}
+        items={captureSets}
         onSortSettingsChange={setSort}
         sortable
         sortSettings={sort}
       />
-      {collections?.length ? (
+      {captureSets?.length ? (
         <PaginationBar
           compact
           pagination={pagination}
