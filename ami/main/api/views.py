@@ -1663,6 +1663,9 @@ class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):
     """
     Nested ViewSet for managing taxa in a taxa list.
     Accessed via /taxa/lists/{taxa_list_id}/taxa/
+
+    Only provides create (POST) and delete (DELETE) actions.
+    The UI lists taxa via the main /taxa/ endpoint with a taxa_list_id filter.
     """
 
     serializer_class = TaxaListTaxonSerializer
@@ -1682,12 +1685,6 @@ class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):
         """Return taxa in the specified taxa list."""
         taxa_list = self.get_taxa_list()
         return taxa_list.taxa.all()
-
-    def list(self, request, taxalist_pk=None):
-        """List all taxa in the taxa list."""
-        queryset = self.get_queryset()
-        serializer = self.get_serializer(queryset, many=True)
-        return Response({"count": queryset.count(), "results": serializer.data})
 
     def create(self, request, taxalist_pk=None):
         """Add a taxon to the taxa list."""

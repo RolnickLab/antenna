@@ -3530,17 +3530,6 @@ class TaxaListTaxonAPITestCase(TestCase):
         response = self.client.post(self.base_url, {"taxon_id": 999999})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_list_taxa_in_list(self):
-        """Test listing taxa in a taxa list."""
-        self.taxa_list.taxa.add(self.taxon1, self.taxon2)
-
-        response = self.client.get(self.base_url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["count"], 2)
-        taxon_ids = [item["id"] for item in response.data["results"]]
-        self.assertIn(self.taxon1.pk, taxon_ids)
-        self.assertIn(self.taxon2.pk, taxon_ids)
-
     def test_delete_by_taxon_id(self):
         """Test deleting by taxon ID returns 204."""
         self.taxa_list.taxa.add(self.taxon1)
@@ -3554,13 +3543,6 @@ class TaxaListTaxonAPITestCase(TestCase):
         url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/taxa/{self.taxon1.pk}/?project_id={self.project.pk}"
         response = self.client.delete(url)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-
-    def test_list_empty_taxa_list(self):
-        """Test listing taxa in an empty taxa list."""
-        response = self.client.get(self.base_url)
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["count"], 0)
-        self.assertEqual(response.data["results"], [])
 
     def test_m2m_relationship_works(self):
         """Test that M2M relationship still works correctly."""
@@ -3621,9 +3603,9 @@ class TaxaListTaxonValidationTestCase(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_nonexistent_taxa_list_returns_404(self):
-        """Test accessing non-existent taxa list returns 404."""
+        """Test adding taxon to non-existent taxa list returns 404."""
         url = f"/api/v2/taxa/lists/999999/taxa/?project_id={self.project.pk}"
-        response = self.client.get(url)
+        response = self.client.post(url, {"taxon_id": self.taxon.pk})
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
