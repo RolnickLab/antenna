@@ -3609,6 +3609,44 @@ class Taxon(BaseModel):
             self.update_calculated_fields(save=True)
 
 
+class TaxaListQuerySet(BaseQuerySet):
+    def get_or_create_for_project(
+        self, name: str, project: "Project | None" = None, **defaults
+    ) -> tuple["TaxaList", bool]:
+        """
+        Get or create a TaxaList with uniqueness scoped to project.
+
+        - If project is None: looks for/creates a global list (no project associations)
+        - If project is provided: looks for/creates a list associated with that project
+
+        Returns:
+            Tuple of (TaxaList, created: bool)
+        """
+        if project is None:
+            # Global list: find list with this name that has no project associations
+            qs = self.filter(name=name).annotate(project_count=models.Count("projects")).filter(project_count=0)
+        else:
+            # Project-specific: find list with this name in this project
+            qs = self.filter(name=name, projects=project)
+
+        try:
+            return qs.get(), False
+        except self.model.DoesNotExist:
+            taxa_list = self.create(name=name, **defaults)
+            if project:
+                taxa_list.projects.add(project)
+            return taxa_list, True
+        except self.model.MultipleObjectsReturned:
+            # Handle existing duplicates gracefully - return the oldest one
+            taxa_list = qs.order_by("created_at").first()
+            assert taxa_list is not None  # We know there's at least one
+            return taxa_list, False
+
+
+class TaxaListManager(models.Manager.from_queryset(TaxaListQuerySet)):
+    pass
+
+
 @final
 class TaxaList(BaseModel):
     """A checklist of taxa"""
@@ -3618,6 +3656,8 @@ class TaxaList(BaseModel):
 
     taxa = models.ManyToManyField(Taxon, related_name="lists")
     projects = models.ManyToManyField("Project", related_name="taxa_lists")
+
+    objects: TaxaListManager = TaxaListManager()
 
     class Meta:
         ordering = ["-created_at"]
