@@ -16,7 +16,7 @@ from ami.tasks import default_soft_time_limit, default_time_limit
 from config import celery_app
 
 if TYPE_CHECKING:
-    from ami.jobs.models import JobState
+    from ami.jobs.models import Job, JobState
 
 logger = logging.getLogger(__name__)
 # Minimum success rate. Jobs with fewer than this fraction of images
@@ -93,6 +93,13 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
             f"Retrying task {self.request.id} in 5 seconds..."
         )
         raise self.retry(countdown=5, max_retries=10)
+
+    if progress_info.unknown:
+        logger.warning(
+            f"Progress info is unknown for job {job_id} when processing results. Job may be cancelled."
+            f"Or this could be a transient Redis error and the NATS task will be retried."
+        )
+        return
 
     try:
         complete_state = JobState.SUCCESS
@@ -272,10 +279,10 @@ def _update_job_progress(
     # Clean up async resources for completed jobs that use NATS/Redis
     if job.progress.is_complete():
         job = Job.objects.get(pk=job_id)  # Re-fetch outside transaction
-        _cleanup_job_if_needed(job)
+        cleanup_async_job_if_needed(job)
 
 
-def _cleanup_job_if_needed(job) -> None:
+def cleanup_async_job_if_needed(job: "Job") -> None:
     """
     Clean up async resources (NATS/Redis) if this job uses them.
 
@@ -330,7 +337,7 @@ def update_job_status(sender, task_id, task, state: str, retval=None, **kwargs):
 
     # Clean up async resources for revoked jobs
     if state == JobState.REVOKED:
-        _cleanup_job_if_needed(job)
+        cleanup_async_job_if_needed(job)
 
 
 @task_failure.connect(sender=run_job, retry=False)
@@ -345,7 +352,7 @@ def update_job_failure(sender, task_id, exception, *args, **kwargs):
     job.save()
 
     # Clean up async resources for failed jobs
-    _cleanup_job_if_needed(job)
+    cleanup_async_job_if_needed(job)
 
 
 def log_time(start: float = 0, msg: str | None = None) -> tuple[float, Callable]:

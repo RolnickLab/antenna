@@ -43,6 +43,7 @@ class JobStateProgress:
     may need to be generalized.
     """
 
+    unknown: bool = False  # True if progress cannot be determined (e.g. missing Redis keys)
     remaining: int = 0  # source images not yet processed in this stage
     total: int = 0  # total source images in the job
     processed: int = 0  # source images completed (success + failed)
@@ -169,7 +170,8 @@ class AsyncJobStateManager:
         pending_images = cache.get(self._get_pending_key(stage))
         total_images = cache.get(self._total_key)
         if pending_images is None or total_images is None:
-            return None
+            # important that this is distinguishable from not getting the lock
+            return JobStateProgress(unknown=True)
         remaining_images = [img_id for img_id in pending_images if img_id not in processed_image_ids]
         assert len(pending_images) >= len(remaining_images)
         cache.set(self._get_pending_key(stage), remaining_images, timeout=self.TIMEOUT)
@@ -210,3 +212,4 @@ class AsyncJobStateManager:
             cache.delete(self._get_pending_key(stage))
         cache.delete(self._failed_key)
         cache.delete(self._total_key)
+        cache.delete(_lock_key(self.job_id))

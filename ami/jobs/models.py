@@ -15,7 +15,7 @@ from guardian.shortcuts import get_perms
 
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
-from ami.jobs.tasks import run_job
+from ami.jobs.tasks import cleanup_async_job_if_needed, run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.ml.post_processing.registry import get_postprocessing_task
@@ -965,6 +965,8 @@ class Job(BaseModel):
         """
         self.status = JobState.CANCELING
         self.save()
+
+        cleanup_async_job_if_needed(self)
         if self.task_id:
             task = run_job.AsyncResult(self.task_id)
             if task:
