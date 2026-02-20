@@ -1,7 +1,10 @@
 """Unit tests for TaskQueueManager."""
 
 import unittest
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
+
+from nats.js.errors import NotFoundError
 
 from ami.ml.orchestration.nats_queue import TaskQueueManager
 from ami.ml.schemas import PipelineProcessingTask
@@ -18,8 +21,13 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
             image_url="https://example.com/image.jpg",
         )
 
-    def _create_mock_nats_connection(self):
-        """Helper to create mock NATS connection and JetStream context."""
+    @contextmanager
+    def _mock_nats_setup(self):
+        """Helper to create and mock NATS connection with connection pool.
+
+        Yields:
+            tuple: (nc, js, mock_pool) - NATS connection, JetStream context, and mock pool
+        """
         nc = MagicMock()
         nc.is_closed = False
         nc.close = AsyncMock()
@@ -34,37 +42,27 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
         js.delete_consumer = AsyncMock()
         js.delete_stream = AsyncMock()
 
-        return nc, js
-
-    async def test_context_manager_lifecycle(self):
-        """Test that context manager properly opens and closes connections."""
-        nc, js = self._create_mock_nats_connection()
-
-        with patch("ami.ml.orchestration.nats_queue.get_connection", AsyncMock(return_value=(nc, js))):
-            async with TaskQueueManager("nats://test:4222") as manager:
-                self.assertIsNotNone(manager.nc)
-                self.assertIsNotNone(manager.js)
-
-            nc.close.assert_called_once()
+        with patch("ami.ml.orchestration.nats_connection.get_connection", new_callable=AsyncMock) as mock_get_conn:
+            mock_get_conn.return_value = (nc, js)
+            yield nc, js, mock_get_conn
 
     async def test_publish_task_creates_stream_and_consumer(self):
         """Test that publish_task ensures stream and consumer exist."""
-        nc, js = self._create_mock_nats_connection()
         sample_task = self._create_sample_task()
-        js.stream_info.side_effect = Exception("Not found")
-        js.consumer_info.side_effect = Exception("Not found")
 
-        with patch("ami.ml.orchestration.nats_queue.get_connection", AsyncMock(return_value=(nc, js))):
-            async with TaskQueueManager() as manager:
-                await manager.publish_task(456, sample_task)
+        with self._mock_nats_setup() as (_, js, _):
+            js.stream_info.side_effect = NotFoundError
+            js.consumer_info.side_effect = NotFoundError
 
-                js.add_stream.assert_called_once()
-                self.assertIn("job_456", str(js.add_stream.call_args))
-                js.add_consumer.assert_called_once()
+            manager = TaskQueueManager()
+            await manager.publish_task(456, sample_task)
+
+            js.add_stream.assert_called_once()
+            self.assertIn("job_456", str(js.add_stream.call_args))
+            js.add_consumer.assert_called_once()
 
     async def test_reserve_task_success(self):
         """Test successful task reservation."""
-        nc, js = self._create_mock_nats_connection()
         sample_task = self._create_sample_task()
 
         # Mock message with task data
@@ -73,59 +71,72 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
         mock_msg.reply = "reply.subject.123"
         mock_msg.metadata = MagicMock(sequence=MagicMock(stream=1))
 
-        mock_psub = MagicMock()
-        mock_psub.fetch = AsyncMock(return_value=[mock_msg])
-        mock_psub.unsubscribe = AsyncMock()
-        js.pull_subscribe = AsyncMock(return_value=mock_psub)
+        with self._mock_nats_setup() as (_, js, _):
+            mock_psub = MagicMock()
+            mock_psub.fetch = AsyncMock(return_value=[mock_msg])
+            mock_psub.unsubscribe = AsyncMock()
+            js.pull_subscribe = AsyncMock(return_value=mock_psub)
 
-        with patch("ami.ml.orchestration.nats_queue.get_connection", AsyncMock(return_value=(nc, js))):
-            async with TaskQueueManager() as manager:
-                task = await manager.reserve_task(123)
+            manager = TaskQueueManager()
+            task = await manager.reserve_task(123)
 
-                self.assertIsNotNone(task)
-                self.assertEqual(task.id, sample_task.id)
-                self.assertEqual(task.reply_subject, "reply.subject.123")
-                mock_psub.unsubscribe.assert_called_once()
+            self.assertIsNotNone(task)
+            self.assertEqual(task.id, sample_task.id)
+            self.assertEqual(task.reply_subject, "reply.subject.123")
+            mock_psub.unsubscribe.assert_called_once()
 
     async def test_reserve_task_no_messages(self):
         """Test reserve_task when no messages are available."""
-        nc, js = self._create_mock_nats_connection()
+        with self._mock_nats_setup() as (_, js, _):
+            mock_psub = MagicMock()
+            mock_psub.fetch = AsyncMock(return_value=[])
+            mock_psub.unsubscribe = AsyncMock()
+            js.pull_subscribe = AsyncMock(return_value=mock_psub)
 
-        mock_psub = MagicMock()
-        mock_psub.fetch = AsyncMock(return_value=[])
-        mock_psub.unsubscribe = AsyncMock()
-        js.pull_subscribe = AsyncMock(return_value=mock_psub)
+            manager = TaskQueueManager()
+            task = await manager.reserve_task(123)
 
-        with patch("ami.ml.orchestration.nats_queue.get_connection", AsyncMock(return_value=(nc, js))):
-            async with TaskQueueManager() as manager:
-                task = await manager.reserve_task(123)
+            self.assertIsNone(task)
+            mock_psub.unsubscribe.assert_called_once()
 
-                self.assertIsNone(task)
-                mock_psub.unsubscribe.assert_called_once()
+    async def test_reserve_task_timeout(self):
+        """Test reserve_task when fetch raises TimeoutError (no messages available)."""
+        from nats import errors as nats_errors
+
+        with self._mock_nats_setup() as (_, js, _):
+            mock_psub = MagicMock()
+            mock_psub.fetch = AsyncMock(side_effect=nats_errors.TimeoutError)
+            mock_psub.unsubscribe = AsyncMock()
+            js.pull_subscribe = AsyncMock(return_value=mock_psub)
+
+            manager = TaskQueueManager()
+            task = await manager.reserve_task(123)
+
+            self.assertIsNone(task)
+            mock_psub.unsubscribe.assert_called_once()
 
     async def test_acknowledge_task_success(self):
         """Test successful task acknowledgment."""
-        nc, js = self._create_mock_nats_connection()
-        nc.publish = AsyncMock()
+        with self._mock_nats_setup() as (nc, _, _):
+            nc.publish = AsyncMock()
+            nc.flush = AsyncMock()
 
-        with patch("ami.ml.orchestration.nats_queue.get_connection", AsyncMock(return_value=(nc, js))):
-            async with TaskQueueManager() as manager:
-                result = await manager.acknowledge_task("reply.subject.123")
+            manager = TaskQueueManager()
+            result = await manager.acknowledge_task("reply.subject.123")
 
-                self.assertTrue(result)
-                nc.publish.assert_called_once_with("reply.subject.123", b"+ACK")
+            self.assertTrue(result)
+            nc.publish.assert_called_once_with("reply.subject.123", b"+ACK")
+            nc.flush.assert_called_once()
 
     async def test_cleanup_job_resources(self):
         """Test cleanup of job resources (consumer and stream)."""
-        nc, js = self._create_mock_nats_connection()
+        with self._mock_nats_setup() as (_, js, _):
+            manager = TaskQueueManager()
+            result = await manager.cleanup_job_resources(123)
 
-        with patch("ami.ml.orchestration.nats_queue.get_connection", AsyncMock(return_value=(nc, js))):
-            async with TaskQueueManager() as manager:
-                result = await manager.cleanup_job_resources(123)
-
-                self.assertTrue(result)
-                js.delete_consumer.assert_called_once()
-                js.delete_stream.assert_called_once()
+            self.assertTrue(result)
+            js.delete_consumer.assert_called_once()
+            js.delete_stream.assert_called_once()
 
     async def test_naming_conventions(self):
         """Test stream, subject, and consumer naming conventions."""
@@ -135,16 +146,117 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(manager._get_subject(123), "job.123.tasks")
         self.assertEqual(manager._get_consumer_name(123), "job-123-consumer")
 
-    async def test_operations_without_connection_raise_error(self):
-        """Test that operations without connection raise RuntimeError."""
-        manager = TaskQueueManager()
-        sample_task = self._create_sample_task()
 
-        with self.assertRaisesRegex(RuntimeError, "Connection is not open"):
-            await manager.publish_task(123, sample_task)
+class TestRetryOnConnectionError(unittest.IsolatedAsyncioTestCase):
+    """Test retry_on_connection_error decorator behavior."""
 
-        with self.assertRaisesRegex(RuntimeError, "Connection is not open"):
-            await manager.reserve_task(123)
+    def _create_sample_task(self):
+        """Helper to create a sample PipelineProcessingTask."""
+        return PipelineProcessingTask(
+            id="task-retry-test",
+            image_id="img-retry",
+            image_url="https://example.com/retry.jpg",
+        )
 
-        with self.assertRaisesRegex(RuntimeError, "Connection is not open"):
-            await manager.delete_stream(123)
+    async def test_retry_resets_connection_on_error(self):
+        """On connection error, the decorator should call reset_connection() before retrying."""
+        from nats.errors import ConnectionClosedError
+
+        nc = MagicMock()
+        nc.is_closed = False
+        js = MagicMock()
+        js.stream_info = AsyncMock()
+        js.add_stream = AsyncMock()
+        js.consumer_info = AsyncMock()
+        js.add_consumer = AsyncMock()
+        # First publish fails with connection error, second succeeds
+        js.publish = AsyncMock(side_effect=[ConnectionClosedError(), MagicMock(seq=1)])
+        js.pull_subscribe = AsyncMock()
+
+        with (
+            patch(
+                "ami.ml.orchestration.nats_connection.get_connection",
+                new_callable=AsyncMock,
+                return_value=(nc, js),
+            ),
+            patch(
+                "ami.ml.orchestration.nats_connection.reset_connection",
+                new_callable=AsyncMock,
+            ) as mock_reset,
+        ):
+            manager = TaskQueueManager()
+            sample_task = self._create_sample_task()
+
+            # Should succeed after retry
+            with patch("ami.ml.orchestration.nats_queue.asyncio.sleep", new_callable=AsyncMock):
+                result = await manager.publish_task(456, sample_task)
+
+            self.assertTrue(result)
+            # reset_connection() should have been called once (after first failure)
+            mock_reset.assert_called_once()
+
+    async def test_retry_raises_after_max_retries(self):
+        """After exhausting retries, the last error should be raised."""
+        from nats.errors import ConnectionClosedError
+
+        nc = MagicMock()
+        nc.is_closed = False
+        js = MagicMock()
+        js.stream_info = AsyncMock()
+        js.add_stream = AsyncMock()
+        js.consumer_info = AsyncMock()
+        js.add_consumer = AsyncMock()
+        # All attempts fail
+        js.publish = AsyncMock(side_effect=ConnectionClosedError())
+
+        with (
+            patch(
+                "ami.ml.orchestration.nats_connection.get_connection",
+                new_callable=AsyncMock,
+                return_value=(nc, js),
+            ),
+            patch(
+                "ami.ml.orchestration.nats_connection.reset_connection",
+                new_callable=AsyncMock,
+            ) as mock_reset,
+        ):
+            manager = TaskQueueManager()
+            sample_task = self._create_sample_task()
+
+            with patch("ami.ml.orchestration.nats_queue.asyncio.sleep", new_callable=AsyncMock):
+                with self.assertRaises(ConnectionClosedError):
+                    await manager.publish_task(456, sample_task)
+
+            # reset_connection() called twice (max_retries=2, so 2 retries means 2 resets)
+            self.assertEqual(mock_reset.call_count, 2)
+
+    async def test_non_connection_errors_are_not_retried(self):
+        """Non-connection errors (e.g. ValueError) should propagate immediately without retry."""
+        nc = MagicMock()
+        nc.is_closed = False
+        js = MagicMock()
+        js.stream_info = AsyncMock()
+        js.add_stream = AsyncMock()
+        js.consumer_info = AsyncMock()
+        js.add_consumer = AsyncMock()
+        js.publish = AsyncMock(side_effect=ValueError("bad data"))
+
+        with (
+            patch(
+                "ami.ml.orchestration.nats_connection.get_connection",
+                new_callable=AsyncMock,
+                return_value=(nc, js),
+            ),
+            patch(
+                "ami.ml.orchestration.nats_connection.reset_connection",
+                new_callable=AsyncMock,
+            ) as mock_reset,
+        ):
+            manager = TaskQueueManager()
+            sample_task = self._create_sample_task()
+
+            with self.assertRaises(ValueError):
+                await manager.publish_task(456, sample_task)
+
+            # reset_connection() should NOT have been called
+            mock_reset.assert_not_called()

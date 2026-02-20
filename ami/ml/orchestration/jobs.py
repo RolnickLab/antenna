@@ -40,8 +40,8 @@ def cleanup_async_job_resources(job: "Job") -> bool:
 
     # Cleanup NATS resources
     async def cleanup():
-        async with TaskQueueManager() as manager:
-            return await manager.cleanup_job_resources(job.pk)
+        manager = TaskQueueManager()
+        return await manager.cleanup_job_resources(job.pk)
 
     try:
         nats_success = async_to_sync(cleanup)()
@@ -96,22 +96,22 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
         successful_queues = 0
         failed_queues = 0
 
-        async with TaskQueueManager() as manager:
-            for image_pk, task in tasks:
-                try:
-                    logger.info(f"Queueing image {image_pk} to stream for job '{job.pk}': {task.image_url}")
-                    success = await manager.publish_task(
-                        job_id=job.pk,
-                        data=task,
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to queue image {image_pk} to stream for job '{job.pk}': {e}")
-                    success = False
+        manager = TaskQueueManager()
+        for image_pk, task in tasks:
+            try:
+                logger.info(f"Queueing image {image_pk} to stream for job '{job.pk}': {task.image_url}")
+                success = await manager.publish_task(
+                    job_id=job.pk,
+                    data=task,
+                )
+            except Exception as e:
+                logger.exception(f"Failed to queue image {image_pk} to stream for job '{job.pk}': {e}")
+                success = False
 
-                if success:
-                    successful_queues += 1
-                else:
-                    failed_queues += 1
+            if success:
+                successful_queues += 1
+            else:
+                failed_queues += 1
 
         return successful_queues, failed_queues
 

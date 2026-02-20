@@ -185,8 +185,8 @@ def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> None:
     try:
 
         async def ack_task():
-            async with TaskQueueManager() as manager:
-                return await manager.acknowledge_task(reply_subject)
+            manager = TaskQueueManager()
+            return await manager.acknowledge_task(reply_subject)
 
         ack_success = async_to_sync(ack_task)()
 
