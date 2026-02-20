@@ -8,6 +8,7 @@ import typing
 import urllib.parse
 from io import BytesIO
 from typing import Final, final  # noqa: F401
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import PIL.Image
 import pydantic
@@ -54,6 +55,15 @@ logger = logging.getLogger(__name__)
 
 # Constants
 _POST_TITLE_MAX_LENGTH: Final = 80
+
+
+def validate_iana_time_zone(value: str) -> None:
+    if not value:
+        return
+    try:
+        ZoneInfo(value)
+    except ZoneInfoNotFoundError as exc:
+        raise ValidationError(f"Invalid IANA time zone: {value!r}.") from exc
 
 
 class TaxonRank(OrderedEnum):
@@ -682,6 +692,15 @@ class Deployment(BaseModel):
     latitude = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
     image = models.ImageField(upload_to="deployments", blank=True, null=True)
+    time_zone = models.CharField(
+        max_length=64,
+        default=settings.TIME_ZONE,
+        help_text=(
+            "IANA time zone for this deployment (e.g., 'America/Los_Angeles'). "
+            "Used as metadata for interpreting local timestamps."
+        ),
+        validators=[validate_iana_time_zone],
+    )
 
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="deployments")
 
