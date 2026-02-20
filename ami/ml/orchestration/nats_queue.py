@@ -74,19 +74,27 @@ class TaskQueueManager:
         """Get consumer name from job_id."""
         return f"job-{job_id}-consumer"
 
+    async def _stream_exists(self, job_id: int) -> bool:
+        """Check if stream exists for the given job."""
+        if self.js is None:
+            raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
+
+        stream_name = self._get_stream_name(job_id)
+        try:
+            await self.js.stream_info(stream_name)
+            return True
+        except Exception:
+            return False
+
     async def _ensure_stream(self, job_id: int):
         """Ensure stream exists for the given job."""
         if self.js is None:
             raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
 
-        stream_name = self._get_stream_name(job_id)
-        subject = self._get_subject(job_id)
-
-        try:
-            await self.js.stream_info(stream_name)
-            logger.debug(f"Stream {stream_name} already exists")
-        except Exception as e:
-            logger.warning(f"Stream {stream_name} does not exist: {e}")
+        if not await self._stream_exists(job_id):
+            stream_name = self._get_stream_name(job_id)
+            subject = self._get_subject(job_id)
+            logger.warning(f"Stream {stream_name} does not exist")
             # Stream doesn't exist, create it
             await self.js.add_stream(
                 name=stream_name,
@@ -175,7 +183,9 @@ class TaskQueueManager:
 
         try:
             # Ensure stream and consumer exist
-            await self._ensure_stream(job_id)
+            if not await self._stream_exists(job_id):
+                logger.debug(f"Stream for job '{job_id}' does not exist when reserving task")
+                return None  # TODO this will return [] after merging
             await self._ensure_consumer(job_id)
 
             consumer_name = self._get_consumer_name(job_id)

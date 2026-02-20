@@ -971,10 +971,10 @@ class Job(BaseModel):
             task = run_job.AsyncResult(self.task_id)
             if task:
                 task.revoke(terminate=True)
-                self.save()
-        else:
-            self.status = JobState.REVOKED
-            self.save()
+        # For sync jobs the task revoke will update the job status. However, for async jobs we need to set the status
+        # to revoked here since the task already finished (it only queues the images)
+        self.status = JobState.REVOKED
+        self.save()
 
     def update_status(self, status=None, save=True):
         """
