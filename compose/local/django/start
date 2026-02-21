@@ -11,5 +11,11 @@ python manage.py migrate
 if [ "${DEBUGGER:-0}" = "1" ]; then
     exec python -Xfrozen_modules=off -m debugpy --listen 0.0.0.0:5678 -m uvicorn config.asgi:application --host 0.0.0.0
 else
-    exec uvicorn config.asgi:application --host 0.0.0.0 --reload --reload-include '*.html'
+    WORKERS="${WEB_WORKERS:-1}"
+    if [ "$WORKERS" -gt 1 ]; then
+        # --reload is incompatible with --workers, so skip it for multi-worker mode
+        exec uvicorn config.asgi:application --host 0.0.0.0 --workers "$WORKERS"
+    else
+        exec uvicorn config.asgi:application --host 0.0.0.0 --reload --reload-include '*.html'
+    fi
 fi
