@@ -32,6 +32,7 @@ class JobFilterSet(filters.FilterSet):
     """Custom filterset to enable pipeline name filtering."""
 
     pipeline__slug = filters.CharFilter(field_name="pipeline__slug", lookup_expr="exact")
+    pipeline__slug__in = filters.BaseInFilter(field_name="pipeline__slug", lookup_expr="in")
 
     class Meta:
         model = Job

@@ -384,6 +384,36 @@ class TestJobView(APITestCase):
         self.assertEqual(data["count"], 1)
         self.assertEqual(data["results"][0]["id"], job_with_pipeline.pk)
 
+    def test_filter_by_pipeline_slug_in(self):
+        """Test filtering jobs by pipeline__slug__in (multiple slugs)."""
+        pipeline_a = self._create_pipeline("Pipeline A", "pipeline-a")
+        pipeline_b = Pipeline.objects.create(name="Pipeline B", slug="pipeline-b", description="B")
+        pipeline_b.projects.add(self.project)
+        pipeline_c = Pipeline.objects.create(name="Pipeline C", slug="pipeline-c", description="C")
+        pipeline_c.projects.add(self.project)
+
+        job_a = self._create_ml_job("Job A", pipeline_a)
+        job_b = self._create_ml_job("Job B", pipeline_b)
+        job_c = self._create_ml_job("Job C", pipeline_c)
+
+        self.client.force_authenticate(user=self.user)
+
+        # Filter for two of the three pipelines
+        jobs_list_url = reverse_with_params(
+            "api:job-list",
+            params={"project_id": self.project.pk, "pipeline__slug__in": "pipeline-a,pipeline-b"},
+        )
+        resp = self.client.get(jobs_list_url)
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        returned_ids = {job["id"] for job in data["results"]}
+        self.assertIn(job_a.pk, returned_ids)
+        self.assertIn(job_b.pk, returned_ids)
+        self.assertNotIn(job_c.pk, returned_ids)
+        # Original setUp job (no pipeline) should also be excluded
+        self.assertNotIn(self.job.pk, returned_ids)
+
     def test_search_jobs(self):
         """Test searching jobs by name and pipeline name."""
         pipeline = self._create_pipeline("SearchablePipeline", "searchable-pipeline")
