@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+import nats.errors
 import pydantic
 from asgiref.sync import async_to_sync
 from django.db.models import Q
@@ -253,7 +254,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
         try:
             tasks = async_to_sync(get_tasks)()
-        except (asyncio.TimeoutError, OSError) as e:
+        except (asyncio.TimeoutError, OSError, nats.errors.Error) as e:
             logger.warning("NATS unavailable while fetching tasks for job %s: %s", job.pk, e)
             return Response({"error": "Task queue temporarily unavailable"}, status=503)
 
