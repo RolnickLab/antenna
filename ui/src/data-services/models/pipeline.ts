@@ -107,9 +107,7 @@ export class Pipeline extends Entity {
 
     const last_seen_times = []
     for (const processingService of processingServices) {
-      last_seen_times.push(
-        new Date(processingService.last_seen).getTime()
-      )
+      last_seen_times.push(new Date(processingService.last_seen).getTime())
     }
 
     return getFormatedDateTimeString({
