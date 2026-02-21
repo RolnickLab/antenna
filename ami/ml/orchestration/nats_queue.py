@@ -49,6 +49,11 @@ class TaskQueueManager:
     """
     Manager for NATS JetStream task queue operations.
 
+    Args:
+        nats_url: NATS server URL. Falls back to settings.NATS_URL, then "nats://nats:4222".
+        max_ack_pending: Max unacknowledged messages per consumer. Falls back to
+            settings.NATS_MAX_ACK_PENDING, then 100.
+
     Use as an async context manager:
         async with TaskQueueManager() as manager:
             await manager.publish_task(123, {'data': 'value'})
@@ -58,7 +63,9 @@ class TaskQueueManager:
 
     def __init__(self, nats_url: str | None = None, max_ack_pending: int | None = None):
         self.nats_url = nats_url or getattr(settings, "NATS_URL", "nats://nats:4222")
-        self.max_ack_pending = max_ack_pending or getattr(settings, "NATS_MAX_ACK_PENDING", 100)
+        self.max_ack_pending = (
+            max_ack_pending if max_ack_pending is not None else getattr(settings, "NATS_MAX_ACK_PENDING", 100)
+        )
         self.nc: nats.NATS | None = None
         self.js: JetStreamContext | None = None
 

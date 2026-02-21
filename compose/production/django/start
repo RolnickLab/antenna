@@ -7,10 +7,9 @@ set -o nounset
 python /app/manage.py collectstatic --noinput
 
 # Gunicorn natively reads WEB_CONCURRENCY as its --workers default.
-# If not set, auto-detect based on CPU cores (capped at 8 for async ASGI workers).
+# If not set, default to CPU core count.
 if [ -z "${WEB_CONCURRENCY:-}" ]; then
-    CPU_CORES=$(nproc)
-    export WEB_CONCURRENCY=$(( CPU_CORES > 8 ? 8 : CPU_CORES ))
+    export WEB_CONCURRENCY=$(nproc)
 fi
 
 echo "Starting Gunicorn with $WEB_CONCURRENCY worker(s)..."
