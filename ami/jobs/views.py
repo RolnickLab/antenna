@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 import pydantic
@@ -250,7 +251,11 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             async with TaskQueueManager() as manager:
                 return [task.dict() for task in await manager.reserve_tasks(job.pk, count=batch)]
 
-        tasks = async_to_sync(get_tasks)()
+        try:
+            tasks = async_to_sync(get_tasks)()
+        except (asyncio.TimeoutError, OSError) as e:
+            logger.warning("NATS unavailable while fetching tasks for job %s: %s", job.pk, e)
+            return Response({"error": "Task queue temporarily unavailable"}, status=503)
 
         return Response({"tasks": tasks})
 

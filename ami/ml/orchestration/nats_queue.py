@@ -32,13 +32,11 @@ logger = logging.getLogger(__name__)
 NATS_JETSTREAM_TIMEOUT = 10  # seconds
 
 
-async def get_connection(nats_url: str):
+async def get_connection(nats_url: str) -> tuple[nats.NATS, JetStreamContext]:
     nc = await nats.connect(
         nats_url,
         connect_timeout=5,
-        allow_reconnect=True,
-        max_reconnect_attempts=2,
-        reconnect_time_wait=1,
+        allow_reconnect=False,
     )
     js = nc.jetstream()
     return nc, js
@@ -227,6 +225,8 @@ class TaskQueueManager:
             logger.info(f"Reserved {len(tasks)} tasks from stream for job '{job_id}'")
             return tasks
 
+        except asyncio.TimeoutError:
+            raise  # NATS unreachable — propagate so the view can return an appropriate error
         except Exception as e:
             logger.error(f"Failed to reserve tasks from stream for job '{job_id}': {e}")
             return []
