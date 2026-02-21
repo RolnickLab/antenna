@@ -52,11 +52,11 @@ export const columns: (
     ),
   },
   {
-    id: 'processing-services-online-last-checked',
-    name: 'Status last checked',
-    sortField: 'processing_services_online_last_checked',
+    id: 'processing-services-online-last-seen',
+    name: 'Status last seen',
+    sortField: 'processing_services_online_last_seen',
     renderCell: (item: Pipeline) => (
-      <BasicTableCell value={item.processingServicesOnlineLastChecked} />
+      <BasicTableCell value={item.processingServicesOnlineLastSeen} />
     ),
   },
   {

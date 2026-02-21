@@ -98,8 +98,8 @@ def remove_duplicate_classifications(project_id: int | None = None, dry_run: boo
 @celery_app.task(soft_time_limit=10, time_limit=20)
 def check_processing_services_online():
     """
-    Check the status of all v1 synchronous processing services and update the last_seen field.
-    We will update last_seen for asynchronous services when we receive a request from them.
+    Check the status of all v1 synchronous processing services and update the last_seen/last_seen_live fields.
+    Asynchronous (pull-mode) services are updated via mark_seen() when they register pipelines.
 
     @TODO make this async to check all services in parallel
     """
