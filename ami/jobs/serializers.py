@@ -158,7 +158,8 @@ class JobSerializer(JobListSerializer):
 class MinimalJobSerializer(DefaultSerializer):
     """Minimal serializer returning only essential job fields."""
 
+    pipeline_slug = serializers.CharField(source="pipeline.slug", read_only=True)
+
     class Meta:
         model = Job
-        # Add other fields when needed, e.g:  "name", "status", "created_at"
-        fields = ["id"]
+        fields = ["id", "pipeline_slug"]
