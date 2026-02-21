@@ -78,7 +78,7 @@ export class Pipeline extends Entity {
       (service: any) => new ProcessingService(service)
     )
     for (const processingService of processingServices) {
-      if (processingService.lastCheckedLive) {
+      if (processingService.lastSeenLive) {
         return { online: true, service: processingService }
       }
     }
@@ -90,7 +90,7 @@ export class Pipeline extends Entity {
     const processingServices = this._pipeline.processing_services
     let total_online = 0
     for (const processingService of processingServices) {
-      if (processingService.last_checked_live) {
+      if (processingService.last_seen_live) {
         total_online += 1
       }
     }
@@ -98,22 +98,22 @@ export class Pipeline extends Entity {
     return total_online + '/' + processingServices.length
   }
 
-  get processingServicesOnlineLastChecked(): string | undefined {
+  get processingServicesOnlineLastSeen(): string | undefined {
     const processingServices = this._pipeline.processing_services
 
     if (!processingServices.length) {
       return undefined
     }
 
-    const last_checked_times = []
+    const last_seen_times = []
     for (const processingService of processingServices) {
-      last_checked_times.push(
-        new Date(processingService.last_checked).getTime()
+      last_seen_times.push(
+        new Date(processingService.last_seen).getTime()
       )
     }
 
     return getFormatedDateTimeString({
-      date: new Date(Math.max(...last_checked_times)),
+      date: new Date(Math.max(...last_seen_times)),
     })
   }
 
