@@ -42,12 +42,17 @@ async def get_connection(nats_url: str) -> tuple[nats.NATS, JetStreamContext]:
     return nc, js
 
 
-TASK_TTR = 300  # Default Time-To-Run (visibility timeout) in seconds
+TASK_TTR = getattr(settings, "NATS_TASK_TTR", 30)  # Visibility timeout in seconds (configurable)
 
 
 class TaskQueueManager:
     """
     Manager for NATS JetStream task queue operations.
+
+    Args:
+        nats_url: NATS server URL. Falls back to settings.NATS_URL, then "nats://nats:4222".
+        max_ack_pending: Max unacknowledged messages per consumer. Falls back to
+            settings.NATS_MAX_ACK_PENDING, then 100.
 
     Use as an async context manager:
         async with TaskQueueManager() as manager:
@@ -56,8 +61,11 @@ class TaskQueueManager:
             await manager.acknowledge_task(tasks[0].reply_subject)
     """
 
-    def __init__(self, nats_url: str | None = None):
+    def __init__(self, nats_url: str | None = None, max_ack_pending: int | None = None):
         self.nats_url = nats_url or getattr(settings, "NATS_URL", "nats://nats:4222")
+        self.max_ack_pending = (
+            max_ack_pending if max_ack_pending is not None else getattr(settings, "NATS_MAX_ACK_PENDING", 100)
+        )
         self.nc: nats.NATS | None = None
         self.js: JetStreamContext | None = None
 
@@ -151,7 +159,7 @@ class TaskQueueManager:
                         ack_wait=TASK_TTR,  # Visibility timeout (TTR)
                         max_deliver=5,  # Max retry attempts
                         deliver_policy=DeliverPolicy.ALL,
-                        max_ack_pending=100,  # Max unacked messages
+                        max_ack_pending=self.max_ack_pending,
                         filter_subject=subject,
                     ),
                 ),
