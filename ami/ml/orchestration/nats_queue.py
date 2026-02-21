@@ -107,8 +107,7 @@ class TaskQueueManager:
             return True
         except asyncio.TimeoutError:
             raise  # NATS unreachable — let caller handle it rather than creating a stream blindly
-        except Exception as e:
-            logger.warning(f"Stream {stream_name} does not exist: {e}")
+        except Exception:
             return False
 
     async def _ensure_stream(self, job_id: int):
@@ -120,6 +119,7 @@ class TaskQueueManager:
             stream_name = self._get_stream_name(job_id)
             subject = self._get_subject(job_id)
 
+            logger.warning(f"Stream {stream_name} does not exist")
             # Stream doesn't exist, create it
             await asyncio.wait_for(
                 self.js.add_stream(
