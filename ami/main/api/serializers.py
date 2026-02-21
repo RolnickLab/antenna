@@ -874,10 +874,21 @@ class ClassificationPredictionItemSerializer(serializers.Serializer):
     logit = serializers.FloatField(read_only=True)
 
 
+class ClassificationAppliedToSerializer(serializers.ModelSerializer):
+    """Lightweight nested representation of the parent classification this was derived from."""
+
+    algorithm = AlgorithmSerializer(read_only=True)
+
+    class Meta:
+        model = Classification
+        fields = ["id", "created_at", "algorithm"]
+
+
 class ClassificationSerializer(DefaultSerializer):
     taxon = TaxonNestedSerializer(read_only=True)
     algorithm = AlgorithmSerializer(read_only=True)
     top_n = ClassificationPredictionItemSerializer(many=True, read_only=True)
+    applied_to = ClassificationAppliedToSerializer(read_only=True)
 
     class Meta:
         model = Classification
@@ -890,6 +901,7 @@ class ClassificationSerializer(DefaultSerializer):
             "scores",
             "logits",
             "top_n",
+            "applied_to",
             "created_at",
             "updated_at",
         ]
@@ -912,6 +924,8 @@ class ClassificationWithTaxaSerializer(ClassificationSerializer):
 
 
 class ClassificationListSerializer(DefaultSerializer):
+    applied_to = ClassificationAppliedToSerializer(read_only=True)
+
     class Meta:
         model = Classification
         fields = [
@@ -920,6 +934,7 @@ class ClassificationListSerializer(DefaultSerializer):
             "taxon",
             "score",
             "algorithm",
+            "applied_to",
             "created_at",
             "updated_at",
         ]
@@ -939,6 +954,7 @@ class ClassificationNestedSerializer(ClassificationSerializer):
             "score",
             "terminal",
             "algorithm",
+            "applied_to",
             "created_at",
         ]
 
