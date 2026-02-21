@@ -10,6 +10,7 @@ Other queue systems were considered, such as RabbitMQ and Beanstalkd. However, t
 support the visibility timeout semantics we want or a disconnected mode of pulling and ACKing tasks.
 """
 
+import asyncio
 import json
 import logging
 
@@ -22,13 +23,22 @@ from ami.ml.schemas import PipelineProcessingTask
 
 logger = logging.getLogger(__name__)
 
+# Timeout for individual JetStream metadata operations (create/check stream and consumer).
+# These are lightweight NATS server operations that complete in milliseconds under normal
+# conditions. stream_info() and add_stream() don't accept a native timeout parameter, so
+# we use asyncio.wait_for() uniformly for all operations. Without these timeouts, a hung
+# NATS connection blocks the caller's thread indefinitely — and when that caller is a
+# Django worker (via async_to_sync), it makes the entire server unresponsive.
+NATS_JETSTREAM_TIMEOUT = 10  # seconds
+
 
 async def get_connection(nats_url: str):
     nc = await nats.connect(
         nats_url,
         connect_timeout=5,
-        allow_reconnect=False,
-        max_reconnect_attempts=0,
+        allow_reconnect=True,
+        max_reconnect_attempts=2,
+        reconnect_time_wait=1,
     )
     js = nc.jetstream()
     return nc, js
@@ -88,15 +98,20 @@ class TaskQueueManager:
         subject = self._get_subject(job_id)
 
         try:
-            await self.js.stream_info(stream_name)
+            await asyncio.wait_for(self.js.stream_info(stream_name), timeout=NATS_JETSTREAM_TIMEOUT)
             logger.debug(f"Stream {stream_name} already exists")
+        except asyncio.TimeoutError:
+            raise  # NATS unreachable — let caller handle it rather than creating a stream blindly
         except Exception as e:
             logger.warning(f"Stream {stream_name} does not exist: {e}")
             # Stream doesn't exist, create it
-            await self.js.add_stream(
-                name=stream_name,
-                subjects=[subject],
-                max_age=86400,  # 24 hours retention
+            await asyncio.wait_for(
+                self.js.add_stream(
+                    name=stream_name,
+                    subjects=[subject],
+                    max_age=86400,  # 24 hours retention
+                ),
+                timeout=NATS_JETSTREAM_TIMEOUT,
             )
             logger.info(f"Created stream {stream_name}")
 
@@ -110,21 +125,29 @@ class TaskQueueManager:
         subject = self._get_subject(job_id)
 
         try:
-            info = await self.js.consumer_info(stream_name, consumer_name)
+            info = await asyncio.wait_for(
+                self.js.consumer_info(stream_name, consumer_name),
+                timeout=NATS_JETSTREAM_TIMEOUT,
+            )
             logger.debug(f"Consumer {consumer_name} already exists: {info}")
+        except asyncio.TimeoutError:
+            raise  # NATS unreachable — let caller handle it
         except Exception:
             # Consumer doesn't exist, create it
-            await self.js.add_consumer(
-                stream=stream_name,
-                config=ConsumerConfig(
-                    durable_name=consumer_name,
-                    ack_policy=AckPolicy.EXPLICIT,
-                    ack_wait=TASK_TTR,  # Visibility timeout (TTR)
-                    max_deliver=5,  # Max retry attempts
-                    deliver_policy=DeliverPolicy.ALL,
-                    max_ack_pending=100,  # Max unacked messages
-                    filter_subject=subject,
+            await asyncio.wait_for(
+                self.js.add_consumer(
+                    stream=stream_name,
+                    config=ConsumerConfig(
+                        durable_name=consumer_name,
+                        ack_policy=AckPolicy.EXPLICIT,
+                        ack_wait=TASK_TTR,  # Visibility timeout (TTR)
+                        max_deliver=5,  # Max retry attempts
+                        deliver_policy=DeliverPolicy.ALL,
+                        max_ack_pending=100,  # Max unacked messages
+                        filter_subject=subject,
+                    ),
                 ),
+                timeout=NATS_JETSTREAM_TIMEOUT,
             )
             logger.info(f"Created consumer {consumer_name}")
 
@@ -152,7 +175,7 @@ class TaskQueueManager:
             task_data = json.dumps(data.dict())
 
             # Publish to JetStream
-            ack = await self.js.publish(subject, task_data.encode())
+            ack = await self.js.publish(subject, task_data.encode(), timeout=NATS_JETSTREAM_TIMEOUT)
 
             logger.info(f"Published task to stream for job '{job_id}', sequence {ack.seq}")
             return True
@@ -246,7 +269,10 @@ class TaskQueueManager:
             stream_name = self._get_stream_name(job_id)
             consumer_name = self._get_consumer_name(job_id)
 
-            await self.js.delete_consumer(stream_name, consumer_name)
+            await asyncio.wait_for(
+                self.js.delete_consumer(stream_name, consumer_name),
+                timeout=NATS_JETSTREAM_TIMEOUT,
+            )
             logger.info(f"Deleted consumer {consumer_name} for job '{job_id}'")
             return True
         except Exception as e:
@@ -269,7 +295,10 @@ class TaskQueueManager:
         try:
             stream_name = self._get_stream_name(job_id)
 
-            await self.js.delete_stream(stream_name)
+            await asyncio.wait_for(
+                self.js.delete_stream(stream_name),
+                timeout=NATS_JETSTREAM_TIMEOUT,
+            )
             logger.info(f"Deleted stream {stream_name} for job '{job_id}'")
             return True
         except Exception as e:

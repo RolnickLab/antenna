@@ -250,7 +250,6 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             async with TaskQueueManager() as manager:
                 return [task.dict() for task in await manager.reserve_tasks(job.pk, count=batch)]
 
-        # Use async_to_sync to properly handle the async call
         tasks = async_to_sync(get_tasks)()
 
         return Response({"tasks": tasks})
