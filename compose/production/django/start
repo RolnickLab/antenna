@@ -6,4 +6,13 @@ set -o nounset
 
 python /app/manage.py collectstatic --noinput
 
+# Gunicorn natively reads WEB_CONCURRENCY as its --workers default.
+# If not set, auto-detect based on CPU cores (capped at 8 for async ASGI workers).
+if [ -z "${WEB_CONCURRENCY:-}" ]; then
+    CPU_CORES=$(nproc)
+    export WEB_CONCURRENCY=$(( CPU_CORES > 8 ? 8 : CPU_CORES ))
+fi
+
+echo "Starting Gunicorn with $WEB_CONCURRENCY worker(s)..."
+
 exec newrelic-admin run-program /usr/local/bin/gunicorn config.asgi --bind 0.0.0.0:5000 --chdir=/app -k uvicorn.workers.UvicornWorker
