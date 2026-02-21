@@ -276,7 +276,8 @@ Processing services are FastAPI applications that implement the AMI ML API contr
 **Health Checks:**
 - Cached status with 3 retries and exponential backoff (0s, 2s, 4s)
 - Celery Beat task runs periodic checks (`ami.ml.tasks.check_processing_services_online`)
-- Status stored in `ProcessingService.last_checked_live` boolean field
+- Status stored in `ProcessingService.last_seen_live` boolean field
+- Async/pull-mode services update status via `mark_seen()` when they register pipelines
 - UI shows red/green indicator based on cached status
 
 Location: `processing_services/` directory contains example implementations

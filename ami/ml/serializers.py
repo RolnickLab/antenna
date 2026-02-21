@@ -74,8 +74,8 @@ class ProcessingServiceNestedSerializer(DefaultSerializer):
             "id",
             "details",
             "endpoint_url",
-            "last_checked",
-            "last_checked_live",
+            "last_seen",
+            "last_seen_live",
             "created_at",
             "updated_at",
         ]
@@ -153,8 +153,8 @@ class ProcessingServiceSerializer(DefaultSerializer):
             "pipelines",
             "created_at",
             "updated_at",
-            "last_checked",
-            "last_checked_live",
+            "last_seen",
+            "last_seen_live",
         ]
 
     def create(self, validated_data):

@@ -68,18 +68,18 @@ export class ProcessingService extends Entity {
     })
   }
 
-  get lastChecked(): string | undefined {
-    if (!this._processingService.last_checked) {
+  get lastSeen(): string | undefined {
+    if (!this._processingService.last_seen) {
       return undefined
     }
 
     return getFormatedDateTimeString({
-      date: new Date(this._processingService.last_checked),
+      date: new Date(this._processingService.last_seen),
     })
   }
 
-  get lastCheckedLive(): boolean {
-    return this._processingService.last_checked_live
+  get lastSeenLive(): boolean {
+    return this._processingService.last_seen_live
   }
 
   get numPiplinesAdded(): number {
@@ -92,7 +92,7 @@ export class ProcessingService extends Entity {
     type: ProcessingServiceStatusType
     color: string
   } {
-    const status_code = this.lastCheckedLive ? 'ONLINE' : 'OFFLINE'
+    const status_code = this.lastSeenLive ? 'ONLINE' : 'OFFLINE'
     return ProcessingService.getStatusInfo(status_code)
   }
 

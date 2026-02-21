@@ -949,7 +949,7 @@ class PipelineQuerySet(BaseQuerySet):
         """
         return self.filter(
             processing_services__projects=project,
-            processing_services__last_checked_live=True,
+            processing_services__last_seen_live=True,
         ).distinct()
 
 
@@ -1048,7 +1048,7 @@ class Pipeline(BaseModel):
     def choose_processing_service_for_pipeline(
         self, job_id: int | None, pipeline_name: str, project_id: int
     ) -> ProcessingService:
-        # @TODO use the cached `last_checked_latency` and a max age to avoid checking every time
+        # @TODO use the cached `last_seen_latency` and a max age to avoid checking every time
 
         job = None
         task_logger = logger
@@ -1070,13 +1070,10 @@ class Pipeline(BaseModel):
         processing_services_online = False
 
         for processing_service in processing_services:
-            if processing_service.last_checked_live:
+            if processing_service.last_seen_live:
                 processing_services_online = True
-                if (
-                    processing_service.last_checked_latency
-                    and processing_service.last_checked_latency < lowest_latency
-                ):
-                    lowest_latency = processing_service.last_checked_latency
+                if processing_service.last_seen_latency and processing_service.last_seen_latency < lowest_latency:
+                    lowest_latency = processing_service.last_seen_latency
                     # pick the processing service that has lowest latency
                     processing_service_lowest_latency = processing_service
 

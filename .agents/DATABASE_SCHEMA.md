@@ -255,8 +255,9 @@ erDiagram
         bigint id PK
         string name
         string endpoint_url
-        boolean last_checked_live
-        float last_checked_latency
+        datetime last_seen
+        boolean last_seen_live
+        float last_seen_latency
     }
 
     ProjectPipelineConfig {

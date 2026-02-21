@@ -41,9 +41,9 @@ class ProcessingService(BaseModel):
     projects = models.ManyToManyField("main.Project", related_name="processing_services", blank=True)
     endpoint_url = models.CharField(max_length=1024, null=True, blank=True)
     pipelines = models.ManyToManyField("ml.Pipeline", related_name="processing_services", blank=True)
-    last_checked = models.DateTimeField(null=True)
-    last_checked_live = models.BooleanField(null=True)
-    last_checked_latency = models.FloatField(null=True)
+    last_seen = models.DateTimeField(null=True)
+    last_seen_live = models.BooleanField(null=True)
+    last_seen_latency = models.FloatField(null=True)
 
     objects = ProcessingServiceManager()
 
@@ -139,6 +139,15 @@ class ProcessingService(BaseModel):
             algorithms_created=algorithms_created,
         )
 
+    def mark_seen(self, live: bool = True) -> None:
+        """
+        Record that we heard from this processing service.
+        Used by async/pull-mode services that don't have an endpoint to check.
+        """
+        self.last_seen = datetime.datetime.now()
+        self.last_seen_live = live
+        self.save(update_fields=["last_seen", "last_seen_live"])
+
     def get_status(self, timeout=90) -> ProcessingServiceStatusResponse:
         """
         Check the status of the processing service.
@@ -171,7 +180,7 @@ class ProcessingService(BaseModel):
         pipeline_configs = []
         pipelines_online = []
         timestamp = datetime.datetime.now()
-        self.last_checked = timestamp
+        self.last_seen = timestamp
         resp = None
 
         # Create session with retry logic for connection errors and timeouts
@@ -184,23 +193,23 @@ class ProcessingService(BaseModel):
         try:
             resp = session.get(ready_check_url, timeout=timeout)
             resp.raise_for_status()
-            self.last_checked_live = True
+            self.last_seen_live = True
         except requests.exceptions.RequestException as e:
             error = f"Error connecting to {ready_check_url}: {e}"
             logger.error(error)
-            self.last_checked_live = False
+            self.last_seen_live = False
         finally:
             latency = time.time() - start_time
-            self.last_checked_latency = latency
+            self.last_seen_latency = latency
             self.save(
                 update_fields=[
-                    "last_checked",
-                    "last_checked_live",
-                    "last_checked_latency",
+                    "last_seen",
+                    "last_seen_live",
+                    "last_seen_latency",
                 ]
             )
 
-        if self.last_checked_live:
+        if self.last_seen_live:
             # The specific pipeline statuses are not required for the status response
             # but the intention is to show which ones are loaded into memory and ready to use.
             # @TODO: this may be overkill, but it is displayed in the UI now.
@@ -214,7 +223,7 @@ class ProcessingService(BaseModel):
         response = ProcessingServiceStatusResponse(
             timestamp=timestamp,
             request_successful=resp.ok if resp else False,
-            server_live=self.last_checked_live,
+            server_live=self.last_seen_live,
             pipelines_online=pipelines_online,
             pipeline_configs=pipeline_configs,
             endpoint_url=self.endpoint_url,
