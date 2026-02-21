@@ -51,8 +51,8 @@ class TaskQueueManager:
 
     Use as an async context manager:
         async with TaskQueueManager() as manager:
-            await manager.publish_task('job123', {'data': 'value'})
-            tasks = await manager.reserve_tasks('job123', count=64)
+            await manager.publish_task(123, {'data': 'value'})
+            tasks = await manager.reserve_tasks(123, count=64)
             await manager.acknowledge_task(tasks[0].reply_subject)
     """
 
@@ -222,7 +222,10 @@ class TaskQueueManager:
                 task.reply_subject = msg.reply
                 tasks.append(task)
 
-            logger.info(f"Reserved {len(tasks)} tasks from stream for job '{job_id}'")
+            if tasks:
+                logger.info(f"Reserved {len(tasks)} tasks from stream for job '{job_id}'")
+            else:
+                logger.debug(f"No tasks reserved from stream for job '{job_id}'")
             return tasks
 
         except asyncio.TimeoutError:
