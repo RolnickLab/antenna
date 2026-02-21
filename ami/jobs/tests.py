@@ -601,13 +601,11 @@ class TestJobDispatchModeFiltering(APITestCase):
             dispatch_mode=JobDispatchMode.ASYNC_API,
         )
 
-        # Create a job with default dispatch_mode (should be "internal")
+        # Create a non-ML job without a pipeline (dispatch_mode stays "internal")
         internal_job = Job.objects.create(
-            job_type_key=MLJob.key,
+            job_type_key="data_storage_sync",
             project=self.project,
             name="Internal Job",
-            pipeline=self.pipeline,
-            source_image_collection=self.source_image_collection,
         )
 
         self.client.force_authenticate(user=self.user)
@@ -643,6 +641,39 @@ class TestJobDispatchModeFiltering(APITestCase):
         returned_ids = {job["id"] for job in data["results"]}
         expected_ids = {sync_job.pk, async_job.pk, internal_job.pk}
         self.assertEqual(returned_ids, expected_ids)
+
+    def test_ml_job_dispatch_mode_set_on_creation(self):
+        """Test that ML jobs get dispatch_mode set based on project feature flags at creation time."""
+        # Without async flag, ML job should default to sync_api
+        sync_job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Auto Sync Job",
+            pipeline=self.pipeline,
+            source_image_collection=self.source_image_collection,
+        )
+        self.assertEqual(sync_job.dispatch_mode, JobDispatchMode.SYNC_API)
+
+        # Enable async flag on project
+        self.project.feature_flags.async_pipeline_workers = True
+        self.project.save()
+
+        async_job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Auto Async Job",
+            pipeline=self.pipeline,
+            source_image_collection=self.source_image_collection,
+        )
+        self.assertEqual(async_job.dispatch_mode, JobDispatchMode.ASYNC_API)
+
+        # Non-pipeline job should stay internal regardless of feature flag
+        internal_job = Job.objects.create(
+            job_type_key="data_storage_sync",
+            project=self.project,
+            name="Internal Job",
+        )
+        self.assertEqual(internal_job.dispatch_mode, JobDispatchMode.INTERNAL)
 
     def test_tasks_endpoint_rejects_non_async_jobs(self):
         """Test that /tasks endpoint returns 400 for non-async_api jobs."""
