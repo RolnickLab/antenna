@@ -62,16 +62,61 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
                 self.assertIn("job_456", str(js.add_stream.call_args))
                 js.add_consumer.assert_called_once()
 
-    async def test_reserve_task_success(self):
-        """Test successful task reservation."""
+    async def test_reserve_tasks_success(self):
+        """Test successful batch task reservation."""
         nc, js = self._create_mock_nats_connection()
         sample_task = self._create_sample_task()
 
-        # Mock message with task data
+        # Mock messages with task data
+        mock_msg1 = MagicMock()
+        mock_msg1.data = sample_task.json().encode()
+        mock_msg1.reply = "reply.subject.1"
+
+        mock_msg2 = MagicMock()
+        mock_msg2.data = sample_task.json().encode()
+        mock_msg2.reply = "reply.subject.2"
+
+        mock_psub = MagicMock()
+        mock_psub.fetch = AsyncMock(return_value=[mock_msg1, mock_msg2])
+        mock_psub.unsubscribe = AsyncMock()
+        js.pull_subscribe = AsyncMock(return_value=mock_psub)
+
+        with patch("ami.ml.orchestration.nats_queue.get_connection", AsyncMock(return_value=(nc, js))):
+            async with TaskQueueManager() as manager:
+                tasks = await manager.reserve_tasks(123, count=5)
+
+                self.assertEqual(len(tasks), 2)
+                self.assertEqual(tasks[0].id, sample_task.id)
+                self.assertEqual(tasks[0].reply_subject, "reply.subject.1")
+                self.assertEqual(tasks[1].reply_subject, "reply.subject.2")
+                mock_psub.fetch.assert_called_once_with(5, timeout=5)
+                mock_psub.unsubscribe.assert_called_once()
+
+    async def test_reserve_tasks_no_messages(self):
+        """Test reserve_tasks when no messages are available (timeout)."""
+        nc, js = self._create_mock_nats_connection()
+        import nats.errors
+
+        mock_psub = MagicMock()
+        mock_psub.fetch = AsyncMock(side_effect=nats.errors.TimeoutError)
+        mock_psub.unsubscribe = AsyncMock()
+        js.pull_subscribe = AsyncMock(return_value=mock_psub)
+
+        with patch("ami.ml.orchestration.nats_queue.get_connection", AsyncMock(return_value=(nc, js))):
+            async with TaskQueueManager() as manager:
+                tasks = await manager.reserve_tasks(123, count=5)
+
+                self.assertEqual(tasks, [])
+                mock_psub.unsubscribe.assert_called_once()
+
+    async def test_reserve_tasks_single(self):
+        """Test reserving a single task."""
+        nc, js = self._create_mock_nats_connection()
+        sample_task = self._create_sample_task()
+
         mock_msg = MagicMock()
         mock_msg.data = sample_task.json().encode()
         mock_msg.reply = "reply.subject.123"
-        mock_msg.metadata = MagicMock(sequence=MagicMock(stream=1))
 
         mock_psub = MagicMock()
         mock_psub.fetch = AsyncMock(return_value=[mock_msg])
@@ -80,28 +125,10 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
 
         with patch("ami.ml.orchestration.nats_queue.get_connection", AsyncMock(return_value=(nc, js))):
             async with TaskQueueManager() as manager:
-                task = await manager.reserve_task(123)
+                tasks = await manager.reserve_tasks(123, count=1)
 
-                self.assertIsNotNone(task)
-                self.assertEqual(task.id, sample_task.id)
-                self.assertEqual(task.reply_subject, "reply.subject.123")
-                mock_psub.unsubscribe.assert_called_once()
-
-    async def test_reserve_task_no_messages(self):
-        """Test reserve_task when no messages are available."""
-        nc, js = self._create_mock_nats_connection()
-
-        mock_psub = MagicMock()
-        mock_psub.fetch = AsyncMock(return_value=[])
-        mock_psub.unsubscribe = AsyncMock()
-        js.pull_subscribe = AsyncMock(return_value=mock_psub)
-
-        with patch("ami.ml.orchestration.nats_queue.get_connection", AsyncMock(return_value=(nc, js))):
-            async with TaskQueueManager() as manager:
-                task = await manager.reserve_task(123)
-
-                self.assertIsNone(task)
-                mock_psub.unsubscribe.assert_called_once()
+                self.assertEqual(len(tasks), 1)
+                self.assertEqual(tasks[0].reply_subject, "reply.subject.123")
 
     async def test_acknowledge_task_success(self):
         """Test successful task acknowledgment."""
@@ -144,7 +171,7 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
             await manager.publish_task(123, sample_task)
 
         with self.assertRaisesRegex(RuntimeError, "Connection is not open"):
-            await manager.reserve_task(123)
+            await manager.reserve_tasks(123, count=1)
 
         with self.assertRaisesRegex(RuntimeError, "Connection is not open"):
             await manager.delete_stream(123)

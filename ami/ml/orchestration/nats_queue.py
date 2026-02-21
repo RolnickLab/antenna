@@ -10,6 +10,7 @@ Other queue systems were considered, such as RabbitMQ and Beanstalkd. However, t
 support the visibility timeout semantics we want or a disconnected mode of pulling and ACKing tasks.
 """
 
+import asyncio
 import json
 import logging
 
@@ -22,9 +23,21 @@ from ami.ml.schemas import PipelineProcessingTask
 
 logger = logging.getLogger(__name__)
 
+# Timeout for individual JetStream metadata operations (create/check stream and consumer).
+# These are lightweight NATS server operations that complete in milliseconds under normal
+# conditions. stream_info() and add_stream() don't accept a native timeout parameter, so
+# we use asyncio.wait_for() uniformly for all operations. Without these timeouts, a hung
+# NATS connection blocks the caller's thread indefinitely — and when that caller is a
+# Django worker (via async_to_sync), it makes the entire server unresponsive.
+NATS_JETSTREAM_TIMEOUT = 10  # seconds
 
-async def get_connection(nats_url: str):
-    nc = await nats.connect(nats_url)
+
+async def get_connection(nats_url: str) -> tuple[nats.NATS, JetStreamContext]:
+    nc = await nats.connect(
+        nats_url,
+        connect_timeout=5,
+        allow_reconnect=False,
+    )
     js = nc.jetstream()
     return nc, js
 
@@ -38,9 +51,9 @@ class TaskQueueManager:
 
     Use as an async context manager:
         async with TaskQueueManager() as manager:
-            await manager.publish_task('job123', {'data': 'value'})
-            task = await manager.reserve_task('job123')
-            await manager.acknowledge_task(task['reply_subject'])
+            await manager.publish_task(123, {'data': 'value'})
+            tasks = await manager.reserve_tasks(123, count=64)
+            await manager.acknowledge_task(tasks[0].reply_subject)
     """
 
     def __init__(self, nats_url: str | None = None):
@@ -81,9 +94,13 @@ class TaskQueueManager:
 
         stream_name = self._get_stream_name(job_id)
         try:
-            await self.js.stream_info(stream_name)
+            await asyncio.wait_for(self.js.stream_info(stream_name), timeout=NATS_JETSTREAM_TIMEOUT)
+            logger.debug(f"Stream {stream_name} already exists")
             return True
-        except Exception:
+        except asyncio.TimeoutError:
+            raise  # NATS unreachable — let caller handle it rather than creating a stream blindly
+        except Exception as e:
+            logger.warning(f"Stream {stream_name} does not exist: {e}")
             return False
 
     async def _ensure_stream(self, job_id: int):
@@ -94,12 +111,15 @@ class TaskQueueManager:
         if not await self._stream_exists(job_id):
             stream_name = self._get_stream_name(job_id)
             subject = self._get_subject(job_id)
-            logger.warning(f"Stream {stream_name} does not exist")
+
             # Stream doesn't exist, create it
-            await self.js.add_stream(
-                name=stream_name,
-                subjects=[subject],
-                max_age=86400,  # 24 hours retention
+            await asyncio.wait_for(
+                self.js.add_stream(
+                    name=stream_name,
+                    subjects=[subject],
+                    max_age=86400,  # 24 hours retention
+                ),
+                timeout=NATS_JETSTREAM_TIMEOUT,
             )
             logger.info(f"Created stream {stream_name}")
 
@@ -113,21 +133,29 @@ class TaskQueueManager:
         subject = self._get_subject(job_id)
 
         try:
-            info = await self.js.consumer_info(stream_name, consumer_name)
+            info = await asyncio.wait_for(
+                self.js.consumer_info(stream_name, consumer_name),
+                timeout=NATS_JETSTREAM_TIMEOUT,
+            )
             logger.debug(f"Consumer {consumer_name} already exists: {info}")
+        except asyncio.TimeoutError:
+            raise  # NATS unreachable — let caller handle it
         except Exception:
             # Consumer doesn't exist, create it
-            await self.js.add_consumer(
-                stream=stream_name,
-                config=ConsumerConfig(
-                    durable_name=consumer_name,
-                    ack_policy=AckPolicy.EXPLICIT,
-                    ack_wait=TASK_TTR,  # Visibility timeout (TTR)
-                    max_deliver=5,  # Max retry attempts
-                    deliver_policy=DeliverPolicy.ALL,
-                    max_ack_pending=100,  # Max unacked messages
-                    filter_subject=subject,
+            await asyncio.wait_for(
+                self.js.add_consumer(
+                    stream=stream_name,
+                    config=ConsumerConfig(
+                        durable_name=consumer_name,
+                        ack_policy=AckPolicy.EXPLICIT,
+                        ack_wait=TASK_TTR,  # Visibility timeout (TTR)
+                        max_deliver=5,  # Max retry attempts
+                        deliver_policy=DeliverPolicy.ALL,
+                        max_ack_pending=100,  # Max unacked messages
+                        filter_subject=subject,
+                    ),
                 ),
+                timeout=NATS_JETSTREAM_TIMEOUT,
             )
             logger.info(f"Created consumer {consumer_name}")
 
@@ -155,7 +183,7 @@ class TaskQueueManager:
             task_data = json.dumps(data.dict())
 
             # Publish to JetStream
-            ack = await self.js.publish(subject, task_data.encode())
+            ack = await self.js.publish(subject, task_data.encode(), timeout=NATS_JETSTREAM_TIMEOUT)
 
             logger.info(f"Published task to stream for job '{job_id}', sequence {ack.seq}")
             return True
@@ -164,64 +192,60 @@ class TaskQueueManager:
             logger.error(f"Failed to publish task to stream for job '{job_id}': {e}")
             return False
 
-    async def reserve_task(self, job_id: int, timeout: float | None = None) -> PipelineProcessingTask | None:
+    async def reserve_tasks(self, job_id: int, count: int, timeout: float = 5) -> list[PipelineProcessingTask]:
         """
-        Reserve a task from the specified stream.
+        Reserve up to `count` tasks from the specified stream in a single NATS fetch.
 
         Args:
             job_id: The job ID (integer primary key) to pull tasks from
-            timeout: Timeout in seconds for reservation (default: 5 seconds)
+            count: Maximum number of tasks to reserve
+            timeout: Timeout in seconds waiting for messages (default: 5 seconds)
 
         Returns:
-            PipelineProcessingTask with reply_subject set for acknowledgment, or None if no task available
+            List of PipelineProcessingTask objects with reply_subject set for acknowledgment.
+            May return fewer than `count` if the queue has fewer messages available.
         """
         if self.js is None:
             raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
 
-        if timeout is None:
-            timeout = 5
-
         try:
-            # Ensure stream and consumer exist
             if not await self._stream_exists(job_id):
                 logger.debug(f"Stream for job '{job_id}' does not exist when reserving task")
-                return None  # TODO this will return [] after merging
+                return []
+
             await self._ensure_consumer(job_id)
 
             consumer_name = self._get_consumer_name(job_id)
             subject = self._get_subject(job_id)
 
-            # Create ephemeral subscription for this pull
             psub = await self.js.pull_subscribe(subject, consumer_name)
 
             try:
-                # Fetch a single message
-                msgs = await psub.fetch(1, timeout=timeout)
-
-                if msgs:
-                    msg = msgs[0]
-                    task_data = json.loads(msg.data.decode())
-                    metadata = msg.metadata
-
-                    # Parse the task data into PipelineProcessingTask
-                    task = PipelineProcessingTask(**task_data)
-                    # Set the reply_subject for acknowledgment
-                    task.reply_subject = msg.reply
-
-                    logger.debug(f"Reserved task from stream for job '{job_id}', sequence {metadata.sequence.stream}")
-                    return task
-
+                msgs = await psub.fetch(count, timeout=timeout)
             except nats.errors.TimeoutError:
-                # No messages available
                 logger.debug(f"No tasks available in stream for job '{job_id}'")
-                return None
+                return []
             finally:
-                # Always unsubscribe
                 await psub.unsubscribe()
 
+            tasks = []
+            for msg in msgs:
+                task_data = json.loads(msg.data.decode())
+                task = PipelineProcessingTask(**task_data)
+                task.reply_subject = msg.reply
+                tasks.append(task)
+
+            if tasks:
+                logger.info(f"Reserved {len(tasks)} tasks from stream for job '{job_id}'")
+            else:
+                logger.debug(f"No tasks reserved from stream for job '{job_id}'")
+            return tasks
+
+        except asyncio.TimeoutError:
+            raise  # NATS unreachable — propagate so the view can return an appropriate error
         except Exception as e:
-            logger.error(f"Failed to reserve task from stream for job '{job_id}': {e}")
-            return None
+            logger.error(f"Failed to reserve tasks from stream for job '{job_id}': {e}")
+            return []
 
     async def acknowledge_task(self, reply_subject: str) -> bool:
         """
@@ -261,7 +285,10 @@ class TaskQueueManager:
             stream_name = self._get_stream_name(job_id)
             consumer_name = self._get_consumer_name(job_id)
 
-            await self.js.delete_consumer(stream_name, consumer_name)
+            await asyncio.wait_for(
+                self.js.delete_consumer(stream_name, consumer_name),
+                timeout=NATS_JETSTREAM_TIMEOUT,
+            )
             logger.info(f"Deleted consumer {consumer_name} for job '{job_id}'")
             return True
         except Exception as e:
@@ -284,7 +311,10 @@ class TaskQueueManager:
         try:
             stream_name = self._get_stream_name(job_id)
 
-            await self.js.delete_stream(stream_name)
+            await asyncio.wait_for(
+                self.js.delete_stream(stream_name),
+                timeout=NATS_JETSTREAM_TIMEOUT,
+            )
             logger.info(f"Deleted stream {stream_name} for job '{job_id}'")
             return True
         except Exception as e:

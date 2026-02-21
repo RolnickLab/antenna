@@ -461,9 +461,7 @@ class MLJob(JobType):
         # End image collection stage
         job.save()
 
-        if job.project.feature_flags.async_pipeline_workers:
-            job.dispatch_mode = JobDispatchMode.ASYNC_API
-            job.save(update_fields=["dispatch_mode"])
+        if job.dispatch_mode == JobDispatchMode.ASYNC_API:
             queued = queue_images_to_nats(job, images)
             if not queued:
                 job.logger.error("Aborting job %s because images could not be queued to NATS", job.pk)
@@ -473,8 +471,6 @@ class MLJob(JobType):
                 job.save()
                 return
         else:
-            job.dispatch_mode = JobDispatchMode.SYNC_API
-            job.save(update_fields=["dispatch_mode"])
             cls.process_images(job, images)
 
     @classmethod
@@ -919,6 +915,15 @@ class Job(BaseModel):
             self.progress.add_stage_param(delay_stage.key, "Mood", "😴")
 
         if self.pipeline:
+            # Set dispatch mode based on project feature flags at creation time
+            # so the UI can show the correct mode before the job runs.
+            # Only override if still at the default (INTERNAL), to allow explicit overrides.
+            if self.dispatch_mode == JobDispatchMode.INTERNAL:
+                if self.project and self.project.feature_flags.async_pipeline_workers:
+                    self.dispatch_mode = JobDispatchMode.ASYNC_API
+                else:
+                    self.dispatch_mode = JobDispatchMode.SYNC_API
+
             collect_stage = self.progress.add_stage("Collect")
             self.progress.add_stage_param(collect_stage.key, "Total Images", "")
 
