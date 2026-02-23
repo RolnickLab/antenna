@@ -1,8 +1,17 @@
+"""
+Creates and manages the private PostgreSQL RDS instance.
+
+Configures subnet group, monitoring role, encryption,
+and exports database connection details.
+"""
+
+
+
 import pulumi
 import pulumi_aws as aws
 
-from networking.subnets import private_db_subnets
-from networking.security_group import rds_sg
+from networking.antennav2_subnets import private_db_subnets
+from networking.antennav2_security_group import rds_sg
 
 config = pulumi.Config()
 
@@ -53,8 +62,8 @@ aws.iam.RolePolicyAttachment(
 # RDS Subnet Group
 # ---------------------------------------------------------
 rds_subnet_group = aws.rds.SubnetGroup(
-    "antenna-private-db-subnet-group-pulumi",
-    name="antenna-private-db-subnet-group-pulumi",
+    "antenna-private-db-subnet-group-pulumi-v2",
+    name="antenna-private-db-subnet-group-pulumi-v2",
     description="Private DB subnet group for Antenna Postgres (Pulumi)",
     subnet_ids=[s.id for s in private_db_subnets],
     tags={
@@ -74,11 +83,12 @@ rds_instance = aws.rds.Instance(
     # Engine
     engine="postgres",
     engine_version="17.6",
-    instance_class="db.t4g.small",
+    instance_class="db.t4g.medium",
 
     # DB init
     username=POSTGRES_USER,
     password=POSTGRES_PASSWORD,
+    manage_master_user_password=False,
     db_name=POSTGRES_DB,
     port=POSTGRES_PORT,
 
@@ -90,10 +100,8 @@ rds_instance = aws.rds.Instance(
 
     # Storage
     storage_type="gp3",
-    allocated_storage=400,
-    iops=12000,
-    storage_throughput=500,
-    max_allocated_storage=1000,
+    allocated_storage=30,
+    max_allocated_storage=100,
 
     # Encryption
     storage_encrypted=True,
@@ -119,6 +127,10 @@ rds_instance = aws.rds.Instance(
     performance_insights_retention_period=7,
 
     # Destroy behavior
+    # Intentionally allow full teardown for this stack.
+    # This environment is designed to be ephemeral and fully reproducible.
+    # No final snapshot is required on destroy.
+
     deletion_protection=False,
     skip_final_snapshot=True,
 
