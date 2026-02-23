@@ -1,8 +1,36 @@
+
+"""
+Creates IAM roles for ECS and Elastic Beanstalk.
+
+Grants scoped access to Secrets Manager, S3, ECR,
+and required AWS services for application runtime.
+Exports role and instance profile details.
+"""
+
+
+
 import json
 import pulumi
 import pulumi_aws as aws
 
-from storage.s3 import assets_bucket  # used for S3 bucket ARN resolution
+from storage.antennav2_s3 import assets_bucket  # used for S3 bucket ARN resolution
+
+# =========================================================
+# Global project/stack context
+# =========================================================
+
+
+PROJECT = pulumi.get_project()
+STACK = pulumi.get_stack()
+
+secret_arn_pattern = pulumi.Output.concat(
+    "arn:aws:secretsmanager:*:*:secret:",
+    PROJECT,
+    "-",
+    STACK,
+    "-*",
+)
+
 
 # =========================================================
 # 1) ECS TASK EXECUTION ROLE
@@ -27,7 +55,7 @@ ecs_execution_role = aws.iam.Role(
             ],
         }
     ),
-    tags={"ManagedBy": "Pulumi", "Project": "Antenna"},
+    tags={"ManagedBy": "Pulumi", "Project": PROJECT},
 )
 
 # Standard ECS execution policy (ECR pulls + CloudWatch logs)
@@ -37,24 +65,27 @@ aws.iam.RolePolicyAttachment(
     policy_arn="arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy",
 )
 
+# Scoped Secrets Manager access
 aws.iam.RolePolicy(
     "ecs-execution-secrets-readonly",
     role=ecs_execution_role.name,
-    policy=json.dumps(
-        {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Sid": "AllowSecretsReadForEcsTasks",
-                    "Effect": "Allow",
-                    "Action": [
-                        "secretsmanager:GetSecretValue",
-                        "secretsmanager:DescribeSecret",
-                    ],
-                    "Resource": "arn:aws:secretsmanager:*:*:secret:*",
-                }
-            ],
-        }
+    policy=secret_arn_pattern.apply(
+        lambda arn: json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "AllowSecretsReadForEcsTasks",
+                        "Effect": "Allow",
+                        "Action": [
+                            "secretsmanager:GetSecretValue",
+                            "secretsmanager:DescribeSecret",
+                        ],
+                        "Resource": arn,
+                    }
+                ],
+            }
+        )
     ),
 )
 
@@ -68,7 +99,6 @@ pulumi.export("ecs_execution_role_arn", ecs_execution_role.arn)
 # - ECS agent on the EB host
 # - EB deploy hooks
 # - SSM Session Manager
-
 # =========================================================
 
 ec2_role_pulumi = aws.iam.Role(
@@ -86,7 +116,7 @@ ec2_role_pulumi = aws.iam.Role(
             ],
         }
     ),
-    tags={"ManagedBy": "Pulumi", "Project": "Antenna"},
+    tags={"ManagedBy": "Pulumi", "Project": PROJECT},
 )
 
 # Standard EB + ECS host permissions
@@ -96,7 +126,7 @@ ec2_policy_arns = [
     "arn:aws:iam::aws:policy/AWSElasticBeanstalkMulticontainerDocker",
     "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
     "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy",
-    "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore",  # SSM Session Manager
+    "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore",
 ]
 
 for i, policy_arn in enumerate(ec2_policy_arns):
@@ -106,29 +136,33 @@ for i, policy_arn in enumerate(ec2_policy_arns):
         policy_arn=policy_arn,
     )
 
-# EC2 role MUST be able to read Secrets Manager (for ECS/EB bootstrapping + testing)
+# Scoped Secrets Manager access (same pattern as ECS)
 aws.iam.RolePolicy(
     "eb-ec2-secretsmanager-readonly",
     role=ec2_role_pulumi.name,
-    policy=json.dumps(
-        {
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Sid": "AllowSecretsReadFromEc2",
-                    "Effect": "Allow",
-                    "Action": [
-                        "secretsmanager:GetSecretValue",
-                        "secretsmanager:DescribeSecret",
-                    ],
-                    "Resource": "arn:aws:secretsmanager:*:*:secret:*",
-                }
-            ],
-        }
+    policy=secret_arn_pattern.apply(
+        lambda arn: json.dumps(
+            {
+                "Version": "2012-10-17",
+                "Statement": [
+                    {
+                        "Sid": "AllowSecretsReadFromEc2",
+                        "Effect": "Allow",
+                        "Action": [
+                            "secretsmanager:GetSecretValue",
+                            "secretsmanager:DescribeSecret",
+                        ],
+                        "Resource": arn,
+                    }
+                ],
+            }
+        )
     ),
 )
 
-
+# =========================================================
+# S3 access for assets bucket
+# =========================================================
 
 assets_bucket_arn = assets_bucket.arn
 assets_objects_arn = assets_bucket.arn.apply(lambda a: f"{a}/*")
@@ -141,7 +175,6 @@ aws.iam.RolePolicy(
             {
                 "Version": "2012-10-17",
                 "Statement": [
-                    # Bucket-level
                     {
                         "Sid": "AllowAssetsBucketListAndLocation",
                         "Effect": "Allow",
@@ -151,7 +184,6 @@ aws.iam.RolePolicy(
                         ],
                         "Resource": arns[0],
                     },
-                    # Object-level
                     {
                         "Sid": "AllowAssetsObjectRW",
                         "Effect": "Allow",
@@ -168,8 +200,9 @@ aws.iam.RolePolicy(
     ),
 )
 
-# Allow EB EC2 host to pass the ECS execution role (used by ECS task execution)
+# Allow EB EC2 host to pass the ECS execution role
 eb_ec2_passrole_ecs_execution = aws.iam.RolePolicy(
+
     "eb-ec2-passrole-ecs-execution-role",
     role=ec2_role_pulumi.name,
     policy=ecs_execution_role.arn.apply(
@@ -193,13 +226,11 @@ ec2_instance_profile_pulumi = aws.iam.InstanceProfile(
     "aws-elasticbeanstalk-ec2-instance-profile_pulumi",
     name="aws-elasticbeanstalk-ec2-instance-profile_pulumi",
     role=ec2_role_pulumi.name,
-    tags={"ManagedBy": "Pulumi", "Project": "Antenna"},
+    tags={"ManagedBy": "Pulumi", "Project": PROJECT},
 )
 
 # =========================================================
 # 3) ELASTIC BEANSTALK SERVICE ROLE
-#
-# Used by EB control plane (health, updates)
 # =========================================================
 
 service_role_pulumi = aws.iam.Role(
@@ -217,7 +248,7 @@ service_role_pulumi = aws.iam.Role(
             ],
         }
     ),
-    tags={"ManagedBy": "Pulumi", "Project": "Antenna"},
+    tags={"ManagedBy": "Pulumi", "Project": PROJECT},
 )
 
 service_policy_arns = [
@@ -235,6 +266,7 @@ for i, policy_arn in enumerate(service_policy_arns):
 # =========================================================
 # Outputs
 # =========================================================
+
 pulumi.export("eb_ec2_role_name_pulumi", ec2_role_pulumi.name)
 pulumi.export("eb_ec2_instance_profile_name_pulumi", ec2_instance_profile_pulumi.name)
 pulumi.export("eb_service_role_name_pulumi", service_role_pulumi.name)
