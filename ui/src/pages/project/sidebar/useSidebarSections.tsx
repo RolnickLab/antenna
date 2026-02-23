@@ -22,9 +22,9 @@ const getSidebarSections = (
         path: APP_ROUTES.SUMMARY({ projectId: project.id }),
       },
       {
-        id: 'collections',
-        title: translate(STRING.NAV_ITEM_COLLECTIONS),
-        path: APP_ROUTES.COLLECTIONS({ projectId: project.id }),
+        id: 'capture-sets',
+        title: translate(STRING.NAV_ITEM_CAPTURE_SETS),
+        path: APP_ROUTES.CAPTURE_SETS({ projectId: project.id }),
       },
       {
         id: 'exports',
@@ -90,14 +90,19 @@ const getSidebarSections = (
               title: translate(STRING.NAV_ITEM_GENERAL),
               path: APP_ROUTES.GENERAL({ projectId: project.id }),
             },
-          ]
-        : []),
-      ...(project.canUpdate
-        ? [
             {
               id: 'default-filters',
               title: translate(STRING.NAV_ITEM_DEFAULT_FILTERS),
               path: APP_ROUTES.DEFAULT_FILTERS({ projectId: project.id }),
+            },
+          ]
+        : []),
+      ...(project.isMember
+        ? [
+            {
+              id: 'team',
+              title: translate(STRING.NAV_ITEM_TEAM),
+              path: APP_ROUTES.TEAM({ projectId: project.id }),
             },
           ]
         : []),
@@ -129,11 +134,6 @@ export const useSidebarSections = (project: ProjectDetails) => {
       (item) => !!matchPath(item.matchPath ?? item.path, location.pathname)
     )
   }, [location.pathname, sidebarSections])
-
-  sidebarSections
-    .map(({ items }) => items)
-    .flat()
-    .find((item) => !!matchPath(item.path, location.pathname))
 
   return { sidebarSections, activeItem }
 }

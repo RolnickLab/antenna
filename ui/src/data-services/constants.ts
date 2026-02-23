@@ -2,9 +2,9 @@ export const API_URL = '/api/v2'
 
 export const API_ROUTES = {
   ALGORITHM: 'ml/algorithms',
+  CAPTURE_SETS: 'captures/collections',
   CAPTURES: 'captures',
   CLASSIFICATIONS: 'classifications',
-  COLLECTIONS: 'captures/collections',
   DEPLOYMENTS: 'deployments',
   DEVICES: 'deployments/devices',
   EXPORTS: 'exports',
@@ -13,6 +13,7 @@ export const API_ROUTES = {
   LOGIN: 'auth/token/login',
   LOGOUT: 'auth/token/logout',
   ME: 'users/me',
+  MEMBERS: (projectId: string) => `projects/${projectId}/members`,
   OCCURRENCES: 'occurrences',
   PAGES: 'pages',
   PIPELINES: 'ml/pipelines',
@@ -20,13 +21,14 @@ export const API_ROUTES = {
   PROJECTS: 'projects',
   RESET_PASSWORD_CONFIRM: 'users/reset_password_confirm',
   RESET_PASSWORD: 'users/reset_password',
+  ROLES: 'users/roles',
   SESSIONS: 'events',
   SITES: 'deployments/sites',
   SPECIES: 'taxa',
-  TAGS: 'tags',
-  TAXA_LISTS: 'taxa/lists',
   STORAGE: 'storage',
   SUMMARY: 'status/summary',
+  TAGS: 'tags',
+  TAXA_LISTS: 'taxa/lists',
   USERS: 'users',
 }
 

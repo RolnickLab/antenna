@@ -9,7 +9,7 @@ $dialog-padding-medium: 32px;
   background-color: rgba(0, 0, 0, 0.2);
   position: fixed;
   inset: 0;
-  z-index: 3;
+  z-index: 50;
 }
 
 .loadingWrapper {
@@ -36,9 +36,10 @@ $dialog-padding-medium: 32px;
   max-width: calc(100% - (2 * $dialog-padding-large));
   height: calc(100vh - (2 * $dialog-padding-large));
   height: calc(100dvh - (2 * $dialog-padding-large));
-  z-index: 3;
+  z-index: 50;
 
   &.compact {
+    width: 384px;
     height: fit-content;
   }
 

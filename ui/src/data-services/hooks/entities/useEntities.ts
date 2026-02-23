@@ -1,4 +1,4 @@
-import { Collection } from 'data-services/models/collection'
+import { CaptureSet } from 'data-services/models/capture-set'
 import { Entity, ServerEntity } from 'data-services/models/entity'
 import { StorageSource } from 'data-services/models/storage'
 import { FetchParams } from 'data-services/types'
@@ -12,8 +12,8 @@ const convertServerRecord = (collection: string, record: ServerEntity) => {
   // look at the customFormMap in constants.ts
   if (collection === 'storage') {
     return new StorageSource(record)
-  } else if (collection === 'collection') {
-    return new Collection(record)
+  } else if (collection === 'capture-set') {
+    return new CaptureSet(record)
   }
 
   return new Entity(record)

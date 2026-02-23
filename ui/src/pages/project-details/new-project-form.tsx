@@ -3,7 +3,6 @@ import { FormField } from 'components/form/form-field'
 import {
   FormActions,
   FormError,
-  FormRow,
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
@@ -72,39 +71,31 @@ export const NewProjectForm = ({
         />
       )}
       <FormSection>
-        <FormRow>
-          <FormField
-            name="name"
-            type="text"
-            config={config}
-            control={control}
-          />
-          <FormField
-            name="description"
-            type="text"
-            config={config}
-            control={control}
-          />
-        </FormRow>
-        <FormRow>
-          <FormController
-            name="defaultProcessingPipeline"
-            control={control}
-            config={config.defaultProcessingPipeline}
-            render={({ field, fieldState }) => (
-              <InputContent
-                description={config[field.name].description}
-                label={config[field.name].label}
-                error={fieldState.error?.message}
-              >
-                <PipelinesSelect
-                  pipeline={field.value}
-                  onPipelineChange={field.onChange}
-                />
-              </InputContent>
-            )}
-          />
-        </FormRow>
+        <FormField name="name" type="text" config={config} control={control} />
+        <FormField
+          name="description"
+          type="text"
+          config={config}
+          control={control}
+        />
+
+        <FormController
+          name="defaultProcessingPipeline"
+          control={control}
+          config={config.defaultProcessingPipeline}
+          render={({ field, fieldState }) => (
+            <InputContent
+              description={config[field.name].description}
+              label={config[field.name].label}
+              error={fieldState.error?.message}
+            >
+              <PipelinesSelect
+                pipeline={field.value}
+                onPipelineChange={field.onChange}
+              />
+            </InputContent>
+          )}
+        />
       </FormSection>
       <FormActions>
         <SaveButton isLoading={isLoading} isSuccess={isSuccess} />

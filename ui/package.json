@@ -29,7 +29,7 @@
     "leaflet": "^1.9.3",
     "lodash": "^4.17.21",
     "lucide-react": "^0.454.0",
-    "nova-ui-kit": "^1.1.32",
+    "nova-ui-kit": "^1.1.33",
     "plotly.js": "^2.25.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

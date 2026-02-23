@@ -17,11 +17,11 @@ export const APP_ROUTES = {
   ALGORITHMS: (params: { projectId: string }) =>
     `/projects/${params.projectId}/algorithms`,
 
+  CAPTURE_SETS: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/capture-sets`,
+
   CAPTURES: (params: { projectId: string }) =>
     `/projects/${params.projectId}/captures`,
-
-  COLLECTIONS: (params: { projectId: string }) =>
-    `/projects/${params.projectId}/collections`,
 
   DEFAULT_FILTERS: (params: { projectId: string }) =>
     `/projects/${params.projectId}/default-filters`,
@@ -95,6 +95,8 @@ export const APP_ROUTES = {
 
   TAXON_DETAILS: (params: { projectId: string; taxonId: string }) =>
     `/projects/${params.projectId}/taxa/${params.taxonId}`,
+
+  TEAM: (params: { projectId: string }) => `/projects/${params.projectId}/team`,
 }
 
 export const API_MAX_UPLOAD_SIZE = 1024 * 1024 * 30 // 30MB
