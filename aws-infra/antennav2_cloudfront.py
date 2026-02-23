@@ -1,3 +1,12 @@
+
+"""
+Deploys the UI to S3 + CloudFront.
+
+Builds and uploads static assets, configures CloudFront
+with the EB backend as an API origin, and triggers invalidation.
+"""
+
+
 import os
 import mimetypes
 import subprocess
@@ -7,11 +16,13 @@ import time
 
 import pulumi
 import pulumi_aws as aws
+from urllib.parse import urlparse
+
 
 # NOTE:
 # We want the backend origin to be the EB environment URL.
 # This requires EB to be deployed in the same update *before* importing this file.
-from eb import env_pulumi
+from antennav2_eb import env_pulumi
 
 
 # =========================================================
@@ -61,8 +72,10 @@ build_ui_in_pulumi = (
 # =========================================================
 # HELPERS
 # =========================================================
+
 def normalize_origin_domain(d: str) -> str:
-    return d.replace("https://", "").replace("http://", "").strip("/")
+    parsed = urlparse(d)
+    return parsed.netloc or parsed.path
 
 
 def guess_content_type(path: str) -> str:
@@ -130,7 +143,7 @@ yarn build
 """
 
     pulumi.log.info("Building UI inside Pulumi: cd ui && nvm use && yarn install && yarn build")
-    subprocess.run(["bash", "-lc", cmd], check=True)
+    subprocess.run(["/bin/bash", "-lc", cmd], check=True)
 
 
 # =========================================================
@@ -229,12 +242,10 @@ cf_distribution = aws.cloudfront.Distribution(
             custom_origin_config=aws.cloudfront.DistributionOriginCustomOriginConfigArgs(
                 http_port=80,
                 https_port=443,
-                # IMPORTANT:
-                # Your EB endpoint is NOT serving HTTPS (443 was failing to connect).
-                # CloudFront must talk to EB over HTTP, otherwise /api/* will 504.
+                # CloudFront can connect to the backend over HTTP (80) or HTTPS (443).
+                # EB currently serves traffic over HTTP, so CloudFront uses port 80 for origin requests.
                 origin_protocol_policy="http-only",
                 origin_ssl_protocols=["TLSv1.2"],
-                # Reduce 504s on slower app cold starts / DB connects
                 origin_read_timeout=60,
                 origin_keepalive_timeout=60,
             ),
