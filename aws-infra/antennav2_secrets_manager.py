@@ -1,11 +1,20 @@
+
+"""
+Manages application secrets and configuration.
+Creates AWS Secrets Manager entries, derives database/Redis URLs,
+and exports Elastic Beanstalk environment variables.
+"""
+
+
+
 import json
 import urllib.parse
 
 import pulumi
 import pulumi_aws as aws
 
-from rds import rds_instance
-from redis import redis, REDIS_PORT
+from antennav2_rds import rds_instance
+from antennav2_redis import redis, REDIS_PORT
 
 config = pulumi.Config()
 STACK = pulumi.get_stack()
