@@ -1,12 +1,18 @@
+"""
+Creates and configures ECR repositories.
+
+Exports repository URLs for Docker builds and deployment.
+"""
+
+
+
+
 import pulumi
 import pulumi_aws as aws
 
 # Repositories to create
 REPOS = [
-    "antenna-awscli-pulumi",
-    "antenna-backend-pulumi",
-    "antenna-ml-example-pulumi",
-    "antenna-ml-minimal-pulumi",
+    "antenna-pulumi",
 ]
 
 ecr_repos = {}
@@ -18,7 +24,7 @@ for repo in REPOS:
 
         force_delete=True,
 
-        # Scan on push = ON
+        # Scan on push = OFF (enable for production)
         image_scanning_configuration=aws.ecr.RepositoryImageScanningConfigurationArgs(
             scan_on_push=False
         ),
@@ -44,7 +50,5 @@ for repo in REPOS:
 
 
 # outputs for EB Dockerrun generation
-pulumi.export("ecr_backend_repo_url", ecr_repos["antenna-backend-pulumi"].repository_url)
-pulumi.export("ecr_awscli_repo_url", ecr_repos["antenna-awscli-pulumi"].repository_url)
-pulumi.export("ecr_ml_min_repo_url", ecr_repos["antenna-ml-minimal-pulumi"].repository_url)
-pulumi.export("ecr_ml_ex_repo_url", ecr_repos["antenna-ml-example-pulumi"].repository_url)
+pulumi.export("ecr_repo_url", ecr_repos["antenna-pulumi"].repository_url)
+
