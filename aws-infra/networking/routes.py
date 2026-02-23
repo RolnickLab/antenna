@@ -8,7 +8,7 @@ This ensures the RDS database remains fully private and inaccessible from the pu
 
 import pulumi
 import pulumi_aws as aws
-from .subnets import default_vpc, private_db_subnets
+from .antennav2_subnets import default_vpc, private_db_subnets
 
 
 # ---------------------------------------------------------
