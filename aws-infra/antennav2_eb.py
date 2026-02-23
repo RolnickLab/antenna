@@ -1,3 +1,14 @@
+"""
+Creates and deploys the Elastic Beanstalk environment.
+
+Builds the Dockerrun bundle, uploads it to S3,
+and provisions the EB app, version, and environment.
+"""
+
+
+
+
+
 import os
 import json
 import zipfile
@@ -8,37 +19,47 @@ import pulumi_aws as aws
 
 from pulumi import ResourceOptions, CustomTimeouts
 
+config = pulumi.Config()
+
+flower_config = pulumi.Config("flower")
+
+flower_user = flower_config.get("user")
+flower_password = flower_config.get("password")
+
 
 # ---------------------------------------------------------
 # ECR repos + docker build/push
 # ---------------------------------------------------------
-import ecr
-import images
+import antennav2_ecr
+import antennav2_images
+import antennav2_redis
+
 
 # ---------------------------------------------------------
 # IAM roles + networking
 # ---------------------------------------------------------
-from iam_roles import (
+from antennav2_iam_roles import (
     ec2_instance_profile_pulumi,
     service_role_pulumi,
     ecs_execution_role,
     eb_ec2_passrole_ecs_execution,
 )
-from networking.subnets import redis_default_subnets
-from networking.security_group import eb_sg
+from networking.antennav2_subnets import private_redis_subnets
+
+from networking.antennav2_security_group import eb_sg
 
 # ---------------------------------------------------------
 # Infra outputs
 # ---------------------------------------------------------
-from rds import rds_instance
-from redis import redis
+from antennav2_rds import rds_instance
+from antennav2_redis import redis
 
 # ---------------------------------------------------------
 # EB_ENV contains:
 #   - plain env vars
 #   - *_SECRET_ARN pointers used to populate Dockerrun "secrets"
 # ---------------------------------------------------------
-from secrets_manager import EB_ENV
+from antennav2_secrets_manager import EB_ENV
 
 # ---------------------------------------------------------
 # Constants
@@ -47,10 +68,11 @@ BUILD_DIR = "build_eb_bundle"
 DOCKERRUN_PATH = os.path.join(BUILD_DIR, "Dockerrun.aws.json")
 DEPLOY_ZIP_PATH = os.path.join(BUILD_DIR, "deploy.zip")
 
-BACKEND_TAG = "latest"
-AWSCLI_TAG = "latest"
-ML_MIN_TAG = "latest"
-ML_EX_TAG = "latest"
+
+BACKEND_TAG = "backend"
+AWSCLI_TAG = "awscli"
+ML_MIN_TAG = "ml-minimal"
+ML_EX_TAG = "ml-example"
 
 
 def ensure_build_dir() -> None:
@@ -83,7 +105,7 @@ def _split_plain_env_and_secret_arns(env: dict) -> tuple[list[dict], dict]:
 
 def _require_secret_arn(secret_arns: dict[str, str], key: str) -> str:
     """
-    Fail early with a helpful message if a required *_SECRET_ARN entry is missing.
+    Fail early with a message if a required *_SECRET_ARN entry is missing.
     """
     if key not in secret_arns or not secret_arns[key]:
         raise Exception(f"Missing required secret ARN in EB_ENV: {key}")
@@ -172,7 +194,7 @@ def build_dockerrun_and_zip(
                 "essential": False,
                 "memory": 256,
                 "command": ["sleep", "9999999"],
-                "environment": [{"name": "AWS_REGION", "value": "us-west-2"}],
+                "environment": [{"name": "AWS_REGION", "value": aws.config.region}],
             },
             {
                 "name": "django",
@@ -182,7 +204,6 @@ def build_dockerrun_and_zip(
                 "entryPoint": ["/entrypoint"],
                 "portMappings": [{"hostPort": 80, "containerPort": 5000}],
                 "command": ["/start"],
-                # NOTE: only ONE DEFAULT_PROCESSING_SERVICE_ENDPOINT key
                 "environment": backend_environment + [
                     {"name": "DEFAULT_PROCESSING_SERVICE_ENDPOINT", "value": "http://ml-backend-minimal:2000"},
                     {"name": "DEFAULT_PROCESSING_SERVICE_NAME", "value": "Default ML Service"},
@@ -231,8 +252,8 @@ def build_dockerrun_and_zip(
                 "portMappings": [{"hostPort": 5555, "containerPort": 5555}],
                 "command": ["/start-flower"],
                 "environment": backend_environment + [
-                    {"name": "CELERY_FLOWER_USER", "value": "admin"},
-                    {"name": "CELERY_FLOWER_PASSWORD", "value": "password"},
+                    {"name": "CELERY_FLOWER_USER", "value": flower_user},
+                    {"name": "CELERY_FLOWER_PASSWORD", "value": flower_password},
                     {"name": "DEFAULT_PROCESSING_SERVICE_ENDPOINT", "value": "http://ml-backend-minimal:2000"},
                 ],
                 "links": ["ml-backend-minimal", "ml-backend-example"],
@@ -255,11 +276,8 @@ def build_dockerrun_and_zip(
 
 
 def file_sha256(path: str) -> str:
-    h = hashlib.sha256()
     with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()[:12]
+        return hashlib.file_digest(f, "sha256").hexdigest()
 
 
 def make_bundle_key_and_asset(zip_path: str):
@@ -270,12 +288,13 @@ def make_bundle_key_and_asset(zip_path: str):
 # ---------------------------------------------------------
 # 1) Create deploy bundle
 # ---------------------------------------------------------
+
 zip_meta_output = (
     pulumi.Output.all(
-        ecr.ecr_repos["antenna-backend-pulumi"].repository_url,
-        ecr.ecr_repos["antenna-awscli-pulumi"].repository_url,
-        ecr.ecr_repos["antenna-ml-minimal-pulumi"].repository_url,
-        ecr.ecr_repos["antenna-ml-example-pulumi"].repository_url,
+        antennav2_ecr.ecr_repos["antenna-pulumi"].repository_url,
+        antennav2_ecr.ecr_repos["antenna-pulumi"].repository_url,
+        antennav2_ecr.ecr_repos["antenna-pulumi"].repository_url,
+        antennav2_ecr.ecr_repos["antenna-pulumi"].repository_url,
         ecs_execution_role.arn,
         rds_instance.address,  # authoritative POSTGRES_HOST
         EB_ENV,                # contains both plain vars and secret ARN pointers
@@ -283,7 +302,6 @@ zip_meta_output = (
     .apply(lambda args: build_dockerrun_and_zip(*args))
     .apply(make_bundle_key_and_asset)
 )
-# zip_meta_output -> (sha, key, FileAsset)
 
 
 # ---------------------------------------------------------
@@ -291,8 +309,12 @@ zip_meta_output = (
 # ---------------------------------------------------------
 default_vpc = aws.ec2.get_vpc_output(default=True)
 
+solution_stack_regex = config.get(
+    "EB_SOLUTION_STACK_REGEX"
+)
+
 ecs_solution_stack = aws.elasticbeanstalk.get_solution_stack(
-    name_regex="64bit Amazon Linux 2.*running ECS",
+    name_regex=solution_stack_regex,
     most_recent=True,
 )
 
@@ -307,6 +329,11 @@ eb_app_pulumi = aws.elasticbeanstalk.Application(
 # ---------------------------------------------------------
 # 4) S3 bundle bucket + object
 # ---------------------------------------------------------
+
+
+# force_destroy=True is intentional for dev/CI to allow clean stack teardown.
+# We’ll disable this in production.
+
 eb_bundle_bucket = aws.s3.Bucket(
     "antenna-eb-bundles-pulumi",
     force_destroy=True,
@@ -358,7 +385,8 @@ eb_app_env_settings += [
     aws.elasticbeanstalk.EnvironmentSettingArgs(
         namespace="aws:elasticbeanstalk:application:environment",
         name="REDIS_HOST",
-        value=redis.primary_endpoint_address,
+        value = antennav2_redis.redis.primary_endpoint_address,
+
     ),
 ]
 
@@ -368,7 +396,7 @@ eb_env_settings = [
     aws.elasticbeanstalk.EnvironmentSettingArgs(
         namespace="aws:ec2:vpc",
         name="Subnets",
-        value=pulumi.Output.all(*[s.id for s in redis_default_subnets]).apply(",".join),
+        value=pulumi.Output.all(*[s.id for s in private_redis_subnets]).apply(",".join),
     ),
     aws.elasticbeanstalk.EnvironmentSettingArgs(
         namespace="aws:elasticbeanstalk:environment",
@@ -418,11 +446,12 @@ env_pulumi = aws.elasticbeanstalk.Environment(
             ecs_execution_role,
             eb_ec2_passrole_ecs_execution,
             app_version,
-            images.backend_cmd,
-            images.awscli_cmd,
-            images.ml_min_cmd,
-            images.ml_ex_cmd,
+            antennav2_images.backend_image,
+            antennav2_images.awscli_image,
+            antennav2_images.ml_min_image,
+            antennav2_images.ml_ex_image,
         ],
+
         custom_timeouts=CustomTimeouts(create="60m", update="60m"),
     ),
 )
