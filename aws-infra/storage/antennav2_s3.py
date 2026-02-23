@@ -1,6 +1,14 @@
+"""
+Creates the S3 assets bucket for static files.
+
+Configures ownership controls, public access settings,
+and default encryption. Exports bucket name and ARN.
+"""
+
+
+
 import pulumi
 import pulumi_aws as aws
-
 
 config = pulumi.Config("aws_infra")
 
@@ -19,26 +27,27 @@ assets_bucket = aws.s3.Bucket(
 )
 
 # ---------------------------------------------------------
-# Object Ownership (DISABLE ACLs properly)
+# Object Ownership (ALLOW ACLs so Django collectstatic works)
 # ---------------------------------------------------------
+
 ownership = aws.s3.BucketOwnershipControls(
     f"{bucket_name}-ownership",
     bucket=assets_bucket.id,
     rule=aws.s3.BucketOwnershipControlsRuleArgs(
-        object_ownership="ObjectWriter"
+        object_ownership="BucketOwnerPreferred"
     ),
 )
 
 # ---------------------------------------------------------
-# Block Public Access (ON) - safest defaults
+# Public read is needed for assets served via CloudFront or direct S3 URLs
 # ---------------------------------------------------------
 public_access = aws.s3.BucketPublicAccessBlock(
     f"{bucket_name}-public-access",
     bucket=assets_bucket.id,
     block_public_acls=False,
     ignore_public_acls=False,
-    block_public_policy=True,
-    restrict_public_buckets=True,
+    block_public_policy=False,
+    restrict_public_buckets=False,
 )
 
 # ---------------------------------------------------------
