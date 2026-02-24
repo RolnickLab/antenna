@@ -1,5 +1,7 @@
+import asyncio
 import logging
 
+import nats.errors
 import pydantic
 from asgiref.sync import async_to_sync
 from django.db.models import Q
@@ -32,6 +34,7 @@ class JobFilterSet(filters.FilterSet):
     """Custom filterset to enable pipeline name filtering."""
 
     pipeline__slug = filters.CharFilter(field_name="pipeline__slug", lookup_expr="exact")
+    pipeline__slug__in = filters.BaseInFilter(field_name="pipeline__slug", lookup_expr="in")
 
     class Meta:
         model = Job
@@ -55,11 +58,12 @@ class IncompleteJobFilter(BaseFilterBackend):
         incomplete_only = url_boolean_param(request, "incomplete_only", default=False)
         # Filter to incomplete jobs if requested (checks "results" stage status)
         if incomplete_only:
-            # Create filters for each final state to exclude
+            # Exclude jobs with a terminal top-level status
+            queryset = queryset.exclude(status__in=JobState.final_states())
+
+            # Also exclude jobs where the "results" stage has a final state status
             final_states = JobState.final_states()
             exclude_conditions = Q()
-
-            # Exclude jobs where the "results" stage has a final state status
             for state in final_states:
                 # JSON path query to check if results stage status is in final states
                 # @TODO move to a QuerySet method on Job model if/when this needs to be reused elsewhere
@@ -233,6 +237,10 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         if job.dispatch_mode != JobDispatchMode.ASYNC_API:
             raise ValidationError("Only async_api jobs have fetchable tasks")
 
+        # Don't fetch tasks from completed/failed/revoked jobs
+        if job.status in JobState.final_states():
+            return Response({"tasks": []})
+
         # Validate that the job has a pipeline
         if not job.pipeline:
             raise ValidationError("This job does not have a pipeline configured")
@@ -241,16 +249,14 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         from ami.ml.orchestration.nats_queue import TaskQueueManager
 
         async def get_tasks():
-            tasks = []
             async with TaskQueueManager() as manager:
-                for _ in range(batch):
-                    task = await manager.reserve_task(job.pk, timeout=0.1)
-                    if task:
-                        tasks.append(task.dict())
-            return tasks
+                return [task.dict() for task in await manager.reserve_tasks(job.pk, count=batch, timeout=0.5)]
 
-        # Use async_to_sync to properly handle the async call
-        tasks = async_to_sync(get_tasks)()
+        try:
+            tasks = async_to_sync(get_tasks)()
+        except (asyncio.TimeoutError, OSError, nats.errors.Error) as e:
+            logger.warning("NATS unavailable while fetching tasks for job %s: %s", job.pk, e)
+            return Response({"error": "Task queue temporarily unavailable"}, status=503)
 
         return Response({"tasks": tasks})
 
