@@ -8,6 +8,7 @@ celery==5.4.0  # pyup: < 6.0  # https://github.com/celery/celery
 django-celery-beat==2.5.0  # https://github.com/celery/django-celery-beat
 flower==2.0.1  # https://github.com/mher/flower
 kombu==5.4.2
+nats-py==2.10.0  # https://github.com/nats-io/nats.py
 uvicorn[standard]==0.22.0  # https://github.com/encode/uvicorn
 rich==13.5.0
 markdown==3.4.4
@@ -53,6 +54,7 @@ drf-nested-routers==0.94.1
 Werkzeug[watchdog]==2.3.6 # https://github.com/pallets/werkzeug
 ipdb==0.13.13  # https://github.com/gotcha/ipdb
 psycopg[binary]==3.1.9  # https://github.com/psycopg/psycopg
+# psycopg==3.1.9  # https://github.com/psycopg/psycopg # the non-binary version is needed for some platforms
 watchfiles==0.19.0  # https://github.com/samuelcolvin/watchfiles
 
 # Testing

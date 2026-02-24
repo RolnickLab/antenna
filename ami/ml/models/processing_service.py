@@ -39,7 +39,7 @@ class ProcessingService(BaseModel):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     projects = models.ManyToManyField("main.Project", related_name="processing_services", blank=True)
-    endpoint_url = models.CharField(max_length=1024)
+    endpoint_url = models.CharField(max_length=1024, null=True, blank=True)
     pipelines = models.ManyToManyField("ml.Pipeline", related_name="processing_services", blank=True)
     last_checked = models.DateTimeField(null=True)
     last_checked_live = models.BooleanField(null=True)
@@ -48,7 +48,8 @@ class ProcessingService(BaseModel):
     objects = ProcessingServiceManager()
 
     def __str__(self):
-        return f'#{self.pk} "{self.name}" at {self.endpoint_url}'
+        endpoint_display = self.endpoint_url or "async"
+        return f'#{self.pk} "{self.name}" ({endpoint_display})'
 
     class Meta:
         verbose_name = "Processing Service"
@@ -151,6 +152,19 @@ class ProcessingService(BaseModel):
         Args:
             timeout: Request timeout in seconds per attempt (default: 90s for serverless cold starts)
         """
+        # If no endpoint URL is configured, return a no-op response
+        if self.endpoint_url is None:
+            return ProcessingServiceStatusResponse(
+                timestamp=datetime.datetime.now(),
+                request_successful=False,
+                server_live=None,
+                pipelines_online=[],
+                pipeline_configs=[],
+                endpoint_url=self.endpoint_url,
+                error="No endpoint URL configured - service operates in pull mode",
+                latency=0.0,
+            )
+
         ready_check_url = urljoin(self.endpoint_url, "readyz")
         start_time = time.time()
         error = None
@@ -215,6 +229,9 @@ class ProcessingService(BaseModel):
         Get the pipeline configurations from the processing service.
         This can be a long response as it includes the full category map for each algorithm.
         """
+        if self.endpoint_url is None:
+            return []
+
         info_url = urljoin(self.endpoint_url, "info")
         resp = requests.get(info_url, timeout=timeout)
         resp.raise_for_status()

@@ -218,6 +218,7 @@ class ProjectFeatureFlags(pydantic.BaseModel):
     default_filters: bool = False  # Whether to show default filters form in UI
     # Feature flag for jobs to reprocess all images in the project, even if already processed
     reprocess_all_images: bool = False
+    async_pipeline_workers: bool = False  # Whether to use async pipeline workers that pull tasks from a queue
 
 
 def get_default_feature_flags() -> ProjectFeatureFlags:
@@ -352,7 +353,7 @@ class Project(ProjectSettingsMixin, BaseModel):
         Charts is treated as a read-only operation, so it follows the same
         permission logic as 'retrieve'.
         """
-        from ami.users.roles import BasicMember
+        from ami.users.roles import BasicMember, ProjectManager
 
         if action == "charts":
             # Same permission logic as retrieve action
@@ -360,6 +361,10 @@ class Project(ProjectSettingsMixin, BaseModel):
                 # Allow view permission for members and owners of draft projects
                 return BasicMember.has_role(user, self) or user == self.owner or user.is_superuser
             return True
+
+        if action == "pipelines":
+            # Pipeline registration requires project management permissions
+            return ProjectManager.has_role(user, self) or user == self.owner or user.is_superuser
 
         # Fall back to default permission checking for other actions
         return super().check_custom_permission(user, action)
@@ -438,6 +443,11 @@ class Project(ProjectSettingsMixin, BaseModel):
         UPDATE_DATA_EXPORT = "update_dataexport"
         DELETE_DATA_EXPORT = "delete_dataexport"
 
+        # Pipeline configuration permissions
+        CREATE_PROJECT_PIPELINE_CONFIG = "create_projectpipelineconfig"
+        UPDATE_PROJECT_PIPELINE_CONFIG = "update_projectpipelineconfig"
+        DELETE_PROJECT_PIPELINE_CONFIG = "delete_projectpipelineconfig"
+
         # Other permissions
         VIEW_PRIVATE_DATA = "view_private_data"
         DELETE_OCCURRENCES = "delete_occurrences"
@@ -501,6 +511,10 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("create_dataexport", "Can create a data export"),
             ("update_dataexport", "Can update a data export"),
             ("delete_dataexport", "Can delete a data export"),
+            # Pipeline configuration permissions
+            ("create_projectpipelineconfig", "Can register pipelines for the project"),
+            ("update_projectpipelineconfig", "Can update pipeline configurations"),
+            ("delete_projectpipelineconfig", "Can remove pipelines from the project"),
             # Other permissions
             ("view_private_data", "Can view private data"),
         ]
@@ -1548,6 +1562,12 @@ class S3StorageSource(BaseModel):
 
     name = models.CharField(max_length=255)
     bucket = models.CharField(max_length=255)
+    region = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        help_text="AWS region (e.g., 'us-east-1', 'eu-west-1'). Leave blank for Swift/MinIO storage.",
+    )
     prefix = models.CharField(max_length=255, blank=True)
     access_key = models.TextField()
     secret_key = models.TextField()
@@ -1567,6 +1587,7 @@ class S3StorageSource(BaseModel):
     def config(self) -> ami.utils.s3.S3Config:
         return ami.utils.s3.S3Config(
             bucket_name=self.bucket,
+            region=self.region,
             prefix=self.prefix,
             access_key_id=self.access_key,
             secret_access_key=self.secret_key,

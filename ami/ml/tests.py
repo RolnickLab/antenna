@@ -115,6 +115,51 @@ class TestProcessingServiceAPI(APITestCase):
 
         self.assertEqual(pipelines_queryset.count(), len(response["pipelines"]))
 
+    def test_create_processing_service_without_endpoint_url(self):
+        """Test creating a ProcessingService without endpoint_url (pull mode)"""
+        processing_services_create_url = reverse_with_params("api:processingservice-list")
+        self.client.force_authenticate(user=self.user)
+        processing_service_data = {
+            "project": self.project.pk,
+            "name": "Pull Mode Service",
+            "description": "Service without endpoint",
+        }
+        resp = self.client.post(processing_services_create_url, processing_service_data)
+        self.client.force_authenticate(user=None)
+
+        self.assertEqual(resp.status_code, 201)
+        data = resp.json()
+
+        # Check that endpoint_url is null
+        self.assertIsNone(data["instance"]["endpoint_url"])
+
+        # Check that status indicates no endpoint configured
+        self.assertFalse(data["status"]["request_successful"])
+        self.assertIn("No endpoint URL configured", data["status"]["error"])
+        self.assertIsNone(data["status"]["endpoint_url"])
+
+    def test_get_status_with_null_endpoint_url(self):
+        """Test get_status method when endpoint_url is None"""
+        service = ProcessingService.objects.create(name="Pull Mode Service", endpoint_url=None)
+        service.projects.add(self.project)
+
+        status = service.get_status()
+
+        self.assertFalse(status.request_successful)
+        self.assertIsNone(status.server_live)
+        self.assertIsNone(status.endpoint_url)
+        self.assertIsNotNone(status.error)
+        self.assertIn("No endpoint URL configured", (status.error or ""))
+        self.assertEqual(status.pipelines_online, [])
+
+    def test_get_pipeline_configs_with_null_endpoint_url(self):
+        """Test get_pipeline_configs method when endpoint_url is None"""
+        service = ProcessingService.objects.create(name="Pull Mode Service", endpoint_url=None)
+
+        configs = service.get_pipeline_configs()
+
+        self.assertEqual(configs, [])
+
 
 class TestPipelineWithProcessingService(TestCase):
     def test_run_pipeline_with_errors_from_processing_service(self):
@@ -855,3 +900,182 @@ class TestPostProcessingTasks(TestCase):
                 not_identifiable_taxon,
                 f"Occurrence {occurrence.pk} should have its determination set to 'Not identifiable'.",
             )
+
+
+class TestTaskStateManager(TestCase):
+    """Test TaskStateManager for job progress tracking."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        from django.core.cache import cache
+
+        from ami.ml.orchestration.async_job_state import AsyncJobStateManager
+
+        cache.clear()
+        self.job_id = 123
+        self.manager = AsyncJobStateManager(self.job_id)
+        self.image_ids = ["img1", "img2", "img3", "img4", "img5"]
+
+    def _init_and_verify(self, image_ids):
+        """Helper to initialize job and verify initial state."""
+        self.manager.initialize_job(image_ids)
+        progress = self.manager._commit_update(set(), "process")
+        assert progress is not None
+        self.assertEqual(progress.total, len(image_ids))
+        self.assertEqual(progress.remaining, len(image_ids))
+        self.assertEqual(progress.processed, 0)
+        self.assertEqual(progress.percentage, 0.0)
+        self.assertEqual(progress.failed, 0)
+        return progress
+
+    def test_initialize_job(self):
+        """Test job initialization sets up tracking for all stages."""
+        self._init_and_verify(self.image_ids)
+
+        # Verify both stages are initialized
+        for stage in self.manager.STAGES:
+            progress = self.manager._commit_update(set(), stage)
+            assert progress is not None
+            self.assertEqual(progress.total, len(self.image_ids))
+            self.assertEqual(progress.failed, 0)
+
+    def test_progress_tracking(self):
+        """Test progress updates correctly as images are processed."""
+        self._init_and_verify(self.image_ids)
+
+        # Process 2 images
+        progress = self.manager._commit_update({"img1", "img2"}, "process")
+        assert progress is not None
+        self.assertEqual(progress.remaining, 3)
+        self.assertEqual(progress.processed, 2)
+        self.assertEqual(progress.percentage, 0.4)
+
+        # Process 2 more images
+        progress = self.manager._commit_update({"img3", "img4"}, "process")
+        assert progress is not None
+        self.assertEqual(progress.remaining, 1)
+        self.assertEqual(progress.processed, 4)
+        self.assertEqual(progress.percentage, 0.8)
+
+        # Process last image
+        progress = self.manager._commit_update({"img5"}, "process")
+        assert progress is not None
+        self.assertEqual(progress.remaining, 0)
+        self.assertEqual(progress.processed, 5)
+        self.assertEqual(progress.percentage, 1.0)
+
+    def test_update_state_with_locking(self):
+        """Test update_state acquires lock, updates progress, and releases lock."""
+        from django.core.cache import cache
+
+        self._init_and_verify(self.image_ids)
+
+        # First update should succeed
+        progress = self.manager.update_state({"img1", "img2"}, "process", "task1")
+        assert progress is not None
+        self.assertEqual(progress.processed, 2)
+
+        # Simulate concurrent update by holding the lock
+        lock_key = f"job:{self.job_id}:process_results_lock"
+        cache.set(lock_key, "other_task", timeout=60)
+
+        # Update should fail (lock held by another task)
+        progress = self.manager.update_state({"img3"}, "process", "task1")
+        self.assertIsNone(progress)
+
+        # Release the lock and retry
+        cache.delete(lock_key)
+        progress = self.manager.update_state({"img3"}, "process", "task1")
+        assert progress is not None
+        self.assertEqual(progress.processed, 3)
+
+    def test_stages_independent(self):
+        """Test that different stages track progress independently."""
+        self._init_and_verify(self.image_ids)
+
+        # Update process stage
+        self.manager._commit_update({"img1", "img2"}, "process")
+        progress_process = self.manager._commit_update(set(), "process")
+        assert progress_process is not None
+        self.assertEqual(progress_process.remaining, 3)
+
+        # Results stage should still have all images pending
+        progress_results = self.manager._commit_update(set(), "results")
+        assert progress_results is not None
+        self.assertEqual(progress_results.remaining, 5)
+
+    def test_empty_job(self):
+        """Test handling of job with no images."""
+        self.manager.initialize_job([])
+        progress = self.manager._commit_update(set(), "process")
+        assert progress is not None
+        self.assertEqual(progress.total, 0)
+        self.assertEqual(progress.percentage, 1.0)  # Empty job is 100% complete
+
+    def test_cleanup(self):
+        """Test cleanup removes all tracking keys."""
+        self._init_and_verify(self.image_ids)
+
+        # Verify keys exist
+        progress = self.manager._commit_update(set(), "process")
+        self.assertIsNotNone(progress)
+
+        # Cleanup
+        self.manager.cleanup()
+
+        # Verify keys are gone
+        progress = self.manager._commit_update(set(), "process")
+        self.assertIsNone(progress)
+
+    def test_failed_image_tracking(self):
+        """Test basic failed image tracking with no double-counting on retries."""
+        self._init_and_verify(self.image_ids)
+
+        # Mark 2 images as failed in process stage
+        progress = self.manager._commit_update({"img1", "img2"}, "process", failed_image_ids={"img1", "img2"})
+        assert progress is not None
+        self.assertEqual(progress.failed, 2)
+
+        # Retry same 2 images (fail again) - should not double-count
+        progress = self.manager._commit_update(set(), "process", failed_image_ids={"img1", "img2"})
+        assert progress is not None
+        self.assertEqual(progress.failed, 2)
+
+        # Fail a different image
+        progress = self.manager._commit_update(set(), "process", failed_image_ids={"img3"})
+        assert progress is not None
+        self.assertEqual(progress.failed, 3)
+
+    def test_failed_and_processed_mixed(self):
+        """Test mixed successful and failed processing in same batch."""
+        self._init_and_verify(self.image_ids)
+
+        # Process 2 successfully, 2 fail, 1 remains pending
+        progress = self.manager._commit_update(
+            {"img1", "img2", "img3", "img4"}, "process", failed_image_ids={"img3", "img4"}
+        )
+        assert progress is not None
+        self.assertEqual(progress.processed, 4)
+        self.assertEqual(progress.failed, 2)
+        self.assertEqual(progress.remaining, 1)
+        self.assertEqual(progress.percentage, 0.8)
+
+    def test_cleanup_removes_failed_set(self):
+        """Test that cleanup removes failed image set."""
+        from django.core.cache import cache
+
+        self._init_and_verify(self.image_ids)
+
+        # Add failed images
+        self.manager._commit_update({"img1", "img2"}, "process", failed_image_ids={"img1", "img2"})
+
+        # Verify failed set exists
+        failed_set = cache.get(self.manager._failed_key)
+        self.assertEqual(len(failed_set), 2)
+
+        # Cleanup
+        self.manager.cleanup()
+
+        # Verify failed set is gone
+        failed_set = cache.get(self.manager._failed_key)
+        self.assertIsNone(failed_set)

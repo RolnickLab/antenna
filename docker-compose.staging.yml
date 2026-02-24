@@ -5,7 +5,6 @@
 # 1. The database is a service in the Docker Compose configuration rather than external as in production.
 # 2. Redis is a service in the Docker Compose configuration rather than external as in production.
 # 3. Port 5001 is exposed for the Django application.
-version: "3"
 
 volumes:
   ami_local_postgres_data: {}
@@ -21,6 +20,7 @@ services:
     depends_on:
       - postgres
       - redis
+        # - nats
     env_file:
       - ./.envs/.production/.django
       - ./.envs/.local/.postgres
@@ -29,6 +29,7 @@ services:
     ports:
       - "5001:5000"
     command: /start
+    restart: always
 
   postgres:
     build:
@@ -42,9 +43,11 @@ services:
       - ./data/db/snapshots:/backups
     env_file:
       - ./.envs/.local/.postgres
+    restart: always
 
   redis:
     image: redis:6
+    restart: always
 
   celeryworker:
     <<: *django
@@ -62,3 +65,18 @@ services:
     ports:
       - "5550:5555"
     command: /start-flower
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: ami_local_nats
+    hostname: nats
+    ports:
+      - "4222:4222" # Client port
+      - "8222:8222" # HTTP monitoring port
+    command: ["-js", "-m", "8222"] # Enable JetStream and monitoring
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: always
