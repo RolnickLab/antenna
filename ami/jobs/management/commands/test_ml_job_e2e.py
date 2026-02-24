@@ -13,8 +13,9 @@ class Command(BaseCommand):
     help = "Run end-to-end test of ML job processing"
 
     def add_arguments(self, parser):
-        parser.add_argument("collection_name", type=str, help="SourceImageCollection name")
-        parser.add_argument("pipeline_slug", type=str, help="Pipeline slug")
+        parser.add_argument("--project", type=int, required=True, help="Project ID")
+        parser.add_argument("--collection", type=str, required=True, help="SourceImageCollection name")
+        parser.add_argument("--pipeline", type=str, required=True, help="Pipeline slug")
         parser.add_argument(
             "--dispatch-mode",
             type=str,
@@ -24,8 +25,8 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        collection_name = options["collection_name"]
-        pipeline_slug = options["pipeline_slug"]
+        collection_name = options["collection"]
+        pipeline_slug = options["pipeline"]
         dispatch_mode = options["dispatch_mode"]
 
         # Find collection
