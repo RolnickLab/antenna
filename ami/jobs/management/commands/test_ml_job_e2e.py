@@ -14,7 +14,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--project", type=int, required=True, help="Project ID")
-        parser.add_argument("--collection", type=str, required=True, help="SourceImageCollection name")
+        parser.add_argument("--collection", type=str, required=True, help="SourceImageCollection name or ID")
         parser.add_argument("--pipeline", type=str, required=True, help="Pipeline slug")
         parser.add_argument(
             "--dispatch-mode",
@@ -37,13 +37,14 @@ class Command(BaseCommand):
         except Project.DoesNotExist:
             raise CommandError(f"Project with ID {project_id} not found")
 
-        # Find collection within project
+        # Find collection within project (accept ID or name)
+        lookup = {"pk": int(collection_name)} if collection_name.isdigit() else {"name": collection_name}
         try:
-            collection = SourceImageCollection.objects.get(name=collection_name, project=project)
-            self.stdout.write(self.style.SUCCESS(f"✓ Found collection: {collection.name}"))
+            collection = SourceImageCollection.objects.get(**lookup, project=project)
+            self.stdout.write(self.style.SUCCESS(f"✓ Found collection: {collection.name} (ID: {collection.pk})"))
         except SourceImageCollection.DoesNotExist:
-            available = SourceImageCollection.objects.filter(project=project).values_list("name", flat=True)
-            names = ", ".join(f"'{n}'" for n in available) or "(none)"
+            available = SourceImageCollection.objects.filter(project=project).values_list("pk", "name")
+            names = ", ".join(f"[{pk}] '{n}'" for pk, n in available) or "(none)"
             raise CommandError(
                 f"SourceImageCollection '{collection_name}' not found in project '{project.name}'.\n"
                 f"  Available collections: {names}"
