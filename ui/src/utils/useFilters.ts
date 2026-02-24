@@ -1,30 +1,50 @@
 import { isBefore, isValid } from 'date-fns'
-import { useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
+import { APP_ROUTES } from './constants'
+import { STRING, translate } from './language'
 import { SEARCH_PARAM_KEY_PAGE } from './usePagination'
 
-export const AVAILABLE_FILTERS: {
+interface FilterConfig {
   label: string
   field: string
+  info?: {
+    text: string
+    to?: string
+  }
   validate?: (
     value?: string,
     filters?: { field: string; value?: string }[]
   ) => string | undefined
-}[] = [
+}
+
+export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
   {
     label: 'Include algorithm',
     field: 'algorithm',
   },
   {
-    label: 'Collection',
-    field: 'collection', // This is for viewing Occurrences by collection
+    label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
+    field: 'collection', // This is for viewing occurrences by capture set. @TODO: Can we update this key to "capture_set_id" to streamline?
+    info: {
+      text: translate(STRING.TOOLTIP_CAPTURE_SET),
+      to: APP_ROUTES.CAPTURE_SETS({ projectId }),
+    },
   },
   {
-    label: 'Collection',
-    field: 'source_image_collection', // This is for viewing Jobs by collection. @TODO: Can we update this key to "collection" to streamline?
+    label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
+    field: 'source_image_collection', // This is for viewing jobs by capture set. @TODO: Can we update this key to "capture_set_id" to streamline?
+    info: {
+      text: translate(STRING.TOOLTIP_CAPTURE_SET),
+      to: APP_ROUTES.CAPTURE_SETS({ projectId }),
+    },
   },
   {
-    label: 'Collection',
-    field: 'collections', // This is for viewing Captures by collection @TODO: Can we update this key to "collection" to streamline?
+    label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
+    field: 'collections', // This is for viewing captures by capture set. @TODO: Can we update this key to "capture_set_id" to streamline?
+    info: {
+      text: translate(STRING.TOOLTIP_CAPTURE_SET),
+      to: APP_ROUTES.CAPTURE_SETS({ projectId }),
+    },
   },
   {
     label: 'Station',
@@ -69,8 +89,8 @@ export const AVAILABLE_FILTERS: {
     },
   },
   {
-    label: 'Source image',
-    field: 'detections__source_image', // This is for viewing Occurrences by source image. @TODO: Can we update this key to "source_image" to streamline?
+    label: translate(STRING.FIELD_LABEL_CAPTURE),
+    field: 'detections__source_image', // This is for viewing occurrences by capture. @TODO: Can we update this key to "capture_id" to streamline?
   },
   {
     label: 'Session',
@@ -105,8 +125,8 @@ export const AVAILABLE_FILTERS: {
     field: 'not_taxa_list_id',
   },
   {
-    label: 'Source image',
-    field: 'source_image_single', // This is for viewing Jobs by source image. @TODO: Can we update this key to "source_image" to streamline?
+    label: translate(STRING.FIELD_LABEL_CAPTURE),
+    field: 'source_image_single', // This is for viewing jobs by capture. @TODO: Can we update this key to "capture_id" to streamline?
   },
   {
     label: 'Status',
@@ -135,9 +155,11 @@ export const AVAILABLE_FILTERS: {
 ]
 
 export const useFilters = (defaultFilters?: { [field: string]: string }) => {
+  const { projectId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
+  const availableFilters = AVAILABLE_FILTERS(projectId as string)
 
-  const _filters = AVAILABLE_FILTERS.map(({ field, ...rest }) => {
+  const _filters = availableFilters.map(({ field, ...rest }) => {
     const value = searchParams.get(field) ?? defaultFilters?.[field]
 
     return {
@@ -160,7 +182,7 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   const activeFilters = filters.filter((filter) => !!filter.value?.length)
 
   const addFilter = (field: string, value: string) => {
-    if (AVAILABLE_FILTERS.some((filter) => filter.field === field)) {
+    if (availableFilters.some((filter) => filter.field === field)) {
       searchParams.set(field, value)
 
       // Reset page param if set, when filters are updated
@@ -173,7 +195,7 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   }
 
   const clearFilter = (field: string) => {
-    if (AVAILABLE_FILTERS.some((filter) => filter.field === field)) {
+    if (availableFilters.some((filter) => filter.field === field)) {
       searchParams.delete(field)
 
       // Reset page param if set, when filters are updated

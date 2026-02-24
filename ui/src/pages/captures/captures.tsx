@@ -64,6 +64,7 @@ export const Captures = () => {
       </div>
       <div className="w-full overflow-hidden">
         <PageHeader
+          tooltip={translate(STRING.TOOLTIP_CAPTURE)}
           docsLink={DOCS_LINKS.UPLOADING_DATA}
           isFetching={isFetching}
           isLoading={isLoading}

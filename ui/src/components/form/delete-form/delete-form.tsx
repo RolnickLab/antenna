@@ -38,7 +38,7 @@ export const DeleteForm = ({
             <span>{translate(STRING.CANCEL)}</span>
           </Button>
           <Button
-            disabled={isSuccess}
+            disabled={isLoading || isSuccess}
             onClick={onSubmit}
             size="small"
             variant="destructive"

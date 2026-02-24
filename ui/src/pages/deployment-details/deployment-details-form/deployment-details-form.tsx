@@ -145,7 +145,7 @@ const FormStepper = () => {
         },
         {
           id: Section.SourceImages,
-          label: translate(STRING.FIELD_LABEL_SOURCE_IMAGES),
+          label: translate(STRING.FIELD_LABEL_CAPTURES),
         },
       ]}
       currentItemId={currentSection}

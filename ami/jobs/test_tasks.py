@@ -17,7 +17,7 @@ from ami.jobs.models import Job, JobDispatchMode, JobState, MLJob
 from ami.jobs.tasks import process_nats_pipeline_result
 from ami.main.models import Detection, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
-from ami.ml.orchestration.task_state import TaskStateManager, _lock_key
+from ami.ml.orchestration.async_job_state import AsyncJobStateManager, _lock_key
 from ami.ml.schemas import PipelineResultsError, PipelineResultsResponse, SourceImageResponse
 from ami.users.models import User
 
@@ -64,7 +64,7 @@ class TestProcessNatsPipelineResultError(TestCase):
 
         # Initialize state manager
         self.image_ids = [str(img.pk) for img in self.images]
-        self.state_manager = TaskStateManager(self.job.pk)
+        self.state_manager = AsyncJobStateManager(self.job.pk)
         self.state_manager.initialize_job(self.image_ids)
 
     def tearDown(self):
@@ -90,7 +90,7 @@ class TestProcessNatsPipelineResultError(TestCase):
         self, job_id: int, expected_processed: int, expected_total: int, stage: str = "process"
     ):
         """Assert TaskStateManager state is correct."""
-        manager = TaskStateManager(job_id)
+        manager = AsyncJobStateManager(job_id)
         progress = manager.get_progress(stage)
         self.assertIsNotNone(progress, f"Progress not found for stage '{stage}'")
         self.assertEqual(progress.processed, expected_processed)
@@ -157,7 +157,7 @@ class TestProcessNatsPipelineResultError(TestCase):
 
         # Assert: Progress was NOT updated (empty set of processed images)
         # Since no image_id was provided, processed_image_ids = set()
-        manager = TaskStateManager(self.job.pk)
+        manager = AsyncJobStateManager(self.job.pk)
         progress = manager.get_progress("process")
         self.assertEqual(progress.processed, 0)  # No images marked as processed
 
@@ -208,7 +208,7 @@ class TestProcessNatsPipelineResultError(TestCase):
         )
 
         # Assert: All 3 images marked as processed in TaskStateManager
-        manager = TaskStateManager(self.job.pk)
+        manager = AsyncJobStateManager(self.job.pk)
         process_progress = manager.get_progress("process")
         self.assertIsNotNone(process_progress)
         self.assertEqual(process_progress.processed, 3)
@@ -266,7 +266,7 @@ class TestProcessNatsPipelineResultError(TestCase):
             )
 
         # Assert: Progress was NOT updated (lock not acquired)
-        manager = TaskStateManager(self.job.pk)
+        manager = AsyncJobStateManager(self.job.pk)
         progress = manager.get_progress("process")
         self.assertEqual(progress.processed, 0)
 
@@ -342,7 +342,7 @@ class TestResultEndpointWithError(APITestCase):
         )
 
         # Initialize state manager
-        state_manager = TaskStateManager(self.job.pk)
+        state_manager = AsyncJobStateManager(self.job.pk)
         state_manager.initialize_job([str(self.image.pk)])
 
     def tearDown(self):
