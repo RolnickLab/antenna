@@ -2,8 +2,15 @@
 Internal progress tracking for async (NATS) job processing, backed by Redis.
 
 Multiple Celery workers process image batches concurrently and report progress
-here using Redis for atomic updates with locking. This module is purely internal
-— nothing outside the worker pipeline reads from it directly.
+here using Redis native set operations. No locking is required because:
+
+  - SREM (remove processed images from pending set) is atomic per call
+  - SADD (add to failed set) is atomic per call
+  - SCARD (read set size) is O(1) without deserializing members
+
+Workers update state independently via a single Redis pipeline round-trip.
+This module is purely internal — nothing outside the worker pipeline reads
+from it directly.
 
 How this relates to the Job model (ami/jobs/models.py):
 
@@ -27,7 +34,7 @@ Flow: NATS result → AsyncJobStateManager.update_state() (Redis, internal)
 import logging
 from dataclasses import dataclass
 
-from django.core.cache import cache
+from django_redis import get_redis_connection
 
 logger = logging.getLogger(__name__)
 
@@ -50,17 +57,13 @@ class JobStateProgress:
     failed: int = 0  # source images that returned an error from the processing service
 
 
-def _lock_key(job_id: int) -> str:
-    return f"job:{job_id}:process_results_lock"
-
-
 class AsyncJobStateManager:
     """
     Manages real-time job progress in Redis for concurrent NATS workers.
 
-    Each job has per-stage pending image lists and a shared failed image set.
-    Workers acquire a Redis lock before mutating state, ensuring atomic updates
-    even when multiple Celery tasks process batches in parallel.
+    Each job has per-stage pending image sets and a shared failed image set,
+    all stored as native Redis sets. Workers update state via atomic SREM/SADD
+    commands — no locking needed.
 
     The results are ephemeral — _update_job_progress() in ami/jobs/tasks.py
     copies each snapshot into the persistent Job.progress JSONB field.
@@ -70,16 +73,13 @@ class AsyncJobStateManager:
     STAGES = ["process", "results"]
 
     def __init__(self, job_id: int):
-        """
-        Initialize the task state manager for a specific job.
-
-        Args:
-            job_id: The job primary key
-        """
         self.job_id = job_id
         self._pending_key = f"job:{job_id}:pending_images"
         self._total_key = f"job:{job_id}:pending_images_total"
         self._failed_key = f"job:{job_id}:failed_images"
+
+    def _get_redis(self):
+        return get_redis_connection("default")
 
     def initialize_job(self, image_ids: list[str]) -> None:
         """
@@ -88,13 +88,17 @@ class AsyncJobStateManager:
         Args:
             image_ids: List of image IDs that need to be processed
         """
-        for stage in self.STAGES:
-            cache.set(self._get_pending_key(stage), image_ids, timeout=self.TIMEOUT)
-
-        # Initialize failed images set for process stage only
-        cache.set(self._failed_key, set(), timeout=self.TIMEOUT)
-
-        cache.set(self._total_key, len(image_ids), timeout=self.TIMEOUT)
+        redis = self._get_redis()
+        with redis.pipeline() as pipe:
+            for stage in self.STAGES:
+                pending_key = self._get_pending_key(stage)
+                pipe.delete(pending_key)
+                if image_ids:
+                    pipe.sadd(pending_key, *image_ids)
+                    pipe.expire(pending_key, self.TIMEOUT)
+            pipe.delete(self._failed_key)
+            pipe.set(self._total_key, len(image_ids), ex=self.TIMEOUT)
+            pipe.execute()
 
     def _get_pending_key(self, stage: str) -> str:
         return f"{self._pending_key}:{stage}"
@@ -103,100 +107,81 @@ class AsyncJobStateManager:
         self,
         processed_image_ids: set[str],
         stage: str,
-        request_id: str,
         failed_image_ids: set[str] | None = None,
-    ) -> None | JobStateProgress:
+    ) -> "JobStateProgress | None":
         """
-        Update the task state with newly processed images.
+        Atomically update job state with newly processed images.
+
+        Uses a Redis pipeline (single round-trip). SREM and SADD are each
+        individually atomic; the pipeline batches them with SCARD/GET to avoid
+        multiple round-trips. Workers can call this concurrently — no lock needed.
 
         Args:
             processed_image_ids: Set of image IDs that have just been processed
             stage: The processing stage ("process" or "results")
-            request_id: Unique identifier for this processing request
-            detections_count: Number of detections to add to cumulative count
-            classifications_count: Number of classifications to add to cumulative count
-            captures_count: Number of captures to add to cumulative count
             failed_image_ids: Set of image IDs that failed processing (optional)
+
+        Returns:
+            JobStateProgress snapshot, or None if Redis state is missing
+            (job expired or not yet initialized).
         """
-        # Create a unique lock key for this job
-        lock_key = _lock_key(self.job_id)
-        lock_timeout = 360  # 6 minutes (matches task time_limit)
-        lock_acquired = cache.add(lock_key, request_id, timeout=lock_timeout)
-        if not lock_acquired:
+        redis = self._get_redis()
+        pending_key = self._get_pending_key(stage)
+
+        with redis.pipeline() as pipe:
+            if processed_image_ids:
+                pipe.srem(pending_key, *processed_image_ids)
+            if failed_image_ids:
+                pipe.sadd(self._failed_key, *failed_image_ids)
+            pipe.scard(pending_key)
+            pipe.scard(self._failed_key)
+            pipe.get(self._total_key)
+            results = pipe.execute()
+
+        # Last 3 results are always scard(pending), scard(failed), get(total)
+        # regardless of whether SREM/SADD appear at the front.
+        remaining, failed_count, total_raw = results[-3], results[-2], results[-1]
+
+        if total_raw is None:
             return None
 
-        try:
-            # Update progress tracking in Redis
-            progress_info = self._commit_update(processed_image_ids, stage, failed_image_ids)
-            return progress_info
-        finally:
-            # Always release the lock when done
-            current_lock_value = cache.get(lock_key)
-            # Only delete if we still own the lock (prevents race condition)
-            if current_lock_value == request_id:
-                cache.delete(lock_key)
-                logger.debug(f"Released lock for job {self.job_id}, task {request_id}")
-
-    def get_progress(self, stage: str) -> JobStateProgress | None:
-        """Read-only progress snapshot for the given stage. Does not acquire a lock or mutate state."""
-        pending_images = cache.get(self._get_pending_key(stage))
-        total_images = cache.get(self._total_key)
-        if pending_images is None or total_images is None:
-            return None
-        remaining = len(pending_images)
-        processed = total_images - remaining
-        percentage = float(processed) / total_images if total_images > 0 else 1.0
-        failed_set = cache.get(self._failed_key) or set()
-        return JobStateProgress(
-            remaining=remaining,
-            total=total_images,
-            processed=processed,
-            percentage=percentage,
-            failed=len(failed_set),
-        )
-
-    def _commit_update(
-        self,
-        processed_image_ids: set[str],
-        stage: str,
-        failed_image_ids: set[str] | None = None,
-    ) -> JobStateProgress | None:
-        """
-        Update pending images and return progress. Must be called under lock.
-
-        Removes processed_image_ids from the pending set and persists the update.
-        """
-        pending_images = cache.get(self._get_pending_key(stage))
-        total_images = cache.get(self._total_key)
-        if pending_images is None or total_images is None:
-            return None
-        remaining_images = [img_id for img_id in pending_images if img_id not in processed_image_ids]
-        assert len(pending_images) >= len(remaining_images)
-        cache.set(self._get_pending_key(stage), remaining_images, timeout=self.TIMEOUT)
-
-        remaining = len(remaining_images)
-        processed = total_images - remaining
-        percentage = float(processed) / total_images if total_images > 0 else 1.0
-
-        # Update failed images set if provided
-        if failed_image_ids:
-            existing_failed = cache.get(self._failed_key) or set()
-            updated_failed = existing_failed | failed_image_ids  # Union to prevent duplicates
-            cache.set(self._failed_key, updated_failed, timeout=self.TIMEOUT)
-            failed_set = updated_failed
-        else:
-            failed_set = cache.get(self._failed_key) or set()
-
-        failed_count = len(failed_set)
+        total = int(total_raw)
+        processed = total - remaining
+        percentage = float(processed) / total if total > 0 else 1.0
 
         logger.info(
-            f"Pending images from Redis for job {self.job_id} {stage}: "
-            f"{remaining}/{total_images}: {percentage*100}%"
+            f"Pending images from Redis for job {self.job_id} {stage}: " f"{remaining}/{total}: {percentage*100}%"
         )
 
         return JobStateProgress(
             remaining=remaining,
-            total=total_images,
+            total=total,
+            processed=processed,
+            percentage=percentage,
+            failed=failed_count,
+        )
+
+    def get_progress(self, stage: str) -> "JobStateProgress | None":
+        """Read-only progress snapshot for the given stage."""
+        redis = self._get_redis()
+        pending_key = self._get_pending_key(stage)
+
+        with redis.pipeline() as pipe:
+            pipe.scard(pending_key)
+            pipe.scard(self._failed_key)
+            pipe.get(self._total_key)
+            remaining, failed_count, total_raw = pipe.execute()
+
+        if total_raw is None:
+            return None
+
+        total = int(total_raw)
+        processed = total - remaining
+        percentage = float(processed) / total if total > 0 else 1.0
+
+        return JobStateProgress(
+            remaining=remaining,
+            total=total,
             processed=processed,
             percentage=percentage,
             failed=failed_count,
@@ -206,7 +191,7 @@ class AsyncJobStateManager:
         """
         Delete all Redis keys associated with this job.
         """
-        for stage in self.STAGES:
-            cache.delete(self._get_pending_key(stage))
-        cache.delete(self._failed_key)
-        cache.delete(self._total_key)
+        redis = self._get_redis()
+        keys = [self._get_pending_key(stage) for stage in self.STAGES]
+        keys += [self._failed_key, self._total_key]
+        redis.delete(*keys)

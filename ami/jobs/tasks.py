@@ -84,15 +84,10 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
 
     state_manager = AsyncJobStateManager(job_id)
 
-    progress_info = state_manager.update_state(
-        processed_image_ids, stage="process", request_id=self.request.id, failed_image_ids=failed_image_ids
-    )
+    progress_info = state_manager.update_state(processed_image_ids, stage="process", failed_image_ids=failed_image_ids)
     if not progress_info:
-        logger.warning(
-            f"Another task is already processing results for job {job_id}. "
-            f"Retrying task {self.request.id} in 5 seconds..."
-        )
-        raise self.retry(countdown=5, max_retries=10)
+        logger.error(f"Redis state missing for job {job_id} — job may have been cleaned up prematurely.")
+        return
 
     try:
         complete_state = JobState.SUCCESS
@@ -150,15 +145,11 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         progress_info = state_manager.update_state(
             processed_image_ids,
             stage="results",
-            request_id=self.request.id,
         )
 
         if not progress_info:
-            logger.warning(
-                f"Another task is already processing results for job {job_id}. "
-                f"Retrying task {self.request.id} in 5 seconds..."
-            )
-            raise self.retry(countdown=5, max_retries=10)
+            logger.error(f"Redis state missing for job {job_id} — job may have been cleaned up prematurely.")
+            return
 
         # update complete state based on latest progress info after saving results
         complete_state = JobState.SUCCESS
@@ -255,6 +246,15 @@ def _update_job_progress(
             state_params["detections"] = current_detections + new_detections
             state_params["classifications"] = current_classifications + new_classifications
             state_params["captures"] = current_captures + new_captures
+
+        # Don't overwrite a stage with a stale progress value.
+        # This guards against the race where a slower worker calls _update_job_progress
+        # after a faster worker has already marked further progress
+        try:
+            existing_stage = job.progress.get_stage(stage)
+            progress_percentage = max(existing_stage.progress, progress_percentage)
+        except (ValueError, AttributeError):
+            pass  # Stage doesn't exist yet; proceed normally
 
         job.progress.update_stage(
             stage,
