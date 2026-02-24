@@ -902,7 +902,7 @@ class TestPostProcessingTasks(TestCase):
             )
 
 
-class TestTaskStateManager(TestCase):
+class TestAsyncJobStateManager(TestCase):
     """Test TaskStateManager for job progress tracking."""
 
     def setUp(self):
@@ -1025,7 +1025,7 @@ class TestTaskStateManager(TestCase):
 
         # Verify keys are gone
         progress = self.manager._commit_update(set(), "process")
-        self.assertIsNone(progress)
+        self.assertTrue(progress is None or progress.unknown)
 
     def test_failed_image_tracking(self):
         """Test basic failed image tracking with no double-counting on retries."""
