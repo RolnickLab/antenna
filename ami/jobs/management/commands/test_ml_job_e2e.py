@@ -42,14 +42,24 @@ class Command(BaseCommand):
             collection = SourceImageCollection.objects.get(name=collection_name, project=project)
             self.stdout.write(self.style.SUCCESS(f"✓ Found collection: {collection.name}"))
         except SourceImageCollection.DoesNotExist:
-            raise CommandError(f"SourceImageCollection '{collection_name}' not found in project '{project.name}'")
+            available = SourceImageCollection.objects.filter(project=project).values_list("name", flat=True)
+            names = ", ".join(f"'{n}'" for n in available) or "(none)"
+            raise CommandError(
+                f"SourceImageCollection '{collection_name}' not found in project '{project.name}'.\n"
+                f"  Available collections: {names}"
+            )
 
         # Find pipeline linked to project
         try:
             pipeline = Pipeline.objects.get(slug=pipeline_slug, projects=project)
             self.stdout.write(self.style.SUCCESS(f"✓ Found pipeline: {pipeline.name} (v{pipeline.version})"))
         except Pipeline.DoesNotExist:
-            raise CommandError(f"Pipeline '{pipeline_slug}' not found for project '{project.name}'")
+            available = Pipeline.objects.filter(projects=project).values_list("slug", flat=True)
+            slugs = ", ".join(f"'{s}'" for s in available) or "(none)"
+            raise CommandError(
+                f"Pipeline '{pipeline_slug}' not found for project '{project.name}'.\n"
+                f"  Available pipelines: {slugs}"
+            )
 
         # Create job
         job = Job.objects.create(
