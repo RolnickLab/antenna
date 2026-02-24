@@ -24,11 +24,11 @@ class Command(BaseCommand):
             help="Job dispatch mode",
         )
 
-    def handle(self, *args, **options):
+    def _resolve_inputs(self, options):
+        """Resolve and validate project, collection, and pipeline from command options."""
         project_id = options["project"]
         collection_name = options["collection"]
         pipeline_slug = options["pipeline"]
-        dispatch_mode = options["dispatch_mode"]
 
         # Find project
         try:
@@ -61,6 +61,12 @@ class Command(BaseCommand):
                 f"Pipeline '{pipeline_slug}' not found for project '{project.name}'.\n"
                 f"  Available pipelines: {slugs}"
             )
+
+        return project, collection, pipeline
+
+    def handle(self, *args, **options):
+        project, collection, pipeline = self._resolve_inputs(options)
+        dispatch_mode = options["dispatch_mode"]
 
         # Create job
         job = Job.objects.create(
