@@ -107,9 +107,9 @@ class Command(BaseCommand):
         self.stdout.write(f"\n\n{'='*50}")
 
         if job.status == JobState.SUCCESS:
-            self.stdout.write(self.style.SUCCESS(f"✅ Job completed successfully"))
+            self.stdout.write(self.style.SUCCESS("✅ Job completed successfully"))
         elif job.status == JobState.FAILURE:
-            self.stdout.write(self.style.ERROR(f"❌ Job failed"))
+            self.stdout.write(self.style.ERROR("❌ Job failed"))
         else:
             self.stdout.write(self.style.WARNING(f"⚠ Job ended with status: {job.status}"))
 
@@ -121,7 +121,7 @@ class Command(BaseCommand):
             for stage in job.progress.stages:
                 self.stdout.write(f"  {stage.name}: {stage.progress*100:.1f}% ({stage.status})")
                 for param in stage.params:
-                    if param.value:
+                    if param.value is not None and param.value != "":
                         self.stdout.write(f"    {param.name}: {param.value}")
 
         self.stdout.write(f"\n🔗 Job ID: {job.pk}")
