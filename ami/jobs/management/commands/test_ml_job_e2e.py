@@ -5,7 +5,7 @@ import time
 from django.core.management.base import BaseCommand, CommandError
 
 from ami.jobs.models import Job, JobDispatchMode, JobState
-from ami.main.models import SourceImageCollection
+from ami.main.models import Project, SourceImageCollection
 from ami.ml.models import Pipeline
 
 
@@ -25,29 +25,36 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        project_id = options["project"]
         collection_name = options["collection"]
         pipeline_slug = options["pipeline"]
         dispatch_mode = options["dispatch_mode"]
 
-        # Find collection
+        # Find project
         try:
-            collection = SourceImageCollection.objects.get(name=collection_name)
-            self.stdout.write(self.style.SUCCESS(f"✓ Found collection: {collection.name}"))
-            self.stdout.write(f"  Project: {collection.project.name}")
-        except SourceImageCollection.DoesNotExist:
-            raise CommandError(f"SourceImageCollection '{collection_name}' not found")
+            project = Project.objects.get(pk=project_id)
+            self.stdout.write(self.style.SUCCESS(f"✓ Found project: {project.name} (ID: {project.pk})"))
+        except Project.DoesNotExist:
+            raise CommandError(f"Project with ID {project_id} not found")
 
-        # Find pipeline
+        # Find collection within project
         try:
-            pipeline = Pipeline.objects.get(slug=pipeline_slug)
+            collection = SourceImageCollection.objects.get(name=collection_name, project=project)
+            self.stdout.write(self.style.SUCCESS(f"✓ Found collection: {collection.name}"))
+        except SourceImageCollection.DoesNotExist:
+            raise CommandError(f"SourceImageCollection '{collection_name}' not found in project '{project.name}'")
+
+        # Find pipeline linked to project
+        try:
+            pipeline = Pipeline.objects.get(slug=pipeline_slug, projects=project)
             self.stdout.write(self.style.SUCCESS(f"✓ Found pipeline: {pipeline.name} (v{pipeline.version})"))
         except Pipeline.DoesNotExist:
-            raise CommandError(f"Pipeline '{pipeline_slug}' not found")
+            raise CommandError(f"Pipeline '{pipeline_slug}' not found for project '{project.name}'")
 
         # Create job
         job = Job.objects.create(
             name=f"E2E Test: {collection.name} -> {pipeline.name} ({dispatch_mode})",
-            project=collection.project,
+            project=project,
             source_image_collection=collection,
             pipeline=pipeline,
             job_type_key="ml",
