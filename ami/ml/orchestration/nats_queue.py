@@ -52,7 +52,7 @@ class TaskQueueManager:
     Args:
         nats_url: NATS server URL. Falls back to settings.NATS_URL, then "nats://nats:4222".
         max_ack_pending: Max unacknowledged messages per consumer. Falls back to
-            settings.NATS_MAX_ACK_PENDING, then 100.
+            settings.NATS_MAX_ACK_PENDING, then 1000.
 
     Use as an async context manager:
         async with TaskQueueManager() as manager:
