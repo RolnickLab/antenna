@@ -64,7 +64,7 @@ class TaskQueueManager:
     def __init__(self, nats_url: str | None = None, max_ack_pending: int | None = None):
         self.nats_url = nats_url or getattr(settings, "NATS_URL", "nats://nats:4222")
         self.max_ack_pending = (
-            max_ack_pending if max_ack_pending is not None else getattr(settings, "NATS_MAX_ACK_PENDING", 100)
+            max_ack_pending if max_ack_pending is not None else getattr(settings, "NATS_MAX_ACK_PENDING", 1000)
         )
         self.nc: nats.NATS | None = None
         self.js: JetStreamContext | None = None
