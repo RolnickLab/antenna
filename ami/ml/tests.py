@@ -970,18 +970,15 @@ class TestTaskStateManager(TestCase):
         self._init_and_verify(self.image_ids)
 
         # Three workers process disjoint image sets truly concurrently
-        errors: list[Exception] = []
+        errors: list[BaseException] = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             futures = [
                 executor.submit(self.manager.update_state, {"img1", "img2"}, "process"),
                 executor.submit(self.manager.update_state, {"img3"}, "process"),
                 executor.submit(self.manager.update_state, {"img4", "img5"}, "process"),
             ]
-            for future in concurrent.futures.as_completed(futures):
-                try:
-                    future.result()
-                except Exception as e:
-                    errors.append(e)
+            _errors = [f.exception() for f in concurrent.futures.as_completed(futures)]
+            errors = [e for e in _errors if e is not None]
 
         self.assertEqual(errors, [], f"Concurrent workers raised exceptions: {errors}")
 
