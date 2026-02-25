@@ -86,10 +86,9 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
 
     progress_info = state_manager.update_state(processed_image_ids, stage="process", failed_image_ids=failed_image_ids)
     if not progress_info:
-        logger.error(f"Redis state missing for job {job_id} — job may have been cleaned up prematurely.")
-        # Acknowledge the task to prevent retries, since we don't know the state
+        # Acknowledge the task to prevent retries
         _ack_task_via_nats(reply_subject, logger)
-        # TODO: cancel the job to fail fast once PR #1144 is merged
+        _cancel_job_on_missing_state(job_id, logger)
         return
 
     try:
@@ -151,8 +150,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         )
 
         if not progress_info:
-            logger.error(f"Redis state missing for job {job_id} — job may have been cleaned up prematurely.")
-            # TODO: cancel the job to fail fast once PR #1144 is merged
+            _cancel_job_on_missing_state(job_id, logger)
             return
 
         # update complete state based on latest progress info after saving results
@@ -174,6 +172,18 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         job.logger.error(
             f"Failed to process pipeline result for job {job_id}: {e}. NATS will redeliver the task message."
         )
+
+
+def _cancel_job_on_missing_state(job_id: int, logger: logging.Logger) -> None:
+    from ami.jobs.models import Job, JobState
+
+    logger.error(f"Redis state missing for job {job_id} — job may have been cleaned up prematurely.")
+
+    # cancel job (fail fast) since we don't know the state
+    job = Job.objects.get(pk=job_id)
+    if job.status != JobState.CANCELING and job.status not in JobState.final_states():
+        job.logger.error(f"Job {job_id} is not canceling or finished, but Redis state is missing. ")
+        job.cancel()
 
 
 def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> None:

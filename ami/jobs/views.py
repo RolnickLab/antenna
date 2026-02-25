@@ -238,7 +238,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             raise ValidationError("Only async_api jobs have fetchable tasks")
 
         # Don't fetch tasks from completed/failed/revoked jobs
-        if job.status in JobState.final_states():
+        if job.status in JobState.final_states() or job.status == JobState.CANCELING:
             return Response({"tasks": []})
 
         # Validate that the job has a pipeline
