@@ -87,6 +87,9 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
     progress_info = state_manager.update_state(processed_image_ids, stage="process", failed_image_ids=failed_image_ids)
     if not progress_info:
         logger.error(f"Redis state missing for job {job_id} — job may have been cleaned up prematurely.")
+        # Acknowledge the task to prevent retries, since we don't know the state
+        _ack_task_via_nats(reply_subject, logger)
+        # TODO: cancel the job to fail fast once PR #1144 is merged
         return
 
     try:
@@ -149,6 +152,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
 
         if not progress_info:
             logger.error(f"Redis state missing for job {job_id} — job may have been cleaned up prematurely.")
+            # TODO: cancel the job to fail fast once PR #1144 is merged
             return
 
         # update complete state based on latest progress info after saving results
@@ -253,6 +257,9 @@ def _update_job_progress(
         try:
             existing_stage = job.progress.get_stage(stage)
             progress_percentage = max(existing_stage.progress, progress_percentage)
+            # JobState is ordered with FAILURE < SUCCESS, so max() will keep it at FAILURE
+            # if any worker reported failure
+            complete_state = max(existing_stage.status, complete_state)
         except (ValueError, AttributeError):
             pass  # Stage doesn't exist yet; proceed normally
 

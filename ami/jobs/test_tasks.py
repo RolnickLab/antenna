@@ -6,6 +6,7 @@ is received instead of successful pipeline results.
 """
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from django.core.cache import cache
@@ -246,26 +247,29 @@ class TestProcessNatsPipelineResultError(TestCase):
         """
         mock_manager = self._setup_mock_nats(mock_manager_class)
 
-        # Worker 1 processes images[0]
-        result_1 = process_nats_pipeline_result.apply(
-            kwargs={
-                "job_id": self.job.pk,
-                "result_data": self._create_error_result(image_id=str(self.images[0].pk)),
-                "reply_subject": "reply.concurrent.1",
-            }
-        )
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            # Worker 1 processes images[0]
+            result_1 = executor.submit(
+                process_nats_pipeline_result.apply,
+                kwargs={
+                    "job_id": self.job.pk,
+                    "result_data": self._create_error_result(image_id=str(self.images[0].pk)),
+                    "reply_subject": "reply.concurrent.1",
+                },
+            )
 
-        # Worker 2 processes images[1] — no retry, no lock to wait for
-        result_2 = process_nats_pipeline_result.apply(
-            kwargs={
-                "job_id": self.job.pk,
-                "result_data": self._create_error_result(image_id=str(self.images[1].pk)),
-                "reply_subject": "reply.concurrent.2",
-            }
-        )
+            # Worker 2 processes images[1] — no retry, no lock to wait for
+            result_2 = executor.submit(
+                process_nats_pipeline_result.apply,
+                kwargs={
+                    "job_id": self.job.pk,
+                    "result_data": self._create_error_result(image_id=str(self.images[1].pk)),
+                    "reply_subject": "reply.concurrent.2",
+                },
+            )
 
-        self.assertTrue(result_1.successful())
-        self.assertTrue(result_2.successful())
+        self.assertTrue(result_1.result().successful())
+        self.assertTrue(result_2.result().successful())
 
         # Both images should be marked as processed
         manager = AsyncJobStateManager(self.job.pk)
