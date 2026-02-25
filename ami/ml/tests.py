@@ -1,3 +1,4 @@
+import concurrent.futures
 import datetime
 import pathlib
 import unittest
@@ -965,29 +966,35 @@ class TestTaskStateManager(TestCase):
         self.assertEqual(progress.percentage, 1.0)
 
     def test_update_state_concurrent(self):
-        """Test that concurrent workers update state independently without blocking."""
+        """Test that concurrent workers update state correctly without data races."""
         self._init_and_verify(self.image_ids)
 
-        # Worker 1 processes img1, img2 — succeeds immediately
-        progress_1 = self.manager.update_state({"img1", "img2"}, "process")
-        assert progress_1 is not None
-        self.assertEqual(progress_1.processed, 2)
+        # Three workers process disjoint image sets truly concurrently
+        errors: list[Exception] = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            futures = [
+                executor.submit(self.manager.update_state, {"img1", "img2"}, "process"),
+                executor.submit(self.manager.update_state, {"img3"}, "process"),
+                executor.submit(self.manager.update_state, {"img4", "img5"}, "process"),
+            ]
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    future.result()
+                except Exception as e:
+                    errors.append(e)
 
-        # Worker 2 processes img3 — no lock to wait for, also succeeds immediately
-        progress_2 = self.manager.update_state({"img3"}, "process")
-        assert progress_2 is not None
-        self.assertEqual(progress_2.processed, 3)
+        self.assertEqual(errors, [], f"Concurrent workers raised exceptions: {errors}")
 
-        # Final state reflects both updates
+        # Final state reflects all concurrent updates
         final = self.manager.get_progress("process")
         assert final is not None
-        self.assertEqual(final.processed, 3)
-        self.assertEqual(final.remaining, 2)
+        self.assertEqual(final.processed, 5)
+        self.assertEqual(final.remaining, 0)
 
         # SREM is idempotent: retrying already-processed images doesn't change counts
         progress_retry = self.manager.update_state({"img1", "img2"}, "process")
         assert progress_retry is not None
-        self.assertEqual(progress_retry.processed, 3)
+        self.assertEqual(progress_retry.processed, 5)
 
     def test_stages_independent(self):
         """Test that different stages track progress independently."""
