@@ -903,7 +903,7 @@ class TestPostProcessingTasks(TestCase):
 
 
 class TestAsyncJobStateManager(TestCase):
-    """Test TaskStateManager for job progress tracking."""
+    """Test AsyncJobStateManager for job progress tracking."""
 
     def setUp(self):
         """Set up test fixtures."""

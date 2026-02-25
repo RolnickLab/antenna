@@ -97,7 +97,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
     if progress_info.unknown:
         logger.warning(
             f"Progress info is unknown for job {job_id} when processing results. Job may be cancelled."
-            f"Or this could be a transient Redis error and the NATS task will be retried."
+            f" Or this could be a transient Redis error and the NATS task will be retried."
         )
         return
 
