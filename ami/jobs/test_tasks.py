@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TransactionTestCase
 from rest_framework.test import APITestCase
 
 from ami.base.serializers import reverse_with_params
@@ -25,7 +25,7 @@ from ami.users.models import User
 logger = logging.getLogger(__name__)
 
 
-class TestProcessNatsPipelineResultError(TestCase):
+class TestProcessNatsPipelineResultError(TransactionTestCase):
     """E2E tests for process_nats_pipeline_result with error handling."""
 
     def setUp(self):

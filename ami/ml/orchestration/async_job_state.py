@@ -35,6 +35,7 @@ import logging
 from dataclasses import dataclass
 
 from django_redis import get_redis_connection
+from redis.exceptions import RedisError
 
 logger = logging.getLogger(__name__)
 
@@ -88,17 +89,21 @@ class AsyncJobStateManager:
         Args:
             image_ids: List of image IDs that need to be processed
         """
-        redis = self._get_redis()
-        with redis.pipeline() as pipe:
-            for stage in self.STAGES:
-                pending_key = self._get_pending_key(stage)
-                pipe.delete(pending_key)
-                if image_ids:
-                    pipe.sadd(pending_key, *image_ids)
-                    pipe.expire(pending_key, self.TIMEOUT)
-            pipe.delete(self._failed_key)
-            pipe.set(self._total_key, len(image_ids), ex=self.TIMEOUT)
-            pipe.execute()
+        try:
+            redis = self._get_redis()
+            with redis.pipeline() as pipe:
+                for stage in self.STAGES:
+                    pending_key = self._get_pending_key(stage)
+                    pipe.delete(pending_key)
+                    if image_ids:
+                        pipe.sadd(pending_key, *image_ids)
+                        pipe.expire(pending_key, self.TIMEOUT)
+                pipe.delete(self._failed_key)
+                pipe.set(self._total_key, len(image_ids), ex=self.TIMEOUT)
+                pipe.execute()
+        except RedisError as e:
+            logger.error(f"Redis error initializing job {self.job_id}: {e}")
+            raise
 
     def _get_pending_key(self, stage: str) -> str:
         return f"{self._pending_key}:{stage}"
@@ -125,18 +130,23 @@ class AsyncJobStateManager:
             JobStateProgress snapshot, or None if Redis state is missing
             (job expired or not yet initialized).
         """
-        redis = self._get_redis()
-        pending_key = self._get_pending_key(stage)
+        try:
+            redis = self._get_redis()
+            pending_key = self._get_pending_key(stage)
 
-        with redis.pipeline() as pipe:
-            if processed_image_ids:
-                pipe.srem(pending_key, *processed_image_ids)
-            if failed_image_ids:
-                pipe.sadd(self._failed_key, *failed_image_ids)
-            pipe.scard(pending_key)
-            pipe.scard(self._failed_key)
-            pipe.get(self._total_key)
-            results = pipe.execute()
+            with redis.pipeline() as pipe:
+                if processed_image_ids:
+                    pipe.srem(pending_key, *processed_image_ids)
+                if failed_image_ids:
+                    pipe.sadd(self._failed_key, *failed_image_ids)
+                    pipe.expire(self._failed_key, self.TIMEOUT)
+                pipe.scard(pending_key)
+                pipe.scard(self._failed_key)
+                pipe.get(self._total_key)
+                results = pipe.execute()
+        except RedisError as e:
+            logger.error(f"Redis error updating job {self.job_id} state: {e}")
+            return None
 
         # Last 3 results are always scard(pending), scard(failed), get(total)
         # regardless of whether SREM/SADD appear at the front.
@@ -163,14 +173,18 @@ class AsyncJobStateManager:
 
     def get_progress(self, stage: str) -> "JobStateProgress | None":
         """Read-only progress snapshot for the given stage."""
-        redis = self._get_redis()
-        pending_key = self._get_pending_key(stage)
+        try:
+            redis = self._get_redis()
+            pending_key = self._get_pending_key(stage)
 
-        with redis.pipeline() as pipe:
-            pipe.scard(pending_key)
-            pipe.scard(self._failed_key)
-            pipe.get(self._total_key)
-            remaining, failed_count, total_raw = pipe.execute()
+            with redis.pipeline() as pipe:
+                pipe.scard(pending_key)
+                pipe.scard(self._failed_key)
+                pipe.get(self._total_key)
+                remaining, failed_count, total_raw = pipe.execute()
+        except RedisError as e:
+            logger.error(f"Redis error reading job {self.job_id} progress: {e}")
+            return None
 
         if total_raw is None:
             return None
@@ -191,7 +205,10 @@ class AsyncJobStateManager:
         """
         Delete all Redis keys associated with this job.
         """
-        redis = self._get_redis()
-        keys = [self._get_pending_key(stage) for stage in self.STAGES]
-        keys += [self._failed_key, self._total_key]
-        redis.delete(*keys)
+        try:
+            redis = self._get_redis()
+            keys = [self._get_pending_key(stage) for stage in self.STAGES]
+            keys += [self._failed_key, self._total_key]
+            redis.delete(*keys)
+        except RedisError as e:
+            logger.warning(f"Redis error cleaning up job {self.job_id}: {e}")
