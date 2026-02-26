@@ -11,7 +11,7 @@ from ami.ml.schemas import PipelineProcessingTask
 logger = logging.getLogger(__name__)
 
 
-def cleanup_async_job_resources(job: "Job") -> bool:
+def cleanup_async_job_resources(job_id: int, _logger: logging.Logger) -> bool:
     """
     Clean up NATS JetStream and Redis resources for a completed job.
 
@@ -22,7 +22,8 @@ def cleanup_async_job_resources(job: "Job") -> bool:
     Cleanup failures are logged but don't fail the job - data is already saved.
 
     Args:
-        job: The Job instance
+        job_id: The Job ID (integer primary key)
+        _logger: Logger to use for logging cleanup results
     Returns:
         bool: True if both cleanups succeeded, False otherwise
     """
@@ -31,26 +32,26 @@ def cleanup_async_job_resources(job: "Job") -> bool:
 
     # Cleanup Redis state
     try:
-        state_manager = AsyncJobStateManager(job.pk)
+        state_manager = AsyncJobStateManager(job_id)
         state_manager.cleanup()
-        job.logger.info(f"Cleaned up Redis state for job {job.pk}")
+        _logger.info(f"Cleaned up Redis state for job {job_id}")
         redis_success = True
     except Exception as e:
-        job.logger.error(f"Error cleaning up Redis state for job {job.pk}: {e}")
+        _logger.error(f"Error cleaning up Redis state for job {job_id}: {e}")
 
     # Cleanup NATS resources
     async def cleanup():
         async with TaskQueueManager() as manager:
-            return await manager.cleanup_job_resources(job.pk)
+            return await manager.cleanup_job_resources(job_id)
 
     try:
         nats_success = async_to_sync(cleanup)()
         if nats_success:
-            job.logger.info(f"Cleaned up NATS resources for job {job.pk}")
+            _logger.info(f"Cleaned up NATS resources for job {job_id}")
         else:
-            job.logger.warning(f"Failed to clean up NATS resources for job {job.pk}")
+            _logger.warning(f"Failed to clean up NATS resources for job {job_id}")
     except Exception as e:
-        job.logger.error(f"Error cleaning up NATS resources for job {job.pk}: {e}")
+        _logger.error(f"Error cleaning up NATS resources for job {job_id}: {e}")
 
     return redis_success and nats_success
 
