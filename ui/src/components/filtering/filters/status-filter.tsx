@@ -1,5 +1,6 @@
 import { Job, SERVER_JOB_STATUS_CODES } from 'data-services/models/job'
 import { Select } from 'nova-ui-kit'
+import { STRING, translate } from 'utils/language'
 import { FilterProps } from './types'
 
 const OPTIONS = SERVER_JOB_STATUS_CODES.map((code) => {
@@ -13,7 +14,7 @@ const OPTIONS = SERVER_JOB_STATUS_CODES.map((code) => {
 export const StatusFilter = ({ value, onAdd }: FilterProps) => (
   <Select.Root value={value ?? ''} onValueChange={onAdd}>
     <Select.Trigger>
-      <Select.Value placeholder="Select a value" />
+      <Select.Value placeholder={translate(STRING.SELECT_PLACEHOLDER)} />
     </Select.Trigger>
     <Select.Content>
       {OPTIONS.map((option) => (
