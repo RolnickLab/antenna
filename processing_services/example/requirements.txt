@@ -7,3 +7,7 @@ transformers==4.50.3
 torch==2.6.0
 torchvision==0.21.0
 scipy==1.16.0
+# Use headless OpenCV to avoid GUI dependencies in Docker
+opencv-python-headless==4.13.0.92
+flat_bug @ https://github.com/darsa-group/flat-bug/archive/refs/heads/main.zip
+
