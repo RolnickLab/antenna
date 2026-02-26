@@ -150,7 +150,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         )
 
         if not progress_info:
-            _cancel_job_on_missing_state(job_id, logger)
+            _cancel_job_on_missing_state(job_id, job.logger)
             return
 
         # update complete state based on latest progress info after saving results
