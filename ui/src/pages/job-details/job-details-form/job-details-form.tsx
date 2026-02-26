@@ -160,7 +160,7 @@ export const JobDetailsForm = ({
             <FormController
               name="startNow"
               control={control}
-              config={config.pipeline}
+              config={config.startNow}
               render={({ field }) => (
                 <Checkbox
                   checked={field.value ?? false}
