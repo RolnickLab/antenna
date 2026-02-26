@@ -153,7 +153,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         )
 
         if not progress_info:
-            logger.error(f"Redis state missing for job {job_id} — job may have been cleaned up prematurely.")
+            job.logger.error(f"Redis state missing for job {job_id} — job may have been cleaned up prematurely.")
             # TODO: cancel the job to fail fast once PR #1144 is merged
             return
 
