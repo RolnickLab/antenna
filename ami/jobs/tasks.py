@@ -172,7 +172,8 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
 
     except Exception as e:
         job.logger.error(
-            f"Failed to process pipeline result for job {job_id}: {e}. NATS will redeliver the task message."
+            f"Failed to process pipeline result for job {job_id}: {e}. "
+            "NATS message was already acknowledged; it will not be redelivered."
         )
 
 
