@@ -43,9 +43,15 @@ const config: FormConfig = {
   },
   pipeline: {
     label: translate(STRING.FIELD_LABEL_PIPELINE),
+    rules: {
+      required: true,
+    },
   },
   sourceImages: {
     label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
+    rules: {
+      required: true,
+    },
   },
   startNow: {
     label: 'Start immediately',
@@ -119,7 +125,7 @@ export const JobDetailsForm = ({
             render={({ field, fieldState }) => (
               <InputContent
                 description={config[field.name].description}
-                label={config[field.name].label}
+                label={`${config[field.name].label} *`}
                 error={fieldState.error?.message}
               >
                 <EntityPicker
@@ -137,7 +143,7 @@ export const JobDetailsForm = ({
             render={({ field, fieldState }) => (
               <InputContent
                 description={config[field.name].description}
-                label={config[field.name].label}
+                label={`${config[field.name].label} *`}
                 error={fieldState.error?.message}
               >
                 <EntityPicker
