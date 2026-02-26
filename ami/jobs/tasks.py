@@ -257,16 +257,17 @@ def _update_job_progress(
         try:
             existing_stage = job.progress.get_stage(stage)
             progress_percentage = max(existing_stage.progress, progress_percentage)
-            # JobState is ordered with FAILURE > SUCCESS, so max() will keep it at FAILURE
-            # if any worker reported failure
+            # FAILURE is defined after SUCCESS in JobState, so max() preserves FAILURE
+            # if any worker reported failure (updated OrderedEnum so max() works for this usage)
             complete_state = max(existing_stage.status, complete_state)
         except (ValueError, AttributeError):
             pass  # Stage doesn't exist yet; proceed normally
 
         job.progress.update_stage(
             stage,
-            # always use STARTED for in-progress updates
-            status=complete_state if progress_percentage >= 1.0 else JobState.STARTED,
+            status=complete_state
+            if progress_percentage >= 1.0 or complete_state == JobState.FAILURE
+            else JobState.STARTED,
             progress=progress_percentage,
             **state_params,
         )
