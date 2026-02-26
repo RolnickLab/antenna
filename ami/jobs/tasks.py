@@ -124,6 +124,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         _ack_task_via_nats(reply_subject, logger)
         return
 
+    acked = False
     try:
         # Save to database (this is the slow operation)
         detections_count, classifications_count, captures_count = 0, 0, 0
@@ -143,6 +144,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
             captures_count = len(pipeline_result.source_images)
 
         _ack_task_via_nats(reply_subject, job.logger)
+        acked = True
         # Update job stage with calculated progress
 
         progress_info = state_manager.update_state(
@@ -171,9 +173,11 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         )
 
     except Exception as e:
-        job.logger.error(
-            f"Failed to process pipeline result for job {job_id}: {e}. NATS will redeliver the task message."
-        )
+        error = f"Error processing pipeline result for job {job_id}: {e}"
+        if not acked:
+            error += ". NATS will re-deliver the task message."
+
+        job.logger.error(error)
 
 
 def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> None:
@@ -253,20 +257,31 @@ def _update_job_progress(
 
         # Don't overwrite a stage with a stale progress value.
         # This guards against the race where a slower worker calls _update_job_progress
-        # after a faster worker has already marked further progress
+        # after a faster worker has already marked further progress.
         try:
             existing_stage = job.progress.get_stage(stage)
             progress_percentage = max(existing_stage.progress, progress_percentage)
-            # JobState is ordered with FAILURE > SUCCESS, so max() will keep it at FAILURE
-            # if any worker reported failure
-            complete_state = max(existing_stage.status, complete_state)
+            # Explicitly preserve FAILURE: once a stage is marked FAILURE it should
+            # never regress to a non-failure state, regardless of enum ordering.
+            if existing_stage.status == JobState.FAILURE:
+                complete_state = JobState.FAILURE
         except (ValueError, AttributeError):
             pass  # Stage doesn't exist yet; proceed normally
 
+        # Determine the status to write:
+        # - Stage complete (100%): use complete_state (SUCCESS or FAILURE)
+        # - Stage incomplete but FAILURE already determined: keep FAILURE visible
+        # - Stage incomplete, no failure: mark as in-progress (STARTED)
+        if progress_percentage >= 1.0:
+            status = complete_state
+        elif complete_state == JobState.FAILURE:
+            status = JobState.FAILURE
+        else:
+            status = JobState.STARTED
+
         job.progress.update_stage(
             stage,
-            # always use STARTED for in-progress updates
-            status=complete_state if progress_percentage >= 1.0 else JobState.STARTED,
+            status=status,
             progress=progress_percentage,
             **state_params,
         )
