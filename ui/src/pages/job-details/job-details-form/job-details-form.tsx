@@ -12,7 +12,7 @@ import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetail
 import { SaveButton } from 'design-system/components/button/save-button'
 import { Checkbox } from 'design-system/components/checkbox/checkbox'
 import { InputContent } from 'design-system/components/input/input'
-import { EntitiesPicker } from 'pages/project/entities/entities-picker'
+import { EntityPicker } from 'design-system/components/select/entity-picker'
 import { useForm } from 'react-hook-form'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
@@ -122,7 +122,7 @@ export const JobDetailsForm = ({
                 label={config[field.name].label}
                 error={fieldState.error?.message}
               >
-                <EntitiesPicker
+                <EntityPicker
                   collection={API_ROUTES.CAPTURE_SETS}
                   onValueChange={field.onChange}
                   value={field.value}
@@ -140,7 +140,7 @@ export const JobDetailsForm = ({
                 label={config[field.name].label}
                 error={fieldState.error?.message}
               >
-                <EntitiesPicker
+                <EntityPicker
                   collection={API_ROUTES.PIPELINES}
                   onValueChange={field.onChange}
                   value={field.value}

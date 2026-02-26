@@ -1,9 +1,9 @@
 import { API_ROUTES } from 'data-services/constants'
-import { EntitiesPicker } from 'pages/project/entities/entities-picker'
+import { EntityPicker } from 'design-system/components/select/entity-picker'
 import { FilterProps } from './types'
 
 export const PipelineFilter = ({ value, onAdd }: FilterProps) => (
-  <EntitiesPicker
+  <EntityPicker
     collection={API_ROUTES.PIPELINES}
     onValueChange={(value) => {
       if (value) {

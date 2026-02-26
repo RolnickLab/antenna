@@ -10,11 +10,11 @@ import { Export, SERVER_EXPORT_TYPES } from 'data-services/models/export'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { IconType } from 'design-system/components/icon/icon'
 import { InputContent } from 'design-system/components/input/input'
+import { EntityPicker } from 'design-system/components/select/entity-picker'
 import { Select } from 'nova-ui-kit'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
-import { EntitiesPicker } from '../entities-picker'
 import { DetailsFormProps, FormValues } from './types'
 
 type ExportFormValues = FormValues & {
@@ -102,7 +102,7 @@ export const ExportDetailsForm = ({
               }
               error={fieldState.error?.message}
             >
-              <EntitiesPicker
+              <EntityPicker
                 collection={API_ROUTES.CAPTURE_SETS}
                 onValueChange={field.onChange}
                 value={field.value}

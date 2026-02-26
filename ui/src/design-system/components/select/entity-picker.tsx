@@ -3,7 +3,7 @@ import { Select } from 'nova-ui-kit'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 
-export const EntitiesPicker = ({
+export const EntityPicker = ({
   collection,
   value,
   onValueChange,

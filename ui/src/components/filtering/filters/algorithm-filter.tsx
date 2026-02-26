@@ -1,12 +1,12 @@
 import { API_ROUTES } from 'data-services/constants'
-import { EntitiesPicker } from 'pages/project/entities/entities-picker'
+import { EntityPicker } from 'design-system/components/select/entity-picker'
 import { FilterProps } from './types'
 
 export const AlgorithmFilter = ({
   value,
   onAdd,
 }: FilterProps & { placeholder?: string }) => (
-  <EntitiesPicker
+  <EntityPicker
     collection={API_ROUTES.ALGORITHM}
     onValueChange={(value) => {
       if (value) {
