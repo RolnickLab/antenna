@@ -571,16 +571,25 @@ class UserProjectMembershipQuerySet(BaseQuerySet):
 
         # Log invalid memberships if requested (before filtering them out)
         if log_invalid:
-            invalid = queryset.filter(has_role=False).select_related("user", "project")
-            if invalid.exists():
-                for membership in invalid:
-                    logger.warning(
-                        f"Data inconsistency detected: UserProjectMembership {membership.pk} "
-                        f"for user '{membership.user.email}' in project '{membership.project.name}' "
-                        f"(ID: {membership.project.pk}) has no role assigned. This indicates "
-                        f"the permission groups are out of sync. "
-                        f"Fix by running: python manage.py update_roles --project-id={membership.project.pk}"
-                    )
+            from django.db.models import Count
+            
+            # Single query to get project IDs and their invalid membership counts
+            invalid_by_project = list(
+                queryset.filter(has_role=False)
+                .values("project_id")
+                .annotate(count=Count("id"))
+            )
+            
+            if invalid_by_project:
+                invalid_count = sum(item["count"] for item in invalid_by_project)
+                project_ids = [item["project_id"] for item in invalid_by_project]
+                projects_str = ", ".join(str(pid) for pid in project_ids)
+                logger.warning(
+                    f"Data inconsistency detected: {invalid_count} UserProjectMembership(s) "
+                    f"without assigned roles found in project(s): {projects_str}. "
+                    f"This indicates permission groups are out of sync. "
+                    f"Fix by running: python manage.py update_roles --project-id=<project_id>"
+                )
 
         # Return only members with valid roles
         return queryset.filter(has_role=True)
