@@ -11,7 +11,7 @@ const OPTIONS = SERVER_JOB_STATUS_CODES.map((code) => {
   }
 }).sort((o1, o2) => o1.type - o2.type)
 
-export const StatusFilter = ({ value, onAdd }: FilterProps) => (
+export const StatusFilter = ({ onAdd, value }: FilterProps) => (
   <Select.Root value={value ?? ''} onValueChange={onAdd}>
     <Select.Trigger>
       <Select.Value placeholder={translate(STRING.SELECT_PLACEHOLDER)} />

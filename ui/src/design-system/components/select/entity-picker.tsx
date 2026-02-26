@@ -19,7 +19,7 @@ export const EntityPicker = ({
 
   return (
     <Select.Root
-      disabled={entities.length === 0}
+      disabled={isLoading || entities.length === 0}
       onValueChange={onValueChange}
       value={entities.some((e) => e.id === value) ? value : ''}
     >

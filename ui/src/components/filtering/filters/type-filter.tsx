@@ -11,7 +11,7 @@ const OPTIONS = SERVER_JOB_TYPES.map((key) => {
   }
 })
 
-export const TypeFilter = ({ value, onAdd }: FilterProps) => (
+export const TypeFilter = ({ onAdd, value }: FilterProps) => (
   <Select.Root value={value ?? ''} onValueChange={onAdd}>
     <Select.Trigger>
       <Select.Value placeholder={translate(STRING.SELECT_PLACEHOLDER)} />

@@ -125,7 +125,11 @@ export const JobDetailsForm = ({
             render={({ field, fieldState }) => (
               <InputContent
                 description={config[field.name].description}
-                label={`${config[field.name].label} *`}
+                label={
+                  config[field.name].rules?.required
+                    ? `${config[field.name].label} *`
+                    : config[field.name].label
+                }
                 error={fieldState.error?.message}
               >
                 <EntityPicker
@@ -143,7 +147,11 @@ export const JobDetailsForm = ({
             render={({ field, fieldState }) => (
               <InputContent
                 description={config[field.name].description}
-                label={`${config[field.name].label} *`}
+                label={
+                  config[field.name].rules?.required
+                    ? `${config[field.name].label} *`
+                    : config[field.name].label
+                }
                 error={fieldState.error?.message}
               >
                 <EntityPicker

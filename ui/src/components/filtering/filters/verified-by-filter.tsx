@@ -1,5 +1,5 @@
 import { Select } from 'nova-ui-kit'
-import { STRING } from 'utils/language'
+import { STRING, translate } from 'utils/language'
 import { booleanToString, stringToBoolean } from '../utils'
 import { FilterProps } from './types'
 
@@ -8,13 +8,13 @@ const OPTIONS = [
   { value: false, label: 'Not verified by me' },
 ]
 
-export const VerifiedByFilter = ({ value: string, onAdd }: FilterProps) => {
+export const VerifiedByFilter = ({ onAdd, value: string }: FilterProps) => {
   const value = stringToBoolean(string)
 
   return (
     <Select.Root value={booleanToString(value)} onValueChange={onAdd}>
       <Select.Trigger>
-        <Select.Value placeholder={STRING.SELECT_PLACEHOLDER} />
+        <Select.Value placeholder={translate(STRING.SELECT_PLACEHOLDER)} />
       </Select.Trigger>
       <Select.Content>
         {OPTIONS.map((option) => (
