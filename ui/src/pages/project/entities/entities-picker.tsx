@@ -1,6 +1,7 @@
 import { useEntities } from 'data-services/hooks/entities/useEntities'
-import { Select } from 'design-system/components/select/select'
+import { Select } from 'nova-ui-kit'
 import { useParams } from 'react-router-dom'
+import { STRING, translate } from 'utils/language'
 
 export const EntitiesPicker = ({
   collection,
@@ -15,18 +16,23 @@ export const EntitiesPicker = ({
   const { entities = [], isLoading } = useEntities(collection, {
     projectId: projectId as string,
   })
-  const validValue = entities.some((e) => e.id === value)
 
   return (
-    <Select
-      loading={isLoading}
-      options={entities.map((e) => ({
-        value: e.id,
-        label: e.name,
-      }))}
-      showClear={false}
-      value={validValue ? value : undefined}
+    <Select.Root
+      disabled={entities.length === 0}
       onValueChange={onValueChange}
-    />
+      value={entities.some((e) => e.id === value) ? value : ''}
+    >
+      <Select.Trigger loading={isLoading}>
+        <Select.Value placeholder={translate(STRING.SELECT_PLACEHOLDER)} />
+      </Select.Trigger>
+      <Select.Content className="max-h-72">
+        {entities.map((e) => (
+          <Select.Item key={e.id} value={e.id}>
+            {e.name}
+          </Select.Item>
+        ))}
+      </Select.Content>
+    </Select.Root>
   )
 }

@@ -7,16 +7,16 @@ import {
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
+import { API_ROUTES } from 'data-services/constants'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { SaveButton } from 'design-system/components/button/save-button'
-import { CaptureSetPicker } from 'design-system/components/capture-set-picker'
 import { Checkbox } from 'design-system/components/checkbox/checkbox'
 import { InputContent } from 'design-system/components/input/input'
+import { EntitiesPicker } from 'pages/project/entities/entities-picker'
 import { useForm } from 'react-hook-form'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
-import { PipelinesPicker } from './pipelines-picker'
 
 interface JobFormValues {
   delay: number
@@ -122,9 +122,10 @@ export const JobDetailsForm = ({
                 label={config[field.name].label}
                 error={fieldState.error?.message}
               >
-                <CaptureSetPicker
-                  value={field.value}
+                <EntitiesPicker
+                  collection={API_ROUTES.CAPTURE_SETS}
                   onValueChange={field.onChange}
+                  value={field.value}
                 />
               </InputContent>
             )}
@@ -139,9 +140,10 @@ export const JobDetailsForm = ({
                 label={config[field.name].label}
                 error={fieldState.error?.message}
               >
-                <PipelinesPicker
-                  value={field.value}
+                <EntitiesPicker
+                  collection={API_ROUTES.PIPELINES}
                   onValueChange={field.onChange}
+                  value={field.value}
                 />
               </InputContent>
             )}
