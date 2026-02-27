@@ -130,9 +130,12 @@ export class Pipeline {
       return undefined
     }
 
-    const last_seen_times = []
-    for (const processingService of processingServices) {
-      last_seen_times.push(new Date(processingService.last_seen).getTime())
+    const last_seen_times = processingServices
+      .filter((s: any) => s.last_seen != null)
+      .map((s: any) => new Date(s.last_seen).getTime())
+
+    if (!last_seen_times.length) {
+      return undefined
     }
 
     return getFormatedDateTimeString({
