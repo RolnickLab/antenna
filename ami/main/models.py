@@ -275,6 +275,23 @@ class Project(ProjectSettingsMixin, BaseModel):
         if self.owner and not self.members.filter(id=self.owner.pk).exists():
             self.members.add(self.owner)
 
+    def members_with_roles(self):
+        """
+        Get users who are members of this project with a role assigned.
+
+        This filters out memberships where the user has no role groups assigned,
+        which indicates a data inconsistency.
+
+        Returns:
+            User queryset filtered to users with roles
+
+        Example:
+            project.members_with_roles()
+            project.members_with_roles().values_list('email', flat=True)
+        """
+        memberships_with_roles = self.project_memberships.with_role()
+        return User.objects.filter(project_memberships__in=memberships_with_roles).distinct()
+
     def deployments_count(self) -> int:
         return self.deployments.count()
 
@@ -512,6 +529,78 @@ class Project(ProjectSettingsMixin, BaseModel):
         ]
 
 
+class UserProjectMembershipQuerySet(BaseQuerySet):
+    """Custom queryset for UserProjectMembership with role filtering."""
+
+    def with_role(self, log_invalid=False):
+        """
+        Filter memberships to only include users who have a role assigned.
+
+        Memberships without roles indicate a data inconsistency between the
+        UserProjectMembership table and permission groups (roles).
+
+        Args:
+            log_invalid: If True, log warnings for memberships without roles
+
+        Returns:
+            Queryset filtered to members with at least one role for their project
+
+        Example:
+            # In a ViewSet:
+            UserProjectMembership.objects.filter(project=project).with_role(log_invalid=True)
+
+            # In a management command:
+            UserProjectMembership.objects.filter(project=project).with_role()
+        """
+        from django.contrib.auth.models import Group
+
+        # TODO: Once we migrate to FK-based role-project associations (custom Group model
+        # with project_id FK), this method should be updated to use a direct FK join:
+        #
+        # has_role=Exists(
+        #     Group.objects.filter(
+        #         user=OuterRef('user'),
+        #         project_id=OuterRef('project_id')  # Direct FK instead of string parsing
+        #     )
+        # )
+        #
+        # This will be more efficient and eliminate the need for name prefix matching.
+        # Related refactor: Remove string-based group naming pattern in ami/users/roles.py:24
+        # Subquery: Check if user has ANY group for their project
+        # Groups follow naming pattern: {project_id}_{project_name}_{RoleClassName}
+        # See: ami/users/roles.py:24 (Role.get_group_name)
+        queryset = self.annotate(
+            has_role=Exists(
+                Group.objects.filter(
+                    user=OuterRef("user"),
+                    name__startswith=models.functions.Concat(OuterRef("project_id"), models.Value("_")),
+                )
+            )
+        )
+
+        # Log invalid memberships if requested (before filtering them out)
+        if log_invalid:
+            invalid = queryset.filter(has_role=False).select_related("user", "project")
+            if invalid.exists():
+                for membership in invalid:
+                    logger.warning(
+                        f"Data inconsistency detected: UserProjectMembership {membership.pk} "
+                        f"for user '{membership.user.email}' in project '{membership.project.name}' "
+                        f"(ID: {membership.project.pk}) has no role assigned. This indicates "
+                        f"the permission groups are out of sync. "
+                        f"Fix by running: python manage.py update_roles --project-id={membership.project.pk}"
+                    )
+
+        # Return only members with valid roles
+        return queryset.filter(has_role=True)
+
+
+class UserProjectMembershipManager(models.Manager.from_queryset(UserProjectMembershipQuerySet)):
+    """Custom manager for UserProjectMembership."""
+
+    pass
+
+
 class UserProjectMembership(BaseModel):
     """
     Through model connecting User <-> Project.
@@ -530,6 +619,9 @@ class UserProjectMembership(BaseModel):
         on_delete=models.CASCADE,
         related_name="project_memberships",
     )
+
+    # Add custom manager
+    objects = UserProjectMembershipManager()
 
     def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
         project = self.project

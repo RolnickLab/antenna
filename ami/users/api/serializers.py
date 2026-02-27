@@ -109,8 +109,6 @@ class UserProjectMembershipSerializer(DefaultSerializer):
 
     user = MemberUserSerializer(read_only=True)
     role = serializers.SerializerMethodField(read_only=True)
-    role_display_name = serializers.SerializerMethodField(read_only=True)
-    role_description = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = UserProjectMembership
@@ -121,8 +119,6 @@ class UserProjectMembershipSerializer(DefaultSerializer):
             "user",
             "project",
             "role",
-            "role_display_name",
-            "role_description",
             "created_at",
             "updated_at",
         ]
@@ -132,8 +128,6 @@ class UserProjectMembershipSerializer(DefaultSerializer):
             "created_at",
             "updated_at",
             "role",
-            "role_display_name",
-            "role_description",
         ]
 
     def validate_email(self, value):
@@ -158,22 +152,23 @@ class UserProjectMembershipSerializer(DefaultSerializer):
         return value
 
     def get_role(self, obj):
+        """
+        Get the primary role for this membership.
+
+        Note: Due to queryset filtering in UserProjectMembershipViewSet.get_queryset(),
+        this method should never return None in API responses. However, we maintain
+        the None check for safety (e.g., when called outside API context).
+        """
         from ami.users.roles import Role
 
         role_cls = Role.get_primary_role(obj.project, obj.user)
-        return role_cls.__name__ if role_cls else None
-
-    def get_role_display_name(self, obj):
-        from ami.users.roles import Role
-
-        role_cls = Role.get_primary_role(obj.project, obj.user)
-        return role_cls.display_name if role_cls else None
-
-    def get_role_description(self, obj):
-        from ami.users.roles import Role
-
-        role_cls = Role.get_primary_role(obj.project, obj.user)
-        return role_cls.description if role_cls else None
+        if role_cls is None:
+            return None
+        return {
+            "id": role_cls.__name__,
+            "name": role_cls.display_name,
+            "description": role_cls.description,
+        }
 
     def validate(self, attrs):
         project = self.context["project"]
@@ -207,8 +202,6 @@ class UserProjectMembershipSerializer(DefaultSerializer):
 class UserProjectMembershipListSerializer(UserProjectMembershipSerializer):
     user = MemberUserSerializer(read_only=True)
     role = serializers.SerializerMethodField()
-    role_display_name = serializers.SerializerMethodField()
-    role_description = serializers.SerializerMethodField()
 
     class Meta:
         model = UserProjectMembership
@@ -216,8 +209,6 @@ class UserProjectMembershipListSerializer(UserProjectMembershipSerializer):
             "id",
             "user",
             "role",
-            "role_display_name",
-            "role_description",
             "created_at",
             "updated_at",
         ]
