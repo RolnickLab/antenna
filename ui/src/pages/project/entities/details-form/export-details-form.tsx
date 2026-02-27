@@ -5,12 +5,13 @@ import {
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
+import { API_ROUTES } from 'data-services/constants'
 import { Export, SERVER_EXPORT_TYPES } from 'data-services/models/export'
 import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { CaptureSetPicker } from 'design-system/components/capture-set-picker'
 import { IconType } from 'design-system/components/icon/icon'
 import { InputContent } from 'design-system/components/input/input'
-import { Select } from 'design-system/components/select/select'
+import { EntityPicker } from 'design-system/components/select/entity-picker'
+import { Select } from 'nova-ui-kit'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
@@ -101,9 +102,10 @@ export const ExportDetailsForm = ({
               }
               error={fieldState.error?.message}
             >
-              <CaptureSetPicker
-                value={field.value}
+              <EntityPicker
+                collection={API_ROUTES.CAPTURE_SETS}
                 onValueChange={field.onChange}
+                value={field.value}
               />
             </InputContent>
           )}
@@ -129,13 +131,16 @@ export const TypePicker = ({
   value?: string
   onValueChange: (value?: string) => void
 }) => (
-  <Select
-    showClear={false}
-    options={SERVER_EXPORT_TYPES.map((key) => ({
-      value: key,
-      label: Export.getExportTypeInfo(key).label,
-    }))}
-    value={value}
-    onValueChange={onValueChange}
-  />
+  <Select.Root onValueChange={onValueChange} value={value ?? ''}>
+    <Select.Trigger>
+      <Select.Value placeholder={translate(STRING.SELECT_PLACEHOLDER)} />
+    </Select.Trigger>
+    <Select.Content>
+      {SERVER_EXPORT_TYPES.map((key) => (
+        <Select.Item key={key} value={key}>
+          {Export.getExportTypeInfo(key).label}
+        </Select.Item>
+      ))}
+    </Select.Content>
+  </Select.Root>
 )
