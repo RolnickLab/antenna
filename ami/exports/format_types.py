@@ -1,6 +1,7 @@
 import csv
 import json
 import logging
+import os
 import tempfile
 
 from django.core.serializers.json import DjangoJSONEncoder
@@ -186,3 +187,91 @@ class CSVExporter(BaseExporter):
                 self.update_job_progress(records_exported)
         self.update_export_stats(file_temp_path=temp_file.name)
         return temp_file.name  # Return the file path
+
+
+class DwCAExporter(BaseExporter):
+    """Handles Darwin Core Archive (DwC-A) export with Event Core and Occurrence Extension."""
+
+    file_format = "zip"
+
+    def get_queryset(self):
+        """Return the occurrence queryset (used by BaseExporter for record count)."""
+        return (
+            Occurrence.objects.valid()  # type: ignore[union-attr]
+            .filter(project=self.project, event__isnull=False, determination__isnull=False)
+            .select_related(
+                "determination",
+                "event",
+                "deployment",
+            )
+            .with_detections_count()
+            .with_identifications()
+        )
+
+    def get_events_queryset(self):
+        from ami.main.models import Event
+
+        event_ids = self.queryset.values_list("event_id", flat=True).distinct()
+        return Event.objects.filter(
+            project=self.project,
+            id__in=event_ids,
+        ).select_related(
+            "deployment",
+            "project",
+        )
+
+    def export(self):
+        """Export project data as a Darwin Core Archive ZIP."""
+        from django.utils.text import slugify
+
+        from ami.exports.dwca import (
+            EVENT_FIELDS,
+            OCCURRENCE_FIELDS,
+            create_dwca_zip,
+            generate_eml_xml,
+            generate_meta_xml,
+            write_tsv,
+        )
+
+        project_slug = slugify(self.project.name)
+
+        # Write event.txt
+        event_file = tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8")
+        event_file.close()
+        # Write occurrence.txt
+        occ_file = tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8")
+        occ_file.close()
+
+        try:
+            events_qs = self.get_events_queryset()
+            event_count = write_tsv(event_file.name, EVENT_FIELDS, events_qs, project_slug)
+            logger.info(f"DwC-A: wrote {event_count} events")
+
+            occ_count = write_tsv(
+                occ_file.name,
+                OCCURRENCE_FIELDS,
+                self.queryset,
+                project_slug,
+                progress_callback=self.update_job_progress,
+            )
+            logger.info(f"DwC-A: wrote {occ_count} occurrences")
+
+            # Ensure final progress update for small exports (<500 records)
+            if self.total_records:
+                self.update_job_progress(occ_count)
+
+            # Generate metadata
+            meta_xml = generate_meta_xml(EVENT_FIELDS, OCCURRENCE_FIELDS)
+            eml_xml = generate_eml_xml(self.project)
+
+            # Package into ZIP
+            zip_path = create_dwca_zip(event_file.name, occ_file.name, meta_xml, eml_xml)
+
+            self.update_export_stats(file_temp_path=zip_path)
+            return zip_path
+        finally:
+            for path in [event_file.name, occ_file.name]:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
