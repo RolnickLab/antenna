@@ -129,6 +129,8 @@ def build_occurrence_default_filters_q(
     project: "Project | None" = None,
     request: "Request | None" = None,
     occurrence_accessor: str = "",
+    apply_default_score_filter: bool = True,
+    apply_default_taxa_filter: bool = True,
 ) -> Q:
     """
     Build a Q filter that applies default filters (score threshold + taxa) for Occurrence relationships.
@@ -194,19 +196,19 @@ def build_occurrence_default_filters_q(
         return Q()
 
     filter_q = Q()
-
-    # Build score threshold filter
-    score_threshold = get_default_classification_threshold(project, request)
-    filter_q &= build_occurrence_score_threshold_q(score_threshold, occurrence_accessor)
-
-    # Build taxa inclusion/exclusion filter
-    # For taxa filtering, we need to append "__determination" to the occurrence accessor
-    prefix = f"{occurrence_accessor}__" if occurrence_accessor else ""
-    taxon_accessor = f"{prefix}determination"
-    include_taxa = project.default_filters_include_taxa.all()
-    exclude_taxa = project.default_filters_exclude_taxa.all()
-    taxa_q = build_taxa_recursive_filter_q(include_taxa, exclude_taxa, taxon_accessor)
-    if taxa_q:
-        filter_q &= taxa_q
+    if apply_default_score_filter:
+        # Build score threshold filter
+        score_threshold = get_default_classification_threshold(project, request)
+        filter_q &= build_occurrence_score_threshold_q(score_threshold, occurrence_accessor)
+    if apply_default_taxa_filter:
+        # Build taxa inclusion/exclusion filter
+        # For taxa filtering, we need to append "__determination" to the occurrence accessor
+        prefix = f"{occurrence_accessor}__" if occurrence_accessor else ""
+        taxon_accessor = f"{prefix}determination"
+        include_taxa = project.default_filters_include_taxa.all()
+        exclude_taxa = project.default_filters_exclude_taxa.all()
+        taxa_q = build_taxa_recursive_filter_q(include_taxa, exclude_taxa, taxon_accessor)
+        if taxa_q:
+            filter_q &= taxa_q
 
     return filter_q

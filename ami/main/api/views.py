@@ -1493,7 +1493,11 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
                 qs = self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)
             if self.action == "retrieve":
                 qs = self.get_taxa_observed(
-                    qs, project, include_unobserved=include_unobserved, apply_default_filters=False
+                    qs,
+                    project,
+                    include_unobserved=include_unobserved,
+                    apply_default_score_filter=True,
+                    apply_default_taxa_filter=False,
                 )
                 qs = qs.prefetch_related(
                     Prefetch(
@@ -1511,7 +1515,12 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         return qs
 
     def get_taxa_observed(
-        self, qs: QuerySet, project: Project, include_unobserved=False, apply_default_filters=True
+        self,
+        qs: QuerySet,
+        project: Project,
+        include_unobserved=False,
+        apply_default_score_filter=True,
+        apply_default_taxa_filter=True,
     ) -> QuerySet:
         """
         If a project is passed, only return taxa that have been observed.
@@ -1529,15 +1538,21 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         # Respects apply_defaults flag: build_occurrence_default_filters_q checks it internally
         from ami.main.models_future.filters import build_occurrence_default_filters_q
 
-        default_filters_q = build_occurrence_default_filters_q(project, self.request, occurrence_accessor="")
+        default_filters_q = build_occurrence_default_filters_q(
+            project,
+            self.request,
+            occurrence_accessor="",
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=apply_default_taxa_filter,
+        )
 
         # Combine base occurrence filters with default filters
         base_filter = models.Q(
             occurrence_filters,
             determination_id=models.OuterRef("id"),
         )
-        if apply_default_filters:
-            base_filter = base_filter & default_filters_q
+
+        base_filter = base_filter & default_filters_q
 
         # Count occurrences - uses composite index (determination_id, project_id, event_id, determination_score)
         occurrences_count_subquery = models.Subquery(

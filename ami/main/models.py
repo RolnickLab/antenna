@@ -150,6 +150,17 @@ def get_or_create_default_collection(project: "Project") -> "SourceImageCollecti
     return collection
 
 
+def get_project_default_filters():
+    """
+    Read default taxa names from Django settings (read from environment variables)
+    and return corresponding Taxon objects.
+    """
+    include_taxa = list(Taxon.objects.filter(name__in=settings.DEFAULT_INCLUDE_TAXA))
+    exclude_taxa = list(Taxon.objects.filter(name__in=settings.DEFAULT_EXCLUDE_TAXA))
+
+    return {"default_include_taxa": include_taxa, "default_exclude_taxa": exclude_taxa}
+
+
 def get_or_create_default_project(user: User) -> "Project":
     """
     Create a default project for a user.
@@ -158,8 +169,20 @@ def get_or_create_default_project(user: User) -> "Project":
     when the project is saved for the first time.
     If the project already exists, it will be returned without modification.
     """
-    project, _created = Project.objects.get_or_create(name="Scratch Project", owner=user, create_defaults=True)
-    logger.info(f"Created default project for user {user}")
+    project, created = Project.objects.get_or_create(name="Scratch Project", owner=user)
+    if created:
+        logger.info(f"Created default project for user {user}")
+        defaults = get_project_default_filters()
+
+        if defaults["default_include_taxa"]:
+            project.default_filters_include_taxa.set(defaults["default_include_taxa"])
+            logger.info(f"Set {len(defaults['default_include_taxa'])} default include taxa for project {project}")
+        if defaults["default_exclude_taxa"]:
+            project.default_filters_exclude_taxa.set(defaults["default_exclude_taxa"])
+            logger.info(f"Set {len(defaults['default_exclude_taxa'])} default exclude taxa for project {project}")
+        project.save()
+    else:
+        logger.info(f"Loaded existing default project for user {user}")
     return project
 
 
@@ -765,6 +788,18 @@ class Deployment(BaseModel):
         )
         return (first, last)
 
+    def get_detections_count(self) -> int | None:
+        """Return detections count filtered by project default filters"""
+
+        qs = Detection.objects.filter(source_image__deployment=self)
+        filter_q = build_occurrence_default_filters_q(
+            project=self.project,
+            request=None,
+            occurrence_accessor="occurrence",
+        )
+
+        return qs.filter(filter_q).distinct().count()
+
     def first_date(self) -> datetime.date | None:
         return self.first_capture_timestamp.date() if self.first_capture_timestamp else None
 
@@ -970,7 +1005,7 @@ class Deployment(BaseModel):
 
         self.events_count = self.events.count()
         self.captures_count = self.data_source_total_files or self.captures.count()
-        self.detections_count = Detection.objects.filter(Q(source_image__deployment=self)).count()
+        self.detections_count = self.get_detections_count()
         occ_qs = self.occurrences.filter(event__isnull=False).apply_default_filters(  # type: ignore
             project=self.project,
             request=None,
@@ -1135,7 +1170,15 @@ class Event(BaseModel):
         return self.captures.distinct().count()
 
     def get_detections_count(self) -> int | None:
-        return Detection.objects.filter(Q(source_image__event=self)).count()
+        """Return detections count filtered by project default filters"""
+        qs = Detection.objects.filter(source_image__event=self)
+        filter_q = build_occurrence_default_filters_q(
+            project=self.project,
+            request=None,
+            occurrence_accessor="occurrence",
+        )
+
+        return qs.filter(filter_q).distinct().count()
 
     def get_occurrences_count(self, classification_threshold: float = 0) -> int:
         """
@@ -1847,7 +1890,20 @@ class SourceImage(BaseModel):
             return filesizeformat(self.size)
 
     def get_detections_count(self) -> int:
-        return self.detections.distinct().count()
+        """
+        Return detections count filtered by project default filters.
+        """
+        project = self.project
+        if not project:
+            return self.detections.distinct().count()
+
+        q = build_occurrence_default_filters_q(
+            project=project,
+            request=None,
+            occurrence_accessor="occurrence",
+        )
+
+        return self.detections.filter(q).distinct().count()
 
     def get_base_url(self) -> str | None:
         """
