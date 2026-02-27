@@ -67,7 +67,8 @@ export class Job {
       this.status.code !== 'CREATED' &&
       this.status.code !== 'STARTED' &&
       this.status.code !== 'PENDING' &&
-      this.status.code !== 'CANCELING'
+      this.status.code !== 'CANCELING' &&
+      this.status.code !== 'RETRY'
     )
   }
 
