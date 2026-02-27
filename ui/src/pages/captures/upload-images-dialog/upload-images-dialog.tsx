@@ -234,9 +234,9 @@ const SectionStation = ({
           }
         >
           <Select.Trigger loading={isLoading}>
-            <Select.Value placeholder="Select a value" />
+            <Select.Value placeholder={translate(STRING.SELECT_PLACEHOLDER)} />
           </Select.Trigger>
-          <Select.Content className="max-h-72">
+          <Select.Content>
             {deployments.map((d) => (
               <Select.Item key={d.id} value={d.id}>
                 {d.name}

@@ -76,13 +76,19 @@ const Content = ({
 )
 
 const Header = ({
-  title,
   children,
+  title,
+  withActions,
 }: {
-  title: string
   children?: ReactNode
+  title: string
+  withActions?: boolean
 }) => (
-  <div className={styles.dialogHeader}>
+  <div
+    className={classNames(styles.dialogHeader, {
+      [styles.withActions]: withActions,
+    })}
+  >
     <Dialog.Title className={styles.dialogTitle}>{title}</Dialog.Title>
     {children}
   </div>

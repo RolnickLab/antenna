@@ -151,6 +151,7 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
     serializer_class = ProcessingServiceSerializer
     filterset_fields = ["projects"]
     ordering_fields = ["id", "created_at", "updated_at"]
+    require_project = True
 
     def get_queryset(self) -> QuerySet:
         qs: QuerySet = super().get_queryset()
@@ -176,6 +177,20 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
         return Response(
             {"instance": serializer.data, "status": status_response.dict()}, status=status.HTTP_201_CREATED
         )
+
+    def perform_create(self, serializer):
+        """
+        Create a ProcessingService and automatically assign it to the active project.
+
+        Users cannot manually assign processing services to projects for security reasons.
+        A processing service is always created in the context of the active project.
+
+        @TODO Do we need a permission check here to ensure the user can add processing services to the project?
+        """
+        instance = serializer.save()
+        project = self.get_active_project()
+        if project:
+            instance.projects.add(project)
 
     @action(detail=True, methods=["get"])
     def status(self, request: Request, pk=None) -> Response:

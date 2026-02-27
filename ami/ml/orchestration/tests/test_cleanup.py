@@ -1,7 +1,6 @@
 """Integration tests for async job resource cleanup (NATS and Redis)."""
 
 from asgiref.sync import async_to_sync
-from django.core.cache import cache
 from django.test import TestCase
 from nats.js.errors import NotFoundError
 
@@ -58,13 +57,10 @@ class TestCleanupAsyncJobResources(TestCase):
         Args:
             job_id: The job ID to check
         """
-        # Verify Redis keys exist
+        # Verify Redis state exists (get_progress returns non-None when total_key is set)
         state_manager = AsyncJobStateManager(job_id)
         for stage in state_manager.STAGES:
-            pending_key = state_manager._get_pending_key(stage)
-            self.assertIsNotNone(cache.get(pending_key), f"Redis key {pending_key} should exist")
-        total_key = state_manager._total_key
-        self.assertIsNotNone(cache.get(total_key), f"Redis key {total_key} should exist")
+            self.assertIsNotNone(state_manager.get_progress(stage), f"Redis state for stage '{stage}' should exist")
 
         # Verify NATS stream and consumer exist
         async def check_nats_resources():
@@ -124,13 +120,10 @@ class TestCleanupAsyncJobResources(TestCase):
         Args:
             job_id: The job ID to check
         """
-        # Verify Redis keys are deleted
+        # Verify Redis state is deleted (get_progress returns None when total_key is gone)
         state_manager = AsyncJobStateManager(job_id)
         for stage in state_manager.STAGES:
-            pending_key = state_manager._get_pending_key(stage)
-            self.assertIsNone(cache.get(pending_key), f"Redis key {pending_key} should be deleted")
-        total_key = state_manager._total_key
-        self.assertIsNone(cache.get(total_key), f"Redis key {total_key} should be deleted")
+            self.assertIsNone(state_manager.get_progress(stage), f"Redis state for stage '{stage}' should be deleted")
 
         # Verify NATS stream and consumer are deleted
         async def check_nats_resources():
