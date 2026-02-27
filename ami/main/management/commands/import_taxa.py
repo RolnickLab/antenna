@@ -166,7 +166,9 @@ class Command(BaseCommand):
     This is a very specific command for importing taxa from an exiting format. A more general
     import command with support for all taxon ranks & fields should be written.
 
-
+    @TODO: Add --project parameter(s) to scope the taxa list to specific projects.
+    This would allow multiple projects to have taxa lists with the same name.
+    Usage would be: --project project-slug --project another-project-slug
 
     Example taxa.json
     ```
@@ -234,7 +236,8 @@ class Command(BaseCommand):
         else:
             list_name = pathlib.Path(fname).stem
 
-        taxalist, created = TaxaList.objects.get_or_create(name=list_name)
+        # Uses get_or_create_for_project with project=None to create a global list
+        taxalist, created = TaxaList.objects.get_or_create_for_project(name=list_name, project=None)
         if created:
             self.stdout.write(self.style.SUCCESS('Successfully created taxa list "%s"' % taxalist))
 
