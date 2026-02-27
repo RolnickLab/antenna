@@ -1,0 +1,4 @@
+# Cache directories for models and dependencies
+cache/
+huggingface_cache/
+pytorch_cache/
