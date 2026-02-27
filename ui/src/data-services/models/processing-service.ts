@@ -36,8 +36,22 @@ export class ProcessingService extends Entity {
     return this._pipelines
   }
 
-  get endpointUrl(): string {
-    return `${this._processingService.endpoint_url}`
+  get createdAt(): string {
+    return getFormatedDateTimeString({
+      date: new Date(this._processingService.created_at),
+    })
+  }
+
+  get id(): string {
+    return `${this._processingService.id}`
+  }
+
+  get name(): string {
+    return `${this._processingService.name}`
+  }
+
+  get endpointUrl(): string | undefined {
+    return this._processingService.endpoint_url ?? undefined
   }
 
   get description(): string {

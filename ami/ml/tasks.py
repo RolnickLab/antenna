@@ -113,10 +113,8 @@ def check_processing_services_online():
 
     logger.info("Checking which processing services are online.")
 
-    services = ProcessingService.objects.sync_services()
-
-    for service in services:
-        logger.info(f"Checking service {service}")
+    for service in ProcessingService.objects.sync_services():
+        logger.info(f"Checking push-mode service {service}")
         try:
             status_response = service.get_status()
             logger.debug(status_response)
