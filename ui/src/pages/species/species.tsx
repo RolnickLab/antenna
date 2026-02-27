@@ -196,8 +196,8 @@ const SpeciesDetailsDialog = ({ id }: { id: string }) => {
     >
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
-        isLoading={isLoading}
         error={error}
+        isLoading={isLoading}
       >
         {species ? (
           <SpeciesDetails

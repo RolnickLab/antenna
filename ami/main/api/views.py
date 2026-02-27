@@ -9,6 +9,7 @@ from django.db.models import Prefetch, Q
 from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
@@ -26,7 +27,7 @@ from rest_framework.views import APIView
 from ami.base.filters import NullsLastOrderingFilter, ThresholdFilter
 from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
-from ami.base.permissions import IsActiveStaffOrReadOnly, ObjectPermission
+from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
@@ -83,6 +84,8 @@ from .serializers import (
     StorageSourceSerializer,
     StorageStatusSerializer,
     TaxaListSerializer,
+    TaxaListTaxonInputSerializer,
+    TaxaListTaxonSerializer,
     TaxonListSerializer,
     TaxonSearchResultSerializer,
     TaxonSerializer,
@@ -1261,11 +1264,15 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
 
 class TaxonTaxaListFilter(filters.BaseFilterBackend):
     """
-    Filters taxa based on a TaxaList Similar to `OccurrenceTaxaListFilter`.
+    Filters taxa based on a TaxaList.
 
-    Queries for all taxa that are either:
-    - Directly in the requested TaxaList.
-    - A descendant (child or deeper) of any taxon in the TaxaList, recursively.
+    By default, queries for taxa that are directly in the TaxaList and their descendants.
+    If include_descendants=false, only taxa directly in the TaxaList are returned.
+
+    Query parameters:
+    - taxa_list_id: ID of the taxa list to filter by
+    - include_descendants: Set to 'false' to exclude descendants (default: true)
+    - not_taxa_list_id: ID of taxa list to exclude
     """
 
     query_param = "taxa_list_id"
@@ -1277,11 +1284,20 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
             request.query_params.get(self.query_param_exclusive)
         )
 
+        include_descendants_default = True
+        include_descendants = request.query_params.get("include_descendants", include_descendants_default)
+        if include_descendants is not None:
+            include_descendants = BooleanField(required=False).clean(include_descendants)
+
         def _get_filter(taxa_list: TaxaList) -> models.Q:
             taxa = taxa_list.taxa.all()  # Get taxa in the taxa list
             query_filter = Q(id__in=taxa)
-            for taxon in taxa:
-                query_filter |= Q(parents_json__contains=[{"id": taxon.pk}])
+
+            # Only include descendants if explicitly requested
+            if include_descendants:
+                for taxon in taxa:
+                    query_filter |= Q(parents_json__contains=[{"id": taxon.pk}])
+
             return query_filter
 
         if taxalist_id:
@@ -1608,17 +1624,107 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
 
-class TaxaListViewSet(viewsets.ModelViewSet, ProjectMixin):
+class TaxaListViewSet(DefaultViewSet, ProjectMixin):
     queryset = TaxaList.objects.all()
+    serializer_class = TaxaListSerializer
+    ordering_fields = [
+        "name",
+        "description",
+        "annotated_taxa_count",
+        "created_at",
+        "updated_at",
+    ]
+    permission_classes = [IsProjectMemberOrReadOnly]
+    require_project = True
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # Annotate with taxa count for better performance
+        qs = qs.annotate(annotated_taxa_count=models.Count("taxa"))
         project = self.get_active_project()
         if project:
             return qs.filter(projects=project)
         return qs
 
-    serializer_class = TaxaListSerializer
+    def perform_create(self, serializer):
+        """
+        Create a TaxaList and automatically assign it to the active project.
+
+        Users cannot manually assign taxa lists to projects for security reasons.
+        A taxa list is always created in the context of the active project.
+        """
+        instance = serializer.save()
+        project = self.get_active_project()
+        if project:
+            instance.projects.add(project)
+
+
+class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):
+    """
+    Nested ViewSet for managing taxa in a taxa list.
+    Accessed via /taxa/lists/{taxa_list_id}/taxa/
+
+    Only provides create (POST) and delete (DELETE) actions.
+    The UI lists taxa via the main /taxa/ endpoint with a taxa_list_id filter.
+    """
+
+    serializer_class = TaxaListTaxonSerializer
+    permission_classes = [IsProjectMemberOrReadOnly]
+    require_project = True
+
+    def get_taxa_list(self):
+        """Get the parent taxa list from URL parameters, scoped to the active project."""
+        taxa_list_id = self.kwargs.get("taxalist_pk")
+        project = self.get_active_project()
+        try:
+            return TaxaList.objects.get(pk=taxa_list_id, projects=project)
+        except TaxaList.DoesNotExist:
+            raise api_exceptions.NotFound("Taxa list not found.") from None
+
+    def get_queryset(self):
+        """Return taxa in the specified taxa list."""
+        taxa_list = self.get_taxa_list()
+        return taxa_list.taxa.all()
+
+    def create(self, request, taxalist_pk=None):
+        """Add a taxon to the taxa list."""
+        taxa_list = self.get_taxa_list()
+
+        # Validate input
+        input_serializer = TaxaListTaxonInputSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        taxon_id = input_serializer.validated_data["taxon_id"]
+
+        # Check if already exists
+        if taxa_list.taxa.filter(pk=taxon_id).exists():
+            return Response(
+                {"non_field_errors": ["Taxon is already in this taxa list."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Add taxon
+        taxon = get_object_or_404(Taxon, pk=taxon_id)
+        taxa_list.taxa.add(taxon)
+
+        # Return the added taxon
+        serializer = self.get_serializer(taxon)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=["delete"], url_path=r"(?P<taxon_id>\d+)")
+    def delete_by_taxon(self, request, taxalist_pk=None, taxon_id=None):
+        """
+        Remove a taxon from the taxa list by taxon ID.
+        DELETE /taxa/lists/{taxa_list_id}/taxa/{taxon_id}/
+        """
+        taxa_list = self.get_taxa_list()
+
+        # Check if taxon exists in list
+        if not taxa_list.taxa.filter(pk=taxon_id).exists():
+            raise api_exceptions.NotFound("Taxon is not in this taxa list.")
+
+        # Remove taxon
+        taxa_list.taxa.remove(taxon_id)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class TagViewSet(DefaultViewSet, ProjectMixin):

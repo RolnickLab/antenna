@@ -54,10 +54,11 @@ class TestProcessingServiceAPI(APITestCase):
         self.factory = APIRequestFactory()
 
     def _create_processing_service(self, name: str, endpoint_url: str):
-        processing_services_create_url = reverse_with_params("api:processingservice-list")
+        processing_services_create_url = reverse_with_params(
+            "api:processingservice-list", params={"project_id": self.project.pk}
+        )
         self.client.force_authenticate(user=self.user)
         processing_service_data = {
-            "project": self.project.pk,
             "name": name,
             "endpoint_url": endpoint_url,
         }
@@ -118,10 +119,11 @@ class TestProcessingServiceAPI(APITestCase):
 
     def test_create_processing_service_without_endpoint_url(self):
         """Test creating a ProcessingService without endpoint_url (pull mode)"""
-        processing_services_create_url = reverse_with_params("api:processingservice-list")
+        processing_services_create_url = reverse_with_params(
+            "api:processingservice-list", params={"project_id": self.project.pk}
+        )
         self.client.force_authenticate(user=self.user)
         processing_service_data = {
-            "project": self.project.pk,
             "name": "Pull Mode Service",
             "description": "Service without endpoint",
         }
