@@ -167,6 +167,15 @@ export class Capture {
     return new Date(this._capture.timestamp)
   }
 
+  get path(): string {
+    return this._capture.path ?? ''
+  }
+
+  get filename(): string {
+    const path = this.path
+    return path ? path.split('/').pop() ?? path : ''
+  }
+
   get width(): number | null {
     return this._capture.width
   }
