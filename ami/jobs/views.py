@@ -237,8 +237,8 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         if job.dispatch_mode != JobDispatchMode.ASYNC_API:
             raise ValidationError("Only async_api jobs have fetchable tasks")
 
-        # Don't fetch tasks from completed/failed/revoked jobs
-        if job.status in JobState.final_states() or job.status == JobState.CANCELING:
+        # Only serve tasks for actively processing jobs
+        if job.status not in JobState.active_states():
             return Response({"tasks": []})
 
         # Validate that the job has a pipeline

@@ -88,6 +88,11 @@ class JobState(str, OrderedEnum):
     def failed_states(cls):
         return [cls.FAILURE, cls.REVOKED, cls.UNKNOWN]
 
+    @classmethod
+    def active_states(cls):
+        """States where a job is actively processing and should serve tasks to workers."""
+        return [cls.STARTED, cls.RETRY]
+
 
 def get_status_label(status: JobState, progress: float) -> str:
     """
@@ -969,7 +974,9 @@ class Job(BaseModel):
 
     def cancel(self):
         """
-        Terminate the celery task.
+        Cancel a job. For async_api jobs, clean up NATS/Redis resources
+        and transition through CANCELING → REVOKED. For other jobs,
+        revoke the Celery task.
         """
         self.status = JobState.CANCELING
         self.save()
