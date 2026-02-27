@@ -330,7 +330,8 @@ This is required for:
 Flower runs inside the Elastic Beanstalk ECS host and listens on port 5555.
 Even if you open port 5555 on a security group, the Elastic Beanstalk environment DNS does not reliably expose arbitrary ports like :5555 (EB is primarily designed for web traffic via 80/443).
 
-Because Flower is an admin dashboard, we intentionally do not expose it publicly.
+Because Flower is an admin dashboard, we intentionally do not expose it publicly. For security reasons, do not hardcode personal IP addresses in the repository.
+Instead, whitelist your current public IP locally when deploying.
 Instead, we use AWS SSM Port Forwarding to securely tunnel port 5555 from the EB EC2 instance to your laptop.
 
 Why this approach
@@ -384,7 +385,63 @@ You should see the Flower UI.
 
 ---
 
+# Production Configuration Checklist
 
+Before deploying to production, update the following settings:
+
+
+## Elastic Beanstalk
+
+- Change `EnvironmentType` from `SingleInstance` → `LoadBalanced`
+- Disable `AssociatePublicIpAddress`
+- Terminate TLS at ALB (not instance)
+- Disable `force_destroy` on EB bundle bucket
+
+
+## RDS (Postgres)
+
+- Set `multi_az=True`
+- Enable `deletion_protection=True`
+- Set `skip_final_snapshot=False`
+- Increase backup retention (≥14 days)
+
+
+
+## Redis (ElastiCache)
+
+- Enable `multi_az_enabled=True`
+- Enable `automatic_failover_enabled=True`
+- Enable snapshot retention
+
+
+
+## ECR
+
+- Set `force_delete=False`
+- Enable `scan_on_push=True`
+- Set `image_tag_mutability="IMMUTABLE"`
+
+
+
+## S3 (Assets Bucket)
+
+- Set `force_destroy=False`
+
+
+## CloudFront
+
+- Use ACM certificate (custom domain)
+- Enable logging
+- Attach AWS WAF
+- Use HTTPS to backend origin
+
+
+## Observability
+
+- Add CloudWatch alarms (CPU, memory, DB storage, 5xx)
+- Enable access logs (CloudFront + S3)
+
+---
 
 ## References
 
