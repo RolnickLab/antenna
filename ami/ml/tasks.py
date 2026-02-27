@@ -95,14 +95,17 @@ def remove_duplicate_classifications(project_id: int | None = None, dry_run: boo
     return num_deleted
 
 
-# Timeout for get_status() calls in the periodic beat task. Shorter than the default (90s)
-# because we don't need to wait for cold starts here — if a service is starting up it will
-# recover on the next check. With retries=3 and backoff_factor=2, worst case per service
-# is roughly: 8 + 2 + 8 + 4 + 8 = 30s.
+# Timeout per sync service in the periodic beat task. Shorter than the default (90s for
+# cold-start waits) since a missed check just waits for the next beat cycle.
+# Worst case with retries=3, backoff_factor=2: 8 + 2 + 8 + 4 + 8 = 30s per service.
 _BEAT_STATUS_TIMEOUT = 8
 
+# Discard queued copies that built up while the worker was unavailable — the next
+# beat firing will pick things up fresh. Beat schedule is every 5 minutes.
+_BEAT_TASK_EXPIRES = 240
 
-@celery_app.task(soft_time_limit=120, time_limit=150)
+
+@celery_app.task(soft_time_limit=120, time_limit=150, expires=_BEAT_TASK_EXPIRES)
 def check_processing_services_online():
     """
     Check the status of all processing services and update last_seen/last_seen_live fields.
@@ -110,12 +113,9 @@ def check_processing_services_online():
     - Async services (no endpoint URL): heartbeat is updated by mark_seen() on registration
       and by _mark_pipeline_pull_services_seen() on task polling. This task marks them offline
       if last_seen has exceeded PROCESSING_SERVICE_LAST_SEEN_MAX. Runs first so it always
-      executes even if a sync service check is slow.
-    - Sync services (endpoint URL set): actively polled via /readyz. Uses a reduced timeout
-      vs. the default (which is designed for cold-start waits) since missed checks recover
-      on the next beat cycle.
-
-    @TODO make this async to check all services in parallel
+      executes even if a slow sync check hits the time limit.
+    - Sync services (endpoint URL set): checked sequentially with a short per-request timeout.
+      Safe to skip a cycle — the next beat firing will catch up.
     """
     import datetime
 
@@ -123,7 +123,7 @@ def check_processing_services_online():
 
     logger.info("Checking which processing services are online.")
 
-    # Async services first — fast DB-only operation, must not be skipped by a slow sync check
+    # Async services first — fast DB-only operation, must not be blocked by sync checks
     stale_cutoff = datetime.datetime.now() - PROCESSING_SERVICE_LAST_SEEN_MAX
     stale = ProcessingService.objects.async_services().filter(last_seen_live=True, last_seen__lt=stale_cutoff)
     count = stale.count()
