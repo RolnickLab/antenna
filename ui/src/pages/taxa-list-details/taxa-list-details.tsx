@@ -39,7 +39,9 @@ export const TaxaListDetails = () => {
 
   useEffect(() => {
     setDetailBreadcrumb(
-      taxaList ? { title: taxaList.name } : { title: `${translate(STRING.LOADING_DATA)}...` }
+      taxaList
+        ? { title: taxaList.name }
+        : { title: `${translate(STRING.LOADING_DATA)}...` }
     )
 
     return () => {

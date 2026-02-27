@@ -32,7 +32,9 @@ export const AddTaxaListTaxon = ({
       <div className="px-4 py-6">
         <div className="mb-4">
           <TaxonSelect
-            triggerLabel={taxon ? taxon.name : translate(STRING.SELECT_TAXON_PLACEHOLDER)}
+            triggerLabel={
+              taxon ? taxon.name : translate(STRING.SELECT_TAXON_PLACEHOLDER)
+            }
             taxon={taxon}
             onTaxonChange={setTaxon}
           />
