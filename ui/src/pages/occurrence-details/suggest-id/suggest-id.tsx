@@ -35,7 +35,9 @@ export const SuggestId = ({ occurrenceIds, onCancel }: SuggestIdProps) => {
             {translate(STRING.FIELD_LABEL_TAXON)}
           </span>
           <TaxonSelect
-            triggerLabel={taxon ? taxon.name : 'Select a taxon'}
+            triggerLabel={
+              taxon ? taxon.name : translate(STRING.SELECT_TAXON_PLACEHOLDER)
+            }
             taxon={taxon}
             onTaxonChange={setTaxon}
           />

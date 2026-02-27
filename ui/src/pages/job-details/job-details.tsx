@@ -37,7 +37,7 @@ export const JobDetails = ({
   onDelete: () => void
 }) => (
   <>
-    <Dialog.Header title={title}>
+    <Dialog.Header title={title} withActions>
       <div className={styles.headerContent}>
         <div className={styles.fetchInfoWrapper}>
           {isFetching ? <FetchInfo /> : null}

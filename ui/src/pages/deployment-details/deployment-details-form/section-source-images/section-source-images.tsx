@@ -12,8 +12,8 @@ import {
 } from 'data-services/models/deployment-details'
 import { Button } from 'design-system/components/button/button'
 import { InputContent, InputValue } from 'design-system/components/input/input'
+import { EntityPicker } from 'design-system/components/select/entity-picker'
 import _ from 'lodash'
-import { EntitiesPicker } from 'pages/project/entities/entities-picker'
 import { ConnectionStatus } from 'pages/project/storage/connection-status'
 import { useContext, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -70,7 +70,7 @@ export const SectionSourceImages = ({
                 label={config[field.name].label}
                 error={fieldState.error?.message}
               >
-                <EntitiesPicker
+                <EntityPicker
                   collection={API_ROUTES.STORAGE}
                   value={field.value}
                   onValueChange={field.onChange}

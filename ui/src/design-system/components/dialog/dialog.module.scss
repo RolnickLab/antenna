@@ -135,6 +135,11 @@ $dialog-padding-medium: 32px;
   .dialogHeader {
     height: $dialog-header-height-small;
     padding: 0 16px;
+
+    &.withActions {
+      height: auto;
+      padding: 44px 16px 16px;
+    }
   }
 }
 
