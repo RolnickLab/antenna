@@ -11,14 +11,20 @@ from ami.base.serializers import reverse_with_params
 from ami.main.models import (
     Classification,
     Detection,
+    Occurrence,
     Project,
     SourceImage,
     SourceImageCollection,
+    TaxaList,
     Taxon,
+    TaxonRank,
     group_images_into_events,
 )
-from ami.ml.models import Algorithm, Pipeline, ProcessingService
+from ami.ml.models import Algorithm, AlgorithmCategoryMap, Pipeline, ProcessingService
+from ami.ml.models.algorithm import AlgorithmTaskType
 from ami.ml.models.pipeline import collect_images, get_or_create_algorithm_and_category_map, save_results
+from ami.ml.post_processing.class_masking import make_classifications_filtered_by_taxa_list
+from ami.ml.post_processing.rank_rollup import RankRollupTask
 from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
@@ -830,6 +836,13 @@ class TestPostProcessingTasks(TestCase):
         )
         self.collection.populate_sample()
 
+        # Select example taxa
+        self.species_taxon = Taxon.objects.filter(rank=TaxonRank.SPECIES.name).first()
+        self.genus_taxon = self.species_taxon.parent if self.species_taxon else None
+        self.assertIsNotNone(self.species_taxon)
+        self.assertIsNotNone(self.genus_taxon)
+        self.algorithm = self._create_category_map_with_algorithm()
+
     def _create_images_with_dimensions(
         self,
         deployment,
@@ -895,7 +908,9 @@ class TestPostProcessingTasks(TestCase):
                 not_identifiable_taxon,
                 f"Detection {det.pk} should be classified as 'Not identifiable'",
             )
+
             occurrence = det.occurrence
+            assert occurrence
             self.assertIsNotNone(occurrence, f"Detection {det.pk} should belong to an occurrence.")
             occurrence.refresh_from_db()
             self.assertEqual(
@@ -903,6 +918,413 @@ class TestPostProcessingTasks(TestCase):
                 not_identifiable_taxon,
                 f"Occurrence {occurrence.pk} should have its determination set to 'Not identifiable'.",
             )
+
+    def _create_occurrences_with_classifications(self, num=3):
+        """Helper to create occurrences and terminal classifications below species threshold."""
+        occurrences = []
+        now = datetime.datetime.now(datetime.timezone.utc)
+        for i in range(num):
+            det = Detection.objects.create(
+                source_image=self.collection.images.first(),
+                bbox=[0, 0, 200, 200],
+            )
+            occ = Occurrence.objects.create(project=self.project, event=self.deployment.events.first())
+            occ.detections.add(det)
+            classification = Classification.objects.create(
+                detection=det,
+                taxon=self.species_taxon,
+                score=0.5,
+                scores=[0.5, 0.2, 0.1],
+                terminal=True,
+                timestamp=now,
+                algorithm=self.algorithm,
+            )
+            occurrences.append((occ, classification))
+        return occurrences
+
+    def _create_category_map_with_algorithm(self):
+        """Create a simple AlgorithmCategoryMap and Algorithm to attach to classifications."""
+        species_taxa = list(self.project.taxa.filter(rank=TaxonRank.SPECIES.name).order_by("name")[:3])
+        assert species_taxa, "No species taxa found in project; run create_taxa() first."
+
+        data = [
+            {
+                "index": i,
+                "label": taxon.name,
+                "taxon_rank": taxon.rank,
+                "gbif_key": getattr(taxon, "gbif_key", None),
+            }
+            for i, taxon in enumerate(species_taxa)
+        ]
+        labels = [item["label"] for item in data]
+
+        category_map = AlgorithmCategoryMap.objects.create(
+            data=data,
+            labels=labels,
+            version="v1.0",
+            description="Species-level category map for testing RankRollupTask",
+        )
+
+        algorithm = Algorithm.objects.create(
+            name="Test Species Classifier",
+            task_type=AlgorithmTaskType.CLASSIFICATION.value,
+            category_map=category_map,
+        )
+
+        return algorithm
+
+    def test_rank_rollup_creates_new_terminal_classifications(self):
+        occurrences = self._create_occurrences_with_classifications(num=3)
+
+        task = RankRollupTask(
+            source_image_collection_id=self.collection.pk,
+            thresholds={"SPECIES": 0.8, "GENUS": 0.6, "FAMILY": 0.4},
+        )
+        task.run()
+
+        # Validate results
+        for occ, original_cls in occurrences:
+            detection = occ.detections.first()
+            original_cls.refresh_from_db(fields=["terminal"])
+            rolled_up_cls = Classification.objects.filter(detection=detection, terminal=True).first()
+
+            self.assertIsNotNone(
+                rolled_up_cls,
+                f"Expected a new rolled-up classification for original #{original_cls.pk}",
+            )
+            self.assertTrue(
+                rolled_up_cls.terminal,
+                "New rolled-up classification should be marked as terminal.",
+            )
+            self.assertFalse(
+                original_cls.terminal,
+                "Original classification should be marked as non-terminal after roll-up.",
+            )
+            self.assertEqual(
+                rolled_up_cls.taxon,
+                self.genus_taxon,
+                "Rolled-up classification should have genus-level taxon.",
+            )
+            self.assertEqual(
+                rolled_up_cls.applied_to,
+                original_cls,
+                "Rolled-up classification should reference the original classification.",
+            )
+
+    def _create_classification_with_logits(self, detection, taxon, score, scores, logits):
+        """Helper to create a classification with explicit scores and logits."""
+        now = datetime.datetime.now(datetime.timezone.utc)
+        return Classification.objects.create(
+            detection=detection,
+            taxon=taxon,
+            score=score,
+            scores=scores,
+            logits=logits,
+            terminal=True,
+            timestamp=now,
+            algorithm=self.algorithm,
+        )
+
+    def test_class_masking_redistributes_scores(self):
+        """
+        Test that class masking correctly recalculates softmax after masking excluded species.
+
+        Setup: 3 species in category map (indices 0, 1, 2).
+        Taxa list contains only species at indices 0 and 1.
+        Original classification has species at index 2 as the top prediction.
+        After masking, the top prediction should shift to species 0 or 1.
+        """
+        import math
+
+        species_taxa = list(self.project.taxa.filter(rank=TaxonRank.SPECIES.name).order_by("name")[:3])
+        self.assertEqual(len(species_taxa), 3)
+
+        # Create a taxa list with only the first 2 species (exclude species_taxa[2])
+        partial_taxa_list = TaxaList.objects.create(name="Partial Species List")
+        partial_taxa_list.taxa.set(species_taxa[:2])
+
+        # Logits where excluded species (index 2) has the highest value
+        logits = [2.0, 1.0, 5.0]  # species[2] dominates
+        # Compute original softmax
+        max_logit = max(logits)
+        exp_logits = [math.exp(x - max_logit) for x in logits]
+        total = sum(exp_logits)
+        original_scores = [e / total for e in exp_logits]
+
+        # Original top prediction is species[2] (the excluded one)
+        self.assertEqual(original_scores.index(max(original_scores)), 2)
+
+        det = Detection.objects.create(
+            source_image=self.collection.images.first(),
+            bbox=[0, 0, 200, 200],
+        )
+        occ = Occurrence.objects.create(project=self.project, event=self.deployment.events.first())
+        occ.detections.add(det)
+
+        original_clf = self._create_classification_with_logits(
+            detection=det,
+            taxon=species_taxa[2],  # top prediction is the excluded species
+            score=max(original_scores),
+            scores=original_scores,
+            logits=logits,
+        )
+
+        # Create a new algorithm for masked output
+        new_algorithm, _ = Algorithm.objects.get_or_create(
+            name=f"{self.algorithm.name} (filtered by {partial_taxa_list.name})",
+            key=f"{self.algorithm.key}_filtered_{partial_taxa_list.pk}",
+            defaults={
+                "task_type": AlgorithmTaskType.CLASSIFICATION.value,
+                "category_map": self.algorithm.category_map,
+            },
+        )
+
+        classifications = Classification.objects.filter(pk=original_clf.pk)
+        make_classifications_filtered_by_taxa_list(
+            classifications=classifications,
+            taxa_list=partial_taxa_list,
+            algorithm=self.algorithm,
+            new_algorithm=new_algorithm,
+        )
+
+        # Original classification should be non-terminal
+        original_clf.refresh_from_db()
+        self.assertFalse(original_clf.terminal, "Original classification should be non-terminal after masking.")
+
+        # New terminal classification should exist
+        new_clf = Classification.objects.filter(detection=det, terminal=True).first()
+        self.assertIsNotNone(new_clf, "A new terminal classification should be created.")
+        self.assertEqual(new_clf.algorithm, new_algorithm)
+
+        # New top prediction should be species[0] (highest logit among allowed species)
+        self.assertEqual(
+            new_clf.taxon,
+            species_taxa[0],
+            "Top prediction should be the highest-scoring species remaining in the taxa list.",
+        )
+
+        # Scores should sum to ~1.0 (valid probability distribution)
+        self.assertAlmostEqual(sum(new_clf.scores), 1.0, places=5, msg="Masked scores should sum to 1.0")
+
+        # Excluded species score should be ~0.0
+        self.assertAlmostEqual(
+            new_clf.scores[2],
+            0.0,
+            places=10,
+            msg="Excluded species score should be effectively zero.",
+        )
+
+        # New top score should be higher than original (probability mass redistributed)
+        self.assertGreater(
+            new_clf.score,
+            original_scores[0],
+            "In-list species score should increase after masking out the dominant excluded species.",
+        )
+
+    def test_class_masking_improves_accuracy(self):
+        """
+        Test the key use case: class masking improves accuracy when the true species is in
+        the taxa list but was originally outscored by an out-of-list species.
+
+        Scenario: True species is "Vanessa cardui" (in list). The classifier's top prediction
+        is an out-of-list species. After masking, "Vanessa cardui" should become the top
+        prediction, and the occurrence determination should update.
+        """
+        species_taxa = list(self.project.taxa.filter(rank=TaxonRank.SPECIES.name).order_by("name")[:3])
+        self.assertEqual(len(species_taxa), 3)
+        # species_taxa sorted by name: [Vanessa atalanta, Vanessa cardui, Vanessa itea]
+
+        true_species = species_taxa[1]  # Vanessa cardui — the "ground truth"
+        excluded_species = species_taxa[2]  # Vanessa itea — not in the regional list
+
+        # Taxa list: contains atalanta and cardui, but NOT itea
+        regional_list = TaxaList.objects.create(name="Regional Species List")
+        regional_list.taxa.set([species_taxa[0], species_taxa[1]])
+
+        # Logits: itea (index 2) is top, cardui (index 1) is close second, atalanta (index 0) is low
+        logits = [0.5, 3.0, 3.5]
+
+        import math
+
+        max_logit = max(logits)
+        exp_logits = [math.exp(x - max_logit) for x in logits]
+        total = sum(exp_logits)
+        scores = [e / total for e in exp_logits]
+
+        # Original top prediction is the excluded species
+        self.assertEqual(scores.index(max(scores)), 2)
+
+        det = Detection.objects.create(
+            source_image=self.collection.images.first(),
+            bbox=[0, 0, 200, 200],
+        )
+        occ = Occurrence.objects.create(project=self.project, event=self.deployment.events.first())
+        occ.detections.add(det)
+
+        self._create_classification_with_logits(
+            detection=det,
+            taxon=excluded_species,
+            score=max(scores),
+            scores=scores,
+            logits=logits,
+        )
+        # Occurrence determination is currently the excluded species
+        occ.save(update_determination=True)
+        occ.refresh_from_db()
+        self.assertEqual(occ.determination, excluded_species)
+
+        new_algorithm, _ = Algorithm.objects.get_or_create(
+            name=f"{self.algorithm.name} (filtered by {regional_list.name})",
+            key=f"{self.algorithm.key}_filtered_{regional_list.pk}",
+            defaults={
+                "task_type": AlgorithmTaskType.CLASSIFICATION.value,
+                "category_map": self.algorithm.category_map,
+            },
+        )
+
+        classifications = Classification.objects.filter(
+            detection__occurrence=occ,
+            terminal=True,
+            algorithm=self.algorithm,
+            scores__isnull=False,
+        )
+        make_classifications_filtered_by_taxa_list(
+            classifications=classifications,
+            taxa_list=regional_list,
+            algorithm=self.algorithm,
+            new_algorithm=new_algorithm,
+        )
+
+        # After masking, occurrence determination should be the true species
+        occ.refresh_from_db()
+        self.assertEqual(
+            occ.determination,
+            true_species,
+            "After class masking, occurrence determination should update to the correct in-list species.",
+        )
+
+        # Verify the new classification's taxon
+        new_clf = Classification.objects.filter(detection=det, terminal=True).first()
+        self.assertEqual(new_clf.taxon, true_species)
+        self.assertGreater(new_clf.score, 0.5, "Masked score for true species should be > 0.5")
+
+    def test_class_masking_no_change_when_all_species_in_list(self):
+        """When all category map species are in the taxa list, no new classifications should be created."""
+        species_taxa = list(self.project.taxa.filter(rank=TaxonRank.SPECIES.name).order_by("name")[:3])
+
+        # Taxa list contains ALL species
+        full_list = TaxaList.objects.create(name="Full Species List")
+        full_list.taxa.set(species_taxa)
+
+        logits = [3.0, 1.0, 0.5]
+        import math
+
+        max_logit = max(logits)
+        exp_logits = [math.exp(x - max_logit) for x in logits]
+        total = sum(exp_logits)
+        scores = [e / total for e in exp_logits]
+
+        det = Detection.objects.create(
+            source_image=self.collection.images.first(),
+            bbox=[0, 0, 200, 200],
+        )
+        occ = Occurrence.objects.create(project=self.project, event=self.deployment.events.first())
+        occ.detections.add(det)
+
+        original_clf = self._create_classification_with_logits(
+            detection=det,
+            taxon=species_taxa[0],
+            score=max(scores),
+            scores=scores,
+            logits=logits,
+        )
+
+        new_algorithm, _ = Algorithm.objects.get_or_create(
+            name=f"{self.algorithm.name} (filtered full)",
+            key=f"{self.algorithm.key}_filtered_full",
+            defaults={
+                "task_type": AlgorithmTaskType.CLASSIFICATION.value,
+                "category_map": self.algorithm.category_map,
+            },
+        )
+
+        classifications = Classification.objects.filter(pk=original_clf.pk)
+        make_classifications_filtered_by_taxa_list(
+            classifications=classifications,
+            taxa_list=full_list,
+            algorithm=self.algorithm,
+            new_algorithm=new_algorithm,
+        )
+
+        # Original should still be terminal (no change needed)
+        original_clf.refresh_from_db()
+        self.assertTrue(original_clf.terminal, "Original should remain terminal when all species are in the list.")
+
+        # No new classifications created
+        clf_count = Classification.objects.filter(detection=det).count()
+        self.assertEqual(clf_count, 1, "No new classification should be created when masking changes nothing.")
+
+    def test_class_masking_softmax_correctness(self):
+        """Verify that masked softmax produces mathematically correct results."""
+        import math
+
+        species_taxa = list(self.project.taxa.filter(rank=TaxonRank.SPECIES.name).order_by("name")[:3])
+
+        # Only keep species at index 0
+        single_species_list = TaxaList.objects.create(name="Single Species List")
+        single_species_list.taxa.set([species_taxa[0]])
+
+        logits = [2.0, 3.0, 4.0]
+        max_logit = max(logits)
+        exp_logits = [math.exp(x - max_logit) for x in logits]
+        total = sum(exp_logits)
+        scores = [e / total for e in exp_logits]
+
+        det = Detection.objects.create(
+            source_image=self.collection.images.first(),
+            bbox=[0, 0, 200, 200],
+        )
+        occ = Occurrence.objects.create(project=self.project, event=self.deployment.events.first())
+        occ.detections.add(det)
+
+        self._create_classification_with_logits(
+            detection=det,
+            taxon=species_taxa[2],  # original top is index 2
+            score=max(scores),
+            scores=scores,
+            logits=logits,
+        )
+
+        new_algorithm, _ = Algorithm.objects.get_or_create(
+            name=f"{self.algorithm.name} (single species)",
+            key=f"{self.algorithm.key}_single",
+            defaults={
+                "task_type": AlgorithmTaskType.CLASSIFICATION.value,
+                "category_map": self.algorithm.category_map,
+            },
+        )
+
+        classifications = Classification.objects.filter(detection=det, terminal=True)
+        make_classifications_filtered_by_taxa_list(
+            classifications=classifications,
+            taxa_list=single_species_list,
+            algorithm=self.algorithm,
+            new_algorithm=new_algorithm,
+        )
+
+        new_clf = Classification.objects.filter(detection=det, terminal=True).first()
+        self.assertIsNotNone(new_clf)
+
+        # With only 1 allowed species, its score should be ~1.0
+        self.assertAlmostEqual(
+            new_clf.scores[0],
+            1.0,
+            places=5,
+            msg="With only one allowed species, its softmax score should be ~1.0",
+        )
+        self.assertAlmostEqual(new_clf.scores[1], 0.0, places=10)
+        self.assertAlmostEqual(new_clf.scores[2], 0.0, places=10)
+        self.assertAlmostEqual(sum(new_clf.scores), 1.0, places=5)
 
 
 class TestTaskStateManager(TestCase):

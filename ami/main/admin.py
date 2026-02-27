@@ -2,16 +2,22 @@ from typing import Any
 
 from django.contrib import admin
 from django.db import models
+from django.db.models import Count
 from django.db.models.query import QuerySet
 from django.http.request import HttpRequest
 from django.template.defaultfilters import filesizeformat
+from django.template.response import TemplateResponse
+from django.urls import reverse
 from django.utils.formats import number_format
+from django.utils.html import format_html
 from guardian.admin import GuardedModelAdmin
 
 import ami.utils
 from ami import tasks
 from ami.jobs.models import Job
+from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
+from ami.ml.post_processing.class_masking import update_single_occurrence
 from ami.ml.tasks import remove_duplicate_classifications
 
 from .models import (
@@ -288,6 +294,7 @@ class ClassificationInline(admin.TabularInline):
     model = Classification
     extra = 0
     fields = (
+        "classification_link",
         "taxon",
         "algorithm",
         "timestamp",
@@ -295,12 +302,20 @@ class ClassificationInline(admin.TabularInline):
         "created_at",
     )
     readonly_fields = (
+        "classification_link",
         "taxon",
         "algorithm",
         "timestamp",
         "terminal",
         "created_at",
     )
+
+    @admin.display(description="Classification")
+    def classification_link(self, obj: Classification) -> str:
+        if obj.pk:
+            url = reverse("admin:main_classification_change", args=[obj.pk])
+            return format_html('<a href="{}">{}</a>', url, f"Classification #{obj.pk}")
+        return "-"
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
@@ -311,6 +326,7 @@ class DetectionInline(admin.TabularInline):
     model = Detection
     extra = 0
     fields = (
+        "detection_link",
         "detection_algorithm",
         "source_image",
         "timestamp",
@@ -318,12 +334,20 @@ class DetectionInline(admin.TabularInline):
         "occurrence",
     )
     readonly_fields = (
+        "detection_link",
         "detection_algorithm",
         "source_image",
         "timestamp",
         "created_at",
         "occurrence",
     )
+
+    @admin.display(description="ID")
+    def detection_link(self, obj):
+        if obj.pk:
+            url = reverse("admin:main_detection_change", args=[obj.pk])
+            return format_html('<a href="{}">{}</a>', url, obj.pk)
+        return "-"
 
 
 @admin.register(Detection)
@@ -382,7 +406,7 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
         "determination__rank",
         "created_at",
     )
-    search_fields = ("determination__name", "determination__search_names")
+    search_fields = ("id", "determination__name", "determination__search_names")
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
@@ -404,10 +428,82 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
     def detections_count(self, obj) -> int:
         return obj.detections_count
 
+    @admin.action(description="Run class masking (select taxa list & algorithm)")
+    def run_class_masking(self, request: HttpRequest, queryset: QuerySet[Occurrence]) -> TemplateResponse | None:
+        """
+        Run class masking on selected occurrences.
+        Shows an intermediate page to select a TaxaList and Algorithm.
+        """
+        if request.POST.get("confirm"):
+            taxa_list_id = request.POST.get("taxa_list")
+            algorithm_id = request.POST.get("algorithm")
+            if not taxa_list_id or not algorithm_id:
+                self.message_user(request, "Please select both a taxa list and an algorithm.", level="error")
+                return None
+
+            try:
+                taxa_list = TaxaList.objects.get(pk=taxa_list_id)
+                algorithm = Algorithm.objects.get(pk=algorithm_id)
+            except (TaxaList.DoesNotExist, Algorithm.DoesNotExist) as e:
+                self.message_user(request, f"Error: {e}", level="error")
+                return None
+
+            if not algorithm.category_map:
+                self.message_user(
+                    request, f"Algorithm '{algorithm.name}' does not have a category map.", level="error"
+                )
+                return None
+
+            count = 0
+            for occurrence in queryset:
+                try:
+                    update_single_occurrence(
+                        occurrence=occurrence,
+                        algorithm=algorithm,
+                        taxa_list=taxa_list,
+                    )
+                    count += 1
+                except Exception as e:
+                    self.message_user(
+                        request,
+                        f"Error processing occurrence {occurrence.pk}: {e}",
+                        level="error",
+                    )
+
+            self.message_user(request, f"Successfully ran class masking on {count} occurrence(s).")
+            return None
+
+        # Show intermediate confirmation page
+        taxa_lists = TaxaList.objects.annotate(taxa_count=Count("taxa")).filter(taxa_count__gt=0).order_by("name")
+        algorithms = Algorithm.objects.filter(category_map__isnull=False).order_by("name")
+
+        # Annotate algorithms with label count
+        alg_list = []
+        for alg in algorithms:
+            alg.labels_count = len(alg.category_map.labels) if alg.category_map else 0
+            alg_list.append(alg)
+
+        return TemplateResponse(
+            request,
+            "admin/main/class_masking_confirmation.html",
+            {
+                **self.admin_site.each_context(request),
+                "title": "Run class masking",
+                "queryset": queryset,
+                "occurrence_count": queryset.count(),
+                "taxa_lists": taxa_lists,
+                "algorithms": alg_list,
+                "opts": self.model._meta,
+                "action_checkbox_name": admin.helpers.ACTION_CHECKBOX_NAME,
+            },
+        )
+
     ordering = ("-created_at",)
 
     # Add classifications as inline
     inlines = [DetectionInline]
+
+    actions = [run_class_masking]
 
 
 @admin.register(Classification)
@@ -431,6 +527,8 @@ class ClassificationAdmin(admin.ModelAdmin[Classification]):
         "detection__source_image__project",
         "taxon__rank",
     )
+
+    autocomplete_fields = ("taxon",)
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         qs = super().get_queryset(request)
@@ -662,10 +760,32 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
 
         self.message_user(request, f"Queued Small Size Filter for {queryset.count()} collection(s). Jobs: {jobs}")
 
+    @admin.action(description="Run Rank Rollup post-processing task (async)")
+    def run_rank_rollup(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
+        """Trigger the Rank Rollup post-processing job asynchronously."""
+        jobs = []
+        DEFAULT_THRESHOLDS = {"SPECIES": 0.8, "GENUS": 0.6, "FAMILY": 0.4}
+
+        for collection in queryset:
+            job = Job.objects.create(
+                name=f"Post-processing: RankRollup on Collection {collection.pk}",
+                project=collection.project,
+                job_type_key="post_processing",
+                params={
+                    "task": "rank_rollup",
+                    "config": {"source_image_collection_id": collection.pk, "thresholds": DEFAULT_THRESHOLDS},
+                },
+            )
+            job.enqueue()
+            jobs.append(job.pk)
+
+        self.message_user(request, f"Queued Rank Rollup for {queryset.count()} collection(s). Jobs: {jobs}")
+
     actions = [
         populate_collection,
         populate_collection_async,
         run_small_size_filter,
+        run_rank_rollup,
     ]
 
     # Hide images many-to-many field from form. This would list all source images in the database.
