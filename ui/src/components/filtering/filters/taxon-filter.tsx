@@ -4,6 +4,7 @@ import { ChevronDownIcon, Loader2Icon } from 'lucide-react'
 import { Button, Popover } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { STRING, translate } from 'utils/language'
 import { FilterProps } from './types'
 
 export const TaxonFilter = ({ value, onAdd, onClear }: FilterProps) => {
@@ -18,7 +19,7 @@ export const TaxonFilter = ({ value, onAdd, onClear }: FilterProps) => {
     if (value && isLoading) {
       return 'Loading...'
     }
-    return 'All taxa'
+    return translate(STRING.SELECT_TAXON_PLACEHOLDER)
   })()
 
   return (

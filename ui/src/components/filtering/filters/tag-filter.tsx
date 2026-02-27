@@ -1,4 +1,5 @@
 import { Select } from 'nova-ui-kit'
+import { STRING, translate } from 'utils/language'
 import { FilterProps } from './types'
 
 export const TagFilter = ({ data = [], value, onAdd }: FilterProps) => {
@@ -11,9 +12,9 @@ export const TagFilter = ({ data = [], value, onAdd }: FilterProps) => {
       onValueChange={onAdd}
     >
       <Select.Trigger>
-        <Select.Value placeholder="Select a value" />
+        <Select.Value placeholder={translate(STRING.SELECT_PLACEHOLDER)} />
       </Select.Trigger>
-      <Select.Content className="max-h-72">
+      <Select.Content>
         {tags.map((option) => (
           <Select.Item key={option.id} value={`${option.id}`}>
             {option.name}

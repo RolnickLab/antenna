@@ -37,7 +37,7 @@ export const JobDetails = ({
   onDelete: () => void
 }) => (
   <>
-    <Dialog.Header title={title}>
+    <Dialog.Header title={title} withActions>
       <div className={styles.headerContent}>
         <div className={styles.fetchInfoWrapper}>
           {isFetching ? <FetchInfo /> : null}
@@ -114,7 +114,7 @@ const JobSummary = ({ job }: { job: Job }) => {
         ) : null}
         {job.sourceImage ? (
           <InputValue
-            label={translate(STRING.FIELD_LABEL_SOURCE_IMAGE)}
+            label={translate(STRING.FIELD_LABEL_CAPTURE)}
             value={job.sourceImage.label}
             to={
               job.sourceImage.sessionId
@@ -132,7 +132,7 @@ const JobSummary = ({ job }: { job: Job }) => {
           />
         ) : job.sourceImages ? (
           <InputValue
-            label={translate(STRING.FIELD_LABEL_SOURCE_IMAGES_COLLECTION)}
+            label={translate(STRING.FIELD_LABEL_CAPTURE_SET)}
             value={job.sourceImages?.name}
           />
         ) : null}
