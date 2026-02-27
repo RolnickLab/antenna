@@ -86,9 +86,9 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
 
     progress_info = state_manager.update_state(processed_image_ids, stage="process", failed_image_ids=failed_image_ids)
     if not progress_info:
-        # Acknowledge the task to prevent retries
+        logger.warning(f"Redis state missing for job {job_id} — job may have been cleaned up prematurely.")
+        # Acknowledge the task to prevent retries, since we don't know the state
         _ack_task_via_nats(reply_subject, logger)
-        _fail_job(job_id, "Redis state missing for job")
         return
 
     try:
@@ -152,7 +152,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         )
 
         if not progress_info:
-            _fail_job(job_id, "Redis state missing for job")
+            job.logger.warning(f"Redis state missing for job {job_id} — job may have been cleaned up prematurely.")
             return
 
         # update complete state based on latest progress info after saving results
