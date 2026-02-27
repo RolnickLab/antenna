@@ -340,22 +340,22 @@ class JobLogHandler(logging.Handler):
         # Refresh from DB first to reduce the window for concurrent overwrites — each
         # worker holds its own stale in-memory copy of `logs`, so without a refresh the
         # last writer always wins and earlier entries are silently dropped.
-        self.job.refresh_from_db(fields=["logs"])
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        msg = f"[{timestamp}] {record.levelname} {self.format(record)}"
-        if msg not in self.job.logs.stdout:
-            self.job.logs.stdout.insert(0, msg)
-
-        # Write a simpler copy of any errors to the errors field
-        if record.levelno >= logging.ERROR:
-            if record.message not in self.job.logs.stderr:
-                self.job.logs.stderr.insert(0, record.message)
-
-        if len(self.job.logs.stdout) > self.max_log_length:
-            self.job.logs.stdout = self.job.logs.stdout[: self.max_log_length]
-
         # @TODO consider saving logs to the database periodically rather than on every log
         try:
+            self.job.refresh_from_db(fields=["logs"])
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            msg = f"[{timestamp}] {record.levelname} {self.format(record)}"
+            if msg not in self.job.logs.stdout:
+                self.job.logs.stdout.insert(0, msg)
+
+            # Write a simpler copy of any errors to the errors field
+            if record.levelno >= logging.ERROR:
+                if record.message not in self.job.logs.stderr:
+                    self.job.logs.stderr.insert(0, record.message)
+
+            if len(self.job.logs.stdout) > self.max_log_length:
+                self.job.logs.stdout = self.job.logs.stdout[: self.max_log_length]
+
             self.job.save(update_fields=["logs"], update_progress=False)
         except Exception as e:
             logger.error(f"Failed to save logs for job #{self.job.pk}: {e}")
@@ -981,12 +981,10 @@ class Job(BaseModel):
         self.status = JobState.CANCELING
         self.save()
 
-        cleanup_async_job_if_needed(self)
         if self.task_id:
             task = run_job.AsyncResult(self.task_id)
             if task:
                 task.revoke(terminate=True)
-                self.save()
             if self.dispatch_mode == JobDispatchMode.ASYNC_API:
                 # For async jobs we need to set the status to revoked here since the task already
                 # finished (it only queues the images).
@@ -995,6 +993,8 @@ class Job(BaseModel):
         else:
             self.status = JobState.REVOKED
             self.save()
+
+        cleanup_async_job_if_needed(self)
 
     def update_status(self, status=None, save=True):
         """

@@ -187,9 +187,9 @@ def _fail_job(job_id: int, reason: str) -> None:
             job = Job.objects.select_for_update().get(pk=job_id)
             if job.status in (JobState.CANCELING, *JobState.final_states()):
                 return
-            job.status = JobState.FAILURE
+            job.update_status(JobState.FAILURE, save=False)
             job.finished_at = datetime.datetime.now()
-            job.save(update_fields=["status", "finished_at"])
+            job.save(update_fields=["status", "progress", "finished_at"])
 
         job.logger.error(f"Job {job_id} marked as FAILURE: {reason}")
         cleanup_async_job_resources(job.pk, job.logger)
