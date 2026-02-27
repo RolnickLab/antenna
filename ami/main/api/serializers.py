@@ -1106,6 +1106,7 @@ class SourceImageListSerializer(DefaultSerializer):
             "deployment",
             "event",
             "url",
+            "path",
             # "thumbnail",
             "timestamp",
             "width",

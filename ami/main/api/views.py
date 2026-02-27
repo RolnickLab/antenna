@@ -501,6 +501,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         "taxa_count",
         "deployment__name",
         "event__start",
+        "path",
     ]
     permission_classes = [ObjectPermission]
 

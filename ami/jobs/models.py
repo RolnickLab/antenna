@@ -606,7 +606,8 @@ class DataStorageSyncJob(JobType):
         """
 
         job.progress.add_stage(cls.name)
-        job.progress.add_stage_param(cls.key, "Total files", "")
+        job.progress.add_stage_param(cls.key, "Total files", 0)
+        job.progress.add_stage_param(cls.key, "Failed", 0)
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
