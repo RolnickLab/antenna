@@ -51,7 +51,12 @@ export class ProcessingService extends Entity {
   }
 
   get endpointUrl(): string | undefined {
-    return this._processingService.endpoint_url ?? undefined
+    const url = this._processingService.endpoint_url
+    return url && url.trim().length > 0 ? url : undefined
+  }
+
+  get isAsync(): boolean {
+    return this._processingService.is_async
   }
 
   get description(): string {
