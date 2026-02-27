@@ -22,6 +22,10 @@ from ami.utils.requests import create_session
 
 logger = logging.getLogger(__name__)
 
+# Max age of last_seen before a pull-mode (no-endpoint) service is considered offline.
+# Pull-mode workers poll every ~5s, so 60s gives 12x buffer for transient failures.
+PROCESSING_SERVICE_LAST_SEEN_MAX = datetime.timedelta(seconds=60)
+
 
 class ProcessingServiceQuerySet(BaseQuerySet):
     def async_services(self) -> "ProcessingServiceQuerySet":
@@ -192,16 +196,25 @@ class ProcessingService(BaseModel):
         Args:
             timeout: Request timeout in seconds per attempt (default: 90s for serverless cold starts)
         """
-        # If no endpoint URL is configured, return a no-op response
-        if self.endpoint_url is None:
+        # If no endpoint URL is configured, derive status from last registration heartbeat
+        if not self.endpoint_url:
+            is_live = bool(
+                self.last_seen
+                and self.last_seen_live
+                and (datetime.datetime.now() - self.last_seen) < PROCESSING_SERVICE_LAST_SEEN_MAX
+            )
+            if not is_live and self.last_seen_live:
+                # Heartbeat has expired — mark stale
+                self.last_seen_live = False
+                self.save(update_fields=["last_seen_live"])
+            pipeline_names = list(self.pipelines.values_list("name", flat=True))
             return ProcessingServiceStatusResponse(
-                timestamp=datetime.datetime.now(),
-                request_successful=False,
-                server_live=None,
-                pipelines_online=[],
+                timestamp=self.last_seen or datetime.datetime.now(),
+                request_successful=is_live,
+                server_live=is_live,
+                pipelines_online=pipeline_names,
                 pipeline_configs=[],
-                endpoint_url=self.endpoint_url,
-                error="No endpoint URL configured - service operates in pull mode",
+                endpoint_url=None,
                 latency=0.0,
             )
 
@@ -269,7 +282,7 @@ class ProcessingService(BaseModel):
         Get the pipeline configurations from the processing service.
         This can be a long response as it includes the full category map for each algorithm.
         """
-        if self.endpoint_url is None:
+        if not self.endpoint_url:
             return []
 
         info_url = urljoin(self.endpoint_url, "info")

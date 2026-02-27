@@ -50,8 +50,8 @@ export class ProcessingService extends Entity {
     return `${this._processingService.name}`
   }
 
-  get endpointUrl(): string {
-    return `${this._processingService.endpoint_url}`
+  get endpointUrl(): string | undefined {
+    return this._processingService.endpoint_url ?? undefined
   }
 
   get description(): string {
