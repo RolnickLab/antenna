@@ -133,9 +133,9 @@ class TestProcessingServiceAPI(APITestCase):
         # Check that endpoint_url is null
         self.assertIsNone(data["instance"]["endpoint_url"])
 
-        # Check that status indicates no endpoint configured
+        # Check that status indicates service is not yet live (no heartbeat received)
         self.assertFalse(data["status"]["request_successful"])
-        self.assertIn("No endpoint URL configured", data["status"]["error"])
+        self.assertFalse(data["status"]["server_live"])
         self.assertIsNone(data["status"]["endpoint_url"])
 
     def test_get_status_with_null_endpoint_url(self):
@@ -146,10 +146,8 @@ class TestProcessingServiceAPI(APITestCase):
         status = service.get_status()
 
         self.assertFalse(status.request_successful)
-        self.assertIsNone(status.server_live)
+        self.assertFalse(status.server_live)  # No heartbeat received yet = not live
         self.assertIsNone(status.endpoint_url)
-        self.assertIsNotNone(status.error)
-        self.assertIn("No endpoint URL configured", (status.error or ""))
         self.assertEqual(status.pipelines_online, [])
 
     def test_get_pipeline_configs_with_null_endpoint_url(self):
