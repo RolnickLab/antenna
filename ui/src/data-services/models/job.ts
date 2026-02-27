@@ -66,7 +66,8 @@ export class Job {
       this._job.user_permissions.includes(UserPermission.Run) &&
       this.status.code !== 'CREATED' &&
       this.status.code !== 'STARTED' &&
-      this.status.code !== 'PENDING'
+      this.status.code !== 'PENDING' &&
+      this.status.code !== 'CANCELING'
     )
   }
 
