@@ -1,14 +1,8 @@
 """
 Creates and deploys the Elastic Beanstalk environment.
-
 Builds the Dockerrun bundle, uploads it to S3,
 and provisions the EB app, version, and environment.
 """
-
-
-
-
-
 import os
 import json
 import zipfile
