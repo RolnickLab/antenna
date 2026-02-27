@@ -1,19 +1,22 @@
 import logging
 
+from django.db import transaction
 from django.db.models import Prefetch
 from django.db.models.query import QuerySet
 from django.utils.text import slugify
 from drf_spectacular.utils import extend_schema
 from rest_framework import exceptions as api_exceptions
-from rest_framework import status
+from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from ami.base.permissions import ProjectPipelineConfigPermission
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
-from ami.main.models import SourceImage
+from ami.main.models import Project, SourceImage
+from ami.ml.schemas import PipelineRegistrationResponse
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline
@@ -22,6 +25,7 @@ from .models.project_pipeline_config import ProjectPipelineConfig
 from .serializers import (
     AlgorithmCategoryMapSerializer,
     AlgorithmSerializer,
+    PipelineRegistrationSerializer,
     PipelineSerializer,
     ProcessingServiceSerializer,
 )
@@ -188,3 +192,74 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
         response = processing_service.create_pipelines()
         processing_service.save()
         return Response(response.dict())
+
+
+class ProjectPipelineViewSet(ProjectMixin, mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.GenericViewSet):
+    """Pipelines for a specific project. GET lists, POST registers."""
+
+    queryset = Pipeline.objects.none()
+    serializer_class = PipelineSerializer
+    permission_classes = [ProjectPipelineConfigPermission]
+    require_project = True
+
+    def get_queryset(self) -> QuerySet:
+        project = self.get_active_project()
+        return (
+            Pipeline.objects.filter(projects=project, project_pipeline_configs__enabled=True)
+            .prefetch_related(
+                "algorithms",
+                Prefetch(
+                    "processing_services",
+                    queryset=ProcessingService.objects.filter(projects=project),
+                ),
+                Prefetch(
+                    "project_pipeline_configs",
+                    queryset=ProjectPipelineConfig.objects.filter(project=project),
+                ),
+            )
+            .distinct()
+        )
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return PipelineRegistrationSerializer
+        return PipelineSerializer
+
+    @extend_schema(
+        operation_id="projects_pipelines_list",
+        summary="List pipelines for a project",
+        responses={200: PipelineSerializer(many=True)},
+        tags=["projects"],
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        operation_id="projects_pipelines_create",
+        summary="Register pipelines for a project",
+        description=(
+            "Receive pipeline registrations for a project. This endpoint is called by the "
+            "V2 ML processing services to register available pipelines for a project."
+        ),
+        request=PipelineRegistrationSerializer,
+        responses={201: PipelineRegistrationResponse},
+        tags=["projects"],
+    )
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        project = self.get_active_project()
+
+        with transaction.atomic():
+            processing_service, _ = ProcessingService.objects.get_or_create(
+                name=serializer.validated_data["processing_service_name"],
+                defaults={"endpoint_url": None},
+            )
+            processing_service.projects.add(project)
+
+            response = processing_service.create_pipelines(
+                pipeline_configs=serializer.validated_data["pipelines"],
+                projects=Project.objects.filter(pk=project.pk),
+            )
+
+        return Response(response.dict(), status=status.HTTP_201_CREATED)

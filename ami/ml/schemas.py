@@ -241,6 +241,13 @@ class PipelineResultsResponse(pydantic.BaseModel):
     errors: list | str | None = None
 
 
+class PipelineResultsError(pydantic.BaseModel):
+    """Error result when pipeline processing fails for an image."""
+
+    error: str
+    image_id: str | None = None
+
+
 class PipelineProcessingTask(pydantic.BaseModel):
     """
     A task representing a single image or detection to be processed in an async pipeline.
@@ -249,7 +256,6 @@ class PipelineProcessingTask(pydantic.BaseModel):
     id: str
     image_id: str
     image_url: str
-    queue_timestamp: str
     reply_subject: str | None = None  # The NATS subject to send the result to
     # TODO: Do we need these?
     # detections: list[DetectionRequest] | None = None
@@ -259,10 +265,12 @@ class PipelineProcessingTask(pydantic.BaseModel):
 class PipelineTaskResult(pydantic.BaseModel):
     """
     The result from processing a single PipelineProcessingTask.
+
+    Note: this schema is called `AntennaTaskResult` in the ADC worker processing service.
     """
 
     reply_subject: str  # The reply_subject from the PipelineProcessingTask
-    result: PipelineResultsResponse
+    result: PipelineResultsResponse | PipelineResultsError
 
 
 class PipelineStageParam(pydantic.BaseModel):
@@ -323,7 +331,7 @@ class ProcessingServiceStatusResponse(pydantic.BaseModel):
     error: str | None = None
     server_live: bool | None = None
     pipelines_online: list[str] = []
-    endpoint_url: str
+    endpoint_url: str | None = None
     latency: float
 
 
@@ -334,3 +342,12 @@ class PipelineRegistrationResponse(pydantic.BaseModel):
     pipelines: list[PipelineConfigResponse] = []
     pipelines_created: list[str] = []
     algorithms_created: list[str] = []
+
+
+class AsyncPipelineRegistrationRequest(pydantic.BaseModel):
+    """
+    Request to register pipelines from an async processing service
+    """
+
+    processing_service_name: str
+    pipelines: list[PipelineConfigResponse] = []
