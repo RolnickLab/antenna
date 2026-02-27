@@ -27,6 +27,15 @@ const getSidebarSections = (
         path: APP_ROUTES.CAPTURE_SETS({ projectId: project.id }),
       },
       {
+        id: 'taxa-lists',
+        title: translate(STRING.NAV_ITEM_TAXA_LISTS),
+        path: APP_ROUTES.TAXA_LISTS({ projectId: project.id }),
+        matchPath: APP_ROUTES.TAXA_LIST_DETAILS({
+          projectId: ':projectId',
+          taxaListId: '*',
+        }),
+      },
+      {
         id: 'exports',
         title: translate(STRING.NAV_ITEM_EXPORTS),
         path: APP_ROUTES.EXPORTS({ projectId: project.id }),

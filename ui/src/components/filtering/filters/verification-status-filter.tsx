@@ -1,4 +1,5 @@
 import { Select } from 'nova-ui-kit'
+import { STRING, translate } from 'utils/language'
 import { booleanToString, stringToBoolean } from '../utils'
 import { FilterProps } from './types'
 
@@ -16,9 +17,9 @@ export const VerificationStatusFilter = ({
   return (
     <Select.Root value={booleanToString(value)} onValueChange={onAdd}>
       <Select.Trigger>
-        <Select.Value placeholder="Select a value" />
+        <Select.Value placeholder={translate(STRING.SELECT_PLACEHOLDER)} />
       </Select.Trigger>
-      <Select.Content className="max-h-72">
+      <Select.Content>
         {OPTIONS.map((option) => (
           <Select.Item
             key={booleanToString(option.value)}
