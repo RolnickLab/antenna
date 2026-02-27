@@ -84,15 +84,13 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
 
     state_manager = AsyncJobStateManager(job_id)
 
-    progress_info = state_manager.update_state(
-        processed_image_ids, stage="process", request_id=self.request.id, failed_image_ids=failed_image_ids
-    )
+    progress_info = state_manager.update_state(processed_image_ids, stage="process", failed_image_ids=failed_image_ids)
     if not progress_info:
-        logger.warning(
-            f"Another task is already processing results for job {job_id}. "
-            f"Retrying task {self.request.id} in 5 seconds..."
-        )
-        raise self.retry(countdown=5, max_retries=10)
+        logger.error(f"Redis state missing for job {job_id} — job may have been cleaned up prematurely.")
+        # Acknowledge the task to prevent retries, since we don't know the state
+        _ack_task_via_nats(reply_subject, logger)
+        # TODO: cancel the job to fail fast once PR #1144 is merged
+        return
 
     try:
         complete_state = JobState.SUCCESS
@@ -126,6 +124,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         _ack_task_via_nats(reply_subject, logger)
         return
 
+    acked = False
     try:
         # Save to database (this is the slow operation)
         detections_count, classifications_count, captures_count = 0, 0, 0
@@ -145,20 +144,18 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
             captures_count = len(pipeline_result.source_images)
 
         _ack_task_via_nats(reply_subject, job.logger)
+        acked = True
         # Update job stage with calculated progress
 
         progress_info = state_manager.update_state(
             processed_image_ids,
             stage="results",
-            request_id=self.request.id,
         )
 
         if not progress_info:
-            logger.warning(
-                f"Another task is already processing results for job {job_id}. "
-                f"Retrying task {self.request.id} in 5 seconds..."
-            )
-            raise self.retry(countdown=5, max_retries=10)
+            job.logger.error(f"Redis state missing for job {job_id} — job may have been cleaned up prematurely.")
+            # TODO: cancel the job to fail fast once PR #1144 is merged
+            return
 
         # update complete state based on latest progress info after saving results
         complete_state = JobState.SUCCESS
@@ -176,9 +173,11 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         )
 
     except Exception as e:
-        job.logger.error(
-            f"Failed to process pipeline result for job {job_id}: {e}. NATS will redeliver the task message."
-        )
+        error = f"Error processing pipeline result for job {job_id}: {e}"
+        if not acked:
+            error += ". NATS will re-deliver the task message."
+
+        job.logger.error(error)
 
 
 def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> None:
@@ -256,9 +255,33 @@ def _update_job_progress(
             state_params["classifications"] = current_classifications + new_classifications
             state_params["captures"] = current_captures + new_captures
 
+        # Don't overwrite a stage with a stale progress value.
+        # This guards against the race where a slower worker calls _update_job_progress
+        # after a faster worker has already marked further progress.
+        try:
+            existing_stage = job.progress.get_stage(stage)
+            progress_percentage = max(existing_stage.progress, progress_percentage)
+            # Explicitly preserve FAILURE: once a stage is marked FAILURE it should
+            # never regress to a non-failure state, regardless of enum ordering.
+            if existing_stage.status == JobState.FAILURE:
+                complete_state = JobState.FAILURE
+        except (ValueError, AttributeError):
+            pass  # Stage doesn't exist yet; proceed normally
+
+        # Determine the status to write:
+        # - Stage complete (100%): use complete_state (SUCCESS or FAILURE)
+        # - Stage incomplete but FAILURE already determined: keep FAILURE visible
+        # - Stage incomplete, no failure: mark as in-progress (STARTED)
+        if progress_percentage >= 1.0:
+            status = complete_state
+        elif complete_state == JobState.FAILURE:
+            status = JobState.FAILURE
+        else:
+            status = JobState.STARTED
+
         job.progress.update_stage(
             stage,
-            status=complete_state if progress_percentage >= 1.0 else JobState.STARTED,
+            status=status,
             progress=progress_percentage,
             **state_params,
         )
