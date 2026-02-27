@@ -95,24 +95,48 @@ def remove_duplicate_classifications(project_id: int | None = None, dry_run: boo
     return num_deleted
 
 
-@celery_app.task(soft_time_limit=10, time_limit=20)
+# Timeout for get_status() calls in the periodic beat task. Shorter than the default (90s)
+# because we don't need to wait for cold starts here — if a service is starting up it will
+# recover on the next check. With retries=3 and backoff_factor=2, worst case per service
+# is roughly: 8 + 2 + 8 + 4 + 8 = 30s.
+_BEAT_STATUS_TIMEOUT = 8
+
+
+@celery_app.task(soft_time_limit=120, time_limit=150)
 def check_processing_services_online():
     """
-    Check the status of all v1 synchronous processing services and update the last_seen field.
-    We will update last_seen for asynchronous services when we receive a request from them.
+    Check the status of all processing services and update last_seen/last_seen_live fields.
+
+    - Async services (no endpoint URL): heartbeat is updated by mark_seen() on registration
+      and by _mark_pipeline_pull_services_seen() on task polling. This task marks them offline
+      if last_seen has exceeded PROCESSING_SERVICE_LAST_SEEN_MAX. Runs first so it always
+      executes even if a sync service check is slow.
+    - Sync services (endpoint URL set): actively polled via /readyz. Uses a reduced timeout
+      vs. the default (which is designed for cold-start waits) since missed checks recover
+      on the next beat cycle.
 
     @TODO make this async to check all services in parallel
     """
-    from ami.ml.models import ProcessingService
+    import datetime
 
-    logger.info("Checking which synchronous processing services are online.")
+    from ami.ml.models.processing_service import PROCESSING_SERVICE_LAST_SEEN_MAX, ProcessingService
 
-    services = ProcessingService.objects.exclude(endpoint_url__isnull=True).exclude(endpoint_url__exact="").all()
+    logger.info("Checking which processing services are online.")
 
-    for service in services:
-        logger.info(f"Checking service {service}")
+    # Async services first — fast DB-only operation, must not be skipped by a slow sync check
+    stale_cutoff = datetime.datetime.now() - PROCESSING_SERVICE_LAST_SEEN_MAX
+    stale = ProcessingService.objects.async_services().filter(last_seen_live=True, last_seen__lt=stale_cutoff)
+    count = stale.count()
+    if count:
+        logger.info(
+            f"Marking {count} async service(s) offline (no heartbeat within {PROCESSING_SERVICE_LAST_SEEN_MAX})."
+        )
+        stale.update(last_seen_live=False)
+
+    for service in ProcessingService.objects.sync_services():
+        logger.info(f"Checking push-mode service {service}")
         try:
-            status_response = service.get_status()
+            status_response = service.get_status(timeout=_BEAT_STATUS_TIMEOUT)
             logger.debug(status_response)
         except Exception as e:
             logger.error(f"Error checking service {service}: {e}")

@@ -67,6 +67,8 @@ class AlgorithmNestedSerializer(DefaultSerializer):
 
 
 class ProcessingServiceNestedSerializer(DefaultSerializer):
+    is_async = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = ProcessingService
         fields = [
@@ -74,8 +76,9 @@ class ProcessingServiceNestedSerializer(DefaultSerializer):
             "id",
             "details",
             "endpoint_url",
-            "last_checked",
-            "last_checked_live",
+            "is_async",
+            "last_seen",
+            "last_seen_live",
             "created_at",
             "updated_at",
         ]
@@ -134,6 +137,7 @@ class PipelineNestedSerializer(DefaultSerializer):
 
 class ProcessingServiceSerializer(DefaultSerializer):
     pipelines = PipelineNestedSerializer(many=True, read_only=True)
+    is_async = serializers.BooleanField(read_only=True)
     project = serializers.PrimaryKeyRelatedField(
         write_only=True,
         queryset=Project.objects.all(),
@@ -150,11 +154,12 @@ class ProcessingServiceSerializer(DefaultSerializer):
             "projects",
             "project",
             "endpoint_url",
+            "is_async",
             "pipelines",
             "created_at",
             "updated_at",
-            "last_checked",
-            "last_checked_live",
+            "last_seen",
+            "last_seen_live",
         ]
 
     def create(self, validated_data):

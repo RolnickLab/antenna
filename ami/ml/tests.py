@@ -134,9 +134,9 @@ class TestProcessingServiceAPI(APITestCase):
         # Check that endpoint_url is null
         self.assertIsNone(data["instance"]["endpoint_url"])
 
-        # Check that status indicates no endpoint configured
+        # Check that status indicates service is not yet live (no heartbeat received)
         self.assertFalse(data["status"]["request_successful"])
-        self.assertIn("No endpoint URL configured", data["status"]["error"])
+        self.assertFalse(data["status"]["server_live"])
         self.assertIsNone(data["status"]["endpoint_url"])
 
     def test_get_status_with_null_endpoint_url(self):
@@ -147,10 +147,8 @@ class TestProcessingServiceAPI(APITestCase):
         status = service.get_status()
 
         self.assertFalse(status.request_successful)
-        self.assertIsNone(status.server_live)
+        self.assertFalse(status.server_live)  # No heartbeat received yet = not live
         self.assertIsNone(status.endpoint_url)
-        self.assertIsNotNone(status.error)
-        self.assertIn("No endpoint URL configured", (status.error or ""))
         self.assertEqual(status.pipelines_online, [])
 
     def test_get_pipeline_configs_with_null_endpoint_url(self):
@@ -160,6 +158,118 @@ class TestProcessingServiceAPI(APITestCase):
         configs = service.get_pipeline_configs()
 
         self.assertEqual(configs, [])
+
+
+class TestProcessingServiceLastSeen(TestCase):
+    """Test the last_seen, last_seen_live, and last_seen_latency fields."""
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Last Seen Test Project")
+
+    def test_mark_seen_sets_fields(self):
+        """Test that mark_seen() sets last_seen and last_seen_live."""
+        service = ProcessingService.objects.create(name="Async Worker", endpoint_url=None)
+        service.projects.add(self.project)
+
+        self.assertIsNone(service.last_seen)
+        self.assertIsNone(service.last_seen_live)
+
+        service.mark_seen(live=True)
+        service.refresh_from_db()
+
+        self.assertIsNotNone(service.last_seen)
+        self.assertTrue(service.last_seen_live)
+
+    def test_mark_seen_offline(self):
+        """Test that mark_seen(live=False) sets last_seen_live to False."""
+        service = ProcessingService.objects.create(name="Async Worker Offline", endpoint_url=None)
+
+        service.mark_seen(live=False)
+        service.refresh_from_db()
+
+        self.assertIsNotNone(service.last_seen)
+        self.assertFalse(service.last_seen_live)
+
+    def test_get_status_updates_last_seen_for_sync_service(self):
+        """Test that get_status() updates last_seen fields for sync services (even if endpoint is unreachable)."""
+        service = ProcessingService.objects.create(name="Sync Service", endpoint_url="http://nonexistent-host:9999")
+        service.projects.add(self.project)
+
+        # get_status should update the fields even for unreachable endpoints
+        service.get_status(timeout=1)
+        service.refresh_from_db()
+
+        self.assertIsNotNone(service.last_seen)
+        self.assertFalse(service.last_seen_live)  # unreachable = not live
+        self.assertIsNotNone(service.last_seen_latency)
+
+    def test_model_has_last_seen_fields(self):
+        """Test that ProcessingService model has last_seen fields and not last_checked."""
+        service = ProcessingService.objects.create(name="Field Test Service", endpoint_url=None)
+        service.mark_seen(live=True)
+        service.refresh_from_db()
+
+        # Verify new fields exist
+        self.assertTrue(hasattr(service, "last_seen"))
+        self.assertTrue(hasattr(service, "last_seen_live"))
+        self.assertTrue(hasattr(service, "last_seen_latency"))
+
+        # Verify old fields don't exist
+        self.assertFalse(hasattr(service, "last_checked"))
+        self.assertFalse(hasattr(service, "last_checked_live"))
+        self.assertFalse(hasattr(service, "last_checked_latency"))
+
+
+class TestProjectPipelineRegistrationUpdatesLastSeen(APITestCase):
+    """Test that async pipeline registration updates last_seen on the processing service."""
+
+    def setUp(self):
+        from ami.users.roles import ProjectManager, create_roles_for_project
+
+        self.user = User.objects.create_user(email="lastseen@example.com")  # type: ignore
+        self.project = Project.objects.create(name="Last Seen Project", owner=self.user, create_defaults=False)
+        create_roles_for_project(self.project)
+        ProjectManager.assign_user(self.user, self.project)
+
+    def test_pipeline_registration_marks_service_as_seen(self):
+        """Test that POSTing to the pipeline registration endpoint marks the service as last_seen_live."""
+        url = f"/api/v2/projects/{self.project.pk}/pipelines/"
+        payload = {
+            "processing_service_name": "AsyncTestWorker",
+            "pipelines": [],
+        }
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(url, payload, format="json")
+        self.assertEqual(response.status_code, 201)
+
+        service = ProcessingService.objects.get(name="AsyncTestWorker")
+        self.assertIsNotNone(service.last_seen)
+        self.assertTrue(service.last_seen_live)
+
+    def test_repeated_registration_updates_last_seen(self):
+        """Test that re-registering updates the last_seen timestamp."""
+        url = f"/api/v2/projects/{self.project.pk}/pipelines/"
+        payload = {
+            "processing_service_name": "AsyncTestWorkerRepeat",
+            "pipelines": [],
+        }
+
+        self.client.force_authenticate(user=self.user)
+
+        # First registration
+        self.client.post(url, payload, format="json")
+        service = ProcessingService.objects.get(name="AsyncTestWorkerRepeat")
+        first_seen = service.last_seen
+
+        # Second registration
+        self.client.post(url, payload, format="json")
+        service.refresh_from_db()
+        second_seen = service.last_seen
+
+        self.assertIsNotNone(first_seen)
+        self.assertIsNotNone(second_seen)
+        self.assertGreaterEqual(second_seen, first_seen)
 
 
 class TestPipelineWithProcessingService(TestCase):

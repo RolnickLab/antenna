@@ -50,8 +50,13 @@ export class ProcessingService extends Entity {
     return `${this._processingService.name}`
   }
 
-  get endpointUrl(): string {
-    return `${this._processingService.endpoint_url}`
+  get endpointUrl(): string | undefined {
+    const url = this._processingService.endpoint_url
+    return url && url.trim().length > 0 ? url : undefined
+  }
+
+  get isAsync(): boolean {
+    return this._processingService.is_async
   }
 
   get description(): string {
@@ -68,18 +73,18 @@ export class ProcessingService extends Entity {
     })
   }
 
-  get lastChecked(): string | undefined {
-    if (!this._processingService.last_checked) {
+  get lastSeen(): string | undefined {
+    if (!this._processingService.last_seen) {
       return undefined
     }
 
     return getFormatedDateTimeString({
-      date: new Date(this._processingService.last_checked),
+      date: new Date(this._processingService.last_seen),
     })
   }
 
-  get lastCheckedLive(): boolean {
-    return this._processingService.last_checked_live
+  get lastSeenLive(): boolean {
+    return this._processingService.last_seen_live
   }
 
   get numPiplinesAdded(): number {
@@ -92,7 +97,7 @@ export class ProcessingService extends Entity {
     type: ProcessingServiceStatusType
     color: string
   } {
-    const status_code = this.lastCheckedLive ? 'ONLINE' : 'OFFLINE'
+    const status_code = this.lastSeenLive ? 'ONLINE' : 'OFFLINE'
     return ProcessingService.getStatusInfo(status_code)
   }
 

@@ -53,7 +53,7 @@ export const columns: (
     renderCell: (item: ProcessingService) => (
       <StatusTableCell
         color={item.status.color}
-        details={'Last checked ' + item.lastChecked}
+        details={item.lastSeen ? 'Last seen ' + item.lastSeen : undefined}
         label={item.status.label}
       />
     ),
