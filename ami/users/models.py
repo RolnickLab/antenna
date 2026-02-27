@@ -42,3 +42,52 @@ class User(AbstractUser):
         """
         # @TODO return frontend URL, not API URL
         return reverse("api:user-detail", kwargs={"id": self.pk})
+
+
+class RoleSchemaVersion(models.Model):
+    """
+    Tracks the current role/permission schema version.
+    Updated when Role classes or Project.Permissions change.
+    """
+
+    version = models.CharField(max_length=100, unique=True)
+    description = models.TextField()
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"RoleSchemaVersion {self.version}"
+
+    @classmethod
+    def get_current_version(cls):
+        """Get the current schema version from code."""
+        import hashlib
+
+        from ami.users.roles import Role
+
+        role_data = []
+        for role_class in sorted(Role.__subclasses__(), key=lambda r: r.__name__):
+            perms = sorted(role_class.permissions)
+            role_data.append(f"{role_class.__name__}:{','.join(perms)}")
+
+        schema_str = "|".join(role_data)
+        return hashlib.md5(schema_str.encode()).hexdigest()[:16]
+
+    @classmethod
+    def needs_update(cls):
+        """Check if roles need updating based on schema version."""
+        current = cls.get_current_version()
+        try:
+            latest = cls.objects.first()
+            return latest is None or latest.version != current
+        except Exception:
+            # Table doesn't exist yet (first migration)
+            return False
+
+    @classmethod
+    def mark_updated(cls, description="Schema updated"):
+        """Mark schema as updated to current version."""
+        current = cls.get_current_version()
+        cls.objects.create(version=current, description=description)
