@@ -109,7 +109,7 @@ def check_processing_services_online():
     """
     import datetime
 
-    from ami.ml.models import PROCESSING_SERVICE_LAST_SEEN_MAX, ProcessingService
+    from ami.ml.models.processing_service import PROCESSING_SERVICE_LAST_SEEN_MAX, ProcessingService
 
     logger.info("Checking which processing services are online.")
 
