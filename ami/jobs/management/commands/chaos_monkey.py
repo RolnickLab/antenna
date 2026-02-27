@@ -14,10 +14,11 @@ Usage examples:
 """
 
 from asgiref.sync import async_to_sync
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django_redis import get_redis_connection
 
-NATS_URL = "nats://ami_local_nats:4222"
+NATS_URL = getattr(settings, "NATS_URL", "nats://nats:4222")
 
 
 class Command(BaseCommand):

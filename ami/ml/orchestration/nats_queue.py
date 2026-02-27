@@ -102,7 +102,7 @@ class TaskQueueManager:
 
         stream_name = self._get_stream_name(job_id)
         try:
-            await self.js.stream_info(stream_name)
+            await asyncio.wait_for(self.js.stream_info(stream_name), timeout=NATS_JETSTREAM_TIMEOUT)
             return True
         except nats.js.errors.NotFoundError:
             return False
