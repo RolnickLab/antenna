@@ -98,16 +98,22 @@ def remove_duplicate_classifications(project_id: int | None = None, dry_run: boo
 @celery_app.task(soft_time_limit=10, time_limit=20)
 def check_processing_services_online():
     """
-    Check the status of all v1 synchronous processing services and update the last_seen/last_seen_live fields.
-    Asynchronous (pull-mode) services are updated via mark_seen() when they register pipelines.
+    Check the status of all processing services and update last_seen/last_seen_live fields.
+
+    - Sync services (dispatch_mode=SYNC_API, endpoint URL set): actively polled via /readyz.
+    - Async services (dispatch_mode=ASYNC_API, no endpoint URL): heartbeat is updated by
+      mark_seen() on registration and by _mark_pipeline_pull_services_seen() on task polling.
+      This task marks them offline if last_seen has exceeded PROCESSING_SERVICE_LAST_SEEN_MAX.
 
     @TODO make this async to check all services in parallel
     """
-    from ami.ml.models import ProcessingService
+    import datetime
 
-    logger.info("Checking which synchronous processing services are online.")
+    from ami.ml.models import PROCESSING_SERVICE_LAST_SEEN_MAX, ProcessingService
 
-    services = ProcessingService.objects.exclude(endpoint_url__isnull=True).exclude(endpoint_url__exact="").all()
+    logger.info("Checking which processing services are online.")
+
+    services = ProcessingService.objects.sync_services()
 
     for service in services:
         logger.info(f"Checking service {service}")
@@ -117,3 +123,12 @@ def check_processing_services_online():
         except Exception as e:
             logger.error(f"Error checking service {service}: {e}")
             continue
+
+    stale_cutoff = datetime.datetime.now() - PROCESSING_SERVICE_LAST_SEEN_MAX
+    stale = ProcessingService.objects.async_services().filter(last_seen_live=True, last_seen__lt=stale_cutoff)
+    count = stale.count()
+    if count:
+        logger.info(
+            f"Marking {count} async service(s) offline (no heartbeat within {PROCESSING_SERVICE_LAST_SEEN_MAX})."
+        )
+        stale.update(last_seen_live=False)

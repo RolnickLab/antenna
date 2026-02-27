@@ -23,7 +23,29 @@ from ami.utils.requests import create_session
 logger = logging.getLogger(__name__)
 
 
-class ProcessingServiceManager(models.Manager.from_queryset(BaseQuerySet)):
+class ProcessingServiceQuerySet(BaseQuerySet):
+    def async_services(self) -> "ProcessingServiceQuerySet":
+        """
+        Filter to pull-mode (async) processing services — those with no endpoint URL.
+
+        These correspond to jobs with dispatch_mode=ASYNC_API. Instead of Antenna calling
+        out to them, they poll Antenna for tasks and push results back. Their liveness is
+        tracked via heartbeats from mark_seen() rather than active health checks.
+        """
+        return self.filter(models.Q(endpoint_url__isnull=True) | models.Q(endpoint_url__exact=""))
+
+    def sync_services(self) -> "ProcessingServiceQuerySet":
+        """
+        Filter to push-mode (sync) processing services — those with a configured endpoint URL.
+
+        These correspond to jobs with dispatch_mode=SYNC_API. Antenna actively calls their
+        /readyz and /process endpoints. Their liveness is tracked by the periodic
+        check_processing_services_online Celery task.
+        """
+        return self.exclude(models.Q(endpoint_url__isnull=True) | models.Q(endpoint_url__exact=""))
+
+
+class ProcessingServiceManager(models.Manager.from_queryset(ProcessingServiceQuerySet)):
     """Custom manager for ProcessingService to handle specific queries."""
 
     def create(self, **kwargs) -> "ProcessingService":
@@ -46,6 +68,15 @@ class ProcessingService(BaseModel):
     last_seen_latency = models.FloatField(null=True)
 
     objects = ProcessingServiceManager()
+
+    @property
+    def is_async(self) -> bool:
+        """
+        True if this is a pull-mode (async) service with no endpoint URL, corresponding to
+        jobs with dispatch_mode=ASYNC_API. False for push-mode services with a configured
+        endpoint, corresponding to jobs with dispatch_mode=SYNC_API.
+        """
+        return not self.endpoint_url
 
     def __str__(self):
         endpoint_display = self.endpoint_url or "async"
