@@ -6,10 +6,11 @@ is received instead of successful pipeline results.
 """
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from django.core.cache import cache
-from django.test import TestCase
+from django.test import TransactionTestCase
 from rest_framework.test import APITestCase
 
 from ami.base.serializers import reverse_with_params
@@ -17,14 +18,14 @@ from ami.jobs.models import Job, JobDispatchMode, JobState, MLJob
 from ami.jobs.tasks import process_nats_pipeline_result
 from ami.main.models import Detection, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
-from ami.ml.orchestration.async_job_state import AsyncJobStateManager, _lock_key
+from ami.ml.orchestration.async_job_state import AsyncJobStateManager
 from ami.ml.schemas import PipelineResultsError, PipelineResultsResponse, SourceImageResponse
 from ami.users.models import User
 
 logger = logging.getLogger(__name__)
 
 
-class TestProcessNatsPipelineResultError(TestCase):
+class TestProcessNatsPipelineResultError(TransactionTestCase):
     """E2E tests for process_nats_pipeline_result with error handling."""
 
     def setUp(self):
@@ -237,38 +238,46 @@ class TestProcessNatsPipelineResultError(TestCase):
         self.assertEqual(mock_manager.acknowledge_task.call_count, 3)
 
     @patch("ami.jobs.tasks.TaskQueueManager")
-    def test_process_nats_pipeline_result_error_concurrent_locking(self, mock_manager_class):
+    def test_process_nats_pipeline_result_concurrent_updates(self, mock_manager_class):
         """
-        Test that error results respect locking mechanism.
+        Test that concurrent workers update state independently without contention.
 
-        Verifies race condition handling when multiple workers
-        process error results simultaneously.
+        Without a lock, two workers processing different images can both call
+        update_state and receive valid progress — no retry needed, no blocking.
         """
-        # Simulate lock held by another task
-        lock_key = _lock_key(self.job.pk)
-        cache.set(lock_key, "other-task-id", timeout=60)
+        mock_manager = self._setup_mock_nats(mock_manager_class)
 
-        # Create error result
-        error_data = self._create_error_result(image_id=str(self.images[0].pk))
-        reply_subject = "tasks.reply.test789"
-
-        # Task should raise retry exception when lock not acquired
-        # The task internally calls self.retry() which raises a Retry exception
-        from celery.exceptions import Retry
-
-        with self.assertRaises(Retry):
-            process_nats_pipeline_result.apply(
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            # Worker 1 processes images[0]
+            result_1 = executor.submit(
+                process_nats_pipeline_result.apply,
                 kwargs={
                     "job_id": self.job.pk,
-                    "result_data": error_data,
-                    "reply_subject": reply_subject,
-                }
+                    "result_data": self._create_error_result(image_id=str(self.images[0].pk)),
+                    "reply_subject": "reply.concurrent.1",
+                },
             )
 
-        # Assert: Progress was NOT updated (lock not acquired)
+            # Worker 2 processes images[1] — no retry, no lock to wait for
+            result_2 = executor.submit(
+                process_nats_pipeline_result.apply,
+                kwargs={
+                    "job_id": self.job.pk,
+                    "result_data": self._create_error_result(image_id=str(self.images[1].pk)),
+                    "reply_subject": "reply.concurrent.2",
+                },
+            )
+
+        self.assertTrue(result_1.result().successful())
+        self.assertTrue(result_2.result().successful())
+
+        # Both images should be marked as processed
         manager = AsyncJobStateManager(self.job.pk)
         progress = manager.get_progress("process")
-        self.assertEqual(progress.processed, 0)
+        self.assertIsNotNone(progress)
+        self.assertEqual(progress.processed, 2)
+        self.assertEqual(progress.total, 3)
+        self.assertEqual(mock_manager.acknowledge_task.call_count, 2)
 
     @patch("ami.jobs.tasks.TaskQueueManager")
     def test_process_nats_pipeline_result_error_job_not_found(self, mock_manager_class):
