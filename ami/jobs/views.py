@@ -30,6 +30,28 @@ from .serializers import JobListSerializer, JobSerializer, MinimalJobSerializer
 logger = logging.getLogger(__name__)
 
 
+def _mark_pipeline_pull_services_seen(job: "Job") -> None:
+    """
+    Record a heartbeat for all async (pull-mode) processing services linked to the job's pipeline.
+
+    Called on every task-fetch and result-submit request so that the worker's polling activity
+    keeps last_seen/last_seen_live current. The periodic check_processing_services_online task
+    will mark services offline if this heartbeat stops arriving within PROCESSING_SERVICE_LAST_SEEN_MAX.
+
+    Note: caller identity is not verified here — any authenticated token can hit these endpoints.
+    A future application-token scheme (see PR #1117) will allow tying requests to a specific
+    processing service so the heartbeat can be scoped more precisely.
+    """
+    import datetime
+
+    if not job.pipeline_id:
+        return
+    job.pipeline.processing_services.async_services().update(
+        last_seen=datetime.datetime.now(),
+        last_seen_live=True,
+    )
+
+
 class JobFilterSet(filters.FilterSet):
     """Custom filterset to enable pipeline name filtering."""
 
@@ -245,6 +267,9 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         if not job.pipeline:
             raise ValidationError("This job does not have a pipeline configured")
 
+        # Record heartbeat for async processing services on this pipeline
+        _mark_pipeline_pull_services_seen(job)
+
         # Get tasks from NATS JetStream
         from ami.ml.orchestration.nats_queue import TaskQueueManager
 
@@ -271,6 +296,9 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         """
 
         job = self.get_object()
+
+        # Record heartbeat for async processing services on this pipeline
+        _mark_pipeline_pull_services_seen(job)
 
         # Validate request data is a list
         if isinstance(request.data, list):
