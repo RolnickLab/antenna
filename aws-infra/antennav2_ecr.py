@@ -1,12 +1,7 @@
 """
 Creates and configures ECR repositories.
-
 Exports repository URLs for Docker builds and deployment.
 """
-
-
-
-
 import pulumi
 import pulumi_aws as aws
 
