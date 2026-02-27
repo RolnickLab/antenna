@@ -32,21 +32,23 @@ logger = logging.getLogger(__name__)
 
 def _mark_pipeline_pull_services_seen(job: "Job") -> None:
     """
-    Record a heartbeat for all async (pull-mode) processing services linked to the job's pipeline.
+    Record a heartbeat for async (pull-mode) processing services linked to the job's pipeline.
 
     Called on every task-fetch and result-submit request so that the worker's polling activity
     keeps last_seen/last_seen_live current. The periodic check_processing_services_online task
     will mark services offline if this heartbeat stops arriving within PROCESSING_SERVICE_LAST_SEEN_MAX.
 
-    Note: caller identity is not verified here — any authenticated token can hit these endpoints.
-    A future application-token scheme (see PR #1117) will allow tying requests to a specific
-    processing service so the heartbeat can be scoped more precisely.
+    IMPORTANT: This marks ALL async services on the pipeline within this project as live, not just
+    the specific service that made the request. If multiple async services share the same pipeline
+    within a project, a single worker polling will keep all of them appearing online.
+    Once application-token auth is available (PR #1117), this should be scoped to the individual
+    calling service instead.
     """
     import datetime
 
     if not job.pipeline_id:
         return
-    job.pipeline.processing_services.async_services().update(
+    job.pipeline.processing_services.async_services().filter(projects=job.project_id).update(
         last_seen=datetime.datetime.now(),
         last_seen_live=True,
     )
