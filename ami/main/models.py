@@ -85,6 +85,8 @@ DEFAULT_RANKS = sorted(
     ]
 )
 
+NULL_DETECTIONS_FILTER = Q(bbox__isnull=True) | Q(bbox=[])
+
 
 def get_media_url(path: str) -> str:
     """
@@ -1851,7 +1853,7 @@ class SourceImage(BaseModel):
     def get_detections_count(self) -> int:
         # Detections count excludes detections without bounding boxes
         # Detections with null bounding boxes are valid and indicates the image was successfully processed
-        return self.detections.exclude(Q(bbox__isnull=True) | Q(bbox=[])).count()
+        return self.detections.exclude(NULL_DETECTIONS_FILTER).count()
 
     def get_was_processed(self, algorithm_key: str | None = None) -> bool:
         if algorithm_key:
@@ -2027,7 +2029,7 @@ def update_detection_counts(qs: models.QuerySet[SourceImage] | None = None, null
 
     subquery = models.Subquery(
         Detection.objects.filter(source_image_id=models.OuterRef("pk"))
-        .exclude(Q(bbox__isnull=True) | Q(bbox=[]))
+        .exclude(NULL_DETECTIONS_FILTER)
         .values("source_image_id")
         .annotate(count=models.Count("id"))
         .values("count"),
@@ -2498,6 +2500,15 @@ class Classification(BaseModel):
         super().save(*args, **kwargs)
 
 
+class DetectionQuerySet(BaseQuerySet):
+    def null_detections(self):
+        return self.filter(NULL_DETECTIONS_FILTER)
+
+
+class DetectionManager(models.Manager.from_queryset(DetectionQuerySet)):
+    pass
+
+
 @final
 class Detection(BaseModel):
     """An object detected in an image"""
@@ -2565,6 +2576,8 @@ class Detection(BaseModel):
     classifications: models.QuerySet["Classification"]
     source_image_id: int
     detection_algorithm_id: int
+
+    objects = DetectionManager()
 
     def get_bbox(self):
         if self.bbox:
@@ -3723,6 +3736,8 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
     "common_combined",  # Deprecated
 ]
 
+SOURCE_IMAGES_WITH_NULL_DETECTIONS_FILTER = Q(images__detections__isnull=True)
+
 
 class SourceImageCollectionQuerySet(BaseQuerySet):
     def with_source_images_count(self):
@@ -3737,12 +3752,7 @@ class SourceImageCollectionQuerySet(BaseQuerySet):
         return self.annotate(
             source_images_with_detections_count=models.Count(
                 "images",
-                filter=(
-                    models.Q(images__detections__isnull=False)
-                    & ~models.Q(images__detections__bbox__isnull=True)
-                    & ~models.Q(images__detections__bbox=None)
-                    & ~models.Q(images__detections__bbox=[])
-                ),
+                filter=(~models.Q(images__detections__bbox__isnull=True) & ~models.Q(images__detections__bbox=[])),
                 distinct=True,
             )
         )

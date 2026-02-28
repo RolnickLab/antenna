@@ -84,6 +84,9 @@ def filter_processed_images(
             task_logger.debug(f"Image {image} needs processing: has no existing detections from pipeline's detector")
             # If there are no existing detections from this pipeline, send the image
             yield image
+        elif existing_detections.null_detections().exists():  # type: ignore
+            task_logger.debug(f"Image {image} has a null detection from pipeline {pipeline}, skipping! ")
+            continue
         elif existing_detections.filter(classifications__isnull=True).exists():
             # Check if there are detections with no classifications
             task_logger.debug(
@@ -827,12 +830,12 @@ def create_null_detections_for_undetected_images(
 
     :return: List of DetectionResponse objects with null bbox
     """
-    source_images_with_detections = {int(detection.source_image_id) for detection in results.detections}
+    source_images_with_detections = {detection.source_image_id for detection in results.detections}
     null_detections_to_add = []
     detection_algorithm_reference = AlgorithmReference(name=detection_algorithm.name, key=detection_algorithm.key)
 
     for source_img in results.source_images:
-        if int(source_img.id) not in source_images_with_detections:
+        if source_img.id not in source_images_with_detections:
             null_detections_to_add.append(
                 DetectionResponse(
                     source_image_id=source_img.id,

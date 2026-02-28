@@ -110,7 +110,7 @@ export const columns: (projectId: string) => TableColumn<CaptureSet>[] = (
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: Collection) => (
+    renderCell: (item: CaptureSet) => (
       <BasicTableCell value={item.numImagesProcessedLabel} />
     ),
   },

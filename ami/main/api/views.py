@@ -35,6 +35,7 @@ from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
 from ..models import (
+    NULL_DETECTIONS_FILTER,
     Classification,
     Deployment,
     Detection,
@@ -430,13 +431,15 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
                 interval_data["detection_counts"] += [image["detections_count"]]
                 if image["detections_count"] >= max(interval_data["detection_counts"]):
                     interval_data["top_capture"] = SourceImage(pk=image["id"])
+                # Track if any image in this interval was processed
+                if image["was_processed"]:
+                    interval_data["was_processed"] = True
                 image_index += 1
 
             # Set a meaningful average detection count to display for the interval
             # Remove zero values and calculate the mode
             interval_data["detection_counts"] = [x for x in interval_data["detection_counts"] if x > 0]
             interval_data["detections_avg"] = mode(interval_data["detection_counts"] or [0])
-            interval_data["was_processed"] = image["was_processed"]
 
             timeline.append(interval_data)
             current_time = interval_end
@@ -898,9 +901,7 @@ class DetectionViewSet(DefaultViewSet, ProjectMixin):
     API endpoint that allows detections to be viewed or edited.
     """
 
-    queryset = Detection.objects.exclude(Q(bbox__isnull=True) | Q(bbox=None) | Q(bbox=[])).select_related(
-        "source_image", "detection_algorithm"
-    )
+    queryset = Detection.objects.exclude(~NULL_DETECTIONS_FILTER).select_related("source_image", "detection_algorithm")
     serializer_class = DetectionSerializer
     filterset_fields = ["source_image", "detection_algorithm", "source_image__project"]
     ordering_fields = ["created_at", "updated_at", "detection_score", "timestamp"]
