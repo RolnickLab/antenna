@@ -16,7 +16,8 @@ from ami.base.serializers import reverse_with_params
 from ami.jobs.models import Job, JobDispatchMode, JobState, MLJob
 from ami.jobs.tasks import process_nats_pipeline_result
 from ami.main.models import Detection, Project, SourceImage, SourceImageCollection
-from ami.ml.models import Pipeline
+from ami.ml.models import Algorithm, Pipeline
+from ami.ml.models.algorithm import AlgorithmTaskType
 from ami.ml.orchestration.async_job_state import AsyncJobStateManager, _lock_key
 from ami.ml.schemas import PipelineResultsError, PipelineResultsResponse, SourceImageResponse
 from ami.users.models import User
@@ -178,6 +179,15 @@ class TestProcessNatsPipelineResultError(TestCase):
         - Image 3: Error (PipelineResultsError)
         """
         mock_manager = self._setup_mock_nats(mock_manager_class)
+
+        # Create detection algorithm for the pipeline
+        detection_algorithm = Algorithm.objects.create(
+            name="test-detector",
+            key="test-detector",
+            task_type=AlgorithmTaskType.LOCALIZATION,
+        )
+        # Update pipeline to include detection algorithm
+        self.pipeline.algorithms.add(detection_algorithm)
 
         # For this test, we just want to verify progress tracking works with mixed results
         # We'll skip checking final job completion status since that depends on all stages

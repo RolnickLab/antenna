@@ -415,24 +415,14 @@ def get_or_create_detection(
         serialized_bbox = None
     detection_repr = f"Detection {detection_resp.source_image_id} {serialized_bbox}"
 
-    assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
-    try:
-        detection_algo = algorithms_known[detection_resp.algorithm.key]
-    except KeyError:
-        raise PipelineNotConfigured(
-            f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
-            "The processing service must declare it in the /info endpoint. "
-            f"Known algorithms: {list(algorithms_known.keys())}"
-        )
-
     assert str(detection_resp.source_image_id) == str(
         source_image.pk
     ), f"Detection belongs to a different source image: {detection_repr}"
 
+    # When reprocessing, we don't care which detection algorithm created the existing detection
     existing_detection = Detection.objects.filter(
         source_image=source_image,
         bbox=serialized_bbox,
-        detection_algorithm=detection_algo,
     ).first()
 
     # A detection may have a pre-existing crop image URL or not.
@@ -451,6 +441,16 @@ def get_or_create_detection(
         detection = existing_detection
 
     else:
+        assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
+        try:
+            detection_algo = algorithms_known[detection_resp.algorithm.key]
+        except KeyError:
+            raise PipelineNotConfigured(
+                f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
+                "The processing service must declare it in the /info endpoint. "
+                f"Known algorithms: {list(algorithms_known.keys())}"
+            )
+
         new_detection = Detection(
             source_image=source_image,
             bbox=serialized_bbox,

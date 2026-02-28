@@ -434,7 +434,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_TIME]: 'Local time',
   [STRING.FIELD_LABEL_TIMESTAMP]: 'Timestamp',
   [STRING.FIELD_LABEL_TOTAL_FILES]: 'Total files',
-  [STRING.FIELD_LABEL_TOTAL_PROCESSED_CAPTURES]: 'Total Processed Captures',
+  [STRING.FIELD_LABEL_TOTAL_PROCESSED_CAPTURES]: 'Processed captures',
   [STRING.FIELD_LABEL_TOTAL_RECORDS]: 'Total records',
   [STRING.FIELD_LABEL_TOTAL_SIZE]: 'Total size',
   [STRING.FIELD_LABEL_TRAINING_IMAGES]: 'Reference images',
