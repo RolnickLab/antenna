@@ -96,7 +96,12 @@ class TaskQueueManager:
         return f"job-{job_id}-consumer"
 
     async def _stream_exists(self, job_id: int) -> bool:
-        """Check if stream exists for the given job."""
+        """Check if stream exists for the given job.
+
+        Only catches NotFoundError (→ False). TimeoutError propagates deliberately
+        so callers treat an unreachable NATS server as a hard failure rather than
+        a missing stream.
+        """
         if self.js is None:
             raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
 
