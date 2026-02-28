@@ -37,7 +37,7 @@ from ami.main.models import (
     update_occurrence_determination,
 )
 from ami.ml.exceptions import PipelineNotConfigured
-from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap, AlgorithmTaskType
+from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
     AlgorithmReference,
@@ -415,6 +415,16 @@ def get_or_create_detection(
         serialized_bbox = None
     detection_repr = f"Detection {detection_resp.source_image_id} {serialized_bbox}"
 
+    assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
+    try:
+        detection_algo = algorithms_known[detection_resp.algorithm.key]
+    except KeyError:
+        raise PipelineNotConfigured(
+            f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
+            "The processing service must declare it in the /info endpoint. "
+            f"Known algorithms: {list(algorithms_known.keys())}"
+        )
+
     assert str(detection_resp.source_image_id) == str(
         source_image.pk
     ), f"Detection belongs to a different source image: {detection_repr}"
@@ -422,6 +432,7 @@ def get_or_create_detection(
     existing_detection = Detection.objects.filter(
         source_image=source_image,
         bbox=serialized_bbox,
+        detection_algorithm=detection_algo,
     ).first()
 
     # A detection may have a pre-existing crop image URL or not.
@@ -440,16 +451,6 @@ def get_or_create_detection(
         detection = existing_detection
 
     else:
-        assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
-        try:
-            detection_algo = algorithms_known[detection_resp.algorithm.key]
-        except KeyError:
-            raise PipelineNotConfigured(
-                f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
-                "The processing service must declare it in the /info endpoint. "
-                f"Known algorithms: {list(algorithms_known.keys())}"
-            )
-
         new_detection = Detection(
             source_image=source_image,
             bbox=serialized_bbox,
@@ -896,7 +897,7 @@ def save_results(
 
     algorithms_known: dict[str, Algorithm] = {algo.key: algo for algo in pipeline.algorithms.all()}
     try:
-        detection_algorithm = pipeline.algorithms.get(task_type=AlgorithmTaskType.DETECTION)
+        detection_algorithm = pipeline.algorithms.get(task_type__in=Algorithm.detection_task_types)
     except Algorithm.DoesNotExist:
         raise ValueError("Pipeline does not have a detection algorithm")
     except Algorithm.MultipleObjectsReturned:

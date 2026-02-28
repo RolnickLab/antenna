@@ -603,7 +603,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         score = get_default_classification_threshold(project, self.request)
 
         prefetch_queryset = (
-            Detection.objects.all()
+            Detection.objects.exclude(NULL_DETECTIONS_FILTER)
             .annotate(
                 determination_score=models.Max("occurrence__detections__classifications__score"),
                 # Store whether this occurrence should be included based on default filters
@@ -901,7 +901,7 @@ class DetectionViewSet(DefaultViewSet, ProjectMixin):
     API endpoint that allows detections to be viewed or edited.
     """
 
-    queryset = Detection.objects.exclude(~NULL_DETECTIONS_FILTER).select_related("source_image", "detection_algorithm")
+    queryset = Detection.objects.exclude(NULL_DETECTIONS_FILTER).select_related("source_image", "detection_algorithm")
     serializer_class = DetectionSerializer
     filterset_fields = ["source_image", "detection_algorithm", "source_image__project"]
     ordering_fields = ["created_at", "updated_at", "detection_score", "timestamp"]
