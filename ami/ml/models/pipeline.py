@@ -816,7 +816,7 @@ class PipelineSaveResults:
 
 def create_null_detections_for_undetected_images(
     results: PipelineResultsResponse,
-    algorithms_known: dict[str, Algorithm],
+    detection_algorithm: Algorithm,
     logger: logging.Logger = logger,
 ) -> list[DetectionResponse]:
     """
@@ -829,28 +829,15 @@ def create_null_detections_for_undetected_images(
     """
     source_images_with_detections = {int(detection.source_image_id) for detection in results.detections}
     null_detections_to_add = []
+    detection_algorithm_reference = AlgorithmReference(name=detection_algorithm.name, key=detection_algorithm.key)
 
     for source_img in results.source_images:
         if int(source_img.id) not in source_images_with_detections:
-            detector_algorithm_reference = None
-            for known_algorithm in algorithms_known.values():
-                if known_algorithm.task_type == AlgorithmTaskType.DETECTION:
-                    detector_algorithm_reference = AlgorithmReference(
-                        name=known_algorithm.name, key=known_algorithm.key
-                    )
-
-            if detector_algorithm_reference is None:
-                logger.error(
-                    f"Could not identify the detector algorithm. "
-                    f"A null detection was not created for Source Image {source_img.id}"
-                )
-                continue
-
             null_detections_to_add.append(
                 DetectionResponse(
                     source_image_id=source_img.id,
                     bbox=None,
-                    algorithm=detector_algorithm_reference,
+                    algorithm=detection_algorithm_reference,
                     timestamp=now(),
                 )
             )
@@ -905,6 +892,13 @@ def save_results(
         )
 
     algorithms_known: dict[str, Algorithm] = {algo.key: algo for algo in pipeline.algorithms.all()}
+    try:
+        detection_algorithm = pipeline.algorithms.get(task_type=AlgorithmTaskType.DETECTION)
+    except Algorithm.DoesNotExist:
+        raise ValueError("Pipeline does not have a detection algorithm")
+    except Algorithm.MultipleObjectsReturned:
+        raise NotImplementedError("Multiple detection algorithms per pipeline are not supported")
+
     job_logger.info(f"Algorithms registered for pipeline: \n{', '.join(algorithms_known.keys())}")
 
     if results.algorithms:
@@ -918,7 +912,7 @@ def save_results(
     # if not, add a NULL detection (empty bbox) to the results
     null_detections = create_null_detections_for_undetected_images(
         results=results,
-        algorithms_known=algorithms_known,
+        detection_algorithm=detection_algorithm,
         logger=job_logger,
     )
     results.detections = results.detections + null_detections

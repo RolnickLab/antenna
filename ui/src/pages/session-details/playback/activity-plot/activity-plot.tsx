@@ -59,19 +59,6 @@ const ActivityPlot = ({
               x: timeline.map(
                 (timelineTick) => new Date(timelineTick.startDate)
               ),
-              y: timeline.map((timelineTick) => timelineTick.avgDetections),
-              hovertemplate: 'Avg. detections: %{y}<extra></extra>',
-              fill: 'tozeroy',
-              type: 'scatter',
-              mode: 'lines',
-              line: { color: lineColorDetections, width: 1 },
-              name: 'Avg. detections',
-              yaxis: 'y2',
-            },
-            {
-              x: timeline.map(
-                (timelineTick) => new Date(timelineTick.startDate)
-              ),
               y: timeline.map((timelineTick) =>
                 timelineTick.numCaptures > 0
                   ? timelineTick.wasProcessed
@@ -92,6 +79,19 @@ const ActivityPlot = ({
               mode: 'lines',
               line: { color: lineColorProcessed, width: 1 },
               name: 'Was processed',
+              yaxis: 'y2',
+            },
+            {
+              x: timeline.map(
+                (timelineTick) => new Date(timelineTick.startDate)
+              ),
+              y: timeline.map((timelineTick) => timelineTick.avgDetections),
+              hovertemplate: 'Avg. detections: %{y}<extra></extra>',
+              fill: 'tozeroy',
+              type: 'scatter',
+              mode: 'lines',
+              line: { color: lineColorDetections, width: 1 },
+              name: 'Avg. detections',
               yaxis: 'y2',
             },
           ]}
