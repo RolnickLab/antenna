@@ -433,6 +433,11 @@ class Project(ProjectSettingsMixin, BaseModel):
         UPDATE_PROJECT_PIPELINE_CONFIG = "update_projectpipelineconfig"
         DELETE_PROJECT_PIPELINE_CONFIG = "delete_projectpipelineconfig"
 
+        # TaxaList permissions
+        CREATE_TAXALIST = "create_taxalist"
+        UPDATE_TAXALIST = "update_taxalist"
+        DELETE_TAXALIST = "delete_taxalist"
+
         # Other permissions
         VIEW_PRIVATE_DATA = "view_private_data"
         DELETE_OCCURRENCES = "delete_occurrences"
@@ -500,6 +505,10 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("create_projectpipelineconfig", "Can register pipelines for the project"),
             ("update_projectpipelineconfig", "Can update pipeline configurations"),
             ("delete_projectpipelineconfig", "Can remove pipelines from the project"),
+            # TaxaList permissions
+            ("create_taxalist", "Can create a taxa list"),
+            ("update_taxalist", "Can update a taxa list"),
+            ("delete_taxalist", "Can delete a taxa list"),
             # Other permissions
             ("view_private_data", "Can view private data"),
         ]

@@ -4,6 +4,7 @@ import * as Dialog from 'design-system/components/dialog/dialog'
 import { TrashIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { useState } from 'react'
+import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 
 export const DeleteEntityDialog = ({
@@ -15,9 +16,12 @@ export const DeleteEntityDialog = ({
   id: string
   type: string
 }) => {
+  const { projectId } = useParams()
   const [isOpen, setIsOpen] = useState(false)
-  const { deleteEntity, isLoading, isSuccess, error } =
-    useDeleteEntity(collection)
+  const { deleteEntity, isLoading, isSuccess, error } = useDeleteEntity({
+    collection,
+    projectId: projectId as string,
+  })
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>

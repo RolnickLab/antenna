@@ -13,6 +13,7 @@ export const useTaxaLists = (
   params?: FetchParams
 ): {
   taxaLists?: TaxaList[]
+  total: number
   userPermissions?: UserPermission[]
   isLoading: boolean
   isFetching: boolean
@@ -26,6 +27,7 @@ export const useTaxaLists = (
 
   // Fetch data from API
   const { data, isLoading, isFetching, error } = useAuthorizedQuery<{
+    count: number
     results: ServerTaxaList[]
     user_permissions?: UserPermission[]
   }>({
@@ -41,6 +43,7 @@ export const useTaxaLists = (
 
   return {
     taxaLists,
+    total: data?.count ?? 0,
     userPermissions: data?.user_permissions,
     isLoading,
     isFetching,

@@ -1,3 +1,4 @@
+import concurrent.futures
 import datetime
 import pathlib
 import unittest
@@ -53,10 +54,11 @@ class TestProcessingServiceAPI(APITestCase):
         self.factory = APIRequestFactory()
 
     def _create_processing_service(self, name: str, endpoint_url: str):
-        processing_services_create_url = reverse_with_params("api:processingservice-list")
+        processing_services_create_url = reverse_with_params(
+            "api:processingservice-list", params={"project_id": self.project.pk}
+        )
         self.client.force_authenticate(user=self.user)
         processing_service_data = {
-            "project": self.project.pk,
             "name": name,
             "endpoint_url": endpoint_url,
         }
@@ -117,10 +119,11 @@ class TestProcessingServiceAPI(APITestCase):
 
     def test_create_processing_service_without_endpoint_url(self):
         """Test creating a ProcessingService without endpoint_url (pull mode)"""
-        processing_services_create_url = reverse_with_params("api:processingservice-list")
+        processing_services_create_url = reverse_with_params(
+            "api:processingservice-list", params={"project_id": self.project.pk}
+        )
         self.client.force_authenticate(user=self.user)
         processing_service_data = {
-            "project": self.project.pk,
             "name": "Pull Mode Service",
             "description": "Service without endpoint",
         }
@@ -943,7 +946,7 @@ class TestTaskStateManager(TestCase):
     def _init_and_verify(self, image_ids):
         """Helper to initialize job and verify initial state."""
         self.manager.initialize_job(image_ids)
-        progress = self.manager._commit_update(set(), "process")
+        progress = self.manager.get_progress("process")
         assert progress is not None
         self.assertEqual(progress.total, len(image_ids))
         self.assertEqual(progress.remaining, len(image_ids))
@@ -958,7 +961,7 @@ class TestTaskStateManager(TestCase):
 
         # Verify both stages are initialized
         for stage in self.manager.STAGES:
-            progress = self.manager._commit_update(set(), stage)
+            progress = self.manager.get_progress(stage)
             assert progress is not None
             self.assertEqual(progress.total, len(self.image_ids))
             self.assertEqual(progress.failed, 0)
@@ -968,70 +971,73 @@ class TestTaskStateManager(TestCase):
         self._init_and_verify(self.image_ids)
 
         # Process 2 images
-        progress = self.manager._commit_update({"img1", "img2"}, "process")
+        progress = self.manager.update_state({"img1", "img2"}, "process")
         assert progress is not None
         self.assertEqual(progress.remaining, 3)
         self.assertEqual(progress.processed, 2)
         self.assertEqual(progress.percentage, 0.4)
 
         # Process 2 more images
-        progress = self.manager._commit_update({"img3", "img4"}, "process")
+        progress = self.manager.update_state({"img3", "img4"}, "process")
         assert progress is not None
         self.assertEqual(progress.remaining, 1)
         self.assertEqual(progress.processed, 4)
         self.assertEqual(progress.percentage, 0.8)
 
         # Process last image
-        progress = self.manager._commit_update({"img5"}, "process")
+        progress = self.manager.update_state({"img5"}, "process")
         assert progress is not None
         self.assertEqual(progress.remaining, 0)
         self.assertEqual(progress.processed, 5)
         self.assertEqual(progress.percentage, 1.0)
 
-    def test_update_state_with_locking(self):
-        """Test update_state acquires lock, updates progress, and releases lock."""
-        from django.core.cache import cache
-
+    def test_update_state_concurrent(self):
+        """Test that concurrent workers update state correctly without data races."""
         self._init_and_verify(self.image_ids)
 
-        # First update should succeed
-        progress = self.manager.update_state({"img1", "img2"}, "process", "task1")
-        assert progress is not None
-        self.assertEqual(progress.processed, 2)
+        # Three workers process disjoint image sets truly concurrently
+        errors: list[BaseException] = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            futures = [
+                executor.submit(self.manager.update_state, {"img1", "img2"}, "process"),
+                executor.submit(self.manager.update_state, {"img3"}, "process"),
+                executor.submit(self.manager.update_state, {"img4", "img5"}, "process"),
+            ]
+            _errors = [f.exception() for f in concurrent.futures.as_completed(futures)]
+            errors = [e for e in _errors if e is not None]
 
-        # Simulate concurrent update by holding the lock
-        lock_key = f"job:{self.job_id}:process_results_lock"
-        cache.set(lock_key, "other_task", timeout=60)
+        self.assertEqual(errors, [], f"Concurrent workers raised exceptions: {errors}")
 
-        # Update should fail (lock held by another task)
-        progress = self.manager.update_state({"img3"}, "process", "task1")
-        self.assertIsNone(progress)
+        # Final state reflects all concurrent updates
+        final = self.manager.get_progress("process")
+        assert final is not None
+        self.assertEqual(final.processed, 5)
+        self.assertEqual(final.remaining, 0)
 
-        # Release the lock and retry
-        cache.delete(lock_key)
-        progress = self.manager.update_state({"img3"}, "process", "task1")
-        assert progress is not None
-        self.assertEqual(progress.processed, 3)
+        # SREM is idempotent: retrying already-processed images doesn't change counts
+        progress_retry = self.manager.update_state({"img1", "img2"}, "process")
+        assert progress_retry is not None
+        self.assertEqual(progress_retry.processed, 5)
 
     def test_stages_independent(self):
         """Test that different stages track progress independently."""
         self._init_and_verify(self.image_ids)
 
         # Update process stage
-        self.manager._commit_update({"img1", "img2"}, "process")
-        progress_process = self.manager._commit_update(set(), "process")
+        self.manager.update_state({"img1", "img2"}, "process")
+        progress_process = self.manager.get_progress("process")
         assert progress_process is not None
         self.assertEqual(progress_process.remaining, 3)
 
         # Results stage should still have all images pending
-        progress_results = self.manager._commit_update(set(), "results")
+        progress_results = self.manager.get_progress("results")
         assert progress_results is not None
         self.assertEqual(progress_results.remaining, 5)
 
     def test_empty_job(self):
         """Test handling of job with no images."""
         self.manager.initialize_job([])
-        progress = self.manager._commit_update(set(), "process")
+        progress = self.manager.get_progress("process")
         assert progress is not None
         self.assertEqual(progress.total, 0)
         self.assertEqual(progress.percentage, 1.0)  # Empty job is 100% complete
@@ -1041,14 +1047,14 @@ class TestTaskStateManager(TestCase):
         self._init_and_verify(self.image_ids)
 
         # Verify keys exist
-        progress = self.manager._commit_update(set(), "process")
+        progress = self.manager.get_progress("process")
         self.assertIsNotNone(progress)
 
         # Cleanup
         self.manager.cleanup()
 
         # Verify keys are gone
-        progress = self.manager._commit_update(set(), "process")
+        progress = self.manager.get_progress("process")
         self.assertIsNone(progress)
 
     def test_failed_image_tracking(self):
@@ -1056,17 +1062,17 @@ class TestTaskStateManager(TestCase):
         self._init_and_verify(self.image_ids)
 
         # Mark 2 images as failed in process stage
-        progress = self.manager._commit_update({"img1", "img2"}, "process", failed_image_ids={"img1", "img2"})
+        progress = self.manager.update_state({"img1", "img2"}, "process", failed_image_ids={"img1", "img2"})
         assert progress is not None
         self.assertEqual(progress.failed, 2)
 
-        # Retry same 2 images (fail again) - should not double-count
-        progress = self.manager._commit_update(set(), "process", failed_image_ids={"img1", "img2"})
+        # Retry same 2 images (fail again) - SADD is idempotent, no double-counting
+        progress = self.manager.update_state(set(), "process", failed_image_ids={"img1", "img2"})
         assert progress is not None
         self.assertEqual(progress.failed, 2)
 
         # Fail a different image
-        progress = self.manager._commit_update(set(), "process", failed_image_ids={"img3"})
+        progress = self.manager.update_state(set(), "process", failed_image_ids={"img3"})
         assert progress is not None
         self.assertEqual(progress.failed, 3)
 
@@ -1075,7 +1081,7 @@ class TestTaskStateManager(TestCase):
         self._init_and_verify(self.image_ids)
 
         # Process 2 successfully, 2 fail, 1 remains pending
-        progress = self.manager._commit_update(
+        progress = self.manager.update_state(
             {"img1", "img2", "img3", "img4"}, "process", failed_image_ids={"img3", "img4"}
         )
         assert progress is not None
@@ -1086,20 +1092,16 @@ class TestTaskStateManager(TestCase):
 
     def test_cleanup_removes_failed_set(self):
         """Test that cleanup removes failed image set."""
-        from django.core.cache import cache
-
         self._init_and_verify(self.image_ids)
 
-        # Add failed images
-        self.manager._commit_update({"img1", "img2"}, "process", failed_image_ids={"img1", "img2"})
-
-        # Verify failed set exists
-        failed_set = cache.get(self.manager._failed_key)
-        self.assertEqual(len(failed_set), 2)
+        # Add failed images and verify they're tracked
+        progress = self.manager.update_state({"img1", "img2"}, "process", failed_image_ids={"img1", "img2"})
+        assert progress is not None
+        self.assertEqual(progress.failed, 2)
 
         # Cleanup
         self.manager.cleanup()
 
-        # Verify failed set is gone
-        failed_set = cache.get(self.manager._failed_key)
-        self.assertIsNone(failed_set)
+        # Verify all state is gone (get_progress returns None when total_key is deleted)
+        progress = self.manager.get_progress("process")
+        self.assertIsNone(progress)

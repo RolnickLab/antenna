@@ -13,7 +13,7 @@ export const useCreateEntity = (collection: string, onSuccess?: () => void) => {
   const { mutateAsync, isLoading, isSuccess, reset, error } = useMutation({
     mutationFn: (fieldValues: EntityFieldValues) =>
       axios.post(
-        `${API_URL}/${collection}/`,
+        `${API_URL}/${collection}/?project_id=${fieldValues.projectId}`,
         convertToServerFieldValues(fieldValues),
         {
           headers: getAuthHeader(user),
