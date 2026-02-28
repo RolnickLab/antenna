@@ -164,7 +164,7 @@ for s in j.progress.stages:
 
 ## Job Lifecycle (async_api)
 
-```
+```text
 CREATED → PENDING → STARTED → [processing] → SUCCESS
                         ↓
                     CANCELING → REVOKED  (user cancels)
