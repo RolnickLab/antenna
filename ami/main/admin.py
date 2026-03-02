@@ -265,6 +265,7 @@ class SourceImageAdmin(AdminBase):
         "checksum",
         "checksum_algorithm",
         "created_at",
+        "get_was_processed",
     )
 
     list_filter = (
