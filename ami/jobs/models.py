@@ -15,7 +15,7 @@ from guardian.shortcuts import get_perms
 
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
-from ami.jobs.tasks import run_job
+from ami.jobs.tasks import cleanup_async_job_if_needed, run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.ml.post_processing.registry import get_postprocessing_task
@@ -87,6 +87,11 @@ class JobState(str, OrderedEnum):
     @classmethod
     def failed_states(cls):
         return [cls.FAILURE, cls.REVOKED, cls.UNKNOWN]
+
+    @classmethod
+    def active_states(cls):
+        """States where a job is actively processing and should serve tasks to workers."""
+        return [cls.STARTED, cls.RETRY]
 
 
 def get_status_label(status: JobState, progress: float) -> str:
@@ -331,26 +336,29 @@ class JobLogHandler(logging.Handler):
         # Log to the current app logger
         logger.log(record.levelno, self.format(record))
 
-        # Write to the logs field on the job instance
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        msg = f"[{timestamp}] {record.levelname} {self.format(record)}"
-        if msg not in self.job.logs.stdout:
-            self.job.logs.stdout.insert(0, msg)
-
-        # Write a simpler copy of any errors to the errors field
-        if record.levelno >= logging.ERROR:
-            if record.message not in self.job.logs.stderr:
-                self.job.logs.stderr.insert(0, record.message)
-
-        if len(self.job.logs.stdout) > self.max_log_length:
-            self.job.logs.stdout = self.job.logs.stdout[: self.max_log_length]
-
+        # Write to the logs field on the job instance.
+        # Refresh from DB first to reduce the window for concurrent overwrites — each
+        # worker holds its own stale in-memory copy of `logs`, so without a refresh the
+        # last writer always wins and earlier entries are silently dropped.
         # @TODO consider saving logs to the database periodically rather than on every log
         try:
+            self.job.refresh_from_db(fields=["logs"])
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            msg = f"[{timestamp}] {record.levelname} {self.format(record)}"
+            if msg not in self.job.logs.stdout:
+                self.job.logs.stdout.insert(0, msg)
+
+            # Write a simpler copy of any errors to the errors field
+            if record.levelno >= logging.ERROR:
+                if record.message not in self.job.logs.stderr:
+                    self.job.logs.stderr.insert(0, record.message)
+
+            if len(self.job.logs.stdout) > self.max_log_length:
+                self.job.logs.stdout = self.job.logs.stdout[: self.max_log_length]
+
             self.job.save(update_fields=["logs"], update_progress=False)
         except Exception as e:
             logger.error(f"Failed to save logs for job #{self.job.pk}: {e}")
-            pass
 
 
 @dataclass
@@ -966,18 +974,27 @@ class Job(BaseModel):
 
     def cancel(self):
         """
-        Terminate the celery task.
+        Cancel a job. For async_api jobs, clean up NATS/Redis resources
+        and transition through CANCELING → REVOKED. For other jobs,
+        revoke the Celery task.
         """
         self.status = JobState.CANCELING
         self.save()
+
         if self.task_id:
             task = run_job.AsyncResult(self.task_id)
             if task:
                 task.revoke(terminate=True)
+            if self.dispatch_mode == JobDispatchMode.ASYNC_API:
+                # For async jobs we need to set the status to revoked here since the task already
+                # finished (it only queues the images).
+                self.status = JobState.REVOKED
                 self.save()
         else:
             self.status = JobState.REVOKED
             self.save()
+
+        cleanup_async_job_if_needed(self)
 
     def update_status(self, status=None, save=True):
         """
@@ -1084,11 +1101,15 @@ class Job(BaseModel):
     def logger(self) -> logging.Logger:
         _logger = logging.getLogger(f"ami.jobs.{self.pk}")
 
-        # Only add JobLogHandler if not already present
-        if not any(isinstance(h, JobLogHandler) for h in _logger.handlers):
-            # Also log output to a field on thie model instance
+        # Update or add JobLogHandler, always pointing to the current instance.
+        # The logger is a process-level singleton so its handler may reference a stale
+        # job instance from a previous task execution in this worker process.
+        handler = next((h for h in _logger.handlers if isinstance(h, JobLogHandler)), None)
+        if handler is None:
             logger.info("Adding JobLogHandler to logger for job %s", self.pk)
             _logger.addHandler(JobLogHandler(self))
+        else:
+            handler.job = self
         _logger.propagate = False
         return _logger
 
