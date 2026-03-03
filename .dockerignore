@@ -1,20 +1,80 @@
 .editorconfig
 .gitattributes
 .github
-.gitignore
 .gitlab-ci.yml
 .idea
 .pre-commit-config.yaml
 .readthedocs.yml
 .travis.yml
-.git
 ui
 ami/media
 backups
-venv
-.venv
-.env
-.envs
+venv/
+.venv/
+.env/
+.envs/
 .envs/*
 node_modules
 data
+
+# Python cache / bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+*.egg
+*.whl
+
+# IPython / Jupyter
+.ipython/
+.jupyter/
+
+
+# Django / runtime artifacts
+*.log
+*.pot
+*.pyc
+db.sqlite3
+media/
+staticfiles/     # collected static files (use collectstatic inside container)
+
+# Node / UI dependencies (if using React/Vue in your UI service)
+npm-debug.log
+yarn-error.log
+.pnpm-debug.log
+
+# Docs build artifacts
+/docs/_build/
+
+# Git / VCS
+.git/
+.gitignore
+.gitattributes
+*.swp
+*.swo
+
+# IDE / editor
+.vscode/
+*.iml
+
+# Development / testing
+.pytest_cache/
+.coverage
+.tox/
+.cache/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Docker itself
+.dockerignore
+Dockerfile
+docker-compose*.yml
+
+# Build / dist
+build/
+dist/
+.eggs/

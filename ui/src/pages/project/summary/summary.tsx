@@ -1,6 +1,9 @@
+import { ErrorState } from 'components/error-state/error-state'
+import { useProjectCharts } from 'data-services/hooks/projects/useProjectCharts'
 import { useStatus } from 'data-services/hooks/useStatus'
 import { ProjectDetails } from 'data-services/models/project-details'
 import { Box } from 'design-system/components/box/box'
+import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { PlotGrid } from 'design-system/components/plot-grid/plot-grid'
 import { Plot } from 'design-system/components/plot/lazy-plot'
 import * as Tabs from 'design-system/components/tabs/tabs'
@@ -38,35 +41,59 @@ export const Summary = () => {
       ) : (
         <>
           <DeploymentsMap deployments={project.deployments} />
-          <Tabs.Root defaultValue={project.summaryData[0]?.id}>
-            <Tabs.List>
-              {project.summaryData.map((section) => (
-                <Tabs.Trigger
-                  key={section.id}
-                  label={section.title}
-                  value={section.id}
-                />
-              ))}
-            </Tabs.List>
-            {project.summaryData.map((section) => (
-              <Tabs.Content key={section.id} value={section.id}>
-                <PlotGrid>
-                  {section.plots.map((plot, index) => (
-                    <Box key={index}>
-                      <Plot
-                        data={plot.data}
-                        orientation={plot.orientation}
-                        title={plot.title}
-                        type={plot.type}
-                      />
-                    </Box>
-                  ))}
-                </PlotGrid>
-              </Tabs.Content>
-            ))}
-          </Tabs.Root>
+          <ProjectCharts projectId={project.id} />
         </>
       )}
     </div>
+  )
+}
+
+const ProjectCharts = ({ projectId }: { projectId: string }) => {
+  const { projectCharts, isLoading, error } = useProjectCharts(projectId)
+
+  if (isLoading) {
+    return (
+      <div className="min-h-[320px] flex items-center justify-center">
+        <LoadingSpinner />
+      </div>
+    )
+  }
+
+  if (error) {
+    return <ErrorState error={error} />
+  }
+
+  if (!projectCharts?.length) {
+    return null
+  }
+
+  return (
+    <Tabs.Root defaultValue={projectCharts[0].id}>
+      <Tabs.List>
+        {projectCharts.map((section) => (
+          <Tabs.Trigger
+            key={section.id}
+            label={section.title}
+            value={section.id}
+          />
+        ))}
+      </Tabs.List>
+      {projectCharts.map((section) => (
+        <Tabs.Content key={section.id} value={section.id}>
+          <PlotGrid>
+            {section.plots.map((plot, index) => (
+              <Box key={index}>
+                <Plot
+                  data={plot.data}
+                  orientation={plot.orientation}
+                  title={plot.title}
+                  type={plot.type}
+                />
+              </Box>
+            ))}
+          </PlotGrid>
+        </Tabs.Content>
+      ))}
+    </Tabs.Root>
   )
 }

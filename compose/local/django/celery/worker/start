@@ -1,28 +1,35 @@
 #!/bin/bash
 
 set -o errexit
+set -o pipefail
 set -o nounset
 
 # Local development with auto-reload and optional debugging
 #
-# CELERY_DEBUG=1 - Enable debugpy for remote debugging on port 5678
+# CELERY_DEBUG=1 - Enable debugpy for remote debugging on port 5679
 # CELERY_NO_RELOAD=1 - Disable watchfiles auto-reload
 #
-# Worker protections (same as production):
-# --max-tasks-per-child=50 - Restart after 50 tasks (prevents memory leaks)
-# --max-memory-per-child=4000000 - Restart if memory exceeds 4GB
+# Worker protections (prevent memory leaks from long-running workers):
+# --max-tasks-per-child=100 - Restart worker process after 100 tasks
+# --max-memory-per-child=1048576 - Restart if worker process exceeds 1 GiB (in KB)
+#
+# With prefork pool (default), each CPU gets a worker process.
+# Example: 8 CPUs × 1 GiB = 8 GiB max total worker memory
+
+MAX_TASKS_PER_CHILD=100
+MAX_MEMORY_PER_CHILD=1048576  # 1 GiB in KB
 
 # Check if debugging is enabled
 if [ "${CELERY_DEBUG:-0}" = "1" ]; then
-    echo "Starting Celery worker with debugpy on port 5678..."
-    exec python -m debugpy --listen 0.0.0.0:5678 -m celery -A config.celery_app worker -l INFO --max-tasks-per-child=50 --max-memory-per-child=4000000
+    echo "Starting Celery worker with debugpy on port 5679..."
+    exec python -Xfrozen_modules=off -m debugpy --listen 0.0.0.0:5679 -m celery -A config.celery_app worker --queues=antenna -l INFO --max-tasks-per-child=$MAX_TASKS_PER_CHILD --max-memory-per-child=$MAX_MEMORY_PER_CHILD
 fi
 
 # Check if auto-reload should be disabled
 if [ "${CELERY_NO_RELOAD:-0}" = "1" ]; then
     echo "Starting Celery worker without auto-reload..."
-    exec celery -A config.celery_app worker -l INFO --max-tasks-per-child=50 --max-memory-per-child=4000000
+    exec celery -A config.celery_app worker --queues=antenna -l INFO --max-tasks-per-child=$MAX_TASKS_PER_CHILD --max-memory-per-child=$MAX_MEMORY_PER_CHILD
 else
     echo "Starting Celery worker with watchfiles auto-reload..."
-    exec watchfiles --filter python celery.__main__.main --args '-A config.celery_app worker -l INFO --max-tasks-per-child=50 --max-memory-per-child=4000000'
+    exec watchfiles --filter python celery.__main__.main --args '-A config.celery_app worker --queues=antenna -l INFO --max-tasks-per-child='$MAX_TASKS_PER_CHILD' --max-memory-per-child='$MAX_MEMORY_PER_CHILD
 fi

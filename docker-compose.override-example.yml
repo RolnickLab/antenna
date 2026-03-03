@@ -1,0 +1,30 @@
+# Docker Compose Override File for Local Development
+#
+# This file can be used to enable debugging and other local development features (db volume location, etc.)
+# without affecting the committed docker-compose.yml file.
+#
+# Setup Instructions:
+# 1. Copy this file: cp docker-compose.override-example.yml docker-compose.override.yml
+# 2. Start services: docker compose up
+# 3. Attach debugger from VS Code using the launch configurations in .vscode/launch.json
+#
+# The docker-compose.override.yml file is git-ignored for local customization.
+
+services:
+  django:
+    environment:
+      - DEBUGGER=1
+    ports:
+      - "5678:5678"
+    volumes:
+      # allow modifying the start script without rebuilding the image
+      - ./compose/local/django/start:/start
+
+  celeryworker:
+    environment:
+      - DEBUGGER=1
+    ports:
+      - "5679:5679"
+    volumes:
+      # allow modifying the start script without rebuilding the image
+      - ./compose/local/django/celery/worker/start:/start-celeryworker

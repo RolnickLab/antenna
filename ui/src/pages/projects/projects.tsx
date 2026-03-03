@@ -5,6 +5,7 @@ import { PaginationBar } from 'design-system/components/pagination-bar/paginatio
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { Button } from 'nova-ui-kit'
 import { NewProjectDialog } from 'pages/project-details/new-project-dialog'
+import { DOCS_LINKS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { UserPermission } from 'utils/user/types'
@@ -39,10 +40,11 @@ export const Projects = () => {
   return (
     <>
       <PageHeader
-        title={translate(STRING.NAV_ITEM_PROJECTS)}
-        subTitle={translate(STRING.RESULTS, { total: total ?? 0 })}
-        isLoading={isLoading}
+        docsLink={DOCS_LINKS.PROJECT_CREATION}
         isFetching={isFetching}
+        isLoading={isLoading}
+        subTitle={translate(STRING.RESULTS, { total: total ?? 0 })}
+        title={translate(STRING.NAV_ITEM_PROJECTS)}
       >
         {user.loggedIn ? (
           <Tabs.Root

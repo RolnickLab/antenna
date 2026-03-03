@@ -5,6 +5,7 @@ import galleryStyles from 'components/gallery/gallery.module.scss'
 import { Occurrence } from 'data-services/models/occurrence'
 import { Taxon } from 'data-services/models/taxa'
 import cardStyles from 'design-system/components/card/card.module.scss'
+import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { CheckIcon } from 'lucide-react'
@@ -98,11 +99,31 @@ export const OccurrenceGallery = ({
                     className="w-full h-full relative cursor-pointer"
                     onClick={onCheckedToggle}
                   >
-                    <img src={image.src} className={cardStyles.image} />
+                    {image ? (
+                      <img src={image.src} className={cardStyles.image} />
+                    ) : (
+                      <div className={cardStyles.image}>
+                        <Icon
+                          type={IconType.Photograph}
+                          theme={IconTheme.Neutral}
+                          size={32}
+                        />
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <Link className="w-full h-full relative" to={detailsRoute}>
-                    <img src={image.src} className={cardStyles.image} />
+                    {image ? (
+                      <img src={image.src} className={cardStyles.image} />
+                    ) : (
+                      <div className={cardStyles.image}>
+                        <Icon
+                          type={IconType.Photograph}
+                          theme={IconTheme.Neutral}
+                          size={32}
+                        />
+                      </div>
+                    )}
                   </Link>
                 )}
                 {selectable ? (

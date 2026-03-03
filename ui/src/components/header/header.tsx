@@ -1,12 +1,16 @@
 import classNames from 'classnames'
 import { useLogout } from 'data-services/hooks/auth/useLogout'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
-import buttonStyles from 'design-system/components/button/button.module.scss'
-import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import {
+  BookOpenIcon,
+  ChevronDownIcon,
+  ExternalLinkIcon,
+  Loader2Icon,
+} from 'lucide-react'
+import { Button, buttonVariants, Popover } from 'nova-ui-kit'
 import { Helmet } from 'react-helmet-async'
 import { Link, useLocation } from 'react-router-dom'
-import { APP_ROUTES, LANDING_PAGE_URL } from 'utils/constants'
+import { APP_ROUTES, DOCS_URL, LANDING_PAGE_URL } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { usePageTitle } from 'utils/usePageTitle'
 import { useUser } from 'utils/user/userContext'
@@ -26,6 +30,11 @@ const LOGOS: { [key: string]: { image: string; tooltip?: string } } = {
   },
 }
 const LOGO = LOGOS[import.meta.env.VITE_ENV_LOGO] ?? LOGOS.default
+
+const LINK_CLASSNAME = classNames(
+  buttonVariants({ size: 'small', variant: 'ghost' }),
+  'justify-between'
+)
 
 export const Header = () => {
   const location = useLocation()
@@ -53,39 +62,53 @@ export const Header = () => {
       <div className={styles.rightContent}>
         <div className={styles.infoPages}>
           <a
-            href={LANDING_PAGE_URL}
+            className={LINK_CLASSNAME}
+            href={DOCS_URL}
             rel="noreferrer"
             target="_blank"
-            className={classNames(buttonStyles.button, buttonStyles.plain)}
           >
-            <span className={buttonStyles.label}>About Antenna</span>
-            <Icon
-              type={IconType.ExternalLink}
-              theme={IconTheme.Primary}
-              size={14}
-            />
+            <BookOpenIcon className="w-4 h-4" />
+            <span>{translate(STRING.NAV_ITEM_DOCS)}</span>
           </a>
-          <Link
-            to={APP_ROUTES.TERMS_OF_SERVICE}
-            className={classNames(buttonStyles.button, buttonStyles.plain)}
-          >
-            <span className={buttonStyles.label}>Terms of service</span>
-          </Link>
-          <Link
-            to={APP_ROUTES.CODE_OF_CONDUCT}
-            className={classNames(buttonStyles.button, buttonStyles.plain)}
-          >
-            <span className={buttonStyles.label}>Code of conduct</span>
-          </Link>
+          <Popover.Root key={location.pathname}>
+            <Popover.Trigger asChild>
+              <Button size="small" variant="ghost">
+                <span>{translate(STRING.NAV_ITEM_ABOUT)}</span>
+                <ChevronDownIcon className="w-4 h-4" />
+              </Button>
+            </Popover.Trigger>
+            <Popover.Content className="w-auto grid gap-1">
+              <a
+                className={LINK_CLASSNAME}
+                href={LANDING_PAGE_URL}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <span>{translate(STRING.NAV_ITEM_LANDING_PAGE)}</span>
+                <ExternalLinkIcon className="w-4 h-4" />
+              </a>
+              <Link className={LINK_CLASSNAME} to={APP_ROUTES.TERMS_OF_SERVICE}>
+                <span>{translate(STRING.NAV_ITEM_TERMS_OF_SERVICE)}</span>
+              </Link>
+              <Link className={LINK_CLASSNAME} to={APP_ROUTES.CODE_OF_CONDUCT}>
+                <span>{translate(STRING.NAV_ITEM_CODE_OF_CONDUCT)}</span>
+              </Link>
+            </Popover.Content>
+          </Popover.Root>
         </div>
         {user.loggedIn ? (
           <>
             <Button
-              label={translate(STRING.LOGOUT)}
-              theme={ButtonTheme.Plain}
-              loading={isLogoutLoading}
+              disabled={isLogoutLoading}
               onClick={() => logout()}
-            />
+              size="small"
+              variant="ghost"
+            >
+              <span>{translate(STRING.LOGOUT)}</span>
+              {isLogoutLoading ? (
+                <Loader2Icon className="w-4 h-4 animate-spin" />
+              ) : null}
+            </Button>
             <UserInfoDialog />
           </>
         ) : (
@@ -97,11 +120,9 @@ export const Header = () => {
                 search: location.search,
               },
             }}
-            className={classNames(buttonStyles.button, buttonStyles.plain)}
+            className={LINK_CLASSNAME}
           >
-            <span className={buttonStyles.label}>
-              {translate(STRING.LOGIN)}
-            </span>
+            <span>{translate(STRING.LOGIN)}</span>
           </Link>
         )}
       </div>

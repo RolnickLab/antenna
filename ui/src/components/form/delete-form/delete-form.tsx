@@ -38,17 +38,18 @@ export const DeleteForm = ({
             <span>{translate(STRING.CANCEL)}</span>
           </Button>
           <Button
-            disabled={isSuccess}
+            disabled={isLoading || isSuccess}
             onClick={onSubmit}
             size="small"
             variant="destructive"
           >
-            {isSuccess ? <CheckIcon className="w-4 h-4 mr-2" /> : null}
             <span>
               {isSuccess ? translate(STRING.DELETED) : translate(STRING.DELETE)}
             </span>
-            {isLoading ? (
-              <Loader2Icon className="w-4 h-4 ml-2 animate-spin" />
+            {isSuccess ? (
+              <CheckIcon className="w-4 h-4" />
+            ) : isLoading ? (
+              <Loader2Icon className="w-4 h-4 animate-spin" />
             ) : null}
           </Button>
         </div>

@@ -21,6 +21,9 @@ class TestUtils(TestCase):
             ("mothbox/2024_01_01 12_00_00.jpg", "2024-01-01 12:00:00"),
             ("other_common/2024-01-01 12:00:00.jpg", "2024-01-01 12:00:00"),
             ("other_common/2024-01-01T12:00:00.jpg", "2024-01-01 12:00:00"),
+            # 2-digit year: YYMMDDHHMMSS (Farmscape/NSCF cameras)
+            ("farmscape/NSCF----_250927194802_0017.JPG", "2025-09-27 19:48:02"),
+            ("farmscape/NSCF----_251004210001_0041.JPG", "2025-10-04 21:00:01"),
         ]
 
         for filename, expected_date in filenames_and_expected_dates:

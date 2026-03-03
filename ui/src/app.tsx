@@ -22,8 +22,7 @@ import { Deployments } from 'pages/deployments/deployments'
 import { Jobs } from 'pages/jobs/jobs'
 import { Occurrences } from 'pages/occurrences/occurrences'
 import { Algorithms } from 'pages/project/algorithms/algorithms'
-import { CollectionDetails } from 'pages/project/collections/collection-details'
-import { Collections } from 'pages/project/collections/collections'
+import { CaptureSets } from 'pages/project/capture-sets/capture-sets'
 import { DefaultFilters } from 'pages/project/default-filters/default-filters'
 import { Devices } from 'pages/project/entities/devices'
 import { Sites } from 'pages/project/entities/sites'
@@ -35,10 +34,13 @@ import { Processing } from 'pages/project/processing/processing'
 import Project from 'pages/project/project'
 import { Storage } from 'pages/project/storage/storage'
 import { Summary } from 'pages/project/summary/summary'
+import { Team } from 'pages/project/team/team'
 import { Projects } from 'pages/projects/projects'
 import SessionDetails from 'pages/session-details/session-details'
 import { Sessions } from 'pages/sessions/sessions'
 import { Species } from 'pages/species/species'
+import { TaxaListDetails } from 'pages/taxa-list-details/taxa-list-details'
+import { TaxaLists } from 'pages/taxa-lists/taxa-lists'
 import { ReactNode, useContext, useEffect } from 'react'
 import { Helmet, HelmetProvider } from 'react-helmet-async'
 import {
@@ -109,8 +111,14 @@ export const App = () => (
               element={<Navigate to={{ pathname: 'summary' }} replace={true} />}
             />
             <Route path="summary" element={<Summary />} />
+            <Route path="capture-sets" element={<CaptureSets />} />
             <Route path="collections" element={<Collections />} />
-            <Route path="collections/:id" element={<CollectionDetails />} />
+            <Route path="taxa-lists" element={<TaxaLists />} />
+            <Route path="taxa-lists/:id?" element={<TaxaListDetails />} />
+            <Route
+              path="taxa-lists/:id?/taxa/:taxonId"
+              element={<TaxaListDetails />}
+            />
             <Route path="exports/:id?" element={<Exports />} />
             <Route
               path="processing-services/:id?"
@@ -121,6 +129,7 @@ export const App = () => (
             <Route path="sites" element={<Sites />} />
             <Route path="devices" element={<Devices />} />
             <Route path="general" element={<General />} />
+            <Route path="team" element={<Team />} />
             <Route path="default-filters" element={<DefaultFilters />} />
             <Route path="storage" element={<Storage />} />
             <Route path="processing" element={<Processing />} />
@@ -282,3 +291,15 @@ const NotFound = () => (
     </main>
   </>
 )
+
+/* We have changed the wording from "Collections" to "Capture sets". This will redirect users to the new route. */
+const Collections = () => {
+  const { projectId } = useParams()
+
+  return (
+    <Navigate
+      replace
+      to={APP_ROUTES.CAPTURE_SETS({ projectId: projectId as string })}
+    />
+  )
+}

@@ -16,14 +16,14 @@ export const NewEntityDialog = ({
   buttonSize = 'small',
   buttonVariant = 'outline',
   collection,
-  type,
   isCompact,
+  type,
 }: {
   buttonSize?: string
   buttonVariant?: string
   collection: string
-  type: string
   isCompact?: boolean
+  type: string
 }) => {
   const { projectId } = useParams()
   const [isOpen, setIsOpen] = useState(false)
@@ -43,7 +43,7 @@ export const NewEntityDialog = ({
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Dialog.Trigger>
+      <Dialog.Trigger asChild>
         <Button size={buttonSize} variant={buttonVariant}>
           <PlusIcon className="w-4 h-4" />
           <span>{label}</span>
@@ -64,10 +64,12 @@ export const NewEntityDialog = ({
             isLoading={isLoading}
             isSuccess={isSuccess}
             onSubmit={(data) => {
-              createEntity({
+              const fieldValues = {
                 ...data,
                 projectId: projectId as string,
-              })
+              }
+
+              createEntity(fieldValues)
             }}
           />
         </div>

@@ -3,7 +3,7 @@ import { EmptyState } from 'components/empty-state/empty-state'
 import { ErrorState } from 'components/error-state/error-state'
 import { Checkbox } from 'design-system/components/checkbox/checkbox'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { useRef } from 'react'
 import { BasicTableCell } from '../basic-table-cell/basic-table-cell'
 import { TableHeader } from '../table-header/table-header'
@@ -187,7 +187,10 @@ const MultiSelectCheckbox = <T extends { id: string }>({
   })()
 
   return (
-    <Tooltip content={checked === true ? 'Deselect all' : 'Select all'}>
+    <BasicTooltip
+      asChild
+      content={checked === true ? 'Deselect all' : 'Select all'}
+    >
       <div>
         <Checkbox
           checked={checked}
@@ -200,6 +203,6 @@ const MultiSelectCheckbox = <T extends { id: string }>({
           }}
         />
       </div>
-    </Tooltip>
+    </BasicTooltip>
   )
 }

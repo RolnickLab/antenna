@@ -105,7 +105,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
   {
     id: 'captures',
     name: translate(STRING.FIELD_LABEL_CAPTURES),
-    sortField: 'numImages',
+    sortField: 'captures_count',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -123,7 +123,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
   {
     id: 'sessions',
     name: translate(STRING.FIELD_LABEL_SESSIONS),
-    sortField: 'numEvents',
+    sortField: 'events_count',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -141,7 +141,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
   {
     id: 'occurrences',
     name: translate(STRING.FIELD_LABEL_OCCURRENCES),
-    sortField: 'numOccurrences',
+    sortField: 'occurrences_count',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -159,7 +159,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
   {
     id: 'taxa',
     name: translate(STRING.FIELD_LABEL_TAXA),
-    sortField: 'numTaxa',
+    sortField: 'taxa_count',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -175,9 +175,9 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     ),
   },
   {
-    id: 'firstDate',
+    id: 'first-date',
     name: translate(STRING.FIELD_LABEL_FIRST_DATE),
-    sortField: 'firstDateLabel',
+    sortField: 'first_capture_timestamp',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -186,9 +186,9 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     ),
   },
   {
-    id: 'lastDate',
+    id: 'last-date',
     name: translate(STRING.FIELD_LABEL_LAST_DATE),
-    sortField: 'lastDateLabel',
+    sortField: 'last_capture_timestamp',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -199,13 +199,13 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
   {
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
-    sortField: 'createdAt',
+    sortField: 'created_at',
     renderCell: (item: Deployment) => <BasicTableCell value={item.createdAt} />,
   },
   {
     id: 'updated-at',
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
-    sortField: 'updatedAt',
+    sortField: 'updated_at',
     renderCell: (item: Deployment) => <BasicTableCell value={item.updatedAt} />,
   },
   {

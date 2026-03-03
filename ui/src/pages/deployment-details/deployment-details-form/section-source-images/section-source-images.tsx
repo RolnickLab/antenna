@@ -12,8 +12,8 @@ import {
 } from 'data-services/models/deployment-details'
 import { Button } from 'design-system/components/button/button'
 import { InputContent, InputValue } from 'design-system/components/input/input'
+import { EntityPicker } from 'design-system/components/select/entity-picker'
 import _ from 'lodash'
-import { EntitiesPicker } from 'pages/project/entities/entities-picker'
 import { ConnectionStatus } from 'pages/project/storage/connection-status'
 import { useContext, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -22,7 +22,6 @@ import { isEmpty } from 'utils/isEmpty/isEmpty'
 import { STRING, translate } from 'utils/language'
 import { useSyncSectionStatus } from 'utils/useSyncSectionStatus'
 import { config } from '../config'
-import { SectionExampleCaptures } from '../section-example-captures/section-example-captures'
 import { Section } from '../types'
 import { SyncDeploymentSourceImages } from './actions/sync-source-images'
 
@@ -71,7 +70,7 @@ export const SectionSourceImages = ({
                 label={config[field.name].label}
                 error={fieldState.error?.message}
               >
-                <EntitiesPicker
+                <EntityPicker
                   collection={API_ROUTES.STORAGE}
                   value={field.value}
                   onValueChange={field.onChange}
@@ -92,7 +91,7 @@ export const SectionSourceImages = ({
           <ConnectionStatus
             storageId={deployment.dataSource.id}
             subdir={deployment.dataSourceSubdir ?? ''}
-            regex={deployment.dataSourceRegex}
+            regex={deployment.dataSourceRegex ?? ''}
             showDetails
             onConnectionChange={setIsConnected}
           />
@@ -102,7 +101,6 @@ export const SectionSourceImages = ({
         deployment={deployment}
         isConnected={isConnected}
       />
-      <SectionExampleCaptures deployment={deployment} />
       <FormActions>
         <Button label={translate(STRING.BACK)} onClick={onBack} />
       </FormActions>

@@ -127,6 +127,7 @@ class JobListSerializer(DefaultSerializer):
             "job_type",
             "job_type_key",
             "data_export",
+            "dispatch_mode",
             # "duration",
             # "duration_label",
             # "progress_label",
@@ -141,6 +142,7 @@ class JobListSerializer(DefaultSerializer):
             "started_at",
             "finished_at",
             "duration",
+            "dispatch_mode",
         ]
 
 
@@ -151,3 +153,13 @@ class JobSerializer(JobListSerializer):
         fields = JobListSerializer.Meta.fields + [
             "result",
         ]
+
+
+class MinimalJobSerializer(DefaultSerializer):
+    """Minimal serializer returning only essential job fields."""
+
+    pipeline_slug = serializers.CharField(source="pipeline.slug", read_only=True, allow_null=True)
+
+    class Meta:
+        model = Job
+        fields = ["id", "pipeline_slug"]

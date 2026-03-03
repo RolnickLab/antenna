@@ -16,9 +16,11 @@ services:
       - ./config:/app/config
     ports:
       - "5001:5000"
-    extra_hosts:
+    extra_hosts: # hostname aliases to the IPs of persistant services running outside docker network
       - "db:${DATABASE_IP}"
+      - "rabbitmq:${RABBITMQ_IP}"
       - "redis:${REDIS_IP}"
+      - "nats:${NATS_IP}"
     command: /start
     scale: 1  # Can't scale until the load balancer is within the compose config
     restart: always

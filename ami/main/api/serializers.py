@@ -6,6 +6,7 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from ami.base.fields import DateStringField
+from ami.base.permissions import add_m2m_object_permissions
 from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, reverse_with_params
 from ami.base.views import get_active_project
 from ami.jobs.models import Job
@@ -265,6 +266,7 @@ class TaxonNoParentNestedSerializer(DefaultSerializer):
             "details",
             "gbif_taxon_key",
             "fieldguide_id",
+            "inat_taxon_id",
             "cover_image_url",
             "cover_image_credit",
         ]
@@ -328,20 +330,45 @@ class ProjectSerializer(DefaultSerializer):
     feature_flags = serializers.SerializerMethodField()
     owner = UserNestedSerializer(read_only=True)
     settings = ProjectSettingsSerializer(source="*", required=False)
+    is_member = serializers.SerializerMethodField()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Remove summary_data field if with_charts is False
+        if not self.context.get("with_charts", True):
+            self.fields.pop("summary_data", None)
 
     def get_feature_flags(self, obj):
         if obj.feature_flags:
             return obj.feature_flags.dict()
         return {}
 
+    def get_is_member(self, obj):
+        """Check if the current user is a member of this project."""
+        from ami.users.roles import Role
+
+        request = self.context["request"]
+        user = request.user
+
+        if not user or not user.is_authenticated:
+            return False
+
+        # Return True for superusers
+        if user.is_superuser:
+            return True
+
+        # Check if the user has any role in the project
+        return Role.user_has_any_role(user, obj)
+
     class Meta:
         model = Project
         fields = ProjectListSerializer.Meta.fields + [
             "deployments",
-            "summary_data",  # @TODO move to a 2nd request, it's too slow
+            "summary_data",  # Conditionally included based on with_charts query param
             "owner",
             "feature_flags",
             "settings",
+            "is_member",  # is the current user a member of this project
         ]
 
 
@@ -607,13 +634,23 @@ class TaxonListSerializer(DefaultSerializer):
         )
 
 
-class TaxaListSerializer(serializers.ModelSerializer):
+class TaxaListSerializer(DefaultSerializer):
     taxa = serializers.SerializerMethodField()
-    projects = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), many=True)
+    taxa_count = serializers.SerializerMethodField()
+    projects = serializers.SerializerMethodField()
 
     class Meta:
         model = TaxaList
-        fields = ["id", "name", "description", "taxa", "projects"]
+        fields = [
+            "id",
+            "name",
+            "description",
+            "taxa",
+            "taxa_count",
+            "projects",
+            "created_at",
+            "updated_at",
+        ]
 
     def get_taxa(self, obj):
         """
@@ -624,6 +661,43 @@ class TaxaListSerializer(serializers.ModelSerializer):
             request=self.context.get("request"),
             params={"taxa_list_id": obj.pk},
         )
+
+    def get_taxa_count(self, obj):
+        """
+        Return the number of taxa in this list.
+        Uses annotated_taxa_count if available (from ViewSet) for performance.
+        """
+        return getattr(obj, "annotated_taxa_count", obj.taxa.count())
+
+    def get_permissions(self, instance, instance_data):
+        request = self.context["request"]
+        project = get_active_project(request=request)
+        return add_m2m_object_permissions(request.user, instance, project, instance_data)
+
+    def get_projects(self, obj):
+        """
+        Return list of project IDs this taxa list belongs to.
+        This is read-only and managed by the server.
+        """
+        return list(obj.projects.values_list("id", flat=True))
+
+
+class TaxaListTaxonInputSerializer(serializers.Serializer):
+    """Serializer for adding a taxon to a taxa list."""
+
+    taxon_id = serializers.IntegerField(required=True)
+
+    def validate_taxon_id(self, value):
+        """Validate that the taxon exists."""
+        if not Taxon.objects.filter(id=value).exists():
+            raise serializers.ValidationError("Taxon does not exist.")
+        return value
+
+
+class TaxaListTaxonSerializer(TaxonNoParentNestedSerializer):
+    """Serializer for taxa in a taxa list (simplified taxon representation)."""
+
+    pass
 
 
 class CaptureTaxonSerializer(DefaultSerializer):
@@ -819,9 +893,11 @@ class TaxonSerializer(DefaultSerializer):
             "last_detected",
             "best_determination_score",
             "fieldguide_id",
+            "inat_taxon_id",
             "cover_image_url",
             "cover_image_credit",
             "summary_data",
+            "common_name_en",
         ]
 
 
@@ -1030,6 +1106,7 @@ class SourceImageListSerializer(DefaultSerializer):
             "deployment",
             "event",
             "url",
+            "path",
             # "thumbnail",
             "timestamp",
             "width",

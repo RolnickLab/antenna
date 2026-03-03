@@ -13,8 +13,8 @@ import {
 import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { ImageUpload } from 'design-system/components/image-upload/image-upload'
 import { InputContent } from 'design-system/components/input/input'
+import { EntityPicker } from 'design-system/components/select/entity-picker'
 import _ from 'lodash'
-import { EntitiesPicker } from 'pages/project/entities/entities-picker'
 import { useContext } from 'react'
 import { useForm } from 'react-hook-form'
 import { FormContext } from 'utils/formContext/formContext'
@@ -77,7 +77,7 @@ export const SectionGeneral = ({
                 label={config[field.name].label}
                 error={fieldState.error?.message}
               >
-                <EntitiesPicker
+                <EntityPicker
                   collection={API_ROUTES.SITES}
                   value={field.value}
                   onValueChange={field.onChange}
@@ -95,7 +95,7 @@ export const SectionGeneral = ({
                 label={config[field.name].label}
                 error={fieldState.error?.message}
               >
-                <EntitiesPicker
+                <EntityPicker
                   collection={API_ROUTES.DEVICES}
                   value={field.value}
                   onValueChange={field.onChange}

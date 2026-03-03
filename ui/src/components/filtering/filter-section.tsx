@@ -19,7 +19,7 @@ export const FilterSection = ({
       className="space-y-4"
       defaultOpen={window.innerWidth >= BREAKPOINTS.MD ? defaultOpen : false}
     >
-      <div className="flex items-center justify-between ml-2">
+      <div className="flex items-center justify-between">
         <span className="body-overline font-bold">{title}</span>
         <Collapsible.Trigger asChild>
           <Button size="icon" variant="ghost">

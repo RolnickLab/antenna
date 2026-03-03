@@ -15,7 +15,7 @@ import { NewJobDialog } from 'pages/job-details/new-job-dialog'
 import { useContext, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
-import { APP_ROUTES } from 'utils/constants'
+import { APP_ROUTES, DOCS_LINKS } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'
@@ -60,12 +60,11 @@ export const Jobs = () => {
       </div>
       <div className="w-full overflow-hidden">
         <PageHeader
-          title={translate(STRING.NAV_ITEM_JOBS)}
-          subTitle={translate(STRING.RESULTS, {
-            total,
-          })}
-          isLoading={isLoading}
+          docsLink={DOCS_LINKS.PROCESSING_DATA}
           isFetching={isFetching}
+          isLoading={isLoading}
+          subTitle={translate(STRING.RESULTS, { total })}
+          title={translate(STRING.NAV_ITEM_JOBS)}
           tooltip={translate(STRING.TOOLTIP_JOB)}
         >
           <SortControl

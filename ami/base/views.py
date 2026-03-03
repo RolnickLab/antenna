@@ -30,15 +30,19 @@ def get_active_project(
     param = "project_id"
 
     project_id = None
+    # Support nested routers: /projects/{project_pk}/members/{pk}
+    if kwargs and "project_pk" in kwargs:
+        project_id = kwargs["project_pk"]
     # Extract from URL if `/projects/` is in the url path
-    if kwargs and "/projects/" in request.path:
+    elif kwargs and "/projects/" in request.path:
         project_id = kwargs.get("pk")
 
     # If not in URL, try query parameters
     if not project_id:
         # Look for project_id in GET query parameters or POST data
-        # POST data returns a list of ints, but QueryDict.get() returns a single value
-        project_id = request.query_params.get(param) or request.data.get(param)
+        # request.data may not always be a dict (e.g., for non-POST requests), so we check its type
+        post_data = request.data if isinstance(request.data, dict) else {}
+        project_id = request.query_params.get(param) or post_data.get(param)
 
         project_id = SingleParamSerializer[int].clean(
             param_name=param,

@@ -9,6 +9,7 @@ from django.db.models import Prefetch, Q
 from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
@@ -26,11 +27,12 @@ from rest_framework.views import APIView
 from ami.base.filters import NullsLastOrderingFilter, ThresholdFilter
 from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
-from ami.base.permissions import IsActiveStaffOrReadOnly, ObjectPermission
+from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
+from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.serializers import TagSerializer
-from ami.utils.requests import get_default_classification_threshold, project_id_doc_param
+from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
 from ..models import (
@@ -82,6 +84,8 @@ from .serializers import (
     StorageSourceSerializer,
     StorageStatusSerializer,
     TaxaListSerializer,
+    TaxaListTaxonInputSerializer,
+    TaxaListTaxonSerializer,
     TaxonListSerializer,
     TaxonSearchResultSerializer,
     TaxonSerializer,
@@ -170,6 +174,24 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
         else:
             return ProjectSerializer
 
+    def get_serializer_context(self):
+        """
+        Add with_charts flag to serializer context.
+        """
+        context = super().get_serializer_context()
+        with_charts_default = False
+
+        # For detail view, include charts by default
+        if self.action == "retrieve":
+            with_charts_default = True
+
+        with_charts = self.request.query_params.get("with_charts", with_charts_default)
+        if with_charts is not None:
+            with_charts = BooleanField(required=False).clean(with_charts)
+
+        context["with_charts"] = with_charts
+        return context
+
     def perform_create(self, serializer):
         super().perform_create(serializer)
         # Check if user is authenticated
@@ -178,6 +200,14 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
 
         # Add current user as project owner
         serializer.save(owner=self.request.user)
+
+    @action(detail=True, methods=["get"], name="charts")
+    def charts(self, request, pk=None):
+        """
+        Get chart data for a project.
+        """
+        project = self.get_object()
+        return Response({"summary_data": project.summary_data()})
 
     @extend_schema(
         parameters=[
@@ -210,8 +240,9 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         "events_count",
         "occurrences_count",
         "taxa_count",
-        "first_date",
-        "last_date",
+        "first_capture_timestamp",
+        "last_capture_timestamp",
+        "name",
     ]
 
     permission_classes = [ObjectPermission]
@@ -463,11 +494,14 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         "updated_at",
         "timestamp",
         "size",
+        "width",
+        "height",
         "detections_count",
         "occurrences_count",
         "taxa_count",
         "deployment__name",
         "event__start",
+        "path",
     ]
     permission_classes = [ObjectPermission]
 
@@ -486,22 +520,19 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     def get_queryset(self) -> QuerySet:
         queryset = super().get_queryset()
         with_detections_default = False
-        # If this is a retrieve request or with detections is explicitly requested, require project
-        if self.action == "retrieve" or "with_detections" in self.request.query_params:
+        with_counts_default = False
+        # If this is a retrieve request or with detections or counts are explicitly requested, require project
+        if (
+            self.action == "retrieve"
+            or "with_detections" in self.request.query_params
+            or "with_counts" in self.request.query_params
+        ):
             self.require_project = True
         project = self.get_active_project()
 
-        classification_threshold = get_default_classification_threshold(project, self.request)
-        queryset = queryset.with_occurrences_count(  # type: ignore
-            classification_threshold=classification_threshold, project=project
-        ).with_taxa_count(  # type: ignore
-            classification_threshold=classification_threshold, project=project
-        )
-
-        queryset.select_related(
+        queryset = queryset.select_related(
             "event",
             "deployment",
-            "deployment__storage",
         ).order_by("timestamp")
 
         if self.action == "list":
@@ -509,6 +540,8 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             queryset = self.filter_by_has_detections(queryset)
 
         elif self.action == "retrieve":
+            # For detail view, include storage info and additional prefetches
+            with_counts_default = True
             queryset = queryset.prefetch_related("jobs", "collections")
             queryset = self.add_adjacent_captures(queryset)
             with_detections_default = True
@@ -520,6 +553,17 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
 
         if with_detections:
             queryset = self.prefetch_detections(queryset, project)
+
+        with_counts = self.request.query_params.get("with_counts", with_counts_default)
+        if with_counts is not None:
+            with_counts = BooleanField(required=False).clean(with_counts)
+
+        if with_counts:
+            queryset = queryset.with_occurrences_count(  # type: ignore
+                project=project, request=self.request
+            ).with_taxa_count(  # type: ignore
+                project=project, request=self.request
+            )
 
         return queryset
 
@@ -685,16 +729,32 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
+        with_counts_default = False
+        # If with_counts is explicitly requested, require project
+        if "with_counts" in self.request.query_params:
+            self.require_project = True
         project = self.get_active_project()
-        classification_threshold = get_default_classification_threshold(project, self.request)
+
         if project:
             query_set = query_set.filter(project=project)
-        queryset = query_set.with_occurrences_count(  # type: ignore
-            classification_threshold=classification_threshold, project=project
-        ).with_taxa_count(  # type: ignore
-            classification_threshold=classification_threshold, project=project
-        )
-        return queryset
+
+        if self.action == "retrieve":
+            # For detail view, include counts by default
+            with_counts_default = True
+
+        with_counts = self.request.query_params.get("with_counts", with_counts_default)
+        if with_counts is not None:
+            with_counts = BooleanField(required=False).clean(with_counts)
+
+        if with_counts:
+            classification_threshold = get_default_classification_threshold(project, self.request)
+            query_set = query_set.with_occurrences_count(  # type: ignore
+                classification_threshold=classification_threshold, project=project, request=self.request
+            ).with_taxa_count(  # type: ignore
+                classification_threshold=classification_threshold, project=project, request=self.request
+            )
+
+        return query_set
 
     @action(detail=True, methods=["post"], name="populate")
     def populate(self, request, pk=None):
@@ -1205,11 +1265,15 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
 
 class TaxonTaxaListFilter(filters.BaseFilterBackend):
     """
-    Filters taxa based on a TaxaList Similar to `OccurrenceTaxaListFilter`.
+    Filters taxa based on a TaxaList.
 
-    Queries for all taxa that are either:
-    - Directly in the requested TaxaList.
-    - A descendant (child or deeper) of any taxon in the TaxaList, recursively.
+    By default, queries for taxa that are directly in the TaxaList and their descendants.
+    If include_descendants=false, only taxa directly in the TaxaList are returned.
+
+    Query parameters:
+    - taxa_list_id: ID of the taxa list to filter by
+    - include_descendants: Set to 'false' to exclude descendants (default: true)
+    - not_taxa_list_id: ID of taxa list to exclude
     """
 
     query_param = "taxa_list_id"
@@ -1221,11 +1285,20 @@ class TaxonTaxaListFilter(filters.BaseFilterBackend):
             request.query_params.get(self.query_param_exclusive)
         )
 
+        include_descendants_default = True
+        include_descendants = request.query_params.get("include_descendants", include_descendants_default)
+        if include_descendants is not None:
+            include_descendants = BooleanField(required=False).clean(include_descendants)
+
         def _get_filter(taxa_list: TaxaList) -> models.Q:
             taxa = taxa_list.taxa.all()  # Get taxa in the taxa list
             query_filter = Q(id__in=taxa)
-            for taxon in taxa:
-                query_filter |= Q(parents_json__contains=[{"id": taxon.pk}])
+
+            # Only include descendants if explicitly requested
+            if include_descendants:
+                for taxon in taxa:
+                    query_filter |= Q(parents_json__contains=[{"id": taxon.pk}])
+
             return query_filter
 
         if taxalist_id:
@@ -1412,21 +1485,21 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             qs = self.attach_tags_by_project(qs, project)
 
         if project:
-            # Apply default taxa filtering (respects apply_defaults flag)
-            qs = qs.filter_by_project_default_taxa(project, self.request)  # type: ignore
-
             # Allow showing detail views for unobserved taxa
             include_unobserved = True
             if self.action == "list":
                 include_unobserved = self.request.query_params.get("include_unobserved", False)
-            qs = self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)
+                # Apply default taxa filtering (respects apply_defaults flag)
+                qs = qs.filter_by_project_default_taxa(project, self.request)  # type: ignore
+                qs = self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)
             if self.action == "retrieve":
+                qs = self.get_taxa_observed(
+                    qs, project, include_unobserved=include_unobserved, apply_default_filters=False
+                )
                 qs = qs.prefetch_related(
                     Prefetch(
                         "occurrences",
-                        queryset=Occurrence.objects.apply_default_filters(  # type: ignore
-                            project, self.request
-                        ).filter(self.get_occurrence_filters(project))[:1],
+                        queryset=Occurrence.objects.filter(self.get_occurrence_filters(project))[:1],
                         to_attr="example_occurrences",
                     )
                 )
@@ -1438,7 +1511,9 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             qs = qs.annotate(events_count=models.Value(None, output_field=models.IntegerField()))
         return qs
 
-    def get_taxa_observed(self, qs: QuerySet, project: Project, include_unobserved=False) -> QuerySet:
+    def get_taxa_observed(
+        self, qs: QuerySet, project: Project, include_unobserved=False, apply_default_filters=True
+    ) -> QuerySet:
         """
         If a project is passed, only return taxa that have been observed.
         Also add the number of occurrences and the last time it was detected.
@@ -1458,13 +1533,12 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         default_filters_q = build_occurrence_default_filters_q(project, self.request, occurrence_accessor="")
 
         # Combine base occurrence filters with default filters
-        base_filter = (
-            models.Q(
-                occurrence_filters,
-                determination_id=models.OuterRef("id"),
-            )
-            & default_filters_q
+        base_filter = models.Q(
+            occurrence_filters,
+            determination_id=models.OuterRef("id"),
         )
+        if apply_default_filters:
+            base_filter = base_filter & default_filters_q
 
         # Count occurrences - uses composite index (determination_id, project_id, event_id, determination_score)
         occurrences_count_subquery = models.Subquery(
@@ -1551,17 +1625,107 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
 
-class TaxaListViewSet(viewsets.ModelViewSet, ProjectMixin):
+class TaxaListViewSet(DefaultViewSet, ProjectMixin):
     queryset = TaxaList.objects.all()
+    serializer_class = TaxaListSerializer
+    ordering_fields = [
+        "name",
+        "description",
+        "annotated_taxa_count",
+        "created_at",
+        "updated_at",
+    ]
+    permission_classes = [IsProjectMemberOrReadOnly]
+    require_project = True
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # Annotate with taxa count for better performance
+        qs = qs.annotate(annotated_taxa_count=models.Count("taxa"))
         project = self.get_active_project()
         if project:
             return qs.filter(projects=project)
         return qs
 
-    serializer_class = TaxaListSerializer
+    def perform_create(self, serializer):
+        """
+        Create a TaxaList and automatically assign it to the active project.
+
+        Users cannot manually assign taxa lists to projects for security reasons.
+        A taxa list is always created in the context of the active project.
+        """
+        instance = serializer.save()
+        project = self.get_active_project()
+        if project:
+            instance.projects.add(project)
+
+
+class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):
+    """
+    Nested ViewSet for managing taxa in a taxa list.
+    Accessed via /taxa/lists/{taxa_list_id}/taxa/
+
+    Only provides create (POST) and delete (DELETE) actions.
+    The UI lists taxa via the main /taxa/ endpoint with a taxa_list_id filter.
+    """
+
+    serializer_class = TaxaListTaxonSerializer
+    permission_classes = [IsProjectMemberOrReadOnly]
+    require_project = True
+
+    def get_taxa_list(self):
+        """Get the parent taxa list from URL parameters, scoped to the active project."""
+        taxa_list_id = self.kwargs.get("taxalist_pk")
+        project = self.get_active_project()
+        try:
+            return TaxaList.objects.get(pk=taxa_list_id, projects=project)
+        except TaxaList.DoesNotExist:
+            raise api_exceptions.NotFound("Taxa list not found.") from None
+
+    def get_queryset(self):
+        """Return taxa in the specified taxa list."""
+        taxa_list = self.get_taxa_list()
+        return taxa_list.taxa.all()
+
+    def create(self, request, taxalist_pk=None):
+        """Add a taxon to the taxa list."""
+        taxa_list = self.get_taxa_list()
+
+        # Validate input
+        input_serializer = TaxaListTaxonInputSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        taxon_id = input_serializer.validated_data["taxon_id"]
+
+        # Check if already exists
+        if taxa_list.taxa.filter(pk=taxon_id).exists():
+            return Response(
+                {"non_field_errors": ["Taxon is already in this taxa list."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Add taxon
+        taxon = get_object_or_404(Taxon, pk=taxon_id)
+        taxa_list.taxa.add(taxon)
+
+        # Return the added taxon
+        serializer = self.get_serializer(taxon)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=["delete"], url_path=r"(?P<taxon_id>\d+)")
+    def delete_by_taxon(self, request, taxalist_pk=None, taxon_id=None):
+        """
+        Remove a taxon from the taxa list by taxon ID.
+        DELETE /taxa/lists/{taxa_list_id}/taxa/{taxon_id}/
+        """
+        taxa_list = self.get_taxa_list()
+
+        # Check if taxon exists in list
+        if not taxa_list.taxa.filter(pk=taxon_id).exists():
+            raise api_exceptions.NotFound("Taxon is not in this taxa list.")
+
+        # Remove taxon
+        taxa_list.taxa.remove(taxon_id)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class TagViewSet(DefaultViewSet, ProjectMixin):
