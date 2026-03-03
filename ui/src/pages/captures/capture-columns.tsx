@@ -137,7 +137,6 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
   {
     id: 'filename',
     name: translate(STRING.FIELD_LABEL_FILENAME),
-    sortField: 'path',
     renderCell: (item: Capture) => <BasicTableCell value={item.filename} />,
   },
   {
