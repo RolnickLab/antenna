@@ -25,21 +25,6 @@ services:
     scale: 1  # Can't scale until the load balancer is within the compose config
     restart: always
 
-  celeryworker:
-    <<: *django
-    scale: 1
-    ports: []
-    command: /start-celeryworker
-    restart: always
-    healthcheck:
-      test: ["CMD-SHELL", "/celery/healthcheck.sh"]
-      interval: 30s      # Check every 30 seconds
-      timeout: 15s       # Healthcheck script must complete within 15s
-      retries: 3         # Mark unhealthy after 3 consecutive failures (90s total)
-      start_period: 60s  # Grace period during container startup
-    labels:
-      - "autoheal=true"  # Enable autoheal to restart this container when unhealthy
-
   celerybeat:
     <<: *django
     ports: []

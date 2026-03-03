@@ -76,8 +76,8 @@ COPY ./compose/local/django/celery/flower/start /start-flower
 RUN sed -i 's/\r$//g' /start-flower
 RUN chmod +x /start-flower
 
-# Copy celery scripts directory for healthcheck
-COPY ./compose/local/django/celery /celery
+# Copy healthcheck script
+COPY ./compose/local/django/celery/healthcheck.sh /celery/healthcheck.sh
 RUN chmod +x /celery/healthcheck.sh
 
 
