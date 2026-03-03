@@ -320,9 +320,11 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
     """
     Find jobs stuck in a running state past the cutoff and revoke them.
 
-    For each stale job, checks Celery for a real task status. If Celery has one
-    (e.g. SUCCESS, FAILURE), uses that. Otherwise revokes the job and cleans up
-    any async resources (NATS/Redis).
+    For each stale job, checks Celery for a terminal task status. If Celery reports
+    FAILURE or REVOKED, that state is applied. SUCCESS is only accepted when
+    job.progress.is_complete(), to avoid prematurely closing async_api jobs whose
+    NATS workers are still delivering results. All other cases result in revocation
+    and cleanup of async resources (NATS/Redis).
 
     Returns a list of dicts describing what was done to each job.
     """
@@ -336,8 +338,6 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
     if hours is None:
         hours = Job.FAILED_CUTOFF_HOURS
 
-    known_celery_states = frozenset(states.ALL_STATES) - {states.PENDING}
-
     cutoff = datetime.datetime.now() - datetime.timedelta(hours=hours)
     stale_jobs = Job.objects.filter(
         status__in=JobState.running_states(),
@@ -350,9 +350,17 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
         if job.task_id:
             celery_state = AsyncResult(job.task_id).state
 
-        if celery_state in known_celery_states:
+        # Only trust terminal Celery states. For SUCCESS, also require completed
+        # progress so async_api jobs aren't closed while NATS results are pending.
+        is_terminal = celery_state in states.READY_STATES
+        if celery_state == states.SUCCESS and not job.progress.is_complete():
+            is_terminal = False
+
+        previous_status = job.status
+        if is_terminal:
             if not dry_run:
                 job.update_status(celery_state, save=False)
+                job.finished_at = datetime.datetime.now()
                 job.save()
             results.append({"job_id": job.pk, "action": "updated", "state": celery_state})
         else:
@@ -361,7 +369,7 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
                 job.finished_at = datetime.datetime.now()
                 job.save()
                 cleanup_async_job_if_needed(job)
-            results.append({"job_id": job.pk, "action": "revoked", "previous_status": job.status})
+            results.append({"job_id": job.pk, "action": "revoked", "previous_status": previous_status})
 
     return results
 

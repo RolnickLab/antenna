@@ -48,10 +48,50 @@ class CheckStaleJobsTest(TestCase):
         results = check_stale_jobs()
 
         self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["action"], "revoked")
+        result = results[0]
+        self.assertEqual(result["action"], "revoked")
+        self.assertEqual(result["previous_status"], JobState.STARTED)
         job.refresh_from_db()
         self.assertEqual(job.status, JobState.REVOKED.value)
         self.assertIsNotNone(job.finished_at)
+        mock_cleanup.assert_called_once_with(job)
+
+    @patch("ami.jobs.tasks.cleanup_async_job_if_needed")
+    @patch("celery.result.AsyncResult")
+    def test_updates_status_from_known_celery_state(self, mock_async_result, mock_cleanup):
+        """Stale job with a terminal Celery state is updated (not revoked)."""
+        from celery import states
+
+        mock_async_result.return_value.state = states.FAILURE
+        job = self._create_job(status=JobState.STARTED, task_id="some-celery-task-id")
+
+        results = check_stale_jobs()
+
+        self.assertEqual(len(results), 1)
+        result = results[0]
+        self.assertEqual(result["action"], "updated")
+        self.assertEqual(result["state"], states.FAILURE)
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.FAILURE.value)
+        self.assertIsNotNone(job.finished_at)
+        mock_cleanup.assert_not_called()
+
+    @patch("ami.jobs.tasks.cleanup_async_job_if_needed")
+    @patch("celery.result.AsyncResult")
+    def test_revokes_success_with_incomplete_progress(self, mock_async_result, mock_cleanup):
+        """Stale job where Celery reports SUCCESS but progress is incomplete is revoked."""
+        from celery import states
+
+        mock_async_result.return_value.state = states.SUCCESS
+        job = self._create_job(status=JobState.STARTED, task_id="some-celery-task-id")
+        # job.progress.is_complete() returns False by default (no stages completed)
+
+        results = check_stale_jobs()
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["action"], "revoked")
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.REVOKED.value)
         mock_cleanup.assert_called_once_with(job)
 
     @patch("ami.jobs.tasks.cleanup_async_job_if_needed")
