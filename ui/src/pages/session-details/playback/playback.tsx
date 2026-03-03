@@ -67,6 +67,7 @@ export const Playback = ({
               <CaptureDetails
                 capture={activeCapture}
                 captureId={activeCaptureId}
+                defaultFilters={defaultFilters}
               />
             </div>
           )}
@@ -106,11 +107,12 @@ export const Playback = ({
         </div>
       </div>
       <Frame
+        defaultFilters={defaultFilters}
+        detections={detections}
+        height={activeCapture?.height ?? session.firstCapture.height}
+        showDetections={showDetections}
         src={activeCapture?.src}
         width={activeCapture?.width ?? session.firstCapture.width}
-        height={activeCapture?.height ?? session.firstCapture.height}
-        detections={detections}
-        showDetections={showDetections}
       />
       <div className={styles.bottomBar}>
         <div className={styles.captureNavigationWrapper}>

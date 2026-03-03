@@ -21,9 +21,11 @@ import { ProcessNow } from './capture-job/process-now'
 export const CaptureDetails = ({
   capture,
   captureId,
+  defaultFilters,
 }: {
   capture?: Capture
   captureId: string
+  defaultFilters: boolean
 }) => {
   const { user } = useUser()
   const { projectId } = useParams()
@@ -112,13 +114,20 @@ export const CaptureDetails = ({
                 to: APP_ROUTES.OCCURRENCES({
                   projectId: projectId as string,
                 }),
-                filters: {
-                  detections__source_image: capture.id,
-                },
+                filters: defaultFilters
+                  ? {
+                      detections__source_image: capture.id,
+                    }
+                  : {
+                      detections__source_image: capture.id,
+                      apply_defaults: 'false',
+                    },
               })}
             >
               <span className={classNames(styles.value, styles.bubble)}>
-                {capture.numOccurrences}
+                {defaultFilters
+                  ? capture.numOccurrences
+                  : capture.numDetections}
               </span>
             </Link>
           </div>
