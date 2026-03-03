@@ -218,9 +218,10 @@ const FrameDetections = ({
                     style={style}
                     className={classNames(styles.detection, {
                       [styles.active]: isActive,
+                      [styles.filtered]: !detection.occurrenceMeetsCriteria,
+                      [styles.alert]: detection.score < SCORE_THRESHOLDS.ALERT,
                       [styles.warning]:
                         detection.score < SCORE_THRESHOLDS.WARNING,
-                      [styles.alert]: detection.score < SCORE_THRESHOLDS.ALERT,
                       [styles.clickable]: !!detection.occurrenceId,
                     })}
                     onClick={() => {
