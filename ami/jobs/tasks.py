@@ -362,7 +362,16 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
 
             celery_state = None
             if job.task_id:
-                celery_state = AsyncResult(job.task_id).state
+                try:
+                    celery_state = AsyncResult(job.task_id).state
+                except Exception:
+                    logger.warning(
+                        "Failed to fetch Celery state for stale job %s (task_id=%s)",
+                        job.pk,
+                        job.task_id,
+                        exc_info=True,
+                    )
+                    # Treat as unknown state — job will be revoked below.
 
             # Only trust terminal Celery states. For async_api jobs, SUCCESS and
             # FAILURE are only accepted when progress is complete — NATS workers may

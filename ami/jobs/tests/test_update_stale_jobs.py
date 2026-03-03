@@ -97,6 +97,21 @@ class CheckStaleJobsTest(TestCase):
         mock_cleanup.assert_called_once_with(job)
 
     @patch("ami.jobs.tasks.cleanup_async_job_if_needed")
+    @patch("celery.result.AsyncResult")
+    def test_revokes_when_celery_lookup_fails(self, mock_async_result, mock_cleanup):
+        """Job is revoked if Celery state lookup raises an exception."""
+        mock_async_result.side_effect = ConnectionError("broker down")
+        job = self._create_job(status=JobState.STARTED, task_id="unreachable-task")
+
+        results = check_stale_jobs()
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["action"], "revoked")
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.REVOKED.value)
+        mock_cleanup.assert_called_once_with(job)
+
+    @patch("ami.jobs.tasks.cleanup_async_job_if_needed")
     def test_skips_recent_and_final_state_jobs(self, mock_cleanup):
         """Recent jobs and jobs in final states are not touched."""
         self._create_job(status=JobState.STARTED, hours_ago=1)  # recent
