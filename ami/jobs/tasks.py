@@ -332,6 +332,7 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
 
     from celery import states
     from celery.result import AsyncResult
+    from django.db import transaction
 
     from ami.jobs.models import Job, JobDispatchMode, JobState
 
@@ -339,39 +340,59 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
         hours = Job.FAILED_CUTOFF_HOURS
 
     cutoff = datetime.datetime.now() - datetime.timedelta(hours=hours)
-    stale_jobs = Job.objects.filter(
-        status__in=JobState.running_states(),
-        updated_at__lt=cutoff,
+    stale_pks = list(
+        Job.objects.filter(
+            status__in=JobState.running_states(),
+            updated_at__lt=cutoff,
+        ).values_list("pk", flat=True)
     )
 
     results = []
-    for job in stale_jobs:
-        celery_state = None
-        if job.task_id:
-            celery_state = AsyncResult(job.task_id).state
+    for pk in stale_pks:
+        with transaction.atomic():
+            try:
+                job = Job.objects.select_for_update().get(
+                    pk=pk,
+                    status__in=JobState.running_states(),
+                    updated_at__lt=cutoff,
+                )
+            except Job.DoesNotExist:
+                # Another concurrent run already handled this job.
+                continue
 
-        # Only trust terminal Celery states. For async_api jobs, SUCCESS and
-        # FAILURE are only accepted when progress is complete — NATS workers may
-        # still be delivering results after the Celery task finishes.
-        is_terminal = celery_state in states.READY_STATES
-        is_async_api = job.dispatch_mode == JobDispatchMode.ASYNC_API
-        if is_async_api and celery_state in {states.SUCCESS, states.FAILURE} and not job.progress.is_complete():
-            is_terminal = False
+            celery_state = None
+            if job.task_id:
+                celery_state = AsyncResult(job.task_id).state
 
-        previous_status = job.status
+            # Only trust terminal Celery states. For async_api jobs, SUCCESS and
+            # FAILURE are only accepted when progress is complete — NATS workers may
+            # still be delivering results after the Celery task finishes.
+            is_terminal = celery_state in states.READY_STATES
+            is_async_api = job.dispatch_mode == JobDispatchMode.ASYNC_API
+            if is_async_api and celery_state in {states.SUCCESS, states.FAILURE} and not job.progress.is_complete():
+                is_terminal = False
+
+            previous_status = job.status
+            if is_terminal:
+                if not dry_run:
+                    job.update_status(celery_state, save=False)
+                    job.finished_at = datetime.datetime.now()
+                    job.save()
+            else:
+                if not dry_run:
+                    job.update_status(JobState.REVOKED, save=False)
+                    job.finished_at = datetime.datetime.now()
+                    job.save()
+
+        # Async resource cleanup runs outside the transaction — it makes network
+        # calls (NATS/Redis) that should not hold the DB row lock.
+        if not dry_run:
+            job.refresh_from_db()
+            cleanup_async_job_if_needed(job)
+
         if is_terminal:
-            if not dry_run:
-                job.update_status(celery_state, save=False)
-                job.finished_at = datetime.datetime.now()
-                job.save()
-                cleanup_async_job_if_needed(job)
             results.append({"job_id": job.pk, "action": "updated", "state": celery_state})
         else:
-            if not dry_run:
-                job.update_status(JobState.REVOKED, save=False)
-                job.finished_at = datetime.datetime.now()
-                job.save()
-                cleanup_async_job_if_needed(job)
             results.append({"job_id": job.pk, "action": "revoked", "previous_status": previous_status})
 
     return results
