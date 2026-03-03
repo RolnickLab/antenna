@@ -33,6 +33,8 @@ export const Captures = () => {
     session: true,
     size: true,
     dimensions: true,
+    filename: false,
+    path: false,
   })
   const { selectedView, setSelectedView } = useSelectedView('table')
   const { filters } = useFilters()
