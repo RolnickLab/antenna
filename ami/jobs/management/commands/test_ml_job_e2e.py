@@ -10,7 +10,11 @@ from ami.ml.models import Pipeline
 
 
 class Command(BaseCommand):
-    help = "Run end-to-end test of ML job processing"
+    help = (
+        "Run end-to-end test of ML job processing.\n\n"
+        "For monitoring and debugging running jobs, see:\n"
+        "  docs/claude/reference/monitoring-async-jobs.md"
+    )
 
     def add_arguments(self, parser):
         parser.add_argument("--project", type=int, required=True, help="Project ID")
