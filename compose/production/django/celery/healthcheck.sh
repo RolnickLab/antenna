@@ -2,30 +2,26 @@
 #
 # Celery Worker Healthcheck Script (Production)
 #
-# This script checks if the Celery worker process is running and responsive.
-# It uses two checks:
-# 1. Process check - is celery worker process running?
-# 2. Redis connectivity - can we connect to the broker?
-#
+# Checks if the Celery worker process is running and not stopped.
 # When used with the autoheal container, unhealthy workers will be
 # automatically restarted.
 
 set -e
 
-# Check 1: Is the celery worker process running?
-if ! pgrep -f "celery.*worker" > /dev/null 2>&1; then
+# Check: Is the celery worker process running and not stopped?
+CELERY_PIDS=$(pgrep -f "celery.*worker" || true)
+if [ -z "$CELERY_PIDS" ]; then
     echo "ERROR: Celery worker process not found" >&2
     exit 1
 fi
 
-# Check 2: Can we connect to Redis (the broker)?
-# Use redis-cli if available, otherwise skip
-if command -v redis-cli > /dev/null 2>&1; then
-    if ! redis-cli -h ${CELERY_BROKER_URL:-redis} ping > /dev/null 2>&1; then
-        echo "ERROR: Cannot connect to Redis broker" >&2
+for pid in $CELERY_PIDS; do
+    state=$(ps -o stat= -p "$pid" 2>/dev/null | awk '{print substr($1,1,1)}')
+    if [ "$state" = "T" ]; then
+        echo "ERROR: Celery worker process $pid is stopped (state: $state)" >&2
         exit 1
     fi
-fi
+done
 
 # All checks passed
 exit 0

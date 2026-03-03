@@ -31,5 +31,5 @@ if [ "${CELERY_NO_RELOAD:-0}" = "1" ]; then
     exec celery -A config.celery_app worker --queues=antenna -l INFO --max-tasks-per-child=$MAX_TASKS_PER_CHILD --max-memory-per-child=$MAX_MEMORY_PER_CHILD
 else
     echo "Starting Celery worker with watchfiles auto-reload..."
-    exec watchfiles --filter python celery.__main__.main --args '-A config.celery_app worker --queues=antenna -l INFO --max-tasks-per-child='$MAX_TASKS_PER_CHILD' --max-memory-per-child='$MAX_MEMORY_PER_CHILD
+    exec watchfiles --filter python celery.__main__.main --args "-A config.celery_app worker --queues=antenna -l INFO --max-tasks-per-child=${MAX_TASKS_PER_CHILD} --max-memory-per-child=${MAX_MEMORY_PER_CHILD}"
 fi
