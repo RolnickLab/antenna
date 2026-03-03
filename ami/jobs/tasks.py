@@ -316,6 +316,56 @@ def _update_job_progress(
         cleanup_async_job_if_needed(job)
 
 
+def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[dict]:
+    """
+    Find jobs stuck in a running state past the cutoff and revoke them.
+
+    For each stale job, checks Celery for a real task status. If Celery has one
+    (e.g. SUCCESS, FAILURE), uses that. Otherwise revokes the job and cleans up
+    any async resources (NATS/Redis).
+
+    Returns a list of dicts describing what was done to each job.
+    """
+    import datetime
+
+    from celery import states
+    from celery.result import AsyncResult
+
+    from ami.jobs.models import Job, JobState
+
+    if hours is None:
+        hours = Job.FAILED_CUTOFF_HOURS
+
+    known_celery_states = frozenset(states.ALL_STATES) - {states.PENDING}
+
+    cutoff = datetime.datetime.now() - datetime.timedelta(hours=hours)
+    stale_jobs = Job.objects.filter(
+        status__in=JobState.running_states(),
+        updated_at__lt=cutoff,
+    )
+
+    results = []
+    for job in stale_jobs:
+        celery_state = None
+        if job.task_id:
+            celery_state = AsyncResult(job.task_id).state
+
+        if celery_state in known_celery_states:
+            if not dry_run:
+                job.update_status(celery_state, save=False)
+                job.save()
+            results.append({"job_id": job.pk, "action": "updated", "state": celery_state})
+        else:
+            if not dry_run:
+                job.update_status(JobState.REVOKED, save=False)
+                job.finished_at = datetime.datetime.now()
+                job.save()
+                cleanup_async_job_if_needed(job)
+            results.append({"job_id": job.pk, "action": "revoked", "previous_status": job.status})
+
+    return results
+
+
 def cleanup_async_job_if_needed(job) -> None:
     """
     Clean up async resources (NATS/Redis) if this job uses them.

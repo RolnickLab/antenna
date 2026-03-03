@@ -1,14 +1,7 @@
-from celery import states
-from celery.result import AsyncResult
 from django.core.management.base import BaseCommand
-from django.utils import timezone
 
-from ami.jobs.models import Job, JobState
-from ami.jobs.tasks import cleanup_async_job_if_needed
-
-# Celery returns PENDING for tasks it has no record of.
-# These are the states that indicate a real, known task status.
-KNOWN_CELERY_STATES = frozenset(states.ALL_STATES) - {states.PENDING}
+from ami.jobs.models import Job
+from ami.jobs.tasks import check_stale_jobs
 
 
 class Command(BaseCommand):
@@ -28,36 +21,17 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        cutoff = timezone.now() - timezone.timedelta(hours=options["hours"])
-        stale_jobs = Job.objects.filter(
-            status__in=JobState.running_states(),
-            updated_at__lt=cutoff,
-        )
+        results = check_stale_jobs(hours=options["hours"], dry_run=options["dry_run"])
 
-        if not stale_jobs.exists():
+        if not results:
             self.stdout.write("No stale jobs found.")
             return
 
-        for job in stale_jobs:
-            celery_state = None
-            if job.task_id:
-                celery_state = AsyncResult(job.task_id).state
-
-            if celery_state in KNOWN_CELERY_STATES:
-                # Celery has a real status for this task — use it
-                if options["dry_run"]:
-                    self.stdout.write(f"  [dry-run] Job {job.pk}: would update to {celery_state} (from Celery)")
-                    continue
-                job.update_status(celery_state, save=False)
-                job.save()
-                self.stdout.write(self.style.SUCCESS(f"Job {job.pk}: updated to {celery_state} (from Celery)"))
+        prefix = "[dry-run] " if options["dry_run"] else ""
+        for r in results:
+            if r["action"] == "updated":
+                self.stdout.write(
+                    self.style.SUCCESS(f"{prefix}Job {r['job_id']}: updated to {r['state']} (from Celery)")
+                )
             else:
-                # No task_id, or Celery has no record (returns PENDING) — revoke
-                if options["dry_run"]:
-                    self.stdout.write(f"  [dry-run] Job {job.pk} ({job.status}): would revoke and clean up")
-                    continue
-                job.update_status(JobState.REVOKED, save=False)
-                job.finished_at = timezone.now()
-                job.save()
-                cleanup_async_job_if_needed(job)
-                self.stdout.write(self.style.WARNING(f"Job {job.pk}: revoked (no known Celery state)"))
+                self.stdout.write(self.style.WARNING(f"{prefix}Job {r['job_id']}: revoked (no known Celery state)"))
