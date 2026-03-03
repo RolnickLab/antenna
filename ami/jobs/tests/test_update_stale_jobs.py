@@ -4,7 +4,7 @@ from unittest.mock import patch
 from django.test import TestCase
 from django.utils import timezone
 
-from ami.jobs.models import Job, JobState
+from ami.jobs.models import Job, JobDispatchMode, JobState
 from ami.jobs.tasks import check_stale_jobs
 from ami.main.models import Project
 
@@ -74,16 +74,18 @@ class CheckStaleJobsTest(TestCase):
         job.refresh_from_db()
         self.assertEqual(job.status, JobState.FAILURE.value)
         self.assertIsNotNone(job.finished_at)
-        mock_cleanup.assert_not_called()
+        mock_cleanup.assert_called_once_with(job)
 
     @patch("ami.jobs.tasks.cleanup_async_job_if_needed")
     @patch("celery.result.AsyncResult")
     def test_revokes_success_with_incomplete_progress(self, mock_async_result, mock_cleanup):
-        """Stale job where Celery reports SUCCESS but progress is incomplete is revoked."""
+        """async_api job where Celery reports SUCCESS but progress is incomplete is revoked."""
         from celery import states
 
         mock_async_result.return_value.state = states.SUCCESS
         job = self._create_job(status=JobState.STARTED, task_id="some-celery-task-id")
+        Job.objects.filter(pk=job.pk).update(dispatch_mode=JobDispatchMode.ASYNC_API)
+        job.refresh_from_db()
         # job.progress.is_complete() returns False by default (no stages completed)
 
         results = check_stale_jobs()

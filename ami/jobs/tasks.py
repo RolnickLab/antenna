@@ -320,11 +320,11 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
     """
     Find jobs stuck in a running state past the cutoff and revoke them.
 
-    For each stale job, checks Celery for a terminal task status. If Celery reports
-    FAILURE or REVOKED, that state is applied. SUCCESS is only accepted when
-    job.progress.is_complete(), to avoid prematurely closing async_api jobs whose
-    NATS workers are still delivering results. All other cases result in revocation
-    and cleanup of async resources (NATS/Redis).
+    For each stale job, checks Celery for a terminal task status. REVOKED is
+    always trusted. For async_api jobs, SUCCESS and FAILURE are only accepted
+    when job.progress.is_complete() — NATS workers may still be delivering
+    results after the Celery task finishes. All other cases result in revocation.
+    Async resources (NATS/Redis) are cleaned up in both branches.
 
     Returns a list of dicts describing what was done to each job.
     """
@@ -333,7 +333,7 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
     from celery import states
     from celery.result import AsyncResult
 
-    from ami.jobs.models import Job, JobState
+    from ami.jobs.models import Job, JobDispatchMode, JobState
 
     if hours is None:
         hours = Job.FAILED_CUTOFF_HOURS
@@ -350,10 +350,12 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
         if job.task_id:
             celery_state = AsyncResult(job.task_id).state
 
-        # Only trust terminal Celery states. For SUCCESS, also require completed
-        # progress so async_api jobs aren't closed while NATS results are pending.
+        # Only trust terminal Celery states. For async_api jobs, SUCCESS and
+        # FAILURE are only accepted when progress is complete — NATS workers may
+        # still be delivering results after the Celery task finishes.
         is_terminal = celery_state in states.READY_STATES
-        if celery_state == states.SUCCESS and not job.progress.is_complete():
+        is_async_api = job.dispatch_mode == JobDispatchMode.ASYNC_API
+        if is_async_api and celery_state in {states.SUCCESS, states.FAILURE} and not job.progress.is_complete():
             is_terminal = False
 
         previous_status = job.status
@@ -362,6 +364,7 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
                 job.update_status(celery_state, save=False)
                 job.finished_at = datetime.datetime.now()
                 job.save()
+                cleanup_async_job_if_needed(job)
             results.append({"job_id": job.pk, "action": "updated", "state": celery_state})
         else:
             if not dry_run:
