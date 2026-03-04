@@ -1,0 +1,58 @@
+{% extends "admin/base_site.html" %}
+
+{% load i18n admin_urls %}
+
+{% block title %}
+  {% translate "Run class masking" %} | {{ site_title|default:_("Django site admin") }}
+{% endblock title %}
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+    › <a href="{% url 'admin:main_occurrence_changelist' %}">Occurrences</a>
+    › {% translate 'Run class masking' %}
+  </div>
+{% endblock breadcrumbs %}
+{% block content %}
+  <form method="post">
+    {% csrf_token %}
+    <p>
+      You are about to run class masking on <strong>{{ occurrence_count }}</strong> selected occurrence{{ occurrence_count|pluralize }}.
+    </p>
+    <p>This will:</p>
+    <ul>
+      <li>Mark existing terminal classifications as non-terminal</li>
+      <li>
+        Create new classifications with logits masked for species <em>not</em> in the selected taxa list
+      </li>
+      <li>Update occurrence determinations based on the new top predictions</li>
+    </ul>
+    <fieldset>
+      <legend>Select parameters</legend>
+      <div class="form-row">
+        <label for="id_taxa_list">Taxa list:</label>
+        <select name="taxa_list" id="id_taxa_list" required>
+          <option value="">---------</option>
+          {% for tl in taxa_lists %}<option value="{{ tl.pk }}">{{ tl.name }} ({{ tl.taxa_count }} taxa)</option>{% endfor %}
+        </select>
+        <p class="help">Species checklist to use as a mask. Only species in this list will remain active.</p>
+      </div>
+      <div class="form-row">
+        <label for="id_algorithm">Source algorithm:</label>
+        <select name="algorithm" id="id_algorithm" required>
+          <option value="">---------</option>
+          {% for alg in algorithms %}
+            <option value="{{ alg.pk }}">{{ alg.name }} ({{ alg.labels_count }} labels)</option>
+          {% endfor %}
+        </select>
+        <p class="help">The classifier algorithm whose predictions to mask. Must have a category map with logits.</p>
+      </div>
+    </fieldset>
+    {% for obj in queryset %}<input type="hidden" name="_selected_action" value="{{ obj.pk }}" />{% endfor %}
+    <input type="hidden" name="action" value="run_class_masking" />
+    <input type="hidden" name="confirm" value="1" />
+    <div class="submit-row">
+      <input type="submit" value="{% translate 'Run class masking' %}" />
+      <a href="{% url 'admin:main_occurrence_changelist' %}">{% translate 'Cancel' %}</a>
+    </div>
+  </form>
+{% endblock content %}
