@@ -22,18 +22,28 @@ class TestUserProjectMembershipAPI(APITestCase):
         self.roles_url = "/api/v2/users/roles/"
         self.members_url = f"/api/v2/projects/{self.project.pk}/members/"
 
-    def create_membership(self, user=None):
+    def create_membership(self, user=None, role_cls=None):
         """
-        Create a membership for a user in this project.
-        Used in tests to guarantee isolation.
+        Create a membership for a user in this project with a role assigned.
+
+        Args:
+            user: User to add as member (defaults to self.user1)
+            role_cls: Role class to assign (defaults to BasicMember)
+
+        Returns:
+            UserProjectMembership instance with role assigned
         """
         if user is None:
             user = self.user1
+        if role_cls is None:
+            role_cls = BasicMember  # Default role for test memberships
 
         membership = UserProjectMembership.objects.create(
             project=self.project,
             user=user,
         )
+        # Assign role to ensure membership is valid
+        role_cls.assign_user(user, self.project)
         return membership
 
     def auth_super(self):
@@ -112,7 +122,9 @@ class TestUserProjectMembershipAPI(APITestCase):
         self.assertEqual(resp.status_code, 200)
 
         updated = resp.json()
-        self.assertEqual(updated["role"], ProjectManager.__name__)
+        self.assertEqual(updated["role"]["id"], ProjectManager.__name__)
+        self.assertEqual(updated["role"]["name"], ProjectManager.display_name)
+        self.assertEqual(updated["role"]["description"], ProjectManager.description)
 
         membership = UserProjectMembership.objects.get(
             project=self.project,
