@@ -135,6 +135,17 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
     ),
   },
   {
+    id: 'filename',
+    name: translate(STRING.FIELD_LABEL_FILENAME),
+    renderCell: (item: Capture) => <BasicTableCell value={item.filename} />,
+  },
+  {
+    id: 'path',
+    name: translate(STRING.FIELD_LABEL_PATH),
+    sortField: 'path',
+    renderCell: (item: Capture) => <BasicTableCell value={item.path} />,
+  },
+  {
     id: 'occurrences',
     name: translate(STRING.FIELD_LABEL_OCCURRENCES),
     sortField: 'occurrences_count',
