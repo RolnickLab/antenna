@@ -25,6 +25,7 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
         nc = MagicMock()
         nc.is_closed = False
         nc.close = AsyncMock()
+        nc.flush = AsyncMock()
 
         js = MagicMock()
         js.stream_info = AsyncMock()
@@ -60,7 +61,8 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
             async with TaskQueueManager() as manager:
                 await manager.publish_task(456, sample_task)
 
-                js.add_stream.assert_called_once()
+                # add_stream called twice: advisory stream in __aenter__ + job stream in _ensure_stream
+                self.assertEqual(js.add_stream.call_count, 2)
                 self.assertIn("job_456", str(js.add_stream.call_args))
                 js.add_consumer.assert_called_once()
 
@@ -153,7 +155,8 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
                 result = await manager.cleanup_job_resources(123)
 
                 self.assertTrue(result)
-                js.delete_consumer.assert_called_once()
+                # delete_consumer called twice: job consumer + DLQ advisory consumer
+                self.assertEqual(js.delete_consumer.call_count, 2)
                 js.delete_stream.assert_called_once()
 
     async def test_naming_conventions(self):
