@@ -72,6 +72,8 @@ class TaskQueueManager:
     async def __aenter__(self):
         """Create connection on enter."""
         self.nc, self.js = await get_connection(self.nats_url)
+
+        await self._setup_advisory_stream()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -271,6 +273,7 @@ class TaskQueueManager:
 
         try:
             await self.nc.publish(reply_subject, b"+ACK")
+            await self.nc.flush()
             logger.debug(f"Acknowledged task with reply subject {reply_subject}")
             return True
         except Exception as e:
@@ -330,9 +333,135 @@ class TaskQueueManager:
             logger.error(f"Failed to delete stream for job '{job_id}': {e}")
             return False
 
+    async def _setup_advisory_stream(self):
+        """Ensure the shared advisory stream exists to capture max-delivery events.
+
+        Called on every __aenter__ so that advisories are captured from the moment
+        any TaskQueueManager connection is opened, not just when the DLQ is first read.
+        """
+        try:
+            await asyncio.wait_for(
+                self.js.add_stream(
+                    name="advisories",
+                    subjects=["$JS.EVENT.ADVISORY.>"],
+                    max_age=3600,  # Keep advisories for 1 hour
+                ),
+                timeout=NATS_JETSTREAM_TIMEOUT,
+            )
+            logger.info("Advisory stream created")
+        except asyncio.TimeoutError:
+            raise  # NATS unreachable — propagate so __aenter__ fails fast
+        except nats.js.errors.BadRequestError:
+            pass  # Stream already exists
+
+    def _get_dlq_consumer_name(self, job_id: int) -> str:
+        """Get the durable consumer name for dead letter queue advisory tracking."""
+        return f"job-{job_id}-dlq"
+
+    async def get_dead_letter_task_ids(self, job_id: int, n: int = 10) -> list[str]:
+        """
+        Get task IDs from dead letter queue (messages that exceeded max delivery attempts).
+
+        Pulls from persistent advisory stream to find failed messages, then looks up task IDs.
+        Uses a durable consumer so acknowledged advisories are not re-delivered on subsequent calls.
+
+        Args:
+            job_id: The job ID (integer primary key)
+            n: Maximum number of task IDs to return (default: 10)
+
+        Returns:
+            List of task IDs that failed to process after max retry attempts
+        """
+        if self.nc is None or self.js is None:
+            raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
+
+        stream_name = self._get_stream_name(job_id)
+        consumer_name = self._get_consumer_name(job_id)
+        dlq_consumer_name = self._get_dlq_consumer_name(job_id)
+        dead_letter_ids = []
+
+        try:
+            subject_filter = f"$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.{stream_name}.{consumer_name}"
+
+            # Use a durable consumer so ACKs persist across calls — ephemeral consumers
+            # are deleted on unsubscribe, discarding all ACK tracking and causing every
+            # advisory to be re-delivered on the next call.
+            psub = await self.js.pull_subscribe(subject_filter, durable=dlq_consumer_name)
+
+            try:
+                msgs = await psub.fetch(n, timeout=1.0)
+
+                for msg in msgs:
+                    advisory_data = json.loads(msg.data.decode())
+
+                    # Get the stream sequence of the failed message
+                    if "stream_seq" in advisory_data:
+                        stream_seq = advisory_data["stream_seq"]
+
+                        # Look up the actual message by sequence to get task ID
+                        try:
+                            job_msg = await self.js.get_msg(stream_name, stream_seq)
+
+                            if job_msg and job_msg.data:
+                                task_data = json.loads(job_msg.data.decode())
+
+                                if "image_id" in task_data:
+                                    dead_letter_ids.append(str(task_data["image_id"]))
+                                else:
+                                    logger.warning(f"No image_id found in task data: {task_data}")
+                        except Exception as e:
+                            logger.warning(f"Could not retrieve message {stream_seq} from {stream_name}: {e}")
+                            # The message might have been discarded after max_deliver exceeded
+
+                    # Acknowledge the advisory message so the durable consumer won't re-deliver it
+                    await msg.ack()
+                    logger.info(
+                        f"Acknowledged advisory message for stream_seq {advisory_data.get('stream_seq', 'unknown')}"
+                    )
+
+                # Flush to ensure all ACKs are written to the socket before unsubscribing.
+                # msg.ack() only queues a publish in the client buffer; without flush() the
+                # ACKs can be silently dropped when the subscription is torn down.
+                await self.nc.flush()
+
+            except asyncio.TimeoutError:
+                logger.info(f"No advisory messages found for job {job_id}")
+            finally:
+                await psub.unsubscribe()
+
+        except Exception as e:
+            logger.error(f"Failed to get dead letter task IDs for job '{job_id}': {e}")
+
+        return dead_letter_ids[:n]
+
+    async def delete_dlq_consumer(self, job_id: int) -> bool:
+        """
+        Delete the durable DLQ advisory consumer for a job.
+
+        Args:
+            job_id: The job ID (integer primary key)
+
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        if self.js is None:
+            raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
+
+        dlq_consumer_name = self._get_dlq_consumer_name(job_id)
+        try:
+            await asyncio.wait_for(
+                self.js.delete_consumer("advisories", dlq_consumer_name),
+                timeout=NATS_JETSTREAM_TIMEOUT,
+            )
+            logger.info(f"Deleted DLQ consumer {dlq_consumer_name} for job '{job_id}'")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to delete DLQ consumer for job '{job_id}': {e}")
+            return False
+
     async def cleanup_job_resources(self, job_id: int) -> bool:
         """
-        Clean up all NATS resources (consumer and stream) for a job.
+        Clean up all NATS resources (consumer, stream, and DLQ advisory consumer) for a job.
 
         This should be called when a job completes or is cancelled.
 
@@ -342,8 +471,9 @@ class TaskQueueManager:
         Returns:
             bool: True if successful, False otherwise
         """
-        # Delete consumer first, then stream
+        # Delete consumer first, then stream, then the durable DLQ advisory consumer
         consumer_deleted = await self.delete_consumer(job_id)
         stream_deleted = await self.delete_stream(job_id)
+        dlq_consumer_deleted = await self.delete_dlq_consumer(job_id)
 
-        return consumer_deleted and stream_deleted
+        return consumer_deleted and stream_deleted and dlq_consumer_deleted
