@@ -15,7 +15,7 @@ from ami.users.api.serializers import (
     UserProjectMembershipListSerializer,
     UserProjectMembershipSerializer,
 )
-from ami.users.roles import Role
+from ami.users.roles import BasicMember, Role
 from ami.users.signals import manage_project_membership
 
 logger = logging.getLogger(__name__)
@@ -50,7 +50,6 @@ class UserProjectMembershipViewSet(DefaultViewSet, ProjectMixin):
 
     def perform_create(self, serializer):
         project = self.get_active_project()
-        # user = serializer._validated_user
         role_cls = serializer._validated_role_cls
         with transaction.atomic():
             membership = serializer.save(project=project)
@@ -60,12 +59,11 @@ class UserProjectMembershipViewSet(DefaultViewSet, ProjectMixin):
             # The membership is already created above, so we don't need the signal to modify it
             m2m_changed.disconnect(manage_project_membership, sender=Group.user_set.through)
             try:
-                # unassign all existing roles for this project
+                # Unassign all roles, assign the chosen role, then BasicMember
                 for r in Role.__subclasses__():
                     r.unassign_user(user, project)
-
-                # assign new role
                 role_cls.assign_user(user, project)
+                BasicMember.assign_user(user, project)
             finally:
                 # Reconnect signal
                 m2m_changed.connect(manage_project_membership, sender=Group.user_set.through)
@@ -86,10 +84,11 @@ class UserProjectMembershipViewSet(DefaultViewSet, ProjectMixin):
                 membership.user = user
                 membership.save()
 
+                # Unassign all roles, assign the chosen role, then BasicMember
                 for r in Role.__subclasses__():
                     r.unassign_user(user, project)
-
                 role_cls.assign_user(user, project)
+                BasicMember.assign_user(user, project)
         finally:
             # Reconnect signal
             m2m_changed.connect(manage_project_membership, sender=Group.user_set.through)
@@ -103,7 +102,7 @@ class UserProjectMembershipViewSet(DefaultViewSet, ProjectMixin):
         m2m_changed.disconnect(manage_project_membership, sender=Group.user_set.through)
         try:
             with transaction.atomic():
-                # remove roles for this project
+                # Revoke all roles (including BasicMember) before deleting membership
                 for r in Role.__subclasses__():
                     r.unassign_user(user, project)
 
