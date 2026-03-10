@@ -8,8 +8,7 @@ Example:
     python manage.py check_dead_letter_queue 123
 """
 
-import asyncio
-
+from asgiref.sync import async_to_sync
 from django.core.management.base import BaseCommand, CommandError
 
 from ami.ml.orchestration.nats_queue import TaskQueueManager
@@ -29,7 +28,7 @@ class Command(BaseCommand):
         job_id = options["job_id"]
 
         try:
-            dead_letter_ids = asyncio.run(self._check_dead_letter_queue(job_id))
+            dead_letter_ids = async_to_sync(self._check_dead_letter_queue)(job_id)
 
             if dead_letter_ids:
                 self.stdout.write(
