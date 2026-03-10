@@ -74,7 +74,14 @@ class TaskQueueManager:
         """Create connection on enter."""
         self.nc, self.js = await get_connection(self.nats_url)
 
-        await self._setup_advisory_stream()
+        try:
+            await self._setup_advisory_stream()
+        except BaseException:
+            if self.nc and not self.nc.is_closed:
+                await self.nc.close()
+            self.nc = None
+            self.js = None
+            raise
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -413,8 +420,12 @@ class TaskQueueManager:
                         except Exception as e:
                             logger.warning(f"Could not retrieve message {stream_seq} from {stream_name}: {e}")
                             # The message might have been discarded after max_deliver exceeded
+                    else:
+                        logger.warning(f"No stream_seq in advisory data: {advisory_data}")
 
-                    # Acknowledge the advisory message so the durable consumer won't re-deliver it
+                    # Acknowledge even if we couldn't find the stream_seq or image_id so it doesn't get re-delivered
+                    # it shouldn't happen since stream_seq is part of the `io.nats.jetstream.advisory.v1.max_deliver`
+                    # schema and all our messages have an image_id
                     await msg.ack()
                     logger.info(
                         f"Acknowledged advisory message for stream_seq {advisory_data.get('stream_seq', 'unknown')}"
