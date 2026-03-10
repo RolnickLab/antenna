@@ -43,6 +43,7 @@ async def get_connection(nats_url: str) -> tuple[nats.NATS, JetStreamContext]:
 
 
 TASK_TTR = getattr(settings, "NATS_TASK_TTR", 30)  # Visibility timeout in seconds (configurable)
+ADVISORY_STREAM_NAME = "advisories"  # Shared stream for max delivery advisories across all jobs
 
 
 class TaskQueueManager:
@@ -343,10 +344,10 @@ class TaskQueueManager:
         Called on every __aenter__ so that advisories are captured from the moment
         any TaskQueueManager connection is opened, not just when the DLQ is first read.
         """
-        if not await self._stream_exists("advisories"):
+        if not await self._stream_exists(ADVISORY_STREAM_NAME):
             await asyncio.wait_for(
                 self.js.add_stream(
-                    name="advisories",
+                    name=ADVISORY_STREAM_NAME,
                     subjects=["$JS.EVENT.ADVISORY.>"],
                     max_age=3600,  # Keep advisories for 1 hour
                 ),
@@ -386,7 +387,7 @@ class TaskQueueManager:
             # Use a durable consumer so ACKs persist across calls — ephemeral consumers
             # are deleted on unsubscribe, discarding all ACK tracking and causing every
             # advisory to be re-delivered on the next call.
-            psub = await self.js.pull_subscribe(subject_filter, durable=dlq_consumer_name)
+            psub = await self.js.pull_subscribe(subject_filter, durable=dlq_consumer_name, stream=ADVISORY_STREAM_NAME)
 
             try:
                 msgs = await psub.fetch(n, timeout=1.0)

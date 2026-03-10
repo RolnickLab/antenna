@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import nats
 import nats.errors
 
-from ami.ml.orchestration.nats_queue import TaskQueueManager
+from ami.ml.orchestration.nats_queue import ADVISORY_STREAM_NAME, TaskQueueManager
 from ami.ml.schemas import PipelineProcessingTask
 
 
@@ -215,6 +215,7 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
         js.pull_subscribe.assert_called_once_with(
             "$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.job_123.job-123-consumer",
             durable="job-123-dlq",
+            stream=ADVISORY_STREAM_NAME,
         )
         mock_psub.fetch.assert_called_once_with(10, timeout=1.0)
         mock_psub.unsubscribe.assert_called_once()
