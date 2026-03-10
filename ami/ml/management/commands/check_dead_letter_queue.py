@@ -33,12 +33,12 @@ class Command(BaseCommand):
 
             if dead_letter_ids:
                 self.stdout.write(
-                    self.style.WARNING(f"Found {len(dead_letter_ids)} dead letter task(s) for job {job_id}:")
+                    self.style.WARNING(f"Found {len(dead_letter_ids)} dead letter image(s) for job {job_id}:")
                 )
                 for image_id in dead_letter_ids:
                     self.stdout.write(f"  - Image ID: {image_id}")
             else:
-                self.stdout.write(self.style.SUCCESS(f"No dead letter tasks found for job {job_id}"))
+                self.stdout.write(self.style.SUCCESS(f"No dead letter images found for job {job_id}"))
 
         except Exception as e:
             raise CommandError(f"Failed to check dead letter queue: {e}")
@@ -46,4 +46,4 @@ class Command(BaseCommand):
     async def _check_dead_letter_queue(self, job_id: int) -> list[str]:
         """Check for dead letter queue messages using TaskQueueManager."""
         async with TaskQueueManager() as manager:
-            return await manager.get_dead_letter_task_ids(job_id)
+            return await manager.get_dead_letter_image_ids(job_id)

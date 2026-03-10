@@ -97,7 +97,7 @@ class TaskQueueManager:
         """Get consumer name from job_id."""
         return f"job-{job_id}-consumer"
 
-    async def _stream_exists(self, job_id: int) -> bool:
+    async def _job_stream_exists(self, job_id: int) -> bool:
         """Check if stream exists for the given job.
 
         Only catches NotFoundError (→ False). TimeoutError propagates deliberately
@@ -108,6 +108,10 @@ class TaskQueueManager:
             raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
 
         stream_name = self._get_stream_name(job_id)
+        return await self._stream_exists(stream_name)
+
+    async def _stream_exists(self, stream_name: str) -> bool:
+        """Check if a stream with the given name exists."""
         try:
             await asyncio.wait_for(self.js.stream_info(stream_name), timeout=NATS_JETSTREAM_TIMEOUT)
             return True
@@ -119,7 +123,7 @@ class TaskQueueManager:
         if self.js is None:
             raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
 
-        if not await self._stream_exists(job_id):
+        if not await self._job_stream_exists(job_id):
             stream_name = self._get_stream_name(job_id)
             subject = self._get_subject(job_id)
             logger.warning(f"Stream {stream_name} does not exist")
@@ -220,7 +224,7 @@ class TaskQueueManager:
             raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
 
         try:
-            if not await self._stream_exists(job_id):
+            if not await self._job_stream_exists(job_id):
                 logger.debug(f"Stream for job '{job_id}' does not exist when reserving task")
                 return []
 
@@ -233,7 +237,7 @@ class TaskQueueManager:
 
             try:
                 msgs = await psub.fetch(count, timeout=timeout)
-            except nats.errors.TimeoutError:
+            except (asyncio.TimeoutError, nats.errors.TimeoutError):
                 logger.debug(f"No tasks available in stream for job '{job_id}'")
                 return []
             finally:
@@ -252,7 +256,7 @@ class TaskQueueManager:
                 logger.debug(f"No tasks reserved from stream for job '{job_id}'")
             return tasks
 
-        except asyncio.TimeoutError:
+        except (asyncio.TimeoutError, nats.errors.TimeoutError):
             raise  # NATS unreachable — propagate so the view can return an appropriate error
         except Exception as e:
             logger.error(f"Failed to reserve tasks from stream for job '{job_id}': {e}")
@@ -339,7 +343,7 @@ class TaskQueueManager:
         Called on every __aenter__ so that advisories are captured from the moment
         any TaskQueueManager connection is opened, not just when the DLQ is first read.
         """
-        try:
+        if not await self._stream_exists("advisories"):
             await asyncio.wait_for(
                 self.js.add_stream(
                     name="advisories",
@@ -349,28 +353,24 @@ class TaskQueueManager:
                 timeout=NATS_JETSTREAM_TIMEOUT,
             )
             logger.info("Advisory stream created")
-        except asyncio.TimeoutError:
-            raise  # NATS unreachable — propagate so __aenter__ fails fast
-        except nats.js.errors.BadRequestError:
-            pass  # Stream already exists
 
     def _get_dlq_consumer_name(self, job_id: int) -> str:
         """Get the durable consumer name for dead letter queue advisory tracking."""
         return f"job-{job_id}-dlq"
 
-    async def get_dead_letter_task_ids(self, job_id: int, n: int = 10) -> list[str]:
+    async def get_dead_letter_image_ids(self, job_id: int, n: int = 10) -> list[str]:
         """
-        Get task IDs from dead letter queue (messages that exceeded max delivery attempts).
+        Get image IDs from dead letter queue (messages that exceeded max delivery attempts).
 
-        Pulls from persistent advisory stream to find failed messages, then looks up task IDs.
+        Pulls from persistent advisory stream to find failed messages, then looks up image IDs.
         Uses a durable consumer so acknowledged advisories are not re-delivered on subsequent calls.
 
         Args:
             job_id: The job ID (integer primary key)
-            n: Maximum number of task IDs to return (default: 10)
+            n: Maximum number of image IDs to return (default: 10)
 
         Returns:
-            List of task IDs that failed to process after max retry attempts
+            List of image IDs that failed to process after max retry attempts
         """
         if self.nc is None or self.js is None:
             raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
@@ -424,7 +424,7 @@ class TaskQueueManager:
                 # ACKs can be silently dropped when the subscription is torn down.
                 await self.nc.flush()
 
-            except asyncio.TimeoutError:
+            except (asyncio.TimeoutError, nats.errors.TimeoutError):
                 logger.info(f"No advisory messages found for job {job_id}")
             finally:
                 await psub.unsubscribe()
@@ -455,6 +455,9 @@ class TaskQueueManager:
             )
             logger.info(f"Deleted DLQ consumer {dlq_consumer_name} for job '{job_id}'")
             return True
+        except nats.js.errors.NotFoundError:
+            logger.debug(f"DLQ consumer {dlq_consumer_name} for job '{job_id}' not found when attempting to delete")
+            return True  # Consider it a success if the consumer is already gone
         except Exception as e:
             logger.warning(f"Failed to delete DLQ consumer for job '{job_id}': {e}")
             return False

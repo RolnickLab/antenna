@@ -1,9 +1,11 @@
 """Unit tests for TaskQueueManager."""
 
+import json
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import nats
+import nats.errors
 
 from ami.ml.orchestration.nats_queue import TaskQueueManager
 from ami.ml.schemas import PipelineProcessingTask
@@ -180,3 +182,55 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaisesRegex(RuntimeError, "Connection is not open"):
             await manager.delete_stream(123)
+
+    async def test_get_dead_letter_image_ids_returns_image_ids(self):
+        """Test that advisory messages are resolved to image IDs correctly."""
+        nc, js = self._create_mock_nats_connection()
+        js.get_msg = AsyncMock()
+
+        def make_advisory(seq):
+            m = MagicMock()
+            m.data = json.dumps({"stream_seq": seq}).encode()
+            m.ack = AsyncMock()
+            return m
+
+        def make_job_msg(image_id):
+            m = MagicMock()
+            m.data = json.dumps({"image_id": image_id}).encode()
+            return m
+
+        advisories = [make_advisory(1), make_advisory(2)]
+        js.get_msg.side_effect = [make_job_msg("img-1"), make_job_msg("img-2")]
+
+        mock_psub = MagicMock()
+        mock_psub.fetch = AsyncMock(return_value=advisories)
+        mock_psub.unsubscribe = AsyncMock()
+        js.pull_subscribe = AsyncMock(return_value=mock_psub)
+
+        with patch("ami.ml.orchestration.nats_queue.get_connection", AsyncMock(return_value=(nc, js))):
+            async with TaskQueueManager() as manager:
+                result = await manager.get_dead_letter_image_ids(123, n=10)
+
+        self.assertEqual(result, ["img-1", "img-2"])
+        js.pull_subscribe.assert_called_once_with(
+            "$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.job_123.job-123-consumer",
+            durable="job-123-dlq",
+        )
+        mock_psub.fetch.assert_called_once_with(10, timeout=1.0)
+        mock_psub.unsubscribe.assert_called_once()
+
+    async def test_get_dead_letter_image_ids_no_messages(self):
+        """Test that a fetch timeout returns an empty list and still unsubscribes."""
+        nc, js = self._create_mock_nats_connection()
+
+        mock_psub = MagicMock()
+        mock_psub.fetch = AsyncMock(side_effect=nats.errors.TimeoutError)
+        mock_psub.unsubscribe = AsyncMock()
+        js.pull_subscribe = AsyncMock(return_value=mock_psub)
+
+        with patch("ami.ml.orchestration.nats_queue.get_connection", AsyncMock(return_value=(nc, js))):
+            async with TaskQueueManager() as manager:
+                result = await manager.get_dead_letter_image_ids(123)
+
+        self.assertEqual(result, [])
+        mock_psub.unsubscribe.assert_called_once()
