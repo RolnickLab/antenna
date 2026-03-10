@@ -451,7 +451,7 @@ class TaskQueueManager:
         dlq_consumer_name = self._get_dlq_consumer_name(job_id)
         try:
             await asyncio.wait_for(
-                self.js.delete_consumer("advisories", dlq_consumer_name),
+                self.js.delete_consumer(ADVISORY_STREAM_NAME, dlq_consumer_name),
                 timeout=NATS_JETSTREAM_TIMEOUT,
             )
             logger.info(f"Deleted DLQ consumer {dlq_consumer_name} for job '{job_id}'")
