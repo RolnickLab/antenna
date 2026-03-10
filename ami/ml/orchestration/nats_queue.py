@@ -388,61 +388,57 @@ class TaskQueueManager:
         dlq_consumer_name = self._get_dlq_consumer_name(job_id)
         dead_letter_ids = []
 
+        subject_filter = f"$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.{stream_name}.{consumer_name}"
+
+        # Use a durable consumer so ACKs persist across calls — ephemeral consumers
+        # are deleted on unsubscribe, discarding all ACK tracking and causing every
+        # advisory to be re-delivered on the next call.
+        psub = await self.js.pull_subscribe(subject_filter, durable=dlq_consumer_name, stream=ADVISORY_STREAM_NAME)
+
         try:
-            subject_filter = f"$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.{stream_name}.{consumer_name}"
+            msgs = await psub.fetch(n, timeout=1.0)
 
-            # Use a durable consumer so ACKs persist across calls — ephemeral consumers
-            # are deleted on unsubscribe, discarding all ACK tracking and causing every
-            # advisory to be re-delivered on the next call.
-            psub = await self.js.pull_subscribe(subject_filter, durable=dlq_consumer_name, stream=ADVISORY_STREAM_NAME)
+            for msg in msgs:
+                advisory_data = json.loads(msg.data.decode())
 
-            try:
-                msgs = await psub.fetch(n, timeout=1.0)
+                # Get the stream sequence of the failed message
+                if "stream_seq" in advisory_data:
+                    stream_seq = advisory_data["stream_seq"]
 
-                for msg in msgs:
-                    advisory_data = json.loads(msg.data.decode())
+                    # Look up the actual message by sequence to get task ID
+                    try:
+                        job_msg = await self.js.get_msg(stream_name, stream_seq)
 
-                    # Get the stream sequence of the failed message
-                    if "stream_seq" in advisory_data:
-                        stream_seq = advisory_data["stream_seq"]
+                        if job_msg and job_msg.data:
+                            task_data = json.loads(job_msg.data.decode())
 
-                        # Look up the actual message by sequence to get task ID
-                        try:
-                            job_msg = await self.js.get_msg(stream_name, stream_seq)
+                            if "image_id" in task_data:
+                                dead_letter_ids.append(str(task_data["image_id"]))
+                            else:
+                                logger.warning(f"No image_id found in task data: {task_data}")
+                    except Exception as e:
+                        logger.warning(f"Could not retrieve message {stream_seq} from {stream_name}: {e}")
+                        # The message might have been discarded after max_deliver exceeded
+                else:
+                    logger.warning(f"No stream_seq in advisory data: {advisory_data}")
 
-                            if job_msg and job_msg.data:
-                                task_data = json.loads(job_msg.data.decode())
+                # Acknowledge even if we couldn't find the stream_seq or image_id so it doesn't get re-delivered
+                # it shouldn't happen since stream_seq is part of the `io.nats.jetstream.advisory.v1.max_deliver`
+                # schema and all our messages have an image_id
+                await msg.ack()
+                logger.info(
+                    f"Acknowledged advisory message for stream_seq {advisory_data.get('stream_seq', 'unknown')}"
+                )
 
-                                if "image_id" in task_data:
-                                    dead_letter_ids.append(str(task_data["image_id"]))
-                                else:
-                                    logger.warning(f"No image_id found in task data: {task_data}")
-                        except Exception as e:
-                            logger.warning(f"Could not retrieve message {stream_seq} from {stream_name}: {e}")
-                            # The message might have been discarded after max_deliver exceeded
-                    else:
-                        logger.warning(f"No stream_seq in advisory data: {advisory_data}")
+            # Flush to ensure all ACKs are written to the socket before unsubscribing.
+            # msg.ack() only queues a publish in the client buffer; without flush() the
+            # ACKs can be silently dropped when the subscription is torn down.
+            await self.nc.flush()
 
-                    # Acknowledge even if we couldn't find the stream_seq or image_id so it doesn't get re-delivered
-                    # it shouldn't happen since stream_seq is part of the `io.nats.jetstream.advisory.v1.max_deliver`
-                    # schema and all our messages have an image_id
-                    await msg.ack()
-                    logger.info(
-                        f"Acknowledged advisory message for stream_seq {advisory_data.get('stream_seq', 'unknown')}"
-                    )
-
-                # Flush to ensure all ACKs are written to the socket before unsubscribing.
-                # msg.ack() only queues a publish in the client buffer; without flush() the
-                # ACKs can be silently dropped when the subscription is torn down.
-                await self.nc.flush()
-
-            except (asyncio.TimeoutError, nats.errors.TimeoutError):
-                logger.info(f"No advisory messages found for job {job_id}")
-            finally:
-                await psub.unsubscribe()
-
-        except Exception as e:
-            logger.error(f"Failed to get dead letter task IDs for job '{job_id}': {e}")
+        except (asyncio.TimeoutError, nats.errors.TimeoutError):
+            logger.info(f"No advisory messages found for job {job_id}")
+        finally:
+            await psub.unsubscribe()
 
         return dead_letter_ids[:n]
 
