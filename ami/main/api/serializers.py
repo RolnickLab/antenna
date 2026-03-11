@@ -186,6 +186,7 @@ class DeploymentListSerializer(DefaultSerializer):
             "updated_at",
             "latitude",
             "longitude",
+            "time_zone",
             "first_date",
             "last_date",
             "device",
@@ -235,6 +236,7 @@ class DeploymentNestedSerializer(DefaultSerializer):
             "id",
             "name",
             "details",
+            "time_zone",
         ]
 
 
@@ -248,6 +250,7 @@ class DeploymentNestedSerializerWithLocationAndCounts(DefaultSerializer):
             "details",
             "latitude",
             "longitude",
+            "time_zone",
             "events_count",
             # "captures_count",
             # "detections_count",
