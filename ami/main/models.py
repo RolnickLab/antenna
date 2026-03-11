@@ -3772,8 +3772,6 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
     "common_combined",  # Deprecated
 ]
 
-SOURCE_IMAGES_WITH_NULL_DETECTIONS_FILTER = Q(images__detections__isnull=True)
-
 
 class SourceImageCollectionQuerySet(BaseQuerySet):
     def with_source_images_count(self):
