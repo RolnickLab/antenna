@@ -799,6 +799,7 @@ class Deployment(BaseModel):
         s3_config = deployment.data_source.config
         total_size = 0
         total_files = 0
+        failed = 0
         source_images = []
         django_batch_size = batch_size
         sql_batch_size = 1000
@@ -816,8 +817,34 @@ class Deployment(BaseModel):
             logger.debug(f"Processing file {file_index}: {obj}")
             if not obj:
                 continue
-            source_image = _create_source_image_for_sync(deployment, obj)
+            try:
+                source_image = _create_source_image_for_sync(deployment, obj)
+            except Exception:
+                failed += 1
+                msg = f"Failed to process {obj.get('Key', '?')}"
+                if job:
+                    job.logger.exception(msg)
+                else:
+                    logger.exception(msg)
+                continue
+
             if source_image:
+                # Skip images with unparseable timestamps — they can't be grouped into events
+                if source_image.timestamp is None:
+                    failed += 1
+                    msg = f"No timestamp parsed from filename: {obj['Key']}"
+                    if job:
+                        job.logger.error(msg)
+                    else:
+                        logger.error(msg)
+                    continue
+                elif source_image.timestamp.year < 2000:
+                    msg = f"Suspicious timestamp ({source_image.timestamp.year}) for: {obj['Key']}"
+                    if job:
+                        job.logger.warning(msg)
+                    else:
+                        logger.warning(msg)
+
                 total_files += 1
                 total_size += obj.get("Size", 0)
                 source_images.append(source_image)
@@ -829,7 +856,7 @@ class Deployment(BaseModel):
                 source_images = []
                 if job:
                     job.logger.info(f"Processed {total_files} files")
-                    job.progress.update_stage(job.job_type().key, total_files=total_files)
+                    job.progress.update_stage(job.job_type().key, total_files=total_files, failed=failed)
                     job.update_progress()
 
         if source_images:
@@ -839,7 +866,7 @@ class Deployment(BaseModel):
             )
         if job:
             job.logger.info(f"Processed {total_files} files")
-            job.progress.update_stage(job.job_type().key, total_files=total_files)
+            job.progress.update_stage(job.job_type().key, total_files=total_files, failed=failed)
             job.update_progress()
 
         _compare_totals_for_sync(deployment, total_files)

@@ -86,10 +86,9 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
 
     progress_info = state_manager.update_state(processed_image_ids, stage="process", failed_image_ids=failed_image_ids)
     if not progress_info:
-        logger.error(f"Redis state missing for job {job_id} — job may have been cleaned up prematurely.")
         # Acknowledge the task to prevent retries, since we don't know the state
         _ack_task_via_nats(reply_subject, logger)
-        # TODO: cancel the job to fail fast once PR #1144 is merged
+        _fail_job(job_id, "Redis state missing for job")
         return
 
     try:
@@ -153,8 +152,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         )
 
         if not progress_info:
-            job.logger.error(f"Redis state missing for job {job_id} — job may have been cleaned up prematurely.")
-            # TODO: cancel the job to fail fast once PR #1144 is merged
+            _fail_job(job_id, "Redis state missing for job")
             return
 
         # update complete state based on latest progress info after saving results
@@ -178,6 +176,26 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
             error += ". NATS will re-deliver the task message."
 
         job.logger.error(error)
+
+
+def _fail_job(job_id: int, reason: str) -> None:
+    from ami.jobs.models import Job, JobState
+    from ami.ml.orchestration.jobs import cleanup_async_job_resources
+
+    try:
+        with transaction.atomic():
+            job = Job.objects.select_for_update().get(pk=job_id)
+            if job.status in (JobState.CANCELING, *JobState.final_states()):
+                return
+            job.update_status(JobState.FAILURE, save=False)
+            job.finished_at = datetime.datetime.now()
+            job.save(update_fields=["status", "progress", "finished_at"])
+
+        job.logger.error(f"Job {job_id} marked as FAILURE: {reason}")
+        cleanup_async_job_resources(job.pk, job.logger)
+    except Job.DoesNotExist:
+        logger.error(f"Cannot fail job {job_id}: not found")
+        cleanup_async_job_resources(job_id, logger)
 
 
 def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> None:
@@ -295,10 +313,101 @@ def _update_job_progress(
     # Clean up async resources for completed jobs that use NATS/Redis
     if job.progress.is_complete():
         job = Job.objects.get(pk=job_id)  # Re-fetch outside transaction
-        _cleanup_job_if_needed(job)
+        cleanup_async_job_if_needed(job)
 
 
-def _cleanup_job_if_needed(job) -> None:
+def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[dict]:
+    """
+    Find jobs stuck in a running state past the cutoff and revoke them.
+
+    For each stale job, checks Celery for a terminal task status. REVOKED is
+    always trusted. For async_api jobs, SUCCESS and FAILURE are only accepted
+    when job.progress.is_complete() — NATS workers may still be delivering
+    results after the Celery task finishes. All other cases result in revocation.
+    Async resources (NATS/Redis) are cleaned up in both branches.
+
+    Returns a list of dicts describing what was done to each job.
+    """
+    import datetime
+
+    from celery import states
+    from celery.result import AsyncResult
+    from django.db import transaction
+
+    from ami.jobs.models import Job, JobDispatchMode, JobState
+
+    if hours is None:
+        hours = Job.FAILED_CUTOFF_HOURS
+
+    cutoff = datetime.datetime.now() - datetime.timedelta(hours=hours)
+    stale_pks = list(
+        Job.objects.filter(
+            status__in=JobState.running_states(),
+            updated_at__lt=cutoff,
+        ).values_list("pk", flat=True)
+    )
+
+    results = []
+    for pk in stale_pks:
+        with transaction.atomic():
+            try:
+                job = Job.objects.select_for_update().get(
+                    pk=pk,
+                    status__in=JobState.running_states(),
+                    updated_at__lt=cutoff,
+                )
+            except Job.DoesNotExist:
+                # Another concurrent run already handled this job.
+                continue
+
+            celery_state = None
+            if job.task_id:
+                try:
+                    celery_state = AsyncResult(job.task_id).state
+                except Exception:
+                    logger.warning(
+                        "Failed to fetch Celery state for stale job %s (task_id=%s)",
+                        job.pk,
+                        job.task_id,
+                        exc_info=True,
+                    )
+                    # Treat as unknown state — job will be revoked below.
+
+            # Only trust terminal Celery states. For async_api jobs, SUCCESS and
+            # FAILURE are only accepted when progress is complete — NATS workers may
+            # still be delivering results after the Celery task finishes.
+            is_terminal = celery_state in states.READY_STATES
+            is_async_api = job.dispatch_mode == JobDispatchMode.ASYNC_API
+            if is_async_api and celery_state in {states.SUCCESS, states.FAILURE} and not job.progress.is_complete():
+                is_terminal = False
+
+            previous_status = job.status
+            if is_terminal:
+                if not dry_run:
+                    job.update_status(celery_state, save=False)
+                    job.finished_at = datetime.datetime.now()
+                    job.save()
+            else:
+                if not dry_run:
+                    job.update_status(JobState.REVOKED, save=False)
+                    job.finished_at = datetime.datetime.now()
+                    job.save()
+
+        # Async resource cleanup runs outside the transaction — it makes network
+        # calls (NATS/Redis) that should not hold the DB row lock.
+        if not dry_run:
+            job.refresh_from_db()
+            cleanup_async_job_if_needed(job)
+
+        if is_terminal:
+            results.append({"job_id": job.pk, "action": "updated", "state": celery_state})
+        else:
+            results.append({"job_id": job.pk, "action": "revoked", "previous_status": previous_status})
+
+    return results
+
+
+def cleanup_async_job_if_needed(job) -> None:
     """
     Clean up async resources (NATS/Redis) if this job uses them.
 
@@ -314,7 +423,7 @@ def _cleanup_job_if_needed(job) -> None:
         # import here to avoid circular imports
         from ami.ml.orchestration.jobs import cleanup_async_job_resources
 
-        cleanup_async_job_resources(job)
+        cleanup_async_job_resources(job.pk, job.logger)
 
 
 @task_prerun.connect(sender=run_job)
@@ -353,7 +462,7 @@ def update_job_status(sender, task_id, task, state: str, retval=None, **kwargs):
 
     # Clean up async resources for revoked jobs
     if state == JobState.REVOKED:
-        _cleanup_job_if_needed(job)
+        cleanup_async_job_if_needed(job)
 
 
 @task_failure.connect(sender=run_job, retry=False)
@@ -368,7 +477,7 @@ def update_job_failure(sender, task_id, exception, *args, **kwargs):
     job.save()
 
     # Clean up async resources for failed jobs
-    _cleanup_job_if_needed(job)
+    cleanup_async_job_if_needed(job)
 
 
 def log_time(start: float = 0, msg: str | None = None) -> tuple[float, Callable]:

@@ -650,6 +650,16 @@ images = SourceImage.objects.annotate(det_count=Count('detections'))
 - Use `@shared_task` decorator for all tasks
 - Check Flower UI for debugging: http://localhost:5555
 
+### E2E Testing & Monitoring Async Jobs
+
+Run an end-to-end ML job test:
+```bash
+docker compose run --rm django python manage.py test_ml_job_e2e \
+  --project 18 --dispatch-mode async_api --collection 142 --pipeline "global_moths_2024"
+```
+
+For monitoring running jobs (Django ORM, REST API, NATS consumer state, Redis counters, worker logs, etc.), see `docs/claude/reference/monitoring-async-jobs.md`.
+
 ### Running a Single Test
 
 ```bash

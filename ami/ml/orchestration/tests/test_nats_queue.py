@@ -3,6 +3,8 @@
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import nats
+
 from ami.ml.orchestration.nats_queue import TaskQueueManager
 from ami.ml.schemas import PipelineProcessingTask
 
@@ -51,8 +53,8 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
         """Test that publish_task ensures stream and consumer exist."""
         nc, js = self._create_mock_nats_connection()
         sample_task = self._create_sample_task()
-        js.stream_info.side_effect = Exception("Not found")
-        js.consumer_info.side_effect = Exception("Not found")
+        js.stream_info.side_effect = nats.js.errors.NotFoundError()
+        js.consumer_info.side_effect = nats.js.errors.NotFoundError()
 
         with patch("ami.ml.orchestration.nats_queue.get_connection", AsyncMock(return_value=(nc, js))):
             async with TaskQueueManager() as manager:

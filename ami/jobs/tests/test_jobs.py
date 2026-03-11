@@ -445,7 +445,8 @@ class TestJobView(APITestCase):
         pipeline = self._create_pipeline()
         job = self._create_ml_job("Job for batch test", pipeline)
         job.dispatch_mode = JobDispatchMode.ASYNC_API
-        job.save(update_fields=["dispatch_mode"])
+        job.status = JobState.STARTED
+        job.save(update_fields=["dispatch_mode", "status"])
         images = [
             SourceImage.objects.create(
                 path=f"image_{i}.jpg",
@@ -487,6 +488,7 @@ class TestJobView(APITestCase):
             name="Job without pipeline",
             source_image_collection=self.source_image_collection,
             dispatch_mode=JobDispatchMode.ASYNC_API,
+            status=JobState.STARTED,
         )
 
         self.client.force_authenticate(user=self.user)
