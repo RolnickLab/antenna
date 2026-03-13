@@ -9,7 +9,7 @@ import {
   CheckboxTheme,
 } from 'design-system/components/checkbox/checkbox'
 import { IconButtonTheme } from 'design-system/components/icon-button/icon-button'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ActivityPlot } from './activity-plot/lazy-activity-plot'
 import { CaptureDetails } from './capture-details/capture-details'
 import { CaptureNavigation } from './capture-navigation/capture-navigation'
@@ -51,19 +51,7 @@ export const Playback = ({
     }
   }, [activeCapture])
 
-  const detections = useMemo(() => {
-    if (!activeCapture?.detections) {
-      return []
-    }
-
-    if (!defaultFilters) {
-      return activeCapture.detections
-    }
-
-    return activeCapture.detections.filter(
-      (detection) => detection.occurrenceMeetsCriteria
-    )
-  }, [activeCapture?.detections, defaultFilters])
+  const detections = activeCapture?.detections ?? []
 
   if (!session.firstCapture) {
     return null
@@ -79,6 +67,7 @@ export const Playback = ({
               <CaptureDetails
                 capture={activeCapture}
                 captureId={activeCaptureId}
+                defaultFilters={defaultFilters}
               />
             </div>
           )}
@@ -118,11 +107,12 @@ export const Playback = ({
         </div>
       </div>
       <Frame
+        defaultFilters={defaultFilters}
+        detections={detections}
+        height={activeCapture?.height ?? session.firstCapture.height}
+        showDetections={showDetections}
         src={activeCapture?.src}
         width={activeCapture?.width ?? session.firstCapture.width}
-        height={activeCapture?.height ?? session.firstCapture.height}
-        detections={detections}
-        showDetections={showDetections}
       />
       <div className={styles.bottomBar}>
         <div className={styles.captureNavigationWrapper}>
