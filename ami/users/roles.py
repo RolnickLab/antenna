@@ -2,7 +2,6 @@ import logging
 
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
-from guardian.shortcuts import assign_perm, get_perms, remove_perm
 
 from ami.main.models import Project
 
@@ -201,29 +200,68 @@ class ProjectManager(Role):
     )
 
 
-def create_roles_for_project(project):
-    """Creates role-based permission groups for a given project."""
+def create_roles_for_project(project, force_update=False):
+    """
+    Creates role-based permission groups for a given project.
+
+    Args:
+        project: The project to create roles for
+        force_update: If False, skip updates for existing groups (default: False)
+                     If True, always update permissions even if group exists
+    """
+    from guardian.models import GroupObjectPermission
+
     project_ct = ContentType.objects.get_for_model(Project)
+
+    # Pre-fetch all permissions we might need (single query)
+    all_perm_codenames = set()
+    for role_class in Role.__subclasses__():
+        all_perm_codenames.update(role_class.permissions)
+
+    existing_perms = {
+        perm.codename: perm
+        for perm in Permission.objects.filter(codename__in=all_perm_codenames, content_type=project_ct)
+    }
+
+    # Create any missing permissions
+    missing_perms = []
+    for codename in all_perm_codenames:
+        if codename not in existing_perms:
+            missing_perms.append(
+                Permission(codename=codename, content_type=project_ct, name=f"Can {codename.replace('_', ' ')}")
+            )
+
+    if missing_perms:
+        Permission.objects.bulk_create(missing_perms, ignore_conflicts=True)
+        # Refresh existing_perms dict after bulk create
+        existing_perms = {
+            perm.codename: perm
+            for perm in Permission.objects.filter(codename__in=all_perm_codenames, content_type=project_ct)
+        }
 
     for role_class in Role.__subclasses__():
         role_name = f"{project.pk}_{project.name}_{role_class.__name__}"
         permissions = role_class.permissions
         group, created = Group.objects.get_or_create(name=role_name)
+
         if created:
             logger.debug(f"Role created {role_class} for project {project}")
-        else:
-            # Reset permissions to make sure permissions are updated
-            # every time we call this function
-            group.permissions.clear()
-            assigned_perms = get_perms(group, project)
-            for perm_codename in assigned_perms:
-                remove_perm(perm_codename, group, project)
-        for perm_codename in permissions:
-            permission, perm_created = Permission.objects.get_or_create(
-                codename=perm_codename,
-                content_type=project_ct,
-                defaults={"name": f"Can {perm_codename.replace('_', ' ')}"},
-            )
+        elif not force_update:
+            # Skip updates for existing groups unless force_update=True
+            continue
 
-            group.permissions.add(permission)  # Assign the permission group to the project
-            assign_perm(perm_codename, group, project)
+        # Use set() instead of clear() + add() loop (single query)
+        role_perm_objects = [existing_perms[codename] for codename in permissions]
+        group.permissions.set(role_perm_objects)
+
+        # Bulk update Guardian object permissions
+        # Remove all existing, then bulk create new ones
+        GroupObjectPermission.objects.filter(group=group, content_type=project_ct, object_pk=project.pk).delete()
+
+        group_obj_perms = [
+            GroupObjectPermission(
+                group=group, permission=existing_perms[codename], content_type=project_ct, object_pk=project.pk
+            )
+            for codename in permissions
+        ]
+        GroupObjectPermission.objects.bulk_create(group_obj_perms)
