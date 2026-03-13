@@ -22,7 +22,7 @@ services:
 
   celeryworker:
     environment:
-      - DEBUGGER=1
+      - CELERY_DEBUG=1
     ports:
       - "5679:5679"
     volumes:
