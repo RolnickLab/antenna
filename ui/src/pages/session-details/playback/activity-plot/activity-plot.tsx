@@ -8,6 +8,7 @@ import { useDynamicPlotWidth } from './useDynamicPlotWidth'
 const fontFamily = 'Mazzard, sans-serif'
 const lineColorCaptures = '#4E4F57'
 const lineColorDetections = '#5F8AC6'
+const lineColorProcessed = '#00ff1a'
 const spikeColor = '#FFFFFF'
 const textColor = '#303137'
 const tooltipBgColor = '#FFFFFF'
@@ -53,6 +54,32 @@ const ActivityPlot = ({
               line: { color: lineColorCaptures, width: 1 },
               name: 'Captures',
               yaxis: 'y',
+            },
+            {
+              x: timeline.map(
+                (timelineTick) => new Date(timelineTick.startDate)
+              ),
+              y: timeline.map((timelineTick) =>
+                timelineTick.numCaptures > 0
+                  ? timelineTick.wasProcessed
+                    ? timelineTick.numCaptures // Show number of captures so value is visible
+                    : 0
+                  : 0
+              ),
+              customdata: timeline.map((timelineTick) =>
+                timelineTick.numCaptures > 0
+                  ? timelineTick.wasProcessed
+                    ? 'Yes'
+                    : 'No'
+                  : 'N/A'
+              ),
+              hovertemplate: 'Was processed: %{customdata}<extra></extra>',
+              fill: 'tozeroy',
+              type: 'scatter',
+              mode: 'lines',
+              line: { color: lineColorProcessed, width: 1 },
+              name: 'Was processed',
+              yaxis: 'y2',
             },
             {
               x: timeline.map(
