@@ -1,4 +1,5 @@
 type FilterType =
+  | 'apply_defaults'
   | 'capture'
   | 'collection'
   | 'collections'
