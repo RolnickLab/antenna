@@ -1785,6 +1785,8 @@ class SourceImageQuerySet(BaseQuerySet):
         This mirrors `SourceImage.get_was_processed()` but as a queryset
         annotation for efficient bulk queries.
         """
+        # @TODO: this returns a was processed status for any algorithm. One the session detail view supports
+        # filtering by algorithm, this should be updated to return was_processed for the selected algorithm.
         processed_exists = models.Exists(Detection.objects.filter(source_image_id=models.OuterRef("pk")))
         return self.annotate(was_processed=processed_exists)
 
