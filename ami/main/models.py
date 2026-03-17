@@ -1894,10 +1894,24 @@ class SourceImage(BaseModel):
         return self.detections.exclude(NULL_DETECTIONS_FILTER).count()
 
     def get_was_processed(self, algorithm_key: str | None = None) -> bool:
+        """
+        Return True if this image has been processed by any algorithm (or a specific one).
+
+        Uses the ``was_processed`` annotation when available (set by
+        ``SourceImageQuerySet.with_was_processed()``). Falls back to a DB query otherwise.
+
+        Do not call in bulk without the annotation — use ``with_was_processed()``
+        on the queryset instead to avoid N+1 queries.
+
+        :param algorithm_key: If provided, only detections from this algorithm are checked.
+                              The annotation does not filter by algorithm; per-algorithm
+                              checks always use a DB query.
+        """
+        if algorithm_key is None and hasattr(self, "was_processed"):
+            return self.was_processed  # type: ignore[return-value]
         if algorithm_key:
             return self.detections.filter(detection_algorithm__key=algorithm_key).exists()
-        else:
-            return self.detections.exists()
+        return self.detections.exists()
 
     def get_base_url(self) -> str | None:
         """

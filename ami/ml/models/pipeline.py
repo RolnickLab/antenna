@@ -430,21 +430,19 @@ def get_or_create_detection(
         source_image.pk
     ), f"Detection belongs to a different source image: {detection_repr}"
 
-    # Resolve detection algorithm up front (needed for both lookup and creation)
-    assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
-    try:
-        detection_algo = algorithms_known[detection_resp.algorithm.key]
-    except KeyError:
-        raise PipelineNotConfigured(
-            f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
-            "The processing service must declare it in the /info endpoint. "
-            f"Known algorithms: {list(algorithms_known.keys())}"
-        )
-
     if serialized_bbox is None:
         # Null detection: algorithm-specific lookup so different pipelines don't share sentinels.
         # Use bbox__isnull=True because JSONField filter(bbox=None) matches JSON null literal,
         # not SQL NULL which is what Detection(bbox=None) stores.
+        assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
+        try:
+            detection_algo = algorithms_known[detection_resp.algorithm.key]
+        except KeyError:
+            raise PipelineNotConfigured(
+                f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
+                "The processing service must declare it in the /info endpoint. "
+                f"Known algorithms: {list(algorithms_known.keys())}"
+            )
         existing_detection = Detection.objects.filter(
             source_image=source_image,
             bbox__isnull=True,
@@ -472,6 +470,18 @@ def get_or_create_detection(
         detection = existing_detection
 
     else:
+        # Resolve algorithm for creation (null detections already resolved above)
+        if serialized_bbox is not None:
+            assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
+            try:
+                detection_algo = algorithms_known[detection_resp.algorithm.key]
+            except KeyError:
+                raise PipelineNotConfigured(
+                    f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
+                    "The processing service must declare it in the /info endpoint. "
+                    f"Known algorithms: {list(algorithms_known.keys())}"
+                )
+
         new_detection = Detection(
             source_image=source_image,
             bbox=serialized_bbox,
