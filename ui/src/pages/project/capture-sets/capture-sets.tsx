@@ -28,7 +28,6 @@ export const CaptureSets = () => {
       settings: true,
       captures: true,
       'captures-with-detections': true,
-      'total-processed-captures': true,
       status: true,
     }
   )

@@ -163,14 +163,14 @@ KnownPipelineChoices = typing.Literal[
 
 class DetectionRequest(pydantic.BaseModel):
     source_image: SourceImageRequest  # the 'original' image
-    bbox: BoundingBox | None = None
+    bbox: BoundingBox
     crop_image_url: str | None = None
     algorithm: AlgorithmReference
 
 
 class DetectionResponse(pydantic.BaseModel):
     source_image_id: str
-    bbox: BoundingBox | None = None
+    bbox: BoundingBox
     inference_time: float | None = None
     algorithm: AlgorithmReference
     timestamp: datetime.datetime
