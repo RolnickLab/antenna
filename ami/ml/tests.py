@@ -759,6 +759,52 @@ class TestPipeline(TestCase):
         was_processed = image.get_was_processed(algorithm_key="random-detector")
         self.assertEqual(was_processed, True)
 
+    def test_filter_processed_images_skips_null_only_image(self):
+        """
+        An image with only null detections (processed, nothing found) should be
+        skipped by filter_processed_images — it doesn't need reprocessing.
+        """
+        from ami.ml.models.pipeline import filter_processed_images
+
+        image = self.test_images[0]
+        detector = self.algorithms["random-detector"]
+
+        # Simulate a previous run that found nothing: create a null detection
+        Detection.objects.create(
+            source_image=image,
+            detection_algorithm=detector,
+            bbox=None,
+        )
+
+        result = list(filter_processed_images([image], self.pipeline))
+        self.assertEqual(result, [], "Image with only null detections should be skipped")
+
+    def test_filter_processed_images_yields_image_with_null_and_real_unclassified(self):
+        """
+        An image with BOTH a null detection AND a real detection lacking classifications
+        should NOT be skipped — the real detection still needs to be classified.
+        """
+        from ami.ml.models.pipeline import filter_processed_images
+
+        image = self.test_images[0]
+        detector = self.algorithms["random-detector"]
+
+        # Null detection from a prior empty run
+        Detection.objects.create(
+            source_image=image,
+            detection_algorithm=detector,
+            bbox=None,
+        )
+        # Real detection with no classification yet
+        Detection.objects.create(
+            source_image=image,
+            detection_algorithm=detector,
+            bbox=[0.1, 0.2, 0.3, 0.4],
+        )
+
+        result = list(filter_processed_images([image], self.pipeline))
+        self.assertEqual(result, [image], "Image with real unclassified detections should be yielded")
+
 
 class TestAlgorithmCategoryMaps(TestCase):
     def setUp(self):

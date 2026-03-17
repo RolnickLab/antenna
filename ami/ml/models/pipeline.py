@@ -23,6 +23,7 @@ from django_pydantic_field import SchemaField
 from ami.base.models import BaseModel, BaseQuerySet
 from ami.base.schemas import ConfigurableStage, default_stages
 from ami.main.models import (
+    NULL_DETECTIONS_FILTER,
     Classification,
     Deployment,
     Detection,
@@ -67,6 +68,9 @@ def filter_processed_images(
     1. It has no detections from the pipeline's detection algorithm
     or
     2. It has detections but they don't have classifications from all the pipeline's classification algorithms
+
+    An image is skipped if:
+    3. All its existing detections are null (bbox=None) — it was processed but nothing was found
     """
     pipeline_algorithms = pipeline.algorithms.all()
 
@@ -84,8 +88,9 @@ def filter_processed_images(
             task_logger.debug(f"Image {image} needs processing: has no existing detections from pipeline's detector")
             # If there are no existing detections from this pipeline, send the image
             yield image
-        elif existing_detections.null_detections().exists():  # type: ignore
-            task_logger.debug(f"Image {image} has a null detection from pipeline {pipeline}, skipping! ")
+        elif not existing_detections.exclude(NULL_DETECTIONS_FILTER).exists():  # type: ignore
+            # All detections for this image are null (processed but nothing found) — skip
+            task_logger.debug(f"Image {image} has only null detections from pipeline {pipeline}, skipping!")
             continue
         elif existing_detections.filter(classifications__isnull=True).exists():
             # Check if there are detections with no classifications
