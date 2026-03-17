@@ -805,6 +805,68 @@ class TestPipeline(TestCase):
         result = list(filter_processed_images([image], self.pipeline))
         self.assertEqual(result, [image], "Image with real unclassified detections should be yielded")
 
+    def test_null_detections_are_algorithm_specific(self):
+        """
+        Null detections from different pipelines/algorithms should not be shared.
+        Each algorithm's null detection is tracked separately so that
+        get_was_processed(algorithm_key=...) returns the correct per-algorithm status.
+        """
+        from ami.ml.models.pipeline import save_results
+
+        image = self.test_images[0]
+
+        # Pipeline 1 processes image, finds nothing
+        results_1 = self.fake_pipeline_results([image], self.pipeline)
+        results_1.detections = []
+        save_results(results_1)
+
+        # Create a second pipeline with a DIFFERENT detector algorithm
+        detector_2, _ = Algorithm.objects.get_or_create(
+            key="constant-detector",
+            defaults={"name": "Constant Detector", "task_type": "detection"},
+        )
+        pipeline_2 = Pipeline.objects.create(name="Test Pipeline 2 Null Detect")
+        pipeline_2.algorithms.set([detector_2])
+
+        # Pipeline 2 processes the same image, also finds nothing
+        results_2 = self.fake_pipeline_results([image], pipeline_2)
+        results_2.detections = []
+        save_results(results_2)
+
+        # Both algorithms should independently mark the image as processed
+        detector_1_key = self.algorithms["random-detector"].key
+        self.assertTrue(image.get_was_processed(algorithm_key=detector_1_key))
+        self.assertTrue(
+            image.get_was_processed(algorithm_key="constant-detector"),
+            "Pipeline 2's null detection should be created separately",
+        )
+
+        # Each pipeline must have its own null detection in the DB
+        null_detections = image.detections.filter(bbox__isnull=True)
+        self.assertEqual(null_detections.count(), 2, "Each pipeline should have its own null detection")
+
+    def test_null_detection_deduplication_same_pipeline(self):
+        """
+        Running the same pipeline twice on the same image should not create
+        duplicate null detections — the second run reuses the existing one.
+        """
+        from ami.ml.models.pipeline import save_results
+
+        image = self.test_images[0]
+
+        # Run pipeline twice, both with no detections
+        results_1 = self.fake_pipeline_results([image], self.pipeline)
+        results_1.detections = []
+        save_results(results_1)
+
+        results_2 = self.fake_pipeline_results([image], self.pipeline)
+        results_2.detections = []
+        save_results(results_2)
+
+        # Should still be exactly one null detection
+        null_detections = image.detections.filter(bbox__isnull=True)
+        self.assertEqual(null_detections.count(), 1, "Same pipeline should not create duplicate null detections")
+
 
 class TestAlgorithmCategoryMaps(TestCase):
     def setUp(self):

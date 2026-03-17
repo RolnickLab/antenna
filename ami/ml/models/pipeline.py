@@ -410,9 +410,15 @@ def get_or_create_detection(
 
     :param detection_resp: A DetectionResponse object
     :param algorithms_known: A dictionary of algorithms registered in the pipeline, keyed by the algorithm key
-    :param created_objects: A list to store created objects
-
     :return: A tuple of the Detection object and a boolean indicating whether it was created
+
+    For real detections (bbox is not None), the lookup is algorithm-agnostic — the same
+    bounding box on the same image is the same physical detection regardless of which algorithm
+    found it; duplicates are avoided this way.
+
+    For null detections (bbox=None), the lookup is algorithm-specific — null is a sentinel value
+    (not a physical detection), so each algorithm gets its own null detection. This ensures
+    get_was_processed(algorithm_key=...) returns correct per-algorithm processed status.
     """
     if detection_resp.bbox is not None:
         serialized_bbox = list(detection_resp.bbox.dict().values())
@@ -424,16 +430,36 @@ def get_or_create_detection(
         source_image.pk
     ), f"Detection belongs to a different source image: {detection_repr}"
 
-    # When reprocessing, we don't care which detection algorithm created the existing detection
-    existing_detection = Detection.objects.filter(
-        source_image=source_image,
-        bbox=serialized_bbox,
-    ).first()
+    # Resolve detection algorithm up front (needed for both lookup and creation)
+    assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
+    try:
+        detection_algo = algorithms_known[detection_resp.algorithm.key]
+    except KeyError:
+        raise PipelineNotConfigured(
+            f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
+            "The processing service must declare it in the /info endpoint. "
+            f"Known algorithms: {list(algorithms_known.keys())}"
+        )
+
+    if serialized_bbox is None:
+        # Null detection: algorithm-specific lookup so different pipelines don't share sentinels.
+        # Use bbox__isnull=True because JSONField filter(bbox=None) matches JSON null literal,
+        # not SQL NULL which is what Detection(bbox=None) stores.
+        existing_detection = Detection.objects.filter(
+            source_image=source_image,
+            bbox__isnull=True,
+            detection_algorithm=detection_algo,
+        ).first()
+    else:
+        # Real detection: algorithm-agnostic — same bbox = same physical detection
+        existing_detection = Detection.objects.filter(
+            source_image=source_image,
+            bbox=serialized_bbox,
+        ).first()
 
     # A detection may have a pre-existing crop image URL or not.
     # If not, a new one will be created in a periodic background task.
     if detection_resp.crop_image_url and detection_resp.crop_image_url.strip("/"):
-        # Ensure that the crop image URL is not empty or only a slash. None is fine.
         crop_url = detection_resp.crop_image_url
     else:
         crop_url = None
@@ -446,16 +472,6 @@ def get_or_create_detection(
         detection = existing_detection
 
     else:
-        assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
-        try:
-            detection_algo = algorithms_known[detection_resp.algorithm.key]
-        except KeyError:
-            raise PipelineNotConfigured(
-                f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
-                "The processing service must declare it in the /info endpoint. "
-                f"Known algorithms: {list(algorithms_known.keys())}"
-            )
-
         new_detection = Detection(
             source_image=source_image,
             bbox=serialized_bbox,
