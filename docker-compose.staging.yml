@@ -9,6 +9,18 @@
 #
 # For a local database, see compose/staging/docker-compose.db.yml.
 #
+# Multiple instances: This compose file can run multiple instances on the same
+# host (e.g., branch previews, worktrees) by setting a unique project name and
+# overriding the published ports:
+#
+#   DJANGO_PORT=5002 FLOWER_PORT=5551 \
+#     docker compose -p my-preview -f docker-compose.staging.yml \
+#     --env-file .envs/.production/.compose up -d
+#
+# Internal services (Redis, RabbitMQ, NATS) do not publish host ports, so they
+# never conflict between instances. Each compose project gets its own isolated
+# Docker network.
+#
 # Required env files:
 #   .envs/.production/.compose   — DATABASE_IP
 #   .envs/.production/.django    — Django settings, CELERY_BROKER_URL, NATS_URL, etc.
@@ -30,7 +42,7 @@ services:
     volumes:
       - ./config:/app/config
     ports:
-      - "5001:5000"
+      - "${DJANGO_PORT:-5001}:5000"
     extra_hosts:
       - "db:${DATABASE_IP:?Set DATABASE_IP in .envs/.production/.compose}"
     command: /start
@@ -52,7 +64,7 @@ services:
   flower:
     <<: *django
     ports:
-      - "5550:5555"
+      - "${FLOWER_PORT:-5550}:5555"
     command: /start-flower
     restart: always
     volumes:
@@ -67,16 +79,11 @@ services:
     hostname: rabbitmq
     env_file:
       - ./.envs/.production/.django
-    ports:
-      - "15672:15672"
     restart: always
 
   nats:
     image: nats:2.10-alpine
     hostname: nats
-    ports:
-      - "4222:4222"
-      - "8222:8222"
     command: ["-js", "-m", "8222"]
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]

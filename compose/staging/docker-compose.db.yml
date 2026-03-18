@@ -15,8 +15,7 @@
 # reach the host-published port:
 #
 #   .envs/.production/.compose:
-#     DATABASE_IP=172.17.0.1        # Linux (default Docker bridge gateway)
-#     DATABASE_IP=host-gateway      # Docker Desktop (macOS/Windows)
+#     DATABASE_IP=host-gateway      # Recommended (resolves to host on all platforms)
 #
 #   .envs/.production/.postgres:
 #     POSTGRES_HOST=db              # resolves via extra_hosts to DATABASE_IP
