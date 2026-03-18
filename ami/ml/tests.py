@@ -805,6 +805,49 @@ class TestPipeline(TestCase):
         result = list(filter_processed_images([image], self.pipeline))
         self.assertEqual(result, [image], "Image with real unclassified detections should be yielded")
 
+    def test_filter_processed_images_skips_null_and_fully_classified(self):
+        """
+        An image with a null detection AND a real detection that is fully classified
+        by all pipeline algorithms should be skipped — it's fully processed.
+        """
+        from ami.ml.models.pipeline import filter_processed_images
+
+        image = self.test_images[0]
+        detector = self.algorithms["random-detector"]
+        binary_classifier = self.algorithms["random-binary-classifier"]
+        species_classifier = self.algorithms["random-species-classifier"]
+
+        # Null detection from a prior empty run
+        Detection.objects.create(
+            source_image=image,
+            detection_algorithm=detector,
+            bbox=None,
+        )
+        # Real detection with classifications from all pipeline algorithms
+        real_det = Detection.objects.create(
+            source_image=image,
+            detection_algorithm=detector,
+            bbox=[0.1, 0.2, 0.3, 0.4],
+        )
+        taxon = Taxon.objects.create(name="Test Species Filtered")
+        Classification.objects.create(
+            detection=real_det,
+            taxon=taxon,
+            algorithm=binary_classifier,
+            score=0.9,
+            timestamp=datetime.datetime.now(),
+        )
+        Classification.objects.create(
+            detection=real_det,
+            taxon=taxon,
+            algorithm=species_classifier,
+            score=0.8,
+            timestamp=datetime.datetime.now(),
+        )
+
+        result = list(filter_processed_images([image], self.pipeline))
+        self.assertEqual(result, [], "Fully classified image with null detection should be skipped")
+
     def test_null_detections_are_algorithm_specific(self):
         """
         Null detections from different pipelines/algorithms should not be shared.

@@ -92,8 +92,8 @@ def filter_processed_images(
             # All detections for this image are null (processed but nothing found) — skip
             task_logger.debug(f"Image {image} has only null detections from pipeline {pipeline}, skipping!")
             continue
-        elif existing_detections.filter(classifications__isnull=True).exists():
-            # Check if there are detections with no classifications
+        elif existing_detections.exclude(NULL_DETECTIONS_FILTER).filter(classifications__isnull=True).exists():
+            # Check if any real detections (non-null) have no classifications
             task_logger.debug(
                 f"Image {image} needs processing: has existing detections with no classifications "
                 "from pipeline {pipeline}"
