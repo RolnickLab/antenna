@@ -32,7 +32,7 @@ services:
     ports:
       - "5001:5000"
     extra_hosts:
-      - "db:${DATABASE_IP}"
+      - "db:${DATABASE_IP:?Set DATABASE_IP in .envs/.production/.compose}"
     command: /start
     restart: always
 
@@ -65,6 +65,8 @@ services:
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     hostname: rabbitmq
+    env_file:
+      - ./.envs/.production/.django
     ports:
       - "15672:15672"
     restart: always
