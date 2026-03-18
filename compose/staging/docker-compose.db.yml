@@ -1,0 +1,37 @@
+# Optional local PostgreSQL for staging environments.
+#
+# Use this when you don't have an external database (e.g., for local testing
+# or isolated branch previews). Creates a containerized PostgreSQL instance
+# that the staging compose stack connects to via the Docker network.
+#
+# Usage:
+#   # Start the database first
+#   docker compose -f compose/staging/docker-compose.db.yml up -d
+#
+#   # Then start the app (DATABASE_IP points to the host's Docker bridge)
+#   docker compose -f docker-compose.staging.yml --env-file .envs/.production/.compose up -d
+#
+# The app's .envs/.production/.postgres should use POSTGRES_HOST=db and the
+# DATABASE_IP in .envs/.production/.compose should be set to the host IP
+# of the machine running this database container (e.g., 172.17.0.1 for the
+# default Docker bridge, or the host's LAN IP).
+#
+# For ood-style setups where the DB runs on the same host, set:
+#   DATABASE_IP=172.17.0.1  (or use host.docker.internal on Docker Desktop)
+
+volumes:
+  staging_postgres_data: {}
+
+services:
+  postgres:
+    build:
+      context: ../../
+      dockerfile: ./compose/local/postgres/Dockerfile
+    volumes:
+      - staging_postgres_data:/var/lib/postgresql/data
+      - ../../data/db/snapshots:/backups
+    env_file:
+      - ../../.envs/.production/.postgres
+    ports:
+      - "5432:5432"
+    restart: always
