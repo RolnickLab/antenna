@@ -64,13 +64,21 @@ def filter_processed_images(
 ) -> typing.Iterable[SourceImage]:
     """
     Return only images that need to be processed by a given pipeline.
-    An image needs processing if:
-    1. It has no detections from the pipeline's detection algorithm
-    or
-    2. It has detections but they don't have classifications from all the pipeline's classification algorithms
 
-    An image is skipped if:
-    3. All its existing detections are null (bbox=None) — it was processed but nothing was found
+    Each image is checked against its existing detections from this pipeline's algorithms:
+
+    YIELD (needs processing):
+    1. No existing detections at all — image has never been processed by this pipeline
+    2. Has real detections without classifications — detector ran but classifier didn't
+    3. Has real detections with classifications, but not from all pipeline classifiers —
+       e.g. a new classifier was added to the pipeline since last run
+
+    SKIP (already processed):
+    4. Only null detections exist (bbox=None) — pipeline ran but found nothing
+    5. Real detections exist and are fully classified by all pipeline classifiers
+
+    Null detections are sentinels that mark an image as "processed, nothing found."
+    They are excluded from classification checks so they don't trigger reprocessing.
     """
     pipeline_algorithms = pipeline.algorithms.all()
 
