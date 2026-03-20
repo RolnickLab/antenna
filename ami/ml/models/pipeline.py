@@ -445,12 +445,12 @@ def get_or_create_detection(
         assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
         try:
             detection_algo = algorithms_known[detection_resp.algorithm.key]
-        except KeyError:
+        except KeyError as err:
             raise PipelineNotConfigured(
                 f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
                 "The processing service must declare it in the /info endpoint. "
                 f"Known algorithms: {list(algorithms_known.keys())}"
-            )
+            ) from err
         existing_detection = Detection.objects.filter(
             source_image=source_image,
             bbox__isnull=True,
@@ -483,12 +483,12 @@ def get_or_create_detection(
             assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
             try:
                 detection_algo = algorithms_known[detection_resp.algorithm.key]
-            except KeyError:
+            except KeyError as err:
                 raise PipelineNotConfigured(
                     f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
                     "The processing service must declare it in the /info endpoint. "
                     f"Known algorithms: {list(algorithms_known.keys())}"
-                )
+                ) from err
 
         new_detection = Detection(
             source_image=source_image,
