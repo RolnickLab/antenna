@@ -265,6 +265,7 @@ class SourceImageAdmin(AdminBase):
         "checksum",
         "checksum_algorithm",
         "created_at",
+        "get_was_processed",
     )
 
     list_filter = (
@@ -281,7 +282,12 @@ class SourceImageAdmin(AdminBase):
     )
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
-        return super().get_queryset(request).select_related("event", "deployment", "deployment__data_source")
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("event", "deployment", "deployment__data_source")
+            .with_was_processed()  # avoids N+1 from get_was_processed in list_display
+        )
 
 
 class ClassificationInline(admin.TabularInline):

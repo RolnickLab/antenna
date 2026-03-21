@@ -735,6 +735,181 @@ class TestPipeline(TestCase):
         final_config = self.pipeline.get_config(self.project.pk)
         self.assertEqual(final_config["test_param"], "project_value")
 
+    def test_image_with_null_detection(self):
+        """
+        Test saving results for a pipeline that returns null detections for some images.
+        """
+        image = self.test_images[0]
+        results = self.fake_pipeline_results([image], self.pipeline)
+
+        # Manually change the results for a single image to a list of empty detections
+        results.detections = []
+
+        save_results(results)
+
+        image.save()
+        self.assertEqual(image.get_detections_count(), 0)  # detections_count should exclude null detections
+        total_num_detections = image.detections.distinct().count()
+        self.assertEqual(total_num_detections, 1)
+
+        was_processed = image.get_was_processed()
+        self.assertEqual(was_processed, True)
+
+        # Also test filtering by algorithm
+        was_processed = image.get_was_processed(algorithm_key="random-detector")
+        self.assertEqual(was_processed, True)
+
+    def test_filter_processed_images_skips_null_only_image(self):
+        """
+        An image with only null detections (processed, nothing found) should be
+        skipped by filter_processed_images — it doesn't need reprocessing.
+        """
+        from ami.ml.models.pipeline import filter_processed_images
+
+        image = self.test_images[0]
+        detector = self.algorithms["random-detector"]
+
+        # Simulate a previous run that found nothing: create a null detection
+        Detection.objects.create(
+            source_image=image,
+            detection_algorithm=detector,
+            bbox=None,
+        )
+
+        result = list(filter_processed_images([image], self.pipeline))
+        self.assertEqual(result, [], "Image with only null detections should be skipped")
+
+    def test_filter_processed_images_yields_image_with_null_and_real_unclassified(self):
+        """
+        An image with BOTH a null detection AND a real detection lacking classifications
+        should NOT be skipped — the real detection still needs to be classified.
+        """
+        from ami.ml.models.pipeline import filter_processed_images
+
+        image = self.test_images[0]
+        detector = self.algorithms["random-detector"]
+
+        # Null detection from a prior empty run
+        Detection.objects.create(
+            source_image=image,
+            detection_algorithm=detector,
+            bbox=None,
+        )
+        # Real detection with no classification yet
+        Detection.objects.create(
+            source_image=image,
+            detection_algorithm=detector,
+            bbox=[0.1, 0.2, 0.3, 0.4],
+        )
+
+        result = list(filter_processed_images([image], self.pipeline))
+        self.assertEqual(result, [image], "Image with real unclassified detections should be yielded")
+
+    def test_filter_processed_images_skips_null_and_fully_classified(self):
+        """
+        An image with a null detection AND a real detection that is fully classified
+        by all pipeline algorithms should be skipped — it's fully processed.
+        """
+        from ami.ml.models.pipeline import filter_processed_images
+
+        image = self.test_images[0]
+        detector = self.algorithms["random-detector"]
+        binary_classifier = self.algorithms["random-binary-classifier"]
+        species_classifier = self.algorithms["random-species-classifier"]
+
+        # Null detection from a prior empty run
+        Detection.objects.create(
+            source_image=image,
+            detection_algorithm=detector,
+            bbox=None,
+        )
+        # Real detection with classifications from all pipeline algorithms
+        real_det = Detection.objects.create(
+            source_image=image,
+            detection_algorithm=detector,
+            bbox=[0.1, 0.2, 0.3, 0.4],
+        )
+        taxon = Taxon.objects.create(name="Test Species Filtered")
+        Classification.objects.create(
+            detection=real_det,
+            taxon=taxon,
+            algorithm=binary_classifier,
+            score=0.9,
+            timestamp=datetime.datetime.now(),
+        )
+        Classification.objects.create(
+            detection=real_det,
+            taxon=taxon,
+            algorithm=species_classifier,
+            score=0.8,
+            timestamp=datetime.datetime.now(),
+        )
+
+        result = list(filter_processed_images([image], self.pipeline))
+        self.assertEqual(result, [], "Fully classified image with null detection should be skipped")
+
+    def test_null_detections_are_algorithm_specific(self):
+        """
+        Null detections from different pipelines/algorithms should not be shared.
+        Each algorithm's null detection is tracked separately so that
+        get_was_processed(algorithm_key=...) returns the correct per-algorithm status.
+        """
+        from ami.ml.models.pipeline import save_results
+
+        image = self.test_images[0]
+
+        # Pipeline 1 processes image, finds nothing
+        results_1 = self.fake_pipeline_results([image], self.pipeline)
+        results_1.detections = []
+        save_results(results_1)
+
+        # Create a second pipeline with a DIFFERENT detector algorithm
+        detector_2, _ = Algorithm.objects.get_or_create(
+            key="constant-detector",
+            defaults={"name": "Constant Detector", "task_type": "detection"},
+        )
+        pipeline_2 = Pipeline.objects.create(name="Test Pipeline 2 Null Detect")
+        pipeline_2.algorithms.set([detector_2])
+
+        # Pipeline 2 processes the same image, also finds nothing
+        results_2 = self.fake_pipeline_results([image], pipeline_2)
+        results_2.detections = []
+        save_results(results_2)
+
+        # Both algorithms should independently mark the image as processed
+        detector_1_key = self.algorithms["random-detector"].key
+        self.assertTrue(image.get_was_processed(algorithm_key=detector_1_key))
+        self.assertTrue(
+            image.get_was_processed(algorithm_key="constant-detector"),
+            "Pipeline 2's null detection should be created separately",
+        )
+
+        # Each pipeline must have its own null detection in the DB
+        null_detections = image.detections.filter(bbox__isnull=True)
+        self.assertEqual(null_detections.count(), 2, "Each pipeline should have its own null detection")
+
+    def test_null_detection_deduplication_same_pipeline(self):
+        """
+        Running the same pipeline twice on the same image should not create
+        duplicate null detections — the second run reuses the existing one.
+        """
+        from ami.ml.models.pipeline import save_results
+
+        image = self.test_images[0]
+
+        # Run pipeline twice, both with no detections
+        results_1 = self.fake_pipeline_results([image], self.pipeline)
+        results_1.detections = []
+        save_results(results_1)
+
+        results_2 = self.fake_pipeline_results([image], self.pipeline)
+        results_2.detections = []
+        save_results(results_2)
+
+        # Should still be exactly one null detection
+        null_detections = image.detections.filter(bbox__isnull=True)
+        self.assertEqual(null_detections.count(), 1, "Same pipeline should not create duplicate null detections")
+
 
 class TestAlgorithmCategoryMaps(TestCase):
     def setUp(self):
