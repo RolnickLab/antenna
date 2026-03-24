@@ -1161,29 +1161,31 @@ class Pipeline(BaseModel):
 
         # check the status of all processing services and pick the one with the lowest latency
         lowest_latency = float("inf")
-        processing_services_online = False
+        processing_service_lowest_latency = None
 
         for processing_service in processing_services:
             if processing_service.last_seen_live:
-                processing_services_online = True
                 if processing_service.last_seen_latency and processing_service.last_seen_latency < lowest_latency:
                     lowest_latency = processing_service.last_seen_latency
-                    # pick the processing service that has lowest latency
+                    processing_service_lowest_latency = processing_service
+                elif processing_service_lowest_latency is None:
+                    # Online but no latency data (e.g. async/pull-mode service) — use as fallback
                     processing_service_lowest_latency = processing_service
 
-        # if all offline then throw error
-        if not processing_services_online:
+        if processing_service_lowest_latency is None:
             msg = f'No processing services are online for the pipeline "{pipeline_name}".'
             task_logger.error(msg)
-
             raise Exception(msg)
-        else:
+
+        if lowest_latency < float("inf"):
             task_logger.info(
                 f"Using processing service with latency {round(lowest_latency, 4)}: "
                 f"{processing_service_lowest_latency}"
             )
+        else:
+            task_logger.info(f"Using processing service (no latency data): {processing_service_lowest_latency}")
 
-            return processing_service_lowest_latency
+        return processing_service_lowest_latency
 
     def process_images(
         self,

@@ -97,7 +97,7 @@ def remove_duplicate_classifications(project_id: int | None = None, dry_run: boo
 
 # Timeout per sync service in the periodic beat task. Shorter than the default (90s for
 # cold-start waits) since a missed check just waits for the next beat cycle.
-# Worst case with retries=3, backoff_factor=2: 8 + 2 + 8 + 4 + 8 = 30s per service.
+# Worst case: 4 attempts (initial + 3 retries) × 8s timeout + backoff (0 + 2 + 4) = 38s per service.
 _BEAT_STATUS_TIMEOUT = 8
 
 # Discard queued copies that built up while the worker was unavailable — the next
@@ -138,6 +138,6 @@ def check_processing_services_online():
         try:
             status_response = service.get_status(timeout=_BEAT_STATUS_TIMEOUT)
             logger.debug(status_response)
-        except Exception as e:
-            logger.error(f"Error checking service {service}: {e}")
+        except Exception:
+            logger.exception("Error checking service %s", service)
             continue
