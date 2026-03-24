@@ -84,7 +84,7 @@ export class ProcessingService extends Entity {
   }
 
   get lastSeenLive(): boolean {
-    return this._processingService.last_seen_live
+    return this._processingService.last_seen_live ?? false
   }
 
   get numPiplinesAdded(): number {
