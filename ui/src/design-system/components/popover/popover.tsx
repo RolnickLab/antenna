@@ -1,7 +1,7 @@
 import * as Popover from '@radix-ui/react-popover'
 import classNames from 'classnames'
+import { XIcon } from 'lucide-react'
 import { ReactNode } from 'react'
-import { Icon, IconType } from '../icon/icon'
 import styles from './popover.module.scss'
 
 const Root = ({
@@ -65,7 +65,7 @@ const Content = ({
           className={styles.popoverClose}
           aria-label={ariaCloselabel}
         >
-          <Icon type={IconType.Close} size={12} />
+          <XIcon className="w-4 h-4" />
         </Popover.Close>
       )}
       <Popover.Arrow className={styles.popoverArrow} />

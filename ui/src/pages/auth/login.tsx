@@ -2,8 +2,7 @@ import classNames from 'classnames'
 import { FormField } from 'components/form/form-field'
 import { FormConfig } from 'components/form/types'
 import { useLogin } from 'data-services/hooks/auth/useLogin'
-import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
-import { Loader2Icon } from 'lucide-react'
+import { ExternalLinkIcon, Loader2Icon } from 'lucide-react'
 import { Button, buttonVariants } from 'nova-ui-kit'
 import { useForm } from 'react-hook-form'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
@@ -95,11 +94,7 @@ export const Login = () => {
           className={buttonVariants({ size: 'small', variant: 'outline' })}
         >
           <span>Get in touch</span>
-          <Icon
-            type={IconType.ExternalLink}
-            theme={IconTheme.Primary}
-            size={14}
-          />
+          <ExternalLinkIcon className="w-4 h-4" />
         </a>
       </div>
       <p className={styles.text}>

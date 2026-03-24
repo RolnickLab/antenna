@@ -1,7 +1,6 @@
 import classNames from 'classnames'
 import { IdentificationFieldValues } from 'data-services/hooks/identifications/types'
 import { useCreateIdentifications } from 'data-services/hooks/identifications/useCreateIdentifications'
-import { IconType } from 'design-system/components/icon/icon'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { AlertCircleIcon, CheckIcon, Loader2Icon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
@@ -38,11 +37,7 @@ export const IdButton = ({
     <BasicTooltip asChild content={error}>
       <Button
         className={classNames('justify-between', { 'text-destructive': error })}
-        details={details}
         disabled={isSuccess}
-        icon={
-          isSuccess ? IconType.RadixCheck : error ? IconType.Error : undefined
-        }
         onClick={() => {
           addRecentIdentification({ label, details, value: taxonId })
           createIdentifications(identificationParams)

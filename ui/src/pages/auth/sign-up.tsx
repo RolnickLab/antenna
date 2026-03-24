@@ -2,8 +2,7 @@ import classNames from 'classnames'
 import { FormField } from 'components/form/form-field'
 import { FormConfig } from 'components/form/types'
 import { useSignUp } from 'data-services/hooks/auth/useSignUp'
-import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
-import { Loader2Icon } from 'lucide-react'
+import { CheckIcon, Loader2Icon } from 'lucide-react'
 import { Button, buttonVariants } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -91,11 +90,7 @@ export const SignUp = () => {
         <p className={styles.text}>
           {isSuccess ? (
             <>
-              <Icon
-                type={IconType.RadixCheck}
-                size={12}
-                theme={IconTheme.Success}
-              />
+              <CheckIcon className="w-4 h-4" />
               <span>{translate(STRING.MESSAGE_SIGNED_UP)}</span>
             </>
           ) : (

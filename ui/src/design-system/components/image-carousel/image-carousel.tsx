@@ -1,7 +1,6 @@
 import classNames from 'classnames'
 import { LicenseInfo } from 'components/license-info/license-info'
-import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
-import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { ChevronLeftIcon, ChevronRightIcon, ImageIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
@@ -92,11 +91,7 @@ const BasicImageCarousel = ({
           {image ? (
             <img src={image.src} alt={image.alt} />
           ) : (
-            <Icon
-              type={IconType.Photograph}
-              theme={IconTheme.Neutral}
-              size={16}
-            />
+            <ImageIcon className="h-4 w-4 text-muted-foreground" />
           )}
         </div>
       </div>

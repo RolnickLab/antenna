@@ -4,7 +4,6 @@ import { Export } from 'data-services/models/export'
 import { JobStatusType } from 'data-services/models/job'
 import { JobDetails as Job } from 'data-services/models/job-details'
 import * as Dialog from 'design-system/components/dialog/dialog'
-import { IconType } from 'design-system/components/icon/icon'
 import { InputContent, InputValue } from 'design-system/components/input/input'
 import { StatusBar } from 'design-system/components/status/status-bar'
 import {
@@ -12,6 +11,7 @@ import {
   StatusBulletTheme,
 } from 'design-system/components/wizard/status-bullet/status-bullet'
 import * as Wizard from 'design-system/components/wizard/wizard'
+import { CheckIcon } from 'lucide-react'
 import { CodeBlock } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
@@ -199,7 +199,7 @@ const JobStages = ({ job }: { job: Job }) => {
             <Wizard.Trigger title={stage.name}>
               {stage.status.type === JobStatusType.Success ? (
                 <StatusBullet
-                  icon={IconType.RadixCheck}
+                  Icon={CheckIcon}
                   theme={StatusBulletTheme.Success}
                 />
               ) : (
