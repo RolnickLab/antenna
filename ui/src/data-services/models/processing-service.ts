@@ -99,7 +99,7 @@ export class ProcessingService extends Entity {
     type: ProcessingServiceStatusType
     color: string
   } {
-    if (!this.endpointUrl) {
+    if (this.isAsync) {
       return ProcessingService.getStatusInfo('UNKNOWN')
     }
     const status_code = this.lastSeenLive ? 'ONLINE' : 'OFFLINE'

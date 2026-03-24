@@ -103,7 +103,7 @@ export class Pipeline {
       (service: any) => new ProcessingService(service)
     )
     for (const processingService of processingServices) {
-      if (processingService.lastSeenLive || !processingService.endpointUrl) {
+      if (processingService.lastSeenLive || processingService.isAsync) {
         return { online: true, service: processingService }
       }
     }
