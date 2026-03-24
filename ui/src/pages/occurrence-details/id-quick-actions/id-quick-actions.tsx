@@ -68,12 +68,12 @@ export const IdQuickActions = ({
         </Button>
       </Popover.Trigger>
       <Popover.Content
-        ariaCloselabel={translate(STRING.CLOSE)}
         align="start"
-        side="right"
+        ariaCloselabel={translate(STRING.CLOSE)}
+        className={zIndex ? `z-${zIndex}` : undefined}
         container={containerRef?.current ?? undefined}
         disableOutsideClose
-        style={{ zIndex }}
+        side="right"
       >
         <div className={styles.wrapper}>
           {sections.map((section, index) => (
