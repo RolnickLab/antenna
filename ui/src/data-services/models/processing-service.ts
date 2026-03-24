@@ -58,7 +58,7 @@ export class ProcessingService extends Entity {
   }
 
   get isAsync(): boolean {
-    return this._processingService.is_async
+    return this._processingService.is_async ?? false
   }
 
   get description(): string {
