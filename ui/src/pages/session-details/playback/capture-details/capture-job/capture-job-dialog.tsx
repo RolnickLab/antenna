@@ -29,12 +29,7 @@ export const CaptureJobDialog = ({ id }: { id: string }) => {
         error={error}
       >
         {job ? (
-          <JobDetails
-            job={job}
-            title="Job details"
-            isFetching={isFetching}
-            onDelete={() => setIsOpen(false)}
-          />
+          <JobDetails job={job} title="Job details" isFetching={isFetching} />
         ) : null}
       </Dialog.Content>
     </Dialog.Root>
