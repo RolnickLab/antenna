@@ -216,7 +216,7 @@ class ProcessingService(BaseModel):
                 # Heartbeat has expired — mark stale
                 self.last_seen_live = False
                 self.save(update_fields=["last_seen_live"])
-            pipeline_names = list(self.pipelines.values_list("name", flat=True))
+            pipeline_names = list(self.pipelines.values_list("name", flat=True)) if is_live else []
             return ProcessingServiceStatusResponse(
                 timestamp=self.last_seen or datetime.datetime.now(),
                 request_successful=is_live,
