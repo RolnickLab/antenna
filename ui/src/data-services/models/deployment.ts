@@ -35,8 +35,8 @@ export class Deployment extends Entity {
     }
 
     return this._jobs.sort((j1: Job, j2: Job) => {
-      const date1 = new Date(j1.updatedAt as string)
-      const date2 = new Date(j2.updatedAt as string)
+      const date1 = j1.updatedAt as Date
+      const date2 = j2.updatedAt as Date
 
       return date2.getTime() - date1.getTime()
     })[0]

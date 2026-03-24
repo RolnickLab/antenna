@@ -1,5 +1,6 @@
 import { Entity } from 'data-services/models/entity'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { TableColumn } from 'design-system/components/table/types'
 import { STRING, translate } from 'utils/language'
 import { DeleteEntityDialog } from './delete-entity-dialog'
@@ -39,13 +40,13 @@ export const columns: (
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
-    renderCell: (item: Entity) => <BasicTableCell value={item.createdAt} />,
+    renderCell: (item: Entity) => <DateTableCell date={item.createdAt} />,
   },
   {
     id: 'updated-at',
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
-    renderCell: (item: Entity) => <BasicTableCell value={item.updatedAt} />,
+    renderCell: (item: Entity) => <DateTableCell date={item.updatedAt} />,
   },
   {
     id: 'actions',

@@ -1,5 +1,6 @@
 import { Deployment } from 'data-services/models/deployment'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
 import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import {
@@ -200,13 +201,13 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
-    renderCell: (item: Deployment) => <BasicTableCell value={item.createdAt} />,
+    renderCell: (item: Deployment) => <DateTableCell date={item.createdAt} />,
   },
   {
     id: 'updated-at',
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
-    renderCell: (item: Deployment) => <BasicTableCell value={item.updatedAt} />,
+    renderCell: (item: Deployment) => <DateTableCell date={item.updatedAt} />,
   },
   {
     id: 'actions',

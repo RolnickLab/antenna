@@ -4,6 +4,7 @@ import { Export } from 'data-services/models/export'
 import { JobStatusType } from 'data-services/models/job'
 import { StatusBar } from 'design-system/components/status/status-bar'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import {
   CellTheme,
   TableColumn,
@@ -76,13 +77,13 @@ export const columns: (projectId: string) => TableColumn<Export>[] = (
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
-    renderCell: (item: Export) => <BasicTableCell value={item.createdAt} />,
+    renderCell: (item: Export) => <DateTableCell date={item.createdAt} />,
   },
   {
     id: 'updated-at',
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
-    renderCell: (item: Export) => <BasicTableCell value={item.updatedAt} />,
+    renderCell: (item: Export) => <DateTableCell date={item.updatedAt} />,
   },
   {
     id: 'actions',

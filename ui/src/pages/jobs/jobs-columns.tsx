@@ -1,5 +1,6 @@
 import { Job } from 'data-services/models/job'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import { CellTheme, TableColumn } from 'design-system/components/table/types'
 import { CancelJob } from 'pages/job-details/job-actions/cancel-job'
@@ -111,25 +112,25 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
-    renderCell: (item: Job) => <BasicTableCell value={item.createdAt} />,
+    renderCell: (item: Job) => <DateTableCell date={item.createdAt} />,
   },
   {
     id: 'updated-at',
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
-    renderCell: (item: Job) => <BasicTableCell value={item.updatedAt} />,
+    renderCell: (item: Job) => <DateTableCell date={item.updatedAt} />,
   },
   {
     id: 'started-at',
     name: translate(STRING.FIELD_LABEL_STARTED_AT),
     sortField: 'started_at',
-    renderCell: (item: Job) => <BasicTableCell value={item.startedAt} />,
+    renderCell: (item: Job) => <DateTableCell date={item.startedAt} />,
   },
   {
     id: 'finished-at',
     name: translate(STRING.FIELD_LABEL_FINISHED_AT),
     sortField: 'finished_at',
-    renderCell: (item: Job) => <BasicTableCell value={item.finishedAt} />,
+    renderCell: (item: Job) => <DateTableCell date={item.finishedAt} />,
   },
   {
     id: 'actions',

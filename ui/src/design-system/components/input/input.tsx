@@ -6,9 +6,11 @@ import {
   FocusEvent,
   forwardRef,
   ReactNode,
+  useMemo,
   useState,
 } from 'react'
 import { Link } from 'react-router-dom'
+import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
 import { IconButton, IconButtonTheme } from '../icon-button/icon-button'
 import { IconType } from '../icon/icon'
@@ -117,21 +119,30 @@ export const InputValue = ({
   to,
 }: {
   label: string
-  value?: string | number
+  value?: string | number | Date
   to?: string
 }) => {
-  const valueLabel =
-    value === undefined || value === ''
-      ? translate(STRING.VALUE_NOT_AVAILABLE)
-      : _.isNumber(value)
-      ? value.toLocaleString()
-      : value
+  const valueLabel = useMemo(() => {
+    if (value === undefined || value === '') {
+      return translate(STRING.VALUE_NOT_AVAILABLE)
+    }
+
+    if (_.isNumber(value)) {
+      return value.toLocaleString()
+    }
+
+    if (_.isDate(value)) {
+      return getFormatedDateTimeString({ date: value })
+    }
+
+    return value
+  }, [value])
 
   return (
     <InputContent label={label}>
       {to ? (
         <Link to={to} className={classNames(styles.value, styles.link)}>
-          {value}
+          {valueLabel}
         </Link>
       ) : (
         <span className="body-small text-muted-foreground">{valueLabel}</span>

@@ -1,5 +1,6 @@
 import { Session } from 'data-services/models/session'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
 import {
   CellTheme,
@@ -138,12 +139,12 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
-    renderCell: (item: Session) => <BasicTableCell value={item.createdAt} />,
+    renderCell: (item: Session) => <DateTableCell date={item.createdAt} />,
   },
   {
     id: 'updated-at',
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
-    renderCell: (item: Session) => <BasicTableCell value={item.updatedAt} />,
+    renderCell: (item: Session) => <DateTableCell date={item.updatedAt} />,
   },
 ]
