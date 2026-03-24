@@ -7,6 +7,7 @@ export type ServerProcessingService = any // TODO: Update this type
 export const SERVER_PROCESSING_SERVICE_STATUS_CODES = [
   'OFFLINE',
   'ONLINE',
+  'UNKNOWN',
 ] as const
 
 export type ServerProcessingServiceStatusCode =
@@ -15,6 +16,7 @@ export type ServerProcessingServiceStatusCode =
 export enum ProcessingServiceStatusType {
   Success,
   Error,
+  Unknown,
 }
 
 export class ProcessingService extends Entity {
@@ -97,6 +99,9 @@ export class ProcessingService extends Entity {
     type: ProcessingServiceStatusType
     color: string
   } {
+    if (!this.endpointUrl) {
+      return ProcessingService.getStatusInfo('UNKNOWN')
+    }
     const status_code = this.lastSeenLive ? 'ONLINE' : 'OFFLINE'
     return ProcessingService.getStatusInfo(status_code)
   }
@@ -108,11 +113,13 @@ export class ProcessingService extends Entity {
     const type = {
       OFFLINE: ProcessingServiceStatusType.Error,
       ONLINE: ProcessingServiceStatusType.Success,
+      UNKNOWN: ProcessingServiceStatusType.Unknown,
     }[code]
 
     const color = {
       [ProcessingServiceStatusType.Error]: '#ef4444', // color-destructive-500,
       [ProcessingServiceStatusType.Success]: '#09af8a', // color-success-500
+      [ProcessingServiceStatusType.Unknown]: '#9ca3af', // gray-400
     }[type]
 
     return {
