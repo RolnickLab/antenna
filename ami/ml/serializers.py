@@ -160,6 +160,7 @@ class ProcessingServiceSerializer(DefaultSerializer):
             "updated_at",
             "last_seen",
             "last_seen_live",
+            "project",
         ]
 
     def get_projects(self, obj):
