@@ -186,7 +186,15 @@ class ProcessingService(BaseModel):
     def get_status(self, timeout=90) -> ProcessingServiceStatusResponse:
         """
         Check the status of the processing service.
-        This is a simple health check that pings the /readyz endpoint of the service.
+
+        This check has two behaviors depending on the version of the processing service:
+
+        If the service is a v2/pull-mode/async service with no endpoint URL, this will derive the status
+        from the last_seen heartbeat timestamp. If the last_seen timestamp is recent (within 60s),
+        the service is considered live. No requests are made by this method.
+
+        If the service is a v1/push-mode/interactive service with an endpoint URL, this method will ping the
+        /readyz endpoint to check if it's live.
 
         Uses urllib3 Retry with exponential backoff to handle cold starts and transient failures.
         The timeout is set to 90s per attempt to accommodate serverless cold starts, especially for
@@ -194,9 +202,10 @@ class ProcessingService(BaseModel):
         connection errors are handled gracefully.
 
         Args:
-            timeout: Request timeout in seconds per attempt (default: 90s for serverless cold starts)
+            timeout: Request timeout in seconds per attempt (default: 90s for serverless cold starts). Only applies \
+                     to services with an endpoint URL.
         """
-        # If no endpoint URL is configured, derive status from last registration heartbeat
+        # If no endpoint URL is configured, the derive status from last registration heartbeat
         if not self.endpoint_url:
             is_live = bool(
                 self.last_seen
