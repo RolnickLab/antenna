@@ -198,7 +198,7 @@ export const OccurrenceGallery = ({
                       <IdQuickActions
                         occurrenceIds={[item.id]}
                         occurrenceTaxa={[item.determinationTaxon]}
-                        zIndex={1}
+                        zIndex={50}
                       />
                     </>
                   )}

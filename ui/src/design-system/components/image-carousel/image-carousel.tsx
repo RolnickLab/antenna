@@ -1,11 +1,8 @@
 import classNames from 'classnames'
 import { LicenseInfo } from 'components/license-info/license-info'
-import {
-  IconButton,
-  IconButtonShape,
-  IconButtonTheme,
-} from 'design-system/components/icon-button/icon-button'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
+import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getTotalLabel } from 'utils/numberFormats'
@@ -179,12 +176,13 @@ const MultiImageCarousel = ({
             [styles.visible]: paused,
           })}
         >
-          <IconButton
-            icon={IconType.ToggleLeft}
-            shape={IconButtonShape.Round}
-            theme={IconButtonTheme.Success}
+          <Button
             onClick={() => showPrev(slideIndex)}
-          />
+            size="icon"
+            variant="success"
+          >
+            <ChevronLeftIcon className="w-4 h-4" />
+          </Button>
         </div>
         <ConditionalLink to={to}>
           <div
@@ -222,12 +220,13 @@ const MultiImageCarousel = ({
             [styles.visible]: paused,
           })}
         >
-          <IconButton
-            icon={IconType.ToggleRight}
-            shape={IconButtonShape.Round}
-            theme={IconButtonTheme.Success}
+          <Button
             onClick={() => showNext(slideIndex)}
-          />
+            size="icon"
+            variant="success"
+          >
+            <ChevronRightIcon className="w-4 h-4" />
+          </Button>
         </div>
       </div>
       <span className={styles.info}>

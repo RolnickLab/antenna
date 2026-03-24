@@ -1,5 +1,5 @@
-import { IconButton, IconButtonShape } from '../icon-button/icon-button'
-import { IconType } from '../icon/icon'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { getPageWindow } from './getPageWindow'
 import { InfoLabel } from './info-label/info-label'
 import { PageButton } from './page-button/page-button'
@@ -38,12 +38,14 @@ export const PaginationBar = ({
     <div className={styles.wrapper}>
       <InfoLabel pagination={pagination} total={total} />
       <div className={styles.pageSettings}>
-        <IconButton
+        <Button
           disabled={currentPage <= firstPage}
-          icon={IconType.ToggleLeft}
-          shape={IconButtonShape.RoundLarge}
           onClick={() => setPage(currentPage - 1)}
-        />
+          size="icon"
+          variant="outline"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </Button>
         <div className={styles.pageWindow}>
           {!pageWindow.includes(firstPage) && (
             <>
@@ -70,12 +72,14 @@ export const PaginationBar = ({
             </>
           )}
         </div>
-        <IconButton
+        <Button
           disabled={currentPage >= lastPage}
-          icon={IconType.ToggleRight}
-          shape={IconButtonShape.RoundLarge}
           onClick={() => setPage(currentPage + 1)}
-        />
+          size="icon"
+          variant="outline"
+        >
+          <ChevronRight className="w-4 h-4" />
+        </Button>
       </div>
     </div>
   )

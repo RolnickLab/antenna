@@ -1,3 +1,4 @@
+import { API_ROUTES } from 'data-services/constants'
 import { Job } from 'data-services/models/job'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
@@ -5,11 +6,11 @@ import { StatusTableCell } from 'design-system/components/table/status-table-cel
 import { CellTheme, TableColumn } from 'design-system/components/table/types'
 import { CancelJob } from 'pages/job-details/job-actions/cancel-job'
 import { QueueJob } from 'pages/job-details/job-actions/queue-job'
+import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
-import { DeleteJobsDialog } from './delete-jobs-dialog'
 import styles from './jobs.module.scss'
 
 export const columns: (projectId: string) => TableColumn<Job>[] = (
@@ -143,7 +144,13 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
       <div className={styles.jobActions}>
         {item.canQueue && <QueueJob jobId={item.id} />}
         {item.canCancel && <CancelJob jobId={item.id} />}
-        {item.canDelete && <DeleteJobsDialog id={item.id} />}
+        {item.canDelete && (
+          <DeleteEntityDialog
+            collection={API_ROUTES.JOBS}
+            id={item.id}
+            type={translate(STRING.ENTITY_TYPE_JOB)}
+          />
+        )}
       </div>
     ),
   },

@@ -13,7 +13,6 @@ import {
 } from 'design-system/components/wizard/status-bullet/status-bullet'
 import * as Wizard from 'design-system/components/wizard/wizard'
 import { CodeBlock } from 'nova-ui-kit'
-import { DeleteJobsDialog } from 'pages/jobs/delete-jobs-dialog'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -29,12 +28,10 @@ export const JobDetails = ({
   job,
   title,
   isFetching,
-  onDelete,
 }: {
   job: Job
   title: string
   isFetching?: boolean
-  onDelete: () => void
 }) => (
   <>
     <Dialog.Header title={title} withActions>
@@ -45,7 +42,6 @@ export const JobDetails = ({
         {job.canQueue && <QueueJob jobId={job.id} />}
         {job.canCancel && <CancelJob jobId={job.id} />}
         {job.canRetry && <RetryJob jobId={job.id} />}
-        {job.canDelete && <DeleteJobsDialog id={job.id} onDelete={onDelete} />}
       </div>
     </Dialog.Header>
     <div className={styles.content}>

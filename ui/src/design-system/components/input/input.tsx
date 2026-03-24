@@ -1,5 +1,7 @@
 import classNames from 'classnames'
 import _ from 'lodash'
+import { CheckIcon, EyeIcon, PenIcon, XIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import {
   ChangeEvent,
   CSSProperties,
@@ -12,8 +14,6 @@ import {
 import { Link } from 'react-router-dom'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
-import { IconButton, IconButtonTheme } from '../icon-button/icon-button'
-import { IconType } from '../icon/icon'
 import { BasicTooltip } from '../tooltip/basic-tooltip'
 import styles from './input.module.scss'
 
@@ -92,13 +92,16 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
                 asChild
                 content={`${type === 'password' ? 'Show' : 'Hide'} password`}
               >
-                <IconButton
-                  icon={IconType.BatchId}
-                  theme={IconButtonTheme.Plain}
+                <Button
                   onClick={() =>
                     setType(type === 'password' ? 'text' : 'password')
                   }
-                />
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <EyeIcon className="w-4 h-4" />
+                </Button>
               </BasicTooltip>
             </div>
           ) : null}
@@ -196,8 +199,7 @@ export const LockedInput = ({
 }) => (
   <div className={styles.lockedInputContainer}>
     <div className={styles.editButtonContainer}>
-      <IconButton
-        icon={editing ? IconType.Cross : IconType.Pencil}
+      <Button
         onClick={() => {
           if (editing) {
             setEditing(false)
@@ -206,15 +208,28 @@ export const LockedInput = ({
             setEditing(true)
           }
         }}
-      />
+        size="icon"
+        type="button"
+        variant="ghost"
+      >
+        {editing ? (
+          <XIcon className="w-4 h-4" />
+        ) : (
+          <PenIcon className="w-4 h-4" />
+        )}
+      </Button>
       {editing && (
-        <IconButton
-          icon={IconType.RadixCheck}
+        <Button
           onClick={() => {
             setEditing(false)
             onSubmit()
           }}
-        />
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <CheckIcon className="w-4 h-4" />
+        </Button>
       )}
     </div>
 
@@ -234,7 +249,14 @@ export const EditableInput = ({
   <div className={styles.lockedInputContainer}>
     <div className={styles.editButtonContainer}>
       {!editing && (
-        <IconButton icon={IconType.Pencil} onClick={() => onEdit()} />
+        <Button
+          onClick={() => onEdit()}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <PenIcon className="w-4 h-4" />
+        </Button>
       )}
     </div>
     {children}

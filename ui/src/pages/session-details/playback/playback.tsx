@@ -8,7 +8,6 @@ import {
   Checkbox,
   CheckboxTheme,
 } from 'design-system/components/checkbox/checkbox'
-import { IconButtonTheme } from 'design-system/components/icon-button/icon-button'
 import { useEffect, useState } from 'react'
 import { ActivityPlot } from './activity-plot/lazy-activity-plot'
 import { CaptureDetails } from './capture-details/capture-details'
@@ -88,12 +87,7 @@ export const Playback = ({
                 onCheckedChange={setDefaultFilters}
                 theme={CheckboxTheme.Neutral}
               />
-              {project ? (
-                <DefaultFiltersPopover
-                  project={project}
-                  buttonTheme={IconButtonTheme.Neutral}
-                />
-              ) : null}
+              {project ? <DefaultFiltersPopover project={project} /> : null}
             </div>
             <Checkbox
               id="snap-to-detections"

@@ -2,11 +2,12 @@ import classNames from 'classnames'
 import { FormField } from 'components/form/form-field'
 import { FormConfig } from 'components/form/types'
 import { useSignUp } from 'data-services/hooks/auth/useSignUp'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
+import { Loader2Icon } from 'lucide-react'
+import { Button, buttonVariants } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
@@ -36,7 +37,6 @@ const config: FormConfig = {
 }
 
 export const SignUp = () => {
-  const navigate = useNavigate()
   const [signedUpEmail, setSignedUpEmail] = useState<string | undefined>()
   const {
     control,
@@ -77,12 +77,10 @@ export const SignUp = () => {
           config={config}
           control={control}
         />
-        <Button
-          label={translate(STRING.SIGN_UP)}
-          type="submit"
-          theme={ButtonTheme.Success}
-          loading={isLoading}
-        />
+        <Button type="submit" variant="success" loading={isLoading}>
+          <span>{translate(STRING.SIGN_UP)}</span>
+          {isLoading ? <Loader2Icon className="w-4 h-4 animate-spin" /> : null}
+        </Button>
         {errorMessage && (
           <p className={classNames(styles.text, styles.error)}>
             {errorMessage}
@@ -113,12 +111,12 @@ export const SignUp = () => {
         <p className={classNames(styles.text, styles.divider)}>
           {translate(STRING.OR).toUpperCase()}
         </p>
-        <Button
-          label={translate(STRING.VIEW_PUBLIC_PROJECTS)}
-          type="button"
-          theme={ButtonTheme.Default}
-          onClick={() => navigate(APP_ROUTES.HOME)}
-        />
+        <Link
+          className={buttonVariants({ size: 'small', variant: 'outline' })}
+          to={APP_ROUTES.HOME}
+        >
+          <span>{translate(STRING.VIEW_PUBLIC_PROJECTS)}</span>
+        </Link>
       </div>
     </>
   )

@@ -1,8 +1,7 @@
 import { useSyncDeploymentSourceImages } from 'data-services/hooks/deployments/useSyncDeploymentSourceImages'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { IconButton } from 'design-system/components/icon-button/icon-button'
-import { IconType } from 'design-system/components/icon/icon'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { CheckIcon, EyeIcon, Loader2Icon } from 'lucide-react'
+import { Button, buttonVariants } from 'nova-ui-kit'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -24,19 +23,25 @@ export const SyncDeploymentSourceImages = ({
   return (
     <div className={styles.wrapper}>
       <Button
-        label="Sync now"
-        loading={isLoading}
         disabled={!isConnected || isSuccess}
-        theme={ButtonTheme.Success}
-        icon={isSuccess ? IconType.RadixCheck : undefined}
         onClick={() => syncDeploymentSourceImages(deploymentId)}
-      />
+        size="small"
+        variant="success"
+      >
+        <span>Sync now</span>
+        {isSuccess ? (
+          <CheckIcon className="w-4 h-4" />
+        ) : isLoading ? (
+          <Loader2Icon className="w-4 h-4 animate-spin" />
+        ) : null}
+      </Button>
       {projectId && jobId && (
         <BasicTooltip
           asChild
           content={`Job ${jobId} "Sync captures for deployment ${deploymentId}"`}
         >
           <Link
+            className={buttonVariants({ size: 'icon', variant: 'ghost' })}
             to={getAppRoute({
               to: APP_ROUTES.JOB_DETAILS({
                 projectId: String(projectId),
@@ -45,7 +50,7 @@ export const SyncDeploymentSourceImages = ({
               keepSearchParams: true,
             })}
           >
-            <IconButton icon={IconType.BatchId} />
+            <EyeIcon className="w-4 h-4" />
           </Link>
         </BasicTooltip>
       )}

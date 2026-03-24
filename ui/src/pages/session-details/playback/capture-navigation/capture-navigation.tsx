@@ -1,11 +1,7 @@
 import { CaptureDetails } from 'data-services/models/capture-details'
 import { TimelineTick } from 'data-services/models/timeline-tick'
-import {
-  IconButton,
-  IconButtonShape,
-  IconButtonTheme,
-} from 'design-system/components/icon-button/icon-button'
-import { IconType } from 'design-system/components/icon/icon'
+import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { useEffect, useState } from 'react'
 import { findClosestCaptureId } from '../utils'
 import styles from './capture-navigation.module.scss'
@@ -90,25 +86,27 @@ export const CaptureNavigation = ({
 
   return (
     <div className={styles.wrapper}>
-      <IconButton
-        icon={IconType.ToggleLeft}
-        shape={IconButtonShape.RoundLarge}
-        theme={IconButtonTheme.Neutral}
+      <Button
         disabled={!activeCapture?.prevCaptureId}
         onClick={goToPrev}
-      />
+        size="icon"
+        variant="outline"
+      >
+        <ChevronLeftIcon className="w-4 h-4" />
+      </Button>
       {totalCaptures && (
         <span>
           {currentIndex?.toLocaleString()} / {totalCaptures.toLocaleString()}
         </span>
       )}
-      <IconButton
-        icon={IconType.ToggleRight}
-        shape={IconButtonShape.RoundLarge}
-        theme={IconButtonTheme.Neutral}
+      <Button
         disabled={!activeCapture?.nextCaptureId}
         onClick={goToNext}
-      />
+        size="icon"
+        variant="outline"
+      >
+        <ChevronRightIcon className="w-4 h-4" />
+      </Button>
     </div>
   )
 }

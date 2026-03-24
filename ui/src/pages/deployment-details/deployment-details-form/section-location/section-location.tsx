@@ -5,9 +5,9 @@ import {
   FormSection,
 } from 'components/form/layout/layout'
 import { DeploymentFieldValues } from 'data-services/models/deployment-details'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { MarkerPosition } from 'design-system/map/types'
 import _ from 'lodash'
+import { Button } from 'nova-ui-kit'
 import { useContext, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { FormContext } from 'utils/formContext/formContext'
@@ -116,12 +116,12 @@ export const SectionLocation = ({
         </FormRow>
       </FormSection>
       <FormActions>
-        <Button label={translate(STRING.BACK)} onClick={onBack} />
-        <Button
-          label={translate(STRING.NEXT)}
-          onClick={onNext}
-          theme={ButtonTheme.Success}
-        />
+        <Button onClick={onBack} size="small" variant="outline">
+          <span>{translate(STRING.BACK)}</span>
+        </Button>
+        <Button onClick={onNext} size="small" variant="success">
+          <span>{translate(STRING.NEXT)}</span>
+        </Button>
       </FormActions>
     </form>
   )
