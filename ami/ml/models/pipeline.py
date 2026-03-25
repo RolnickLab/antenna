@@ -980,6 +980,16 @@ def save_results(
         logger=job_logger,
     )
 
+    # Check for occurrences that ended up without a determination despite having classifications.
+    # This can happen if the bulk_update in create_and_update_occurrences_for_detections partially fails.
+    from ami.main.integrity import reconcile_missing_determinations
+
+    occurrence_ids = [d.occurrence_id for d in detections if d.occurrence_id]
+    if occurrence_ids:
+        result = reconcile_missing_determinations(occurrence_ids=occurrence_ids)
+        if result.fixed or result.unfixable:
+            job_logger.warning(f"Post-save reconciliation: {result.fixed} fixed, {result.unfixable} unfixable")
+
     # Update precalculated counts on source images and events
     source_images = list(source_images)
     logger.info(f"Updating calculated fields for {len(source_images)} source images")
