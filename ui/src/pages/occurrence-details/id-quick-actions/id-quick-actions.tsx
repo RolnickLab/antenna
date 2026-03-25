@@ -61,7 +61,11 @@ export const IdQuickActions = ({
   return (
     <Popover.Root open={open} onOpenChange={setIsOpen}>
       <Popover.Trigger asChild>
-        <Button size="icon" variant="outline">
+        <Button
+          aria-label={translate(STRING.MORE)}
+          size="icon"
+          variant="outline"
+        >
           <EllipsisVerticalIcon className="w-4 h-4" />
         </Button>
       </Popover.Trigger>

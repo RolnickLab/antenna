@@ -19,7 +19,12 @@ export const ColumnSettings = ({
   <Popover.Root>
     <BasicTooltip asChild content={translate(STRING.TABLE_COLUMNS)}>
       <Popover.Trigger asChild>
-        <Button className="shrink-0" size="icon" variant="ghost">
+        <Button
+          aria-label={translate(STRING.TABLE_COLUMNS)}
+          className="shrink-0"
+          size="icon"
+          variant="ghost"
+        >
           <Columns3CogIcon className="w-4 h-4" />
         </Button>
       </Popover.Trigger>

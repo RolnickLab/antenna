@@ -93,6 +93,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
                 content={`${type === 'password' ? 'Show' : 'Hide'} password`}
               >
                 <Button
+                  aria-label={type === 'password' ? 'Show' : 'Hide'}
                   onClick={() =>
                     setType(type === 'password' ? 'text' : 'password')
                   }
