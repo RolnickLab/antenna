@@ -6,7 +6,7 @@ Moving deployments (stations) and all their associated data from one project to 
 
 A "deployment reassignment" transfers one or more Deployment records and every piece of data hanging off them to a different Project. The physical data in S3 does not move — only database references change.
 
-This guide covers the full relationship map, edge cases, and a validation checklist. An automated management command (`reassign_deployments`) implements these steps.
+This guide covers the full relationship map, edge cases, and a validation checklist. An automated management command (`move_project_data`) implements these steps.
 
 ## Complete Relationship Map
 
@@ -139,6 +139,6 @@ When an org-level model is added, deployment reassignment becomes simpler:
 
 ## Related Files
 
-- Management command: `ami/main/management/commands/reassign_deployments.py`
+- Management command: `ami/main/management/commands/move_project_data.py`
 - Models: `ami/main/models.py`, `ami/ml/models/`, `ami/jobs/models.py`
 - Filters: `ami/main/models_future/filters.py`
