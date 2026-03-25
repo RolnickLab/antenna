@@ -1,15 +1,19 @@
 """
-Management command to move deployments (and all related data) from one project to another.
+Move deployments and ALL associated data from one project to another.
+
+This is a comprehensive data transfer: deployments, source images, events,
+occurrences, detections, classifications, identifications, jobs, collection
+memberships, taxa links, pipeline configs, and processing service links.
 
 Usage:
     # Dry run (default) — shows what would happen
-    python manage.py reassign_deployments --source-project 20 --target-project 99 --deployment-ids 60,61
+    python manage.py move_project_data --source-project 20 --target-project 99 --deployment-ids 60,61
 
     # Execute the move
-    python manage.py reassign_deployments --source-project 20 --target-project 99 --deployment-ids 60,61 --execute
+    python manage.py move_project_data --source-project 20 --target-project 99 --deployment-ids 60,61 --execute
 
     # Create a new target project
-    python manage.py reassign_deployments --source-project 20 \
+    python manage.py move_project_data --source-project 20 \
         --create-project "Nunavik" --deployment-ids 60,61 --execute
 
 See docs/claude/planning/deployment-reassignment-guide.md for the full relationship map.
@@ -97,7 +101,7 @@ def link_processing_services_raw(source_project_id: int, target_project_id: int)
 
 
 class Command(BaseCommand):
-    help = "Move deployments and all related data from one project to another."
+    help = "Move deployments and all associated data (images, occurrences, identifications, etc.) between projects."
 
     def add_arguments(self, parser):
         parser.add_argument("--source-project", type=int, required=True, help="Source project ID")
@@ -144,7 +148,7 @@ class Command(BaseCommand):
 
         mode = "EXECUTE" if execute else "DRY RUN"
         self.log(f"\n{'=' * 60}")
-        self.log(f"  DEPLOYMENT REASSIGNMENT — {mode}")
+        self.log(f"  MOVE PROJECT DATA — {mode}")
         self.log(f"{'=' * 60}")
 
         # --- Validate inputs ---
@@ -312,6 +316,64 @@ class Command(BaseCommand):
         )
         self.log(f"\n  Taxa referenced by moved occurrences: {len(taxa_ids)}")
 
+        # Identifiers: users who made identifications on moved data
+        identifier_users = set(
+            Identification.objects.filter(occurrence__deployment_id__in=deployment_ids)
+            .exclude(user__isnull=True)
+            .values_list("user_id", flat=True)
+            .distinct()
+        )
+        source_member_ids = set(source_project.members.values_list("pk", flat=True))
+        if identifier_users:
+            from ami.users.models import User
+
+            self.log(f"\n  Identifiers (users with identifications on moved data):")
+            for uid in identifier_users:
+                user = User.objects.get(pk=uid)
+                is_source_member = uid in source_member_ids
+                self.log(
+                    f"    {user.email}: source project member={is_source_member}" f" → will add to target project"
+                )
+
+        # Default filter config
+        self.log(f"\n  Source project default filters:")
+        include_taxa = list(source_project.default_filters_include_taxa.values_list("name", flat=True))
+        exclude_taxa = list(source_project.default_filters_exclude_taxa.values_list("name", flat=True))
+        self.log(f"    Score threshold: {source_project.default_filters_score_threshold}")
+        self.log(f"    Include taxa: {include_taxa or '(none)'}")
+        self.log(f"    Exclude taxa: {exclude_taxa or '(none)'}")
+        if include_taxa or exclude_taxa:
+            self.log("    → Will copy default filter config to target project")
+
+        # --- Scope warning (conditional) ---
+        has_processed_data = pre_snapshot["detections"] > 0
+        has_identifications = pre_snapshot["identifications"] > 0
+        has_classifications = pre_snapshot["classifications"] > 0
+
+        self.log(f"\n{'─' * 60}")
+        if has_processed_data:
+            self.log("  SCOPE WARNING — This is a significant data transfer:")
+            self.log(f"    {pre_snapshot['source_images']:>10,} source images")
+            if has_processed_data:
+                self.log(f"    {pre_snapshot['detections']:>10,} detections (ML predictions)")
+            if has_classifications:
+                self.log(f"    {pre_snapshot['classifications']:>10,} classifications")
+            if has_identifications:
+                self.log(f"    {pre_snapshot['identifications']:>10,} identifications (human reviews)")
+            self.log(f"    {pre_snapshot['occurrences']:>10,} occurrences")
+            self.log(f"    {pre_snapshot['jobs']:>10,} job records")
+            self.log(f"    {len(taxa_ids):>10,} taxa references")
+            if identifier_users:
+                self.log(f"    {len(identifier_users):>10,} identifier user(s)")
+            self.log("")
+            self.log("  All of this data will be moved to the target project.")
+            self.log("  The source project will no longer contain this data.")
+        else:
+            self.log("  This is a lightweight transfer (unprocessed image data).")
+            self.log(f"    {pre_snapshot['source_images']:>10,} source images")
+            self.log(f"    {pre_snapshot['events']:>10,} events")
+        self.log(f"{'─' * 60}")
+
         if not execute:
             self.log(
                 f"\n{'=' * 60}\n  DRY RUN COMPLETE — no changes made.\n"
@@ -470,6 +532,41 @@ class Command(BaseCommand):
                 self.log(f"  [12/12] Linked {len(taxa_ids):,} taxa to target project")
             else:
                 self.log("  [12/12] No taxa to link (no occurrences with determinations)")
+
+            # 13. Add identifier users to target project with Identifier role
+            if identifier_users:
+                from ami.users.models import User
+                from ami.users.roles import Identifier
+
+                target_member_ids = set(target_project.members.values_list("pk", flat=True))
+                added_count = 0
+                for uid in identifier_users:
+                    if uid not in target_member_ids:
+                        user = User.objects.get(pk=uid)
+                        target_project.members.add(user)
+                        # Assign Identifier role (can make identifications)
+                        Identifier.assign_user(user, target_project)
+                        added_count += 1
+                        self.log(f"  [13/14] Added {user.email} as Identifier")
+                if added_count == 0:
+                    self.log("  [13/14] All identifiers already members")
+                else:
+                    self.log(f"  [13/14] Added {added_count} identifier(s) to target")
+            else:
+                self.log("  [13/14] No identifier users to add")
+
+            # 14. Copy default filter config to target project
+            if include_taxa or exclude_taxa:
+                for t in source_project.default_filters_include_taxa.all():
+                    target_project.default_filters_include_taxa.add(t)
+                for t in source_project.default_filters_exclude_taxa.all():
+                    target_project.default_filters_exclude_taxa.add(t)
+                self.log("  [14/14] Copied default filter taxa config")
+            target_project.default_filters_score_threshold = source_project.default_filters_score_threshold
+            if source_project.default_processing_pipeline:
+                target_project.default_processing_pipeline = source_project.default_processing_pipeline
+            target_project.save()
+            self.log(f"  [14/14] Score threshold: " f"{target_project.default_filters_score_threshold}")
 
         # --- Post-move: update cached fields (outside transaction) ---
         self.log(f"\n{'─' * 60}")
