@@ -35,6 +35,7 @@ from ami.main.models import (
     Project,
     SourceImage,
     SourceImageCollection,
+    TaxaList,
     Taxon,
 )
 from ami.ml.models import ProjectPipelineConfig
@@ -323,17 +324,24 @@ class Command(BaseCommand):
             .values_list("user_id", flat=True)
             .distinct()
         )
-        source_member_ids = set(source_project.members.values_list("pk", flat=True))
+        # Map each identifier to the role they should get in the target project
+        identifier_role_map = {}  # user_id -> role_class
         if identifier_users:
             from ami.users.models import User
+            from ami.users.roles import Identifier, Role
 
             self.log(f"\n  Identifiers (users with identifications on moved data):")
             for uid in identifier_users:
                 user = User.objects.get(pk=uid)
-                is_source_member = uid in source_member_ids
-                self.log(
-                    f"    {user.email}: source project member={is_source_member}" f" → will add to target project"
-                )
+                source_role = Role.get_primary_role(source_project, user)
+                if source_role:
+                    role_to_assign = source_role
+                    role_source = "source project role"
+                else:
+                    role_to_assign = Identifier
+                    role_source = "default (not a source member)"
+                identifier_role_map[uid] = role_to_assign
+                self.log(f"    {user.email}: " f"{role_to_assign.display_name} ({role_source})")
 
         # Default filter config
         self.log(f"\n  Source project default filters:")
@@ -344,6 +352,17 @@ class Command(BaseCommand):
         self.log(f"    Exclude taxa: {exclude_taxa or '(none)'}")
         if include_taxa or exclude_taxa:
             self.log("    → Will copy default filter config to target project")
+
+        # TaxaLists
+        source_taxa_lists = TaxaList.objects.filter(projects=source_project)
+        if source_taxa_lists.exists():
+            self.log(f"\n  TaxaLists linked to source project:")
+            for tl in source_taxa_lists:
+                shared = tl.projects.count()
+                self.log(
+                    f"    '{tl.name}' (id={tl.pk}): {tl.taxa.count()} taxa,"
+                    f" shared with {shared} project(s) → will link to target"
+                )
 
         # --- Scope warning (conditional) ---
         has_processed_data = pre_snapshot["detections"] > 0
@@ -533,40 +552,47 @@ class Command(BaseCommand):
             else:
                 self.log("  [12/12] No taxa to link (no occurrences with determinations)")
 
-            # 13. Add identifier users to target project with Identifier role
-            if identifier_users:
+            # 13. Add identifier users to target project, preserving roles
+            if identifier_role_map:
                 from ami.users.models import User
-                from ami.users.roles import Identifier
 
                 target_member_ids = set(target_project.members.values_list("pk", flat=True))
                 added_count = 0
-                for uid in identifier_users:
+                for uid, role_cls in identifier_role_map.items():
                     if uid not in target_member_ids:
                         user = User.objects.get(pk=uid)
                         target_project.members.add(user)
-                        # Assign Identifier role (can make identifications)
-                        Identifier.assign_user(user, target_project)
+                        role_cls.assign_user(user, target_project)
                         added_count += 1
-                        self.log(f"  [13/14] Added {user.email} as Identifier")
+                        self.log(f"  [13/16] Added {user.email}" f" as {role_cls.display_name}")
                 if added_count == 0:
-                    self.log("  [13/14] All identifiers already members")
+                    self.log("  [13/16] All identifiers already members")
                 else:
-                    self.log(f"  [13/14] Added {added_count} identifier(s) to target")
+                    self.log(f"  [13/16] Added {added_count} identifier(s)")
             else:
-                self.log("  [13/14] No identifier users to add")
+                self.log("  [13/16] No identifier users to add")
 
-            # 14. Copy default filter config to target project
+            # 14. Link TaxaLists to target project
+            source_taxa_lists = TaxaList.objects.filter(projects=source_project)
+            if source_taxa_lists.exists():
+                for tl in source_taxa_lists:
+                    tl.projects.add(target_project)
+                self.log(f"  [14/16] Linked {source_taxa_lists.count()}" f" TaxaList(s) to target project")
+            else:
+                self.log("  [14/16] No TaxaLists to link")
+
+            # 15. Copy default filter config to target project
             if include_taxa or exclude_taxa:
                 for t in source_project.default_filters_include_taxa.all():
                     target_project.default_filters_include_taxa.add(t)
                 for t in source_project.default_filters_exclude_taxa.all():
                     target_project.default_filters_exclude_taxa.add(t)
-                self.log("  [14/14] Copied default filter taxa config")
+                self.log("  [15/16] Copied default filter taxa config")
             target_project.default_filters_score_threshold = source_project.default_filters_score_threshold
             if source_project.default_processing_pipeline:
                 target_project.default_processing_pipeline = source_project.default_processing_pipeline
             target_project.save()
-            self.log(f"  [14/14] Score threshold: " f"{target_project.default_filters_score_threshold}")
+            self.log(f"  [16/16] Score threshold:" f" {target_project.default_filters_score_threshold}")
 
         # --- Post-move: update cached fields (outside transaction) ---
         self.log(f"\n{'─' * 60}")
