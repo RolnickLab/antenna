@@ -67,14 +67,14 @@ export const OccurrenceDetails = ({
         ? occurrence.detections
             .map((id) => occurrence.getDetectionInfo(id))
             .filter(
-              (item): item is BlueprintItem & { captureId: string } => !!item,
+              (item): item is BlueprintItem & { captureId: string } => !!item
             )
             .map((item) => ({
               ...item,
               to:
                 !occurrence.sessionId ||
                 pathname.includes(
-                  APP_ROUTES.SESSIONS({ projectId: projectId as string }),
+                  APP_ROUTES.SESSIONS({ projectId: projectId as string })
                 )
                   ? undefined
                   : getAppRoute({
@@ -89,7 +89,7 @@ export const OccurrenceDetails = ({
                     }),
             }))
         : [],
-    [occurrence],
+    [occurrence]
   )
 
   const fields = [
@@ -109,7 +109,7 @@ export const OccurrenceDetails = ({
       to:
         !occurrence.sessionId ||
         pathname.includes(
-          APP_ROUTES.SESSIONS({ projectId: projectId as string }),
+          APP_ROUTES.SESSIONS({ projectId: projectId as string })
         )
           ? undefined
           : getAppRoute({
@@ -145,7 +145,7 @@ export const OccurrenceDetails = ({
                     projectId: projectId as string,
                     taxonId: id,
                   }),
-                }),
+                })
               )
             }
             size="lg"

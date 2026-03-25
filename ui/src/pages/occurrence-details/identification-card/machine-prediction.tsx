@@ -36,12 +36,12 @@ export const MachinePrediction = ({
   const [open, setOpen] = useState(false)
   const { classification, error, isLoading } = useClassificationDetails(
     identification.id,
-    open,
+    open
   )
   const navigate = useNavigate()
   const { projectId } = useParams()
   const topN = classification?.topN.filter(
-    ({ taxon }) => taxon.id !== identification.taxon.id,
+    ({ taxon }) => taxon.id !== identification.taxon.id
   )
   const formattedTime = getFormatedDateTimeString({
     date: new Date(identification.createdAt),
@@ -76,7 +76,7 @@ export const MachinePrediction = ({
                   APP_ROUTES.ALGORITHM_DETAILS({
                     projectId: projectId as string,
                     algorithmId: identification.algorithm?.id,
-                  }),
+                  })
                 )
             : undefined
         }
@@ -92,7 +92,7 @@ export const MachinePrediction = ({
                 currentUser
                   ? occurrence.userAgreed(
                       currentUser.id,
-                      identification.taxon.id,
+                      identification.taxon.id
                     )
                   : false
               }

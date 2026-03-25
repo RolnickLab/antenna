@@ -84,7 +84,7 @@ export const OccurrenceGallery = ({
             onSelectedItemsChange?.(
               !checked
                 ? [...selectedItems, item.id]
-                : selectedItems.filter((id) => id !== item.id),
+                : selectedItems.filter((id) => id !== item.id)
             )
           }
 
@@ -130,7 +130,7 @@ export const OccurrenceGallery = ({
                   <div
                     className={classNames(
                       'absolute top-2 left-2 group-hover:visible',
-                      { invisible: !isSelecting },
+                      { invisible: !isSelecting }
                     )}
                   >
                     <Button
@@ -155,7 +155,7 @@ export const OccurrenceGallery = ({
                         'body-base font-medium text-primary',
                         {
                           italic: isGenusOrBelow(item.determinationTaxon),
-                        },
+                        }
                       )}
                     >
                       {item.determinationTaxon?.name ??

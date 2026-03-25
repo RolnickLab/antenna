@@ -22,10 +22,10 @@ import styles from './occurrences.module.scss'
 
 export const columns: (
   projectId: string,
-  showQuickActions?: boolean,
+  showQuickActions?: boolean
 ) => TableColumn<Occurrence>[] = (
   projectId: string,
-  showQuickActions?: boolean,
+  showQuickActions?: boolean
 ) => [
   {
     id: 'snapshots',

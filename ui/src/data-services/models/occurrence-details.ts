@@ -126,7 +126,7 @@ export class OccurrenceDetails extends Occurrence {
 
   getDetectionInfo(id: string) {
     const detection = this._occurrence.detections.find(
-      (d: any) => `${d.id}` === id,
+      (d: any) => `${d.id}` === id
     )
 
     const classification = detection?.classifications?.[0]
@@ -134,7 +134,7 @@ export class OccurrenceDetails extends Occurrence {
 
     if (classification) {
       label = `${classification.taxon.name} (${classification.score.toFixed(
-        2,
+        2
       )})`
     }
 
