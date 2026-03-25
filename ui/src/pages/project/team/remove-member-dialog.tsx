@@ -53,7 +53,7 @@ export const RemoveMemberDialog = ({ member }: { member: Member }) => {
               <span>{translate(STRING.CANCEL)}</span>
             </Button>
             <Button
-              disabled={isSuccess}
+              disabled={isLoading || isSuccess}
               onClick={() => removeMember(member.id)}
               size="small"
               variant="destructive"

@@ -20,7 +20,11 @@ export const DeleteProjectDialog = ({ id }: { id: string }) => {
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
       <Dialog.Trigger asChild>
-        <Button size="icon" variant="ghost">
+        <Button
+          aria-label={translate(STRING.DELETE)}
+          size="icon"
+          variant="ghost"
+        >
           <TrashIcon className="w-4 h-4" />
         </Button>
       </Dialog.Trigger>

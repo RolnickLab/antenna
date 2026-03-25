@@ -1,6 +1,7 @@
 import { API_ROUTES } from 'data-services/constants'
 import { ProcessingService } from 'data-services/models/processing-service'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import { CellTheme, TableColumn } from 'design-system/components/table/types'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
@@ -71,7 +72,7 @@ export const columns: (
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
     renderCell: (item: ProcessingService) => (
-      <BasicTableCell value={item.createdAt} />
+      <DateTableCell date={item.createdAt} />
     ),
   },
   {
@@ -79,7 +80,7 @@ export const columns: (
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
     renderCell: (item: ProcessingService) => (
-      <BasicTableCell value={item.updatedAt} />
+      <DateTableCell date={item.updatedAt} />
     ),
   },
   {

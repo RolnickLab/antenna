@@ -1,5 +1,6 @@
 import { Pipeline } from 'data-services/models/pipeline'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { CellTheme, TableColumn } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -29,6 +30,16 @@ export const columns: (
       >
         <BasicTableCell value={item.name} theme={CellTheme.Primary} />
       </Link>
+    ),
+  },
+  {
+    id: 'description',
+    name: translate(STRING.FIELD_LABEL_DESCRIPTION),
+    renderCell: (item: Pipeline) => (
+      <BasicTableCell
+        style={{ width: '320px', whiteSpace: 'normal' }}
+        value={item.description}
+      />
     ),
   },
   {
@@ -63,12 +74,12 @@ export const columns: (
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
-    renderCell: (item: Pipeline) => <BasicTableCell value={item.createdAt} />,
+    renderCell: (item: Pipeline) => <DateTableCell date={item.createdAt} />,
   },
   {
     id: 'updated-at',
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
-    renderCell: (item: Pipeline) => <BasicTableCell value={item.updatedAt} />,
+    renderCell: (item: Pipeline) => <DateTableCell date={item.updatedAt} />,
   },
 ]

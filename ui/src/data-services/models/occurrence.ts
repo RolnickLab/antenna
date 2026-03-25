@@ -1,5 +1,4 @@
 import { getFormatedDateString } from 'utils/date/getFormatedDateString/getFormatedDateString'
-import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { UserPermission } from 'utils/user/types'
 import { Taxon } from './taxa'
@@ -21,16 +20,16 @@ export class Occurrence {
       .map((src: string) => ({ src }))
   }
 
-  get createdAt(): string {
-    return getFormatedDateTimeString({
-      date: new Date(this._occurrence.created_at),
-    })
+  get createdAt(): Date {
+    return new Date(this._occurrence.created_at)
   }
 
-  get updatedAt(): string {
-    return getFormatedDateTimeString({
-      date: new Date(this._occurrence.updated_at),
-    })
+  get updatedAt(): Date | undefined {
+    if (!this._occurrence.updated_at) {
+      return undefined
+    }
+
+    return new Date(this._occurrence.updated_at)
   }
 
   get dateLabel(): string {

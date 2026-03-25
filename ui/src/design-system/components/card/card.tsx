@@ -1,8 +1,8 @@
 import classNames from 'classnames'
+import { ImageIcon } from 'lucide-react'
 import { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge } from '../badge/badge'
-import { Icon, IconTheme, IconType } from '../icon/icon'
 import styles from './card.module.scss'
 
 export enum CardSize {
@@ -49,11 +49,7 @@ export const Card = ({
           )
         ) : (
           <div className={styles.image}>
-            <Icon
-              type={IconType.Photograph}
-              theme={IconTheme.Neutral}
-              size={32}
-            />
+            <ImageIcon className="h-8 w-8 text-muted-foreground" />
           </div>
         )}
       </div>

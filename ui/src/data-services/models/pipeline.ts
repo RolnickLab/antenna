@@ -1,5 +1,6 @@
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { Algorithm, ServerAlgorithm } from './algorithm'
+import { Entity } from './entity'
 import { ProcessingService } from './processing-service'
 
 export type ServerPipeline = any // TODO: Update this type
@@ -12,11 +13,13 @@ export enum PipelineEnabledType {
   Enabled,
   Disabled,
 }
-export class Pipeline {
+export class Pipeline extends Entity {
   protected readonly _pipeline: ServerPipeline
   protected readonly _algorithms: Algorithm[] = []
 
   public constructor(pipeline: ServerPipeline) {
+    super(pipeline)
+
     this._pipeline = pipeline
 
     if (pipeline.algorithms) {
@@ -30,26 +33,8 @@ export class Pipeline {
     return this._algorithms
   }
 
-  get createdAt(): string {
-    return getFormatedDateTimeString({
-      date: new Date(this._pipeline.created_at),
-    })
-  }
-
-  get description(): string {
-    return this._pipeline.description
-  }
-
-  get id(): string {
-    return `${this._pipeline.id}`
-  }
-
   get slug(): string {
     return `${this._pipeline.slug}`
-  }
-
-  get name(): string {
-    return this._pipeline.name
   }
 
   get stages(): {
@@ -83,16 +68,6 @@ export class Pipeline {
     return this._pipeline.version_name?.length
       ? `${this._pipeline.version} "${this._pipeline.version_name?.length}"`
       : `${this._pipeline.version}`
-  }
-
-  get updatedAt(): string | undefined {
-    if (!this._pipeline.updated_at) {
-      return undefined
-    }
-
-    return getFormatedDateTimeString({
-      date: new Date(this._pipeline.updated_at),
-    })
   }
 
   get currentProcessingService(): {

@@ -36,36 +36,8 @@ export class ProcessingService extends Entity {
     return this._pipelines
   }
 
-  get createdAt(): string {
-    return getFormatedDateTimeString({
-      date: new Date(this._processingService.created_at),
-    })
-  }
-
-  get id(): string {
-    return `${this._processingService.id}`
-  }
-
-  get name(): string {
-    return `${this._processingService.name}`
-  }
-
   get endpointUrl(): string {
     return `${this._processingService.endpoint_url}`
-  }
-
-  get description(): string {
-    return `${this._processingService.description}`
-  }
-
-  get updatedAt(): string | undefined {
-    if (!this._processingService.updated_at) {
-      return undefined
-    }
-
-    return getFormatedDateTimeString({
-      date: new Date(this._processingService.updated_at),
-    })
   }
 
   get lastChecked(): string | undefined {

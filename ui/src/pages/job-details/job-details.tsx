@@ -4,7 +4,6 @@ import { Export } from 'data-services/models/export'
 import { JobStatusType } from 'data-services/models/job'
 import { JobDetails as Job } from 'data-services/models/job-details'
 import * as Dialog from 'design-system/components/dialog/dialog'
-import { IconType } from 'design-system/components/icon/icon'
 import { InputContent, InputValue } from 'design-system/components/input/input'
 import { StatusBar } from 'design-system/components/status/status-bar'
 import {
@@ -12,8 +11,8 @@ import {
   StatusBulletTheme,
 } from 'design-system/components/wizard/status-bullet/status-bullet'
 import * as Wizard from 'design-system/components/wizard/wizard'
+import { CheckIcon } from 'lucide-react'
 import { CodeBlock } from 'nova-ui-kit'
-import { DeleteJobsDialog } from 'pages/jobs/delete-jobs-dialog'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -29,12 +28,10 @@ export const JobDetails = ({
   job,
   title,
   isFetching,
-  onDelete,
 }: {
   job: Job
   title: string
   isFetching?: boolean
-  onDelete: () => void
 }) => (
   <>
     <Dialog.Header title={title} withActions>
@@ -45,7 +42,6 @@ export const JobDetails = ({
         {job.canQueue && <QueueJob jobId={job.id} />}
         {job.canCancel && <CancelJob jobId={job.id} />}
         {job.canRetry && <RetryJob jobId={job.id} />}
-        {job.canDelete && <DeleteJobsDialog id={job.id} onDelete={onDelete} />}
       </div>
     </Dialog.Header>
     <div className={styles.content}>
@@ -203,7 +199,7 @@ const JobStages = ({ job }: { job: Job }) => {
             <Wizard.Trigger title={stage.name}>
               {stage.status.type === JobStatusType.Success ? (
                 <StatusBullet
-                  icon={IconType.RadixCheck}
+                  Icon={CheckIcon}
                   theme={StatusBulletTheme.Success}
                 />
               ) : (

@@ -1,8 +1,8 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import classNames from 'classnames'
 import { ErrorState } from 'components/error-state/error-state'
+import { XIcon } from 'lucide-react'
 import { ReactNode } from 'react'
-import { Icon, IconType } from '../icon/icon'
 import { LoadingSpinner } from '../loading-spinner/loading-spinner'
 import styles from './dialog.module.scss'
 
@@ -69,7 +69,7 @@ const Content = ({
         )}
       </div>
       <Dialog.Close className={styles.dialogClose} aria-label={ariaCloselabel}>
-        <Icon type={IconType.Close} size={12} />
+        <XIcon className="w-4 h-4" />
       </Dialog.Close>
     </Dialog.Content>
   </Dialog.Portal>
