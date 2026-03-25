@@ -2,6 +2,7 @@
 Base settings to build other settings files upon.
 """
 
+import re
 import socket
 from pathlib import Path
 
@@ -263,6 +264,21 @@ CACHES = {
 }
 REDIS_URL = env("REDIS_URL", default=None)
 
+
+# Derive a separate Redis DB for Celery results (DB 1) from REDIS_URL (DB 0).
+# This keeps Django cache (DB 0) and Celery task metadata (DB 1) isolated so they
+# can be flushed and monitored independently.
+# TODO: consider separate Redis instances with different eviction policies:
+#   allkeys-lru for cache, volatile-ttl for results. See issue #1189.
+def _celery_result_backend_url(redis_url):
+    if not redis_url:
+        return None
+    # Replace the DB number at the end of the URL (e.g. /0 -> /1)
+    return re.sub(r"/\d+$", "/1", redis_url) if "/" in redis_url.split(":")[-1] else redis_url + "/1"
+
+
+CELERY_RESULT_BACKEND_URL = env("CELERY_RESULT_BACKEND", default=None) or _celery_result_backend_url(REDIS_URL)
+
 # NATS
 # ------------------------------------------------------------------------------
 NATS_URL = env("NATS_URL", default="nats://localhost:4222")  # type: ignore[no-untyped-call]
@@ -310,8 +326,10 @@ CELERY_TASK_DEFAULT_QUEUE = "antenna"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-broker_url
 CELERY_BROKER_URL = env("CELERY_BROKER_URL")
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-result_backend
-# "rpc://" means use RabbitMQ for results backend by default
-CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="rpc://")  # type: ignore[no-untyped-call]
+# Use Redis DB 1 for results (separate from cache on DB 0).
+# Falls back to CELERY_RESULT_BACKEND env var if explicitly set, otherwise derives from REDIS_URL.
+# See issue #1189 for discussion of result backend architecture.
+CELERY_RESULT_BACKEND = CELERY_RESULT_BACKEND_URL or "rpc://"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-extended
 CELERY_RESULT_EXTENDED = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-backend-always-retry
