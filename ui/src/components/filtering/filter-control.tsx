@@ -79,9 +79,7 @@ export const FilterControl = ({
         <span className="text-muted-foreground body-overline-small font-bold pt-0.5">
           {filter.label}
         </span>
-        {filter.info ? (
-          <FilterInfo text={filter.info.text} to={filter.info.to} />
-        ) : null}
+        {filter.info ? <FilterInfo info={filter.info} /> : null}
       </div>
       <div className="flex items-center justify-between gap-2">
         <FilterComponent
@@ -112,30 +110,37 @@ export const FilterControl = ({
   )
 }
 
-export const FilterInfo = ({ text, to }: { text: string; to?: string }) => (
+export const FilterInfo = ({
+  info,
+}: {
+  info: {
+    title: string
+    text: string
+    to?: string
+  }
+}) => (
   <Tooltip.Provider delayDuration={0}>
     <Tooltip.Root>
       <Tooltip.Trigger asChild>
-        <Button
-          aria-label={translate(STRING.INFO)}
-          className="text-muted-foreground"
-          size="icon"
-          variant="ghost"
-        >
+        <Button aria-label={translate(STRING.INFO)} size="icon" variant="ghost">
           <InfoIcon className="w-4 h-4" />
         </Button>
       </Tooltip.Trigger>
-      <Tooltip.Content side="bottom" className="p-4 space-y-4 max-w-xs">
-        <p className="whitespace-normal">{text}</p>
-        {to ? (
+      <Tooltip.Content
+        side="bottom"
+        className="flex flex-col gap-4 p-4 max-w-xs"
+      >
+        <p className="whitespace-normal">{info.text}</p>
+        {info.to ? (
           <Link
+            aria-label=""
             className={classNames(
-              buttonVariants({ size: 'small', variant: 'outline' }),
-              '!w-auto'
+              buttonVariants({ size: 'small', variant: 'ghost' }),
+              'self-end'
             )}
-            to={to}
+            to={info.to}
           >
-            <span>Configure</span>
+            <span>{info.title}</span>
             <ChevronRightIcon className="w-4 h-4" />
           </Link>
         ) : null}
