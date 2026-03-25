@@ -331,6 +331,14 @@ CELERY_BROKER_URL = env("CELERY_BROKER_URL")
 # See issue #1189 for discussion of result backend architecture.
 CELERY_RESULT_BACKEND = CELERY_RESULT_BACKEND_URL or "rpc://"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-extended
+# Stores full task args/kwargs/name in the result backend alongside status.
+# Useful for: inspecting task arguments in Flower, debugging failed tasks,
+# post-hoc analysis of what data a task received.
+# Cost: ~19KB per result key (vs ~200B without) because process_nats_pipeline_result
+# receives the full ML result JSON as args. With thousands of tasks per job this
+# adds significant memory pressure on the result backend.
+# TODO: consider disabling this or setting ignore_result=True on bulk tasks
+# like process_nats_pipeline_result to reduce result backend load. See #1189.
 CELERY_RESULT_EXTENDED = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-backend-always-retry
 # https://github.com/celery/celery/pull/6122
