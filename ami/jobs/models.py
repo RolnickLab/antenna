@@ -480,13 +480,12 @@ class MLJob(JobType):
                 return
             # When all stages are already complete (e.g. 0 images to process),
             # finalize the job now since no async results will arrive to trigger completion.
-            # Derive status from stages rather than assuming SUCCESS — a stage could be
-            # in FAILURE if some images were skipped during collection.
             if job.progress.is_complete():
-                has_failure = any(s.status == JobState.FAILURE for s in job.progress.stages)
-                job.update_status(JobState.FAILURE if has_failure else JobState.SUCCESS)
+                has_failure = any(s.status in JobState.failed_states() for s in job.progress.stages)
+                job.update_status(JobState.FAILURE if has_failure else JobState.SUCCESS, save=False)
                 job.finished_at = datetime.datetime.now()
                 job.save()
+                cleanup_async_job_if_needed(job)
         else:
             cls.process_images(job, images)
 
