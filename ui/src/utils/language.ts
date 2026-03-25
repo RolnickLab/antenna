@@ -256,6 +256,7 @@ export enum STRING {
   TOOLTIP_OCCURRENCE,
   TOOLTIP_PIPELINE,
   TOOLTIP_PROCESSING_SERVICE,
+  TOOLTIP_SCORE,
   TOOLTIP_SESSION,
   TOOLTIP_SITE,
   TOOLTIP_STATUS,
@@ -285,6 +286,7 @@ export enum STRING {
   MANAGE_ACCESS_FOR,
   NEW_ID,
   NOT_CONNECTED,
+  NOT_VERIFIED,
   OR,
   PIPELINES,
   RECENT,
@@ -294,10 +296,10 @@ export enum STRING {
   REMOVE_TAXA_LIST_TAXON,
   RESULTS_MEMBERS,
   RESULTS,
-  SELECT,
   SELECT_COLUMNS,
   SELECT_PLACEHOLDER,
   SELECT_TAXON_PLACEHOLDER,
+  SELECT,
   SET_PASSWORD_DETAILS,
   SET_PASSWORD,
   SETTINGS,
@@ -313,6 +315,7 @@ export enum STRING {
   USER_INFO,
   VALUE_NOT_AVAILABLE,
   VERIFIED_BY,
+  VERIFIED,
   YOU,
 }
 
@@ -433,7 +436,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_ROLE]: 'Role',
   [STRING.FIELD_LABEL_SAMPLE_CAPTURES]: 'Sample images',
   [STRING.FIELD_LABEL_SAMPLING_METHOD]: 'Sampling method',
-  [STRING.FIELD_LABEL_SCORE]: 'Score',
+  [STRING.FIELD_LABEL_SCORE]: 'Prediction score',
   [STRING.FIELD_LABEL_SESSION]: 'Session',
   [STRING.FIELD_LABEL_SESSIONS]: 'Sessions',
   [STRING.FIELD_LABEL_SITE]: 'Site',
@@ -602,6 +605,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'A pipeline is a set of algorithms used for processing. A pipeline is picked from a list of algorithm bundle options when a processing job is defined.',
   [STRING.TOOLTIP_PROCESSING_SERVICE]:
     'A processing service is a group of pipelines used for processing captures.',
+  [STRING.TOOLTIP_SCORE]:
+    'This is a model derived prediction score, not a real-world probability. Think of it as a relative metric that will vary based model calibration and available training data.',
   [STRING.TOOLTIP_SESSION]:
     'A session is a fixed period of time of monitoring for one station. The period is typically one night.',
   [STRING.TOOLTIP_SITE]:
@@ -635,6 +640,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MANAGE_ACCESS_FOR]: 'Manage access for {{user}}.',
   [STRING.NEW_ID]: 'New ID',
   [STRING.NOT_CONNECTED]: 'Not connected',
+  [STRING.NOT_VERIFIED]: 'Not verified',
   [STRING.OR]: 'Or',
   [STRING.PIPELINES]: 'Pipelines',
   [STRING.RECENT]: 'Recent',
@@ -644,10 +650,10 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.REMOVE_TAXA_LIST_TAXON]: 'Remove taxon',
   [STRING.RESULTS_MEMBERS]: '{{total}} member(s)',
   [STRING.RESULTS]: '{{total}} result(s)',
-  [STRING.SELECT]: 'Select',
   [STRING.SELECT_COLUMNS]: 'Select columns',
   [STRING.SELECT_PLACEHOLDER]: 'Select a value',
   [STRING.SELECT_TAXON_PLACEHOLDER]: 'Select a taxon',
+  [STRING.SELECT]: 'Select',
   [STRING.SET_PASSWORD_DETAILS]: 'Please set a new password for your acccount.',
   [STRING.SET_PASSWORD]: 'Set password',
   [STRING.SETTINGS]: 'Settings',
@@ -663,6 +669,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.USER_INFO]: 'User info',
   [STRING.VALUE_NOT_AVAILABLE]: 'n/a',
   [STRING.VERIFIED_BY]: 'Verified by\n{{name}}',
+  [STRING.VERIFIED]: 'Verified',
   [STRING.YOU]: 'You',
 }
 

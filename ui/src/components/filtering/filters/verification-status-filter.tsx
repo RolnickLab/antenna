@@ -4,8 +4,8 @@ import { booleanToString, stringToBoolean } from '../utils'
 import { FilterProps } from './types'
 
 const OPTIONS = [
-  { value: true, label: 'Verified' },
-  { value: false, label: 'Not verified' },
+  { value: true, label: translate(STRING.VERIFIED) },
+  { value: false, label: translate(STRING.NOT_VERIFIED) },
 ]
 
 export const VerificationStatusFilter = ({

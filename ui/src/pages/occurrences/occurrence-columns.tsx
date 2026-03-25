@@ -68,11 +68,11 @@ export const columns: (
   {
     id: 'score',
     name: translate(STRING.FIELD_LABEL_SCORE),
+    tooltip: translate(STRING.TOOLTIP_SCORE),
     sortField: 'determination_score',
     renderCell: (item: Occurrence) => (
       <BasicTableCell>
         <DeterminationScore
-          confirmed={item.determinationVerified}
           score={item.determinationScore}
           scoreLabel={item.determinationScoreLabel}
           tooltip={
@@ -84,6 +84,7 @@ export const columns: (
                   score: `${item.determinationScore}`,
                 })
           }
+          verified={item.determinationVerified}
         />
       </BasicTableCell>
     ),
