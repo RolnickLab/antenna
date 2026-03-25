@@ -478,6 +478,15 @@ class MLJob(JobType):
                 job.finished_at = datetime.datetime.now()
                 job.save()
                 return
+            # When all stages are already complete (e.g. 0 images to process),
+            # finalize the job now since no async results will arrive to trigger completion.
+            # Derive status from stages rather than assuming SUCCESS — a stage could be
+            # in FAILURE if some images were skipped during collection.
+            if job.progress.is_complete():
+                has_failure = any(s.status == JobState.FAILURE for s in job.progress.stages)
+                job.update_status(JobState.FAILURE if has_failure else JobState.SUCCESS)
+                job.finished_at = datetime.datetime.now()
+                job.save()
         else:
             cls.process_images(job, images)
 
