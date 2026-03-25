@@ -8,7 +8,7 @@ export const QueueJob = ({ jobId }: { jobId: string }) => {
 
   return (
     <Button
-      disabled={isSuccess}
+      disabled={isLoading || isSuccess}
       onClick={() => queueJob(jobId)}
       size="small"
       variant="outline"

@@ -102,7 +102,7 @@ export const SectionSourceImages = ({
         isConnected={isConnected}
       />
       <FormActions>
-        <Button onClick={onBack} size="small" variant="outline">
+        <Button onClick={onBack} size="small" type="button" variant="outline">
           <span>{translate(STRING.BACK)}</span>
         </Button>
       </FormActions>

@@ -76,7 +76,7 @@ export const SignUp = () => {
           config={config}
           control={control}
         />
-        <Button type="submit" variant="success" loading={isLoading}>
+        <Button type="submit" variant="success">
           <span>{translate(STRING.SIGN_UP)}</span>
           {isLoading ? <Loader2Icon className="w-4 h-4 animate-spin" /> : null}
         </Button>

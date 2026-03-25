@@ -127,6 +127,7 @@ const SaveButton = ({
       disabled={!allValid || !someDirty || isLoading}
       onClick={onSaveClick}
       size="small"
+      type="button"
       variant="success"
     >
       <span>{translate(STRING.SAVE)}</span>

@@ -27,6 +27,7 @@ export const LocationMap = ({
         <GeoSearch onPositionChange={onMarkerPositionChange} />
         <div className={styles.buttonContainer}>
           <Button
+            disabled={loadingLocation}
             onClick={() => {
               if (mapRef.current) {
                 mapRef.current.locate()

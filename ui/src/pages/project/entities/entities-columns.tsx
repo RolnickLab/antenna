@@ -28,10 +28,7 @@ export const columns: (
     name: translate(STRING.FIELD_LABEL_DESCRIPTION),
     renderCell: (item: Entity) => (
       <BasicTableCell
-        style={{
-          width: '320px',
-          whiteSpace: 'normal',
-        }}
+        style={{ width: '320px', whiteSpace: 'normal' }}
         value={item.description}
       />
     ),

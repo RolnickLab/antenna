@@ -25,10 +25,10 @@ export class CaptureDetails extends Capture {
     }
 
     return this._jobs.sort((j1: Job, j2: Job) => {
-      const date1 = j1.updatedAt as Date
-      const date2 = j2.updatedAt as Date
+      const time1 = j1.updatedAt?.getTime() ?? 0
+      const time2 = j2.updatedAt?.getTime() ?? 0
 
-      return date2.getTime() - date1.getTime()
+      return time1 - time2
     })[0]
   }
 

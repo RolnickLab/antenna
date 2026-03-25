@@ -101,7 +101,7 @@ export class Session {
   }
 
   get createdAt(): Date {
-    return new Date(this._event.updated_at)
+    return new Date(this._event.created_at)
   }
 
   get updatedAt(): Date | undefined {

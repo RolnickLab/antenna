@@ -23,7 +23,7 @@ export const SyncDeploymentSourceImages = ({
   return (
     <div className={styles.wrapper}>
       <Button
-        disabled={!isConnected || isSuccess}
+        disabled={!isConnected || isSuccess || isLoading}
         onClick={() => syncDeploymentSourceImages(deploymentId)}
         size="small"
         variant="success"

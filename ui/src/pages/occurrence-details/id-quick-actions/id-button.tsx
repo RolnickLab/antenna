@@ -37,7 +37,7 @@ export const IdButton = ({
     <BasicTooltip asChild content={error}>
       <Button
         className={classNames('justify-between', { 'text-destructive': error })}
-        disabled={isSuccess}
+        disabled={isLoading || isSuccess}
         onClick={() => {
           addRecentIdentification({ label, details, value: taxonId })
           createIdentifications(identificationParams)

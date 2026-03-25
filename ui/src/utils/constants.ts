@@ -116,7 +116,7 @@ export const API_MAX_UPLOAD_SIZE = 1024 * 1024 * 30 // 30MB
 
 export const LANDING_PAGE_URL = 'https://insectai.org/'
 
-export const LANDING_PAGE_CONTACT_URL = 'https://www.insectai.org/contact'
+export const LANDING_PAGE_CONTACT_URL = 'https://insectai.org/contact'
 
 export const DOCS_URL =
   import.meta.env.VITE_DOCS_URL ?? 'https://rolnicklab.github.io/antenna-docs'

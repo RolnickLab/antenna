@@ -14,14 +14,12 @@ interface IdQuickActionsProps {
   containerRef?: RefObject<HTMLDivElement>
   occurrenceIds: string[]
   occurrenceTaxa: Taxon[]
-  zIndex?: number
 }
 
 export const IdQuickActions = ({
   containerRef,
   occurrenceIds = [],
   occurrenceTaxa = [],
-  zIndex,
 }: IdQuickActionsProps) => {
   const [open, setIsOpen] = useState(false)
   const { recentIdentifications } = useRecentIdentifications()
@@ -70,7 +68,6 @@ export const IdQuickActions = ({
       <Popover.Content
         align="start"
         ariaCloselabel={translate(STRING.CLOSE)}
-        className={zIndex ? `z-${zIndex}` : undefined}
         container={containerRef?.current ?? undefined}
         disableOutsideClose
         side="right"

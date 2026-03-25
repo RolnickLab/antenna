@@ -47,7 +47,7 @@ export const LeaveTeamDialog = ({ member }: { member: Member }) => {
               <span>{translate(STRING.CANCEL)}</span>
             </Button>
             <Button
-              disabled={isSuccess}
+              disabled={isLoading || isSuccess}
               onClick={async () => {
                 try {
                   await removeMember(member.id)

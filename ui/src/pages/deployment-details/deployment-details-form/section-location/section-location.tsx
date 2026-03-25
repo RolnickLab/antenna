@@ -116,10 +116,10 @@ export const SectionLocation = ({
         </FormRow>
       </FormSection>
       <FormActions>
-        <Button onClick={onBack} size="small" variant="outline">
+        <Button onClick={onBack} size="small" type="button" variant="outline">
           <span>{translate(STRING.BACK)}</span>
         </Button>
-        <Button onClick={onNext} size="small" variant="success">
+        <Button onClick={onNext} size="small" type="button" variant="success">
           <span>{translate(STRING.NEXT)}</span>
         </Button>
       </FormActions>

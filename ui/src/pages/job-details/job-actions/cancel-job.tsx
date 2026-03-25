@@ -8,7 +8,7 @@ export const CancelJob = ({ jobId }: { jobId: string }) => {
 
   return (
     <Button
-      disabled={isSuccess}
+      disabled={isLoading || isSuccess}
       onClick={() => cancelJob(jobId)}
       size="small"
       variant="outline"

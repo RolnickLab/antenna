@@ -8,7 +8,7 @@ export const RetryJob = ({ jobId }: { jobId: string }) => {
 
   return (
     <Button
-      disabled={isSuccess}
+      disabled={isLoading || isSuccess}
       onClick={() => retryJob(jobId)}
       size="small"
       variant="outline"

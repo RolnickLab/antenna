@@ -127,7 +127,7 @@ export const SectionGeneral = ({
         </FormRow>
       </FormSection>
       <FormActions>
-        <Button onClick={onNext} size="small" variant="success">
+        <Button onClick={onNext} size="small" type="button" variant="success">
           <span>{translate(STRING.NEXT)}</span>
         </Button>
       </FormActions>
