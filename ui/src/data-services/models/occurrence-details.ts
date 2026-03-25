@@ -56,7 +56,8 @@ export class OccurrenceDetails extends Occurrence {
       .map((i: any) => {
         const taxon = new Taxon(i.taxon)
         const overridden = i.withdrawn
-        const applied = !!this.determinationTaxon && taxon.id === this.determinationTaxon.id
+        const applied =
+          !!this.determinationTaxon && taxon.id === this.determinationTaxon.id
 
         const identification: HumanIdentification = {
           id: `${i.id}`,
@@ -82,8 +83,10 @@ export class OccurrenceDetails extends Occurrence {
       .sort(sortByDate)
       .map((p: any) => {
         const taxon = new Taxon(p.taxon)
-        const overridden = !this.determinationTaxon || taxon.id !== this.determinationTaxon.id
-        const applied = !!this.determinationTaxon && taxon.id === this.determinationTaxon.id
+        const overridden =
+          !this.determinationTaxon || taxon.id !== this.determinationTaxon.id
+        const applied =
+          !!this.determinationTaxon && taxon.id === this.determinationTaxon.id
 
         const prediction: MachinePrediction = {
           id: `${p.id}`,
@@ -123,7 +126,7 @@ export class OccurrenceDetails extends Occurrence {
 
   getDetectionInfo(id: string) {
     const detection = this._occurrence.detections.find(
-      (d: any) => `${d.id}` === id
+      (d: any) => `${d.id}` === id,
     )
 
     const classification = detection?.classifications?.[0]
@@ -131,7 +134,7 @@ export class OccurrenceDetails extends Occurrence {
 
     if (classification) {
       label = `${classification.taxon.name} (${classification.score.toFixed(
-        2
+        2,
       )})`
     }
 

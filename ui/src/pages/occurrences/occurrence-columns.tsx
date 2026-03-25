@@ -22,10 +22,10 @@ import styles from './occurrences.module.scss'
 
 export const columns: (
   projectId: string,
-  showQuickActions?: boolean
+  showQuickActions?: boolean,
 ) => TableColumn<Occurrence>[] = (
   projectId: string,
-  showQuickActions?: boolean
+  showQuickActions?: boolean,
 ) => [
   {
     id: 'snapshots',
@@ -198,7 +198,9 @@ const TaxonCell = ({
             {item.determinationTaxon ? (
               <TaxonDetails compact taxon={item.determinationTaxon} />
             ) : (
-              <span className="body-base text-muted">{translate(STRING.UNKNOWN)}</span>
+              <span className="body-base text-muted">
+                {translate(STRING.UNKNOWN)}
+              </span>
             )}
           </Link>
           {showQuickActions && canUpdate && item.determinationTaxon && (
