@@ -475,9 +475,28 @@ class Command(BaseCommand):
         self.log(f"\n{'─' * 60}")
         self.log("  UPDATING CACHED FIELDS")
         self.log(f"{'─' * 60}")
+
+        # Update deployment cached counts
         for dep in Deployment.objects.filter(pk__in=deployment_ids):
             dep.update_calculated_fields(save=True)
-            self.log(f"  Updated cached fields for {dep.name} (id={dep.pk})")
+            self.log(f"  Deployment '{dep.name}' (id={dep.pk}): cached fields updated")
+
+        # Update event cached counts for moved events
+        from ami.main.models import update_calculated_fields_for_events
+
+        moved_event_pks = list(Event.objects.filter(deployment_id__in=deployment_ids).values_list("pk", flat=True))
+        if moved_event_pks:
+            update_calculated_fields_for_events(pks=moved_event_pks)
+            self.log(f"  Updated cached fields for {len(moved_event_pks)} events")
+
+        # Update both projects' related calculated fields (events + deployments)
+        self.log(f"  Updating source project cached fields...")
+        source_project.update_related_calculated_fields()
+        self.log(f"  Source project '{source_project.name}': related fields updated")
+
+        self.log(f"  Updating target project cached fields...")
+        target_project.update_related_calculated_fields()
+        self.log(f"  Target project (id={target_id}): related fields updated")
 
         # --- Post-move: per-deployment after snapshot ---
         self.log(f"\n{'─' * 60}")
