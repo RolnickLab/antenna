@@ -89,10 +89,10 @@ export const CaptureNavigation = ({
     <div className={styles.wrapper}>
       <Button
         aria-label={translate(STRING.PREVIOUS)}
+        className="!bg-neutral-700 text-neutral-200"
         disabled={!activeCapture?.prevCaptureId}
         onClick={goToPrev}
         size="icon"
-        variant="outline"
       >
         <ChevronLeftIcon className="w-4 h-4" />
       </Button>
@@ -103,10 +103,10 @@ export const CaptureNavigation = ({
       )}
       <Button
         aria-label={translate(STRING.NEXT)}
+        className="!bg-neutral-700 text-neutral-200"
         disabled={!activeCapture?.nextCaptureId}
         onClick={goToNext}
         size="icon"
-        variant="outline"
       >
         <ChevronRightIcon className="w-4 h-4" />
       </Button>

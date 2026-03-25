@@ -87,7 +87,12 @@ export const Playback = ({
                 onCheckedChange={setDefaultFilters}
                 theme={CheckboxTheme.Neutral}
               />
-              {project ? <DefaultFiltersPopover project={project} /> : null}
+              {project ? (
+                <DefaultFiltersPopover
+                  className="text-neutral-200 hover:bg-transparent"
+                  project={project}
+                />
+              ) : null}
             </div>
             <Checkbox
               id="snap-to-detections"

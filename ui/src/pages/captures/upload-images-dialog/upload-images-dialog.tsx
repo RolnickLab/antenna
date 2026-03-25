@@ -316,7 +316,7 @@ const SectionUpload = ({
         <span>{translate(STRING.BACK)}</span>
       </Button>
       <Button
-        disabled={!(deployment && images.length)}
+        disabled={isLoading || !(deployment && images.length)}
         onClick={onSubmit}
         size="small"
         variant="success"
