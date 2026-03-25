@@ -21,7 +21,7 @@ export const DeterminationScore = ({
     <BasicTooltip content={tooltip}>
       <div className="flex items-center gap-3">
         <IdentificationScore confirmed={confirmed} confidenceScore={score} />
-        <span>{scoreLabel}</span>
+        <span>{confirmed ? translate(STRING.CONFIRMED) : scoreLabel}</span>
       </div>
     </BasicTooltip>
   )
