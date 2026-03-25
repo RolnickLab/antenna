@@ -4,6 +4,7 @@ import { ChevronLeftIcon, ChevronRightIcon, ImageIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { STRING, translate } from 'utils/language'
 import { getTotalLabel } from 'utils/numberFormats'
 import styles from './image-carousel.module.scss'
 import { CarouselTheme } from './types'
@@ -172,6 +173,7 @@ const MultiImageCarousel = ({
           })}
         >
           <Button
+            aria-label={translate(STRING.PREVIOUS)}
             onClick={() => showPrev(slideIndex)}
             size="icon"
             variant="success"
@@ -216,6 +218,7 @@ const MultiImageCarousel = ({
           })}
         >
           <Button
+            aria-label={translate(STRING.NEXT)}
             onClick={() => showNext(slideIndex)}
             size="icon"
             variant="success"

@@ -26,7 +26,12 @@ export const DeleteEntityDialog = ({
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
       <Dialog.Trigger asChild>
-        <Button className="shrink-0" size="icon" variant="ghost">
+        <Button
+          aria-label={translate(STRING.DELETE)}
+          className="shrink-0"
+          size="icon"
+          variant="ghost"
+        >
           <TrashIcon className="w-4 h-4" />
         </Button>
       </Dialog.Trigger>

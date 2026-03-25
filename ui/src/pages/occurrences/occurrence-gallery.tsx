@@ -125,6 +125,7 @@ export const OccurrenceGallery = ({
                     )}
                   >
                     <Button
+                      aria-label={translate(STRING.SELECT)}
                       className={classNames('hover:text-opacity-100', {
                         'text-opacity-0': !checked,
                         'group-hover:text-opacity-100': isSelecting,

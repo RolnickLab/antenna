@@ -3,6 +3,7 @@ import { Button } from 'nova-ui-kit'
 import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
+import { STRING, translate } from 'utils/language'
 import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 import styles from './terms-of-service-info.module.scss'
 
@@ -28,6 +29,7 @@ export const TermsOfServiceInfo = () => {
       </p>
       <div className={styles.iconContainer}>
         <Button
+          aria-label={translate(STRING.CLOSE)}
           onClick={() =>
             setUserPreferences({ ...userPreferences, termsMessageSeen: true })
           }

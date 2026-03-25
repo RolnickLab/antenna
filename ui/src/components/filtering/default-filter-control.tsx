@@ -55,7 +55,12 @@ export const DefaultFiltersPopover = ({
 }) => (
   <Popover.Root>
     <Popover.Trigger asChild>
-      <Button className={className} size="icon" variant="ghost">
+      <Button
+        aria-label={translate(STRING.INFO)}
+        className={className}
+        size="icon"
+        variant="ghost"
+      >
         <InfoIcon className="w-4 h-4" />
       </Button>
     </Popover.Trigger>

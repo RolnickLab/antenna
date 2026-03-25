@@ -3,6 +3,7 @@ import { TimelineTick } from 'data-services/models/timeline-tick'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { useEffect, useState } from 'react'
+import { STRING, translate } from 'utils/language'
 import { findClosestCaptureId } from '../utils'
 import styles from './capture-navigation.module.scss'
 
@@ -87,6 +88,7 @@ export const CaptureNavigation = ({
   return (
     <div className={styles.wrapper}>
       <Button
+        aria-label={translate(STRING.PREVIOUS)}
         disabled={!activeCapture?.prevCaptureId}
         onClick={goToPrev}
         size="icon"
@@ -100,6 +102,7 @@ export const CaptureNavigation = ({
         </span>
       )}
       <Button
+        aria-label={translate(STRING.NEXT)}
         disabled={!activeCapture?.nextCaptureId}
         onClick={goToNext}
         size="icon"

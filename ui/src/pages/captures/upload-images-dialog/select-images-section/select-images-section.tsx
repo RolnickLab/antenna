@@ -47,6 +47,7 @@ export const SelectImagesSection = ({
             </div>
             <div className={styles.cancelContainer}>
               <Button
+                aria-label={translate(STRING.CLEAR)}
                 onClick={() =>
                   setImages(
                     images.filter((image) => image.file.name !== file.name)
@@ -68,7 +69,12 @@ export const SelectImagesSection = ({
               multiple
               name="select-captures"
               renderInput={({ onClick }) => (
-                <Button onClick={onClick} size="icon" variant="success">
+                <Button
+                  aria-label={translate(STRING.ADD)}
+                  onClick={onClick}
+                  size="icon"
+                  variant="success"
+                >
                   <PlusIcon className="w-4 h-4" />
                 </Button>
               )}

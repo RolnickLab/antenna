@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
+import { STRING, translate } from 'utils/language'
 import { getPageWindow } from './getPageWindow'
 import { InfoLabel } from './info-label/info-label'
 import { PageButton } from './page-button/page-button'
@@ -39,6 +40,7 @@ export const PaginationBar = ({
       <InfoLabel pagination={pagination} total={total} />
       <div className={styles.pageSettings}>
         <Button
+          aria-label={translate(STRING.PREVIOUS)}
           disabled={currentPage <= firstPage}
           onClick={() => setPage(currentPage - 1)}
           size="icon"
@@ -73,6 +75,7 @@ export const PaginationBar = ({
           )}
         </div>
         <Button
+          aria-label={translate(STRING.NEXT)}
           disabled={currentPage >= lastPage}
           onClick={() => setPage(currentPage + 1)}
           size="icon"

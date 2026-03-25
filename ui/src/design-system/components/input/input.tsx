@@ -200,6 +200,7 @@ export const LockedInput = ({
   <div className={styles.lockedInputContainer}>
     <div className={styles.editButtonContainer}>
       <Button
+        aria-label={editing ? translate(STRING.CANCEL) : translate(STRING.EDIT)}
         onClick={() => {
           if (editing) {
             setEditing(false)
@@ -220,6 +221,7 @@ export const LockedInput = ({
       </Button>
       {editing && (
         <Button
+          aria-label={translate(STRING.CONFIRM)}
           onClick={() => {
             setEditing(false)
             onSubmit()
@@ -250,6 +252,7 @@ export const EditableInput = ({
     <div className={styles.editButtonContainer}>
       {!editing && (
         <Button
+          aria-label={translate(STRING.EDIT)}
           onClick={() => onEdit()}
           size="icon"
           type="button"
