@@ -136,20 +136,26 @@ export const OccurrenceDetails = ({
         <meta name="og:image" content={occurrence.images[0]?.src} />
       </Helmet>
       <div className={styles.header}>
-        <TaxonDetails
-          onTaxonClick={(id) =>
-            navigate(
-              getAppRoute({
-                to: APP_ROUTES.TAXON_DETAILS({
-                  projectId: projectId as string,
-                  taxonId: id,
-                }),
-              })
-            )
-          }
-          size="lg"
-          taxon={occurrence.determinationTaxon}
-        />
+        {occurrence.determinationTaxon ? (
+          <TaxonDetails
+            onTaxonClick={(id) =>
+              navigate(
+                getAppRoute({
+                  to: APP_ROUTES.TAXON_DETAILS({
+                    projectId: projectId as string,
+                    taxonId: id,
+                  }),
+                })
+              )
+            }
+            size="lg"
+            taxon={occurrence.determinationTaxon}
+          />
+        ) : (
+          <span className="body-lg font-medium text-muted">
+            {translate(STRING.UNKNOWN)}
+          </span>
+        )}
         <div className={styles.taxonActions}>
           {occurrence.determinationScore !== undefined ? (
             <BasicTooltip
@@ -169,7 +175,7 @@ export const OccurrenceDetails = ({
               />
             </BasicTooltip>
           ) : null}
-          {canUpdate && (
+          {canUpdate && occurrence.determinationTaxon && (
             <>
               <Agree
                 agreed={userInfo ? occurrence.userAgreed(userInfo.id) : false}

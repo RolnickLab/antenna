@@ -19,10 +19,10 @@ import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
 import { useUserInfo } from 'utils/user/userInfoContext'
 
-export const isGenusOrBelow = (taxon: Taxon) =>
-  taxon.rank === 'GENUS' ||
-  taxon.rank === 'SPECIES' ||
-  taxon.rank === 'SUBSPECIES'
+export const isGenusOrBelow = (taxon?: Taxon) =>
+  taxon?.rank === 'GENUS' ||
+  taxon?.rank === 'SPECIES' ||
+  taxon?.rank === 'SUBSPECIES'
 
 export const OccurrenceGallery = ({
   error,
@@ -150,7 +150,8 @@ export const OccurrenceGallery = ({
                         }
                       )}
                     >
-                      {item.determinationTaxon.name}
+                      {item.determinationTaxon?.name ??
+                        translate(STRING.UNKNOWN)}
                     </span>
                   </Link>
                 </div>
@@ -173,7 +174,7 @@ export const OccurrenceGallery = ({
                       />
                     </BasicTooltip>
                   ) : null}
-                  {!isSelecting && canUpdate && (
+                  {!isSelecting && canUpdate && item.determinationTaxon && (
                     <>
                       <Agree
                         agreed={agreed}

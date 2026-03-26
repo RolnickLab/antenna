@@ -196,9 +196,15 @@ const TaxonCell = ({
       <BasicTableCell style={{ minWidth: '320px' }}>
         <div className={styles.taxonCellContent}>
           <Link to={detailsRoute}>
-            <TaxonDetails compact taxon={item.determinationTaxon} />
+            {item.determinationTaxon ? (
+              <TaxonDetails compact taxon={item.determinationTaxon} />
+            ) : (
+              <span className="body-base text-muted">
+                {translate(STRING.UNKNOWN)}
+              </span>
+            )}
           </Link>
-          {showQuickActions && canUpdate && (
+          {showQuickActions && canUpdate && item.determinationTaxon && (
             <div className={styles.taxonActions}>
               <Agree
                 agreed={agreed}

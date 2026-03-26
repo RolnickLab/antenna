@@ -1,6 +1,7 @@
 import { IdentificationFieldValues } from 'data-services/hooks/identifications/types'
 import { useCreateIdentifications } from 'data-services/hooks/identifications/useCreateIdentifications'
 import { Occurrence } from 'data-services/models/occurrence'
+import { Taxon } from 'data-services/models/taxa'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { AlertCircleIcon, CheckIcon, Loader2Icon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
@@ -40,9 +41,9 @@ export const OccurrenceActions = ({
       />
       <IdQuickActions
         occurrenceIds={occurrences.map((occurrence) => occurrence.id)}
-        occurrenceTaxa={occurrences.map(
-          (occurrence) => occurrence.determinationTaxon
-        )}
+        occurrenceTaxa={occurrences
+          .map((occurrence) => occurrence.determinationTaxon)
+          .filter((taxon): taxon is Taxon => !!taxon)}
       />
     </div>
   )
@@ -69,13 +70,14 @@ const Agree = ({
 
           return !agreed
         })
+        .filter((occurrence) => !!occurrence.determinationTaxon)
         .map((occurrence) => ({
           agreeWith: {
             identificationId: occurrence.determinationIdentificationId,
             predictionId: occurrence.determinationPredictionId,
           },
           occurrenceId: occurrence.id,
-          taxonId: occurrence.determinationTaxon.id,
+          taxonId: occurrence.determinationTaxon!.id,
         })),
     [occurrences]
   )
