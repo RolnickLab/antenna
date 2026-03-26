@@ -9,7 +9,6 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { PipelineAlgorithms } from './pipeline-algorithms'
-import { PipelineStages } from './pipeline-stages'
 import styles from './styles.module.scss'
 
 export const PipelineDetailsDialog = ({ id }: { id: string }) => {
@@ -83,11 +82,6 @@ const PipelineDetailsContent = ({ pipeline }: { pipeline: Pipeline }) => (
         />
       </FormRow>
     </FormSection>
-    {pipeline.stages.length > 0 && (
-      <FormSection title={translate(STRING.STAGES)}>
-        <PipelineStages pipeline={pipeline} />
-      </FormSection>
-    )}
     {pipeline.algorithms.length > 0 && (
       <FormSection title={translate(STRING.ALGORITHMS)}>
         <div className={styles.tableContainer}>
