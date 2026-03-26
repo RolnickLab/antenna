@@ -14,6 +14,7 @@ import {
 import { Link } from 'react-router-dom'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
+import { InfoTooltip } from '../info-tooltip'
 import { BasicTooltip } from '../tooltip/basic-tooltip'
 import styles from './input.module.scss'
 
@@ -121,10 +122,18 @@ export const InputValue = ({
   label,
   value,
   to,
+  tooltip,
 }: {
   label: string
   value?: string | number | Date
   to?: string
+  tooltip?: {
+    text: string
+    link?: {
+      text: string
+      to: string
+    }
+  }
 }) => {
   const valueLabel = useMemo(() => {
     if (value === undefined || value === '') {
@@ -143,7 +152,7 @@ export const InputValue = ({
   }, [value])
 
   return (
-    <InputContent label={label}>
+    <InputContent label={label} tooltip={tooltip}>
       {to ? (
         <Link to={to} className="body-small text-primary font-semibold">
           {valueLabel}
@@ -156,17 +165,25 @@ export const InputValue = ({
 }
 
 export const InputContent = ({
+  children,
   description,
   error,
   label,
   style,
-  children,
+  tooltip,
 }: {
+  children?: ReactNode
   description?: string
   error?: string
   label: string
   style?: CSSProperties
-  children?: ReactNode
+  tooltip?: {
+    text: string
+    link?: {
+      text: string
+      to: string
+    }
+  }
 }) => {
   const hasError = !!error?.length
   const hasDescription = !!description?.length
@@ -174,7 +191,10 @@ export const InputContent = ({
   return (
     <div className={styles.container} style={style}>
       <div className={styles.labelRow}>
-        <span className="body-small font-semibold">{label}</span>
+        <div className="flex items-center gap-1">
+          <span className="pt-0.5 body-small font-semibold">{label}</span>
+          {tooltip ? <InfoTooltip {...tooltip} /> : null}
+        </div>
         {hasError ? <span className={styles.error}>{error}</span> : undefined}
       </div>
       <div className={styles.content}>{children}</div>
