@@ -1,4 +1,3 @@
-import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { Entity } from './entity'
 import { Pipeline, ServerPipeline } from './pipeline'
 
@@ -38,12 +37,6 @@ export class ProcessingService extends Entity {
     return this._pipelines
   }
 
-  get createdAt(): string {
-    return getFormatedDateTimeString({
-      date: new Date(this._processingService.created_at),
-    })
-  }
-
   get id(): string {
     return `${this._processingService.id}`
   }
@@ -65,24 +58,11 @@ export class ProcessingService extends Entity {
     return `${this._processingService.description}`
   }
 
-  get updatedAt(): string | undefined {
-    if (!this._processingService.updated_at) {
-      return undefined
-    }
-
-    return getFormatedDateTimeString({
-      date: new Date(this._processingService.updated_at),
-    })
-  }
-
-  get lastSeen(): string | undefined {
+  get lastSeen(): Date | undefined {
     if (!this._processingService.last_seen) {
       return undefined
     }
-
-    return getFormatedDateTimeString({
-      date: new Date(this._processingService.last_seen),
-    })
+    return new Date(this._processingService.last_seen)
   }
 
   get lastSeenLive(): boolean {
