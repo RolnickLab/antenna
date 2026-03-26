@@ -645,7 +645,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NEW_ID]: 'New ID',
   [STRING.NOT_CONNECTED]: 'Not connected',
   [STRING.NOT_VERIFIED]: 'Not verified',
-  [STRING.VIEW]: 'View in context',
+  [STRING.VIEW]: 'View',
   [STRING.VIEW_IN_CONTEXT]: 'View in context',
   [STRING.OR]: 'Or',
   [STRING.PIPELINES]: 'Pipelines',
