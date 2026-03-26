@@ -57,14 +57,14 @@ const PipelineDetailsContent = ({ pipeline }: { pipeline: Pipeline }) => (
           value={pipeline.id}
         />
         <InputValue
-          label={translate(STRING.FIELD_LABEL_NAME)}
-          value={pipeline.name}
+          label={translate(STRING.FIELD_LABEL_VERSION)}
+          value={pipeline.versionLabel}
         />
       </FormRow>
       <FormRow>
         <InputValue
-          label={translate(STRING.FIELD_LABEL_VERSION)}
-          value={pipeline.versionLabel}
+          label={translate(STRING.FIELD_LABEL_NAME)}
+          value={pipeline.name}
         />
         <InputValue
           label={translate(STRING.FIELD_LABEL_DESCRIPTION)}

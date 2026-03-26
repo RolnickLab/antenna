@@ -69,22 +69,27 @@ const ProcessingServiceDetailsContent = ({
           label={translate(STRING.FIELD_LABEL_ID)}
           value={processingService.id}
         />
+      </FormRow>
+      <FormRow>
         <InputValue
           label={translate(STRING.FIELD_LABEL_NAME)}
           value={processingService.name}
         />
-      </FormRow>
-      <FormRow>
         <InputValue
           label={translate(STRING.FIELD_LABEL_DESCRIPTION)}
           value={processingService.description}
         />
+      </FormRow>
+      <FormRow>
         <InputValue
-          label={translate(STRING.FIELD_LABEL_LAST_CHECKED)}
-          value={processingService.lastChecked}
+          label={translate(STRING.FIELD_LABEL_ENDPOINT)}
+          value={processingService.endpointUrl}
+        />
+        <InputValue
+          label={translate(STRING.FIELD_LABEL_NUM_PIPELINES_REGISTERED)}
+          value={processingService.numPiplinesAdded}
         />
       </FormRow>
-
       <FormRow>
         <InputValue
           label={translate(STRING.FIELD_LABEL_CREATED_AT)}

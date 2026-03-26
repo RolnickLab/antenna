@@ -41,14 +41,6 @@ export const columns: (
     ),
   },
   {
-    id: 'endpoint',
-    name: translate(STRING.FIELD_LABEL_ENDPOINT),
-    sortField: 'endpoint',
-    renderCell: (item: ProcessingService) => (
-      <BasicTableCell value={item.endpointUrl} />
-    ),
-  },
-  {
     id: 'status',
     name: 'Status',
     renderCell: (item: ProcessingService) => (
@@ -62,7 +54,6 @@ export const columns: (
   {
     id: 'num-pipelines-added',
     name: translate(STRING.FIELD_LABEL_NUM_PIPELINES_REGISTERED),
-    sortField: 'num_PIPELINES_REGISTERED',
     renderCell: (item: ProcessingService) => (
       <BasicTableCell value={item.numPiplinesAdded} />
     ),
