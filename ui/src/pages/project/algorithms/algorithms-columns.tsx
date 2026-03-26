@@ -34,6 +34,16 @@ export const columns: (projectId: string) => TableColumn<Algorithm>[] = (
     renderCell: (item: Algorithm) => <BasicTableCell value={item.taskType} />,
   },
   {
+    id: 'description',
+    name: translate(STRING.FIELD_LABEL_DESCRIPTION),
+    renderCell: (item: Algorithm) => (
+      <BasicTableCell
+        style={{ width: '320px', whiteSpace: 'normal' }}
+        value={item.description}
+      />
+    ),
+  },
+  {
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
