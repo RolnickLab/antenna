@@ -47,12 +47,12 @@ export const Deployments = () => {
         isFetching={isFetching}
         tooltip={translate(STRING.TOOLTIP_DEPLOYMENT)}
       >
+        {canCreate ? <NewDeploymentDialog /> : null}
         <SortControl
           columns={columns(projectId as string)}
           setSort={setSort}
           sort={sort}
         />
-        {canCreate ? <NewDeploymentDialog /> : null}
         <ColumnSettings
           columns={columns(projectId as string)}
           columnSettings={columnSettings}

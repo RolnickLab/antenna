@@ -59,6 +59,9 @@ export const TaxaListDetails = () => {
         })}
         title={taxaList?.name ?? `${translate(STRING.LOADING_DATA)}...`}
       >
+        {taxaList?.canUpdate ? (
+          <AddTaxaListTaxonPopover taxaListId={id as string} />
+        ) : null}
         <SortControl
           columns={columns({
             canUpdate: taxaList?.canUpdate,
@@ -68,9 +71,6 @@ export const TaxaListDetails = () => {
           setSort={setSort}
           sort={sort}
         />
-        {taxaList?.canUpdate ? (
-          <AddTaxaListTaxonPopover taxaListId={id as string} />
-        ) : null}
       </PageHeader>
       <Table
         columns={columns({

@@ -144,11 +144,6 @@ export const Occurrences = () => {
               value={selectedView}
               onValueChange={setSelectedView}
             />
-            <SortControl
-              columns={columns(projectId as string)}
-              setSort={setSort}
-              sort={sort}
-            />
             <Link
               className={buttonVariants({ size: 'small', variant: 'outline' })}
               to={APP_ROUTES.EXPORTS({ projectId: projectId as string })}
@@ -156,6 +151,11 @@ export const Occurrences = () => {
               <DownloadIcon className="w-4 h-4" />
               <span>Export </span>
             </Link>
+            <SortControl
+              columns={columns(projectId as string)}
+              setSort={setSort}
+              sort={sort}
+            />
             <ColumnSettings
               columns={columns(projectId as string)}
               columnSettings={columnSettings}

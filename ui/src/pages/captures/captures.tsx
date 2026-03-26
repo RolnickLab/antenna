@@ -89,17 +89,17 @@ export const Captures = () => {
             value={selectedView}
             onValueChange={setSelectedView}
           />
-          <SortControl
-            columns={columns(projectId as string)}
-            setSort={setSort}
-            sort={sort}
-          />
           {showUpload ? (
             <UploadImagesDialog
               isOpen={isUploadOpen}
               setIsOpen={setIsUploadOpen}
             />
           ) : null}
+          <SortControl
+            columns={columns(projectId as string)}
+            setSort={setSort}
+            sort={sort}
+          />
           <ColumnSettings
             columns={columns(projectId as string)}
             columnSettings={columnSettings}

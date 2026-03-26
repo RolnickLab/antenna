@@ -35,11 +35,6 @@ export const TaxaLists = () => {
         isLoading={isLoading}
         isFetching={isFetching}
       >
-        <SortControl
-          columns={columns(projectId as string)}
-          setSort={setSort}
-          sort={sort}
-        />
         {canCreate && (
           <NewEntityDialog
             collection={API_ROUTES.TAXA_LISTS}
@@ -47,6 +42,11 @@ export const TaxaLists = () => {
             type={translate(STRING.ENTITY_TYPE_TAXA_LIST)}
           />
         )}
+        <SortControl
+          columns={columns(projectId as string)}
+          setSort={setSort}
+          sort={sort}
+        />
       </PageHeader>
       <Table
         columns={columns(projectId as string)}
