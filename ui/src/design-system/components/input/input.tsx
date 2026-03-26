@@ -57,7 +57,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className={styles.container}>
         <div className={styles.labelRow}>
-          <label className={styles.label} htmlFor={name}>
+          <label className="body-small font-semibold" htmlFor={name}>
             {label}
           </label>
           {hasError ? (
@@ -145,7 +145,7 @@ export const InputValue = ({
   return (
     <InputContent label={label}>
       {to ? (
-        <Link to={to} className={classNames(styles.value, styles.link)}>
+        <Link to={to} className="body-small text-primary font-semibold">
           {valueLabel}
         </Link>
       ) : (
@@ -174,7 +174,7 @@ export const InputContent = ({
   return (
     <div className={styles.container} style={style}>
       <div className={styles.labelRow}>
-        <span className={styles.label}>{label}</span>
+        <span className="body-small font-semibold">{label}</span>
         {hasError ? <span className={styles.error}>{error}</span> : undefined}
       </div>
       <div className={styles.content}>{children}</div>

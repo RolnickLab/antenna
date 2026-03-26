@@ -1,7 +1,6 @@
-import classNames from 'classnames'
-import { ChevronRightIcon, InfoIcon, XIcon } from 'lucide-react'
-import { Button, buttonVariants, Tooltip } from 'nova-ui-kit'
-import { Link } from 'react-router-dom'
+import { InfoTooltip } from 'design-system/components/info-tooltip'
+import { XIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
 import { AlgorithmFilter, NotAlgorithmFilter } from './filters/algorithm-filter'
@@ -79,7 +78,7 @@ export const FilterControl = ({
         <span className="text-muted-foreground body-overline-small font-bold pt-0.5">
           {filter.label}
         </span>
-        {filter.info ? <FilterInfo info={filter.info} /> : null}
+        {filter.tooltip ? <InfoTooltip {...filter.tooltip} /> : null}
       </div>
       <div className="flex items-center justify-between gap-2">
         <FilterComponent
@@ -109,42 +108,3 @@ export const FilterControl = ({
     </div>
   )
 }
-
-export const FilterInfo = ({
-  info,
-}: {
-  info: {
-    title: string
-    text: string
-    to?: string
-  }
-}) => (
-  <Tooltip.Provider delayDuration={0}>
-    <Tooltip.Root>
-      <Tooltip.Trigger asChild>
-        <Button aria-label={translate(STRING.INFO)} size="icon" variant="ghost">
-          <InfoIcon className="w-4 h-4" />
-        </Button>
-      </Tooltip.Trigger>
-      <Tooltip.Content
-        side="bottom"
-        className="flex flex-col gap-4 p-4 max-w-xs"
-      >
-        <p className="whitespace-normal">{info.text}</p>
-        {info.to ? (
-          <Link
-            aria-label=""
-            className={classNames(
-              buttonVariants({ size: 'small', variant: 'ghost' }),
-              'self-end'
-            )}
-            to={info.to}
-          >
-            <span>{info.title}</span>
-            <ChevronRightIcon className="w-4 h-4" />
-          </Link>
-        ) : null}
-      </Tooltip.Content>
-    </Tooltip.Root>
-  </Tooltip.Provider>
-)
