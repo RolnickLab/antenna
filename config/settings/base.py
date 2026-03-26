@@ -334,9 +334,11 @@ CELERY_RESULT_BACKEND = CELERY_RESULT_BACKEND_URL or "rpc://"
 # Stores full task args/kwargs/name in the result backend alongside status.
 # Useful for: inspecting task arguments in Flower, debugging failed tasks,
 # post-hoc analysis of what data a task received.
-# Cost: ~19KB per result key (vs ~200B without) because process_nats_pipeline_result
-# receives the full ML result JSON as args. With thousands of tasks per job this
-# adds significant memory pressure on the result backend.
+# Cost: result keys are large because process_nats_pipeline_result receives the
+# full ML result JSON as args. Measured on demo (298 keys, 2026-03-26):
+#   Median: 5 KB, Avg: 191 KB, Max: 2.1 MB per key
+#   Distribution: 29 <1KB, 195 1-10KB, 52 100KB-1MB, 22 >1MB
+# With thousands of tasks per job, this adds significant memory pressure.
 # TODO: consider disabling this or setting ignore_result=True on bulk tasks
 # like process_nats_pipeline_result to reduce result backend load. See #1189.
 CELERY_RESULT_EXTENDED = True
@@ -345,6 +347,10 @@ CELERY_RESULT_EXTENDED = True
 CELERY_RESULT_BACKEND_ALWAYS_RETRY = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-backend-max-retries
 CELERY_RESULT_BACKEND_MAX_RETRIES = 10
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-result_expires
+# Auto-expire task results after 72 hours. Keeps results available for inspection
+# and troubleshooting while preventing unbounded growth. Override via env var (seconds).
+CELERY_RESULT_EXPIRES = int(env("CELERY_RESULT_EXPIRES", default="259200"))  # type: ignore[no-untyped-call]
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-accept_content
 CELERY_ACCEPT_CONTENT = ["json"]
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-task_serializer

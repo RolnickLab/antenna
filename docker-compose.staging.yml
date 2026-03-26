@@ -70,14 +70,11 @@ services:
     volumes:
       - ./data/flower/:/data/
 
-  # Redis DB layout:
-  #   DB 0: Django cache (disposable, allkeys-lru eviction)
-  #   DB 1: Celery task result metadata (TTL-based, CELERY_RESULT_EXPIRES)
-  # TODO: consider separate instances with different eviction policies:
-  #   allkeys-lru for cache, volatile-ttl for results. See issue #1189.
   redis:
     image: redis:6
-    command: redis-server --maxmemory 8gb --maxmemory-policy allkeys-lru
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - ./compose/staging/redis.conf:/usr/local/etc/redis/redis.conf:ro
     restart: always
 
   rabbitmq:
