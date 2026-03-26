@@ -1,10 +1,10 @@
 import classNames from 'classnames'
 import { LicenseInfo } from 'components/license-info/license-info'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
-import { EyeIcon } from 'lucide-react'
+import { ChevronRightIcon } from 'lucide-react'
 import { buttonVariants } from 'nova-ui-kit'
 import { ReactNode, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { STRING, translate } from 'utils/language'
 import styles from './blueprint-collection.module.scss'
 
 export interface BlueprintItem {
@@ -57,7 +57,7 @@ export const BlueprintItem = ({
           {item.timeLabel}
         </span>
       </div>
-      <div className={styles.blueprintImage}>
+      <div className="flex flex-col items-center gap-2">
         <img
           src={item.image.src}
           alt=""
@@ -71,27 +71,15 @@ export const BlueprintItem = ({
           }}
         />
         {item.to ? (
-          <BasicTooltip asChild content="Show in session capture">
-            <Link
-              to={item.to}
-              className={classNames(
-                buttonVariants({ size: 'icon', variant: 'outline' }),
-                'flex w-8 h-8 absolute right-2 bottom-2 invisible group-hover:visible'
-              )}
-            >
-              <EyeIcon className="w-4 h-4" />
-            </Link>
-          </BasicTooltip>
+          <Link
+            className={buttonVariants({ size: 'small', variant: 'ghost' })}
+            to={item.to}
+          >
+            <span>{translate(STRING.VIEW_IN_CONTEXT)}</span>
+            <ChevronRightIcon className="w-4 h-4" />
+          </Link>
         ) : null}
       </div>
-      <span
-        className={classNames(
-          styles.blueprintLabel,
-          'body-small text-foreground'
-        )}
-      >
-        {item.label}
-      </span>
     </div>
   )
 }

@@ -317,6 +317,8 @@ export enum STRING {
   VALUE_NOT_AVAILABLE,
   VERIFIED_BY,
   VERIFIED,
+  VIEW,
+  VIEW_IN_CONTEXT,
   YOU,
 }
 
@@ -643,6 +645,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NEW_ID]: 'New ID',
   [STRING.NOT_CONNECTED]: 'Not connected',
   [STRING.NOT_VERIFIED]: 'Not verified',
+  [STRING.VIEW]: 'View in context',
+  [STRING.VIEW_IN_CONTEXT]: 'View in context',
   [STRING.OR]: 'Or',
   [STRING.PIPELINES]: 'Pipelines',
   [STRING.RECENT]: 'Recent',

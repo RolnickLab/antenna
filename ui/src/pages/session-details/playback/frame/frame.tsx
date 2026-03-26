@@ -3,8 +3,8 @@ import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurre
 import { CaptureDetection } from 'data-services/models/capture'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
-import { InfoIcon } from 'lucide-react'
-import { Button, Tooltip } from 'nova-ui-kit'
+import { ExternalLinkIcon } from 'lucide-react'
+import { Tooltip } from 'nova-ui-kit'
 import {
   OccurrenceDetails,
   TABS,
@@ -239,26 +239,29 @@ const FrameDetections = ({
                   />
                 </Tooltip.Trigger>
                 <Tooltip.Content
-                  className="p-1 z-[1]"
+                  className="p-2 z-[1]"
                   collisionBoundary={containerRef?.current}
                   side="bottom"
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="pl-2 body-sm pt-0.5">
+                  <div className="flex flex-col gap-1">
+                    <span className="body-base font-medium">
                       {detection.label}
                     </span>
-                    <Button
-                      aria-label={translate(STRING.INFO)}
-                      className="h-8 w-8"
-                      disabled={!detection.occurrenceId}
-                      onClick={() =>
-                        setActiveOccurrence(detection.occurrenceId)
-                      }
-                      size="icon"
-                      variant="ghost"
-                    >
-                      <InfoIcon className="w-4 h-4" />
-                    </Button>
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="pt-0.5 body-small">
+                        ({detection.scoreLabel})
+                      </span>
+                      <button
+                        className="flex items-center gap-1 text-primary font-semibold"
+                        disabled={!detection.occurrenceId}
+                        onClick={() =>
+                          setActiveOccurrence(detection.occurrenceId)
+                        }
+                      >
+                        <span className="pt-0.5">{translate(STRING.VIEW)}</span>
+                        <ExternalLinkIcon className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </Tooltip.Content>
               </Tooltip.Root>
