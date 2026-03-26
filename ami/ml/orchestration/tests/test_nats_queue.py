@@ -1,11 +1,13 @@
 """Unit tests for TaskQueueManager."""
 
+import json
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import nats
+import nats.errors
 
-from ami.ml.orchestration.nats_queue import TaskQueueManager
+from ami.ml.orchestration.nats_queue import ADVISORY_STREAM_NAME, TaskQueueManager
 from ami.ml.schemas import PipelineProcessingTask
 
 
@@ -25,6 +27,7 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
         nc = MagicMock()
         nc.is_closed = False
         nc.close = AsyncMock()
+        nc.flush = AsyncMock()
 
         js = MagicMock()
         js.stream_info = AsyncMock()
@@ -60,7 +63,8 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
             async with TaskQueueManager() as manager:
                 await manager.publish_task(456, sample_task)
 
-                js.add_stream.assert_called_once()
+                # add_stream called twice: advisory stream in __aenter__ + job stream in _ensure_stream
+                self.assertEqual(js.add_stream.call_count, 2)
                 self.assertIn("job_456", str(js.add_stream.call_args))
                 js.add_consumer.assert_called_once()
 
@@ -153,7 +157,8 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
                 result = await manager.cleanup_job_resources(123)
 
                 self.assertTrue(result)
-                js.delete_consumer.assert_called_once()
+                # delete_consumer called twice: job consumer + DLQ advisory consumer
+                self.assertEqual(js.delete_consumer.call_count, 2)
                 js.delete_stream.assert_called_once()
 
     async def test_naming_conventions(self):
@@ -177,3 +182,56 @@ class TestTaskQueueManager(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaisesRegex(RuntimeError, "Connection is not open"):
             await manager.delete_stream(123)
+
+    async def test_get_dead_letter_image_ids_returns_image_ids(self):
+        """Test that advisory messages are resolved to image IDs correctly."""
+        nc, js = self._create_mock_nats_connection()
+        js.get_msg = AsyncMock()
+
+        def make_advisory(seq):
+            m = MagicMock()
+            m.data = json.dumps({"stream_seq": seq}).encode()
+            m.ack = AsyncMock()
+            return m
+
+        def make_job_msg(image_id):
+            m = MagicMock()
+            m.data = json.dumps({"image_id": image_id}).encode()
+            return m
+
+        advisories = [make_advisory(1), make_advisory(2)]
+        js.get_msg.side_effect = [make_job_msg("img-1"), make_job_msg("img-2")]
+
+        mock_psub = MagicMock()
+        mock_psub.fetch = AsyncMock(return_value=advisories)
+        mock_psub.unsubscribe = AsyncMock()
+        js.pull_subscribe = AsyncMock(return_value=mock_psub)
+
+        with patch("ami.ml.orchestration.nats_queue.get_connection", AsyncMock(return_value=(nc, js))):
+            async with TaskQueueManager() as manager:
+                result = await manager.get_dead_letter_image_ids(123, n=10)
+
+        self.assertEqual(result, ["img-1", "img-2"])
+        js.pull_subscribe.assert_called_once_with(
+            "$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.job_123.job-123-consumer",
+            durable="job-123-dlq",
+            stream=ADVISORY_STREAM_NAME,
+        )
+        mock_psub.fetch.assert_called_once_with(10, timeout=1.0)
+        mock_psub.unsubscribe.assert_called_once()
+
+    async def test_get_dead_letter_image_ids_no_messages(self):
+        """Test that a fetch timeout returns an empty list and still unsubscribes."""
+        nc, js = self._create_mock_nats_connection()
+
+        mock_psub = MagicMock()
+        mock_psub.fetch = AsyncMock(side_effect=nats.errors.TimeoutError)
+        mock_psub.unsubscribe = AsyncMock()
+        js.pull_subscribe = AsyncMock(return_value=mock_psub)
+
+        with patch("ami.ml.orchestration.nats_queue.get_connection", AsyncMock(return_value=(nc, js))):
+            async with TaskQueueManager() as manager:
+                result = await manager.get_dead_letter_image_ids(123)
+
+        self.assertEqual(result, [])
+        mock_psub.unsubscribe.assert_called_once()
