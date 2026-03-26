@@ -61,40 +61,42 @@ Integer PKs remain the primary key. This is deliberate:
 - `editable=False` — immutable once set
 - Backfill migration generates UUIDs for all existing rows
 
-### Models receiving UUID fields
+### Models receiving UUID fields, with known use cases
+
+Each model's UUID serves export/import portability. The table below documents additional known use cases beyond that baseline.
 
 **Project-scoped (included in project exports):**
 
-| Model | App | Has UUID today? |
-|---|---|---|
-| Organization (new) | main | New model |
-| Project | main | No → Add |
-| Deployment | main | No → Add |
-| Event | main | No → Add |
-| SourceImage | main | No → Add |
-| Detection | main | No → Add |
-| Classification | main | No → Add |
-| Occurrence | main | No → Add |
-| Identification | main | No → Add |
-| Device | main | No → Add |
-| Site | main | No → Add |
-| S3StorageSource | main | No → Add |
-| SourceImageCollection | main | No → Add |
-| Tag | main | No → Add |
-| TaxaList | main | No → Add |
-| Job | jobs | No → Add |
-| DataExport | exports | No → Add |
-| Pipeline | ml | No → Add |
-| Algorithm | ml | No → Add |
-| ProcessingService | ml | No → Add |
-| ProjectPipelineConfig | ml | No → Add |
+| Model | Known UUID use cases |
+|---|---|
+| **Organization** (new) | Namespace for projects across instances. Future: org-level API access, multi-tenant routing. |
+| **Project** | Cross-instance project identity. Enables "this is the same project on staging and prod" matching. Future: project-level API tokens scoped to UUID. |
+| **Deployment** | Deployment identity across instances and external systems. Deployments represent physical monitoring stations — the same station may be referenced in publications, field logs, and partner databases. A UUID gives it a stable external reference. Darwin Core: maps to `locationID`. |
+| **Event** | Temporal capture session identity. Darwin Core: maps to `eventID`. Events can be referenced in publications ("the June 14-15 2023 capture session at Kuujjuaq"). |
+| **SourceImage** | Image identity across instances. When the same S3 bucket is accessible from multiple Antenna instances, UUID prevents duplicate processing. Also useful for cross-referencing images in external annotation tools (Label Studio, CVAT). |
+| **Detection** | Detection identity for ML pipeline reproducibility. When comparing results across pipeline versions or instances, UUID lets you track "this exact bounding box crop" across systems. Crop images can be regenerated from `(source_image, bbox)` but the UUID tracks the detection record itself. |
+| **Classification** | Classification identity for audit trails. Each classification is an immutable record of "algorithm X said taxon Y with score Z for detection D." UUID enables cross-referencing classification provenance across instances. |
+| **Occurrence** | **Primary external-facing identifier.** Darwin Core: maps to `occurrenceID` — must be globally unique and persistent. Published to GBIF. Referenced in research papers, datasets, and partner databases. This is the most important UUID in the system. |
+| **Identification** | Human review audit trail. Darwin Core: maps to `identificationID`. Each identification records a human expert's taxonomic opinion. UUID enables tracking identification history across instance migrations. |
+| **Device** | Hardware identity. The same physical AMI trap may be deployed across projects and tracked across institutions. UUID lets you say "this is the same physical device" even when it moves between projects. |
+| **Site** | Research site identity. Same site may appear in multiple projects and external databases. Darwin Core: related to `locationID` and `locality`. |
+| **S3StorageSource** | Storage configuration identity. When migrating instances, the UUID confirms "this export references the same S3 bucket configuration." |
+| **SourceImageCollection** | Collection identity for reproducible subsets. Collections define curated image sets for specific processing jobs. UUID enables referencing "process this exact collection" across instances. |
+| **Tag** | Tag identity within a project. Tags are project-scoped labels applied to taxa. UUID ensures tag references survive export/import. |
+| **TaxaList** | Curated taxa list identity. TaxaLists are shared across projects and define taxa subsets for filtering. UUID enables consistent list references. |
+| **Job** | Job identity for audit and reproducibility. Historical record of "pipeline X was run on deployment Y at time Z." UUID enables cross-referencing job provenance across instances. |
+| **DataExport** | Export record identity. Less critical — primarily for audit trail of what was exported when. |
+| **Pipeline** | **Critical for ML service coordination.** Pipelines are currently matched between Antenna and external processing services by **slug** (`get_or_create(slug=results.pipeline)`). This creates collision risk: two different pipelines with the same slug (e.g., `panama_moths_2024`) on different processing services can clash, causing half of a job's images to be processed by the wrong pipeline. UUID provides unambiguous pipeline identity across Antenna instances and processing services. The slug remains the human-readable label; the UUID becomes the coordination identifier. |
+| **Algorithm** | **Critical for ML reproducibility.** Algorithms are currently matched by `(name, version)` from processing service `/info` responses. Same collision risk as pipelines — two different model checkpoints shipped as the same `(name, version)` by different services. UUID provides unambiguous algorithm identity for tracking which exact model produced which detections/classifications. Essential for scientific reproducibility. |
+| **ProcessingService** | Service endpoint identity. Less critical since services are instance-local, but UUID helps when migrating processing service configurations between instances. |
+| **ProjectPipelineConfig** | Through-model for Pipeline↔Project M2M. UUID useful for config identity in export/import. |
 
 **Shared/global (referenced in exports but not project-scoped):**
 
-| Model | App | Notes |
-|---|---|---|
-| Taxon | main | Shared across projects; matched by `name` on import |
-| User | users | Shared; matched by `email` on import |
+| Model | Known UUID use cases |
+|---|---|
+| **Taxon** | Taxonomy identity. Matched by `name` on import (taxa are shared across projects). UUID useful for Darwin Core `taxonID` and cross-referencing with external taxonomic databases. Note: taxonomy names can change (synonymization, reclassification), so `name` as natural key has known limitations. |
+| **User** | User identity. Matched by `email` on import. UUID useful for anonymized exports where email should not be exposed but user identity needs to be preserved. |
 
 ## 2. Organization Model
 
