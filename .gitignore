@@ -278,8 +278,12 @@ sandbox/
 flower
 antenna-flatbug/
 flat_bug_M.pt
+flat_bug_N.pt
 processing_services/example/flat_bug_M.pt
+processing_services/example/flat_bug_N.pt
 processing_services/example/huggingface_cache/
+processing_services/example/input_dir/
+processing_services/example/output_dir/
 
 # huggingface cache
 huggingface_cache/
