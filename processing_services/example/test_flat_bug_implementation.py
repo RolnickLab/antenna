@@ -36,7 +36,7 @@ def test_flat_bug_api():
 
         # Initialize predictor
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        predictor = Predictor(model="flat_bug_M.pt", device=device)
+        predictor = Predictor(model="flat_bug_N.pt", device=device)
         print(f"✓ Initialized Predictor with device: {device}")
 
         # Set hyperparameters - DISABLE timing to avoid CUDA event error on CPU
@@ -106,7 +106,7 @@ def show_installation_instructions():
     print("3. Make sure PyTorch is installed:")
     print("   pip install torch>=2.3")
     print()
-    print("4. The model 'flat_bug_M.pt' will be downloaded automatically")
+    print("4. The model 'flat_bug_N.pt' will be downloaded automatically")
     print("   on first use.")
     print()
 

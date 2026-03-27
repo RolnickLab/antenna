@@ -7,31 +7,35 @@ I've successfully implemented the `FlatBugObjectDetector` class to use the actua
 ## Key Changes Made
 
 ### 1. Updated `compile()` method
+
 - **Before**: Used `transformers.pipeline` with a placeholder checkpoint
-- **After**: Uses `flat_bug.predictor.Predictor` with the default model `'flat_bug_M.pt'`
+- **After**: Uses `flat_bug.predictor.Predictor` with the default model `'flat_bug_N.pt'`
 - The model will be automatically downloaded on first use
 - Added configurable hyperparameters (score threshold, IoU threshold, etc.)
 
 ### 2. Updated `run()` method
+
 - **Before**: Called `self.model(image, candidate_labels=...)`
 - **After**: Uses `self.model.pyramid_predictions(image)` which is the flat-bug API
 - Handles the `TensorPredictions` response format from flat-bug
 - Converts tensors to numpy arrays and extracts bounding boxes and scores
 
 ### 3. Updated description
+
 - Now accurately reflects that it uses the actual flat-bug library
 - Mentions specialization for terrestrial arthropod detection
 
 ## How It Works
 
 1. **Installation**: Flat-bug needs to be installed from source:
+
    ```bash
    git clone https://github.com/darsa-group/flat-bug.git
    cd flat-bug
    pip install -e .
    ```
 
-2. **Model Loading**: The `flat_bug_M.pt` model is downloaded automatically on first use
+2. **Model Loading**: The `flat_bug_N.pt` model is downloaded automatically on first use
 
 3. **Inference**: Uses flat-bug's pyramid tiling approach for detection on arbitrarily large images
 
@@ -50,6 +54,7 @@ pip install torch>=2.3
 ## Testing
 
 I've created `test_flat_bug_implementation.py` which you can run to:
+
 - Verify the flat-bug installation
 - Inspect the actual format of `TensorPredictions` objects
 - Confirm the attribute names and data structures

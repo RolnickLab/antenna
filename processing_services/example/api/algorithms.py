@@ -199,7 +199,7 @@ class FlatBugObjectDetector(Algorithm):
             logger.info(f"Compiling {self.algorithm_config_response.name} on device {device_choice}...")
 
             # Initialize flat-bug predictor with default model
-            self.model = Predictor(model="flat_bug_M.pt", device=device_choice)  # Default flat-bug model
+            self.model = Predictor(model="flat_bug_N.pt", device=device_choice)  # Default flat-bug model
 
             # Set some reasonable hyperparameters
             # TIME=False is critical to avoid CUDA event errors when running on CPU
