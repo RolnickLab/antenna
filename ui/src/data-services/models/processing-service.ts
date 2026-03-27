@@ -1,4 +1,3 @@
-import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { Entity } from './entity'
 import { Pipeline, ServerPipeline } from './pipeline'
 
@@ -7,6 +6,7 @@ export type ServerProcessingService = any // TODO: Update this type
 export const SERVER_PROCESSING_SERVICE_STATUS_CODES = [
   'OFFLINE',
   'ONLINE',
+  'UNKNOWN',
 ] as const
 
 export type ServerProcessingServiceStatusCode =
@@ -15,6 +15,7 @@ export type ServerProcessingServiceStatusCode =
 export enum ProcessingServiceStatusType {
   Success,
   Error,
+  Unknown,
 }
 
 export class ProcessingService extends Entity {
@@ -36,22 +37,36 @@ export class ProcessingService extends Entity {
     return this._pipelines
   }
 
-  get endpointUrl(): string {
-    return `${this._processingService.endpoint_url}`
+  get id(): string {
+    return `${this._processingService.id}`
   }
 
-  get lastChecked(): string | undefined {
-    if (!this._processingService.last_checked) {
+  get name(): string {
+    return `${this._processingService.name}`
+  }
+
+  get endpointUrl(): string | undefined {
+    const url = this._processingService.endpoint_url
+    return url && url.trim().length > 0 ? url : undefined
+  }
+
+  get isAsync(): boolean {
+    return this._processingService.is_async ?? false
+  }
+
+  get description(): string {
+    return `${this._processingService.description}`
+  }
+
+  get lastSeen(): Date | undefined {
+    if (!this._processingService.last_seen) {
       return undefined
     }
-
-    return getFormatedDateTimeString({
-      date: new Date(this._processingService.last_checked),
-    })
+    return new Date(this._processingService.last_seen)
   }
 
-  get lastCheckedLive(): boolean {
-    return this._processingService.last_checked_live
+  get lastSeenLive(): boolean {
+    return this._processingService.last_seen_live ?? false
   }
 
   get numPiplinesAdded(): number {
@@ -64,7 +79,10 @@ export class ProcessingService extends Entity {
     type: ProcessingServiceStatusType
     color: string
   } {
-    const status_code = this.lastCheckedLive ? 'ONLINE' : 'OFFLINE'
+    if (this.isAsync) {
+      return ProcessingService.getStatusInfo('UNKNOWN')
+    }
+    const status_code = this.lastSeenLive ? 'ONLINE' : 'OFFLINE'
     return ProcessingService.getStatusInfo(status_code)
   }
 
@@ -75,11 +93,13 @@ export class ProcessingService extends Entity {
     const type = {
       OFFLINE: ProcessingServiceStatusType.Error,
       ONLINE: ProcessingServiceStatusType.Success,
+      UNKNOWN: ProcessingServiceStatusType.Unknown,
     }[code]
 
     const color = {
       [ProcessingServiceStatusType.Error]: '#ef4444', // color-destructive-500,
       [ProcessingServiceStatusType.Success]: '#09af8a', // color-success-500
+      [ProcessingServiceStatusType.Unknown]: '#9ca3af', // gray-400
     }[type]
 
     return {

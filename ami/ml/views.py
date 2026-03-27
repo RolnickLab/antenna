@@ -277,4 +277,7 @@ class ProjectPipelineViewSet(ProjectMixin, mixins.ListModelMixin, mixins.CreateM
                 projects=Project.objects.filter(pk=project.pk),
             )
 
+        # Record that we heard from this async processing service
+        processing_service.mark_seen(live=True)
+
         return Response(response.dict(), status=status.HTTP_201_CREATED)
