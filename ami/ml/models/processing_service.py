@@ -186,10 +186,11 @@ class ProcessingService(BaseModel):
         """
         Record that we heard from this processing service.
         Used by async/pull-mode services that don't have an endpoint to check.
+        Also persists last_seen_client_info if it has been set on the instance.
         """
         self.last_seen = datetime.datetime.now()
         self.last_seen_live = live
-        self.save(update_fields=["last_seen", "last_seen_live"])
+        self.save(update_fields=["last_seen", "last_seen_live", "last_seen_client_info"])
 
     def generate_api_key(self) -> str:
         """Generate a new API key, replacing any existing one."""

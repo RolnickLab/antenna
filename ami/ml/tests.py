@@ -1640,3 +1640,94 @@ class TestGenerateKeyAction(APITestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertNotIn("api_key", resp.data)
         self.assertIn("api_key_prefix", resp.data)
+
+
+class TestProcessingServiceE2EFlow(APITestCase):
+    """End-to-end: create PS -> generate key -> register pipelines -> verify heartbeat."""
+
+    def setUp(self):
+        from ami.users.tests.factories import UserFactory
+
+        self.user = UserFactory(is_staff=True)
+        self.project = Project.objects.create(name="E2E Project", owner=self.user)
+        from rest_framework.authtoken.models import Token
+
+        self.admin_token = Token.objects.create(user=self.user)
+
+    def test_full_lifecycle(self):
+        from rest_framework.test import APIClient
+
+        from ami.base.serializers import reverse_with_params
+
+        admin_client = APIClient()
+        admin_client.credentials(HTTP_AUTHORIZATION=f"Token {self.admin_token.key}")
+
+        # Step 1: Admin creates PS via API
+        create_url = reverse_with_params("api:processingservice-list", params={"project_id": self.project.pk})
+        resp = admin_client.post(create_url, {"name": "E2E Worker", "description": "Test"}, format="json")
+        self.assertEqual(resp.status_code, 201)
+        ps_id = resp.data["instance"]["id"]
+
+        # Step 2: Generate API key
+        gen_url = reverse_with_params(
+            "api:processingservice-generate-key",
+            args=[ps_id],
+            params={"project_id": self.project.pk},
+        )
+        resp = admin_client.post(gen_url)
+        self.assertEqual(resp.status_code, 200)
+        api_key = resp.data["api_key"]
+        self.assertTrue(api_key.startswith("ant_ps_"))
+
+        # Step 3: Worker authenticates with API key and registers pipelines
+        worker_client = APIClient()
+        worker_client.credentials(HTTP_AUTHORIZATION=f"Bearer {api_key}")
+
+        register_url = f"/api/v2/projects/{self.project.pk}/pipelines/"
+        resp = worker_client.post(
+            register_url,
+            {
+                "client_info": {
+                    "hostname": "e2e-test-node",
+                    "software": "test-worker",
+                    "version": "0.1.0",
+                },
+                "pipelines": [],
+            },
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 201)
+
+        # Step 4: Verify PS was updated with heartbeat + client_info
+        ps = ProcessingService.objects.get(pk=ps_id)
+        self.assertTrue(ps.last_seen_live)
+        self.assertEqual(ps.last_seen_client_info["hostname"], "e2e-test-node")
+
+        # Step 5: Verify GET shows prefix but not full key
+        detail_url = reverse_with_params(
+            "api:processingservice-detail",
+            kwargs={"pk": ps_id},
+            params={"project_id": self.project.pk},
+        )
+        resp = admin_client.get(detail_url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["last_seen_client_info"]["hostname"], "e2e-test-node")
+        self.assertIn("api_key_prefix", resp.data)
+        self.assertNotIn("api_key", resp.data)
+
+    def test_api_key_denied_for_wrong_project(self):
+        """API key for PS not linked to the target project should be denied."""
+        from rest_framework.test import APIClient
+
+        ps = ProcessingService.objects.create(name="Wrong Project PS", endpoint_url=None)
+        ps.projects.add(self.project)
+        api_key = ps.generate_api_key()
+
+        other_project = Project.objects.create(name="Other Project", owner=self.user)
+
+        worker_client = APIClient()
+        worker_client.credentials(HTTP_AUTHORIZATION=f"Bearer {api_key}")
+
+        url = f"/api/v2/projects/{other_project.pk}/pipelines/"
+        resp = worker_client.post(url, {"pipelines": []}, format="json")
+        self.assertIn(resp.status_code, [403, 404])
