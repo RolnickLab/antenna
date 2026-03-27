@@ -1424,6 +1424,10 @@ class TestAPIKeyAuthentication(TestCase):
         self.assertIsNotNone(result)
         user, ps = result
         self.assertEqual(ps.pk, self.ps.pk)
+        # Auth backend returns AnonymousUser — identity is on request.auth (the PS)
+        from django.contrib.auth.models import AnonymousUser
+
+        self.assertIsInstance(user, AnonymousUser)
 
     def test_authenticate_invalid_key(self):
         from unittest.mock import patch

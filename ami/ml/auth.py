@@ -1,6 +1,7 @@
 import logging
 import secrets
 
+from django.contrib.auth.models import AnonymousUser
 from rest_framework.authentication import BaseAuthentication
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,11 @@ class ProcessingServiceAPIKeyAuthentication(BaseAuthentication):
     Authenticate processing services by API key.
 
     Expects: Authorization: Bearer ant_ps_...
-    Returns: (ProcessingServiceUser, ProcessingService) or None to fall through.
+    Returns: (AnonymousUser, ProcessingService) or None to fall through.
+
+    The ProcessingService instance is available as request.auth.
+    Access control is handled by HasProcessingServiceKey permission class,
+    not by the user object — follows the djangorestframework-api-key pattern.
     """
 
     def authenticate(self, request):
@@ -38,25 +43,7 @@ class ProcessingServiceAPIKeyAuthentication(BaseAuthentication):
         except ProcessingService.DoesNotExist:
             return None  # Invalid key
 
-        return (ProcessingServiceUser(ps), ps)
+        return (AnonymousUser(), ps)
 
     def authenticate_header(self, request):
         return "Bearer"
-
-
-class ProcessingServiceUser:
-    """
-    Lightweight user stand-in for API key authenticated requests.
-    Satisfies DRF's expectation of a user object on request.user.
-    """
-
-    def __init__(self, processing_service):
-        self.processing_service = processing_service
-        self.pk = None
-        self.is_authenticated = True
-        self.is_active = True
-        self.is_staff = False
-        self.is_superuser = False
-
-    def __str__(self):
-        return f"ProcessingService:{self.processing_service.name}"
