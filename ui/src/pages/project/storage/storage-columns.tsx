@@ -69,10 +69,7 @@ export const columns: (
   {
     id: 'actions',
     name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
+    sticky: true,
     renderCell: (item: StorageSource) => (
       <div className={styles.entityActions}>
         {item.canUpdate && (

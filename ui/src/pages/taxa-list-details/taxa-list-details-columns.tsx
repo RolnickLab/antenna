@@ -71,10 +71,7 @@ export const columns: (params: {
   {
     id: 'actions',
     name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
+    sticky: true,
     renderCell: (item: Species) => (
       <div className="flex items-center justify-end gap-2 p-4">
         {canUpdate ? (

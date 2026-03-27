@@ -136,10 +136,7 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
   {
     id: 'actions',
     name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
+    sticky: true,
     renderCell: (item: Job) => (
       <div className={styles.jobActions}>
         {item.canQueue && <QueueJob jobId={item.id} />}

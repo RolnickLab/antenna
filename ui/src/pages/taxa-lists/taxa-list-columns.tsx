@@ -76,10 +76,7 @@ export const columns: (projectId: string) => TableColumn<TaxaList>[] = (
   {
     id: 'actions',
     name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
+    sticky: true,
     renderCell: (item: TaxaList) => (
       <div className="flex items-center justify-end gap-2 p-4">
         {item.canUpdate ? (

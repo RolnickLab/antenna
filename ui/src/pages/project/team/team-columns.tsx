@@ -80,12 +80,9 @@ export const columns: (userId?: string) => TableColumn<Member>[] = (
   {
     id: 'actions',
     name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
+    sticky: true,
     renderCell: (item: Member) => (
-      <div className="p-4 flex items-center justify-end gap-2">
+      <div className="flex items-center justify-end p-4 gap-2">
         {item.userId === userId ? (
           item.canDelete ? (
             <LeaveTeamDialog member={item} />

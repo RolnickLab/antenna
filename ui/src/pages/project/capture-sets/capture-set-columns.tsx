@@ -157,10 +157,7 @@ export const columns: (projectId: string) => TableColumn<CaptureSet>[] = (
   {
     id: 'actions',
     name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
+    sticky: true,
     renderCell: (item: CaptureSet) => (
       <div className={styles.entityActions}>
         {item.canPopulate && <PopulateCaptureSet captureSet={item} />}

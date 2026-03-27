@@ -88,24 +88,17 @@ export const columns: (projectId: string) => TableColumn<Export>[] = (
   {
     id: 'actions',
     name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
-    renderCell: (item: Export) => {
-      if (!item.canDelete) {
-        return <></>
-      }
-
-      return (
-        <div className="flex items-center justify-end gap-2 p-4">
+    sticky: true,
+    renderCell: (item: Export) => (
+      <div className="flex items-center justify-end gap-2 p-4">
+        {item.canDelete ? (
           <DeleteEntityDialog
             collection={API_ROUTES.EXPORTS}
             id={item.id}
             type="export"
           />
-        </div>
-      )
-    },
+        ) : null}
+      </div>
+    ),
   },
 ]

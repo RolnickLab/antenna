@@ -175,24 +175,17 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
   {
     id: 'actions',
     name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
-    renderCell: (item: Capture) => {
-      if (!item.canDelete) {
-        return <></>
-      }
-
-      return (
-        <div className="flex items-center justify-end gap-2 p-4">
+    sticky: true,
+    renderCell: (item: Capture) => (
+      <div className="flex items-center justify-end gap-2 p-4">
+        {item.canDelete ? (
           <DeleteEntityDialog
             collection={API_ROUTES.CAPTURES}
             id={item.id}
             type="capture"
           />
-        </div>
-      )
-    },
+        ) : null}
+      </div>
+    ),
   },
 ]

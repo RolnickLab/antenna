@@ -213,10 +213,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
   {
     id: 'actions',
     name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
+    sticky: true,
     renderCell: (item: Deployment) => (
       <div className={styles.deploymentActions}>
         {item.canDelete && (
