@@ -5117,7 +5117,7 @@ __metadata:
     jest-environment-jsdom: "npm:^29.7.0"
     leaflet: "npm:^1.9.3"
     lodash: "npm:^4.17.21"
-    lucide-react: "npm:^0.454.0"
+    lucide-react: "npm:^1.0.1"
     nova-ui-kit: "npm:^1.1.33"
     plotly.js: "npm:^2.25.2"
     postcss: "npm:^8.4.47"
@@ -9662,12 +9662,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lucide-react@npm:^0.454.0":
-  version: 0.454.0
-  resolution: "lucide-react@npm:0.454.0"
+"lucide-react@npm:^1.0.1":
+  version: 1.0.1
+  resolution: "lucide-react@npm:1.0.1"
   peerDependencies:
-    react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0-rc
-  checksum: e5eebe542e32f0c2210a702fddbbe6e37b977dc7d8ff991b7fd5e886f96adf2ac4870275b618c79d6b2f611da1bfb8696062c5138b06ee728090309b8e27ca07
+    react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
+  checksum: dc5834ef128bbdb9f7d1c6b8cc37b70807203b3dcb91977d3dfa28cbe995c7a0f099689e4191625292238fd18a5f815883d829bef26f318c35b79b336413862a
   languageName: node
   linkType: hard
 

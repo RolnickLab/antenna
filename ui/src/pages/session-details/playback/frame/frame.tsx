@@ -19,19 +19,21 @@ import { BoxStyle } from './types'
 const FALLBACK_RATIO = 16 / 9
 
 interface FrameProps {
+  defaultFilters: boolean
+  detections: CaptureDetection[]
+  height: number | null
+  showDetections?: boolean
   src?: string
   width: number | null
-  height: number | null
-  detections: CaptureDetection[]
-  showDetections?: boolean
 }
 
 export const Frame = ({
+  defaultFilters,
+  detections,
+  height,
+  showDetections,
   src,
   width,
-  height,
-  detections,
-  showDetections,
 }: FrameProps) => {
   const [naturalSize, setNaturalSize] = useState<{
     width: number
@@ -127,6 +129,7 @@ export const Frame = ({
         {renderOverlay && <FrameOverlay boxStyles={boxStyles} />}
         <FrameDetections
           boxStyles={boxStyles}
+          defaultFilters={defaultFilters}
           detections={detections}
           showDetections={showDetections}
         />
@@ -173,10 +176,12 @@ const FrameOverlay = ({
 
 const FrameDetections = ({
   boxStyles,
+  defaultFilters,
   detections,
   showDetections,
 }: {
   boxStyles: { [key: number]: BoxStyle }
+  defaultFilters: boolean
   detections: CaptureDetection[]
   showDetections?: boolean
 }) => {
@@ -218,9 +223,12 @@ const FrameDetections = ({
                     style={style}
                     className={classNames(styles.detection, {
                       [styles.active]: isActive,
+                      [styles.filtered]: defaultFilters
+                        ? !detection.occurrenceMeetsCriteria
+                        : false,
+                      [styles.alert]: detection.score < SCORE_THRESHOLDS.ALERT,
                       [styles.warning]:
                         detection.score < SCORE_THRESHOLDS.WARNING,
-                      [styles.alert]: detection.score < SCORE_THRESHOLDS.ALERT,
                       [styles.clickable]: !!detection.occurrenceId,
                     })}
                     onClick={() => {
@@ -240,6 +248,7 @@ const FrameDetections = ({
                       {detection.label}
                     </span>
                     <Button
+                      aria-label={translate(STRING.INFO)}
                       className="h-8 w-8"
                       disabled={!detection.occurrenceId}
                       onClick={() =>

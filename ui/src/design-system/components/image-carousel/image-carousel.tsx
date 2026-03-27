@@ -1,13 +1,10 @@
 import classNames from 'classnames'
 import { LicenseInfo } from 'components/license-info/license-info'
-import {
-  IconButton,
-  IconButtonShape,
-  IconButtonTheme,
-} from 'design-system/components/icon-button/icon-button'
-import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
+import { ChevronLeftIcon, ChevronRightIcon, ImageIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { STRING, translate } from 'utils/language'
 import { getTotalLabel } from 'utils/numberFormats'
 import styles from './image-carousel.module.scss'
 import { CarouselTheme } from './types'
@@ -95,11 +92,7 @@ const BasicImageCarousel = ({
           {image ? (
             <img src={image.src} alt={image.alt} />
           ) : (
-            <Icon
-              type={IconType.Photograph}
-              theme={IconTheme.Neutral}
-              size={16}
-            />
+            <ImageIcon className="h-4 w-4 text-muted-foreground" />
           )}
         </div>
       </div>
@@ -179,12 +172,14 @@ const MultiImageCarousel = ({
             [styles.visible]: paused,
           })}
         >
-          <IconButton
-            icon={IconType.ToggleLeft}
-            shape={IconButtonShape.Round}
-            theme={IconButtonTheme.Success}
+          <Button
+            aria-label={translate(STRING.PREVIOUS)}
             onClick={() => showPrev(slideIndex)}
-          />
+            size="icon"
+            variant="success"
+          >
+            <ChevronLeftIcon className="w-4 h-4" />
+          </Button>
         </div>
         <ConditionalLink to={to}>
           <div
@@ -222,12 +217,14 @@ const MultiImageCarousel = ({
             [styles.visible]: paused,
           })}
         >
-          <IconButton
-            icon={IconType.ToggleRight}
-            shape={IconButtonShape.Round}
-            theme={IconButtonTheme.Success}
+          <Button
+            aria-label={translate(STRING.NEXT)}
             onClick={() => showNext(slideIndex)}
-          />
+            size="icon"
+            variant="success"
+          >
+            <ChevronRightIcon className="w-4 h-4" />
+          </Button>
         </div>
       </div>
       <span className={styles.info}>

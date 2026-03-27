@@ -8,6 +8,7 @@ from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline, PipelineStage
 from .models.processing_service import ProcessingService
 from .models.project_pipeline_config import ProjectPipelineConfig
+from .schemas import PipelineConfigResponse
 
 
 class AlgorithmCategoryMapSerializer(DefaultSerializer):
@@ -66,6 +67,8 @@ class AlgorithmNestedSerializer(DefaultSerializer):
 
 
 class ProcessingServiceNestedSerializer(DefaultSerializer):
+    is_async = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = ProcessingService
         fields = [
@@ -73,8 +76,9 @@ class ProcessingServiceNestedSerializer(DefaultSerializer):
             "id",
             "details",
             "endpoint_url",
-            "last_checked",
-            "last_checked_live",
+            "is_async",
+            "last_seen",
+            "last_seen_live",
             "created_at",
             "updated_at",
         ]
@@ -133,6 +137,8 @@ class PipelineNestedSerializer(DefaultSerializer):
 
 class ProcessingServiceSerializer(DefaultSerializer):
     pipelines = PipelineNestedSerializer(many=True, read_only=True)
+    projects = serializers.SerializerMethodField()
+    is_async = serializers.BooleanField(read_only=True)
     project = serializers.PrimaryKeyRelatedField(
         write_only=True,
         queryset=Project.objects.all(),
@@ -147,20 +153,24 @@ class ProcessingServiceSerializer(DefaultSerializer):
             "name",
             "description",
             "projects",
-            "project",
             "endpoint_url",
+            "is_async",
             "pipelines",
             "created_at",
             "updated_at",
-            "last_checked",
-            "last_checked_live",
+            "last_seen",
+            "last_seen_live",
+            "project",
         ]
 
-    def create(self, validated_data):
-        project = validated_data.pop("project", None)
-        instance = super().create(validated_data)
+    def get_projects(self, obj):
+        """
+        Return list of project IDs this processing service belongs to.
+        This is read-only and managed by the server.
+        """
+        return list(obj.projects.values_list("id", flat=True))
 
-        if project:
-            instance.projects.add(project)
 
-        return instance
+class PipelineRegistrationSerializer(serializers.Serializer):
+    processing_service_name = serializers.CharField()
+    pipelines = SchemaField(schema=list[PipelineConfigResponse], default=[])

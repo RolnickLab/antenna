@@ -5,6 +5,7 @@ import { useCallback, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
+import { STRING, translate } from 'utils/language'
 
 const useOccurrenceNavigation = (occurrences?: Occurrence[]) => {
   const { projectId, id } = useParams()
@@ -90,6 +91,7 @@ export const OccurrenceNavigation = ({
   return (
     <>
       <Button
+        aria-label={translate(STRING.PREVIOUS)}
         className="absolute top-[50%] -left-8 -translate-x-full -translate-y-1/2 z-50"
         disabled={!prevId}
         onClick={goToPrev}
@@ -99,6 +101,7 @@ export const OccurrenceNavigation = ({
         <ChevronLeftIcon className="w-4 h-4" />
       </Button>
       <Button
+        aria-label={translate(STRING.NEXT)}
         className="absolute top-[50%] -right-8 translate-x-full -translate-y-1/2 z-50"
         disabled={!nextId}
         onClick={goToNext}

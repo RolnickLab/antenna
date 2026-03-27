@@ -1,5 +1,6 @@
 export enum STRING {
   /* BUTTON */
+  ADD,
   ADMIN,
   BACK,
   CANCEL,
@@ -20,8 +21,10 @@ export enum STRING {
   LOGIN,
   LOGOUT,
   MANAGE_ACCESS,
+  MORE,
   NEXT,
   POPULATE,
+  PREVIOUS,
   PROCESS_NOW,
   QUEUED,
   REFRESH,
@@ -51,6 +54,7 @@ export enum STRING {
   ENTITY_DETAILS,
   ENTITY_EDIT,
   ENTITY_TYPE_ALGORITHM,
+  ENTITY_TYPE_CAPTURE_SET,
   ENTITY_TYPE_CAPTURE,
   ENTITY_TYPE_DEPLOYMENT,
   ENTITY_TYPE_EXPORT,
@@ -61,6 +65,8 @@ export enum STRING {
   ENTITY_TYPE_PROCESSING_SERVICE,
   ENTITY_TYPE_PROJECT_DETAILS,
   ENTITY_TYPE_PROJECT,
+  ENTITY_TYPE_TAXA_LIST,
+  ENTITY_TYPE_TAXON,
   ENTITY_VIEW,
 
   /* FIELD_LABEL */
@@ -68,6 +74,8 @@ export enum STRING {
   FIELD_LABEL_ALGORITHM_URI,
   FIELD_LABEL_AVG_TEMP,
   FIELD_LABEL_BEST_SCORE,
+  FIELD_LABEL_CAPTURE_SET,
+  FIELD_LABEL_CAPTURE,
   FIELD_LABEL_CAPTURES_WITH_DETECTIONS,
   FIELD_LABEL_CAPTURES,
   FIELD_LABEL_CATEGORY_COUNT,
@@ -90,6 +98,7 @@ export enum STRING {
   FIELD_LABEL_EMAIL,
   FIELD_LABEL_ENDPOINT,
   FIELD_LABEL_ERRORS,
+  FIELD_LABEL_FILENAME,
   FIELD_LABEL_FILE_SIZE,
   FIELD_LABEL_FINISHED_AT,
   FIELD_LABEL_FIRST_DATE,
@@ -102,7 +111,7 @@ export enum STRING {
   FIELD_LABEL_JOB,
   FIELD_LABEL_JOBS,
   FIELD_LABEL_KEY,
-  FIELD_LABEL_LAST_CHECKED,
+  FIELD_LABEL_LAST_SEEN,
   FIELD_LABEL_LAST_DATE,
   FIELD_LABEL_LAST_SYNCED,
   FIELD_LABEL_LATITUDE,
@@ -135,9 +144,6 @@ export enum STRING {
   FIELD_LABEL_SIZE,
   FIELD_LABEL_SLUG,
   FIELD_LABEL_SNAPSHOTS,
-  FIELD_LABEL_SOURCE_IMAGE,
-  FIELD_LABEL_SOURCE_IMAGES_COLLECTION,
-  FIELD_LABEL_SOURCE_IMAGES,
   FIELD_LABEL_STARTED_AT,
   FIELD_LABEL_STATUS,
   FIELD_LABEL_TAGS,
@@ -149,12 +155,12 @@ export enum STRING {
   FIELD_LABEL_TIME,
   FIELD_LABEL_TIMESTAMP,
   FIELD_LABEL_TOTAL_FILES,
+  FIELD_LABEL_TOTAL_PROCESSED_CAPTURES,
   FIELD_LABEL_TOTAL_RECORDS,
   FIELD_LABEL_TOTAL_SIZE,
   FIELD_LABEL_TRAINING_IMAGES,
   FIELD_LABEL_TYPE,
   FIELD_LABEL_UPDATED_AT,
-  FIELD_LABEL_UPLOAD_CAPTURES,
   FIELD_LABEL_USER,
   FIELD_LABEL_VERSION_NAME,
   FIELD_LABEL_VERSION,
@@ -186,6 +192,7 @@ export enum STRING {
   MESSAGE_PERMISSIONS_MISSING,
   MESSAGE_PROCESS_NOW_TOOLTIP,
   MESSAGE_REMOVE_MEMBER_CONFIRM,
+  MESSAGE_REMOVE_TAXA_LIST_TAXON_CONFIRM,
   MESSAGE_RESET_INSTRUCTIONS_SENT,
   MESSAGE_RESULT_RANGE,
   MESSAGE_SIGNED_UP,
@@ -195,9 +202,9 @@ export enum STRING {
   /* NAV_ITEM */
   NAV_ITEM_ABOUT,
   NAV_ITEM_ALGORITHMS,
+  NAV_ITEM_CAPTURE_SETS,
   NAV_ITEM_CAPTURES,
   NAV_ITEM_CODE_OF_CONDUCT,
-  NAV_ITEM_COLLECTIONS,
   NAV_ITEM_DEFAULT_FILTERS,
   NAV_ITEM_DEPLOYMENTS,
   NAV_ITEM_DEVICES,
@@ -216,6 +223,7 @@ export enum STRING {
   NAV_ITEM_SITES,
   NAV_ITEM_STORAGE,
   NAV_ITEM_SUMMARY,
+  NAV_ITEM_TAXA_LISTS,
   NAV_ITEM_TAXA,
   NAV_ITEM_TEAM,
   NAV_ITEM_TERMS_OF_SERVICE,
@@ -240,7 +248,8 @@ export enum STRING {
 
   /* TOOLTIPS */
   TOOLTIP_ALGORITHM,
-  TOOLTIP_COLLECTION,
+  TOOLTIP_CAPTURE_SET,
+  TOOLTIP_CAPTURE,
   TOOLTIP_DEPLOYMENT,
   TOOLTIP_DEVICE,
   TOOLTIP_JOB,
@@ -266,6 +275,7 @@ export enum STRING {
   FORGOT_PASSWORD_DETAILS,
   FORGOT_PASSWORD,
   ID_APPLIED,
+  INFO,
   INTERMEDIATE_CLASSIFICATION,
   LAST_UPDATED,
   LEAVE_TEAM,
@@ -281,9 +291,13 @@ export enum STRING {
   REJECT_ID_SHORT,
   REJECT_ID,
   REMOVE_MEMBER,
+  REMOVE_TAXA_LIST_TAXON,
   RESULTS_MEMBERS,
   RESULTS,
+  SELECT,
   SELECT_COLUMNS,
+  SELECT_PLACEHOLDER,
+  SELECT_TAXON_PLACEHOLDER,
   SET_PASSWORD_DETAILS,
   SET_PASSWORD,
   SETTINGS,
@@ -295,6 +309,7 @@ export enum STRING {
   UNKNOWN_ERROR,
   UNKNOWN,
   UPDATING_DATA,
+  UPLOAD_CAPTURES,
   USER_INFO,
   VALUE_NOT_AVAILABLE,
   VERIFIED_BY,
@@ -303,6 +318,7 @@ export enum STRING {
 
 const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* BUTTON */
+  [STRING.ADD]: 'Add',
   [STRING.ADMIN]: 'Admin',
   [STRING.BACK]: 'Back',
   [STRING.CANCEL]: 'Cancel',
@@ -322,9 +338,11 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.EXPAND]: 'Expand',
   [STRING.LOGIN]: 'Login',
   [STRING.LOGOUT]: 'Logout',
+  [STRING.MORE]: 'More',
   [STRING.MANAGE_ACCESS]: 'Manage access',
   [STRING.NEXT]: 'Next',
   [STRING.POPULATE]: 'Populate',
+  [STRING.PREVIOUS]: 'Previous',
   [STRING.PROCESS_NOW]: 'Process now',
   [STRING.QUEUED]: 'Queued',
   [STRING.REFRESH]: 'Refresh',
@@ -338,8 +356,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SEARCH_MAP]: 'Search on the map',
   [STRING.SEND_INSTRUCTIONS]: 'Send instructions',
   [STRING.SIGN_UP]: 'Sign up',
-  [STRING.STAR]: 'Add to starred collection',
-  [STRING.STARRED]: 'Remove from starred collection',
+  [STRING.STAR]: 'Add to starred captures',
+  [STRING.STARRED]: 'Remove from starred captures',
   [STRING.START]: 'Start',
   [STRING.SUBMIT]: 'Submit',
   [STRING.SUGGEST_ID_SHORT]: 'Suggest',
@@ -352,6 +370,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_ALGORITHM_URI]: 'Algorithm source',
   [STRING.FIELD_LABEL_AVG_TEMP]: 'Avg temp',
   [STRING.FIELD_LABEL_BEST_SCORE]: 'Best score',
+  [STRING.FIELD_LABEL_CAPTURE_SET]: 'Capture set',
+  [STRING.FIELD_LABEL_CAPTURE]: 'Capture',
   [STRING.FIELD_LABEL_CAPTURES_WITH_DETECTIONS]: 'Captures with detections',
   [STRING.FIELD_LABEL_CAPTURES]: 'Captures',
   [STRING.FIELD_LABEL_CATEGORY_COUNT]: 'Taxa',
@@ -374,6 +394,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_EMAIL]: 'Email',
   [STRING.FIELD_LABEL_ENDPOINT]: 'Endpoint URL',
   [STRING.FIELD_LABEL_ERRORS]: 'Errors',
+  [STRING.FIELD_LABEL_FILENAME]: 'Filename',
   [STRING.FIELD_LABEL_FILE_SIZE]: 'File size',
   [STRING.FIELD_LABEL_FINISHED_AT]: 'Finished at',
   [STRING.FIELD_LABEL_FIRST_DATE]: 'First date',
@@ -386,7 +407,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_JOB]: 'Job',
   [STRING.FIELD_LABEL_JOBS]: 'Jobs',
   [STRING.FIELD_LABEL_KEY]: 'Key',
-  [STRING.FIELD_LABEL_LAST_CHECKED]: 'Last checked',
+  [STRING.FIELD_LABEL_LAST_SEEN]: 'Last seen',
   [STRING.FIELD_LABEL_LAST_DATE]: 'Last date',
   [STRING.FIELD_LABEL_LAST_SYNCED]: 'Last synced with data source',
   [STRING.FIELD_LABEL_LATITUDE]: 'Latitude',
@@ -419,9 +440,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_SIZE]: 'Size',
   [STRING.FIELD_LABEL_SLUG]: 'Slug',
   [STRING.FIELD_LABEL_SNAPSHOTS]: 'Snapshots',
-  [STRING.FIELD_LABEL_SOURCE_IMAGE]: 'Source image',
-  [STRING.FIELD_LABEL_SOURCE_IMAGES_COLLECTION]: 'Source images collection',
-  [STRING.FIELD_LABEL_SOURCE_IMAGES]: 'Source images',
   [STRING.FIELD_LABEL_STARTED_AT]: 'Started at',
   [STRING.FIELD_LABEL_STATUS]: 'Status',
   [STRING.FIELD_LABEL_TAGS]: 'Tags',
@@ -433,12 +451,12 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_TIME]: 'Local time',
   [STRING.FIELD_LABEL_TIMESTAMP]: 'Timestamp',
   [STRING.FIELD_LABEL_TOTAL_FILES]: 'Total files',
+  [STRING.FIELD_LABEL_TOTAL_PROCESSED_CAPTURES]: 'Processed captures',
   [STRING.FIELD_LABEL_TOTAL_RECORDS]: 'Total records',
   [STRING.FIELD_LABEL_TOTAL_SIZE]: 'Total size',
   [STRING.FIELD_LABEL_TRAINING_IMAGES]: 'Reference images',
   [STRING.FIELD_LABEL_TYPE]: 'Type',
   [STRING.FIELD_LABEL_UPDATED_AT]: 'Updated at',
-  [STRING.FIELD_LABEL_UPLOAD_CAPTURES]: 'Upload images',
   [STRING.FIELD_LABEL_USER]: 'User',
   [STRING.FIELD_LABEL_VERSION_NAME]: 'Version name',
   [STRING.FIELD_LABEL_VERSION]: 'Version',
@@ -450,6 +468,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.ENTITY_DETAILS]: '{{type}} details',
   [STRING.ENTITY_EDIT]: 'Edit {{type}}',
   [STRING.ENTITY_TYPE_ALGORITHM]: 'algorithm',
+  [STRING.ENTITY_TYPE_CAPTURE_SET]: 'capture set',
   [STRING.ENTITY_TYPE_CAPTURE]: 'capture',
   [STRING.ENTITY_TYPE_DEPLOYMENT]: 'station',
   [STRING.ENTITY_TYPE_EXPORT]: 'export',
@@ -460,24 +479,26 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.ENTITY_TYPE_PROCESSING_SERVICE]: 'processing service',
   [STRING.ENTITY_TYPE_PROJECT_DETAILS]: 'project details',
   [STRING.ENTITY_TYPE_PROJECT]: 'project',
+  [STRING.ENTITY_TYPE_TAXA_LIST]: 'taxa list',
+  [STRING.ENTITY_TYPE_TAXON]: 'taxon',
   [STRING.ENTITY_VIEW]: 'View {{type}}',
 
   /* MESSAGE */
   [STRING.MESSAGE_CAPTURE_FILENAME]:
     'Image filename must contain a timestamp with year, month, day, hours, minutes and seconds (e.g. 20210101120000-snapshot.jpg).',
   [STRING.MESSAGE_CAPTURE_LIMIT]:
-    'A maximum of {{numCaptures}} images for each station can be uploaded through the web browser. Configure a data source to upload data in bulk.',
+    'A maximum of {{numCaptures}} captures for each station can be uploaded through the web browser. Configure a data source to upload data in bulk.',
   [STRING.MESSAGE_CAPTURE_SYNC_HIDDEN]:
-    'Station must be created before syncing images.',
+    'Station must be created before syncing captures.',
   [STRING.MESSAGE_CAPTURE_TOO_MANY]:
-    'To upload more than {{numCaptures}} images you must configure a data source.',
+    'To upload more than {{numCaptures}} captures you must configure a data source.',
   [STRING.MESSAGE_CAPTURE_UPLOAD_HIDDEN]:
-    'Station must be created before uploading images.',
+    'Station must be created before uploading captures.',
   [STRING.MESSAGE_CHANGE_PASSWORD]:
     'Contact an administrator to change your email or password.',
   [STRING.MESSAGE_COULD_NOT_SAVE]: 'Could not save',
   [STRING.MESSAGE_DATA_SOURCE_NOT_CONFIGURED]:
-    'A data source must be configured and saved before syncing images.',
+    'A data source must be configured and saved before syncing captures.',
   [STRING.MESSAGE_DELETE_CONFIRM]:
     'Are you sure you want to delete this {{type}}?',
   [STRING.MESSAGE_DRAFTS]: 'Drafts are private and limited to one user.',
@@ -505,6 +526,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'Process this single image with presets',
   [STRING.MESSAGE_REMOVE_MEMBER_CONFIRM]:
     'Are you sure you want to remove {{user}} from the team?',
+  [STRING.MESSAGE_REMOVE_TAXA_LIST_TAXON_CONFIRM]:
+    'Are you sure you want to remove this taxon from the taxa list?',
   [STRING.MESSAGE_RESET_INSTRUCTIONS_SENT]:
     'Reset intructions has been sent to {{email}}!',
   [STRING.MESSAGE_RESULT_RANGE]:
@@ -516,9 +539,9 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* NAV_ITEM */
   [STRING.NAV_ITEM_ABOUT]: 'About',
   [STRING.NAV_ITEM_ALGORITHMS]: 'Algorithms',
+  [STRING.NAV_ITEM_CAPTURE_SETS]: 'Capture sets',
   [STRING.NAV_ITEM_CAPTURES]: 'Captures',
   [STRING.NAV_ITEM_CODE_OF_CONDUCT]: 'Code of conduct',
-  [STRING.NAV_ITEM_COLLECTIONS]: 'Collections',
   [STRING.NAV_ITEM_DEFAULT_FILTERS]: 'Default filters',
   [STRING.NAV_ITEM_DEPLOYMENTS]: 'Stations',
   [STRING.NAV_ITEM_DEVICES]: 'Device types',
@@ -537,6 +560,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.NAV_ITEM_SITES]: 'Sites',
   [STRING.NAV_ITEM_STORAGE]: 'Storage',
   [STRING.NAV_ITEM_SUMMARY]: 'Summary',
+  [STRING.NAV_ITEM_TAXA_LISTS]: 'Taxa lists',
   [STRING.NAV_ITEM_TAXA]: 'Taxa',
   [STRING.NAV_ITEM_TEAM]: 'Team',
   [STRING.NAV_ITEM_TERMS_OF_SERVICE]: 'Terms of service',
@@ -561,21 +585,23 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
 
   /* TOOLTIPS */
   [STRING.TOOLTIP_ALGORITHM]:
-    'An algorithm is used in a pipeline for processing image/collections.',
-  [STRING.TOOLTIP_COLLECTION]:
-    'A collection is a group of source images. A collection contains all or some images in a project. When a processing job is registered, a collection is picked. This list defines the collection options available.',
+    'An algorithm is used in a pipeline for processing captures.',
+  [STRING.TOOLTIP_CAPTURE_SET]:
+    'A capture set is a group of captures. A capture set contains all or some captures in a project. Capture sets are useful when specifying what captures to process.',
+  [STRING.TOOLTIP_CAPTURE]:
+    'A capture is a source image, collected from a monitoring station. During processing, detections are extracted from captures.',
   [STRING.TOOLTIP_DEPLOYMENT]:
-    'A monitoring station is a location where a device is deployed to take images of insects in the wild (at a “Site”).',
+    'A monitoring station is a location where a device is deployed to collect captures of insects in the wild.',
   [STRING.TOOLTIP_DEVICE]:
-    'A device type is the type of equipment or camera used for collecting source images. One or many deployments can be connected to a device type. Device type refers to the model version, category or description of a kind of hardware, not the serial number of an individual device.',
+    'A device type is the type of equipment or camera used for collecting captures. One or many deployments can be connected to a device type. Device type refers to the model version, category or description of a kind of hardware, not the serial number of an individual device.',
   [STRING.TOOLTIP_JOB]:
     'A job is a request for data processing that specifies the data to process and the pipeline to use.',
   [STRING.TOOLTIP_OCCURRENCE]:
-    'An occurrence refers to when an individual is detected in a sequence of one or more images with no time interruption.',
+    'An occurrence refers to when an individual is detected in a sequence of one or more captures with no time interruption.',
   [STRING.TOOLTIP_PIPELINE]:
     'A pipeline is a set of algorithms used for processing. A pipeline is picked from a list of algorithm bundle options when a processing job is defined.',
   [STRING.TOOLTIP_PROCESSING_SERVICE]:
-    'A processing service is a group of pipelines used for processing images/collections.',
+    'A processing service is a group of pipelines used for processing captures.',
   [STRING.TOOLTIP_SESSION]:
     'A session is a fixed period of time of monitoring for one station. The period is typically one night.',
   [STRING.TOOLTIP_SITE]:
@@ -583,7 +609,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TOOLTIP_STATUS]:
     'A status is the processing stage of a job once submitted: Created > Pending > Started > Success. A Failed status means the job stopped before it had finished.',
   [STRING.TOOLTIP_STORAGE]:
-    'A storage is a place where source images are kept, for example a S3 bucket. One or many stations can be connected to a storage.',
+    'A storage is a place where captures are kept, for example a S3 bucket. One or many stations can be connected to a storage.',
 
   /* OTHER */
   [STRING.ABOUT_ROLE]: 'About role',
@@ -599,6 +625,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FORGOT_PASSWORD_DETAILS]: `No worries, we'll send you reset instructions.`,
   [STRING.FORGOT_PASSWORD]: 'Forgot password?',
   [STRING.ID_APPLIED]: 'ID applied',
+  [STRING.INFO]: 'Info',
   [STRING.INTERMEDIATE_CLASSIFICATION]: 'Intermediate classification',
   [STRING.LAST_UPDATED]: 'Last updated',
   [STRING.LEAVE_TEAM]: 'Leave team',
@@ -614,9 +641,13 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.REJECT_ID_SHORT]: 'Reject',
   [STRING.REJECT_ID]: 'Reject ID',
   [STRING.REMOVE_MEMBER]: 'Remove member',
+  [STRING.REMOVE_TAXA_LIST_TAXON]: 'Remove taxon',
   [STRING.RESULTS_MEMBERS]: '{{total}} member(s)',
   [STRING.RESULTS]: '{{total}} result(s)',
+  [STRING.SELECT]: 'Select',
   [STRING.SELECT_COLUMNS]: 'Select columns',
+  [STRING.SELECT_PLACEHOLDER]: 'Select a value',
+  [STRING.SELECT_TAXON_PLACEHOLDER]: 'Select a taxon',
   [STRING.SET_PASSWORD_DETAILS]: 'Please set a new password for your acccount.',
   [STRING.SET_PASSWORD]: 'Set password',
   [STRING.SETTINGS]: 'Settings',
@@ -628,6 +659,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.UNKNOWN_ERROR]: 'Unknown error',
   [STRING.UNKNOWN]: 'Unknown',
   [STRING.UPDATING_DATA]: 'Updating data',
+  [STRING.UPLOAD_CAPTURES]: 'Upload captures',
   [STRING.USER_INFO]: 'User info',
   [STRING.VALUE_NOT_AVAILABLE]: 'n/a',
   [STRING.VERIFIED_BY]: 'Verified by\n{{name}}',

@@ -33,7 +33,11 @@ export const PageHeader = ({
         <h1 className={styles.title}>{title}</h1>
         {tooltip ? (
           <BasicTooltip asChild content={tooltip}>
-            <Button size="icon" variant="ghost">
+            <Button
+              aria-label={translate(STRING.INFO)}
+              size="icon"
+              variant="ghost"
+            >
               <InfoIcon className="w-4 h-4" />
             </Button>
           </BasicTooltip>
@@ -49,6 +53,8 @@ export const PageHeader = ({
         </div>
       </div>
     </div>
-    <div className={classNames(styles.row, 'no-print')}>{children}</div>
+    <div className={classNames(styles.row, styles.actions, 'no-print')}>
+      {children}
+    </div>
   </div>
 )

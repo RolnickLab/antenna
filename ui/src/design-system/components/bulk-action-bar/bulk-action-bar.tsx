@@ -1,6 +1,7 @@
 import { XIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { ReactNode } from 'react'
+import { STRING, translate } from 'utils/language'
 import styles from './bulk-action-bar.module.scss'
 
 interface BulkActionBarProps {
@@ -19,7 +20,12 @@ export const BulkActionBar = ({
       {selectedItems.length} selected
     </span>
     {children}
-    <Button onClick={onClear} size="icon" variant="ghost">
+    <Button
+      aria-label={translate(STRING.CLEAR)}
+      onClick={onClear}
+      size="icon"
+      variant="ghost"
+    >
       <XIcon className="w-4 h-4" />
     </Button>
   </div>

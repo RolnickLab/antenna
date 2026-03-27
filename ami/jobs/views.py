@@ -1,5 +1,7 @@
+import asyncio
 import logging
 
+import nats.errors
 import pydantic
 from asgiref.sync import async_to_sync
 from django.db.models import Q
@@ -22,16 +24,41 @@ from ami.main.api.views import DefaultViewSet
 from ami.ml.schemas import PipelineTaskResult
 from ami.utils.fields import url_boolean_param
 
-from .models import Job, JobState
+from .models import Job, JobDispatchMode, JobState
 from .serializers import JobListSerializer, JobSerializer, MinimalJobSerializer
 
 logger = logging.getLogger(__name__)
+
+
+def _mark_pipeline_pull_services_seen(job: "Job") -> None:
+    """
+    Record a heartbeat for async (pull-mode) processing services linked to the job's pipeline.
+
+    Called on every task-fetch and result-submit request so that the worker's polling activity
+    keeps last_seen/last_seen_live current. The periodic check_processing_services_online task
+    will mark services offline if this heartbeat stops arriving within PROCESSING_SERVICE_LAST_SEEN_MAX.
+
+    IMPORTANT: This marks ALL async services on the pipeline within this project as live, not just
+    the specific service that made the request. If multiple async services share the same pipeline
+    within a project, a single worker polling will keep all of them appearing online.
+    Once application-token auth is available (PR #1117), this should be scoped to the individual
+    calling service instead.
+    """
+    import datetime
+
+    if not job.pipeline_id:
+        return
+    job.pipeline.processing_services.async_services().filter(projects=job.project_id).update(
+        last_seen=datetime.datetime.now(),
+        last_seen_live=True,
+    )
 
 
 class JobFilterSet(filters.FilterSet):
     """Custom filterset to enable pipeline name filtering."""
 
     pipeline__slug = filters.CharFilter(field_name="pipeline__slug", lookup_expr="exact")
+    pipeline__slug__in = filters.BaseInFilter(field_name="pipeline__slug", lookup_expr="in")
 
     class Meta:
         model = Job
@@ -43,6 +70,7 @@ class JobFilterSet(filters.FilterSet):
             "source_image_single",
             "pipeline",
             "job_type_key",
+            "dispatch_mode",
         ]
 
 
@@ -54,11 +82,12 @@ class IncompleteJobFilter(BaseFilterBackend):
         incomplete_only = url_boolean_param(request, "incomplete_only", default=False)
         # Filter to incomplete jobs if requested (checks "results" stage status)
         if incomplete_only:
-            # Create filters for each final state to exclude
+            # Exclude jobs with a terminal top-level status
+            queryset = queryset.exclude(status__in=JobState.final_states())
+
+            # Also exclude jobs where the "results" stage has a final state status
             final_states = JobState.final_states()
             exclude_conditions = Q()
-
-            # Exclude jobs where the "results" stage has a final state status
             for state in final_states:
                 # JSON path query to check if results stage status is in final states
                 # @TODO move to a QuerySet method on Job model if/when this needs to be reused elsewhere
@@ -228,24 +257,33 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         except Exception as e:
             raise ValidationError({"batch": str(e)}) from e
 
+        # Only async_api jobs have tasks fetchable from NATS
+        if job.dispatch_mode != JobDispatchMode.ASYNC_API:
+            raise ValidationError("Only async_api jobs have fetchable tasks")
+
+        # Only serve tasks for actively processing jobs
+        if job.status not in JobState.active_states():
+            return Response({"tasks": []})
+
         # Validate that the job has a pipeline
         if not job.pipeline:
             raise ValidationError("This job does not have a pipeline configured")
+
+        # Record heartbeat for async processing services on this pipeline
+        _mark_pipeline_pull_services_seen(job)
 
         # Get tasks from NATS JetStream
         from ami.ml.orchestration.nats_queue import TaskQueueManager
 
         async def get_tasks():
-            tasks = []
             async with TaskQueueManager() as manager:
-                for _ in range(batch):
-                    task = await manager.reserve_task(job.pk, timeout=0.1)
-                    if task:
-                        tasks.append(task.dict())
-            return tasks
+                return [task.dict() for task in await manager.reserve_tasks(job.pk, count=batch, timeout=0.5)]
 
-        # Use async_to_sync to properly handle the async call
-        tasks = async_to_sync(get_tasks)()
+        try:
+            tasks = async_to_sync(get_tasks)()
+        except (asyncio.TimeoutError, OSError, nats.errors.Error) as e:
+            logger.warning("NATS unavailable while fetching tasks for job %s: %s", job.pk, e)
+            return Response({"error": "Task queue temporarily unavailable"}, status=503)
 
         return Response({"tasks": tasks})
 
@@ -260,6 +298,9 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         """
 
         job = self.get_object()
+
+        # Record heartbeat for async processing services on this pipeline
+        _mark_pipeline_pull_services_seen(job)
 
         # Validate request data is a list
         if isinstance(request.data, list):

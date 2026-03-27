@@ -276,7 +276,8 @@ Processing services are FastAPI applications that implement the AMI ML API contr
 **Health Checks:**
 - Cached status with 3 retries and exponential backoff (0s, 2s, 4s)
 - Celery Beat task runs periodic checks (`ami.ml.tasks.check_processing_services_online`)
-- Status stored in `ProcessingService.last_checked_live` boolean field
+- Status stored in `ProcessingService.last_seen_live` boolean field
+- Async/pull-mode services update status via `mark_seen()` when they register pipelines
 - UI shows red/green indicator based on cached status
 
 Location: `processing_services/` directory contains example implementations
@@ -649,6 +650,16 @@ images = SourceImage.objects.annotate(det_count=Count('detections'))
 - Import and call with `.delay()` for async: `run_job.delay(job_id)`
 - Use `@shared_task` decorator for all tasks
 - Check Flower UI for debugging: http://localhost:5555
+
+### E2E Testing & Monitoring Async Jobs
+
+Run an end-to-end ML job test:
+```bash
+docker compose run --rm django python manage.py test_ml_job_e2e \
+  --project 18 --dispatch-mode async_api --collection 142 --pipeline "global_moths_2024"
+```
+
+For monitoring running jobs (Django ORM, REST API, NATS consumer state, Redis counters, worker logs, etc.), see `docs/claude/reference/monitoring-async-jobs.md`.
 
 ### Running a Single Test
 

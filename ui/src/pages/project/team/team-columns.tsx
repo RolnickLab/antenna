@@ -1,12 +1,11 @@
 import { Member } from 'data-services/models/member'
 import { Badge } from 'design-system/components/badge/badge'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { TableColumn } from 'design-system/components/table/types'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { InfoIcon, UserIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
-import { getFormatedDateString } from 'utils/date/getFormatedDateString/getFormatedDateString'
-import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { STRING, translate } from 'utils/language'
 import { LeaveTeamDialog } from './leave-team-dialog'
 import { ManageAccessDialog } from './manage-access-dialog'
@@ -70,31 +69,13 @@ export const columns: (userId?: string) => TableColumn<Member>[] = (
     id: 'added-at',
     name: translate(STRING.FIELD_LABEL_ADDED_AT),
     sortField: 'created_at',
-    renderCell: (item: Member) => (
-      <BasicTableCell
-        value={getFormatedDateString({ date: item.addedAt })}
-        details={[getFormatedTimeString({ date: item.addedAt })]}
-      />
-    ),
+    renderCell: (item: Member) => <DateTableCell date={item.addedAt} />,
   },
   {
     id: 'updated-at',
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
-    renderCell: (item: Member) => (
-      <BasicTableCell
-        value={
-          item.updatedAt
-            ? getFormatedDateString({ date: item.updatedAt })
-            : undefined
-        }
-        details={
-          item.updatedAt
-            ? [getFormatedTimeString({ date: item.updatedAt })]
-            : undefined
-        }
-      />
-    ),
+    renderCell: (item: Member) => <DateTableCell date={item.updatedAt} />,
   },
   {
     id: 'actions',

@@ -1,15 +1,18 @@
 type FilterType =
-  | 'deployment'
-  | 'event'
-  | 'occurrence'
+  | 'apply_defaults'
   | 'capture'
-  | 'detections__source_image'
-  | 'taxon'
-  | 'timestamp'
   | 'collection'
   | 'collections'
+  | 'deployment'
+  | 'detections__source_image'
+  | 'event'
+  | 'include_unobserved'
+  | 'occurrence'
   | 'source_image_collection'
   | 'source_image_single'
+  | 'taxa_list_id'
+  | 'taxon'
+  | 'timestamp'
 
 export const getAppRoute = ({
   to,

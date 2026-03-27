@@ -8,7 +8,6 @@ import { useTaxaLists } from 'data-services/hooks/taxa-lists/useTaxaLists'
 import { Occurrence } from 'data-services/models/occurrence'
 import { BulkActionBar } from 'design-system/components/bulk-action-bar/bulk-action-bar'
 import * as Dialog from 'design-system/components/dialog/dialog'
-import { IconType } from 'design-system/components/icon/icon'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
 import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
@@ -16,7 +15,7 @@ import { SortControl } from 'design-system/components/sort-control'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
-import { DownloadIcon } from 'lucide-react'
+import { DownloadIcon, Grid2X2Icon, TableIcon } from 'lucide-react'
 import { buttonVariants } from 'nova-ui-kit'
 import {
   OccurrenceDetails,
@@ -134,12 +133,12 @@ export const Occurrences = () => {
                 {
                   value: 'table',
                   label: translate(STRING.TAB_ITEM_TABLE),
-                  icon: IconType.TableView,
+                  Icon: TableIcon,
                 },
                 {
                   value: 'gallery',
                   label: translate(STRING.TAB_ITEM_GALLERY),
-                  icon: IconType.GalleryView,
+                  Icon: Grid2X2Icon,
                 },
               ]}
               value={selectedView}
@@ -276,8 +275,8 @@ const OccurrenceDetailsDialog = ({
     >
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
-        isLoading={isLoading}
         error={error}
+        isLoading={isLoading}
       >
         {occurrence ? (
           <OccurrenceDetails

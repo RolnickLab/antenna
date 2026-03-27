@@ -1,13 +1,12 @@
 import classNames from 'classnames'
 import { useEffect, useState } from 'react'
-import { Icon, IconTheme, IconType } from '../icon/icon'
+import { NavigationBarIcon } from './navigation-bar-icon'
 import styles from './navigation-bar.module.scss'
 
 interface NavigationBarProps {
   activeItemId: string
   items: {
     count?: number
-    icon?: IconType
     id: string
     path?: string
     title: string
@@ -59,12 +58,7 @@ export const NavigationBar = ({
                   }}
                 >
                   <div className={styles.topContent}>
-                    {item.icon && (
-                      <Icon
-                        type={item.icon}
-                        theme={isActive ? IconTheme.Success : IconTheme.Primary}
-                      />
-                    )}
+                    <NavigationBarIcon id={item.id} isActive={isActive} />
                     {item.count !== undefined && (
                       <span className={styles.itemCount}>
                         {item.count.toLocaleString()}

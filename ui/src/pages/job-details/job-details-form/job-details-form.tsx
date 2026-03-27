@@ -7,16 +7,16 @@ import {
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
+import { API_ROUTES } from 'data-services/constants'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { SaveButton } from 'design-system/components/button/save-button'
 import { Checkbox } from 'design-system/components/checkbox/checkbox'
-import { CollectionsPicker } from 'design-system/components/collections-picker'
 import { InputContent } from 'design-system/components/input/input'
+import { EntityPicker } from 'design-system/components/select/entity-picker'
 import { useForm } from 'react-hook-form'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
-import { PipelinesPicker } from './pipelines-picker'
 
 interface JobFormValues {
   delay: number
@@ -43,9 +43,15 @@ const config: FormConfig = {
   },
   pipeline: {
     label: translate(STRING.FIELD_LABEL_PIPELINE),
+    rules: {
+      required: true,
+    },
   },
   sourceImages: {
-    label: translate(STRING.FIELD_LABEL_SOURCE_IMAGES_COLLECTION),
+    label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
+    rules: {
+      required: true,
+    },
   },
   startNow: {
     label: 'Start immediately',
@@ -119,12 +125,17 @@ export const JobDetailsForm = ({
             render={({ field, fieldState }) => (
               <InputContent
                 description={config[field.name].description}
-                label={config[field.name].label}
+                label={
+                  config[field.name].rules?.required
+                    ? `${config[field.name].label} *`
+                    : config[field.name].label
+                }
                 error={fieldState.error?.message}
               >
-                <CollectionsPicker
-                  value={field.value}
+                <EntityPicker
+                  collection={API_ROUTES.CAPTURE_SETS}
                   onValueChange={field.onChange}
+                  value={field.value}
                 />
               </InputContent>
             )}
@@ -136,12 +147,17 @@ export const JobDetailsForm = ({
             render={({ field, fieldState }) => (
               <InputContent
                 description={config[field.name].description}
-                label={config[field.name].label}
+                label={
+                  config[field.name].rules?.required
+                    ? `${config[field.name].label} *`
+                    : config[field.name].label
+                }
                 error={fieldState.error?.message}
               >
-                <PipelinesPicker
-                  value={field.value}
+                <EntityPicker
+                  collection={API_ROUTES.PIPELINES}
                   onValueChange={field.onChange}
+                  value={field.value}
                 />
               </InputContent>
             )}
@@ -152,7 +168,7 @@ export const JobDetailsForm = ({
             <FormController
               name="startNow"
               control={control}
-              config={config.pipeline}
+              config={config.startNow}
               render={({ field }) => (
                 <Checkbox
                   checked={field.value ?? false}

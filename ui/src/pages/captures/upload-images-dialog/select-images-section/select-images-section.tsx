@@ -1,12 +1,8 @@
 import { FormSection } from 'components/form/layout/layout'
 import { FileInput } from 'design-system/components/file-input/file-input'
 import { FileInputAccept } from 'design-system/components/file-input/types'
-import {
-  IconButton,
-  IconButtonShape,
-  IconButtonTheme,
-} from 'design-system/components/icon-button/icon-button'
-import { IconType } from 'design-system/components/icon/icon'
+import { PlusIcon, XIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { ReactNode } from 'react'
 import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
@@ -19,7 +15,7 @@ const CAPTURE_CONFIG = {
   RATIO: 16 / 9,
 }
 
-const TITLE = 'Select images'
+const TITLE = 'Select captures'
 
 const DESCRIPTION = [
   translate(STRING.MESSAGE_CAPTURE_LIMIT, {
@@ -43,22 +39,25 @@ export const SelectImagesSection = ({
 
   return (
     <FormSection title={TITLE} description={DESCRIPTION}>
-      <div className={styles.collection}>
+      <div className={styles.captures}>
         {images.map(({ file }) => (
           <Card key={file.name}>
             <div className={styles.cardContent}>
               <img src={URL.createObjectURL(file)} />
             </div>
             <div className={styles.cancelContainer}>
-              <IconButton
-                icon={IconType.Cross}
-                shape={IconButtonShape.Round}
+              <Button
+                aria-label={translate(STRING.CLEAR)}
                 onClick={() =>
                   setImages(
                     images.filter((image) => image.file.name !== file.name)
                   )
                 }
-              />
+                size="icon"
+                variant="outline"
+              >
+                <XIcon className="w-4 h-4" />
+              </Button>
             </div>
           </Card>
         ))}
@@ -68,14 +67,16 @@ export const SelectImagesSection = ({
             <FileInput
               accept={FileInputAccept.Images}
               multiple
-              name="select-images"
-              renderInput={(props) => (
-                <IconButton
-                  {...props}
-                  icon={IconType.Plus}
-                  shape={IconButtonShape.Round}
-                  theme={IconButtonTheme.Success}
-                />
+              name="select-captures"
+              renderInput={({ onClick }) => (
+                <Button
+                  aria-label={translate(STRING.ADD)}
+                  onClick={onClick}
+                  size="icon"
+                  variant="success"
+                >
+                  <PlusIcon className="w-4 h-4" />
+                </Button>
               )}
               onChange={(files) => {
                 if (!files) {
