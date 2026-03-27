@@ -1499,3 +1499,43 @@ class TestProcessingServiceAPIKey(TestCase):
         ps.save()
         ps.refresh_from_db()
         self.assertEqual(ps.last_seen_client_info["hostname"], "node-01")
+
+
+class TestClientInfoSerializer(TestCase):
+    def test_valid_client_info(self):
+        from ami.ml.serializers_client_info import ClientInfoSerializer
+
+        data = {
+            "hostname": "cedar-node-01",
+            "software": "ami-data-companion",
+            "version": "2.1.0",
+            "platform": "Linux x86_64",
+        }
+        s = ClientInfoSerializer(data=data)
+        self.assertTrue(s.is_valid(), s.errors)
+        self.assertEqual(s.validated_data["hostname"], "cedar-node-01")
+
+    def test_empty_client_info_is_valid(self):
+        from ami.ml.serializers_client_info import ClientInfoSerializer
+
+        s = ClientInfoSerializer(data={})
+        self.assertTrue(s.is_valid(), s.errors)
+
+    def test_extra_fields_in_extra_dict(self):
+        from ami.ml.serializers_client_info import ClientInfoSerializer
+
+        data = {
+            "hostname": "node-01",
+            "extra": {"gpu": "A100", "cuda": "12.0"},
+        }
+        s = ClientInfoSerializer(data=data)
+        self.assertTrue(s.is_valid(), s.errors)
+        self.assertEqual(s.validated_data["extra"]["gpu"], "A100")
+
+    def test_hostname_max_length_enforced(self):
+        from ami.ml.serializers_client_info import ClientInfoSerializer
+
+        data = {"hostname": "x" * 256}
+        s = ClientInfoSerializer(data=data)
+        self.assertFalse(s.is_valid())
+        self.assertIn("hostname", s.errors)
