@@ -11,7 +11,7 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from ami.base.permissions import ProjectPipelineConfigPermission
+from ami.base.permissions import HasProcessingServiceKey, ProjectPipelineConfigPermission
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
@@ -214,7 +214,7 @@ class ProjectPipelineViewSet(ProjectMixin, mixins.ListModelMixin, mixins.CreateM
 
     queryset = Pipeline.objects.none()
     serializer_class = PipelineSerializer
-    permission_classes = [ProjectPipelineConfigPermission]
+    permission_classes = [ProjectPipelineConfigPermission | HasProcessingServiceKey]
     require_project = True
 
     def get_queryset(self) -> QuerySet:
@@ -265,19 +265,33 @@ class ProjectPipelineViewSet(ProjectMixin, mixins.ListModelMixin, mixins.CreateM
         serializer.is_valid(raise_exception=True)
         project = self.get_active_project()
 
-        with transaction.atomic():
+        # Determine the processing service from auth method
+        if isinstance(request.auth, ProcessingService):
+            # API key auth: PS identified by key, project access already checked by permission class
+            processing_service = request.auth
+        else:
+            # Legacy token auth: get or create PS by name
+            name = serializer.validated_data.get("processing_service_name", "")
+            if not name:
+                raise api_exceptions.ValidationError(
+                    {"processing_service_name": "Required when not using API key auth."}
+                )
             processing_service, _ = ProcessingService.objects.get_or_create(
-                name=serializer.validated_data["processing_service_name"],
+                name=name,
                 defaults={"endpoint_url": None},
             )
             processing_service.projects.add(project)
 
+        with transaction.atomic():
             response = processing_service.create_pipelines(
                 pipeline_configs=serializer.validated_data["pipelines"],
                 projects=Project.objects.filter(pk=project.pk),
             )
 
-        # Record that we heard from this async processing service
+        # Update heartbeat and client info
+        from ami.ml.serializers_client_info import get_client_info
+
+        processing_service.last_seen_client_info = get_client_info(request)
         processing_service.mark_seen(live=True)
 
         return Response(response.dict(), status=status.HTTP_201_CREATED)

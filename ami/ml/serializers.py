@@ -3,6 +3,7 @@ from rest_framework import serializers
 
 from ami.main.api.serializers import DefaultSerializer, MinimalNestedModelSerializer
 from ami.main.models import Project
+from ami.ml.serializers_client_info import ClientInfoSerializer
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline, PipelineStage
@@ -172,5 +173,6 @@ class ProcessingServiceSerializer(DefaultSerializer):
 
 
 class PipelineRegistrationSerializer(serializers.Serializer):
-    processing_service_name = serializers.CharField()
+    processing_service_name = serializers.CharField(required=False)
+    client_info = ClientInfoSerializer(required=False)
     pipelines = SchemaField(schema=list[PipelineConfigResponse], default=[])
