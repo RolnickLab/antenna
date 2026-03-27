@@ -2,6 +2,7 @@
 Base settings to build other settings files upon.
 """
 
+import re
 import socket
 from pathlib import Path
 
@@ -263,6 +264,21 @@ CACHES = {
 }
 REDIS_URL = env("REDIS_URL", default=None)
 
+
+# Derive a separate Redis DB for Celery results (DB 1) from REDIS_URL (DB 0).
+# This keeps Django cache (DB 0) and Celery task metadata (DB 1) isolated so they
+# can be flushed and monitored independently.
+# TODO: consider separate Redis instances with different eviction policies:
+#   allkeys-lru for cache, volatile-ttl for results. See issue #1189.
+def _celery_result_backend_url(redis_url):
+    if not redis_url:
+        return None
+    # Replace the DB number at the end of the URL (e.g. /0 -> /1)
+    return re.sub(r"/\d+$", "/1", redis_url) if "/" in redis_url.split(":")[-1] else redis_url + "/1"
+
+
+CELERY_RESULT_BACKEND_URL = env("CELERY_RESULT_BACKEND", default=None) or _celery_result_backend_url(REDIS_URL)
+
 # NATS
 # ------------------------------------------------------------------------------
 NATS_URL = env("NATS_URL", default="nats://localhost:4222")  # type: ignore[no-untyped-call]
@@ -310,15 +326,31 @@ CELERY_TASK_DEFAULT_QUEUE = "antenna"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-broker_url
 CELERY_BROKER_URL = env("CELERY_BROKER_URL")
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-result_backend
-# "rpc://" means use RabbitMQ for results backend by default
-CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default="rpc://")  # type: ignore[no-untyped-call]
+# Use Redis DB 1 for results (separate from cache on DB 0).
+# Falls back to CELERY_RESULT_BACKEND env var if explicitly set, otherwise derives from REDIS_URL.
+# See issue #1189 for discussion of result backend architecture.
+CELERY_RESULT_BACKEND = CELERY_RESULT_BACKEND_URL or "rpc://"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-extended
+# Stores full task args/kwargs/name in the result backend alongside status.
+# Useful for: inspecting task arguments in Flower, debugging failed tasks,
+# post-hoc analysis of what data a task received.
+# Cost: result keys are large because process_nats_pipeline_result receives the
+# full ML result JSON as args. Measured on demo (298 keys, 2026-03-26):
+#   Median: 5 KB, Avg: 191 KB, Max: 2.1 MB per key
+#   Distribution: 29 <1KB, 195 1-10KB, 52 100KB-1MB, 22 >1MB
+# With thousands of tasks per job, this adds significant memory pressure.
+# TODO: consider disabling this or setting ignore_result=True on bulk tasks
+# like process_nats_pipeline_result to reduce result backend load. See #1189.
 CELERY_RESULT_EXTENDED = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-backend-always-retry
 # https://github.com/celery/celery/pull/6122
 CELERY_RESULT_BACKEND_ALWAYS_RETRY = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#result-backend-max-retries
 CELERY_RESULT_BACKEND_MAX_RETRIES = 10
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-result_expires
+# Auto-expire task results after 72 hours. Keeps results available for inspection
+# and troubleshooting while preventing unbounded growth. Override via env var (seconds).
+CELERY_RESULT_EXPIRES = int(env("CELERY_RESULT_EXPIRES", default="259200"))  # type: ignore[no-untyped-call]
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-accept_content
 CELERY_ACCEPT_CONTENT = ["json"]
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std:setting-task_serializer
@@ -385,6 +417,9 @@ CELERY_BROKER_CONNECTION_RETRY = True
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_BROKER_CONNECTION_MAX_RETRIES = None  # Retry forever
 
+
+# Allow large request bodies from ML workers posting classification results
+DATA_UPLOAD_MAX_MEMORY_SIZE = 100 * 1024 * 1024  # 100MB (default 2.5MB)
 
 # django-rest-framework
 # -------------------------------------------------------------------------------
