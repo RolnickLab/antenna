@@ -1539,3 +1539,104 @@ class TestClientInfoSerializer(TestCase):
         s = ClientInfoSerializer(data=data)
         self.assertFalse(s.is_valid())
         self.assertIn("hostname", s.errors)
+
+
+class TestProcessingServiceSerializerFields(APITestCase):
+    def setUp(self):
+        from ami.users.tests.factories import UserFactory
+
+        self.user = UserFactory(is_staff=True)
+        self.project = Project.objects.create(name="Serializer Test", owner=self.user)
+
+    def test_serializer_includes_api_key_prefix_not_full_key(self):
+        from ami.base.serializers import reverse_with_params
+
+        ps = ProcessingService.objects.create(name="Test PS Serializer", endpoint_url=None)
+        ps.projects.add(self.project)
+        ps.generate_api_key()
+
+        self.client.force_authenticate(user=self.user)
+        url = reverse_with_params(
+            "api:processingservice-detail",
+            kwargs={"pk": ps.pk},
+            params={"project_id": self.project.pk},
+        )
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("api_key_prefix", resp.data)
+        self.assertEqual(resp.data["api_key_prefix"], ps.api_key[:12])
+        self.assertNotIn("api_key", resp.data)
+
+    def test_serializer_includes_last_seen_client_info(self):
+        from ami.base.serializers import reverse_with_params
+
+        ps = ProcessingService.objects.create(name="Test PS ClientInfo", endpoint_url=None)
+        ps.projects.add(self.project)
+        ps.last_seen_client_info = {"hostname": "node-01", "software": "adc"}
+        ps.save()
+
+        self.client.force_authenticate(user=self.user)
+        url = reverse_with_params(
+            "api:processingservice-detail",
+            kwargs={"pk": ps.pk},
+            params={"project_id": self.project.pk},
+        )
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("last_seen_client_info", resp.data)
+        self.assertEqual(resp.data["last_seen_client_info"]["hostname"], "node-01")
+
+
+class TestGenerateKeyAction(APITestCase):
+    def setUp(self):
+        from ami.users.tests.factories import UserFactory
+
+        self.user = UserFactory(is_staff=True)
+        self.project = Project.objects.create(name="Key Gen Test", owner=self.user)
+        self.ps = ProcessingService.objects.create(name="Key Gen PS", endpoint_url=None)
+        self.ps.projects.add(self.project)
+
+    def test_generate_key_returns_full_key(self):
+        from ami.base.serializers import reverse_with_params
+
+        self.client.force_authenticate(user=self.user)
+        url = reverse_with_params(
+            "api:processingservice-generate-key",
+            args=[self.ps.pk],
+            params={"project_id": self.project.pk},
+        )
+        resp = self.client.post(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("api_key", resp.data)
+        self.assertTrue(resp.data["api_key"].startswith("ant_ps_"))
+
+    def test_regenerate_key_changes_key(self):
+        from ami.base.serializers import reverse_with_params
+
+        self.ps.generate_api_key()
+        old_prefix = self.ps.api_key_prefix
+
+        self.client.force_authenticate(user=self.user)
+        url = reverse_with_params(
+            "api:processingservice-generate-key",
+            args=[self.ps.pk],
+            params={"project_id": self.project.pk},
+        )
+        resp = self.client.post(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotEqual(resp.data["api_key"][:12], old_prefix)
+
+    def test_full_key_not_in_get_response(self):
+        from ami.base.serializers import reverse_with_params
+
+        self.ps.generate_api_key()
+        self.client.force_authenticate(user=self.user)
+        url = reverse_with_params(
+            "api:processingservice-detail",
+            kwargs={"pk": self.ps.pk},
+            params={"project_id": self.project.pk},
+        )
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotIn("api_key", resp.data)
+        self.assertIn("api_key_prefix", resp.data)

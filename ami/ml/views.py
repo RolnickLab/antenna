@@ -208,6 +208,26 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
         processing_service.save()
         return Response(response.dict())
 
+    @extend_schema(
+        operation_id="processing_services_generate_key",
+        summary="Generate or regenerate API key",
+        description="Generates a new API key. The old key is immediately invalidated. "
+        "The full key is only shown in this response.",
+        responses={200: dict},
+        tags=["ml"],
+    )
+    @action(detail=True, methods=["post"], url_path="generate_key")
+    def generate_key(self, request: Request, pk=None) -> Response:
+        instance = self.get_object()
+        api_key = instance.generate_api_key()
+        return Response(
+            {
+                "api_key": api_key,
+                "api_key_prefix": instance.api_key_prefix,
+                "message": "API key generated. This is the only time the full key will be shown.",
+            }
+        )
+
 
 class ProjectPipelineViewSet(ProjectMixin, mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.GenericViewSet):
     """Pipelines for a specific project. GET lists, POST registers."""
