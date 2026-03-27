@@ -78,8 +78,8 @@ const ProcessingServiceDetailsContent = ({
           value={processingService.description}
         />
         <InputValue
-          label={translate(STRING.FIELD_LABEL_LAST_CHECKED)}
-          value={processingService.lastChecked}
+          label={translate(STRING.FIELD_LABEL_LAST_SEEN)}
+          value={processingService.lastSeen}
         />
       </FormRow>
 
