@@ -1463,42 +1463,34 @@ class TestAPIKeyAuthentication(TestCase):
 
 
 class TestProcessingServiceAPIKey(TestCase):
-    def setUp(self):
-        from ami.users.tests.factories import UserFactory
-
-        self.user = UserFactory()
-        self.project = Project.objects.create(name="Test Project", owner=self.user)
-
-    def test_create_ps_without_api_key(self):
-        """Sync services don't need an API key."""
+    def _create_ps(self, **kwargs):
+        """Create a ProcessingService, mocking get_status to avoid HTTP calls."""
         from unittest.mock import patch
 
         with patch.object(ProcessingService, "get_status"):
-            ps = ProcessingService.objects.create(
-                name="Sync Service",
-                endpoint_url="http://example.com:2000",
-            )
+            return ProcessingService.objects.create(**kwargs)
+
+    def test_create_ps_without_api_key(self):
+        """Sync services don't need an API key."""
+        ps = self._create_ps(name="Sync Service", endpoint_url="http://example.com:2000")
         self.assertIsNone(ps.api_key)
 
     def test_generate_and_assign_api_key(self):
-        ps = ProcessingService.objects.create(
-            name="Async Service",
-            endpoint_url=None,
-        )
+        ps = self._create_ps(name="Async Service", endpoint_url=None)
         ps.generate_api_key()
         self.assertTrue(ps.api_key.startswith("ant_ps_"))
         self.assertEqual(ps.api_key_prefix, ps.api_key[:12])
         self.assertIsNotNone(ps.api_key_created_at)
 
     def test_regenerate_api_key_changes_key(self):
-        ps = ProcessingService.objects.create(name="Service", endpoint_url=None)
+        ps = self._create_ps(name="Service", endpoint_url=None)
         ps.generate_api_key()
         old_key = ps.api_key
         ps.generate_api_key()
         self.assertNotEqual(ps.api_key, old_key)
 
     def test_last_seen_client_info_stored(self):
-        ps = ProcessingService.objects.create(name="Service", endpoint_url=None)
+        ps = self._create_ps(name="Service 2", endpoint_url=None)
         ps.last_seen_client_info = {"hostname": "node-01", "software": "adc", "version": "2.0"}
         ps.save()
         ps.refresh_from_db()
