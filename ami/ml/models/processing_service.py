@@ -71,6 +71,14 @@ class ProcessingService(BaseModel):
     last_seen_live = models.BooleanField(null=True)
     last_seen_latency = models.FloatField(null=True)
 
+    # API key authentication (for pull-mode/async services)
+    api_key = models.CharField(max_length=255, unique=True, null=True, blank=True, db_index=True)
+    api_key_prefix = models.CharField(max_length=12, null=True, blank=True)
+    api_key_created_at = models.DateTimeField(null=True, blank=True)
+
+    # Last known client info from the most recent request
+    last_seen_client_info = models.JSONField(null=True, blank=True)
+
     objects = ProcessingServiceManager()
 
     @property
@@ -182,6 +190,16 @@ class ProcessingService(BaseModel):
         self.last_seen = datetime.datetime.now()
         self.last_seen_live = live
         self.save(update_fields=["last_seen", "last_seen_live"])
+
+    def generate_api_key(self) -> str:
+        """Generate a new API key, replacing any existing one."""
+        from ami.ml.auth import generate_api_key
+
+        self.api_key = generate_api_key()
+        self.api_key_prefix = self.api_key[:12]
+        self.api_key_created_at = datetime.datetime.now()
+        self.save(update_fields=["api_key", "api_key_prefix", "api_key_created_at"])
+        return self.api_key
 
     def get_status(self, timeout=90) -> ProcessingServiceStatusResponse:
         """
