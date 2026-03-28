@@ -11,7 +11,7 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from ami.base.permissions import HasProcessingServiceKey, ProjectPipelineConfigPermission
+from ami.base.permissions import HasProcessingServiceAPIKey, ProjectPipelineConfigPermission
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
@@ -234,7 +234,7 @@ class ProjectPipelineViewSet(ProjectMixin, mixins.ListModelMixin, mixins.CreateM
 
     queryset = Pipeline.objects.none()
     serializer_class = PipelineSerializer
-    permission_classes = [ProjectPipelineConfigPermission | HasProcessingServiceKey]
+    permission_classes = [ProjectPipelineConfigPermission | HasProcessingServiceAPIKey]
     require_project = True
 
     def get_queryset(self) -> QuerySet:

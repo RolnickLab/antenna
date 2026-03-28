@@ -211,17 +211,16 @@ class UserMembershipPermission(ObjectPermission):
         return super().has_permission(request, view)
 
 
-class HasProcessingServiceKey(permissions.BasePermission):
+class HasProcessingServiceAPIKey(permissions.BasePermission):
     """
     Allow access for requests authenticated with a ProcessingService API key.
 
-    Follows the djangorestframework-api-key pattern: API key identity lives
-    on request.auth (set by ProcessingServiceAPIKeyAuthentication), not
-    request.user. This permission checks that the PS is linked to the
-    relevant project.
+    Uses djangorestframework-api-key for key validation. The auth backend
+    places the ProcessingService on request.auth. This permission verifies
+    project membership.
 
     Compose with ObjectPermission for endpoints used by both users and services:
-        permission_classes = [ObjectPermission | HasProcessingServiceKey]
+        permission_classes = [ObjectPermission | HasProcessingServiceAPIKey]
     """
 
     def has_permission(self, request, view):

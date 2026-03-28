@@ -15,7 +15,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.filters import BaseFilterBackend
 from rest_framework.response import Response
 
-from ami.base.permissions import HasProcessingServiceKey, ObjectPermission
+from ami.base.permissions import HasProcessingServiceAPIKey, ObjectPermission
 from ami.base.views import ProjectMixin
 from ami.jobs.schemas import TasksRequestSerializer, ids_only_param, incomplete_only_param
 from ami.jobs.tasks import process_nats_pipeline_result
@@ -233,7 +233,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         detail=True,
         methods=["post"],
         name="tasks",
-        permission_classes=[ObjectPermission | HasProcessingServiceKey],
+        permission_classes=[ObjectPermission | HasProcessingServiceAPIKey],
     )
     def tasks(self, request, pk=None):
         """
@@ -280,7 +280,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         detail=True,
         methods=["post"],
         name="result",
-        permission_classes=[ObjectPermission | HasProcessingServiceKey],
+        permission_classes=[ObjectPermission | HasProcessingServiceAPIKey],
     )
     def result(self, request, pk=None):
         """
