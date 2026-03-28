@@ -16,6 +16,7 @@ from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
 from ami.main.models import Project, SourceImage
+from ami.ml.models.api_key import ProcessingServiceAPIKey
 from ami.ml.schemas import PipelineRegistrationResponse
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
@@ -211,7 +212,7 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
     @extend_schema(
         operation_id="processing_services_generate_key",
         summary="Generate or regenerate API key",
-        description="Generates a new API key. The old key is immediately invalidated. "
+        description="Generates a new API key, revoking any existing one. "
         "The full key is only shown in this response.",
         responses={200: dict},
         tags=["ml"],
@@ -219,11 +220,20 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], url_path="generate_key")
     def generate_key(self, request: Request, pk=None) -> Response:
         instance = self.get_object()
-        api_key = instance.generate_api_key()
+
+        # Revoke existing keys
+        instance.api_keys.filter(revoked=False).update(revoked=True)
+
+        # Create new key via library
+        api_key_obj, plaintext_key = ProcessingServiceAPIKey.objects.create_key(
+            name=f"{instance.name} key",
+            processing_service=instance,
+        )
+
         return Response(
             {
-                "api_key": api_key,
-                "api_key_prefix": instance.api_key_prefix,
+                "api_key": plaintext_key,
+                "prefix": api_key_obj.prefix,
                 "message": "API key generated. This is the only time the full key will be shown.",
             }
         )

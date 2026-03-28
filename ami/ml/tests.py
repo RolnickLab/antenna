@@ -1529,12 +1529,19 @@ class TestProcessingServiceSerializerFields(APITestCase):
         self.user = UserFactory(is_staff=True)
         self.project = Project.objects.create(name="Serializer Test", owner=self.user)
 
-    def test_serializer_includes_api_key_prefix_not_full_key(self):
-        from ami.base.serializers import reverse_with_params
+    def test_serializer_includes_api_key_prefix(self):
+        from unittest.mock import patch
 
-        ps = ProcessingService.objects.create(name="Test PS Serializer", endpoint_url=None)
+        from ami.base.serializers import reverse_with_params
+        from ami.ml.models.api_key import ProcessingServiceAPIKey
+
+        with patch.object(ProcessingService, "get_status"):
+            ps = ProcessingService.objects.create(name="Test PS Serializer", endpoint_url=None)
         ps.projects.add(self.project)
-        ps.generate_api_key()
+        api_key_obj, _ = ProcessingServiceAPIKey.objects.create_key(
+            name="test-key",
+            processing_service=ps,
+        )
 
         self.client.force_authenticate(user=self.user)
         url = reverse_with_params(
@@ -1545,13 +1552,15 @@ class TestProcessingServiceSerializerFields(APITestCase):
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, 200)
         self.assertIn("api_key_prefix", resp.data)
-        self.assertEqual(resp.data["api_key_prefix"], ps.api_key[:12])
-        self.assertNotIn("api_key", resp.data)
+        self.assertEqual(resp.data["api_key_prefix"], api_key_obj.prefix)
 
     def test_serializer_includes_last_seen_client_info(self):
+        from unittest.mock import patch
+
         from ami.base.serializers import reverse_with_params
 
-        ps = ProcessingService.objects.create(name="Test PS ClientInfo", endpoint_url=None)
+        with patch.object(ProcessingService, "get_status"):
+            ps = ProcessingService.objects.create(name="Test PS ClientInfo", endpoint_url=None)
         ps.projects.add(self.project)
         ps.last_seen_client_info = {"hostname": "node-01", "software": "adc"}
         ps.save()
@@ -1567,14 +1576,36 @@ class TestProcessingServiceSerializerFields(APITestCase):
         self.assertIn("last_seen_client_info", resp.data)
         self.assertEqual(resp.data["last_seen_client_info"]["hostname"], "node-01")
 
+    def test_serializer_no_key_shows_null_prefix(self):
+        from unittest.mock import patch
+
+        from ami.base.serializers import reverse_with_params
+
+        with patch.object(ProcessingService, "get_status"):
+            ps = ProcessingService.objects.create(name="No Key PS", endpoint_url=None)
+        ps.projects.add(self.project)
+
+        self.client.force_authenticate(user=self.user)
+        url = reverse_with_params(
+            "api:processingservice-detail",
+            kwargs={"pk": ps.pk},
+            params={"project_id": self.project.pk},
+        )
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(resp.data["api_key_prefix"])
+
 
 class TestGenerateKeyAction(APITestCase):
     def setUp(self):
+        from unittest.mock import patch
+
         from ami.users.tests.factories import UserFactory
 
         self.user = UserFactory(is_staff=True)
         self.project = Project.objects.create(name="Key Gen Test", owner=self.user)
-        self.ps = ProcessingService.objects.create(name="Key Gen PS", endpoint_url=None)
+        with patch.object(ProcessingService, "get_status"):
+            self.ps = ProcessingService.objects.create(name="Key Gen PS", endpoint_url=None)
         self.ps.projects.add(self.project)
 
     def test_generate_key_returns_full_key(self):
@@ -1589,13 +1620,18 @@ class TestGenerateKeyAction(APITestCase):
         resp = self.client.post(url)
         self.assertEqual(resp.status_code, 200)
         self.assertIn("api_key", resp.data)
-        self.assertTrue(resp.data["api_key"].startswith("ant_ps_"))
+        self.assertIn(".", resp.data["api_key"])
+        self.assertIn("prefix", resp.data)
 
-    def test_regenerate_key_changes_key(self):
+    def test_regenerate_key_revokes_old_key(self):
         from ami.base.serializers import reverse_with_params
+        from ami.ml.models.api_key import ProcessingServiceAPIKey
 
-        self.ps.generate_api_key()
-        old_prefix = self.ps.api_key_prefix
+        ProcessingServiceAPIKey.objects.create_key(
+            name=f"{self.ps.name} key",
+            processing_service=self.ps,
+        )
+        self.assertEqual(self.ps.api_keys.filter(revoked=False).count(), 1)
 
         self.client.force_authenticate(user=self.user)
         url = reverse_with_params(
@@ -1605,12 +1641,18 @@ class TestGenerateKeyAction(APITestCase):
         )
         resp = self.client.post(url)
         self.assertEqual(resp.status_code, 200)
-        self.assertNotEqual(resp.data["api_key"][:12], old_prefix)
+
+        self.assertEqual(self.ps.api_keys.filter(revoked=False).count(), 1)
+        self.assertEqual(self.ps.api_keys.filter(revoked=True).count(), 1)
 
     def test_full_key_not_in_get_response(self):
         from ami.base.serializers import reverse_with_params
+        from ami.ml.models.api_key import ProcessingServiceAPIKey
 
-        self.ps.generate_api_key()
+        ProcessingServiceAPIKey.objects.create_key(
+            name="test-key",
+            processing_service=self.ps,
+        )
         self.client.force_authenticate(user=self.user)
         url = reverse_with_params(
             "api:processingservice-detail",
@@ -1619,8 +1661,8 @@ class TestGenerateKeyAction(APITestCase):
         )
         resp = self.client.get(url)
         self.assertEqual(resp.status_code, 200)
-        self.assertNotIn("api_key", resp.data)
         self.assertIn("api_key_prefix", resp.data)
+        self.assertNotIn("api_key", resp.data)
 
 
 class TestProcessingServiceE2EFlow(APITestCase):

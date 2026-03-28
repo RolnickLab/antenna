@@ -140,6 +140,7 @@ class ProcessingServiceSerializer(DefaultSerializer):
     pipelines = PipelineNestedSerializer(many=True, read_only=True)
     projects = serializers.SerializerMethodField()
     is_async = serializers.BooleanField(read_only=True)
+    api_key_prefix = serializers.SerializerMethodField()
     project = serializers.PrimaryKeyRelatedField(
         write_only=True,
         queryset=Project.objects.all(),
@@ -158,7 +159,6 @@ class ProcessingServiceSerializer(DefaultSerializer):
             "is_async",
             "pipelines",
             "api_key_prefix",
-            "api_key_created_at",
             "last_seen_client_info",
             "created_at",
             "updated_at",
@@ -173,6 +173,10 @@ class ProcessingServiceSerializer(DefaultSerializer):
         This is read-only and managed by the server.
         """
         return list(obj.projects.values_list("id", flat=True))
+
+    def get_api_key_prefix(self, obj):
+        latest_key = obj.api_keys.filter(revoked=False).order_by("-created").first()
+        return latest_key.prefix if latest_key else None
 
 
 class PipelineRegistrationSerializer(serializers.Serializer):
