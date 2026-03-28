@@ -1,49 +1,41 @@
 import logging
-import secrets
 
 from django.contrib.auth.models import AnonymousUser
 from rest_framework.authentication import BaseAuthentication
+from rest_framework_api_key.permissions import KeyParser
 
 logger = logging.getLogger(__name__)
-
-API_KEY_PREFIX = "ant_ps_"
-
-
-def generate_api_key() -> str:
-    """Generate a prefixed API key for a processing service."""
-    token = secrets.token_urlsafe(36)
-    return f"{API_KEY_PREFIX}{token}"
 
 
 class ProcessingServiceAPIKeyAuthentication(BaseAuthentication):
     """
-    Authenticate processing services by API key.
+    Authenticate processing services via Api-Key header.
 
-    Expects: Authorization: Bearer ant_ps_...
-    Returns: (AnonymousUser, ProcessingService) or None to fall through.
+    Uses djangorestframework-api-key's KeyParser to extract the key,
+    then looks up the ProcessingServiceAPIKey and returns
+    (AnonymousUser, processing_service).
 
     The ProcessingService instance is available as request.auth.
-    Access control is handled by HasProcessingServiceKey permission class,
-    not by the user object — follows the djangorestframework-api-key pattern.
     """
 
+    key_parser = KeyParser()
+
     def authenticate(self, request):
-        auth_header = request.headers.get("authorization", "")
-        if not auth_header.startswith("Bearer "):
+        key = self.key_parser.get(request)
+        if not key:
             return None
 
-        token = auth_header[7:]  # Strip "Bearer "
-        if not token.startswith(API_KEY_PREFIX):
-            return None  # Not an API key, let other backends handle it
-
-        from ami.ml.models.processing_service import ProcessingService
+        from ami.ml.models.api_key import ProcessingServiceAPIKey
 
         try:
-            ps = ProcessingService.objects.get(api_key=token)
-        except ProcessingService.DoesNotExist:
-            return None  # Invalid key
+            api_key = ProcessingServiceAPIKey.objects.get_from_key(key)
+        except ProcessingServiceAPIKey.DoesNotExist:
+            return None
 
-        return (AnonymousUser(), ps)
+        if api_key.revoked:
+            return None
+
+        return (AnonymousUser(), api_key.processing_service)
 
     def authenticate_header(self, request):
-        return "Bearer"
+        return "Api-Key"

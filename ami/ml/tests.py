@@ -1368,86 +1368,54 @@ class TestTaskStateManager(TestCase):
         self.assertIsNone(progress)
 
 
-class TestAPIKeyGeneration(TestCase):
-    def test_generate_api_key_has_prefix(self):
-        from ami.ml.auth import generate_api_key
-
-        key = generate_api_key()
-        self.assertTrue(key.startswith("ant_ps_"))
-
-    def test_generate_api_key_is_unique(self):
-        from ami.ml.auth import generate_api_key
-
-        key1 = generate_api_key()
-        key2 = generate_api_key()
-        self.assertNotEqual(key1, key2)
-
-    def test_generate_api_key_sufficient_length(self):
-        from ami.ml.auth import generate_api_key
-
-        key = generate_api_key()
-        # ant_ps_ (7) + 48 chars of token = 55 min
-        self.assertGreaterEqual(len(key), 50)
-
-
-class TestAPIKeyAuthentication(TestCase):
+class TestProcessingServiceAuth(APITestCase):
     def setUp(self):
+        from unittest.mock import patch
+
+        from ami.ml.models.api_key import ProcessingServiceAPIKey
         from ami.users.tests.factories import UserFactory
 
-        self.user = UserFactory()
-        self.project = Project.objects.create(name="Test Project", owner=self.user)
-        self.ps = ProcessingService.objects.create(
-            name="Test Service",
-            endpoint_url=None,
-        )
+        self.user = UserFactory(is_staff=True)
+        self.project = Project.objects.create(name="Auth Test Project", owner=self.user)
+        with patch.object(ProcessingService, "get_status"):
+            self.ps = ProcessingService.objects.create(
+                name="Test Service",
+                endpoint_url=None,
+            )
         self.ps.projects.add(self.project)
-        # Generate an API key for testing
-        from ami.ml.auth import generate_api_key
-
-        self.api_key = generate_api_key()
+        self.api_key_obj, self.api_key = ProcessingServiceAPIKey.objects.create_key(
+            name="test-key",
+            processing_service=self.ps,
+        )
 
     def test_authenticate_valid_key(self):
-        from unittest.mock import patch
+        from django.contrib.auth.models import AnonymousUser
 
         from ami.ml.auth import ProcessingServiceAPIKeyAuthentication
 
         factory = APIRequestFactory()
-        request = factory.get("/", HTTP_AUTHORIZATION=f"Bearer {self.api_key}")
+        request = factory.get("/", HTTP_AUTHORIZATION=f"Api-Key {self.api_key}")
 
-        with patch(
-            "ami.ml.models.processing_service.ProcessingService.objects.get",
-            return_value=self.ps,
-        ):
-            auth = ProcessingServiceAPIKeyAuthentication()
-            result = auth.authenticate(request)
+        auth = ProcessingServiceAPIKeyAuthentication()
+        result = auth.authenticate(request)
 
         self.assertIsNotNone(result)
         user, ps = result
         self.assertEqual(ps.pk, self.ps.pk)
-        # Auth backend returns AnonymousUser — identity is on request.auth (the PS)
-        from django.contrib.auth.models import AnonymousUser
-
         self.assertIsInstance(user, AnonymousUser)
 
     def test_authenticate_invalid_key(self):
-        from unittest.mock import patch
-
         from ami.ml.auth import ProcessingServiceAPIKeyAuthentication
 
         factory = APIRequestFactory()
-        request = factory.get("/", HTTP_AUTHORIZATION="Bearer ant_ps_invalid_key")
+        request = factory.get("/", HTTP_AUTHORIZATION="Api-Key invalid.key")
 
-        with patch(
-            "ami.ml.models.processing_service.ProcessingService.objects.get",
-            side_effect=ProcessingService.DoesNotExist,
-        ):
-            auth = ProcessingServiceAPIKeyAuthentication()
-            result = auth.authenticate(request)
-
+        auth = ProcessingServiceAPIKeyAuthentication()
+        result = auth.authenticate(request)
         self.assertIsNone(result)
 
     def test_authenticate_non_api_key_passes_through(self):
-        """Non ant_ps_ tokens should return None (fall through to next backend)."""
+        """Non Api-Key tokens should return None (fall through to next backend)."""
         from ami.ml.auth import ProcessingServiceAPIKeyAuthentication
 
         factory = APIRequestFactory()
@@ -1461,6 +1429,19 @@ class TestAPIKeyAuthentication(TestCase):
 
         factory = APIRequestFactory()
         request = factory.get("/")
+        auth = ProcessingServiceAPIKeyAuthentication()
+        result = auth.authenticate(request)
+        self.assertIsNone(result)
+
+    def test_revoked_key_denied(self):
+        from ami.ml.auth import ProcessingServiceAPIKeyAuthentication
+
+        self.api_key_obj.revoked = True
+        self.api_key_obj.save()
+
+        factory = APIRequestFactory()
+        request = factory.get("/", HTTP_AUTHORIZATION=f"Api-Key {self.api_key}")
+
         auth = ProcessingServiceAPIKeyAuthentication()
         result = auth.authenticate(request)
         self.assertIsNone(result)
