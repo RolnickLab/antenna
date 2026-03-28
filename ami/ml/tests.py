@@ -1458,21 +1458,39 @@ class TestProcessingServiceAPIKey(TestCase):
     def test_create_ps_without_api_key(self):
         """Sync services don't need an API key."""
         ps = self._create_ps(name="Sync Service", endpoint_url="http://example.com:2000")
-        self.assertIsNone(ps.api_key)
+        self.assertEqual(ps.api_keys.count(), 0)
 
-    def test_generate_and_assign_api_key(self):
+    def test_create_and_assign_api_key(self):
+        from ami.ml.models.api_key import ProcessingServiceAPIKey
+
         ps = self._create_ps(name="Async Service", endpoint_url=None)
-        ps.generate_api_key()
-        self.assertTrue(ps.api_key.startswith("ant_ps_"))
-        self.assertEqual(ps.api_key_prefix, ps.api_key[:12])
-        self.assertIsNotNone(ps.api_key_created_at)
+        api_key_obj, plaintext_key = ProcessingServiceAPIKey.objects.create_key(
+            name="test-key",
+            processing_service=ps,
+        )
+        self.assertIsNotNone(plaintext_key)
+        self.assertEqual(len(api_key_obj.prefix), 8)
+        self.assertIn(".", plaintext_key)
+        self.assertEqual(ps.api_keys.count(), 1)
 
-    def test_regenerate_api_key_changes_key(self):
+    def test_revoke_and_create_new_key(self):
+        from ami.ml.models.api_key import ProcessingServiceAPIKey
+
         ps = self._create_ps(name="Service", endpoint_url=None)
-        ps.generate_api_key()
-        old_key = ps.api_key
-        ps.generate_api_key()
-        self.assertNotEqual(ps.api_key, old_key)
+        old_obj, old_key = ProcessingServiceAPIKey.objects.create_key(
+            name="key-1",
+            processing_service=ps,
+        )
+        old_obj.revoked = True
+        old_obj.save()
+
+        new_obj, new_key = ProcessingServiceAPIKey.objects.create_key(
+            name="key-2",
+            processing_service=ps,
+        )
+        self.assertNotEqual(old_key, new_key)
+        self.assertEqual(ps.api_keys.filter(revoked=False).count(), 1)
+        self.assertEqual(ps.api_keys.filter(revoked=True).count(), 1)
 
     def test_last_seen_client_info_stored(self):
         ps = self._create_ps(name="Service 2", endpoint_url=None)
@@ -1700,11 +1718,11 @@ class TestProcessingServiceE2EFlow(APITestCase):
         resp = admin_client.post(gen_url)
         self.assertEqual(resp.status_code, 200)
         api_key = resp.data["api_key"]
-        self.assertTrue(api_key.startswith("ant_ps_"))
+        self.assertIn(".", api_key)  # Library format: prefix.secret
 
         # Step 3: Worker authenticates with API key and registers pipelines
         worker_client = APIClient()
-        worker_client.credentials(HTTP_AUTHORIZATION=f"Bearer {api_key}")
+        worker_client.credentials(HTTP_AUTHORIZATION=f"Api-Key {api_key}")
 
         register_url = f"/api/v2/projects/{self.project.pk}/pipelines/"
         resp = worker_client.post(
@@ -1740,16 +1758,24 @@ class TestProcessingServiceE2EFlow(APITestCase):
 
     def test_api_key_denied_for_wrong_project(self):
         """API key for PS not linked to the target project should be denied."""
+        from unittest.mock import patch
+
         from rest_framework.test import APIClient
 
-        ps = ProcessingService.objects.create(name="Wrong Project PS", endpoint_url=None)
+        from ami.ml.models.api_key import ProcessingServiceAPIKey
+
+        with patch.object(ProcessingService, "get_status"):
+            ps = ProcessingService.objects.create(name="Wrong Project PS", endpoint_url=None)
         ps.projects.add(self.project)
-        api_key = ps.generate_api_key()
+        _, api_key = ProcessingServiceAPIKey.objects.create_key(
+            name="test-key",
+            processing_service=ps,
+        )
 
         other_project = Project.objects.create(name="Other Project", owner=self.user)
 
         worker_client = APIClient()
-        worker_client.credentials(HTTP_AUTHORIZATION=f"Bearer {api_key}")
+        worker_client.credentials(HTTP_AUTHORIZATION=f"Api-Key {api_key}")
 
         url = f"/api/v2/projects/{other_project.pk}/pipelines/"
         resp = worker_client.post(url, {"pipelines": []}, format="json")
