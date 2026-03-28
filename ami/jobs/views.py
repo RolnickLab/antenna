@@ -15,9 +15,9 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.filters import BaseFilterBackend
 from rest_framework.response import Response
 
-from ami.base.permissions import ObjectPermission
+from ami.base.permissions import HasProcessingServiceAPIKey, ObjectPermission
 from ami.base.views import ProjectMixin
-from ami.jobs.schemas import batch_param, ids_only_param, incomplete_only_param
+from ami.jobs.schemas import TasksRequestSerializer, ids_only_param, incomplete_only_param
 from ami.jobs.tasks import process_nats_pipeline_result
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
@@ -28,30 +28,6 @@ from .models import Job, JobDispatchMode, JobState
 from .serializers import JobListSerializer, JobSerializer, MinimalJobSerializer
 
 logger = logging.getLogger(__name__)
-
-
-def _mark_pipeline_pull_services_seen(job: "Job") -> None:
-    """
-    Record a heartbeat for async (pull-mode) processing services linked to the job's pipeline.
-
-    Called on every task-fetch and result-submit request so that the worker's polling activity
-    keeps last_seen/last_seen_live current. The periodic check_processing_services_online task
-    will mark services offline if this heartbeat stops arriving within PROCESSING_SERVICE_LAST_SEEN_MAX.
-
-    IMPORTANT: This marks ALL async services on the pipeline within this project as live, not just
-    the specific service that made the request. If multiple async services share the same pipeline
-    within a project, a single worker polling will keep all of them appearing online.
-    Once application-token auth is available (PR #1117), this should be scoped to the individual
-    calling service instead.
-    """
-    import datetime
-
-    if not job.pipeline_id:
-        return
-    job.pipeline.processing_services.async_services().filter(projects=job.project_id).update(
-        last_seen=datetime.datetime.now(),
-        last_seen_live=True,
-    )
 
 
 class JobFilterSet(filters.FilterSet):
@@ -140,6 +116,18 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
     ]
 
     permission_classes = [ObjectPermission]
+
+    def _update_processing_service_heartbeat(self, request):
+        """Update heartbeat for the specific PS identified by API key auth."""
+        from ami.ml.models.processing_service import ProcessingService
+        from ami.ml.serializers_client_info import get_client_info
+
+        if isinstance(request.auth, ProcessingService):
+            ps = request.auth
+            client_info = get_client_info(request)
+            ps.last_seen_client_info = client_info
+            ps.mark_seen(live=True)
+            logger.info("Heartbeat from %s (%s)", ps.name, client_info.get("hostname", "unknown"))
 
     def get_serializer_class(self):
         """
@@ -238,41 +226,42 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
     @extend_schema(
-        parameters=[batch_param],
+        request=TasksRequestSerializer,
         responses={200: dict},
     )
-    @action(detail=True, methods=["get"], name="tasks")
+    @action(
+        detail=True,
+        methods=["post"],
+        name="tasks",
+        permission_classes=[ObjectPermission | HasProcessingServiceAPIKey],
+    )
     def tasks(self, request, pk=None):
         """
-        Get tasks from the job queue.
+        Fetch tasks from the job queue (POST).
 
         Returns task data with reply_subject for acknowledgment. External workers should:
-        1. Call this endpoint to get tasks
+        1. POST to this endpoint with {"batch": N, "client_info": {...}}
         2. Process the tasks
-        3. POST to /jobs/{id}/result/ with the reply_subject to acknowledge
+        3. POST to /jobs/{id}/result/ with the results
         """
-        job: Job = self.get_object()
-        try:
-            batch = IntegerField(required=True, min_value=1).clean(request.query_params.get("batch"))
-        except Exception as e:
-            raise ValidationError({"batch": str(e)}) from e
+        serializer = TasksRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        batch = serializer.validated_data["batch"]
 
-        # Only async_api jobs have tasks fetchable from NATS
+        job: Job = self.get_object()
+
         if job.dispatch_mode != JobDispatchMode.ASYNC_API:
             raise ValidationError("Only async_api jobs have fetchable tasks")
 
-        # Only serve tasks for actively processing jobs
         if job.status not in JobState.active_states():
             return Response({"tasks": []})
 
-        # Validate that the job has a pipeline
         if not job.pipeline:
             raise ValidationError("This job does not have a pipeline configured")
 
-        # Record heartbeat for async processing services on this pipeline
-        _mark_pipeline_pull_services_seen(job)
+        # Per-PS heartbeat via API key auth
+        self._update_processing_service_heartbeat(request)
 
-        # Get tasks from NATS JetStream
         from ami.ml.orchestration.nats_queue import TaskQueueManager
 
         async def get_tasks():
@@ -287,43 +276,46 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
         return Response({"tasks": tasks})
 
-    @action(detail=True, methods=["post"], name="result")
+    @action(
+        detail=True,
+        methods=["post"],
+        name="result",
+        permission_classes=[ObjectPermission | HasProcessingServiceAPIKey],
+    )
     def result(self, request, pk=None):
         """
-        The request body should be a list of results: list[PipelineTaskResult]
+        Submit pipeline results.
 
-        This endpoint accepts a list of pipeline results and queues them for
-        background processing. Each result will be validated, saved to the database,
-        and acknowledged via NATS in a Celery task.
+        Accepts: {"client_info": {...}, "results": [PipelineTaskResult, ...]}
+        Or legacy: [PipelineTaskResult, ...] (bare list)
+
+        Results are validated then queued for background processing via Celery.
         """
 
         job = self.get_object()
 
-        # Record heartbeat for async processing services on this pipeline
-        _mark_pipeline_pull_services_seen(job)
+        # Per-PS heartbeat via API key auth
+        self._update_processing_service_heartbeat(request)
 
-        # Validate request data is a list
+        # Accept both wrapped format and legacy bare list
         if isinstance(request.data, list):
-            results = request.data
+            raw_results = request.data
+        elif isinstance(request.data, dict) and "results" in request.data:
+            raw_results = request.data["results"]
         else:
-            results = [request.data]
+            raw_results = [request.data]
 
         try:
-            # Pre-validate all results before enqueuing any tasks
-            # This prevents partial queueing and duplicate task processing
             validated_results = []
-            for item in results:
+            for item in raw_results:
                 task_result = PipelineTaskResult(**item)
                 validated_results.append(task_result)
 
-            # All validation passed, now queue all tasks
             queued_tasks = []
             for task_result in validated_results:
                 reply_subject = task_result.reply_subject
                 result_data = task_result.result
 
-                # Queue the background task
-                # Convert Pydantic model to dict for JSON serialization
                 task = process_nats_pipeline_result.delay(
                     job_id=job.pk, result_data=result_data.dict(), reply_subject=reply_subject
                 )
@@ -337,15 +329,17 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                 )
 
                 logger.info(
-                    f"Queued pipeline result processing for job {job.pk}, "
-                    f"task_id: {task.id}, reply_subject: {reply_subject}"
+                    "Queued pipeline result for job %s, task_id: %s, reply_subject: %s",
+                    job.pk,
+                    task.id,
+                    reply_subject,
                 )
 
             return Response(
                 {
                     "status": "accepted",
                     "job_id": job.pk,
-                    "results_queued": len([t for t in queued_tasks if t["status"] == "queued"]),
+                    "results_queued": len(queued_tasks),
                     "tasks": queued_tasks,
                 }
             )
@@ -353,7 +347,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             raise ValidationError(f"Invalid result data: {e}") from e
 
         except Exception as e:
-            logger.error(f"Failed to queue pipeline results for job {job.pk}: {e}")
+            logger.error("Failed to queue pipeline results for job %s: %s", job.pk, e)
             return Response(
                 {
                     "status": "error",

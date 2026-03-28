@@ -3,6 +3,7 @@ from rest_framework import serializers
 
 from ami.main.api.serializers import DefaultSerializer, MinimalNestedModelSerializer
 from ami.main.models import Project
+from ami.ml.serializers_client_info import ClientInfoSerializer
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline, PipelineStage
@@ -139,6 +140,7 @@ class ProcessingServiceSerializer(DefaultSerializer):
     pipelines = PipelineNestedSerializer(many=True, read_only=True)
     projects = serializers.SerializerMethodField()
     is_async = serializers.BooleanField(read_only=True)
+    api_key_prefix = serializers.SerializerMethodField()
     project = serializers.PrimaryKeyRelatedField(
         write_only=True,
         queryset=Project.objects.all(),
@@ -156,6 +158,8 @@ class ProcessingServiceSerializer(DefaultSerializer):
             "endpoint_url",
             "is_async",
             "pipelines",
+            "api_key_prefix",
+            "last_seen_client_info",
             "created_at",
             "updated_at",
             "last_seen",
@@ -170,7 +174,12 @@ class ProcessingServiceSerializer(DefaultSerializer):
         """
         return list(obj.projects.values_list("id", flat=True))
 
+    def get_api_key_prefix(self, obj):
+        latest_key = obj.api_keys.filter(revoked=False).order_by("-created").first()
+        return latest_key.prefix if latest_key else None
+
 
 class PipelineRegistrationSerializer(serializers.Serializer):
-    processing_service_name = serializers.CharField()
+    processing_service_name = serializers.CharField(required=False)
+    client_info = ClientInfoSerializer(required=False)
     pipelines = SchemaField(schema=list[PipelineConfigResponse], default=[])

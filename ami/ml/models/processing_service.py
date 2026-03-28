@@ -71,6 +71,9 @@ class ProcessingService(BaseModel):
     last_seen_live = models.BooleanField(null=True)
     last_seen_latency = models.FloatField(null=True)
 
+    # Last known client info from the most recent request
+    last_seen_client_info = models.JSONField(null=True, blank=True)
+
     objects = ProcessingServiceManager()
 
     @property
@@ -178,10 +181,11 @@ class ProcessingService(BaseModel):
         """
         Record that we heard from this processing service.
         Used by async/pull-mode services that don't have an endpoint to check.
+        Also persists last_seen_client_info if it has been set on the instance.
         """
         self.last_seen = datetime.datetime.now()
         self.last_seen_live = live
-        self.save(update_fields=["last_seen", "last_seen_live"])
+        self.save(update_fields=["last_seen", "last_seen_live", "last_seen_client_info"])
 
     def get_status(self, timeout=90) -> ProcessingServiceStatusResponse:
         """
@@ -304,6 +308,7 @@ class ProcessingService(BaseModel):
 def get_or_create_default_processing_service(
     project: "Project",
     register_pipelines: bool = True,
+    generate_api_key: bool = False,
 ) -> "ProcessingService | None":
     """
     Create a default processing service for a project.
@@ -313,6 +318,10 @@ def get_or_create_default_processing_service(
 
     Set the "DEFAULT_PROCESSING_SERVICE_ENDPOINT" and "DEFAULT_PROCESSING_SERVICE_NAME"
     environment variables to configure & enable the default processing service.
+
+    If generate_api_key=True, creates an API key for the service (if it doesn't have one)
+    and logs the plaintext key. This is used for docker compose setups where the ml_backend
+    needs an API key to self-register.
     """
 
     name = settings.DEFAULT_PROCESSING_SERVICE_NAME or "Default Processing Service"
@@ -335,4 +344,14 @@ def get_or_create_default_processing_service(
             enable_only=settings.DEFAULT_PIPELINES_ENABLED,
             projects=Project.objects.filter(pk=project.pk),
         )
+
+    if generate_api_key and not service.api_keys.filter(revoked=False).exists():
+        from ami.ml.models.api_key import ProcessingServiceAPIKey
+
+        _, plaintext_key = ProcessingServiceAPIKey.objects.create_key(
+            name=f"{name} key",
+            processing_service=service,
+        )
+        logger.info(f"Generated API key for {name}: {plaintext_key}")
+
     return service

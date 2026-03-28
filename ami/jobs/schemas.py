@@ -1,4 +1,7 @@
 from drf_spectacular.utils import OpenApiParameter
+from rest_framework import serializers
+
+from ami.ml.serializers_client_info import ClientInfoSerializer
 
 ids_only_param = OpenApiParameter(
     name="ids_only",
@@ -20,3 +23,8 @@ batch_param = OpenApiParameter(
     required=False,
     type=int,
 )
+
+
+class TasksRequestSerializer(serializers.Serializer):
+    batch = serializers.IntegerField(min_value=1, required=True)
+    client_info = ClientInfoSerializer(required=False)

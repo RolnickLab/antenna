@@ -11,7 +11,9 @@ import styles from 'pages/project/entities/styles.module.scss'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
-import { PopulateProcessingService } from './processing-services-actions'
+import {
+  PopulateProcessingService,
+} from './processing-services-actions'
 
 export const columns: (
   projectId: string,

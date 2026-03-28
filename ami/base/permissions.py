@@ -209,3 +209,44 @@ class UserMembershipPermission(ObjectPermission):
 
         # Fallback to default ObjectPermission behavior
         return super().has_permission(request, view)
+
+
+class HasProcessingServiceAPIKey(permissions.BasePermission):
+    """
+    Allow access for requests authenticated with a ProcessingService API key.
+
+    Uses djangorestframework-api-key for key validation. The auth backend
+    places the ProcessingService on request.auth. This permission verifies
+    project membership.
+
+    Compose with ObjectPermission for endpoints used by both users and services:
+        permission_classes = [ObjectPermission | HasProcessingServiceAPIKey]
+    """
+
+    def has_permission(self, request, view):
+        from ami.ml.models.processing_service import ProcessingService
+
+        if not isinstance(request.auth, ProcessingService):
+            return False
+
+        # For views with get_active_project (e.g. ProjectPipelineViewSet),
+        # verify the PS is linked to that project.
+        get_active_project = getattr(view, "get_active_project", None)
+        if get_active_project:
+            project = get_active_project()
+            if project and not request.auth.projects.filter(pk=project.pk).exists():
+                return False
+
+        return True
+
+    def has_object_permission(self, request, view, obj):
+        from ami.ml.models.processing_service import ProcessingService
+
+        if not isinstance(request.auth, ProcessingService):
+            return False
+
+        ps = request.auth
+        project = obj.get_project() if hasattr(obj, "get_project") else None
+        if not project:
+            return False
+        return ps.projects.filter(pk=project.pk).exists()
