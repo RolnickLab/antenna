@@ -308,6 +308,7 @@ class ProcessingService(BaseModel):
 def get_or_create_default_processing_service(
     project: "Project",
     register_pipelines: bool = True,
+    generate_api_key: bool = False,
 ) -> "ProcessingService | None":
     """
     Create a default processing service for a project.
@@ -317,6 +318,10 @@ def get_or_create_default_processing_service(
 
     Set the "DEFAULT_PROCESSING_SERVICE_ENDPOINT" and "DEFAULT_PROCESSING_SERVICE_NAME"
     environment variables to configure & enable the default processing service.
+
+    If generate_api_key=True, creates an API key for the service (if it doesn't have one)
+    and logs the plaintext key. This is used for docker compose setups where the ml_backend
+    needs an API key to self-register.
     """
 
     name = settings.DEFAULT_PROCESSING_SERVICE_NAME or "Default Processing Service"
@@ -339,4 +344,14 @@ def get_or_create_default_processing_service(
             enable_only=settings.DEFAULT_PIPELINES_ENABLED,
             projects=Project.objects.filter(pk=project.pk),
         )
+
+    if generate_api_key and not service.api_keys.filter(revoked=False).exists():
+        from ami.ml.models.api_key import ProcessingServiceAPIKey
+
+        _, plaintext_key = ProcessingServiceAPIKey.objects.create_key(
+            name=f"{name} key",
+            processing_service=service,
+        )
+        logger.info(f"Generated API key for {name}: {plaintext_key}")
+
     return service
