@@ -101,7 +101,7 @@ export const columns = ({
                 />
               ) : null}
               {item.canUpdate ? (
-                <AddTaxaListTaxonPopover taxaListId={item.id} />
+                <AddTaxaListTaxonPopover compact taxaListId={item.id} />
               ) : null}
             </div>
           ),

@@ -88,7 +88,7 @@ export const columns = ({
           name: '',
           sticky: true,
           renderCell: (item: Member) => (
-            <div className="flex items-center justify-end p-4 gap-2">
+            <div className="flex items-center justify-start p-4 gap-2">
               {item.userId === userId ? (
                 item.canDelete ? (
                   <LeaveTeamDialog member={item} />
