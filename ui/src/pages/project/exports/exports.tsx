@@ -72,7 +72,10 @@ export const Exports = () => {
         </EmptyState>
       ) : (
         <Table
-          columns={columns(projectId as string)}
+          columns={columns({
+            projectId: projectId as string,
+            showActions: canCreate,
+          })}
           error={error}
           isLoading={isLoading}
           items={exports}

@@ -8,9 +8,11 @@ import { UpdateEntityDialog } from 'pages/project/entities/entity-details-dialog
 import styles from 'pages/project/entities/styles.module.scss'
 import { STRING, translate } from 'utils/language'
 
-export const columns: (
-  projectId: string
-) => TableColumn<StorageSource>[] = () => [
+export const columns = ({
+  showActions,
+}: {
+  showActions?: boolean
+}): TableColumn<StorageSource>[] => [
   {
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
@@ -66,27 +68,31 @@ export const columns: (
       <DateTableCell date={item.updatedAt} />
     ),
   },
-  {
-    id: 'actions',
-    name: '',
-    sticky: true,
-    renderCell: (item: StorageSource) => (
-      <div className={styles.entityActions}>
-        {item.canUpdate && (
-          <UpdateEntityDialog
-            collection={API_ROUTES.STORAGE}
-            entity={item}
-            type="storage"
-          />
-        )}
-        {item.canDelete && (
-          <DeleteEntityDialog
-            collection={API_ROUTES.STORAGE}
-            id={item.id}
-            type="storage"
-          />
-        )}
-      </div>
-    ),
-  },
+  ...(showActions
+    ? [
+        {
+          id: 'actions',
+          name: '',
+          sticky: true,
+          renderCell: (item: StorageSource) => (
+            <div className={styles.entityActions}>
+              {item.canUpdate && (
+                <UpdateEntityDialog
+                  collection={API_ROUTES.STORAGE}
+                  entity={item}
+                  type="storage"
+                />
+              )}
+              {item.canDelete && (
+                <DeleteEntityDialog
+                  collection={API_ROUTES.STORAGE}
+                  id={item.id}
+                  type="storage"
+                />
+              )}
+            </div>
+          ),
+        },
+      ]
+    : []),
 ]

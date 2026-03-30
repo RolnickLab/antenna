@@ -13,9 +13,13 @@ import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import styles from './jobs.module.scss'
 
-export const columns: (projectId: string) => TableColumn<Job>[] = (
+export const columns = ({
+  projectId,
+  showActions,
+}: {
   projectId: string
-) => [
+  showActions?: boolean
+}): TableColumn<Job>[] => [
   {
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
@@ -133,22 +137,26 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     sortField: 'finished_at',
     renderCell: (item: Job) => <DateTableCell date={item.finishedAt} />,
   },
-  {
-    id: 'actions',
-    name: '',
-    sticky: true,
-    renderCell: (item: Job) => (
-      <div className={styles.jobActions}>
-        {item.canQueue && <QueueJob jobId={item.id} />}
-        {item.canCancel && <CancelJob jobId={item.id} />}
-        {item.canDelete && (
-          <DeleteEntityDialog
-            collection={API_ROUTES.JOBS}
-            id={item.id}
-            type={translate(STRING.ENTITY_TYPE_JOB)}
-          />
-        )}
-      </div>
-    ),
-  },
+  ...(showActions
+    ? [
+        {
+          id: 'actions',
+          name: '',
+          sticky: true,
+          renderCell: (item: Job) => (
+            <div className={styles.jobActions}>
+              {item.canQueue && <QueueJob jobId={item.id} />}
+              {item.canCancel && <CancelJob jobId={item.id} />}
+              {item.canDelete && (
+                <DeleteEntityDialog
+                  collection={API_ROUTES.JOBS}
+                  id={item.id}
+                  type={translate(STRING.ENTITY_TYPE_JOB)}
+                />
+              )}
+            </div>
+          ),
+        },
+      ]
+    : []),
 ]

@@ -48,6 +48,11 @@ export const TaxaListDetails = () => {
       setDetailBreadcrumb(undefined)
     }
   }, [taxaList, setDetailBreadcrumb])
+  const tableColumns = columns({
+    projectId: projectId as string,
+    showActions: taxaList?.canUpdate,
+    taxaListId: id as string,
+  })
 
   return (
     <>
@@ -62,22 +67,10 @@ export const TaxaListDetails = () => {
         {taxaList?.canUpdate ? (
           <AddTaxaListTaxonPopover taxaListId={id as string} />
         ) : null}
-        <SortControl
-          columns={columns({
-            canUpdate: taxaList?.canUpdate,
-            projectId: projectId as string,
-            taxaListId: id as string,
-          })}
-          setSort={setSort}
-          sort={sort}
-        />
+        <SortControl columns={tableColumns} setSort={setSort} sort={sort} />
       </PageHeader>
       <Table
-        columns={columns({
-          canUpdate: taxaList?.canUpdate,
-          projectId: projectId as string,
-          taxaListId: id as string,
-        })}
+        columns={tableColumns}
         error={error}
         isLoading={isLoading}
         items={species}

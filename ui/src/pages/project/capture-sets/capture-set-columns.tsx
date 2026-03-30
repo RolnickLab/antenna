@@ -18,9 +18,13 @@ import { STRING, translate } from 'utils/language'
 import { SERVER_SAMPLING_METHODS } from './constants'
 import { PopulateCaptureSet } from './populate-capture-set'
 
-export const columns: (projectId: string) => TableColumn<CaptureSet>[] = (
+export const columns = ({
+  projectId,
+  showActions,
+}: {
   projectId: string
-) => [
+  showActions?: boolean
+}): TableColumn<CaptureSet>[] => [
   {
     id: 'id',
     name: translate(STRING.FIELD_LABEL_ID),
@@ -154,28 +158,33 @@ export const columns: (projectId: string) => TableColumn<CaptureSet>[] = (
     sortField: 'updated_at',
     renderCell: (item: CaptureSet) => <DateTableCell date={item.updatedAt} />,
   },
-  {
-    id: 'actions',
-    name: '',
-    sticky: true,
-    renderCell: (item: CaptureSet) => (
-      <div className={styles.entityActions}>
-        {item.canPopulate && <PopulateCaptureSet captureSet={item} />}
-        {item.canUpdate && SERVER_SAMPLING_METHODS.includes(item.method) && (
-          <UpdateEntityDialog
-            collection={API_ROUTES.CAPTURE_SETS}
-            entity={item}
-            type={translate(STRING.ENTITY_TYPE_CAPTURE_SET)}
-          />
-        )}
-        {item.canDelete && (
-          <DeleteEntityDialog
-            collection={API_ROUTES.CAPTURE_SETS}
-            id={item.id}
-            type={translate(STRING.ENTITY_TYPE_CAPTURE_SET)}
-          />
-        )}
-      </div>
-    ),
-  },
+  ...(showActions
+    ? [
+        {
+          id: 'actions',
+          name: '',
+          sticky: true,
+          renderCell: (item: CaptureSet) => (
+            <div className={styles.entityActions}>
+              {item.canPopulate && <PopulateCaptureSet captureSet={item} />}
+              {item.canUpdate &&
+                SERVER_SAMPLING_METHODS.includes(item.method) && (
+                  <UpdateEntityDialog
+                    collection={API_ROUTES.CAPTURE_SETS}
+                    entity={item}
+                    type={translate(STRING.ENTITY_TYPE_CAPTURE_SET)}
+                  />
+                )}
+              {item.canDelete && (
+                <DeleteEntityDialog
+                  collection={API_ROUTES.CAPTURE_SETS}
+                  id={item.id}
+                  type={translate(STRING.ENTITY_TYPE_CAPTURE_SET)}
+                />
+              )}
+            </div>
+          ),
+        },
+      ]
+    : []),
 ]

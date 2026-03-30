@@ -12,13 +12,13 @@ import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { PopulateProcessingService } from './processing-services-actions'
 
-export const columns: (
-  projectId: string,
-  canCreate?: boolean
-) => TableColumn<ProcessingService>[] = (
-  projectId: string,
-  canCreate?: boolean
-) => [
+export const columns = ({
+  projectId,
+  showActions,
+}: {
+  projectId: string
+  showActions?: boolean
+}): TableColumn<ProcessingService>[] => [
   {
     id: 'id',
     sortField: 'id',
@@ -74,28 +74,34 @@ export const columns: (
       <DateTableCell date={item.updatedAt} />
     ),
   },
-  {
-    id: 'actions',
-    name: '',
-    sticky: true,
-    renderCell: (item: ProcessingService) => (
-      <div className={styles.entityActions}>
-        {canCreate && <PopulateProcessingService processingService={item} />}
-        {item.canUpdate && (
-          <UpdateEntityDialog
-            collection={API_ROUTES.PROCESSING_SERVICES}
-            entity={item}
-            type="service"
-          />
-        )}
-        {item.canDelete && (
-          <DeleteEntityDialog
-            collection={API_ROUTES.PROCESSING_SERVICES}
-            id={item.id}
-            type="service"
-          />
-        )}
-      </div>
-    ),
-  },
+  ...(showActions
+    ? [
+        {
+          id: 'actions',
+          name: '',
+          sticky: true,
+          renderCell: (item: ProcessingService) => (
+            <div className={styles.entityActions}>
+              {item.canUpdate && (
+                <>
+                  <PopulateProcessingService processingService={item} />
+                  <UpdateEntityDialog
+                    collection={API_ROUTES.PROCESSING_SERVICES}
+                    entity={item}
+                    type="service"
+                  />
+                </>
+              )}
+              {item.canDelete && (
+                <DeleteEntityDialog
+                  collection={API_ROUTES.PROCESSING_SERVICES}
+                  id={item.id}
+                  type="service"
+                />
+              )}
+            </div>
+          ),
+        },
+      ]
+    : []),
 ]

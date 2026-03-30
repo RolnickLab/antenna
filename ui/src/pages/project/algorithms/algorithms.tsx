@@ -35,7 +35,7 @@ export const Algorithms = () => {
         tooltip={translate(STRING.TOOLTIP_ALGORITHM)}
       />
       <Table
-        columns={columns(projectId as string)}
+        columns={columns({ projectId: projectId as string })}
         error={error}
         isLoading={isLoading}
         items={algorithms}

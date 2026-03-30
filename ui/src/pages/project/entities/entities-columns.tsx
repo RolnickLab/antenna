@@ -7,10 +7,15 @@ import { DeleteEntityDialog } from './delete-entity-dialog'
 import { UpdateEntityDialog } from './entity-details-dialog'
 import styles from './styles.module.scss'
 
-export const columns: (
-  collection: string,
+export const columns = ({
+  collection,
+  type,
+  showActions,
+}: {
+  collection: string
   type: string
-) => TableColumn<Entity>[] = (collection: string, type: string) => [
+  showActions?: boolean
+}): TableColumn<Entity>[] => [
   {
     id: 'id',
     name: translate(STRING.FIELD_LABEL_ID),
@@ -45,28 +50,32 @@ export const columns: (
     sortField: 'updated_at',
     renderCell: (item: Entity) => <DateTableCell date={item.updatedAt} />,
   },
-  {
-    id: 'actions',
-    name: '',
-    sticky: true,
-    renderCell: (item: Entity) => (
-      <div className={styles.entityActions}>
-        {item.canUpdate && (
-          <UpdateEntityDialog
-            collection={collection}
-            entity={item}
-            type={type}
-            isCompact
-          />
-        )}
-        {item.canDelete && (
-          <DeleteEntityDialog
-            collection={collection}
-            id={item.id}
-            type={type}
-          />
-        )}
-      </div>
-    ),
-  },
+  ...(showActions
+    ? [
+        {
+          id: 'actions',
+          name: '',
+          sticky: true,
+          renderCell: (item: Entity) => (
+            <div className={styles.entityActions}>
+              {item.canUpdate && (
+                <UpdateEntityDialog
+                  collection={collection}
+                  entity={item}
+                  type={type}
+                  isCompact
+                />
+              )}
+              {item.canDelete && (
+                <DeleteEntityDialog
+                  collection={collection}
+                  id={item.id}
+                  type={type}
+                />
+              )}
+            </div>
+          ),
+        },
+      ]
+    : []),
 ]

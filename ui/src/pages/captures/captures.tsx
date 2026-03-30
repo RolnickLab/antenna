@@ -54,7 +54,11 @@ export const Captures = () => {
       filters,
       withCounts: countColumnVisible || sortByCountActive, // Only fetch counts if needed since counts will slow down the response
     })
-  const showUpload = userPermissions?.includes(UserPermission.Create)
+  const canCreate = userPermissions?.includes(UserPermission.Create)
+  const tableColumns = columns({
+    projectId: projectId as string,
+    showActions: canCreate,
+  })
 
   return (
     <div className="flex flex-col gap-6 md:flex-row">
@@ -89,26 +93,22 @@ export const Captures = () => {
             value={selectedView}
             onValueChange={setSelectedView}
           />
-          {showUpload ? (
+          {canCreate ? (
             <UploadImagesDialog
               isOpen={isUploadOpen}
               setIsOpen={setIsUploadOpen}
             />
           ) : null}
-          <SortControl
-            columns={columns(projectId as string)}
-            setSort={setSort}
-            sort={sort}
-          />
+          <SortControl columns={tableColumns} setSort={setSort} sort={sort} />
           <ColumnSettings
-            columns={columns(projectId as string)}
+            columns={tableColumns}
             columnSettings={columnSettings}
             onColumnSettingsChange={setColumnSettings}
           />
         </PageHeader>
         {selectedView === 'table' && (
           <Table
-            columns={columns(projectId as string).filter(
+            columns={tableColumns.filter(
               (column) => column.id === 'actions' || !!columnSettings[column.id]
             )}
             error={error}

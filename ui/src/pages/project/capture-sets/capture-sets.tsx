@@ -48,6 +48,10 @@ export const CaptureSets = () => {
       poll
     )
   const canCreate = userPermissions?.includes(UserPermission.Create)
+  const tableColumns = columns({
+    projectId: projectId as string,
+    showActions: canCreate,
+  })
 
   useEffect(() => {
     // If any capture set has a job in progress, we want to poll the endpoint so we can show job updates
@@ -76,20 +80,15 @@ export const CaptureSets = () => {
           />
         )}
         <ColumnSettings
-          columns={columns(projectId as string)}
+          columns={tableColumns}
           columnSettings={columnSettings}
           onColumnSettingsChange={setColumnSettings}
         />
       </PageHeader>
       <Table
-        columns={columns(projectId as string).filter((column) => {
-          // Always show action column
-          if (column.id === 'actions') {
-            return true
-          }
-
-          return !!columnSettings[column.id]
-        })}
+        columns={tableColumns.filter(
+          (column) => column.id === 'actions' || !!columnSettings[column.id]
+        )}
         error={error}
         isLoading={isLoading}
         items={captureSets}

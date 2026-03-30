@@ -17,9 +17,13 @@ import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import styles from './deployments.module.scss'
 
-export const columns: (projectId: string) => TableColumn<Deployment>[] = (
+export const columns = ({
+  projectId,
+  showActions,
+}: {
   projectId: string
-) => [
+  showActions?: boolean
+}): TableColumn<Deployment>[] => [
   {
     id: 'snapshot',
     name: translate(STRING.FIELD_LABEL_IMAGE),
@@ -210,20 +214,24 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     sortField: 'updated_at',
     renderCell: (item: Deployment) => <DateTableCell date={item.updatedAt} />,
   },
-  {
-    id: 'actions',
-    name: '',
-    sticky: true,
-    renderCell: (item: Deployment) => (
-      <div className={styles.deploymentActions}>
-        {item.canDelete && (
-          <DeleteEntityDialog
-            collection={API_ROUTES.DEPLOYMENTS}
-            id={item.id}
-            type={translate(STRING.ENTITY_TYPE_DEPLOYMENT)}
-          />
-        )}
-      </div>
-    ),
-  },
+  ...(showActions
+    ? [
+        {
+          id: 'actions',
+          name: '',
+          sticky: true,
+          renderCell: (item: Deployment) => (
+            <div className={styles.deploymentActions}>
+              {item.canDelete && (
+                <DeleteEntityDialog
+                  collection={API_ROUTES.DEPLOYMENTS}
+                  id={item.id}
+                  type={translate(STRING.ENTITY_TYPE_DEPLOYMENT)}
+                />
+              )}
+            </div>
+          ),
+        },
+      ]
+    : []),
 ]

@@ -6,9 +6,11 @@ import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 
-export const columns: (projectId: string) => TableColumn<Algorithm>[] = (
+export const columns = ({
+  projectId,
+}: {
   projectId: string
-) => [
+}): TableColumn<Algorithm>[] => [
   {
     id: 'id',
     name: translate(STRING.FIELD_LABEL_ID),

@@ -14,9 +14,13 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 
-export const columns: (projectId: string) => TableColumn<Capture>[] = (
+export const columns = ({
+  projectId,
+  showActions,
+}: {
   projectId: string
-) => [
+  showActions?: boolean
+}): TableColumn<Capture>[] => [
   {
     id: 'thumbnail',
     name: translate(STRING.FIELD_LABEL_THUMBNAIL),
@@ -172,20 +176,24 @@ export const columns: (projectId: string) => TableColumn<Capture>[] = (
     },
     renderCell: (item: Capture) => <BasicTableCell value={item.numTaxa} />,
   },
-  {
-    id: 'actions',
-    name: '',
-    sticky: true,
-    renderCell: (item: Capture) => (
-      <div className="flex items-center justify-end gap-2 p-4">
-        {item.canDelete ? (
-          <DeleteEntityDialog
-            collection={API_ROUTES.CAPTURES}
-            id={item.id}
-            type="capture"
-          />
-        ) : null}
-      </div>
-    ),
-  },
+  ...(showActions
+    ? [
+        {
+          id: 'actions',
+          name: '',
+          sticky: true,
+          renderCell: (item: Capture) => (
+            <div className="flex items-center justify-end gap-2 p-4">
+              {item.canDelete ? (
+                <DeleteEntityDialog
+                  collection={API_ROUTES.CAPTURES}
+                  id={item.id}
+                  type="capture"
+                />
+              ) : null}
+            </div>
+          ),
+        },
+      ]
+    : []),
 ]

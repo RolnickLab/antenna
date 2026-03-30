@@ -11,9 +11,13 @@ import { LeaveTeamDialog } from './leave-team-dialog'
 import { ManageAccessDialog } from './manage-access-dialog'
 import { RemoveMemberDialog } from './remove-member-dialog'
 
-export const columns: (userId?: string) => TableColumn<Member>[] = (
+export const columns = ({
+  userId,
+  showActions,
+}: {
   userId?: string
-) => [
+  showActions?: boolean
+}): TableColumn<Member>[] => [
   {
     id: 'user',
     sortField: 'name',
@@ -77,23 +81,27 @@ export const columns: (userId?: string) => TableColumn<Member>[] = (
     sortField: 'updated_at',
     renderCell: (item: Member) => <DateTableCell date={item.updatedAt} />,
   },
-  {
-    id: 'actions',
-    name: '',
-    sticky: true,
-    renderCell: (item: Member) => (
-      <div className="flex items-center justify-end p-4 gap-2">
-        {item.userId === userId ? (
-          item.canDelete ? (
-            <LeaveTeamDialog member={item} />
-          ) : null
-        ) : (
-          <>
-            {item.canUpdate ? <ManageAccessDialog member={item} /> : null}
-            {item.canDelete ? <RemoveMemberDialog member={item} /> : null}
-          </>
-        )}
-      </div>
-    ),
-  },
+  ...(showActions
+    ? [
+        {
+          id: 'actions',
+          name: '',
+          sticky: true,
+          renderCell: (item: Member) => (
+            <div className="flex items-center justify-end p-4 gap-2">
+              {item.userId === userId ? (
+                item.canDelete ? (
+                  <LeaveTeamDialog member={item} />
+                ) : null
+              ) : (
+                <>
+                  {item.canUpdate ? <ManageAccessDialog member={item} /> : null}
+                  {item.canDelete ? <RemoveMemberDialog member={item} /> : null}
+                </>
+              )}
+            </div>
+          ),
+        },
+      ]
+    : []),
 ]

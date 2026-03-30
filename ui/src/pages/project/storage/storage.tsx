@@ -43,7 +43,7 @@ export const Storage = () => {
         )}
       </PageHeader>
       <Table
-        columns={columns(projectId as string)}
+        columns={columns({ showActions: canCreate })}
         error={error}
         isLoading={isLoading}
         items={items}

@@ -26,6 +26,10 @@ export const TaxaLists = () => {
       sort,
     })
   const canCreate = userPermissions?.includes(UserPermission.Create)
+  const tableColumns = columns({
+    projectId: projectId as string,
+    showActions: canCreate,
+  })
 
   return (
     <>
@@ -42,14 +46,10 @@ export const TaxaLists = () => {
             type={translate(STRING.ENTITY_TYPE_TAXA_LIST)}
           />
         )}
-        <SortControl
-          columns={columns(projectId as string)}
-          setSort={setSort}
-          sort={sort}
-        />
+        <SortControl columns={tableColumns} setSort={setSort} sort={sort} />
       </PageHeader>
       <Table
-        columns={columns(projectId as string)}
+        columns={tableColumns}
         error={error}
         isLoading={!id && isLoading}
         items={taxaLists}

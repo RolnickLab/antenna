@@ -17,9 +17,13 @@ import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { DeleteEntityDialog } from '../entities/delete-entity-dialog'
 
-export const columns: (projectId: string) => TableColumn<Export>[] = (
+export const columns = ({
+  projectId,
+  showActions,
+}: {
   projectId: string
-) => [
+  showActions?: boolean
+}): TableColumn<Export>[] => [
   {
     id: 'name',
     sortField: 'format',
@@ -85,20 +89,24 @@ export const columns: (projectId: string) => TableColumn<Export>[] = (
     sortField: 'updated_at',
     renderCell: (item: Export) => <DateTableCell date={item.updatedAt} />,
   },
-  {
-    id: 'actions',
-    name: '',
-    sticky: true,
-    renderCell: (item: Export) => (
-      <div className="flex items-center justify-end gap-2 p-4">
-        {item.canDelete ? (
-          <DeleteEntityDialog
-            collection={API_ROUTES.EXPORTS}
-            id={item.id}
-            type="export"
-          />
-        ) : null}
-      </div>
-    ),
-  },
+  ...(showActions
+    ? [
+        {
+          id: 'actions',
+          name: '',
+          sticky: true,
+          renderCell: (item: Export) => (
+            <div className="flex items-center justify-end gap-2 p-4">
+              {item.canDelete ? (
+                <DeleteEntityDialog
+                  collection={API_ROUTES.EXPORTS}
+                  id={item.id}
+                  type="export"
+                />
+              ) : null}
+            </div>
+          ),
+        },
+      ]
+    : []),
 ]

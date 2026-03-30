@@ -72,7 +72,10 @@ export const Team = () => {
         {canCreate ? <AddMemberDialog /> : null}
       </PageHeader>
       <Table
-        columns={columns(userInfo?.id)}
+        columns={columns({
+          userId: userInfo?.id,
+          showActions: true,
+        })}
         error={error}
         isLoading={isLoading}
         items={members}

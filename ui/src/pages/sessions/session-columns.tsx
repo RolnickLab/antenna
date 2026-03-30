@@ -13,9 +13,11 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 
-export const columns: (projectId: string) => TableColumn<Session>[] = (
+export const columns = ({
+  projectId,
+}: {
   projectId: string
-) => [
+}): TableColumn<Session>[] => [
   {
     id: 'snapshots',
     name: translate(STRING.FIELD_LABEL_SNAPSHOTS),
