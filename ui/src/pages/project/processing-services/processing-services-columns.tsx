@@ -82,22 +82,22 @@ export const columns = ({
           sticky: true,
           renderCell: (item: ProcessingService) => (
             <div className={styles.entityActions}>
-              {item.canUpdate && (
-                <>
-                  <PopulateProcessingService processingService={item} />
-                  <UpdateEntityDialog
-                    collection={API_ROUTES.PROCESSING_SERVICES}
-                    entity={item}
-                    type="service"
-                  />
-                </>
-              )}
               {item.canDelete && (
                 <DeleteEntityDialog
                   collection={API_ROUTES.PROCESSING_SERVICES}
                   id={item.id}
                   type="service"
                 />
+              )}
+              {item.canUpdate && (
+                <>
+                  <UpdateEntityDialog
+                    collection={API_ROUTES.PROCESSING_SERVICES}
+                    entity={item}
+                    type="service"
+                  />
+                  <PopulateProcessingService processingService={item} />
+                </>
               )}
             </div>
           ),

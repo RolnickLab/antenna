@@ -85,8 +85,12 @@ export const columns = ({
           sticky: true,
           renderCell: (item: TaxaList) => (
             <div className="flex items-center justify-end gap-2 p-4">
-              {item.canUpdate ? (
-                <AddTaxaListTaxonPopover taxaListId={item.id} />
+              {item.canDelete ? (
+                <DeleteEntityDialog
+                  collection={API_ROUTES.TAXA_LISTS}
+                  id={item.id}
+                  type={translate(STRING.ENTITY_TYPE_TAXA_LIST)}
+                />
               ) : null}
               {item.canUpdate ? (
                 <UpdateEntityDialog
@@ -96,12 +100,8 @@ export const columns = ({
                   type={translate(STRING.ENTITY_TYPE_TAXA_LIST)}
                 />
               ) : null}
-              {item.canDelete ? (
-                <DeleteEntityDialog
-                  collection={API_ROUTES.TAXA_LISTS}
-                  id={item.id}
-                  type={translate(STRING.ENTITY_TYPE_TAXA_LIST)}
-                />
+              {item.canUpdate ? (
+                <AddTaxaListTaxonPopover taxaListId={item.id} />
               ) : null}
             </div>
           ),

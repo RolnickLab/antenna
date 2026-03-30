@@ -166,7 +166,13 @@ export const columns = ({
           sticky: true,
           renderCell: (item: CaptureSet) => (
             <div className={styles.entityActions}>
-              {item.canPopulate && <PopulateCaptureSet captureSet={item} />}
+              {item.canDelete && (
+                <DeleteEntityDialog
+                  collection={API_ROUTES.CAPTURE_SETS}
+                  id={item.id}
+                  type={translate(STRING.ENTITY_TYPE_CAPTURE_SET)}
+                />
+              )}
               {item.canUpdate &&
                 SERVER_SAMPLING_METHODS.includes(item.method) && (
                   <UpdateEntityDialog
@@ -175,13 +181,7 @@ export const columns = ({
                     type={translate(STRING.ENTITY_TYPE_CAPTURE_SET)}
                   />
                 )}
-              {item.canDelete && (
-                <DeleteEntityDialog
-                  collection={API_ROUTES.CAPTURE_SETS}
-                  id={item.id}
-                  type={translate(STRING.ENTITY_TYPE_CAPTURE_SET)}
-                />
-              )}
+              {item.canPopulate && <PopulateCaptureSet captureSet={item} />}
             </div>
           ),
         },

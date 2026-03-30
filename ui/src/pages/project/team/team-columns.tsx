@@ -95,8 +95,8 @@ export const columns = ({
                 ) : null
               ) : (
                 <>
-                  {item.canUpdate ? <ManageAccessDialog member={item} /> : null}
                   {item.canDelete ? <RemoveMemberDialog member={item} /> : null}
+                  {item.canUpdate ? <ManageAccessDialog member={item} /> : null}
                 </>
               )}
             </div>

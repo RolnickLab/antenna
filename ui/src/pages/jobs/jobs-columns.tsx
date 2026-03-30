@@ -145,8 +145,6 @@ export const columns = ({
           sticky: true,
           renderCell: (item: Job) => (
             <div className={styles.jobActions}>
-              {item.canQueue && <QueueJob jobId={item.id} />}
-              {item.canCancel && <CancelJob jobId={item.id} />}
               {item.canDelete && (
                 <DeleteEntityDialog
                   collection={API_ROUTES.JOBS}
@@ -154,6 +152,8 @@ export const columns = ({
                   type={translate(STRING.ENTITY_TYPE_JOB)}
                 />
               )}
+              {item.canCancel && <CancelJob jobId={item.id} />}
+              {item.canQueue && <QueueJob jobId={item.id} />}
             </div>
           ),
         },

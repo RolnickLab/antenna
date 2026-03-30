@@ -76,17 +76,17 @@ export const columns = ({
           sticky: true,
           renderCell: (item: StorageSource) => (
             <div className={styles.entityActions}>
-              {item.canUpdate && (
-                <UpdateEntityDialog
-                  collection={API_ROUTES.STORAGE}
-                  entity={item}
-                  type="storage"
-                />
-              )}
               {item.canDelete && (
                 <DeleteEntityDialog
                   collection={API_ROUTES.STORAGE}
                   id={item.id}
+                  type="storage"
+                />
+              )}
+              {item.canUpdate && (
+                <UpdateEntityDialog
+                  collection={API_ROUTES.STORAGE}
+                  entity={item}
                   type="storage"
                 />
               )}

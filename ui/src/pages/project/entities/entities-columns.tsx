@@ -58,19 +58,19 @@ export const columns = ({
           sticky: true,
           renderCell: (item: Entity) => (
             <div className={styles.entityActions}>
+              {item.canDelete && (
+                <DeleteEntityDialog
+                  collection={collection}
+                  id={item.id}
+                  type={type}
+                />
+              )}
               {item.canUpdate && (
                 <UpdateEntityDialog
                   collection={collection}
                   entity={item}
                   type={type}
                   isCompact
-                />
-              )}
-              {item.canDelete && (
-                <DeleteEntityDialog
-                  collection={collection}
-                  id={item.id}
-                  type={type}
                 />
               )}
             </div>
