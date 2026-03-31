@@ -75,7 +75,7 @@ export const BlueprintItem = ({
             className={buttonVariants({ size: 'small', variant: 'ghost' })}
             to={item.to}
           >
-            <span>{translate(STRING.VIEW_IN_CONTEXT)}</span>
+            <span>{translate(STRING.VIEW_IN_SESSION)}</span>
             <ChevronRightIcon className="w-4 h-4" />
           </Link>
         ) : null}

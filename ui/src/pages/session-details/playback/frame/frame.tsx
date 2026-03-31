@@ -3,7 +3,6 @@ import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurre
 import { CaptureDetection } from 'data-services/models/capture'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
-import { ExternalLinkIcon } from 'lucide-react'
 import { Tooltip } from 'nova-ui-kit'
 import {
   OccurrenceDetails,
@@ -248,7 +247,7 @@ const FrameDetections = ({
                       {detection.label}
                     </span>
                     <div className="flex items-center justify-between gap-4">
-                      <span className="pt-0.5 body-small">
+                      <span className="body-small">
                         ({detection.scoreLabel})
                       </span>
                       <button
@@ -258,8 +257,7 @@ const FrameDetections = ({
                           setActiveOccurrence(detection.occurrenceId)
                         }
                       >
-                        <span className="pt-0.5">{translate(STRING.VIEW)}</span>
-                        <ExternalLinkIcon className="w-4 h-4" />
+                        <span>{translate(STRING.DETAILS)}</span>
                       </button>
                     </div>
                   </div>
