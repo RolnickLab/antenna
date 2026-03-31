@@ -33,10 +33,10 @@ import { usePagination } from 'utils/usePagination'
 import { useUser } from 'utils/user/userContext'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
-import { OccurrenceActions } from './occurrence-actions'
 import { columns } from './occurrence-columns'
 import { OccurrenceGallery } from './occurrence-gallery'
 import { OccurrenceNavigation } from './occurrence-navigation'
+import { OccurrencesActions } from './occurrences-actions'
 
 export const Occurrences = () => {
   const { user } = useUser()
@@ -204,7 +204,7 @@ export const Occurrences = () => {
             )}
             onClear={() => setSelectedItems([])}
           >
-            <OccurrenceActions
+            <OccurrencesActions
               occurrences={occurrences?.filter((occurrence) =>
                 selectedItems.includes(occurrence.id)
               )}

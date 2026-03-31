@@ -10,24 +10,17 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import { TaxonDetails } from 'nova-ui-kit'
-import { Agree } from 'pages/occurrence-details/agree/agree'
-import { IdQuickActions } from 'pages/occurrence-details/id-quick-actions/id-quick-actions'
-import { SuggestIdPopover } from 'pages/occurrence-details/suggest-id/suggest-id-popover'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
-import { UserPermission } from 'utils/user/types'
-import { useUserInfo } from 'utils/user/userInfoContext'
+import { OccurrenceActions } from './occurrence-actions'
 import styles from './occurrences.module.scss'
 
 export const columns: (
   projectId: string,
   showQuickActions?: boolean
-) => TableColumn<Occurrence>[] = (
-  projectId: string,
-  showQuickActions?: boolean
-) => [
+) => TableColumn<Occurrence>[] = (projectId: string, showActions?: boolean) => [
   {
     id: 'snapshots',
     name: translate(STRING.FIELD_LABEL_SNAPSHOTS),
@@ -61,7 +54,7 @@ export const columns: (
         id={item.id}
         item={item}
         projectId={projectId}
-        showQuickActions={showQuickActions}
+        showActions={showActions}
       />
     ),
   },
@@ -176,14 +169,13 @@ const TaxonCell = ({
   id,
   item,
   projectId,
-  showQuickActions,
+  showActions,
 }: {
   id?: string
   item: Occurrence
   projectId: string
-  showQuickActions?: boolean
+  showActions?: boolean
 }) => {
-  const { userInfo } = useUserInfo()
   const detailsRoute = getAppRoute({
     to: APP_ROUTES.OCCURRENCE_DETAILS({
       projectId,
@@ -191,8 +183,6 @@ const TaxonCell = ({
     }),
     keepSearchParams: true,
   })
-  const canUpdate = item.userPermissions.includes(UserPermission.Update)
-  const agreed = userInfo ? item.userAgreed(userInfo.id) : false
 
   return (
     <div id={id} className={styles.taxonCell}>
@@ -201,26 +191,7 @@ const TaxonCell = ({
           <Link to={detailsRoute}>
             <TaxonDetails compact taxon={item.determinationTaxon} />
           </Link>
-          {showQuickActions && canUpdate && (
-            <div className={styles.taxonActions}>
-              <Agree
-                agreed={agreed}
-                agreeWith={{
-                  identificationId: item.determinationIdentificationId,
-                  predictionId: item.determinationPredictionId,
-                }}
-                applied
-                compact
-                occurrenceId={item.id}
-                taxonId={item.determinationTaxon.id}
-              />
-              <SuggestIdPopover occurrenceIds={[item.id]} />
-              <IdQuickActions
-                occurrenceIds={[item.id]}
-                occurrenceTaxa={[item.determinationTaxon]}
-              />
-            </div>
-          )}
+          <OccurrenceActions item={item} showActions={showActions} />
         </div>
       </BasicTableCell>
     </div>
