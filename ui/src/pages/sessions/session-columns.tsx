@@ -53,6 +53,7 @@ export const columns = ({
   {
     id: 'deployment',
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
+    tooltip: translate(STRING.TOOLTIP_DEPLOYMENT),
     sortField: 'deployment',
     renderCell: (item: Session) => (
       <Link
@@ -95,6 +96,7 @@ export const columns = ({
   {
     id: 'captures',
     name: translate(STRING.FIELD_LABEL_CAPTURES),
+    tooltip: translate(STRING.TOOLTIP_CAPTURE),
     sortField: 'captures_count',
     styles: {
       textAlign: TextAlign.Right,
@@ -104,6 +106,7 @@ export const columns = ({
   {
     id: 'occurrences',
     name: translate(STRING.FIELD_LABEL_OCCURRENCES),
+    tooltip: translate(STRING.TOOLTIP_OCCURRENCE),
     sortField: 'occurrences_count',
     styles: {
       textAlign: TextAlign.Right,

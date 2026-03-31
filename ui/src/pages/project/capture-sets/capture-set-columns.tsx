@@ -50,6 +50,7 @@ export const columns = ({
   {
     id: 'status',
     name: 'Latest job status',
+    tooltip: translate(STRING.TOOLTIP_STATUS),
     renderCell: (item: CaptureSet) => {
       if (!item.currentJob) {
         return <></>
@@ -67,6 +68,7 @@ export const columns = ({
   {
     id: 'jobs',
     name: translate(STRING.FIELD_LABEL_JOBS),
+    tooltip: translate(STRING.TOOLTIP_JOB),
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -84,6 +86,7 @@ export const columns = ({
   {
     id: 'captures',
     name: 'Captures',
+    tooltip: translate(STRING.TOOLTIP_CAPTURE),
     sortField: 'source_images_count',
     styles: {
       textAlign: TextAlign.Right,
@@ -122,6 +125,7 @@ export const columns = ({
   {
     id: 'occurrences',
     name: translate(STRING.FIELD_LABEL_OCCURRENCES),
+    tooltip: translate(STRING.TOOLTIP_OCCURRENCE),
     sortField: 'occurrences_count',
     styles: {
       textAlign: TextAlign.Right,

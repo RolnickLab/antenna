@@ -63,13 +63,15 @@ export const columns = ({
   {
     id: 'device',
     name: translate(STRING.FIELD_LABEL_DEVICE),
+    tooltip: translate(STRING.TOOLTIP_DEVICE),
     renderCell: (item: Deployment) => (
       <BasicTableCell value={item.device?.name} />
     ),
   },
   {
-    id: 'research-site',
-    name: translate(STRING.FIELD_LABEL_RESEARCH_SITE),
+    id: 'site',
+    name: translate(STRING.FIELD_LABEL_SITE),
+    tooltip: translate(STRING.TOOLTIP_SITE),
     renderCell: (item: Deployment) => (
       <BasicTableCell value={item.researchSite?.name} />
     ),
@@ -77,6 +79,7 @@ export const columns = ({
   {
     id: 'status',
     name: 'Latest job status',
+    tooltip: translate(STRING.TOOLTIP_STATUS),
     renderCell: (item: Deployment) => {
       if (!item.currentJob) {
         return <></>
@@ -94,6 +97,7 @@ export const columns = ({
   {
     id: 'jobs',
     name: translate(STRING.FIELD_LABEL_JOBS),
+    tooltip: translate(STRING.TOOLTIP_JOB),
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -111,6 +115,7 @@ export const columns = ({
   {
     id: 'captures',
     name: translate(STRING.FIELD_LABEL_CAPTURES),
+    tooltip: translate(STRING.TOOLTIP_CAPTURE),
     sortField: 'captures_count',
     styles: {
       textAlign: TextAlign.Right,
@@ -129,6 +134,7 @@ export const columns = ({
   {
     id: 'sessions',
     name: translate(STRING.FIELD_LABEL_SESSIONS),
+    tooltip: translate(STRING.TOOLTIP_SESSION),
     sortField: 'events_count',
     styles: {
       textAlign: TextAlign.Right,
@@ -147,6 +153,7 @@ export const columns = ({
   {
     id: 'occurrences',
     name: translate(STRING.FIELD_LABEL_OCCURRENCES),
+    tooltip: translate(STRING.TOOLTIP_OCCURRENCE),
     sortField: 'occurrences_count',
     styles: {
       textAlign: TextAlign.Right,

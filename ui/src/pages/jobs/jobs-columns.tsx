@@ -57,6 +57,7 @@ export const columns = ({
     id: 'deployment',
     sortField: 'deployment',
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
+    tooltip: translate(STRING.TOOLTIP_DEPLOYMENT),
     renderCell: (item: Job) =>
       item.deployment ? (
         <Link
@@ -78,11 +79,13 @@ export const columns = ({
     id: 'pipeline',
     sortField: 'pipeline',
     name: translate(STRING.FIELD_LABEL_PIPELINE),
+    tooltip: translate(STRING.TOOLTIP_PIPELINE),
     renderCell: (item: Job) => <BasicTableCell value={item.pipeline?.name} />,
   },
   {
     id: 'source-image',
     name: translate(STRING.FIELD_LABEL_CAPTURE),
+    tooltip: translate(STRING.TOOLTIP_CAPTURE),
     renderCell: (item: Job) =>
       item.sourceImage?.sessionId ? (
         <Link
@@ -109,6 +112,7 @@ export const columns = ({
     id: 'source-image-collection',
     sortField: 'source_image_collection',
     name: translate(STRING.FIELD_LABEL_CAPTURE_SET),
+    tooltip: translate(STRING.TOOLTIP_CAPTURE_SET),
     renderCell: (item: Job) => (
       <BasicTableCell value={item.sourceImages?.name} />
     ),

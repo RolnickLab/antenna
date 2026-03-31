@@ -80,6 +80,7 @@ export const columns = ({
   {
     id: 'deployment',
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
+    tooltip: translate(STRING.TOOLTIP_DEPLOYMENT),
     sortField: 'deployment__name',
     renderCell: (item: Capture) => {
       if (!item.deploymentId) {
@@ -104,6 +105,7 @@ export const columns = ({
   {
     id: 'session',
     name: translate(STRING.FIELD_LABEL_SESSION),
+    tooltip: translate(STRING.TOOLTIP_SESSION),
     sortField: 'event__start',
     renderCell: (item: Capture) => {
       if (!item.sessionId) {
@@ -152,6 +154,7 @@ export const columns = ({
   {
     id: 'occurrences',
     name: translate(STRING.FIELD_LABEL_OCCURRENCES),
+    tooltip: translate(STRING.TOOLTIP_OCCURRENCE),
     sortField: 'occurrences_count',
     styles: {
       textAlign: TextAlign.Right,
