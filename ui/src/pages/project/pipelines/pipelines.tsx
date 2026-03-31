@@ -19,8 +19,6 @@ export const Pipelines = () => {
     id: true,
     name: true,
     description: true,
-    'created-at': true,
-    'updated-at': true,
   })
   const [sort, setSort] = useState<TableSortSettings | undefined>({
     field: 'id',

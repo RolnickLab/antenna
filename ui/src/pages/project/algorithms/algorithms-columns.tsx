@@ -30,12 +30,6 @@ export const columns = ({
     ),
   },
   {
-    id: 'task-type',
-    name: 'Task type',
-    sortField: 'task_type',
-    renderCell: (item: Algorithm) => <BasicTableCell value={item.taskType} />,
-  },
-  {
     id: 'description',
     name: translate(STRING.FIELD_LABEL_DESCRIPTION),
     renderCell: (item: Algorithm) => (
@@ -43,6 +37,20 @@ export const columns = ({
         style={{ width: '320px', whiteSpace: 'normal' }}
         value={item.description}
       />
+    ),
+  },
+  {
+    id: 'task-type',
+    name: 'Task type',
+    sortField: 'task_type',
+    renderCell: (item: Algorithm) => <BasicTableCell value={item.taskType} />,
+  },
+  {
+    id: 'category-count',
+    name: translate(STRING.FIELD_LABEL_CATEGORY_COUNT),
+    sortField: 'category_count',
+    renderCell: (item: Algorithm) => (
+      <BasicTableCell value={item.categoryCount} />
     ),
   },
   {
