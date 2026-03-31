@@ -1,4 +1,5 @@
 import classNames from 'classnames'
+import { DeterminationScore } from 'components/determination-score'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { CaptureDetection } from 'data-services/models/capture'
 import * as Dialog from 'design-system/components/dialog/dialog'
@@ -238,28 +239,24 @@ const FrameDetections = ({
                   />
                 </Tooltip.Trigger>
                 <Tooltip.Content
-                  className="p-2 z-[1]"
+                  className="p-4 z-[1]"
                   collisionBoundary={containerRef?.current}
                   side="bottom"
                 >
-                  <div className="flex flex-col gap-1">
-                    <span className="body-base font-medium">
-                      {detection.label}
-                    </span>
-                    <div className="flex items-center justify-between gap-4">
-                      <span className="body-small">
-                        ({detection.scoreLabel})
-                      </span>
-                      <button
-                        className="flex items-center gap-1 text-primary font-semibold"
-                        disabled={!detection.occurrenceId}
-                        onClick={() =>
-                          setActiveOccurrence(detection.occurrenceId)
-                        }
-                      >
-                        <span>{translate(STRING.DETAILS)}</span>
-                      </button>
-                    </div>
+                  <div className="flex flex-col items-start gap-2">
+                    <button
+                      className="body-base text-primary font-medium"
+                      disabled={!detection.occurrenceId}
+                      onClick={() =>
+                        setActiveOccurrence(detection.occurrenceId)
+                      }
+                    >
+                      <span>{detection.label}</span>
+                    </button>
+                    <DeterminationScore
+                      score={detection.score}
+                      scoreLabel={detection.scoreLabel}
+                    />
                   </div>
                 </Tooltip.Content>
               </Tooltip.Root>
