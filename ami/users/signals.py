@@ -14,9 +14,15 @@ logger = logging.getLogger(__name__)
 
 # Thread-safe flag to suppress the manage_project_membership signal handler.
 # When True, the handler returns early without creating/deleting memberships.
-# This avoids the need to globally disconnect/reconnect the signal, which is
-# racy under concurrent requests (another request's group changes would be
-# silently ignored while the signal is disconnected).
+#
+# Why not just disconnect/reconnect the signal?
+# Django signals are global (process-wide). Disconnecting in a request handler
+# suppresses the signal for ALL concurrent requests in the same process, not
+# just the current one. Under concurrent load (gunicorn threads, async workers),
+# another request's group changes would silently skip the handler, leaving
+# users in permission groups without corresponding UserProjectMembership records.
+# ContextVar is scoped to the current thread/coroutine, so suppression only
+# affects the caller that requested it.
 _skip_membership_signal: ContextVar[bool] = ContextVar("_skip_membership_signal", default=False)
 
 
@@ -60,13 +66,21 @@ def manage_project_membership(sender, instance, action, reverse, model, pk_set, 
     if action not in ["post_add", "post_remove"]:
         return
 
+    # This handler expects instance=User, pk_set=Group PKs, which is the case
+    # when called via user.groups.add/remove() (all callers go through Role.assign_user
+    # and Role.unassign_user). If called via group.user_set.add/remove() the semantics
+    # are reversed (instance=Group, pk_set=User PKs) and would break. Guard against that.
+    if not reverse:
+        return
+
     if _skip_membership_signal.get():
         logger.debug("Skipping manage_project_membership (suppressed by caller).")
         return
 
-    # Suppress the signal for the duration of this handler to prevent recursion:
-    # modifying project.members triggers set_project_members_permissions, which calls
-    # BasicMember.assign_user, which modifies Group.user_set, which would re-enter here.
+    # Suppress re-entrancy: Role.assign_user (called elsewhere, e.g. from
+    # set_project_members_permissions in main/signals.py) modifies Group.user_set,
+    # which would fire this handler again. The suppression is scoped to this
+    # thread only via ContextVar — other concurrent requests are unaffected.
     with suppress_membership_signal():
         with transaction.atomic():
             for group in Group.objects.filter(pk__in=pk_set):
