@@ -63,7 +63,8 @@ class UserProjectMembershipViewSet(DefaultViewSet, ProjectMixin):
                 for r in Role.__subclasses__():
                     r.unassign_user(user, project)
                 role_cls.assign_user(user, project)
-                BasicMember.assign_user(user, project)
+                if role_cls is not BasicMember:
+                    BasicMember.assign_user(user, project)
             finally:
                 # Reconnect signal
                 m2m_changed.connect(manage_project_membership, sender=Group.user_set.through)
@@ -71,6 +72,7 @@ class UserProjectMembershipViewSet(DefaultViewSet, ProjectMixin):
     def perform_update(self, serializer):
         membership = self.get_object()
         project = membership.project
+        old_user = membership.user
         user = getattr(serializer, "_validated_user", None) or membership.user
         role_cls = getattr(serializer, "_validated_role_cls", None)
         if not role_cls:
@@ -84,11 +86,17 @@ class UserProjectMembershipViewSet(DefaultViewSet, ProjectMixin):
                 membership.user = user
                 membership.save()
 
+                # If user changed, revoke all roles from the old user
+                if old_user != user:
+                    for r in Role.__subclasses__():
+                        r.unassign_user(old_user, project)
+
                 # Unassign all roles, assign the chosen role, then BasicMember
                 for r in Role.__subclasses__():
                     r.unassign_user(user, project)
                 role_cls.assign_user(user, project)
-                BasicMember.assign_user(user, project)
+                if role_cls is not BasicMember:
+                    BasicMember.assign_user(user, project)
         finally:
             # Reconnect signal
             m2m_changed.connect(manage_project_membership, sender=Group.user_set.through)

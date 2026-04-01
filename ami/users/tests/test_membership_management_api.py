@@ -296,6 +296,37 @@ class TestMembersApiDraftProjectAccess(APITestCase):
     def test_member_added_via_api_can_access_draft_project_manager(self):
         self._add_member_and_assert_can_access_draft(self.user_project_manager, ProjectManager.__name__)
 
+    def test_member_role_update_retains_draft_access(self):
+        """After a role change via API, member should still access draft project."""
+        self._add_member_and_assert_can_access_draft(self.user_basic, BasicMember.__name__)
+
+        self.client.force_authenticate(self.superuser)
+        membership = UserProjectMembership.objects.get(project=self.project, user=self.user_basic)
+        update_url = f"{self.members_url}{membership.pk}/"
+        resp = self.client.patch(update_url, {"role_id": Researcher.__name__}, format="json")
+        self.assertEqual(resp.status_code, 200)
+
+        self.client.force_authenticate(self.user_basic)
+        detail_resp = self.client.get(self.detail_url)
+        self.assertEqual(detail_resp.status_code, 200, "Member should retain draft access after role update")
+
+    def test_deleted_member_cannot_access_draft_project(self):
+        """After membership deletion, former member should lose draft access."""
+        self._add_member_and_assert_can_access_draft(self.user_basic, BasicMember.__name__)
+
+        self.client.force_authenticate(self.superuser)
+        membership = UserProjectMembership.objects.get(project=self.project, user=self.user_basic)
+        delete_url = f"{self.members_url}{membership.pk}/"
+        self.client.delete(delete_url)
+
+        self.client.force_authenticate(self.user_basic)
+        detail_resp = self.client.get(self.detail_url)
+        self.assertIn(
+            detail_resp.status_code,
+            (403, 404),
+            "Removed member should not access draft project",
+        )
+
     def test_non_member_cannot_access_draft_project(self):
         self.client.force_authenticate(self.outsider)
         detail_resp = self.client.get(self.detail_url)
