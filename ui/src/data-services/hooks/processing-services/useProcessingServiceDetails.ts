@@ -21,7 +21,11 @@ export const useProcessingServiceDetails = (
   const params = projectId ? `?project_id=${projectId}` : ''
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<ProcessingService>({
-      queryKey: [API_ROUTES.PROCESSING_SERVICES, processingServiceId, projectId],
+      queryKey: [
+        API_ROUTES.PROCESSING_SERVICES,
+        processingServiceId,
+        projectId,
+      ],
       url: `${API_URL}/${API_ROUTES.PROCESSING_SERVICES}/${processingServiceId}/${params}`,
     })
 

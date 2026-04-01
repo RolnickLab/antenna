@@ -47,7 +47,8 @@ export const GenerateAPIKey = ({
   processingService: ProcessingService
 }) => {
   const { projectId } = useParams()
-  const { generateAPIKey, isLoading, error, apiKey } = useGenerateAPIKey(projectId)
+  const { generateAPIKey, isLoading, error, apiKey } =
+    useGenerateAPIKey(projectId)
   const [copied, setCopied] = useState(false)
   const [visible, setVisible] = useState(false)
 
