@@ -14,8 +14,10 @@ import styles from './styles.module.scss'
 export const ProcessingServiceDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
-  const { processingService, isLoading, error } =
-    useProcessingServiceDetails(id, projectId)
+  const { processingService, isLoading, error } = useProcessingServiceDetails(
+    id,
+    projectId
+  )
 
   return (
     <Dialog.Root
