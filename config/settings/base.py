@@ -2,7 +2,6 @@
 Base settings to build other settings files upon.
 """
 
-import re
 import socket
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
