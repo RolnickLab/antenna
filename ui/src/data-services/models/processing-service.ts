@@ -69,6 +69,23 @@ export class ProcessingService extends Entity {
     return this._processingService.last_seen_live ?? false
   }
 
+  get apiKeyPrefix(): string | undefined {
+    return this._processingService.api_key_prefix ?? undefined
+  }
+
+  get lastSeenClientInfo():
+    | {
+        hostname?: string
+        software?: string
+        version?: string
+        platform?: string
+        ip?: string
+        user_agent?: string
+      }
+    | undefined {
+    return this._processingService.last_seen_client_info ?? undefined
+  }
+
   get numPiplinesAdded(): number {
     return this._pipelines.length
   }
@@ -80,7 +97,9 @@ export class ProcessingService extends Entity {
     color: string
   } {
     if (this.isAsync) {
-      return ProcessingService.getStatusInfo('UNKNOWN')
+      // Async services derive status from heartbeat
+      const status_code = this.lastSeenLive ? 'ONLINE' : 'UNKNOWN'
+      return ProcessingService.getStatusInfo(status_code)
     }
     const status_code = this.lastSeenLive ? 'ONLINE' : 'OFFLINE'
     return ProcessingService.getStatusInfo(status_code)

@@ -28,10 +28,8 @@ const config: FormConfig = {
   },
   endpoint_url: {
     label: 'Endpoint URL',
-    description: 'Processing service endpoint.',
-    rules: {
-      required: true,
-    },
+    description:
+      'Processing service endpoint. Leave empty for pull-mode services that register themselves.',
   },
   description: {
     label: translate(STRING.FIELD_LABEL_DESCRIPTION),
