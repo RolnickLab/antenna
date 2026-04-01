@@ -4,8 +4,8 @@ Base settings to build other settings files upon.
 
 import re
 import socket
-from urllib.parse import urlparse, urlunparse
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 import django_stubs_ext
 import environ
