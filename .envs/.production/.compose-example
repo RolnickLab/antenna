@@ -1,0 +1,4 @@
+# IP address of the external PostgreSQL server.
+# Used by docker-compose.staging.yml to map the "db" hostname.
+# Set to "host-gateway" if using the local DB container (docker-compose.db.yml).
+DATABASE_IP=
