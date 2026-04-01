@@ -17,7 +17,7 @@ from rest_framework.response import Response
 
 from ami.base.permissions import ObjectPermission
 from ami.base.views import ProjectMixin
-from ami.jobs.schemas import batch_param, ids_only_param, incomplete_only_param
+from ami.jobs.schemas import TasksRequestSerializer, ids_only_param, incomplete_only_param
 from ami.jobs.tasks import process_nats_pipeline_result
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
@@ -238,24 +238,24 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
     @extend_schema(
-        parameters=[batch_param],
+        request=TasksRequestSerializer,
         responses={200: dict},
     )
-    @action(detail=True, methods=["get"], name="tasks")
+    @action(detail=True, methods=["post"], name="tasks")
     def tasks(self, request, pk=None):
         """
-        Get tasks from the job queue.
+        Fetch tasks from the job queue (POST).
 
         Returns task data with reply_subject for acknowledgment. External workers should:
-        1. Call this endpoint to get tasks
+        1. POST to this endpoint with {"batch": N, "client_info": {...}}
         2. Process the tasks
-        3. POST to /jobs/{id}/result/ with the reply_subject to acknowledge
+        3. POST to /jobs/{id}/result/ with the results
         """
+        serializer = TasksRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        batch = serializer.validated_data["batch"]
+
         job: Job = self.get_object()
-        try:
-            batch = IntegerField(required=True, min_value=1).clean(request.query_params.get("batch"))
-        except Exception as e:
-            raise ValidationError({"batch": str(e)}) from e
 
         # Only async_api jobs have tasks fetchable from NATS
         if job.dispatch_mode != JobDispatchMode.ASYNC_API:
@@ -290,11 +290,12 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="result")
     def result(self, request, pk=None):
         """
-        The request body should be a list of results: list[PipelineTaskResult]
+        Submit pipeline results.
 
-        This endpoint accepts a list of pipeline results and queues them for
-        background processing. Each result will be validated, saved to the database,
-        and acknowledged via NATS in a Celery task.
+        Accepts: {"client_info": {...}, "results": [PipelineTaskResult, ...]}
+        Or legacy: [PipelineTaskResult, ...] (bare list)
+
+        Results are validated then queued for background processing via Celery.
         """
 
         job = self.get_object()
@@ -302,17 +303,19 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         # Record heartbeat for async processing services on this pipeline
         _mark_pipeline_pull_services_seen(job)
 
-        # Validate request data is a list
+        # Accept both wrapped format and legacy bare list
         if isinstance(request.data, list):
-            results = request.data
+            raw_results = request.data
+        elif isinstance(request.data, dict) and "results" in request.data:
+            raw_results = request.data["results"]
         else:
-            results = [request.data]
+            raw_results = [request.data]
 
         try:
             # Pre-validate all results before enqueuing any tasks
             # This prevents partial queueing and duplicate task processing
             validated_results = []
-            for item in results:
+            for item in raw_results:
                 task_result = PipelineTaskResult(**item)
                 validated_results.append(task_result)
 
@@ -337,15 +340,17 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                 )
 
                 logger.info(
-                    f"Queued pipeline result processing for job {job.pk}, "
-                    f"task_id: {task.id}, reply_subject: {reply_subject}"
+                    "Queued pipeline result for job %s, task_id: %s, reply_subject: %s",
+                    job.pk,
+                    task.id,
+                    reply_subject,
                 )
 
             return Response(
                 {
                     "status": "accepted",
                     "job_id": job.pk,
-                    "results_queued": len([t for t in queued_tasks if t["status"] == "queued"]),
+                    "results_queued": len(queued_tasks),
                     "tasks": queued_tasks,
                 }
             )
@@ -353,7 +358,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             raise ValidationError(f"Invalid result data: {e}") from e
 
         except Exception as e:
-            logger.error(f"Failed to queue pipeline results for job {job.pk}: {e}")
+            logger.error("Failed to queue pipeline results for job %s: %s", job.pk, e)
             return Response(
                 {
                     "status": "error",
