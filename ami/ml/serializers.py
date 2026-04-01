@@ -139,6 +139,7 @@ class ProcessingServiceSerializer(DefaultSerializer):
     pipelines = PipelineNestedSerializer(many=True, read_only=True)
     projects = serializers.SerializerMethodField()
     is_async = serializers.BooleanField(read_only=True)
+    endpoint_url = serializers.CharField(required=False, allow_null=True, allow_blank=False, max_length=1024)
     project = serializers.PrimaryKeyRelatedField(
         write_only=True,
         queryset=Project.objects.all(),

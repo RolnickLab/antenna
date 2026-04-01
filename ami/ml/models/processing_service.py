@@ -36,7 +36,7 @@ class ProcessingServiceQuerySet(BaseQuerySet):
         out to them, they poll Antenna for tasks and push results back. Their liveness is
         tracked via heartbeats from mark_seen() rather than active health checks.
         """
-        return self.filter(models.Q(endpoint_url__isnull=True) | models.Q(endpoint_url__exact=""))
+        return self.filter(endpoint_url__isnull=True)
 
     def sync_services(self) -> "ProcessingServiceQuerySet":
         """
@@ -46,7 +46,7 @@ class ProcessingServiceQuerySet(BaseQuerySet):
         /readyz and /process endpoints. Their liveness is tracked by the periodic
         check_processing_services_online Celery task.
         """
-        return self.exclude(models.Q(endpoint_url__isnull=True) | models.Q(endpoint_url__exact=""))
+        return self.filter(endpoint_url__isnull=False)
 
 
 class ProcessingServiceManager(models.Manager.from_queryset(ProcessingServiceQuerySet)):
@@ -81,6 +81,11 @@ class ProcessingService(BaseModel):
         endpoint, corresponding to jobs with dispatch_mode=SYNC_API.
         """
         return not self.endpoint_url
+
+    def save(self, *args, **kwargs):
+        if self.endpoint_url == "":
+            self.endpoint_url = None
+        super().save(*args, **kwargs)
 
     def __str__(self):
         endpoint_display = self.endpoint_url or "async"

@@ -15,7 +15,7 @@ import { useFormError } from 'utils/useFormError'
 import { DetailsFormProps, FormValues } from './types'
 
 type ProcessingServiceFormValues = FormValues & {
-  endpoint_url: string
+  endpoint_url?: string
 }
 
 const config: FormConfig = {
@@ -66,7 +66,7 @@ export const ProcessingServiceDetailsForm = ({
           name: values.name,
           description: values.description,
           customFields: {
-            endpoint_url: values.endpoint_url,
+            endpoint_url: values.endpoint_url || null,
           },
         })
       )}
