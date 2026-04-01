@@ -29,10 +29,10 @@ export class CaptureSet extends Entity {
     }
 
     return this._jobs.sort((j1: Job, j2: Job) => {
-      const date1 = new Date(j1.updatedAt as string)
-      const date2 = new Date(j2.updatedAt as string)
+      const time1 = j1.updatedAt?.getTime() ?? 0
+      const time2 = j2.updatedAt?.getTime() ?? 0
 
-      return date2.getTime() - date1.getTime()
+      return time1 - time2
     })[0]
   }
 
@@ -75,6 +75,10 @@ export class CaptureSet extends Entity {
     return this._data.source_images_with_detections_count
   }
 
+  get numImagesProcessed(): number | undefined {
+    return this._data.source_images_processed_count
+  }
+
   get numImagesWithDetectionsLabel(): string {
     const pct =
       this.numImagesWithDetections && this.numImages
@@ -84,6 +88,16 @@ export class CaptureSet extends Entity {
     return `${this.numImagesWithDetections?.toLocaleString()} (${pct.toFixed(
       0
     )}%)`
+  }
+
+  get numImagesProcessedLabel(): string {
+    const numProcessed = this.numImagesProcessed ?? 0
+    const pct =
+      this.numImages && this.numImages > 0
+        ? (numProcessed / this.numImages) * 100
+        : 0
+
+    return `${numProcessed.toLocaleString()} (${pct.toFixed(0)}%)`
   }
 
   get numJobs(): number | undefined {

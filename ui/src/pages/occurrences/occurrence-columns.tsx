@@ -1,6 +1,7 @@
 import { DeterminationScore } from 'components/determination-score'
 import { Occurrence } from 'data-services/models/occurrence'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
 import {
   CellTheme,
@@ -158,13 +159,13 @@ export const columns: (
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
-    renderCell: (item: Occurrence) => <BasicTableCell value={item.createdAt} />,
+    renderCell: (item: Occurrence) => <DateTableCell date={item.createdAt} />,
   },
   {
     id: 'updated-at',
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
-    renderCell: (item: Occurrence) => <BasicTableCell value={item.updatedAt} />,
+    renderCell: (item: Occurrence) => <DateTableCell date={item.updatedAt} />,
   },
 ]
 
@@ -214,7 +215,6 @@ const TaxonCell = ({
               <IdQuickActions
                 occurrenceIds={[item.id]}
                 occurrenceTaxa={[item.determinationTaxon]}
-                zIndex={1}
               />
             </div>
           )}

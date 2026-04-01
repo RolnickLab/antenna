@@ -91,9 +91,7 @@ class Role:
 
 class BasicMember(Role):
     display_name = "Basic member"
-    description = (
-        "Basic project member with access to star source images, create jobs, and run single image processing jobs."
-    )
+    description = "Basic project members have read access to projects. They can also process single captures."
     permissions = Role.permissions | {
         Project.Permissions.VIEW_PRIVATE_DATA,
         Project.Permissions.STAR_SOURCE_IMAGE,
@@ -105,7 +103,7 @@ class BasicMember(Role):
 
 class Researcher(Role):
     display_name = "Researcher"
-    description = "Researcher with all basic member permissions, plus the ability to create and delete data exports"
+    description = "Researchers have all basic member permissions, plus the ability to create and delete data exports."
     # Note: UPDATE_DATA_EXPORT is intentionally excluded - only superusers can modify exports.
     # Users should delete and recreate exports if they need different settings.
     permissions = BasicMember.permissions | {
@@ -117,7 +115,7 @@ class Researcher(Role):
 class Identifier(Role):
     display_name = "Identifier"
     description = (
-        "Identifier with all basic member permissions, plus the ability to create, "
+        "Identifiers have all basic member permissions, plus the ability to create, "
         "update, and delete occurrence identifications."
     )
     permissions = BasicMember.permissions | {
@@ -128,11 +126,10 @@ class Identifier(Role):
 
 
 class MLDataManager(Role):
-    display_name = "ML Data manager"
+    display_name = "ML data manager"
     description = (
-        "Machine Learning Data Manager with all basic member permissions, plus the ability to "
-        "manage ML jobs, run collection population jobs, sync data storage, export data, and "
-        "delete occurrences."
+        "Machine learning data managers have all basic member permissions, plus the ability to "
+        "manage jobs and export data."
     )
     permissions = BasicMember.permissions | {
         Project.Permissions.CREATE_JOB,
@@ -151,9 +148,9 @@ class MLDataManager(Role):
 class ProjectManager(Role):
     display_name = "Project manager"
     description = (
-        "Project manager with full administrative access, including all permissions from all roles "
-        "plus the ability to manage project settings, members, deployments, collections, storage, "
-        "and all project resources."
+        "Project managers have full administrative access. This includes all permissions from other roles, "
+        "plus the ability to manage project settings, members, stations, capture sets, storage, "
+        "and all other project resources."
     )
     permissions = (
         BasicMember.permissions
@@ -194,6 +191,9 @@ class ProjectManager(Role):
             Project.Permissions.CREATE_PROJECT_PIPELINE_CONFIG,
             Project.Permissions.UPDATE_PROJECT_PIPELINE_CONFIG,
             Project.Permissions.DELETE_PROJECT_PIPELINE_CONFIG,
+            Project.Permissions.CREATE_TAXALIST,
+            Project.Permissions.UPDATE_TAXALIST,
+            Project.Permissions.DELETE_TAXALIST,
         }
     )
 

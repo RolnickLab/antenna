@@ -10,10 +10,10 @@ import {
   DeploymentDetails,
   DeploymentFieldValues,
 } from 'data-services/models/deployment-details'
-import { Button } from 'design-system/components/button/button'
 import { InputContent, InputValue } from 'design-system/components/input/input'
+import { EntityPicker } from 'design-system/components/select/entity-picker'
 import _ from 'lodash'
-import { EntitiesPicker } from 'pages/project/entities/entities-picker'
+import { Button } from 'nova-ui-kit'
 import { ConnectionStatus } from 'pages/project/storage/connection-status'
 import { useContext, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -70,7 +70,7 @@ export const SectionSourceImages = ({
                 label={config[field.name].label}
                 error={fieldState.error?.message}
               >
-                <EntitiesPicker
+                <EntityPicker
                   collection={API_ROUTES.STORAGE}
                   value={field.value}
                   onValueChange={field.onChange}
@@ -102,7 +102,9 @@ export const SectionSourceImages = ({
         isConnected={isConnected}
       />
       <FormActions>
-        <Button label={translate(STRING.BACK)} onClick={onBack} />
+        <Button onClick={onBack} size="small" type="button" variant="outline">
+          <span>{translate(STRING.BACK)}</span>
+        </Button>
       </FormActions>
     </form>
   )

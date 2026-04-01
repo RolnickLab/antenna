@@ -28,6 +28,7 @@ export const CaptureSets = () => {
       settings: true,
       captures: true,
       'captures-with-detections': true,
+      'total-processed-captures': true,
       status: true,
     }
   )
@@ -68,17 +69,17 @@ export const CaptureSets = () => {
         isFetching={isFetching}
         tooltip={translate(STRING.TOOLTIP_CAPTURE_SET)}
       >
-        <ColumnSettings
-          columns={columns(projectId as string)}
-          columnSettings={columnSettings}
-          onColumnSettingsChange={setColumnSettings}
-        />
         {canCreate && (
           <NewEntityDialog
             collection={API_ROUTES.CAPTURE_SETS}
             type={translate(STRING.ENTITY_TYPE_CAPTURE_SET)}
           />
         )}
+        <ColumnSettings
+          columns={columns(projectId as string)}
+          columnSettings={columnSettings}
+          onColumnSettingsChange={setColumnSettings}
+        />
       </PageHeader>
       <Table
         columns={columns(projectId as string).filter((column) => {

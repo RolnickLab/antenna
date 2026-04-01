@@ -244,6 +244,7 @@ export const CaptureSetDetailsForm = ({
                   />
                   {field.value && (
                     <Button
+                      aria-label={translate(STRING.CLEAR)}
                       size="icon"
                       className="shrink-0 text-muted-foreground"
                       variant="ghost"
@@ -273,6 +274,7 @@ export const CaptureSetDetailsForm = ({
                   />
                   {field.value && (
                     <Button
+                      aria-label={translate(STRING.CLEAR)}
                       size="icon"
                       className="shrink-0 text-muted-foreground"
                       variant="ghost"

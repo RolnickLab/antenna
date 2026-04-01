@@ -2,6 +2,7 @@ import classNames from 'classnames'
 import { ChevronRightIcon, InfoIcon, XIcon } from 'lucide-react'
 import { Button, buttonVariants, Tooltip } from 'nova-ui-kit'
 import { Link } from 'react-router-dom'
+import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
 import { AlgorithmFilter, NotAlgorithmFilter } from './filters/algorithm-filter'
 import { BooleanFilter } from './filters/boolean-filter'
@@ -92,6 +93,7 @@ export const FilterControl = ({
         />
         {clearable && filter.value && (
           <Button
+            aria-label={translate(STRING.CLEAR)}
             className="shrink-0 text-muted-foreground"
             onClick={() => clearFilter(field)}
             size="icon"
@@ -114,7 +116,12 @@ export const FilterInfo = ({ text, to }: { text: string; to?: string }) => (
   <Tooltip.Provider delayDuration={0}>
     <Tooltip.Root>
       <Tooltip.Trigger asChild>
-        <Button className="text-muted-foreground" size="icon" variant="ghost">
+        <Button
+          aria-label={translate(STRING.INFO)}
+          className="text-muted-foreground"
+          size="icon"
+          variant="ghost"
+        >
           <InfoIcon className="w-4 h-4" />
         </Button>
       </Tooltip.Trigger>
