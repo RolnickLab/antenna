@@ -82,11 +82,6 @@ class ProcessingService(BaseModel):
         """
         return not self.endpoint_url
 
-    def save(self, *args, **kwargs):
-        if self.endpoint_url == "":
-            self.endpoint_url = None
-        super().save(*args, **kwargs)
-
     def __str__(self):
         endpoint_display = self.endpoint_url or "async"
         return f'#{self.pk} "{self.name}" ({endpoint_display})'
