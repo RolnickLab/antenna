@@ -4,6 +4,7 @@ Base settings to build other settings files upon.
 
 import re
 import socket
+from urllib.parse import urlparse, urlunparse
 from pathlib import Path
 
 import django_stubs_ext
@@ -265,16 +266,24 @@ CACHES = {
 REDIS_URL = env("REDIS_URL", default=None)
 
 
-# Derive a separate Redis DB for Celery results (DB 1) from REDIS_URL (DB 0).
-# This keeps Django cache (DB 0) and Celery task metadata (DB 1) isolated so they
-# can be flushed and monitored independently.
+# Redis DB numbering convention:
+#   DB 0 = Django cache (REDIS_URL, used by django-redis CACHES above)
+#   DB 1 = Celery result backend (derived automatically below)
+# Separating DBs lets us flush cache without losing pending task results,
+# and monitor each independently. The function below rewrites the path
+# component of REDIS_URL to point at DB 1.
 # TODO: consider separate Redis instances with different eviction policies:
 #   allkeys-lru for cache, volatile-ttl for results. See issue #1189.
 def _celery_result_backend_url(redis_url):
     if not redis_url:
         return None
-    # Replace the DB number at the end of the URL (e.g. /0 -> /1)
-    return re.sub(r"/\d+$", "/1", redis_url) if "/" in redis_url.split(":")[-1] else redis_url + "/1"
+    parsed = urlparse(redis_url)
+    parts = [s for s in parsed.path.split("/") if s]
+    if parts and parts[-1].isdigit():
+        parts[-1] = "1"
+    else:
+        parts.append("1")
+    return urlunparse(parsed._replace(path="/" + "/".join(parts)))
 
 
 CELERY_RESULT_BACKEND_URL = env("CELERY_RESULT_BACKEND", default=None) or _celery_result_backend_url(REDIS_URL)
