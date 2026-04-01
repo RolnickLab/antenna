@@ -8,6 +8,9 @@ set -o xtrace
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 cd "$SCRIPT_DIR/../.."
 
+echo "Deploying branch: $(git branch --show-current) on $(hostname)"
+sleep 2
+
 git pull --ff-only
 
 docker compose -f docker-compose.staging.yml \
