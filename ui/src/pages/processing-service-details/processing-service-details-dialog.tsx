@@ -15,7 +15,7 @@ export const ProcessingServiceDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
   const { processingService, isLoading, error } =
-    useProcessingServiceDetails(id)
+    useProcessingServiceDetails(id, projectId)
 
   return (
     <Dialog.Root

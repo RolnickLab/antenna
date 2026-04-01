@@ -80,7 +80,9 @@ export class ProcessingService extends Entity {
     color: string
   } {
     if (this.isAsync) {
-      return ProcessingService.getStatusInfo('UNKNOWN')
+      // Async services derive status from heartbeat
+      const status_code = this.lastSeenLive ? 'ONLINE' : 'UNKNOWN'
+      return ProcessingService.getStatusInfo(status_code)
     }
     const status_code = this.lastSeenLive ? 'ONLINE' : 'OFFLINE'
     return ProcessingService.getStatusInfo(status_code)
