@@ -4,9 +4,9 @@ import { BasicTableCell } from 'design-system/components/table/basic-table-cell/
 import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import { CellTheme, TableColumn } from 'design-system/components/table/types'
+import { Toolbar } from 'design-system/components/toolbar'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { UpdateEntityDialog } from 'pages/project/entities/entity-details-dialog'
-import styles from 'pages/project/entities/styles.module.scss'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
@@ -14,10 +14,8 @@ import { PopulateProcessingService } from './processing-services-actions'
 
 export const columns = ({
   projectId,
-  showActions,
 }: {
   projectId: string
-  showActions?: boolean
 }): TableColumn<ProcessingService>[] => [
   {
     id: 'id',
@@ -74,34 +72,30 @@ export const columns = ({
       <DateTableCell date={item.updatedAt} />
     ),
   },
-  ...(showActions
-    ? [
-        {
-          id: 'actions',
-          name: '',
-          sticky: true,
-          renderCell: (item: ProcessingService) => (
-            <div className={styles.entityActions}>
-              {item.canDelete && (
-                <DeleteEntityDialog
-                  collection={API_ROUTES.PROCESSING_SERVICES}
-                  id={item.id}
-                  type="service"
-                />
-              )}
-              {item.canUpdate && (
-                <>
-                  <UpdateEntityDialog
-                    collection={API_ROUTES.PROCESSING_SERVICES}
-                    entity={item}
-                    type="service"
-                  />
-                  <PopulateProcessingService processingService={item} />
-                </>
-              )}
-            </div>
-          ),
-        },
-      ]
-    : []),
+  {
+    id: 'actions',
+    name: '',
+    sticky: true,
+    renderCell: (item: ProcessingService) => (
+      <Toolbar>
+        {item.canUpdate && (
+          <>
+            <PopulateProcessingService processingService={item} />
+            <UpdateEntityDialog
+              collection={API_ROUTES.PROCESSING_SERVICES}
+              entity={item}
+              type="service"
+            />
+          </>
+        )}
+        {item.canDelete && (
+          <DeleteEntityDialog
+            collection={API_ROUTES.PROCESSING_SERVICES}
+            id={item.id}
+            type="service"
+          />
+        )}
+      </Toolbar>
+    ),
+  },
 ]

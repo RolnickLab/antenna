@@ -3,16 +3,12 @@ import { StorageSource } from 'data-services/models/storage'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { TableColumn, TextAlign } from 'design-system/components/table/types'
+import { Toolbar } from 'design-system/components/toolbar'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { UpdateEntityDialog } from 'pages/project/entities/entity-details-dialog'
-import styles from 'pages/project/entities/styles.module.scss'
 import { STRING, translate } from 'utils/language'
 
-export const columns = ({
-  showActions,
-}: {
-  showActions?: boolean
-}): TableColumn<StorageSource>[] => [
+export const columns = (): TableColumn<StorageSource>[] => [
   {
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
@@ -68,31 +64,27 @@ export const columns = ({
       <DateTableCell date={item.updatedAt} />
     ),
   },
-  ...(showActions
-    ? [
-        {
-          id: 'actions',
-          name: '',
-          sticky: true,
-          renderCell: (item: StorageSource) => (
-            <div className={styles.entityActions}>
-              {item.canDelete && (
-                <DeleteEntityDialog
-                  collection={API_ROUTES.STORAGE}
-                  id={item.id}
-                  type="storage"
-                />
-              )}
-              {item.canUpdate && (
-                <UpdateEntityDialog
-                  collection={API_ROUTES.STORAGE}
-                  entity={item}
-                  type="storage"
-                />
-              )}
-            </div>
-          ),
-        },
-      ]
-    : []),
+  {
+    id: 'actions',
+    name: '',
+    sticky: true,
+    renderCell: (item: StorageSource) => (
+      <Toolbar>
+        {item.canUpdate && (
+          <UpdateEntityDialog
+            collection={API_ROUTES.STORAGE}
+            entity={item}
+            type="storage"
+          />
+        )}
+        {item.canDelete && (
+          <DeleteEntityDialog
+            collection={API_ROUTES.STORAGE}
+            id={item.id}
+            type="storage"
+          />
+        )}
+      </Toolbar>
+    ),
+  },
 ]

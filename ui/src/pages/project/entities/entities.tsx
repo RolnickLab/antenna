@@ -52,7 +52,7 @@ export const Entities = ({
         )}
       </PageHeader>
       <Table
-        columns={columns({ collection, type, showActions: canCreate })}
+        columns={columns({ collection, type })}
         error={error}
         isLoading={isLoading}
         items={entities}

@@ -35,10 +35,7 @@ export const Deployments = () => {
       sort,
     })
   const canCreate = userPermissions?.includes(UserPermission.Create)
-  const tableColumns = columns({
-    projectId: projectId as string,
-    showActions: canCreate,
-  })
+  const tableColumns = columns({ projectId: projectId as string })
 
   return (
     <>

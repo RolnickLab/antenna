@@ -54,10 +54,7 @@ export const ProcessingServices = () => {
       <Table
         items={items}
         isLoading={isLoading}
-        columns={columns({
-          projectId: projectId as string,
-          showActions: canCreate,
-        })}
+        columns={columns({ projectId: projectId as string })}
         sortable
         sortSettings={sort}
         onSortSettingsChange={setSort}

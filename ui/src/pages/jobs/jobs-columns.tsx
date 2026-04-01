@@ -4,6 +4,7 @@ import { BasicTableCell } from 'design-system/components/table/basic-table-cell/
 import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import { CellTheme, TableColumn } from 'design-system/components/table/types'
+import { Toolbar } from 'design-system/components/toolbar'
 import { CancelJob } from 'pages/job-details/job-actions/cancel-job'
 import { QueueJob } from 'pages/job-details/job-actions/queue-job'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
@@ -11,14 +12,11 @@ import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
-import styles from './jobs.module.scss'
 
 export const columns = ({
   projectId,
-  showActions,
 }: {
   projectId: string
-  showActions?: boolean
 }): TableColumn<Job>[] => [
   {
     id: 'name',
@@ -141,26 +139,22 @@ export const columns = ({
     sortField: 'finished_at',
     renderCell: (item: Job) => <DateTableCell date={item.finishedAt} />,
   },
-  ...(showActions
-    ? [
-        {
-          id: 'actions',
-          name: '',
-          sticky: true,
-          renderCell: (item: Job) => (
-            <div className={styles.jobActions}>
-              {item.canDelete && (
-                <DeleteEntityDialog
-                  collection={API_ROUTES.JOBS}
-                  id={item.id}
-                  type={translate(STRING.ENTITY_TYPE_JOB)}
-                />
-              )}
-              {item.canCancel && <CancelJob jobId={item.id} />}
-              {item.canQueue && <QueueJob jobId={item.id} />}
-            </div>
-          ),
-        },
-      ]
-    : []),
+  {
+    id: 'actions',
+    name: '',
+    sticky: true,
+    renderCell: (item: Job) => (
+      <Toolbar>
+        {item.canQueue && <QueueJob compact jobId={item.id} />}
+        {item.canCancel && <CancelJob compact jobId={item.id} />}
+        {item.canDelete && (
+          <DeleteEntityDialog
+            collection={API_ROUTES.JOBS}
+            id={item.id}
+            type={translate(STRING.ENTITY_TYPE_JOB)}
+          />
+        )}
+      </Toolbar>
+    ),
+  },
 ]

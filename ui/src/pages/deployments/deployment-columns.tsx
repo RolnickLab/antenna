@@ -10,19 +10,17 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
+import { Toolbar } from 'design-system/components/toolbar'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
-import styles from './deployments.module.scss'
 
 export const columns = ({
   projectId,
-  showActions,
 }: {
   projectId: string
-  showActions?: boolean
 }): TableColumn<Deployment>[] => [
   {
     id: 'snapshot',
@@ -221,24 +219,20 @@ export const columns = ({
     sortField: 'updated_at',
     renderCell: (item: Deployment) => <DateTableCell date={item.updatedAt} />,
   },
-  ...(showActions
-    ? [
-        {
-          id: 'actions',
-          name: '',
-          sticky: true,
-          renderCell: (item: Deployment) => (
-            <div className={styles.deploymentActions}>
-              {item.canDelete && (
-                <DeleteEntityDialog
-                  collection={API_ROUTES.DEPLOYMENTS}
-                  id={item.id}
-                  type={translate(STRING.ENTITY_TYPE_DEPLOYMENT)}
-                />
-              )}
-            </div>
-          ),
-        },
-      ]
-    : []),
+  {
+    id: 'actions',
+    name: '',
+    sticky: true,
+    renderCell: (item: Deployment) => (
+      <Toolbar>
+        {item.canDelete && (
+          <DeleteEntityDialog
+            collection={API_ROUTES.DEPLOYMENTS}
+            id={item.id}
+            type={translate(STRING.ENTITY_TYPE_DEPLOYMENT)}
+          />
+        )}
+      </Toolbar>
+    ),
+  },
 ]

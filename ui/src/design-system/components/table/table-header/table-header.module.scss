@@ -9,24 +9,6 @@
   border-bottom: 2px solid $color-neutral-100;
   background-color: $color-neutral-50;
   text-align: left;
-
-  &.sticky {
-    position: sticky;
-    right: 0;
-    background-color: $color-neutral-50;
-    border-bottom: none;
-    z-index: 1;
-
-    > ::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 0;
-      height: 100%;
-      border-right: 1px solid $color-neutral-100;
-    }
-  }
 }
 
 .content {

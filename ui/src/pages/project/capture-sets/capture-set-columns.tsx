@@ -8,9 +8,9 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
+import { Toolbar } from 'design-system/components/toolbar'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { UpdateEntityDialog } from 'pages/project/entities/entity-details-dialog'
-import styles from 'pages/project/entities/styles.module.scss'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -20,10 +20,8 @@ import { PopulateCaptureSet } from './populate-capture-set'
 
 export const columns = ({
   projectId,
-  showActions,
 }: {
   projectId: string
-  showActions?: boolean
 }): TableColumn<CaptureSet>[] => [
   {
     id: 'id',
@@ -162,33 +160,28 @@ export const columns = ({
     sortField: 'updated_at',
     renderCell: (item: CaptureSet) => <DateTableCell date={item.updatedAt} />,
   },
-  ...(showActions
-    ? [
-        {
-          id: 'actions',
-          name: '',
-          sticky: true,
-          renderCell: (item: CaptureSet) => (
-            <div className={styles.entityActions}>
-              {item.canDelete && (
-                <DeleteEntityDialog
-                  collection={API_ROUTES.CAPTURE_SETS}
-                  id={item.id}
-                  type={translate(STRING.ENTITY_TYPE_CAPTURE_SET)}
-                />
-              )}
-              {item.canUpdate &&
-                SERVER_SAMPLING_METHODS.includes(item.method) && (
-                  <UpdateEntityDialog
-                    collection={API_ROUTES.CAPTURE_SETS}
-                    entity={item}
-                    type={translate(STRING.ENTITY_TYPE_CAPTURE_SET)}
-                  />
-                )}
-              {item.canPopulate && <PopulateCaptureSet captureSet={item} />}
-            </div>
-          ),
-        },
-      ]
-    : []),
+  {
+    id: 'actions',
+    name: '',
+    sticky: true,
+    renderCell: (item: CaptureSet) => (
+      <Toolbar>
+        {item.canPopulate && <PopulateCaptureSet captureSet={item} />}
+        {item.canUpdate && SERVER_SAMPLING_METHODS.includes(item.method) && (
+          <UpdateEntityDialog
+            collection={API_ROUTES.CAPTURE_SETS}
+            entity={item}
+            type={translate(STRING.ENTITY_TYPE_CAPTURE_SET)}
+          />
+        )}
+        {item.canDelete && (
+          <DeleteEntityDialog
+            collection={API_ROUTES.CAPTURE_SETS}
+            id={item.id}
+            type={translate(STRING.ENTITY_TYPE_CAPTURE_SET)}
+          />
+        )}
+      </Toolbar>
+    ),
+  },
 ]

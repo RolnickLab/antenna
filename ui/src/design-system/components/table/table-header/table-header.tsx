@@ -43,9 +43,7 @@ const BasicTableHeader = <T,>({
       textAlign: column.styles?.textAlign,
       width: column.styles?.width,
     }}
-    className={classNames(styles.tableHeader, {
-      [styles.sticky]: column.sticky,
-    })}
+    className={styles.tableHeader}
   >
     <BasicTooltip asChild content={column.tooltip}>
       <div

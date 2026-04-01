@@ -43,7 +43,7 @@ export const Storage = () => {
         )}
       </PageHeader>
       <Table
-        columns={columns({ showActions: canCreate })}
+        columns={columns()}
         error={error}
         isLoading={isLoading}
         items={items}

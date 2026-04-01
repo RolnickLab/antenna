@@ -2,19 +2,17 @@ import { Entity } from 'data-services/models/entity'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { TableColumn } from 'design-system/components/table/types'
+import { Toolbar } from 'design-system/components/toolbar'
 import { STRING, translate } from 'utils/language'
 import { DeleteEntityDialog } from './delete-entity-dialog'
 import { UpdateEntityDialog } from './entity-details-dialog'
-import styles from './styles.module.scss'
 
 export const columns = ({
   collection,
   type,
-  showActions,
 }: {
   collection: string
   type: string
-  showActions?: boolean
 }): TableColumn<Entity>[] => [
   {
     id: 'id',
@@ -50,32 +48,28 @@ export const columns = ({
     sortField: 'updated_at',
     renderCell: (item: Entity) => <DateTableCell date={item.updatedAt} />,
   },
-  ...(showActions
-    ? [
-        {
-          id: 'actions',
-          name: '',
-          sticky: true,
-          renderCell: (item: Entity) => (
-            <div className={styles.entityActions}>
-              {item.canDelete && (
-                <DeleteEntityDialog
-                  collection={collection}
-                  id={item.id}
-                  type={type}
-                />
-              )}
-              {item.canUpdate && (
-                <UpdateEntityDialog
-                  collection={collection}
-                  entity={item}
-                  type={type}
-                  isCompact
-                />
-              )}
-            </div>
-          ),
-        },
-      ]
-    : []),
+  {
+    id: 'actions',
+    name: '',
+    sticky: true,
+    renderCell: (item: Entity) => (
+      <Toolbar>
+        {item.canDelete && (
+          <DeleteEntityDialog
+            collection={collection}
+            id={item.id}
+            type={type}
+          />
+        )}
+        {item.canUpdate && (
+          <UpdateEntityDialog
+            collection={collection}
+            entity={item}
+            type={type}
+            isCompact
+          />
+        )}
+      </Toolbar>
+    ),
+  },
 ]

@@ -7,6 +7,7 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
+import { Toolbar } from 'design-system/components/toolbar'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { UpdateEntityDialog } from 'pages/project/entities/entity-details-dialog'
 import { Link } from 'react-router-dom'
@@ -17,10 +18,8 @@ import { AddTaxaListTaxonPopover } from '../taxa-list-details/add-taxa-list-taxo
 
 export const columns = ({
   projectId,
-  showActions,
 }: {
   projectId: string
-  showActions?: boolean
 }): TableColumn<TaxaList>[] => [
   {
     id: 'name',
@@ -77,35 +76,32 @@ export const columns = ({
     sortField: 'updated_at',
     renderCell: (item: TaxaList) => <DateTableCell date={item.updatedAt} />,
   },
-  ...(showActions
-    ? [
-        {
-          id: 'actions',
-          name: '',
-          sticky: true,
-          renderCell: (item: TaxaList) => (
-            <div className="flex items-center justify-end gap-2 p-4">
-              {item.canDelete ? (
-                <DeleteEntityDialog
-                  collection={API_ROUTES.TAXA_LISTS}
-                  id={item.id}
-                  type={translate(STRING.ENTITY_TYPE_TAXA_LIST)}
-                />
-              ) : null}
-              {item.canUpdate ? (
-                <UpdateEntityDialog
-                  collection={API_ROUTES.TAXA_LISTS}
-                  entity={item}
-                  isCompact
-                  type={translate(STRING.ENTITY_TYPE_TAXA_LIST)}
-                />
-              ) : null}
-              {item.canUpdate ? (
-                <AddTaxaListTaxonPopover compact taxaListId={item.id} />
-              ) : null}
-            </div>
-          ),
-        },
-      ]
-    : []),
+
+  {
+    id: 'actions',
+    name: '',
+    sticky: true,
+    renderCell: (item: TaxaList) => (
+      <Toolbar>
+        {item.canUpdate ? (
+          <AddTaxaListTaxonPopover compact taxaListId={item.id} />
+        ) : null}
+        {item.canUpdate ? (
+          <UpdateEntityDialog
+            collection={API_ROUTES.TAXA_LISTS}
+            entity={item}
+            isCompact
+            type={translate(STRING.ENTITY_TYPE_TAXA_LIST)}
+          />
+        ) : null}
+        {item.canDelete ? (
+          <DeleteEntityDialog
+            collection={API_ROUTES.TAXA_LISTS}
+            id={item.id}
+            type={translate(STRING.ENTITY_TYPE_TAXA_LIST)}
+          />
+        ) : null}
+      </Toolbar>
+    ),
+  },
 ]

@@ -8,6 +8,7 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
+import { Toolbar } from 'design-system/components/toolbar'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -16,10 +17,8 @@ import { STRING, translate } from 'utils/language'
 
 export const columns = ({
   projectId,
-  showActions,
 }: {
   projectId: string
-  showActions?: boolean
 }): TableColumn<Capture>[] => [
   {
     id: 'thumbnail',
@@ -179,24 +178,20 @@ export const columns = ({
     },
     renderCell: (item: Capture) => <BasicTableCell value={item.numTaxa} />,
   },
-  ...(showActions
-    ? [
-        {
-          id: 'actions',
-          name: '',
-          sticky: true,
-          renderCell: (item: Capture) => (
-            <div className="flex items-center justify-end gap-2 p-4">
-              {item.canDelete ? (
-                <DeleteEntityDialog
-                  collection={API_ROUTES.CAPTURES}
-                  id={item.id}
-                  type="capture"
-                />
-              ) : null}
-            </div>
-          ),
-        },
-      ]
-    : []),
+  {
+    id: 'actions',
+    name: '',
+    sticky: true,
+    renderCell: (item: Capture) => (
+      <Toolbar>
+        {item.canDelete ? (
+          <DeleteEntityDialog
+            collection={API_ROUTES.CAPTURES}
+            id={item.id}
+            type="capture"
+          />
+        ) : null}
+      </Toolbar>
+    ),
+  },
 ]

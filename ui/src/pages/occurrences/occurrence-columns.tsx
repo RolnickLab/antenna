@@ -17,10 +17,13 @@ import { STRING, translate } from 'utils/language'
 import { OccurrenceActions } from './occurrence-actions'
 import styles from './occurrences.module.scss'
 
-export const columns: (
-  projectId: string,
-  showQuickActions?: boolean
-) => TableColumn<Occurrence>[] = (projectId: string, showActions?: boolean) => [
+export const columns = ({
+  projectId,
+  showActions,
+}: {
+  projectId: string
+  showActions?: boolean
+}): TableColumn<Occurrence>[] => [
   {
     id: 'snapshots',
     name: translate(STRING.FIELD_LABEL_SNAPSHOTS),

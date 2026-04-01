@@ -3,6 +3,7 @@ import { Badge } from 'design-system/components/badge/badge'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { TableColumn } from 'design-system/components/table/types'
+import { Toolbar } from 'design-system/components/toolbar'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { InfoIcon, UserIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
@@ -13,10 +14,8 @@ import { RemoveMemberDialog } from './remove-member-dialog'
 
 export const columns = ({
   userId,
-  showActions,
 }: {
   userId?: string
-  showActions?: boolean
 }): TableColumn<Member>[] => [
   {
     id: 'user',
@@ -81,27 +80,23 @@ export const columns = ({
     sortField: 'updated_at',
     renderCell: (item: Member) => <DateTableCell date={item.updatedAt} />,
   },
-  ...(showActions
-    ? [
-        {
-          id: 'actions',
-          name: '',
-          sticky: true,
-          renderCell: (item: Member) => (
-            <div className="flex items-center justify-start p-4 gap-2">
-              {item.userId === userId ? (
-                item.canDelete ? (
-                  <LeaveTeamDialog member={item} />
-                ) : null
-              ) : (
-                <>
-                  {item.canDelete ? <RemoveMemberDialog member={item} /> : null}
-                  {item.canUpdate ? <ManageAccessDialog member={item} /> : null}
-                </>
-              )}
-            </div>
-          ),
-        },
-      ]
-    : []),
+  {
+    id: 'actions',
+    name: '',
+    sticky: true,
+    renderCell: (item: Member) => (
+      <Toolbar>
+        {item.userId === userId ? (
+          item.canDelete ? (
+            <LeaveTeamDialog member={item} />
+          ) : null
+        ) : (
+          <>
+            {item.canUpdate ? <ManageAccessDialog member={item} /> : null}
+            {item.canDelete ? <RemoveMemberDialog member={item} /> : null}
+          </>
+        )}
+      </Toolbar>
+    ),
+  },
 ]

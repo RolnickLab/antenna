@@ -6,6 +6,7 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
+import { Toolbar } from 'design-system/components/toolbar'
 import { TaxonDetails } from 'nova-ui-kit'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -15,11 +16,9 @@ import { RemoveTaxaListTaxonDialog } from './remove-taxa-list-taxon/remove-taxa-
 
 export const columns = ({
   projectId,
-  showActions,
   taxaListId,
 }: {
   projectId: string
-  showActions?: boolean
   taxaListId: string
 }): TableColumn<Species>[] => [
   {
@@ -72,21 +71,14 @@ export const columns = ({
     },
     renderCell: (item: Species) => <BasicTableCell value={item.rank} />,
   },
-  ...(showActions
-    ? [
-        {
-          id: 'actions',
-          name: '',
-          sticky: true,
-          renderCell: (item: Species) => (
-            <div className="flex items-center justify-end gap-2 p-4">
-              <RemoveTaxaListTaxonDialog
-                taxaListId={taxaListId}
-                taxonId={item.id}
-              />
-            </div>
-          ),
-        },
-      ]
-    : []),
+  {
+    id: 'actions',
+    name: '',
+    sticky: true,
+    renderCell: (item: Species) => (
+      <Toolbar>
+        <RemoveTaxaListTaxonDialog taxaListId={taxaListId} taxonId={item.id} />
+      </Toolbar>
+    ),
+  },
 ]

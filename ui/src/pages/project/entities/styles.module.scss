@@ -1,14 +1,6 @@
 @import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
-.entityActions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
-  padding: 16px;
-}
-
 .dialogContent {
   width: 720px;
   max-width: 100%;

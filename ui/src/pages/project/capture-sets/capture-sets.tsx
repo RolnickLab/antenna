@@ -48,10 +48,7 @@ export const CaptureSets = () => {
       poll
     )
   const canCreate = userPermissions?.includes(UserPermission.Create)
-  const tableColumns = columns({
-    projectId: projectId as string,
-    showActions: canCreate,
-  })
+  const tableColumns = columns({ projectId: projectId as string })
 
   useEffect(() => {
     // If any capture set has a job in progress, we want to poll the endpoint so we can show job updates

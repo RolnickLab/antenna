@@ -45,10 +45,7 @@ export const Jobs = () => {
       filters,
     })
   const canCreate = userPermissions?.includes(UserPermission.Create)
-  const tableColumns = columns({
-    projectId: projectId as string,
-    showActions: canCreate,
-  })
+  const tableColumns = columns({ projectId: projectId as string })
 
   return (
     <div className="flex flex-col gap-6 md:flex-row">
