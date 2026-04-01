@@ -168,3 +168,58 @@ The staging compose supports any PostgreSQL database reachable by IP:
 
 Set `POSTGRES_HOST=db` in `.envs/.production/.postgres` — the `extra_hosts`
 directive in the compose file maps `db` to whatever `DATABASE_IP` resolves to.
+
+## Reverse Proxy
+
+The staging compose exposes Django on port 5001 (configurable via `DJANGO_PORT`)
+and Flower on port 5550 (`FLOWER_PORT`). For production-like deployments, put a
+reverse proxy in front to handle SSL termination and domain routing.
+
+### Example nginx config
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name api.staging.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/staging.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/staging.example.com/privkey.pem;
+
+    # ML workers POST large result payloads (detections + classifications
+    # for hundreds of images per batch). 10M is too small and causes 413.
+    client_max_body_size 100M;
+
+    # Long-running requests (ML job submission, large exports)
+    proxy_read_timeout 1200;
+
+    location / {
+        proxy_pass http://127.0.0.1:5001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name celery.staging.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/staging.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/staging.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:5550;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Key settings:
+- **`client_max_body_size 100M`** — required for ML worker result payloads. Without this, workers get 413 errors when posting detection/classification results.
+- **`proxy_read_timeout 1200`** — some API operations (job submission, exports) take longer than the default 60s.
+- Set `DJANGO_ALLOWED_HOSTS` in `.envs/.production/.django` to include your domain.
+- Set `DJANGO_SECURE_SSL_REDIRECT=True` if all traffic goes through SSL.

@@ -5,7 +5,8 @@
 set -o errexit
 set -o xtrace
 
-cd "$(dirname "$0")/../.."
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+cd "$SCRIPT_DIR/../.."
 
 git fetch origin
 
