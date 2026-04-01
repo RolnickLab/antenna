@@ -1,8 +1,6 @@
 import logging
 
-from django.contrib.auth.models import Group
 from django.db import transaction
-from django.db.models.signals import m2m_changed
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -16,7 +14,7 @@ from ami.users.api.serializers import (
     UserProjectMembershipSerializer,
 )
 from ami.users.roles import BasicMember, Role
-from ami.users.signals import manage_project_membership
+from ami.users.signals import suppress_membership_signal
 
 logger = logging.getLogger(__name__)
 
@@ -55,19 +53,14 @@ class UserProjectMembershipViewSet(DefaultViewSet, ProjectMixin):
             membership = serializer.save(project=project)
             user = membership.user
 
-            # Disconnect signal before unassigning/assigning roles to prevent signal interference
-            # The membership is already created above, so we don't need the signal to modify it
-            m2m_changed.disconnect(manage_project_membership, sender=Group.user_set.through)
-            try:
-                # Unassign all roles, assign the chosen role, then BasicMember
+            # Suppress the signal so it doesn't create/delete memberships in
+            # response to the group changes we're making intentionally.
+            with suppress_membership_signal():
                 for r in Role.__subclasses__():
                     r.unassign_user(user, project)
                 role_cls.assign_user(user, project)
                 if role_cls is not BasicMember:
                     BasicMember.assign_user(user, project)
-            finally:
-                # Reconnect signal
-                m2m_changed.connect(manage_project_membership, sender=Group.user_set.through)
 
     def perform_update(self, serializer):
         membership = self.get_object()
@@ -78,14 +71,11 @@ class UserProjectMembershipViewSet(DefaultViewSet, ProjectMixin):
         if not role_cls:
             raise ValueError("role_cls not set during validation")
 
-        # Disconnect signal before unassigning/assigning roles to prevent signal interference
-        # The membership already exists, so we don't need the signal to delete/recreate it
-        m2m_changed.disconnect(manage_project_membership, sender=Group.user_set.through)
-        try:
-            with transaction.atomic():
-                membership.user = user
-                membership.save()
+        with transaction.atomic():
+            membership.user = user
+            membership.save()
 
+            with suppress_membership_signal():
                 # If user changed, revoke all roles from the old user
                 if old_user != user:
                     for r in Role.__subclasses__():
@@ -97,24 +87,14 @@ class UserProjectMembershipViewSet(DefaultViewSet, ProjectMixin):
                 role_cls.assign_user(user, project)
                 if role_cls is not BasicMember:
                     BasicMember.assign_user(user, project)
-        finally:
-            # Reconnect signal
-            m2m_changed.connect(manage_project_membership, sender=Group.user_set.through)
 
     def perform_destroy(self, instance):
         user = instance.user
         project = instance.project
 
-        # Disconnect signal before unassigning roles to prevent signal interference
-        # The membership will be deleted explicitly below, so we don't need the signal to delete it
-        m2m_changed.disconnect(manage_project_membership, sender=Group.user_set.through)
-        try:
-            with transaction.atomic():
-                # Revoke all roles (including BasicMember) before deleting membership
+        with transaction.atomic():
+            with suppress_membership_signal():
                 for r in Role.__subclasses__():
                     r.unassign_user(user, project)
 
-                instance.delete()
-        finally:
-            # Reconnect signal
-            m2m_changed.connect(manage_project_membership, sender=Group.user_set.through)
+            instance.delete()
