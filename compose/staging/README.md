@@ -1,8 +1,17 @@
 # Staging Deployment
 
-Deploy the Antenna platform with local Redis, RabbitMQ, and NATS containers.
+Single-box deployment of the Antenna platform — all services (Django, Celery,
+Redis, RabbitMQ, NATS) run on one host. Suitable for demos, previews, and
+testing. Not the same as a production setup, which distributes services across
+multiple servers.
+
 The database is always external — either a dedicated server, a managed service,
 or the optional local Postgres container included here.
+
+> **Note on `.envs/.production/`**: The `.production` directory name is a
+> [cookiecutter-django](https://github.com/cookiecutter/cookiecutter-django)
+> convention meaning "not local dev." Both staging and production deployments
+> use these env files for real secrets and external service configuration.
 
 ## Quick Start (single instance)
 

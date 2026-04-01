@@ -1,5 +1,10 @@
 #!/bin/bash
 # Deploy the staging stack: pull latest code, rebuild, migrate.
+#
+# "staging" here means a single-box deployment (all services on one host),
+# as opposed to production which splits services across multiple servers.
+# Used for demo instances, previews, and testing.
+#
 # Usage: ./deploy.sh
 
 set -o errexit
@@ -13,8 +18,9 @@ sleep 2
 
 git pull --ff-only
 
-docker compose -f docker-compose.staging.yml \
-  --env-file .envs/.production/.compose up -d --build
+# .envs/.production/ is a cookiecutter-django convention meaning "not local dev" —
+# both staging and production deployments use it for real secrets and external services.
+COMPOSE="docker compose -f docker-compose.staging.yml --env-file .envs/.production/.compose"
 
-docker compose -f docker-compose.staging.yml \
-  --env-file .envs/.production/.compose run --rm django python manage.py migrate
+$COMPOSE up -d --build
+$COMPOSE run --rm django python manage.py migrate
