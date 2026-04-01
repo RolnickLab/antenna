@@ -13,6 +13,11 @@ or the optional local Postgres container included here.
 > convention meaning "not local dev." Both staging and production deployments
 > use these env files for real secrets and external service configuration.
 
+> **Future rename**: This compose config may be renamed from "staging" to "demo"
+> in a future release, since it describes a single-box deployment rather than a
+> true staging/pre-production environment. File paths and compose filenames may
+> change accordingly.
+
 ## Quick Start (single instance)
 
 ### 1. Configure environment files
