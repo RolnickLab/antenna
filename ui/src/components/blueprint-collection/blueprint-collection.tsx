@@ -1,6 +1,5 @@
 import classNames from 'classnames'
 import { LicenseInfo } from 'components/license-info/license-info'
-import { Icon, IconType } from 'design-system/components/icon/icon'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { EyeIcon } from 'lucide-react'
 import { buttonVariants } from 'nova-ui-kit'
@@ -54,12 +53,6 @@ export const BlueprintItem = ({
   return (
     <div className={classNames(styles.blueprintItem, 'group')}>
       <div className={styles.blueprintInfo} style={{ width: size.width }}>
-        {item.countLabel?.length ? (
-          <span className={styles.count}>
-            <Icon type={IconType.Detections} size={12} />
-            <span>{item.countLabel}</span>
-          </span>
-        ) : null}
         <span className="grow text-muted-foreground text-right">
           {item.timeLabel}
         </span>

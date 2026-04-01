@@ -141,7 +141,6 @@ const JobDetailsDialog = ({ id }: { id: string }) => {
               type: _.capitalize(translate(STRING.ENTITY_TYPE_JOB)),
             })}
             isFetching={isFetching}
-            onDelete={closeDialog}
           />
         ) : null}
       </Dialog.Content>

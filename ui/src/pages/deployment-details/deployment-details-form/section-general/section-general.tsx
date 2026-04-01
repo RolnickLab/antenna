@@ -10,11 +10,11 @@ import {
   DeploymentDetails,
   DeploymentFieldValues,
 } from 'data-services/models/deployment-details'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { ImageUpload } from 'design-system/components/image-upload/image-upload'
 import { InputContent } from 'design-system/components/input/input'
 import { EntityPicker } from 'design-system/components/select/entity-picker'
 import _ from 'lodash'
+import { Button } from 'nova-ui-kit'
 import { useContext } from 'react'
 import { useForm } from 'react-hook-form'
 import { FormContext } from 'utils/formContext/formContext'
@@ -127,11 +127,9 @@ export const SectionGeneral = ({
         </FormRow>
       </FormSection>
       <FormActions>
-        <Button
-          label={translate(STRING.NEXT)}
-          onClick={onNext}
-          theme={ButtonTheme.Success}
-        />
+        <Button onClick={onNext} size="small" type="button" variant="success">
+          <span>{translate(STRING.NEXT)}</span>
+        </Button>
       </FormActions>
     </form>
   )

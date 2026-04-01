@@ -1,6 +1,7 @@
 import { API_ROUTES } from 'data-services/constants'
 import { StorageSource } from 'data-services/models/storage'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { TableColumn, TextAlign } from 'design-system/components/table/types'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { UpdateEntityDialog } from 'pages/project/entities/entity-details-dialog'
@@ -54,7 +55,7 @@ export const columns: (
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
     renderCell: (item: StorageSource) => (
-      <BasicTableCell value={item.createdAt} />
+      <DateTableCell date={item.createdAt} />
     ),
   },
   {
@@ -62,7 +63,7 @@ export const columns: (
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
     renderCell: (item: StorageSource) => (
-      <BasicTableCell value={item.updatedAt} />
+      <DateTableCell date={item.updatedAt} />
     ),
   },
   {

@@ -1,13 +1,13 @@
 import { FormRow } from 'components/form/layout/layout'
 import { useTestStorageConnection } from 'data-services/hooks/storage-sources/useTestStorageConnection'
 import { InputContent, InputValue } from 'design-system/components/input/input'
+import { StatusInfo } from 'design-system/components/status-info/status-info'
+import { Status } from 'design-system/components/status-info/types'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import * as Wizard from 'design-system/components/wizard/wizard'
 import { useEffect, useState } from 'react'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
-import { StatusInfo } from './status-info/status-info'
-import { Status } from './status-info/types'
 import styles from './storage.module.scss'
 
 export const ConnectionStatus = ({

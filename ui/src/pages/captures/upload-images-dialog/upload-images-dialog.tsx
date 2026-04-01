@@ -316,7 +316,7 @@ const SectionUpload = ({
         <span>{translate(STRING.BACK)}</span>
       </Button>
       <Button
-        disabled={!(deployment && images.length)}
+        disabled={isLoading || !(deployment && images.length)}
         onClick={onSubmit}
         size="small"
         variant="success"
@@ -334,7 +334,7 @@ const DefaultPipelineInfo = ({ project }: { project: ProjectDetails }) => (
   <Tooltip.Provider delayDuration={0}>
     <Tooltip.Root>
       <Tooltip.Trigger asChild>
-        <Button size="icon" variant="ghost">
+        <Button aria-label={translate(STRING.INFO)} size="icon" variant="ghost">
           <InfoIcon className="w-4 h-4" />
         </Button>
       </Tooltip.Trigger>

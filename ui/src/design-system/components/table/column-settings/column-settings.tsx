@@ -1,6 +1,6 @@
 import { Checkbox } from 'design-system/components/checkbox/checkbox'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
-import { SettingsIcon } from 'lucide-react'
+import { Columns3CogIcon } from 'lucide-react'
 import { Button, Popover } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import styles from './column-settings.module.scss'
@@ -17,10 +17,15 @@ export const ColumnSettings = ({
   onColumnSettingsChange,
 }: ColumnSettingsProps) => (
   <Popover.Root>
-    <BasicTooltip asChild content={translate(STRING.SETTINGS)}>
+    <BasicTooltip asChild content={translate(STRING.TABLE_COLUMNS)}>
       <Popover.Trigger asChild>
-        <Button className="shrink-0" size="icon" variant="ghost">
-          <SettingsIcon className="w-4 h-4" />
+        <Button
+          aria-label={translate(STRING.TABLE_COLUMNS)}
+          className="shrink-0"
+          size="icon"
+          variant="ghost"
+        >
+          <Columns3CogIcon className="w-4 h-4" />
         </Button>
       </Popover.Trigger>
     </BasicTooltip>

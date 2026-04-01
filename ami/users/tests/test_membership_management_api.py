@@ -4,7 +4,7 @@ from rest_framework.test import APITestCase
 from ami.main.models import Project, UserProjectMembership
 from ami.tests.fixtures.main import setup_test_project
 from ami.users.models import User
-from ami.users.roles import BasicMember, ProjectManager, Role
+from ami.users.roles import BasicMember, Identifier, ProjectManager, Researcher, Role, create_roles_for_project
 
 
 class TestUserProjectMembershipAPI(APITestCase):
@@ -243,3 +243,95 @@ class TestUserProjectMembershipAPI(APITestCase):
         payload = {"email": self.user2.email}
         resp = self.client.post(self.members_url, payload, format="json")
         self.assertEqual(resp.status_code, 400)
+
+
+class TestMembersApiDraftProjectAccess(APITestCase):
+    """
+    Verify that members added via the Members API can access draft project details.
+    Regression tests for the BasicMember manual-assign fix.
+    """
+
+    def setUp(self):
+        self.project, _ = setup_test_project()
+        self.project.draft = True
+        self.project.save()
+        create_roles_for_project(self.project)
+
+        self.superuser = User.objects.create_superuser(email="super@insectai.org", password="x")
+        self.user_basic = User.objects.create_user(email="basic@insectai.org")
+        self.user_identifier = User.objects.create_user(email="identifier@insectai.org")
+        self.user_researcher = User.objects.create_user(email="researcher@insectai.org")
+        self.user_project_manager = User.objects.create_user(email="manager@insectai.org")
+        self.outsider = User.objects.create_user(email="outsider@insectai.org")
+
+        self.members_url = f"/api/v2/projects/{self.project.pk}/members/"
+        self.detail_url = f"/api/v2/projects/{self.project.pk}/"
+
+    def _add_member_and_assert_can_access_draft(self, user, role_id: str) -> None:
+        """Add user as role via API, then assert they can GET draft project details."""
+        self.client.force_authenticate(self.superuser)
+        resp = self.client.post(
+            self.members_url,
+            {"email": user.email, "role_id": role_id},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 201, f"Failed to add {role_id}: {resp.json()}")
+        self.client.force_authenticate(user)
+        detail_resp = self.client.get(self.detail_url)
+        self.assertEqual(
+            detail_resp.status_code,
+            200,
+            f"{role_id} member should access draft project, got {detail_resp.status_code}",
+        )
+
+    def test_member_added_via_api_can_access_draft_project_basic_member(self):
+        self._add_member_and_assert_can_access_draft(self.user_basic, BasicMember.__name__)
+
+    def test_member_added_via_api_can_access_draft_project_identifier(self):
+        self._add_member_and_assert_can_access_draft(self.user_identifier, Identifier.__name__)
+
+    def test_member_added_via_api_can_access_draft_project_researcher(self):
+        self._add_member_and_assert_can_access_draft(self.user_researcher, Researcher.__name__)
+
+    def test_member_added_via_api_can_access_draft_project_manager(self):
+        self._add_member_and_assert_can_access_draft(self.user_project_manager, ProjectManager.__name__)
+
+    def test_member_role_update_retains_draft_access(self):
+        """After a role change via API, member should still access draft project."""
+        self._add_member_and_assert_can_access_draft(self.user_basic, BasicMember.__name__)
+
+        self.client.force_authenticate(self.superuser)
+        membership = UserProjectMembership.objects.get(project=self.project, user=self.user_basic)
+        update_url = f"{self.members_url}{membership.pk}/"
+        resp = self.client.patch(update_url, {"role_id": Researcher.__name__}, format="json")
+        self.assertEqual(resp.status_code, 200)
+
+        self.client.force_authenticate(self.user_basic)
+        detail_resp = self.client.get(self.detail_url)
+        self.assertEqual(detail_resp.status_code, 200, "Member should retain draft access after role update")
+
+    def test_deleted_member_cannot_access_draft_project(self):
+        """After membership deletion, former member should lose draft access."""
+        self._add_member_and_assert_can_access_draft(self.user_basic, BasicMember.__name__)
+
+        self.client.force_authenticate(self.superuser)
+        membership = UserProjectMembership.objects.get(project=self.project, user=self.user_basic)
+        delete_url = f"{self.members_url}{membership.pk}/"
+        self.client.delete(delete_url)
+
+        self.client.force_authenticate(self.user_basic)
+        detail_resp = self.client.get(self.detail_url)
+        self.assertIn(
+            detail_resp.status_code,
+            (403, 404),
+            "Removed member should not access draft project",
+        )
+
+    def test_non_member_cannot_access_draft_project(self):
+        self.client.force_authenticate(self.outsider)
+        detail_resp = self.client.get(self.detail_url)
+        self.assertIn(
+            detail_resp.status_code,
+            (403, 404),
+            "Non-member should not access draft project",
+        )

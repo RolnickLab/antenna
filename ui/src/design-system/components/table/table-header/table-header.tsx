@@ -1,7 +1,6 @@
 import classNames from 'classnames'
-import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
-import { InfoIcon } from 'lucide-react'
+import { ArrowDownIcon, InfoIcon } from 'lucide-react'
 import { TableColumn, TableSortSettings } from '../types'
 import styles from './table-header.module.scss'
 
@@ -112,7 +111,7 @@ const SortableTableHeader = <T,>({
                     sortActive && sortSettings?.order === 'asc',
                 })}
               >
-                <Icon type={IconType.Sort} theme={IconTheme.Neutral} />
+                <ArrowDownIcon className="w-4 h-4 text-muted-foreground" />
               </div>
             ) : null}
           </div>

@@ -8,7 +8,6 @@ import {
   Checkbox,
   CheckboxTheme,
 } from 'design-system/components/checkbox/checkbox'
-import { IconButtonTheme } from 'design-system/components/icon-button/icon-button'
 import { useEffect, useState } from 'react'
 import { ActivityPlot } from './activity-plot/lazy-activity-plot'
 import { CaptureDetails } from './capture-details/capture-details'
@@ -90,8 +89,8 @@ export const Playback = ({
               />
               {project ? (
                 <DefaultFiltersPopover
+                  className="text-neutral-200 hover:bg-transparent"
                   project={project}
-                  buttonTheme={IconButtonTheme.Neutral}
                 />
               ) : null}
             </div>

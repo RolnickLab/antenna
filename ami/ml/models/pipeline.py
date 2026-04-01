@@ -23,6 +23,7 @@ from django_pydantic_field import SchemaField
 from ami.base.models import BaseModel, BaseQuerySet
 from ami.base.schemas import ConfigurableStage, default_stages
 from ami.main.models import (
+    NULL_DETECTIONS_FILTER,
     Classification,
     Deployment,
     Detection,
@@ -63,10 +64,21 @@ def filter_processed_images(
 ) -> typing.Iterable[SourceImage]:
     """
     Return only images that need to be processed by a given pipeline.
-    An image needs processing if:
-    1. It has no detections from the pipeline's detection algorithm
-    or
-    2. It has detections but they don't have classifications from all the pipeline's classification algorithms
+
+    Each image is checked against its existing detections from this pipeline's algorithms:
+
+    YIELD (needs processing):
+    1. No existing detections at all — image has never been processed by this pipeline
+    2. Has real detections without classifications — detector ran but classifier didn't
+    3. Has real detections with classifications, but not from all pipeline classifiers —
+       e.g. a new classifier was added to the pipeline since last run
+
+    SKIP (already processed):
+    4. Only null detections exist (bbox=None) — pipeline ran but found nothing
+    5. Real detections exist and are fully classified by all pipeline classifiers
+
+    Null detections are sentinels that mark an image as "processed, nothing found."
+    They are excluded from classification checks so they don't trigger reprocessing.
     """
     pipeline_algorithms = pipeline.algorithms.all()
 
@@ -84,8 +96,12 @@ def filter_processed_images(
             task_logger.debug(f"Image {image} needs processing: has no existing detections from pipeline's detector")
             # If there are no existing detections from this pipeline, send the image
             yield image
-        elif existing_detections.filter(classifications__isnull=True).exists():
-            # Check if there are detections with no classifications
+        elif not existing_detections.exclude(NULL_DETECTIONS_FILTER).exists():  # type: ignore
+            # All detections for this image are null (processed but nothing found) — skip
+            task_logger.debug(f"Image {image} has only null detections from pipeline {pipeline}, skipping!")
+            continue
+        elif existing_detections.exclude(NULL_DETECTIONS_FILTER).filter(classifications__isnull=True).exists():
+            # Check if any real detections (non-null) have no classifications
             task_logger.debug(
                 f"Image {image} needs processing: has existing detections with no classifications "
                 "from pipeline {pipeline}"
@@ -402,26 +418,54 @@ def get_or_create_detection(
 
     :param detection_resp: A DetectionResponse object
     :param algorithms_known: A dictionary of algorithms registered in the pipeline, keyed by the algorithm key
-    :param created_objects: A list to store created objects
-
     :return: A tuple of the Detection object and a boolean indicating whether it was created
+
+    For real detections (bbox is not None), the lookup is algorithm-agnostic — the same
+    bounding box on the same image is the same physical detection regardless of which algorithm
+    found it; duplicates are avoided this way.
+
+    For null detections (bbox=None), the lookup is algorithm-specific — null is a sentinel value
+    (not a physical detection), so each algorithm gets its own null detection. This ensures
+    get_was_processed(algorithm_key=...) returns correct per-algorithm processed status.
     """
-    serialized_bbox = list(detection_resp.bbox.dict().values())
+    if detection_resp.bbox is not None:
+        serialized_bbox = list(detection_resp.bbox.dict().values())
+    else:
+        serialized_bbox = None
     detection_repr = f"Detection {detection_resp.source_image_id} {serialized_bbox}"
 
     assert str(detection_resp.source_image_id) == str(
         source_image.pk
     ), f"Detection belongs to a different source image: {detection_repr}"
 
-    existing_detection = Detection.objects.filter(
-        source_image=source_image,
-        bbox=serialized_bbox,
-    ).first()
+    if serialized_bbox is None:
+        # Null detection: algorithm-specific lookup so different pipelines don't share sentinels.
+        # Use bbox__isnull=True because JSONField filter(bbox=None) matches JSON null literal,
+        # not SQL NULL which is what Detection(bbox=None) stores.
+        assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
+        try:
+            detection_algo = algorithms_known[detection_resp.algorithm.key]
+        except KeyError as err:
+            raise PipelineNotConfigured(
+                f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
+                "The processing service must declare it in the /info endpoint. "
+                f"Known algorithms: {list(algorithms_known.keys())}"
+            ) from err
+        existing_detection = Detection.objects.filter(
+            source_image=source_image,
+            bbox__isnull=True,
+            detection_algorithm=detection_algo,
+        ).first()
+    else:
+        # Real detection: algorithm-agnostic — same bbox = same physical detection
+        existing_detection = Detection.objects.filter(
+            source_image=source_image,
+            bbox=serialized_bbox,
+        ).first()
 
     # A detection may have a pre-existing crop image URL or not.
     # If not, a new one will be created in a periodic background task.
     if detection_resp.crop_image_url and detection_resp.crop_image_url.strip("/"):
-        # Ensure that the crop image URL is not empty or only a slash. None is fine.
         crop_url = detection_resp.crop_image_url
     else:
         crop_url = None
@@ -434,15 +478,17 @@ def get_or_create_detection(
         detection = existing_detection
 
     else:
-        assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
-        try:
-            detection_algo = algorithms_known[detection_resp.algorithm.key]
-        except KeyError:
-            raise PipelineNotConfigured(
-                f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
-                "The processing service must declare it in the /info endpoint. "
-                f"Known algorithms: {list(algorithms_known.keys())}"
-            )
+        # Resolve algorithm for creation (null detections already resolved above)
+        if serialized_bbox is not None:
+            assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
+            try:
+                detection_algo = algorithms_known[detection_resp.algorithm.key]
+            except KeyError as err:
+                raise PipelineNotConfigured(
+                    f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
+                    "The processing service must declare it in the /info endpoint. "
+                    f"Known algorithms: {list(algorithms_known.keys())}"
+                ) from err
 
         new_detection = Detection(
             source_image=source_image,
@@ -485,6 +531,7 @@ def create_detections(
 
     existing_detections: list[Detection] = []
     new_detections: list[Detection] = []
+
     for detection_resp in detections:
         source_image = source_image_map.get(detection_resp.source_image_id)
         if not source_image:
@@ -810,6 +857,37 @@ class PipelineSaveResults:
     total_time: float
 
 
+def create_null_detections_for_undetected_images(
+    results: PipelineResultsResponse,
+    detection_algorithm: Algorithm,
+    logger: logging.Logger = logger,
+) -> list[DetectionResponse]:
+    """
+    Create null DetectionResponse objects (empty bbox) for images that have no detections.
+
+    :param results: The PipelineResultsResponse from the processing service
+    :param algorithms_known: Dictionary of algorithms keyed by algorithm key
+
+    :return: List of DetectionResponse objects with null bbox
+    """
+    source_images_with_detections = {detection.source_image_id for detection in results.detections}
+    null_detections_to_add = []
+    detection_algorithm_reference = AlgorithmReference(name=detection_algorithm.name, key=detection_algorithm.key)
+
+    for source_img in results.source_images:
+        if source_img.id not in source_images_with_detections:
+            null_detections_to_add.append(
+                DetectionResponse(
+                    source_image_id=source_img.id,
+                    bbox=None,
+                    algorithm=detection_algorithm_reference,
+                    timestamp=now(),
+                )
+            )
+
+    return null_detections_to_add
+
+
 @celery_app.task(soft_time_limit=60 * 4, time_limit=60 * 5)
 def save_results(
     results: PipelineResultsResponse | None = None,
@@ -857,6 +935,13 @@ def save_results(
         )
 
     algorithms_known: dict[str, Algorithm] = {algo.key: algo for algo in pipeline.algorithms.all()}
+    try:
+        detection_algorithm = pipeline.algorithms.get(task_type__in=Algorithm.detection_task_types)
+    except Algorithm.DoesNotExist:
+        raise ValueError("Pipeline does not have a detection algorithm")
+    except Algorithm.MultipleObjectsReturned:
+        raise NotImplementedError("Multiple detection algorithms per pipeline are not supported")
+
     job_logger.info(f"Algorithms registered for pipeline: \n{', '.join(algorithms_known.keys())}")
 
     if results.algorithms:
@@ -865,6 +950,15 @@ def save_results(
             "they should be removed to increase performance. "
             "Algorithms and category maps must be registered before processing, using /info endpoint."
         )
+
+    # Ensure all images have detections
+    # if not, add a NULL detection (empty bbox) to the results
+    null_detections = create_null_detections_for_undetected_images(
+        results=results,
+        detection_algorithm=detection_algorithm,
+        logger=job_logger,
+    )
+    results.detections = results.detections + null_detections
 
     detections = create_detections(
         detections=results.detections,
@@ -949,7 +1043,7 @@ class PipelineQuerySet(BaseQuerySet):
         """
         return self.filter(
             processing_services__projects=project,
-            processing_services__last_checked_live=True,
+            processing_services__last_seen_live=True,
         ).distinct()
 
 
@@ -1048,7 +1142,7 @@ class Pipeline(BaseModel):
     def choose_processing_service_for_pipeline(
         self, job_id: int | None, pipeline_name: str, project_id: int
     ) -> ProcessingService:
-        # @TODO use the cached `last_checked_latency` and a max age to avoid checking every time
+        # @TODO use the cached `last_seen_latency` and a max age to avoid checking every time
 
         job = None
         task_logger = logger
@@ -1067,32 +1161,31 @@ class Pipeline(BaseModel):
 
         # check the status of all processing services and pick the one with the lowest latency
         lowest_latency = float("inf")
-        processing_services_online = False
+        processing_service_lowest_latency = None
 
         for processing_service in processing_services:
-            if processing_service.last_checked_live:
-                processing_services_online = True
-                if (
-                    processing_service.last_checked_latency
-                    and processing_service.last_checked_latency < lowest_latency
-                ):
-                    lowest_latency = processing_service.last_checked_latency
-                    # pick the processing service that has lowest latency
+            if processing_service.last_seen_live:
+                if processing_service.last_seen_latency and processing_service.last_seen_latency < lowest_latency:
+                    lowest_latency = processing_service.last_seen_latency
+                    processing_service_lowest_latency = processing_service
+                elif processing_service_lowest_latency is None:
+                    # Online but no latency data (e.g. async/pull-mode service) — use as fallback
                     processing_service_lowest_latency = processing_service
 
-        # if all offline then throw error
-        if not processing_services_online:
+        if processing_service_lowest_latency is None:
             msg = f'No processing services are online for the pipeline "{pipeline_name}".'
             task_logger.error(msg)
-
             raise Exception(msg)
-        else:
+
+        if lowest_latency < float("inf"):
             task_logger.info(
                 f"Using processing service with latency {round(lowest_latency, 4)}: "
                 f"{processing_service_lowest_latency}"
             )
+        else:
+            task_logger.info(f"Using processing service (no latency data): {processing_service_lowest_latency}")
 
-            return processing_service_lowest_latency
+        return processing_service_lowest_latency
 
     def process_images(
         self,
