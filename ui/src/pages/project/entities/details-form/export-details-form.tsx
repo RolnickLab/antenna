@@ -7,8 +7,7 @@ import {
 import { FormConfig } from 'components/form/types'
 import { API_ROUTES } from 'data-services/constants'
 import { Export, SERVER_EXPORT_TYPES } from 'data-services/models/export'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { IconType } from 'design-system/components/icon/icon'
+import { SaveButton } from 'design-system/components/button/save-button'
 import { InputContent } from 'design-system/components/input/input'
 import { EntityPicker } from 'design-system/components/select/entity-picker'
 import { Select } from 'nova-ui-kit'
@@ -112,13 +111,7 @@ export const ExportDetailsForm = ({
         />
       </FormSection>
       <FormActions>
-        <Button
-          label={isSuccess ? translate(STRING.SAVED) : translate(STRING.SAVE)}
-          icon={isSuccess ? IconType.RadixCheck : undefined}
-          type="submit"
-          theme={ButtonTheme.Success}
-          loading={isLoading}
-        />
+        <SaveButton isLoading={isLoading} isSuccess={isSuccess} />
       </FormActions>
     </form>
   )

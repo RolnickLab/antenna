@@ -2,9 +2,9 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import classNames from 'classnames'
 import { Command } from 'cmdk'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
+import { SearchIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { useState } from 'react'
-import { Button } from '../../button/button'
-import { IconType } from '../../icon/icon'
 import styles from '../styles.module.scss'
 
 export const ComboBoxSimple = ({
@@ -32,7 +32,10 @@ export const ComboBoxSimple = ({
   return (
     <DropdownMenu.Root open={open} onOpenChange={setOpen}>
       <DropdownMenu.Trigger asChild>
-        <Button label={label} icon={IconType.RadixSearch} />
+        <Button size="small" variant="outline">
+          <SearchIcon className="w-4 h-4" />
+          <span>{label}</span>
+        </Button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Content
         align="start"

@@ -2,6 +2,7 @@ import { DeterminationScore } from 'components/determination-score'
 import { Tag } from 'components/taxon-tags/tag'
 import { Species } from 'data-services/models/species'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
 import {
   CellTheme,
@@ -116,12 +117,12 @@ export const columns: (project: {
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
-    renderCell: (item: Species) => <BasicTableCell value={item.createdAt} />,
+    renderCell: (item: Species) => <DateTableCell date={item.createdAt} />,
   },
   {
     id: 'updated-at',
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
-    renderCell: (item: Species) => <BasicTableCell value={item.updatedAt} />,
+    renderCell: (item: Species) => <DateTableCell date={item.updatedAt} />,
   },
 ]

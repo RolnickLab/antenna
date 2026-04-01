@@ -1,12 +1,13 @@
 import * as _ToggleGroup from '@radix-ui/react-toggle-group'
 import classNames from 'classnames'
-import { Icon, IconTheme, IconType } from '../icon/icon'
 import { BasicTooltip } from '../tooltip/basic-tooltip'
 import styles from './toggle-group.module.scss'
 
 interface ToggleGroupProps {
   items: {
-    icon: IconType
+    Icon: React.ComponentType<{
+      className?: string
+    }>
     value: string
     label: string
   }[]
@@ -38,9 +39,8 @@ export const ToggleGroup = ({
               [styles.last]: index === items.length - 1,
             })}
           >
-            <Icon
-              type={item.icon}
-              theme={isActive ? IconTheme.Light : IconTheme.Primary}
+            <item.Icon
+              className={classNames('w-4 h-4', { 'text-background': isActive })}
             />
           </_ToggleGroup.Item>
         </BasicTooltip>

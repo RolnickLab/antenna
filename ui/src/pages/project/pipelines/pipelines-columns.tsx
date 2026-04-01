@@ -1,5 +1,6 @@
 import { Pipeline } from 'data-services/models/pipeline'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { CellTheme, TableColumn } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -32,6 +33,16 @@ export const columns: (
     ),
   },
   {
+    id: 'description',
+    name: translate(STRING.FIELD_LABEL_DESCRIPTION),
+    renderCell: (item: Pipeline) => (
+      <BasicTableCell
+        style={{ width: '320px', whiteSpace: 'normal' }}
+        value={item.description}
+      />
+    ),
+  },
+  {
     id: 'default',
     name: '',
     renderCell: (item: Pipeline) =>
@@ -52,23 +63,23 @@ export const columns: (
     ),
   },
   {
-    id: 'processing-services-online-last-checked',
-    name: 'Status last checked',
-    sortField: 'processing_services_online_last_checked',
+    id: 'processing-services-online-last-seen',
+    name: 'Status last seen',
+    sortField: 'processing_services_online_last_seen',
     renderCell: (item: Pipeline) => (
-      <BasicTableCell value={item.processingServicesOnlineLastChecked} />
+      <BasicTableCell value={item.processingServicesOnlineLastSeen} />
     ),
   },
   {
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
-    renderCell: (item: Pipeline) => <BasicTableCell value={item.createdAt} />,
+    renderCell: (item: Pipeline) => <DateTableCell date={item.createdAt} />,
   },
   {
     id: 'updated-at',
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
-    renderCell: (item: Pipeline) => <BasicTableCell value={item.updatedAt} />,
+    renderCell: (item: Pipeline) => <DateTableCell date={item.updatedAt} />,
   },
 ]

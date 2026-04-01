@@ -6,7 +6,7 @@ import { CaptureDetails as Capture } from 'data-services/models/capture-details'
 import { Job } from 'data-services/models/job'
 import { ProcessingService } from 'data-services/models/processing-service'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
-import { ExternalLinkIcon, HeartIcon, Loader2Icon } from 'lucide-react'
+import { ExternalLinkIcon, Loader2Icon, StarIcon } from 'lucide-react'
 import { Button, buttonVariants, Select } from 'nova-ui-kit'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
@@ -170,6 +170,9 @@ const StarButton = ({
   return (
     <BasicTooltip asChild content={tooltipContent}>
       <Button
+        aria-label={
+          isStarred ? translate(STRING.STARRED) : translate(STRING.STAR)
+        }
         className="rounded-md !bg-neutral-700 text-neutral-200"
         disabled={!canStar}
         size="icon"
@@ -178,7 +181,7 @@ const StarButton = ({
         {isLoading || captureFetching ? (
           <Loader2Icon className="w-4 h-4 animate-spin" />
         ) : (
-          <HeartIcon
+          <StarIcon
             className="w-4 h-4 transition-colors"
             fill={isStarred ? 'currentColor' : 'transparent'}
           />

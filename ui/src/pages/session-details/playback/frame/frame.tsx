@@ -248,6 +248,7 @@ const FrameDetections = ({
                       {detection.label}
                     </span>
                     <Button
+                      aria-label={translate(STRING.INFO)}
                       className="h-8 w-8"
                       disabled={!detection.occurrenceId}
                       onClick={() =>
