@@ -240,6 +240,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
     @extend_schema(
         request=TasksRequestSerializer,
         responses={200: dict},
+        parameters=[project_id_doc_param],
     )
     @action(detail=True, methods=["post"], name="tasks")
     def tasks(self, request, pk=None):
@@ -247,7 +248,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         Fetch tasks from the job queue (POST).
 
         Returns task data with reply_subject for acknowledgment. External workers should:
-        1. POST to this endpoint with {"batch": N, "client_info": {...}}
+        1. POST to this endpoint with {"batch": N}
         2. Process the tasks
         3. POST to /jobs/{id}/result/ with the results
         """
@@ -292,7 +293,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         """
         Submit pipeline results.
 
-        Accepts: {"client_info": {...}, "results": [PipelineTaskResult, ...]}
+        Accepts: {"results": [PipelineTaskResult, ...]}
         Or legacy: [PipelineTaskResult, ...] (bare list)
 
         Results are validated then queued for background processing via Celery.
@@ -308,6 +309,8 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             raw_results = request.data
         elif isinstance(request.data, dict) and "results" in request.data:
             raw_results = request.data["results"]
+            if not isinstance(raw_results, list):
+                raise ValidationError("'results' must be a list")
         else:
             raw_results = [request.data]
 
