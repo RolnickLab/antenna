@@ -2,7 +2,6 @@ import asyncio
 import logging
 
 import nats.errors
-import pydantic
 from asgiref.sync import async_to_sync
 from django.db.models import Q
 from django.db.models.query import QuerySet
@@ -17,11 +16,17 @@ from rest_framework.response import Response
 
 from ami.base.permissions import ObjectPermission
 from ami.base.views import ProjectMixin
-from ami.jobs.schemas import TasksRequestSerializer, ids_only_param, incomplete_only_param
+from ami.jobs.schemas import (
+    PipelineResultsRequestSerializer,
+    PipelineResultsResponseSerializer,
+    TasksRequestSerializer,
+    TasksResponseSerializer,
+    ids_only_param,
+    incomplete_only_param,
+)
 from ami.jobs.tasks import process_nats_pipeline_result
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
-from ami.ml.schemas import PipelineTaskResult
 from ami.utils.fields import url_boolean_param
 
 from .models import Job, JobDispatchMode, JobState
@@ -239,7 +244,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
     @extend_schema(
         request=TasksRequestSerializer,
-        responses={200: dict},
+        responses={200: TasksResponseSerializer},
         parameters=[project_id_doc_param],
     )
     @action(detail=True, methods=["post"], name="tasks")
@@ -288,13 +293,17 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
         return Response({"tasks": tasks})
 
+    @extend_schema(
+        request=PipelineResultsRequestSerializer,
+        responses={200: PipelineResultsResponseSerializer},
+        parameters=[project_id_doc_param],
+    )
     @action(detail=True, methods=["post"], name="result")
     def result(self, request, pk=None):
         """
         Submit pipeline results.
 
         Accepts: {"results": [PipelineTaskResult, ...]}
-        Or legacy: [PipelineTaskResult, ...] (bare list)
 
         Results are validated then queued for background processing via Celery.
         """
@@ -304,21 +313,11 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         # Record heartbeat for async processing services on this pipeline
         _mark_pipeline_pull_services_seen(job)
 
-        # Accept both wrapped format and legacy bare list
-        if isinstance(request.data, list):
-            raw_results = request.data
-        elif isinstance(request.data, dict) and "results" in request.data:
-            raw_results = request.data["results"]
-            if not isinstance(raw_results, list):
-                raise ValidationError("'results' must be a list")
-        else:
-            raw_results = [request.data]
+        serializer = PipelineResultsRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        validated_results = serializer.validated_data["results"]
 
         try:
-            # Pre-validate all results before enqueuing any tasks
-            # This prevents partial queueing and duplicate task processing
-            validated_results = pydantic.parse_obj_as(list[PipelineTaskResult], raw_results)
-
             # All validation passed, now queue all tasks
             queued_tasks = []
             for task_result in validated_results:
@@ -354,8 +353,6 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                     "tasks": queued_tasks,
                 }
             )
-        except pydantic.ValidationError as e:
-            raise ValidationError(f"Invalid result data: {e}") from e
 
         except Exception as e:
             logger.error("Failed to queue pipeline results for job %s: %s", job.pk, e)

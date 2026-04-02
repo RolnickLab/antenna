@@ -537,19 +537,21 @@ class TestJobView(APITestCase):
             "api:job-result", args=[job.pk], params={"project_id": self.project.pk, "batch": 1}
         )
 
-        result_data = [
-            {
-                "reply_subject": "test.reply.1",
-                "result": {
-                    "pipeline": "test-pipeline",
-                    "algorithms": {},
-                    "total_time": 1.5,
-                    "source_images": [],
-                    "detections": [],
-                    "errors": None,
-                },
-            }
-        ]
+        result_data = {
+            "results": [
+                {
+                    "reply_subject": "test.reply.1",
+                    "result": {
+                        "pipeline": "test-pipeline",
+                        "algorithms": {},
+                        "total_time": 1.5,
+                        "source_images": [],
+                        "detections": [],
+                        "errors": None,
+                    },
+                }
+            ]
+        }
 
         resp = self.client.post(result_url, result_data, format="json")
 
@@ -568,16 +570,19 @@ class TestJobView(APITestCase):
         result_url = reverse_with_params("api:job-result", args=[job.pk], params={"project_id": self.project.pk})
 
         # Test with missing reply_subject
-        invalid_data = [{"result": {"pipeline": "test"}}]
+        invalid_data = {"results": [{"result": {"pipeline": "test"}}]}
         resp = self.client.post(result_url, invalid_data, format="json")
         self.assertEqual(resp.status_code, 400)
-        self.assertIn("reply_subject", resp.json()[0].lower())
 
         # Test with missing result
-        invalid_data = [{"reply_subject": "test.reply"}]
+        invalid_data = {"results": [{"reply_subject": "test.reply"}]}
         resp = self.client.post(result_url, invalid_data, format="json")
         self.assertEqual(resp.status_code, 400)
-        self.assertIn("result", resp.json()[0].lower())
+
+        # Test with bare list (no longer accepted)
+        bare_list = [{"reply_subject": "test.reply", "result": {"pipeline": "test"}}]
+        resp = self.client.post(result_url, bare_list, format="json")
+        self.assertEqual(resp.status_code, 400)
 
 
 class TestJobDispatchModeFiltering(APITestCase):
