@@ -262,6 +262,20 @@ class PipelineProcessingTask(pydantic.BaseModel):
     # config: PipelineRequestConfigParameters | dict | None = None
 
 
+class ProcessingServiceClientInfo(pydantic.BaseModel):
+    """Identity metadata for a specific processing service instance.
+
+    A single ProcessingService may have multiple workers/pods.
+    This identifies which one is making the request.
+    """
+
+    hostname: str = ""
+    software: str = ""
+    version: str = ""
+    platform: str = ""
+    pod_name: str = ""
+
+
 class PipelineTaskResult(pydantic.BaseModel):
     """
     The result from processing a single PipelineProcessingTask.
