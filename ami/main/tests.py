@@ -2350,8 +2350,8 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         self.user = User.objects.create_user(email="tester@insectai.org", is_staff=False, is_superuser=False)
         self.client.force_authenticate(user=self.user)
 
-        self.url = f"/api/v2/occurrences/?project_id={self.project.pk}&page_size=1000"
-        self.url_taxa = f"/api/v2/taxa/?project_id={self.project.pk}&page_size=1000"
+        self.url = f"/api/v2/occurrences/?project_id={self.project.pk}&limit=1000"
+        self.url_taxa = f"/api/v2/taxa/?project_id={self.project.pk}&limit=1000"
 
     # OccurrenceViewSet tests
     def test_occurrences_respect_project_threshold(self):
@@ -2391,7 +2391,7 @@ class TestProjectDefaultThresholdFilter(APITestCase):
 
     def test_no_project_id_returns_all(self):
         """Without project_id, threshold falls back to 0.0 and returns all occurrences"""
-        url = "/api/v2/occurrences/?page_size=1000"
+        url = "/api/v2/occurrences/?limit=1000"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
