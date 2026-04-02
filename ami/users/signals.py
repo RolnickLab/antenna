@@ -67,10 +67,10 @@ def manage_project_membership(sender, instance, action, reverse, model, pk_set, 
         return
 
     # This handler expects instance=User, pk_set=Group PKs, which is the case
-    # when called via user.groups.add/remove() (all callers go through Role.assign_user
-    # and Role.unassign_user). If called via group.user_set.add/remove() the semantics
-    # are reversed (instance=Group, pk_set=User PKs) and would break. Guard against that.
-    if not reverse:
+    # when reverse=False (called via user.groups.add/remove()). All callers go through
+    # Role.assign_user and Role.unassign_user. When reverse=True (group.user_set.add/remove()),
+    # instance is a Group and pk_set contains User PKs, which would break lookups below.
+    if reverse:
         return
 
     if _skip_membership_signal.get():
