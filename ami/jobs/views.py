@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+import kombu.exceptions
 import nats.errors
 from asgiref.sync import async_to_sync
 from django.db.models import Q
@@ -354,12 +355,13 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                 }
             )
 
-        except Exception as e:
+        except (OSError, kombu.exceptions.KombuError) as e:
             logger.error("Failed to queue pipeline results for job %s: %s", job.pk, e)
             return Response(
                 {
                     "status": "error",
                     "job_id": job.pk,
+                    "detail": "Task queue temporarily unavailable",
                 },
-                status=500,
+                status=503,
             )
