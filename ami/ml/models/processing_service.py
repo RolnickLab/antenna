@@ -7,6 +7,7 @@ from urllib.parse import urljoin
 import requests
 from django.conf import settings
 from django.db import models
+from rest_framework_api_key.models import AbstractAPIKey
 
 from ami.base.models import BaseQuerySet
 from ami.main.models import BaseModel, Project
@@ -36,7 +37,7 @@ class ProcessingServiceQuerySet(BaseQuerySet):
         out to them, they poll Antenna for tasks and push results back. Their liveness is
         tracked via heartbeats from mark_seen() rather than active health checks.
         """
-        return self.filter(endpoint_url__isnull=True)
+        return self.filter(models.Q(endpoint_url__isnull=True) | models.Q(endpoint_url__exact=""))
 
     def sync_services(self) -> "ProcessingServiceQuerySet":
         """
@@ -46,7 +47,7 @@ class ProcessingServiceQuerySet(BaseQuerySet):
         /readyz and /process endpoints. Their liveness is tracked by the periodic
         check_processing_services_online Celery task.
         """
-        return self.filter(endpoint_url__isnull=False)
+        return self.exclude(models.Q(endpoint_url__isnull=True) | models.Q(endpoint_url__exact=""))
 
 
 class ProcessingServiceManager(models.Manager.from_queryset(ProcessingServiceQuerySet)):
@@ -70,6 +71,9 @@ class ProcessingService(BaseModel):
     last_seen = models.DateTimeField(null=True)
     last_seen_live = models.BooleanField(null=True)
     last_seen_latency = models.FloatField(null=True)
+
+    # Last known client info from the most recent request
+    last_seen_client_info = models.JSONField(null=True, blank=True)
 
     objects = ProcessingServiceManager()
 
@@ -174,14 +178,19 @@ class ProcessingService(BaseModel):
             algorithms_created=algorithms_created,
         )
 
-    def mark_seen(self, live: bool = True) -> None:
+    def mark_seen(self, live: bool = True, client_info: dict | None = None) -> None:
         """
         Record that we heard from this processing service.
         Used by async/pull-mode services that don't have an endpoint to check.
+        Optionally persists client_info (ip, user_agent, hostname, etc.) from the request.
         """
         self.last_seen = datetime.datetime.now()
         self.last_seen_live = live
-        self.save(update_fields=["last_seen", "last_seen_live"])
+        update_fields = ["last_seen", "last_seen_live"]
+        if client_info is not None:
+            self.last_seen_client_info = client_info
+            update_fields.append("last_seen_client_info")
+        self.save(update_fields=update_fields)
 
     def get_status(self, timeout=90) -> ProcessingServiceStatusResponse:
         """
@@ -304,6 +313,7 @@ class ProcessingService(BaseModel):
 def get_or_create_default_processing_service(
     project: "Project",
     register_pipelines: bool = True,
+    generate_api_key: bool = False,
 ) -> "ProcessingService | None":
     """
     Create a default processing service for a project.
@@ -313,6 +323,10 @@ def get_or_create_default_processing_service(
 
     Set the "DEFAULT_PROCESSING_SERVICE_ENDPOINT" and "DEFAULT_PROCESSING_SERVICE_NAME"
     environment variables to configure & enable the default processing service.
+
+    If generate_api_key=True, creates an API key for the service (if it doesn't
+    already have one) and logs the prefix. Used for docker compose setups where the
+    ml_backend needs an API key to self-register.
     """
 
     name = settings.DEFAULT_PROCESSING_SERVICE_NAME or "Default Processing Service"
@@ -335,4 +349,32 @@ def get_or_create_default_processing_service(
             enable_only=settings.DEFAULT_PIPELINES_ENABLED,
             projects=Project.objects.filter(pk=project.pk),
         )
+
+    if generate_api_key and not service.api_keys.filter(revoked=False).exists():
+        api_key_obj, plaintext_key = ProcessingServiceAPIKey.objects.create_key(
+            name=f"{name} key",
+            processing_service=service,
+        )
+        logger.info("Generated API key for %s (prefix: %s)", name, api_key_obj.prefix)
+
     return service
+
+
+class ProcessingServiceAPIKey(AbstractAPIKey):
+    """
+    An API key tied to a specific ProcessingService.
+
+    The plaintext key is only available at creation time (returned by
+    ProcessingServiceAPIKey.objects.create_key()). The database stores
+    only the hashed version. The 8-character prefix is stored for display.
+    """
+
+    processing_service = models.ForeignKey(
+        "ml.ProcessingService",
+        on_delete=models.CASCADE,
+        related_name="api_keys",
+    )
+
+    class Meta(AbstractAPIKey.Meta):
+        verbose_name = "Processing Service API Key"
+        verbose_name_plural = "Processing Service API Keys"
