@@ -384,16 +384,18 @@ class TestResultEndpointWithError(APITestCase):
         self.client.force_authenticate(user=self.user)
         result_url = reverse_with_params("api:job-result", args=[self.job.pk], params={"project_id": self.project.pk})
 
-        # Create error result data
-        result_data = [
-            {
-                "reply_subject": "test.reply.error.1",
-                "result": {
-                    "error": "Image processing timeout",
-                    "image_id": str(self.image.pk),
-                },
-            }
-        ]
+        # Create error result data (wrapped format)
+        result_data = {
+            "results": [
+                {
+                    "reply_subject": "test.reply.error.1",
+                    "result": {
+                        "error": "Image processing timeout",
+                        "image_id": str(self.image.pk),
+                    },
+                }
+            ]
+        }
 
         # POST error result to API
         resp = self.client.post(result_url, result_data, format="json")

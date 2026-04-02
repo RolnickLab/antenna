@@ -17,10 +17,10 @@ from rest_framework.response import Response
 from ami.base.permissions import ObjectPermission
 from ami.base.views import ProjectMixin
 from ami.jobs.schemas import (
-    PipelineResultsRequestSerializer,
-    PipelineResultsResponseSerializer,
-    TasksRequestSerializer,
-    TasksResponseSerializer,
+    MLJobResultsRequestSerializer,
+    MLJobResultsResponseSerializer,
+    MLJobTasksRequestSerializer,
+    MLJobTasksResponseSerializer,
     ids_only_param,
     incomplete_only_param,
 )
@@ -243,8 +243,8 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
     @extend_schema(
-        request=TasksRequestSerializer,
-        responses={200: TasksResponseSerializer},
+        request=MLJobTasksRequestSerializer,
+        responses={200: MLJobTasksResponseSerializer},
         parameters=[project_id_doc_param],
     )
     @action(detail=True, methods=["post"], name="tasks")
@@ -257,7 +257,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         2. Process the tasks
         3. POST to /jobs/{id}/result/ with the results
         """
-        serializer = TasksRequestSerializer(data=request.data)
+        serializer = MLJobTasksRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         batch_size = serializer.validated_data["batch_size"]
 
@@ -294,8 +294,8 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         return Response({"tasks": tasks})
 
     @extend_schema(
-        request=PipelineResultsRequestSerializer,
-        responses={200: PipelineResultsResponseSerializer},
+        request=MLJobResultsRequestSerializer,
+        responses={200: MLJobResultsResponseSerializer},
         parameters=[project_id_doc_param],
     )
     @action(detail=True, methods=["post"], name="result")
@@ -313,7 +313,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         # Record heartbeat for async processing services on this pipeline
         _mark_pipeline_pull_services_seen(job)
 
-        serializer = PipelineResultsRequestSerializer(data=request.data)
+        serializer = MLJobResultsRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         validated_results = serializer.validated_data["results"]
 
