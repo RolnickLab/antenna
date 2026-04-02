@@ -339,26 +339,28 @@ const DefaultPipelineInfo = ({ project }: { project: ProjectDetails }) => (
         </Button>
       </Tooltip.Trigger>
       <Tooltip.Content side="bottom" className="p-4 space-y-4 max-w-xs">
-        {project.settings.defaultProcessingPipeline ? (
-          <InputValue
-            label="Default processing pipeline"
-            value={project.settings.defaultProcessingPipeline?.name}
-          />
-        ) : (
-          <p className="whitespace-normal">
-            The project has no default processing pipeline configured.
-          </p>
-        )}
-        <Link
-          className={classNames(
-            buttonVariants({ size: 'small', variant: 'outline' }),
-            '!w-auto'
+        <div className="flex flex-col gap-4">
+          {project.settings.defaultProcessingPipeline ? (
+            <InputValue
+              label="Default processing pipeline"
+              value={project.settings.defaultProcessingPipeline?.name}
+            />
+          ) : (
+            <p className="body-small whitespace-normal">
+              The project has no default processing pipeline configured.
+            </p>
           )}
-          to={APP_ROUTES.PROCESSING({ projectId: project.id })}
-        >
-          <span>Configure</span>
-          <ChevronRightIcon className="w-4 h-4" />
-        </Link>
+          <Link
+            className={classNames(
+              buttonVariants({ size: 'small', variant: 'ghost' }),
+              '!w-auto self-end'
+            )}
+            to={APP_ROUTES.PROCESSING({ projectId: project.id })}
+          >
+            <span>{translate(STRING.CONFIGURE)}</span>
+            <ChevronRightIcon className="w-4 h-4" />
+          </Link>
+        </div>
       </Tooltip.Content>
     </Tooltip.Root>
   </Tooltip.Provider>

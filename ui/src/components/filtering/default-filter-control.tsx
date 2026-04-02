@@ -1,8 +1,5 @@
-import {
-  FormActions,
-  FormRow,
-  FormSection,
-} from 'components/form/layout/layout'
+import classNames from 'classnames'
+import { FormRow } from 'components/form/layout/layout'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { ProjectDetails } from 'data-services/models/project-details'
 import { InputValue } from 'design-system/components/input/input'
@@ -30,7 +27,7 @@ export const DefaultFiltersControl = ({ field }: { field: string }) => {
         <span className="text-muted-foreground body-overline-small font-bold pt-0.5">
           {filter.label}
         </span>
-        {project ? <DefaultFiltersPopover project={project} /> : null}
+        {project ? <DefaultFiltersTooltip project={project} /> : null}
       </div>
       <Switch
         checked={stringToBoolean(filter.value) ?? true}
@@ -46,7 +43,7 @@ export const DefaultFiltersControl = ({ field }: { field: string }) => {
   )
 }
 
-export const DefaultFiltersPopover = ({
+export const DefaultFiltersTooltip = ({
   className,
   project,
 }: {
@@ -64,43 +61,46 @@ export const DefaultFiltersPopover = ({
         <InfoIcon className="w-4 h-4" />
       </Button>
     </Popover.Trigger>
-    <Popover.Content className="p-0">
-      <FormSection
-        title={translate(STRING.NAV_ITEM_DEFAULT_FILTERS)}
-        description="Data is filtered by default based on global project configuration."
-      >
-        <FormRow>
-          <InputValue
-            label="Score threshold"
-            value={project.settings.scoreThreshold}
-          />
-        </FormRow>
-        <FormRow>
-          <InputValue
-            label="Include taxa"
-            value={project.settings.includeTaxa
-              .map((taxon) => taxon.name)
-              .join(', ')}
-          />
-          <InputValue
-            label="Exclude taxa"
-            value={project.settings.excludeTaxa
-              .map((taxon) => taxon.name)
-              .join(', ')}
-          />
-        </FormRow>
-      </FormSection>
-      {project.canUpdate ? (
-        <FormActions>
+    <Popover.Content className="p-4 max-w-xs">
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 border-b border-border pb-4">
+          <p className="body-small italic text-muted-foreground">
+            {translate(STRING.MESSAGE_DEFAULT_FILTERS)}
+          </p>
+          <FormRow>
+            <InputValue
+              label="Score threshold"
+              value={project.settings.scoreThreshold}
+            />
+          </FormRow>
+          <FormRow>
+            <InputValue
+              label="Include taxa"
+              value={project.settings.includeTaxa
+                .map((taxon) => taxon.name)
+                .join(', ')}
+            />
+            <InputValue
+              label="Exclude taxa"
+              value={project.settings.excludeTaxa
+                .map((taxon) => taxon.name)
+                .join(', ')}
+            />
+          </FormRow>
+        </div>
+        {project.canUpdate ? (
           <Link
-            className={buttonVariants({ size: 'small', variant: 'outline' })}
+            className={classNames(
+              buttonVariants({ size: 'small', variant: 'ghost' }),
+              '!w-auto self-end'
+            )}
             to={APP_ROUTES.DEFAULT_FILTERS({ projectId: project.id })}
           >
-            <span>Configure</span>
+            <span>{translate(STRING.CONFIGURE)}</span>
             <ChevronRightIcon className="w-4 h-4" />
           </Link>
-        </FormActions>
-      ) : null}
+        ) : null}
+      </div>
     </Popover.Content>
   </Popover.Root>
 )

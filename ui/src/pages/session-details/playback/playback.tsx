@@ -1,4 +1,4 @@
-import { DefaultFiltersPopover } from 'components/filtering/default-filter-control'
+import { DefaultFiltersTooltip } from 'components/filtering/default-filter-control'
 import { LicenseInfo } from 'components/license-info/license-info'
 import { useCaptureDetails } from 'data-services/hooks/captures/useCaptureDetails'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
@@ -88,7 +88,7 @@ export const Playback = ({
                 theme={CheckboxTheme.Neutral}
               />
               {project ? (
-                <DefaultFiltersPopover
+                <DefaultFiltersTooltip
                   className="text-neutral-200 hover:bg-transparent"
                   project={project}
                 />

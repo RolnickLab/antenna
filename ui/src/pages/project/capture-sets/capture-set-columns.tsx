@@ -8,9 +8,9 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
+import { Toolbar } from 'design-system/components/toolbar'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { UpdateEntityDialog } from 'pages/project/entities/entity-details-dialog'
-import styles from 'pages/project/entities/styles.module.scss'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -18,9 +18,11 @@ import { STRING, translate } from 'utils/language'
 import { SERVER_SAMPLING_METHODS } from './constants'
 import { PopulateCaptureSet } from './populate-capture-set'
 
-export const columns: (projectId: string) => TableColumn<CaptureSet>[] = (
+export const columns = ({
+  projectId,
+}: {
   projectId: string
-) => [
+}): TableColumn<CaptureSet>[] => [
   {
     id: 'id',
     name: translate(STRING.FIELD_LABEL_ID),
@@ -46,6 +48,7 @@ export const columns: (projectId: string) => TableColumn<CaptureSet>[] = (
   {
     id: 'status',
     name: 'Latest job status',
+    tooltip: translate(STRING.TOOLTIP_STATUS),
     renderCell: (item: CaptureSet) => {
       if (!item.currentJob) {
         return <></>
@@ -63,6 +66,7 @@ export const columns: (projectId: string) => TableColumn<CaptureSet>[] = (
   {
     id: 'jobs',
     name: translate(STRING.FIELD_LABEL_JOBS),
+    tooltip: translate(STRING.TOOLTIP_JOB),
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -80,6 +84,7 @@ export const columns: (projectId: string) => TableColumn<CaptureSet>[] = (
   {
     id: 'captures',
     name: 'Captures',
+    tooltip: translate(STRING.TOOLTIP_CAPTURE),
     sortField: 'source_images_count',
     styles: {
       textAlign: TextAlign.Right,
@@ -118,6 +123,7 @@ export const columns: (projectId: string) => TableColumn<CaptureSet>[] = (
   {
     id: 'occurrences',
     name: translate(STRING.FIELD_LABEL_OCCURRENCES),
+    tooltip: translate(STRING.TOOLTIP_OCCURRENCE),
     sortField: 'occurrences_count',
     styles: {
       textAlign: TextAlign.Right,
@@ -157,12 +163,9 @@ export const columns: (projectId: string) => TableColumn<CaptureSet>[] = (
   {
     id: 'actions',
     name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
+    sticky: true,
     renderCell: (item: CaptureSet) => (
-      <div className={styles.entityActions}>
+      <Toolbar>
         {item.canPopulate && <PopulateCaptureSet captureSet={item} />}
         {item.canUpdate && SERVER_SAMPLING_METHODS.includes(item.method) && (
           <UpdateEntityDialog
@@ -178,7 +181,7 @@ export const columns: (projectId: string) => TableColumn<CaptureSet>[] = (
             type={translate(STRING.ENTITY_TYPE_CAPTURE_SET)}
           />
         )}
-      </div>
+      </Toolbar>
     ),
   },
 ]

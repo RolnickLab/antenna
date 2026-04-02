@@ -33,10 +33,10 @@ import { usePagination } from 'utils/usePagination'
 import { useUser } from 'utils/user/userContext'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
-import { OccurrenceActions } from './occurrence-actions'
 import { columns } from './occurrence-columns'
 import { OccurrenceGallery } from './occurrence-gallery'
 import { OccurrenceNavigation } from './occurrence-navigation'
+import { OccurrencesActions } from './occurrences-actions'
 
 export const Occurrences = () => {
   const { user } = useUser()
@@ -73,6 +73,10 @@ export const Occurrences = () => {
   )
   const { selectedView, setSelectedView } = useSelectedView('table')
   const { taxaLists = [] } = useTaxaLists({ projectId: projectId as string })
+  const tableColumns = columns({
+    projectId: projectId as string,
+    showActions: selectedItems.length === 0,
+  })
 
   useEffect(() => {
     document.getElementById('app')?.scrollTo({ top: 0 })
@@ -144,11 +148,6 @@ export const Occurrences = () => {
               value={selectedView}
               onValueChange={setSelectedView}
             />
-            <SortControl
-              columns={columns(projectId as string)}
-              setSort={setSort}
-              sort={sort}
-            />
             <Link
               className={buttonVariants({ size: 'small', variant: 'outline' })}
               to={APP_ROUTES.EXPORTS({ projectId: projectId as string })}
@@ -156,18 +155,18 @@ export const Occurrences = () => {
               <DownloadIcon className="w-4 h-4" />
               <span>Export </span>
             </Link>
+            <SortControl columns={tableColumns} setSort={setSort} sort={sort} />
             <ColumnSettings
-              columns={columns(projectId as string)}
+              columns={tableColumns}
               columnSettings={columnSettings}
               onColumnSettingsChange={setColumnSettings}
             />
           </PageHeader>
           {selectedView === 'table' && (
             <Table
-              columns={columns(
-                projectId as string,
-                selectedItems.length === 0
-              ).filter((column) => !!columnSettings[column.id])}
+              columns={tableColumns.filter(
+                (column) => !!columnSettings[column.id]
+              )}
               error={error}
               isLoading={!id && isLoading}
               items={occurrences}
@@ -204,7 +203,7 @@ export const Occurrences = () => {
             )}
             onClear={() => setSelectedItems([])}
           >
-            <OccurrenceActions
+            <OccurrencesActions
               occurrences={occurrences?.filter((occurrence) =>
                 selectedItems.includes(occurrence.id)
               )}

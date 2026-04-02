@@ -10,6 +10,7 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
+import { Toolbar } from 'design-system/components/toolbar'
 import { DownloadIcon } from 'lucide-react'
 import { buttonVariants } from 'nova-ui-kit'
 import { Link } from 'react-router-dom'
@@ -17,9 +18,11 @@ import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { DeleteEntityDialog } from '../entities/delete-entity-dialog'
 
-export const columns: (projectId: string) => TableColumn<Export>[] = (
+export const columns = ({
+  projectId,
+}: {
   projectId: string
-) => [
+}): TableColumn<Export>[] => [
   {
     id: 'name',
     sortField: 'format',
@@ -88,24 +91,17 @@ export const columns: (projectId: string) => TableColumn<Export>[] = (
   {
     id: 'actions',
     name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
-    renderCell: (item: Export) => {
-      if (!item.canDelete) {
-        return <></>
-      }
-
-      return (
-        <div className="flex items-center justify-end gap-2 p-4">
+    sticky: true,
+    renderCell: (item: Export) => (
+      <Toolbar>
+        {item.canDelete ? (
           <DeleteEntityDialog
             collection={API_ROUTES.EXPORTS}
             id={item.id}
             type="export"
           />
-        </div>
-      )
-    },
+        ) : null}
+      </Toolbar>
+    ),
   },
 ]

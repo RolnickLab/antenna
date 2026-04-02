@@ -7,6 +7,7 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
+import { Toolbar } from 'design-system/components/toolbar'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { UpdateEntityDialog } from 'pages/project/entities/entity-details-dialog'
 import { Link } from 'react-router-dom'
@@ -15,9 +16,11 @@ import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { AddTaxaListTaxonPopover } from '../taxa-list-details/add-taxa-list-taxon/add-taxa-list-taxon-popover'
 
-export const columns: (projectId: string) => TableColumn<TaxaList>[] = (
+export const columns = ({
+  projectId,
+}: {
   projectId: string
-) => [
+}): TableColumn<TaxaList>[] => [
   {
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
@@ -73,17 +76,15 @@ export const columns: (projectId: string) => TableColumn<TaxaList>[] = (
     sortField: 'updated_at',
     renderCell: (item: TaxaList) => <DateTableCell date={item.updatedAt} />,
   },
+
   {
     id: 'actions',
     name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
+    sticky: true,
     renderCell: (item: TaxaList) => (
-      <div className="flex items-center justify-end gap-2 p-4">
+      <Toolbar>
         {item.canUpdate ? (
-          <AddTaxaListTaxonPopover taxaListId={item.id} />
+          <AddTaxaListTaxonPopover compact taxaListId={item.id} />
         ) : null}
         {item.canUpdate ? (
           <UpdateEntityDialog
@@ -100,7 +101,7 @@ export const columns: (projectId: string) => TableColumn<TaxaList>[] = (
             type={translate(STRING.ENTITY_TYPE_TAXA_LIST)}
           />
         ) : null}
-      </div>
+      </Toolbar>
     ),
   },
 ]

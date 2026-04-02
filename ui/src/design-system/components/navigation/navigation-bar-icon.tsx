@@ -16,7 +16,7 @@ const ICON_MAP: { [id: string]: FunctionComponent } = {
   occurrences: Occurrences,
   project: Project,
   sessions: Sessions,
-  species: Taxa,
+  taxa: Taxa,
 }
 
 export const NavigationBarIcon = ({

@@ -10,23 +10,18 @@ const convertServerRecord = (record: ServerProcessingService) =>
   new ProcessingService(record)
 
 export const useProcessingServiceDetails = (
-  processingServiceId: string,
-  projectId?: string
+  id: string,
+  projectId: string
 ): {
   processingService?: ProcessingService
   isLoading: boolean
   isFetching: boolean
   error?: unknown
 } => {
-  const params = projectId ? `?project_id=${projectId}` : ''
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<ProcessingService>({
-      queryKey: [
-        API_ROUTES.PROCESSING_SERVICES,
-        processingServiceId,
-        projectId,
-      ],
-      url: `${API_URL}/${API_ROUTES.PROCESSING_SERVICES}/${processingServiceId}/${params}`,
+      queryKey: [API_ROUTES.PROCESSING_SERVICES, id, projectId],
+      url: `${API_URL}/${API_ROUTES.PROCESSING_SERVICES}/${id}/?project_id=${projectId}`,
     })
 
   const processingService = useMemo(

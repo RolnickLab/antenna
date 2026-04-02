@@ -35,6 +35,7 @@ export const Deployments = () => {
       sort,
     })
   const canCreate = userPermissions?.includes(UserPermission.Create)
+  const tableColumns = columns({ projectId: projectId as string })
 
   return (
     <>
@@ -47,20 +48,16 @@ export const Deployments = () => {
         isFetching={isFetching}
         tooltip={translate(STRING.TOOLTIP_DEPLOYMENT)}
       >
-        <SortControl
-          columns={columns(projectId as string)}
-          setSort={setSort}
-          sort={sort}
-        />
         {canCreate ? <NewDeploymentDialog /> : null}
+        <SortControl columns={tableColumns} setSort={setSort} sort={sort} />
         <ColumnSettings
-          columns={columns(projectId as string)}
+          columns={tableColumns}
           columnSettings={columnSettings}
           onColumnSettingsChange={setColumnSettings}
         />
       </PageHeader>
       <Table
-        columns={columns(projectId as string).filter(
+        columns={tableColumns.filter(
           (column) => column.id === 'actions' || !!columnSettings[column.id]
         )}
         error={error}

@@ -131,7 +131,7 @@ export const DraftBadge = ({ project }: { project: ProjectDetails }) => (
             )}
             to={APP_ROUTES.GENERAL({ projectId: project.id })}
           >
-            <span>Configure</span>
+            <span>{translate(STRING.CONFIGURE)}</span>
             <ChevronRightIcon className="w-4 h-4" />
           </Link>
         ) : null}

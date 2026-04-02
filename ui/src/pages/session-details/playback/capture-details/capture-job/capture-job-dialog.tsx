@@ -12,7 +12,7 @@ export const CaptureJobDialog = ({ id }: { id: string }) => {
   const [isOpen, setIsOpen] = useState(false)
   const { job, isLoading, isFetching, error } = useJobDetails(id, isOpen)
   const title = translate(STRING.ENTITY_DETAILS, {
-    type: _.capitalize(translate(STRING.ENTITY_TYPE_DEPLOYMENT)),
+    type: _.capitalize(translate(STRING.ENTITY_TYPE_JOB)),
   })
 
   return (

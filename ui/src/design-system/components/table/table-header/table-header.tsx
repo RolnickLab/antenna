@@ -6,10 +6,10 @@ import styles from './table-header.module.scss'
 
 interface TableHeaderProps<T> {
   column: TableColumn<T>
+  onSortClick: () => void
   sortable?: boolean
   sortSettings?: TableSortSettings
   visuallyHidden?: boolean
-  onSortClick: () => void
 }
 
 export const TableHeader = <T,>({
@@ -43,7 +43,9 @@ const BasicTableHeader = <T,>({
       textAlign: column.styles?.textAlign,
       width: column.styles?.width,
     }}
-    className={styles.tableHeader}
+    className={classNames(styles.tableHeader, {
+      [styles.sticky]: column.sticky,
+    })}
   >
     <BasicTooltip asChild content={column.tooltip}>
       <div
@@ -67,9 +69,9 @@ const BasicTableHeader = <T,>({
 
 const SortableTableHeader = <T,>({
   column,
+  onSortClick,
   sortSettings,
   visuallyHidden,
-  onSortClick,
 }: TableHeaderProps<T>) => {
   const sortActive = sortSettings?.field === column.sortField
 
@@ -87,6 +89,7 @@ const SortableTableHeader = <T,>({
       style={{ textAlign: column.styles?.textAlign }}
       className={classNames(styles.tableHeader, {
         [styles.active]: sortActive,
+        [styles.sticky]: column.sticky,
       })}
     >
       <BasicTooltip asChild content={column.tooltip}>
