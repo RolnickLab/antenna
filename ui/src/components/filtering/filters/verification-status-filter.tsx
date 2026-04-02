@@ -3,16 +3,15 @@ import { STRING, translate } from 'utils/language'
 import { booleanToString, stringToBoolean } from '../utils'
 import { FilterProps } from './types'
 
-const OPTIONS = [
-  { value: true, label: translate(STRING.VERIFIED) },
-  { value: false, label: translate(STRING.NOT_VERIFIED) },
-]
-
 export const VerificationStatusFilter = ({
   value: string,
   onAdd,
 }: FilterProps) => {
   const value = stringToBoolean(string)
+  const options = [
+    { value: true, label: translate(STRING.VERIFIED) },
+    { value: false, label: translate(STRING.NOT_VERIFIED) },
+  ]
 
   return (
     <Select.Root value={booleanToString(value)} onValueChange={onAdd}>
@@ -20,7 +19,7 @@ export const VerificationStatusFilter = ({
         <Select.Value placeholder={translate(STRING.SELECT_PLACEHOLDER)} />
       </Select.Trigger>
       <Select.Content>
-        {OPTIONS.map((option) => (
+        {options.map((option) => (
           <Select.Item
             key={booleanToString(option.value)}
             value={booleanToString(option.value)}

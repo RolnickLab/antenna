@@ -49,6 +49,7 @@ export const TaxaListDetails = () => {
     }
   }, [taxaList, setDetailBreadcrumb])
   const tableColumns = columns({
+    canUpdate: taxaList?.canUpdate,
     projectId: projectId as string,
     taxaListId: id as string,
   })

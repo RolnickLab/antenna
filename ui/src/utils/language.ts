@@ -173,6 +173,8 @@ export enum STRING {
   MESSAGE_CHANGE_PASSWORD,
   MESSAGE_COULD_NOT_SAVE,
   MESSAGE_DATA_SOURCE_NOT_CONFIGURED,
+  MESSAGE_DEFAULT_FILTERS,
+  MESSAGE_DEFAULT_PIPELINE,
   MESSAGE_DELETE_CONFIRM,
   MESSAGE_DRAFTS,
   MESSAGE_HAS_ACCOUNT,
@@ -272,6 +274,7 @@ export enum STRING {
   CONFIGURE,
   CONNECTED,
   CONNECTING,
+  DEFAULT,
   DETAILS,
   EXTERNAL_RESOURCES,
   FORGOT_PASSWORD_DETAILS,
@@ -503,6 +506,10 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_COULD_NOT_SAVE]: 'Could not save',
   [STRING.MESSAGE_DATA_SOURCE_NOT_CONFIGURED]:
     'A data source must be configured and saved before syncing captures.',
+  [STRING.MESSAGE_DEFAULT_FILTERS]:
+    'Data is filtered by default based on global project configuration.',
+  [STRING.MESSAGE_DEFAULT_PIPELINE]:
+    'This is the default pipeline used for processing images in this project.',
   [STRING.MESSAGE_DELETE_CONFIRM]:
     'Are you sure you want to delete this {{type}}?',
   [STRING.MESSAGE_DRAFTS]: 'Drafts are private and limited to one user.',
@@ -607,7 +614,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TOOLTIP_PROCESSING_SERVICE]:
     'A processing service is a group of pipelines used for processing captures.',
   [STRING.TOOLTIP_SCORE]:
-    'This is a model derived prediction score, not a real-world probability. Think of it as a relative metric that will vary based model calibration and available training data.',
+    'This is a model derived prediction score, not a real-world probability. Think of it as a relative metric that will vary based on model calibration and available training data.',
   [STRING.TOOLTIP_SESSION]:
     'A session is a fixed period of time of monitoring for one station. The period is typically one night.',
   [STRING.TOOLTIP_SITE]:
@@ -628,6 +635,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.CONFIGURE]: 'Configure',
   [STRING.CONNECTED]: 'Connected',
   [STRING.CONNECTING]: 'Connecting...',
+  [STRING.DEFAULT]: 'Default',
   [STRING.DETAILS]: 'Details',
   [STRING.EXTERNAL_RESOURCES]: 'External resources',
   [STRING.FORGOT_PASSWORD_DETAILS]: `No worries, we'll send you reset instructions.`,

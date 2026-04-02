@@ -239,11 +239,11 @@ const FrameDetections = ({
                   />
                 </Tooltip.Trigger>
                 <Tooltip.Content
-                  className="p-4 z-[1]"
+                  className="p-3 z-[1]"
                   collisionBoundary={containerRef?.current}
                   side="bottom"
                 >
-                  <div className="flex flex-col items-start gap-2">
+                  <div className="flex flex-col items-start gap-1">
                     <button
                       className="body-base text-primary font-medium"
                       disabled={!detection.occurrenceId}
@@ -256,6 +256,7 @@ const FrameDetections = ({
                     <DeterminationScore
                       score={detection.score}
                       scoreLabel={detection.scoreLabel}
+                      verified={detection.score === 1}
                     />
                   </div>
                 </Tooltip.Content>

@@ -77,7 +77,6 @@ const AlgorithmDetailsContent = ({ algorithm }: { algorithm: Algorithm }) => (
           label={translate(STRING.FIELD_LABEL_TASK_TYPE)}
           value={algorithm.taskType}
         />
-
         <InputValue
           label={translate(STRING.FIELD_LABEL_CATEGORY_COUNT)}
           value={algorithm.categoryCount}

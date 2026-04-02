@@ -8,11 +8,11 @@ export const DefaultPipelineBadge = ({ projectId }: { projectId: string }) => (
   <Tooltip.Provider delayDuration={0}>
     <Tooltip.Root>
       <Tooltip.Trigger>
-        <Badge label="Default" />
+        <Badge label={translate(STRING.DEFAULT)} />
       </Tooltip.Trigger>
       <Tooltip.Content side="bottom" className="p-4 max-w-xs">
         <Info
-          text="This is the default pipeline used for processing images in this project."
+          text={translate(STRING.MESSAGE_DEFAULT_PIPELINE)}
           link={{
             text: translate(STRING.CONFIGURE),
             to: APP_ROUTES.PROCESSING({ projectId: projectId }),

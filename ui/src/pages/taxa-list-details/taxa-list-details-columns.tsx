@@ -15,9 +15,11 @@ import { STRING, translate } from 'utils/language'
 import { RemoveTaxaListTaxonDialog } from './remove-taxa-list-taxon/remove-taxa-list-taxon-dialog'
 
 export const columns = ({
+  canUpdate,
   projectId,
   taxaListId,
 }: {
+  canUpdate?: boolean
   projectId: string
   taxaListId: string
 }): TableColumn<Species>[] => [
@@ -77,7 +79,12 @@ export const columns = ({
     sticky: true,
     renderCell: (item: Species) => (
       <Toolbar>
-        <RemoveTaxaListTaxonDialog taxaListId={taxaListId} taxonId={item.id} />
+        {canUpdate ? (
+          <RemoveTaxaListTaxonDialog
+            taxaListId={taxaListId}
+            taxonId={item.id}
+          />
+        ) : null}
       </Toolbar>
     ),
   },

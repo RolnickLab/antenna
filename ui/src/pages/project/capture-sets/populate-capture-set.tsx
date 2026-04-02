@@ -33,7 +33,7 @@ export const PopulateCaptureSet = ({
         {error ? (
           <AlertCircleIcon className="w-4 h-4" />
         ) : isLoading ? (
-          <Loader2 className="w-4 h-4 ml-2 animate-spin" />
+          <Loader2 className="w-4 h-4 animate-spin" />
         ) : (
           <RefreshCcwIcon className="w-4 h-4" />
         )}

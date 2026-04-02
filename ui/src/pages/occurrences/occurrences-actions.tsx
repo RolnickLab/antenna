@@ -24,8 +24,8 @@ export const OccurrencesActions = ({
     return !agreed
   })
 
-  const canUpdate = occurrences[0]?.userPermissions.includes(
-    UserPermission.Update
+  const canUpdate = !occurrences.some(
+    ({ userPermissions }) => !userPermissions.includes(UserPermission.Update)
   )
 
   if (!canUpdate) {
@@ -77,7 +77,7 @@ const Agree = ({
           occurrenceId: occurrence.id,
           taxonId: occurrence.determinationTaxon.id,
         })),
-    [occurrences]
+    [occurrences, userInfo?.id]
   )
 
   const { createIdentifications, isLoading, isSuccess, error } =
@@ -95,9 +95,10 @@ const Agree = ({
   return (
     <BasicTooltip content={error}>
       <Button
+        disabled={isLoading}
+        onClick={() => createIdentifications(agreeParams)}
         size="small"
         variant="outline"
-        onClick={() => createIdentifications(agreeParams)}
       >
         {error ? (
           <AlertCircleIcon className="w-4 h-4 mr-2 text-destructive" />

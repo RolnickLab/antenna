@@ -18,6 +18,7 @@ export const Pipelines = () => {
   const { columnSettings, setColumnSettings } = useColumnSettings('pipelines', {
     id: true,
     name: true,
+    default: true,
     description: true,
   })
   const [sort, setSort] = useState<TableSortSettings | undefined>({

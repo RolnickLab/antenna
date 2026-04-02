@@ -103,35 +103,21 @@ export const Table = <T extends { id: string }>({
                 </div>
               </th>
             )}
-            {columns
-              .filter((column) => !column.sticky)
-              .map((column) => (
-                <TableHeader
-                  key={column.id}
-                  column={column}
-                  sortable={sortable}
-                  sortSettings={sortSettings}
-                  visuallyHidden={column.visuallyHidden}
-                  onSortClick={() => onSortClick(column)}
-                />
-              ))}
+            {columns.map((column) => (
+              <TableHeader
+                key={column.id}
+                column={column}
+                onSortClick={() => onSortClick(column)}
+                sortable={sortable}
+                sortSettings={sortSettings}
+                visuallyHidden={column.visuallyHidden}
+              />
+            ))}
             <th
               aria-hidden="true"
               className={tableHeaderStyles.tableHeader}
               style={{ width: '100%' }}
             />
-            {columns
-              .filter((column) => column.sticky)
-              .map((column) => (
-                <TableHeader
-                  key={column.id}
-                  column={column}
-                  sortable={sortable}
-                  sortSettings={sortSettings}
-                  visuallyHidden={column.visuallyHidden}
-                  onSortClick={() => onSortClick(column)}
-                />
-              ))}
           </tr>
         </thead>
         <tbody>
@@ -153,21 +139,15 @@ export const Table = <T extends { id: string }>({
                   </BasicTableCell>
                 </td>
               )}
-              {columns
-                .filter((column) => !column.sticky)
-                .map((column, columnIndex) => (
-                  <td key={column.id}>
-                    {column.renderCell(item, rowIndex, columnIndex)}
-                  </td>
-                ))}
+              {columns.map((column, columnIndex) => (
+                <td
+                  key={column.id}
+                  className={classNames({ [styles.sticky]: column.sticky })}
+                >
+                  {column.renderCell(item, rowIndex, columnIndex)}
+                </td>
+              ))}
               <td aria-hidden="true" />
-              {columns
-                .filter((column) => column.sticky)
-                .map((column, columnIndex) => (
-                  <td key={column.id} className={styles.sticky}>
-                    {column.renderCell(item, rowIndex, columnIndex)}
-                  </td>
-                ))}
             </tr>
           ))}
         </tbody>

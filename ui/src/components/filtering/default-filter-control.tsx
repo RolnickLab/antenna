@@ -4,7 +4,7 @@ import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetail
 import { ProjectDetails } from 'data-services/models/project-details'
 import { InputValue } from 'design-system/components/input/input'
 import { ChevronRightIcon, InfoIcon } from 'lucide-react'
-import { Button, buttonVariants, Switch, Tooltip } from 'nova-ui-kit'
+import { Button, buttonVariants, Popover, Switch } from 'nova-ui-kit'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
@@ -50,59 +50,57 @@ export const DefaultFiltersTooltip = ({
   className?: string
   project: ProjectDetails
 }) => (
-  <Tooltip.Provider delayDuration={0}>
-    <Tooltip.Root>
-      <Tooltip.Trigger asChild>
-        <Button
-          aria-label={translate(STRING.INFO)}
-          className={className}
-          size="icon"
-          variant="ghost"
-        >
-          <InfoIcon className="w-4 h-4" />
-        </Button>
-      </Tooltip.Trigger>
-      <Tooltip.Content className="p-4 max-w-xs">
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-4 border-b border-border pb-4">
-            <p className="body-small italic text-muted-foreground">
-              Data is filtered by default based on global project configuration.
-            </p>
-            <FormRow>
-              <InputValue
-                label="Score threshold"
-                value={project.settings.scoreThreshold}
-              />
-            </FormRow>
-            <FormRow>
-              <InputValue
-                label="Include taxa"
-                value={project.settings.includeTaxa
-                  .map((taxon) => taxon.name)
-                  .join(', ')}
-              />
-              <InputValue
-                label="Exclude taxa"
-                value={project.settings.excludeTaxa
-                  .map((taxon) => taxon.name)
-                  .join(', ')}
-              />
-            </FormRow>
-          </div>
-          {project.canUpdate ? (
-            <Link
-              className={classNames(
-                buttonVariants({ size: 'small', variant: 'ghost' }),
-                '!w-auto self-end'
-              )}
-              to={APP_ROUTES.DEFAULT_FILTERS({ projectId: project.id })}
-            >
-              <span>{translate(STRING.CONFIGURE)}</span>
-              <ChevronRightIcon className="w-4 h-4" />
-            </Link>
-          ) : null}
+  <Popover.Root>
+    <Popover.Trigger asChild>
+      <Button
+        aria-label={translate(STRING.INFO)}
+        className={className}
+        size="icon"
+        variant="ghost"
+      >
+        <InfoIcon className="w-4 h-4" />
+      </Button>
+    </Popover.Trigger>
+    <Popover.Content className="p-4 max-w-xs">
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 border-b border-border pb-4">
+          <p className="body-small italic text-muted-foreground">
+            {translate(STRING.MESSAGE_DEFAULT_FILTERS)}
+          </p>
+          <FormRow>
+            <InputValue
+              label="Score threshold"
+              value={project.settings.scoreThreshold}
+            />
+          </FormRow>
+          <FormRow>
+            <InputValue
+              label="Include taxa"
+              value={project.settings.includeTaxa
+                .map((taxon) => taxon.name)
+                .join(', ')}
+            />
+            <InputValue
+              label="Exclude taxa"
+              value={project.settings.excludeTaxa
+                .map((taxon) => taxon.name)
+                .join(', ')}
+            />
+          </FormRow>
         </div>
-      </Tooltip.Content>
-    </Tooltip.Root>
-  </Tooltip.Provider>
+        {project.canUpdate ? (
+          <Link
+            className={classNames(
+              buttonVariants({ size: 'small', variant: 'ghost' }),
+              '!w-auto self-end'
+            )}
+            to={APP_ROUTES.DEFAULT_FILTERS({ projectId: project.id })}
+          >
+            <span>{translate(STRING.CONFIGURE)}</span>
+            <ChevronRightIcon className="w-4 h-4" />
+          </Link>
+        ) : null}
+      </div>
+    </Popover.Content>
+  </Popover.Root>
 )

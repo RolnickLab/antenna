@@ -1,4 +1,3 @@
-import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { API_ROUTES } from 'data-services/constants'
 import { ProcessingService } from 'data-services/models/processing-service'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
@@ -10,6 +9,7 @@ import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { UpdateEntityDialog } from 'pages/project/entities/entity-details-dialog'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
+import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
 import { PopulateProcessingService } from './processing-services-actions'
 

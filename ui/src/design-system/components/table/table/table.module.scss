@@ -92,7 +92,8 @@
 @media (hover: hover) {
   .tableContainer {
     tbody {
-      tr:hover {
+      tr:hover,
+      tr:focus-within {
         background-color: $color-neutral-50;
 
         td {
