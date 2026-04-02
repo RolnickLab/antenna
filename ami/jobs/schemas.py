@@ -22,7 +22,7 @@ incomplete_only_param = OpenApiParameter(
 class TasksRequestSerializer(serializers.Serializer):
     """POST /jobs/{id}/tasks/ request body. Fetch tasks from the job queue."""
 
-    batch = serializers.IntegerField(min_value=1, required=True)
+    batch_size = serializers.IntegerField(min_value=1, required=True)
     client_info = SchemaField(schema=ProcessingServiceClientInfo, required=False, default=None)
 
 

@@ -253,13 +253,13 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         Fetch tasks from the job queue (POST).
 
         Returns task data with reply_subject for acknowledgment. External workers should:
-        1. POST to this endpoint with {"batch": N}
+        1. POST to this endpoint with {"batch_size": N}
         2. Process the tasks
         3. POST to /jobs/{id}/result/ with the results
         """
         serializer = TasksRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        batch = serializer.validated_data["batch"]
+        batch_size = serializer.validated_data["batch_size"]
 
         job: Job = self.get_object()
 
@@ -283,7 +283,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
         async def get_tasks():
             async with TaskQueueManager() as manager:
-                return [task.dict() for task in await manager.reserve_tasks(job.pk, count=batch, timeout=0.5)]
+                return [task.dict() for task in await manager.reserve_tasks(job.pk, count=batch_size, timeout=0.5)]
 
         try:
             tasks = async_to_sync(get_tasks)()

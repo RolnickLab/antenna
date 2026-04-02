@@ -490,7 +490,7 @@ class TestJobView(APITestCase):
 
         self.client.force_authenticate(user=self.user)
         tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
-        resp = self.client.post(tasks_url, {"batch": value}, format="json")
+        resp = self.client.post(tasks_url, {"batch_size": value}, format="json")
         self.assertEqual(resp.status_code, expected_status)
         return resp.json()
 
@@ -522,7 +522,7 @@ class TestJobView(APITestCase):
 
         self.client.force_authenticate(user=self.user)
         tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
-        resp = self.client.post(tasks_url, {"batch": 1}, format="json")
+        resp = self.client.post(tasks_url, {"batch_size": 1}, format="json")
 
         self.assertEqual(resp.status_code, 400)
         self.assertIn("pipeline", resp.json()[0].lower())
@@ -533,9 +533,7 @@ class TestJobView(APITestCase):
         job = self._create_ml_job("Job for results test", pipeline)
 
         self.client.force_authenticate(user=self.user)
-        result_url = reverse_with_params(
-            "api:job-result", args=[job.pk], params={"project_id": self.project.pk, "batch": 1}
-        )
+        result_url = reverse_with_params("api:job-result", args=[job.pk], params={"project_id": self.project.pk})
 
         result_data = {
             "results": [
@@ -724,6 +722,6 @@ class TestJobDispatchModeFiltering(APITestCase):
 
         self.client.force_authenticate(user=self.user)
         tasks_url = reverse_with_params("api:job-tasks", args=[sync_job.pk], params={"project_id": self.project.pk})
-        resp = self.client.post(tasks_url, {"batch": 1}, format="json")
+        resp = self.client.post(tasks_url, {"batch_size": 1}, format="json")
         self.assertEqual(resp.status_code, 400)
         self.assertIn("async_api", resp.json()[0].lower())
