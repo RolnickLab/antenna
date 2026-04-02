@@ -28,7 +28,7 @@ class Migration(migrations.Migration):
                 (
                     "name",
                     models.CharField(
-                        default=None,
+                        default="",
                         help_text="A free-form name for the API key. Need not be unique. 50 characters max.",
                         max_length=50,
                     ),

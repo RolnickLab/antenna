@@ -313,10 +313,9 @@ class ProcessingService(BaseModel):
 def get_or_create_default_processing_service(
     project: "Project",
     register_pipelines: bool = True,
-    generate_api_key: bool = False,
 ) -> "ProcessingService | None":
     """
-    Create a default processing service for a project.
+    Create a default push-mode processing service for a project.
 
     If configured, will use the global default processing service
     for the current environment. Otherwise, it return None.
@@ -324,9 +323,11 @@ def get_or_create_default_processing_service(
     Set the "DEFAULT_PROCESSING_SERVICE_ENDPOINT" and "DEFAULT_PROCESSING_SERVICE_NAME"
     environment variables to configure & enable the default processing service.
 
-    If generate_api_key=True, creates an API key for the service (if it doesn't
-    already have one) and logs the prefix. Used for docker compose setups where the
-    ml_backend needs an API key to self-register.
+    .. deprecated::
+        For async/pull-mode services, use the self-registration flow instead:
+        the processing service authenticates with user credentials, creates itself
+        via the API, generates its own API key, and registers pipelines.
+        See processing_services/minimal/register.py for an example.
     """
 
     name = settings.DEFAULT_PROCESSING_SERVICE_NAME or "Default Processing Service"
@@ -349,13 +350,6 @@ def get_or_create_default_processing_service(
             enable_only=settings.DEFAULT_PIPELINES_ENABLED,
             projects=Project.objects.filter(pk=project.pk),
         )
-
-    if generate_api_key and not service.api_keys.filter(revoked=False).exists():
-        api_key_obj, plaintext_key = ProcessingServiceAPIKey.objects.create_key(
-            name=f"{name} key",
-            processing_service=service,
-        )
-        logger.info("Generated API key for %s (prefix: %s)", name, api_key_obj.prefix)
 
     return service
 
