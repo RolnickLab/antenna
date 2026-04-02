@@ -317,10 +317,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         try:
             # Pre-validate all results before enqueuing any tasks
             # This prevents partial queueing and duplicate task processing
-            validated_results = []
-            for item in raw_results:
-                task_result = PipelineTaskResult(**item)
-                validated_results.append(task_result)
+            validated_results = pydantic.parse_obj_as(list[PipelineTaskResult], raw_results)
 
             # All validation passed, now queue all tasks
             queued_tasks = []
