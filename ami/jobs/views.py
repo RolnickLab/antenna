@@ -30,6 +30,30 @@ from .serializers import JobListSerializer, JobSerializer, MinimalJobSerializer
 logger = logging.getLogger(__name__)
 
 
+def _mark_pipeline_pull_services_seen(job: "Job") -> None:
+    """
+    Record a heartbeat for async (pull-mode) processing services linked to the job's pipeline.
+
+    Called on every task-fetch and result-submit request so that the worker's polling activity
+    keeps last_seen/last_seen_live current. The periodic check_processing_services_online task
+    will mark services offline if this heartbeat stops arriving within PROCESSING_SERVICE_LAST_SEEN_MAX.
+
+    IMPORTANT: This marks ALL async services on the pipeline within this project as live, not just
+    the specific service that made the request. If multiple async services share the same pipeline
+    within a project, a single worker polling will keep all of them appearing online.
+    Once application-token auth is available (PR #1117), this should be scoped to the individual
+    calling service instead.
+    """
+    import datetime
+
+    if not job.pipeline_id:
+        return
+    job.pipeline.processing_services.async_services().filter(projects=job.project_id).update(
+        last_seen=datetime.datetime.now(),
+        last_seen_live=True,
+    )
+
+
 class JobFilterSet(filters.FilterSet):
     """Custom filterset to enable pipeline name filtering."""
 
@@ -245,6 +269,9 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         if not job.pipeline:
             raise ValidationError("This job does not have a pipeline configured")
 
+        # Record heartbeat for async processing services on this pipeline
+        _mark_pipeline_pull_services_seen(job)
+
         # Get tasks from NATS JetStream
         from ami.ml.orchestration.nats_queue import TaskQueueManager
 
@@ -271,6 +298,9 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         """
 
         job = self.get_object()
+
+        # Record heartbeat for async processing services on this pipeline
+        _mark_pipeline_pull_services_seen(job)
 
         # Validate request data is a list
         if isinstance(request.data, list):

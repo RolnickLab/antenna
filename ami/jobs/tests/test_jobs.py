@@ -111,6 +111,37 @@ class TestJobProgress(TestCase):
         self.assertEqual(job.status, initial_status)
         self.assertNotEqual(job.status, JobState.SUCCESS.value)
 
+    def test_async_job_completes_when_zero_images(self):
+        """Job with 0 images to process should finalize immediately, not stay STARTED."""
+        from unittest.mock import patch
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test zero images job",
+            pipeline=self.pipeline,
+            source_image_collection=self.source_image_collection,
+            dispatch_mode=JobDispatchMode.ASYNC_API,
+        )
+
+        def mock_queue(job, images):
+            """Simulate queue_images_to_nats with 0 images: sets stages to SUCCESS, returns True."""
+            job.progress.update_stage("process", status=JobState.SUCCESS, progress=1.0)
+            job.progress.update_stage("results", status=JobState.SUCCESS, progress=1.0)
+            job.save()
+            return True
+
+        with (
+            patch.object(job.pipeline, "collect_images", return_value=[]),
+            patch("ami.ml.orchestration.jobs.queue_images_to_nats", side_effect=mock_queue),
+            patch("ami.jobs.tasks.cleanup_async_job_if_needed"),
+        ):
+            job.run()
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.SUCCESS.value)
+        self.assertIsNotNone(job.finished_at)
+
     def test_job_status_allows_failure_states_immediately(self):
         """
         Test that FAILURE and REVOKED states bypass the completion guard

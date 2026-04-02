@@ -86,8 +86,8 @@ const ProcessingServiceDetailsContent = ({
           value={processingService.endpointUrl}
         />
         <InputValue
-          label={translate(STRING.FIELD_LABEL_NUM_PIPELINES_REGISTERED)}
-          value={processingService.numPiplinesAdded}
+          label={translate(STRING.FIELD_LABEL_LAST_SEEN)}
+          value={processingService.lastSeen}
         />
       </FormRow>
       <FormRow>

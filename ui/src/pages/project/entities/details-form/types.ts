@@ -7,7 +7,9 @@ export type DetailsFormProps = {
   isSuccess?: boolean
   onSubmit: (
     data: FormValues & {
-      customFields?: { [key: string]: string | number | object | undefined }
+      customFields?: {
+        [key: string]: string | number | object | null | undefined
+      }
     }
   ) => void
 }

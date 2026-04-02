@@ -2,6 +2,7 @@ from django_pydantic_field.rest_framework import SchemaField
 from rest_framework import serializers
 
 from ami.main.api.serializers import DefaultSerializer, MinimalNestedModelSerializer
+from ami.main.models import Project
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline, PipelineStage
@@ -66,6 +67,8 @@ class AlgorithmNestedSerializer(DefaultSerializer):
 
 
 class ProcessingServiceNestedSerializer(DefaultSerializer):
+    is_async = serializers.BooleanField(read_only=True)
+
     class Meta:
         model = ProcessingService
         fields = [
@@ -73,8 +76,9 @@ class ProcessingServiceNestedSerializer(DefaultSerializer):
             "id",
             "details",
             "endpoint_url",
-            "last_checked",
-            "last_checked_live",
+            "is_async",
+            "last_seen",
+            "last_seen_live",
             "created_at",
             "updated_at",
         ]
@@ -134,6 +138,13 @@ class PipelineNestedSerializer(DefaultSerializer):
 class ProcessingServiceSerializer(DefaultSerializer):
     pipelines = PipelineNestedSerializer(many=True, read_only=True)
     projects = serializers.SerializerMethodField()
+    is_async = serializers.BooleanField(read_only=True)
+    endpoint_url = serializers.CharField(required=False, allow_null=True, allow_blank=False, max_length=1024)
+    project = serializers.PrimaryKeyRelatedField(
+        write_only=True,
+        queryset=Project.objects.all(),
+        required=False,
+    )
 
     class Meta:
         model = ProcessingService
@@ -144,11 +155,13 @@ class ProcessingServiceSerializer(DefaultSerializer):
             "description",
             "projects",
             "endpoint_url",
+            "is_async",
             "pipelines",
             "created_at",
             "updated_at",
-            "last_checked",
-            "last_checked_live",
+            "last_seen",
+            "last_seen_live",
+            "project",
         ]
 
     def get_projects(self, obj):

@@ -1,3 +1,4 @@
+import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { API_ROUTES } from 'data-services/constants'
 import { ProcessingService } from 'data-services/models/processing-service'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
@@ -44,7 +45,13 @@ export const columns = ({
     renderCell: (item: ProcessingService) => (
       <StatusTableCell
         color={item.status.color}
-        details={'Last checked ' + item.lastChecked}
+        details={
+          item.lastSeen
+            ? translate(STRING.FIELD_LABEL_LAST_SEEN) +
+              ' ' +
+              getFormatedDateTimeString({ date: item.lastSeen })
+            : undefined
+        }
         label={item.status.label}
       />
     ),
