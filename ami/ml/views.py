@@ -16,6 +16,8 @@ from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
 from ami.main.models import Project, SourceImage
+from ami.ml.auth import HasProcessingServiceAPIKey
+from ami.ml.models.processing_service import ProcessingServiceAPIKey
 from ami.ml.schemas import PipelineRegistrationResponse
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
@@ -147,7 +149,7 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
     API endpoint that allows processing services to be viewed or edited.
     """
 
-    queryset = ProcessingService.objects.all()
+    queryset = ProcessingService.objects.all().prefetch_related("api_keys")
     serializer_class = ProcessingServiceSerializer
     filterset_fields = ["projects"]
     ordering_fields = ["id", "created_at", "updated_at"]
@@ -208,13 +210,43 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
         processing_service.save()
         return Response(response.dict())
 
+    @extend_schema(
+        operation_id="processing_services_generate_key",
+        summary="Generate or regenerate API key",
+        description="Generates a new API key, revoking any existing one. "
+        "The full key is only shown in this response.",
+        responses={200: dict},
+        tags=["ml"],
+    )
+    @action(detail=True, methods=["post"], url_path="generate_key")
+    def generate_key(self, request: Request, pk=None) -> Response:
+        instance = self.get_object()
+
+        with transaction.atomic():
+            # Revoke existing keys
+            instance.api_keys.filter(revoked=False).update(revoked=True)
+
+            # Create new key via library
+            api_key_obj, plaintext_key = ProcessingServiceAPIKey.objects.create_key(
+                name=f"{instance.name} key",
+                processing_service=instance,
+            )
+
+        return Response(
+            {
+                "api_key": plaintext_key,
+                "prefix": api_key_obj.prefix,
+                "message": "API key generated. This is the only time the full key will be shown.",
+            }
+        )
+
 
 class ProjectPipelineViewSet(ProjectMixin, mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.GenericViewSet):
     """Pipelines for a specific project. GET lists, POST registers."""
 
     queryset = Pipeline.objects.none()
     serializer_class = PipelineSerializer
-    permission_classes = [ProjectPipelineConfigPermission]
+    permission_classes = [ProjectPipelineConfigPermission | HasProcessingServiceAPIKey]
     require_project = True
 
     def get_queryset(self) -> QuerySet:
@@ -265,19 +297,19 @@ class ProjectPipelineViewSet(ProjectMixin, mixins.ListModelMixin, mixins.CreateM
         serializer.is_valid(raise_exception=True)
         project = self.get_active_project()
 
-        with transaction.atomic():
-            processing_service, _ = ProcessingService.objects.get_or_create(
-                name=serializer.validated_data["processing_service_name"],
-                defaults={"endpoint_url": None},
-            )
-            processing_service.projects.add(project)
+        if not isinstance(request.auth, ProcessingService):
+            raise api_exceptions.ValidationError("Pipeline registration requires API key authentication.")
+        processing_service = request.auth
 
+        with transaction.atomic():
             response = processing_service.create_pipelines(
                 pipeline_configs=serializer.validated_data["pipelines"],
                 projects=Project.objects.filter(pk=project.pk),
             )
 
-        # Record that we heard from this async processing service
-        processing_service.mark_seen(live=True)
+        # Update heartbeat and client info
+        from ami.ml.schemas import get_client_info
+
+        processing_service.mark_seen(client_info=get_client_info(request))
 
         return Response(response.dict(), status=status.HTTP_201_CREATED)

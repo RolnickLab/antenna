@@ -8,6 +8,56 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
+class ProcessingServiceClientInfo(pydantic.BaseModel):
+    """Identity metadata sent by a processing service worker.
+
+    Client-reported fields (all optional, sent by the worker):
+        hostname, software, version, platform, pod_name
+
+    Server-observed fields (set by get_client_info(), never from client):
+        ip, user_agent
+    """
+
+    # Client-reported
+    hostname: str = ""
+    software: str = ""
+    version: str = ""
+    platform: str = ""
+    pod_name: str = ""
+
+    # Server-observed (overwritten on the server, cannot be spoofed)
+    ip: str = ""
+    user_agent: str = ""
+
+    class Config:
+        extra = "allow"
+
+
+def get_client_info(request) -> dict:
+    """
+    Extract client_info from request body, merged with server-observed values.
+
+    Server-observed fields (ip, user_agent) always come from the server and
+    cannot be spoofed by the client.
+    Client-reported fields come from request.data["client_info"] when provided.
+    Handles bare-list payloads (legacy /result format) gracefully.
+    """
+    data = request.data if isinstance(request.data, dict) else {}
+    raw = data.get("client_info") or {}
+
+    try:
+        info = ProcessingServiceClientInfo(**raw)
+    except Exception:
+        info = ProcessingServiceClientInfo()
+
+    # Always overwrite server-observed fields to prevent client spoofing
+    forwarded = request.headers.get("x-forwarded-for")
+    info.ip = forwarded.split(",")[0].strip() if forwarded else request.META.get("REMOTE_ADDR", "unknown")
+    info.user_agent = request.headers.get("user-agent", "")
+
+    return info.dict()
+
+
 class BoundingBox(pydantic.BaseModel):
     x1: float
     y1: float
@@ -360,12 +410,3 @@ class PipelineRegistrationResponse(pydantic.BaseModel):
     pipelines: list[PipelineConfigResponse] = []
     pipelines_created: list[str] = []
     algorithms_created: list[str] = []
-
-
-class AsyncPipelineRegistrationRequest(pydantic.BaseModel):
-    """
-    Request to register pipelines from an async processing service
-    """
-
-    processing_service_name: str
-    pipelines: list[PipelineConfigResponse] = []

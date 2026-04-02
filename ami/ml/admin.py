@@ -1,10 +1,11 @@
 from django.contrib import admin
+from rest_framework_api_key.admin import APIKeyModelAdmin
 
 from ami.main.admin import AdminBase, ProjectPipelineConfigInline
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline
-from .models.processing_service import ProcessingService
+from .models.processing_service import ProcessingService, ProcessingServiceAPIKey
 
 
 @admin.register(Algorithm)
@@ -70,8 +71,31 @@ class ProcessingServiceAdmin(AdminBase):
         "id",
         "name",
         "endpoint_url",
+        "last_seen_live",
         "created_at",
     ]
+    readonly_fields = ["last_seen_client_info"]
+
+    @admin.action(description="Generate API key for selected processing services")
+    def generate_api_key(self, request, queryset):
+        for ps in queryset:
+            api_key_obj, plaintext_key = ProcessingServiceAPIKey.objects.create_key(
+                name=f"{ps.name} key",
+                processing_service=ps,
+            )
+            self.message_user(
+                request,
+                f"{ps.name}: {plaintext_key} (copy now — it won't be shown again)",
+            )
+
+    actions = [generate_api_key]
+
+
+@admin.register(ProcessingServiceAPIKey)
+class ProcessingServiceAPIKeyAdmin(APIKeyModelAdmin):
+    list_display = [*APIKeyModelAdmin.list_display, "processing_service"]
+    list_filter = ["processing_service"]
+    search_fields = [*APIKeyModelAdmin.search_fields, "processing_service__name"]
 
 
 @admin.register(AlgorithmCategoryMap)
