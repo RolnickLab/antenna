@@ -1,3 +1,4 @@
+from django.test import TestCase
 from guardian.shortcuts import assign_perm
 from rest_framework.test import APITestCase
 
@@ -334,4 +335,62 @@ class TestMembersApiDraftProjectAccess(APITestCase):
             detail_resp.status_code,
             (403, 404),
             "Non-member should not access draft project",
+        )
+
+
+class TestSignalDrivenMembership(TestCase):
+    """
+    Test that manage_project_membership signal fires correctly when roles are
+    assigned/unassigned directly (e.g., admin page, management commands, shell)
+    — without the API's suppress_membership_signal() wrapper.
+    """
+
+    def setUp(self):
+        self.project, _ = setup_test_project()
+        create_roles_for_project(self.project)
+        self.user = User.objects.create_user(email="signal_test@insectai.org")
+
+    def test_assigning_role_creates_membership(self):
+        """user.groups.add() via Role.assign_user should auto-create UserProjectMembership."""
+        self.assertFalse(UserProjectMembership.objects.filter(project=self.project, user=self.user).exists())
+
+        BasicMember.assign_user(self.user, self.project)
+
+        self.assertTrue(
+            UserProjectMembership.objects.filter(project=self.project, user=self.user).exists(),
+            "Signal should have created a UserProjectMembership when role was assigned",
+        )
+
+    def test_removing_last_role_deletes_membership(self):
+        """Removing the user's only role should auto-delete the membership."""
+        BasicMember.assign_user(self.user, self.project)
+        self.assertTrue(UserProjectMembership.objects.filter(project=self.project, user=self.user).exists())
+
+        BasicMember.unassign_user(self.user, self.project)
+
+        self.assertFalse(
+            UserProjectMembership.objects.filter(project=self.project, user=self.user).exists(),
+            "Signal should have deleted UserProjectMembership when last role was removed",
+        )
+
+    def test_removing_one_role_keeps_membership_if_other_role_exists(self):
+        """If the user still has another role, membership should remain."""
+        BasicMember.assign_user(self.user, self.project)
+        Researcher.assign_user(self.user, self.project)
+
+        BasicMember.unassign_user(self.user, self.project)
+
+        self.assertTrue(
+            UserProjectMembership.objects.filter(project=self.project, user=self.user).exists(),
+            "Membership should remain because user still has the Researcher role",
+        )
+
+    def test_assigning_role_is_idempotent(self):
+        """Assigning the same role twice should not create duplicate memberships."""
+        BasicMember.assign_user(self.user, self.project)
+        BasicMember.assign_user(self.user, self.project)
+
+        self.assertEqual(
+            UserProjectMembership.objects.filter(project=self.project, user=self.user).count(),
+            1,
         )
