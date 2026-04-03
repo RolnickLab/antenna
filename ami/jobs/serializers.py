@@ -1,4 +1,3 @@
-import pydantic
 from django_pydantic_field.rest_framework import SchemaField
 from rest_framework import serializers
 
@@ -15,6 +14,7 @@ from ami.ml.schemas import PipelineProcessingTask, PipelineTaskResult, Processin
 from ami.ml.serializers import PipelineNestedSerializer
 
 from .models import Job, JobLogs, JobProgress, MLJob
+from .schemas import QueuedTaskAcknowledgment
 
 
 class JobProjectNestedSerializer(DefaultSerializer):
@@ -201,14 +201,6 @@ class MLJobResultsRequestSerializer(serializers.Serializer):
 
     results = SchemaField(schema=list[PipelineTaskResult])
     client_info = SchemaField(schema=ProcessingServiceClientInfo, required=False, default=None)
-
-
-class QueuedTaskAcknowledgment(pydantic.BaseModel):
-    """Acknowledgment for a single result that was queued for background processing."""
-
-    reply_subject: str
-    status: str
-    task_id: str
 
 
 class MLJobResultsResponseSerializer(serializers.Serializer):
