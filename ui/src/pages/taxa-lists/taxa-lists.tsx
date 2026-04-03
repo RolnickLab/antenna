@@ -26,6 +26,7 @@ export const TaxaLists = () => {
       sort,
     })
   const canCreate = userPermissions?.includes(UserPermission.Create)
+  const tableColumns = columns({ projectId: projectId as string })
 
   return (
     <>
@@ -35,11 +36,6 @@ export const TaxaLists = () => {
         isLoading={isLoading}
         isFetching={isFetching}
       >
-        <SortControl
-          columns={columns(projectId as string)}
-          setSort={setSort}
-          sort={sort}
-        />
         {canCreate && (
           <NewEntityDialog
             collection={API_ROUTES.TAXA_LISTS}
@@ -47,9 +43,10 @@ export const TaxaLists = () => {
             type={translate(STRING.ENTITY_TYPE_TAXA_LIST)}
           />
         )}
+        <SortControl columns={tableColumns} setSort={setSort} sort={sort} />
       </PageHeader>
       <Table
-        columns={columns(projectId as string)}
+        columns={tableColumns}
         error={error}
         isLoading={!id && isLoading}
         items={taxaLists}

@@ -7,6 +7,8 @@ import { MultiMarkerMap } from 'design-system/map/multi-marker-map/multi-marker-
 import { MarkerPosition } from 'design-system/map/types'
 import { Button } from 'nova-ui-kit'
 import { useMemo } from 'react'
+import { useParams } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import styles from './styles.module.scss'
 
@@ -19,6 +21,7 @@ export const DeploymentDetailsInfo = ({
   title: string
   onEditClick: () => void
 }) => {
+  const { projectId } = useParams()
   const markers = useMemo(
     () => [
       {
@@ -55,10 +58,24 @@ export const DeploymentDetailsInfo = ({
             <InputValue
               label={translate(STRING.FIELD_LABEL_SITE)}
               value={deployment.site?.name}
+              tooltip={{
+                text: translate(STRING.TOOLTIP_SITE),
+                link: {
+                  text: translate(STRING.NAV_ITEM_SITES),
+                  to: APP_ROUTES.SITES({ projectId: projectId as string }),
+                },
+              }}
             />
             <InputValue
               label={translate(STRING.FIELD_LABEL_DEVICE)}
               value={deployment.device?.name}
+              tooltip={{
+                text: translate(STRING.TOOLTIP_DEVICE),
+                link: {
+                  text: translate(STRING.NAV_ITEM_DEVICES),
+                  to: APP_ROUTES.DEVICES({ projectId: projectId as string }),
+                },
+              }}
             />
           </FormRow>
           {deployment.image && (

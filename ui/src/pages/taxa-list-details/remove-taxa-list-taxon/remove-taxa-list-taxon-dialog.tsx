@@ -1,6 +1,7 @@
 import { FormError, FormSection } from 'components/form/layout/layout'
 import { useRemoveTaxaListTaxon } from 'data-services/hooks/taxa-lists/useRemoveTaxaListTaxon'
 import * as Dialog from 'design-system/components/dialog/dialog'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { CheckIcon, Loader2Icon, XIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { useState } from 'react'
@@ -23,15 +24,17 @@ export const RemoveTaxaListTaxonDialog = ({
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Dialog.Trigger asChild>
-        <Button
-          aria-label={translate(STRING.REMOVE_TAXA_LIST_TAXON)}
-          size="icon"
-          variant="ghost"
-        >
-          <XIcon className="w-4 h-4" />
-        </Button>
-      </Dialog.Trigger>
+      <BasicTooltip asChild content={translate(STRING.REMOVE_TAXA_LIST_TAXON)}>
+        <Dialog.Trigger asChild>
+          <Button
+            aria-label={translate(STRING.REMOVE_TAXA_LIST_TAXON)}
+            size="icon"
+            variant="ghost"
+          >
+            <XIcon className="w-4 h-4" />
+          </Button>
+        </Dialog.Trigger>
+      </BasicTooltip>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)} isCompact>
         {errorMessage && (
           <FormError

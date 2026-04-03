@@ -107,10 +107,10 @@ export const Table = <T extends { id: string }>({
               <TableHeader
                 key={column.id}
                 column={column}
+                onSortClick={() => onSortClick(column)}
                 sortable={sortable}
                 sortSettings={sortSettings}
                 visuallyHidden={column.visuallyHidden}
-                onSortClick={() => onSortClick(column)}
               />
             ))}
             <th
@@ -140,7 +140,10 @@ export const Table = <T extends { id: string }>({
                 </td>
               )}
               {columns.map((column, columnIndex) => (
-                <td key={column.id}>
+                <td
+                  key={column.id}
+                  className={classNames({ [styles.sticky]: column.sticky })}
+                >
                   {column.renderCell(item, rowIndex, columnIndex)}
                 </td>
               ))}

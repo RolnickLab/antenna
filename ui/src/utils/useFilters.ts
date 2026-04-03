@@ -7,9 +7,12 @@ import { SEARCH_PARAM_KEY_PAGE } from './usePagination'
 interface FilterConfig {
   label: string
   field: string
-  info?: {
+  tooltip?: {
     text: string
-    to?: string
+    link?: {
+      text: string
+      to: string
+    }
   }
   validate?: (
     value?: string,
@@ -21,34 +24,57 @@ export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
   {
     label: 'Include algorithm',
     field: 'algorithm',
+    tooltip: {
+      text: translate(STRING.TOOLTIP_ALGORITHM),
+      link: {
+        text: translate(STRING.NAV_ITEM_ALGORITHMS),
+        to: APP_ROUTES.ALGORITHMS({ projectId }),
+      },
+    },
   },
   {
     label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
     field: 'collection', // This is for viewing occurrences by capture set. @TODO: Can we update this key to "capture_set_id" to streamline?
-    info: {
+    tooltip: {
       text: translate(STRING.TOOLTIP_CAPTURE_SET),
-      to: APP_ROUTES.CAPTURE_SETS({ projectId }),
+      link: {
+        text: translate(STRING.NAV_ITEM_CAPTURE_SETS),
+        to: APP_ROUTES.CAPTURE_SETS({ projectId }),
+      },
     },
   },
   {
     label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
     field: 'source_image_collection', // This is for viewing jobs by capture set. @TODO: Can we update this key to "capture_set_id" to streamline?
-    info: {
+    tooltip: {
       text: translate(STRING.TOOLTIP_CAPTURE_SET),
-      to: APP_ROUTES.CAPTURE_SETS({ projectId }),
+      link: {
+        text: translate(STRING.NAV_ITEM_CAPTURE_SETS),
+        to: APP_ROUTES.CAPTURE_SETS({ projectId }),
+      },
     },
   },
   {
     label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
     field: 'collections', // This is for viewing captures by capture set. @TODO: Can we update this key to "capture_set_id" to streamline?
-    info: {
+    tooltip: {
       text: translate(STRING.TOOLTIP_CAPTURE_SET),
-      to: APP_ROUTES.CAPTURE_SETS({ projectId }),
+      link: {
+        text: translate(STRING.NAV_ITEM_CAPTURE_SETS),
+        to: APP_ROUTES.CAPTURE_SETS({ projectId }),
+      },
     },
   },
   {
     label: 'Station',
     field: 'deployment',
+    tooltip: {
+      text: translate(STRING.TOOLTIP_DEPLOYMENT),
+      link: {
+        text: translate(STRING.NAV_ITEM_DEPLOYMENTS),
+        to: APP_ROUTES.DEPLOYMENTS({ projectId }),
+      },
+    },
   },
   {
     label: 'End date',
@@ -91,18 +117,46 @@ export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
   {
     label: translate(STRING.FIELD_LABEL_CAPTURE),
     field: 'detections__source_image', // This is for viewing occurrences by capture. @TODO: Can we update this key to "capture_id" to streamline?
+    tooltip: {
+      text: translate(STRING.TOOLTIP_CAPTURE),
+      link: {
+        text: translate(STRING.NAV_ITEM_CAPTURES),
+        to: APP_ROUTES.CAPTURES({ projectId }),
+      },
+    },
   },
   {
     label: 'Session',
     field: 'event',
+    tooltip: {
+      text: translate(STRING.TOOLTIP_SESSION),
+      link: {
+        text: translate(STRING.NAV_ITEM_SESSIONS),
+        to: APP_ROUTES.SESSIONS({ projectId }),
+      },
+    },
   },
   {
     label: 'Pipeline',
     field: 'pipeline',
+    tooltip: {
+      text: translate(STRING.TOOLTIP_PIPELINE),
+      link: {
+        text: translate(STRING.NAV_ITEM_PIPELINES),
+        to: APP_ROUTES.PIPELINES({ projectId }),
+      },
+    },
   },
   {
     label: 'Exclude algorithm',
     field: 'not_algorithm',
+    tooltip: {
+      text: translate(STRING.TOOLTIP_ALGORITHM),
+      link: {
+        text: translate(STRING.NAV_ITEM_ALGORITHMS),
+        to: APP_ROUTES.ALGORITHMS({ projectId }),
+      },
+    },
   },
   {
     label: 'Include tag',
@@ -131,6 +185,7 @@ export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
   {
     label: 'Status',
     field: 'status',
+    tooltip: { text: translate(STRING.TOOLTIP_STATUS) },
   },
   {
     label: 'Type',

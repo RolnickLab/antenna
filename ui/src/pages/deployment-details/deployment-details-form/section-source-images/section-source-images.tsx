@@ -17,6 +17,8 @@ import { Button } from 'nova-ui-kit'
 import { ConnectionStatus } from 'pages/project/storage/connection-status'
 import { useContext, useState } from 'react'
 import { useForm } from 'react-hook-form'
+import { useParams } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { FormContext } from 'utils/formContext/formContext'
 import { isEmpty } from 'utils/isEmpty/isEmpty'
 import { STRING, translate } from 'utils/language'
@@ -37,6 +39,7 @@ export const SectionSourceImages = ({
   deployment: DeploymentDetails
   onBack: () => void
 }) => {
+  const { projectId } = useParams()
   const { formSectionRef, formState, setFormSectionValues } =
     useContext(FormContext)
 
@@ -69,6 +72,13 @@ export const SectionSourceImages = ({
                 description={config[field.name].description}
                 label={config[field.name].label}
                 error={fieldState.error?.message}
+                tooltip={{
+                  text: translate(STRING.TOOLTIP_STORAGE),
+                  link: {
+                    text: translate(STRING.NAV_ITEM_STORAGE),
+                    to: APP_ROUTES.STORAGE({ projectId: projectId as string }),
+                  },
+                }}
               >
                 <EntityPicker
                   collection={API_ROUTES.STORAGE}

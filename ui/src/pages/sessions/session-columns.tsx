@@ -13,9 +13,11 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 
-export const columns: (projectId: string) => TableColumn<Session>[] = (
+export const columns = ({
+  projectId,
+}: {
   projectId: string
-) => [
+}): TableColumn<Session>[] => [
   {
     id: 'snapshots',
     name: translate(STRING.FIELD_LABEL_SNAPSHOTS),
@@ -51,6 +53,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
   {
     id: 'deployment',
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
+    tooltip: translate(STRING.TOOLTIP_DEPLOYMENT),
     sortField: 'deployment',
     renderCell: (item: Session) => (
       <Link
@@ -93,6 +96,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
   {
     id: 'captures',
     name: translate(STRING.FIELD_LABEL_CAPTURES),
+    tooltip: translate(STRING.TOOLTIP_CAPTURE),
     sortField: 'captures_count',
     styles: {
       textAlign: TextAlign.Right,
@@ -102,6 +106,7 @@ export const columns: (projectId: string) => TableColumn<Session>[] = (
   {
     id: 'occurrences',
     name: translate(STRING.FIELD_LABEL_OCCURRENCES),
+    tooltip: translate(STRING.TOOLTIP_OCCURRENCE),
     sortField: 'occurrences_count',
     styles: {
       textAlign: TextAlign.Right,

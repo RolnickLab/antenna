@@ -12,6 +12,8 @@ import { InputContent } from 'design-system/components/input/input'
 import { EntityPicker } from 'design-system/components/select/entity-picker'
 import { Select } from 'nova-ui-kit'
 import { useForm } from 'react-hook-form'
+import { useParams } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import { DetailsFormProps, FormValues } from './types'
@@ -39,6 +41,7 @@ export const ExportDetailsForm = ({
   isSuccess,
   onSubmit,
 }: DetailsFormProps) => {
+  const { projectId } = useParams()
   const {
     control,
     handleSubmit,
@@ -100,6 +103,15 @@ export const ExportDetailsForm = ({
                   : config[field.name].label
               }
               error={fieldState.error?.message}
+              tooltip={{
+                text: translate(STRING.TOOLTIP_CAPTURE_SET),
+                link: {
+                  text: translate(STRING.NAV_ITEM_CAPTURE_SETS),
+                  to: APP_ROUTES.CAPTURE_SETS({
+                    projectId: projectId as string,
+                  }),
+                },
+              }}
             >
               <EntityPicker
                 collection={API_ROUTES.CAPTURE_SETS}

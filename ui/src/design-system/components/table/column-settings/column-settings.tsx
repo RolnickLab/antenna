@@ -23,7 +23,7 @@ export const ColumnSettings = ({
           aria-label={translate(STRING.TABLE_COLUMNS)}
           className="shrink-0"
           size="icon"
-          variant="ghost"
+          variant="outline"
         >
           <Columns3CogIcon className="w-4 h-4" />
         </Button>

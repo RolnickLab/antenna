@@ -75,9 +75,7 @@ export const columns: (project: {
     id: 'last-seen',
     sortField: 'last_detected',
     name: 'Last seen',
-    renderCell: (item: Species) => (
-      <BasicTableCell value={item.lastSeenLabel} />
-    ),
+    renderCell: (item: Species) => <DateTableCell date={item.lastSeen} />,
   },
   {
     id: 'occurrences',

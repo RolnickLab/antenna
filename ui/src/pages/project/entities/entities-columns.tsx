@@ -2,15 +2,18 @@ import { Entity } from 'data-services/models/entity'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { TableColumn } from 'design-system/components/table/types'
+import { Toolbar } from 'design-system/components/toolbar'
 import { STRING, translate } from 'utils/language'
 import { DeleteEntityDialog } from './delete-entity-dialog'
 import { UpdateEntityDialog } from './entity-details-dialog'
-import styles from './styles.module.scss'
 
-export const columns: (
-  collection: string,
+export const columns = ({
+  collection,
+  type,
+}: {
+  collection: string
   type: string
-) => TableColumn<Entity>[] = (collection: string, type: string) => [
+}): TableColumn<Entity>[] => [
   {
     id: 'id',
     name: translate(STRING.FIELD_LABEL_ID),
@@ -48,12 +51,9 @@ export const columns: (
   {
     id: 'actions',
     name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
+    sticky: true,
     renderCell: (item: Entity) => (
-      <div className={styles.entityActions}>
+      <Toolbar>
         {item.canUpdate && (
           <UpdateEntityDialog
             collection={collection}
@@ -69,7 +69,7 @@ export const columns: (
             type={type}
           />
         )}
-      </div>
+      </Toolbar>
     ),
   },
 ]
