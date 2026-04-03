@@ -17,13 +17,12 @@ from rest_framework.response import Response
 
 from ami.base.permissions import ObjectPermission
 from ami.base.views import ProjectMixin
-from ami.jobs.schemas import (
+from ami.jobs.schemas import ids_only_param, incomplete_only_param
+from ami.jobs.serializers import (
     MLJobResultsRequestSerializer,
     MLJobResultsResponseSerializer,
     MLJobTasksRequestSerializer,
     MLJobTasksResponseSerializer,
-    ids_only_param,
-    incomplete_only_param,
 )
 from ami.jobs.tasks import process_nats_pipeline_result
 from ami.main.api.schemas import project_id_doc_param
