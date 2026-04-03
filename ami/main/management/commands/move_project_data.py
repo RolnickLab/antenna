@@ -36,7 +36,6 @@ from ami.main.models import (
     SourceImage,
     SourceImageCollection,
     TaxaList,
-    Taxon,
 )
 from ami.ml.models import ProjectPipelineConfig
 
@@ -173,6 +172,9 @@ class Command(BaseCommand):
 
         # Target project resolution
         create_project_name = options.get("create_project")
+        if create_project_name and options.get("target_project"):
+            raise CommandError("Use either --target-project or --create-project, not both")
+
         if create_project_name:
             self.log(f"Target project: NEW — '{create_project_name}'")
             target_project = None
@@ -330,7 +332,7 @@ class Command(BaseCommand):
             from ami.users.models import User
             from ami.users.roles import Identifier, Role
 
-            self.log(f"\n  Identifiers (users with identifications on moved data):")
+            self.log("\n  Identifiers (users with identifications on moved data):")
             for uid in identifier_users:
                 user = User.objects.get(pk=uid)
                 source_role = Role.get_primary_role(source_project, user)
@@ -344,7 +346,7 @@ class Command(BaseCommand):
                 self.log(f"    {user.email}: " f"{role_to_assign.display_name} ({role_source})")
 
         # Default filter config
-        self.log(f"\n  Source project default filters:")
+        self.log("\n  Source project default filters:")
         include_taxa = list(source_project.default_filters_include_taxa.values_list("name", flat=True))
         exclude_taxa = list(source_project.default_filters_exclude_taxa.values_list("name", flat=True))
         self.log(f"    Score threshold: {source_project.default_filters_score_threshold}")
@@ -356,7 +358,7 @@ class Command(BaseCommand):
         # TaxaLists
         source_taxa_lists = TaxaList.objects.filter(projects=source_project)
         if source_taxa_lists.exists():
-            self.log(f"\n  TaxaLists linked to source project:")
+            self.log("\n  TaxaLists linked to source project:")
             for tl in source_taxa_lists:
                 shared = tl.projects.count()
                 self.log(
@@ -409,8 +411,9 @@ class Command(BaseCommand):
         with transaction.atomic():
             # 0. Create target project inside transaction
             if create_project_name:
-                target_project = Project(name=create_project_name, owner=source_project.owner)
-                target_project.save()
+                target_project = Project.objects.create(
+                    name=create_project_name, owner=source_project.owner, create_defaults=True
+                )
                 for membership in source_project.project_memberships.all():
                     target_project.members.add(membership.user)
                 self.log(f"  [1/12] Created project '{target_project.name}' (id={target_project.pk})")
@@ -512,6 +515,8 @@ class Command(BaseCommand):
                         name=coll.name,
                         project_id=target_id,
                         description=coll.description or "",
+                        method=coll.method,
+                        kwargs=coll.kwargs or {},
                     )
                     new_coll.images.set(moved_image_ids)
                     self.log(
@@ -535,7 +540,12 @@ class Command(BaseCommand):
                 cloned_count = 0
                 for config in ProjectPipelineConfig.objects.filter(project_id=source_project_id):
                     if config.pipeline_id not in existing_pipelines:
-                        ProjectPipelineConfig.objects.create(project_id=target_id, pipeline_id=config.pipeline_id)
+                        ProjectPipelineConfig.objects.create(
+                            project_id=target_id,
+                            pipeline_id=config.pipeline_id,
+                            enabled=config.enabled,
+                            config=config.config,
+                        )
                         cloned_count += 1
                 total = ProjectPipelineConfig.objects.filter(project_id=target_id).count()
                 self.log(f"  [11/12] Pipeline configs: cloned {cloned_count}, target now has {total}")
@@ -546,8 +556,7 @@ class Command(BaseCommand):
 
             # 12. Link taxa to target project
             if taxa_ids:
-                for taxon in Taxon.objects.filter(pk__in=taxa_ids):
-                    taxon.projects.add(target_project)
+                target_project.taxa.add(*taxa_ids)
                 self.log(f"  [12/12] Linked {len(taxa_ids):,} taxa to target project")
             else:
                 self.log("  [12/12] No taxa to link (no occurrences with determinations)")
@@ -613,11 +622,11 @@ class Command(BaseCommand):
             self.log(f"  Updated cached fields for {len(moved_event_pks)} events")
 
         # Update both projects' related calculated fields (events + deployments)
-        self.log(f"  Updating source project cached fields...")
+        self.log("  Updating source project cached fields...")
         source_project.update_related_calculated_fields()
         self.log(f"  Source project '{source_project.name}': related fields updated")
 
-        self.log(f"  Updating target project cached fields...")
+        self.log("  Updating target project cached fields...")
         target_project.update_related_calculated_fields()
         self.log(f"  Target project (id={target_id}): related fields updated")
 
@@ -692,7 +701,9 @@ class Command(BaseCommand):
                 self.log(f"  OK: All {model_name} point to target project")
 
         # Indirect access consistency
-        dets_via_project = Detection.objects.filter(source_image__project_id=target_id).count()
+        dets_via_project = Detection.objects.filter(
+            source_image__project_id=target_id, source_image__deployment_id__in=deployment_ids
+        ).count()
         dets_via_dep = Detection.objects.filter(source_image__deployment_id__in=deployment_ids).count()
         if dets_via_project != dets_via_dep:
             errors.append(f"Detection count mismatch: via project={dets_via_project}, via deployment={dets_via_dep}")
@@ -704,20 +715,31 @@ class Command(BaseCommand):
                 f"  OK: Detections consistent ({dets_via_project:,} via project, {dets_via_dep:,} via deployment)"
             )
 
-        cls_via_project = Classification.objects.filter(detection__source_image__project_id=target_id).count()
+        cls_via_project = Classification.objects.filter(
+            detection__source_image__project_id=target_id, detection__source_image__deployment_id__in=deployment_ids
+        ).count()
         cls_via_dep = Classification.objects.filter(detection__source_image__deployment_id__in=deployment_ids).count()
         if cls_via_project != cls_via_dep:
             errors.append(
                 f"Classification count mismatch: via project={cls_via_project}, via deployment={cls_via_dep}"
             )
+            self.log(
+                f"  FAIL: Classification count mismatch: via project={cls_via_project}, via deployment={cls_via_dep}"
+            )
         else:
             self.log(f"  OK: Classifications consistent ({cls_via_project:,})")
 
-        idents_via_project = Identification.objects.filter(occurrence__project_id=target_id).count()
+        idents_via_project = Identification.objects.filter(
+            occurrence__project_id=target_id, occurrence__deployment_id__in=deployment_ids
+        ).count()
         idents_via_dep = Identification.objects.filter(occurrence__deployment_id__in=deployment_ids).count()
         if idents_via_project != idents_via_dep:
             errors.append(
                 f"Identification count mismatch: via project={idents_via_project}, via deployment={idents_via_dep}"
+            )
+            self.log(
+                f"  FAIL: Identification count mismatch:"
+                f" via project={idents_via_project}, via deployment={idents_via_dep}"
             )
         else:
             self.log(f"  OK: Identifications consistent ({idents_via_project:,})")
@@ -736,7 +758,7 @@ class Command(BaseCommand):
             leaked = coll.images.filter(deployment_id__in=deployment_ids).count()
             if leaked:
                 errors.append(f"Source collection '{coll.name}' still has {leaked} moved images")
-        self.log(f"  OK: No moved images in source collections" if not any("collection" in e for e in errors) else "")
+        self.log("  OK: No moved images in source collections" if not any("collection" in e for e in errors) else "")
 
         # Conservation: source + target = original totals
         for model_name in source_pre:
@@ -761,6 +783,8 @@ class Command(BaseCommand):
             self.log("  VALIDATION FAILED", style=self.style.ERROR)
             for err in errors:
                 self.log(f"    ✗ {err}", style=self.style.ERROR)
+            self.log(f"{'=' * 60}")
+            raise CommandError("Post-move validation failed; see log output above for details.")
         else:
             self.log("  ALL VALIDATION CHECKS PASSED", style=self.style.SUCCESS)
         self.log(f"{'=' * 60}")
