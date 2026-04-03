@@ -1,3 +1,4 @@
+import pydantic
 from django_pydantic_field.rest_framework import SchemaField
 from rest_framework import serializers
 
@@ -10,7 +11,7 @@ from ami.main.api.serializers import (
 )
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
-from ami.ml.schemas import PipelineTaskResult, ProcessingServiceClientInfo
+from ami.ml.schemas import PipelineProcessingTask, PipelineTaskResult, ProcessingServiceClientInfo
 from ami.ml.serializers import PipelineNestedSerializer
 
 from .models import Job, JobLogs, JobProgress, MLJob
@@ -185,7 +186,7 @@ class MLJobTasksResponseSerializer(serializers.Serializer):
     Returns an empty list when no tasks are available or the job is not active.
     """
 
-    tasks = serializers.ListField(child=serializers.DictField(), default=[])
+    tasks = SchemaField(schema=list[PipelineProcessingTask], default=[])
 
 
 class MLJobResultsRequestSerializer(serializers.Serializer):
@@ -202,6 +203,14 @@ class MLJobResultsRequestSerializer(serializers.Serializer):
     client_info = SchemaField(schema=ProcessingServiceClientInfo, required=False, default=None)
 
 
+class QueuedTaskAcknowledgment(pydantic.BaseModel):
+    """Acknowledgment for a single result that was queued for background processing."""
+
+    reply_subject: str
+    status: str
+    task_id: str
+
+
 class MLJobResultsResponseSerializer(serializers.Serializer):
     """POST /jobs/{id}/result/ — acknowledgment returned to the processing service.
 
@@ -213,4 +222,4 @@ class MLJobResultsResponseSerializer(serializers.Serializer):
     status = serializers.CharField()
     job_id = serializers.IntegerField()
     results_queued = serializers.IntegerField()
-    tasks = serializers.ListField(child=serializers.DictField(), default=[])
+    tasks = SchemaField(schema=list[QueuedTaskAcknowledgment], default=[])
