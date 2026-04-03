@@ -50,7 +50,8 @@
     "preview": "vite preview",
     "test": "jest",
     "format": "prettier \"src/**/*.{ts,tsx,css}\"",
-    "lint": "eslint \"src/**/*.{ts,tsx}\""
+    "lint": "eslint \"src/**/*.{ts,tsx}\"",
+    "type-check": "tsc --noEmit"
   },
   "browserslist": {
     "production": [
