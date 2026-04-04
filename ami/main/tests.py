@@ -15,6 +15,7 @@ from rich import print
 
 from ami.exports.models import DataExport
 from ami.jobs.models import VALID_JOB_TYPES, Job
+from ami.main.checks import check_occurrences
 from ami.main.models import (
     Classification,
     Deployment,
@@ -3744,3 +3745,130 @@ class TestProjectPipelinesAPI(APITestCase):
         self.client.force_authenticate(user=non_member)
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class TestCheckOccurrences(TestCase):
+    def setUp(self):
+        self.project = Project.objects.create(name="Integrity Test Project")
+        self.deployment = Deployment.objects.create(name="Test Deployment", project=self.project)
+        self.event = Event.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            start=datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc),
+        )
+        self.taxon = Taxon.objects.create(name="Test Species", rank=TaxonRank.SPECIES)
+        self.source_image = SourceImage.objects.create(
+            deployment=self.deployment,
+            event=self.event,
+        )
+
+    def _create_occurrence_with_classification(self, determination=None):
+        """Helper: create occurrence -> detection -> classification chain."""
+        occurrence = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=determination,
+        )
+        detection = Detection.objects.create(
+            source_image=self.source_image,
+            occurrence=occurrence,
+        )
+        Classification.objects.create(
+            detection=detection,
+            taxon=self.taxon,
+            score=0.9,
+            terminal=True,
+        )
+        return occurrence
+
+    def test_no_issues(self):
+        """Clean data should report no issues."""
+        self._create_occurrence_with_classification(determination=self.taxon)
+        report = check_occurrences(project_id=self.project.pk)
+        self.assertFalse(report.has_issues)
+        self.assertEqual(len(report.missing_determination), 0)
+        self.assertEqual(len(report.orphaned_occurrences), 0)
+        self.assertEqual(len(report.orphaned_detections), 0)
+
+    def test_missing_determination_detected(self):
+        """Occurrence with classification but null determination should be flagged."""
+        occurrence = self._create_occurrence_with_classification(determination=None)
+        # Force determination to None (save() would auto-set it)
+        Occurrence.objects.filter(pk=occurrence.pk).update(determination=None)
+
+        report = check_occurrences(project_id=self.project.pk)
+        self.assertTrue(report.has_issues)
+        self.assertIn(occurrence.pk, report.missing_determination)
+        self.assertEqual(report.fixed_determinations, 0)
+
+    def test_missing_determination_fixed(self):
+        """With fix=True, missing determination should be repaired."""
+        occurrence = self._create_occurrence_with_classification(determination=None)
+        Occurrence.objects.filter(pk=occurrence.pk).update(determination=None)
+
+        report = check_occurrences(project_id=self.project.pk, fix=True)
+        self.assertEqual(report.fixed_determinations, 1)
+
+        occurrence.refresh_from_db()
+        self.assertIsNotNone(occurrence.determination)
+
+    def test_orphaned_occurrence_detected(self):
+        """Occurrence with no detections should be flagged."""
+        orphan = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+        )
+        report = check_occurrences(project_id=self.project.pk)
+        self.assertIn(orphan.pk, report.orphaned_occurrences)
+
+    def test_orphaned_occurrence_fixed(self):
+        """With fix=True, orphaned occurrences should be deleted."""
+        orphan = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+        )
+        report = check_occurrences(project_id=self.project.pk, fix=True)
+        self.assertEqual(report.deleted_occurrences, 1)
+        self.assertFalse(Occurrence.objects.filter(pk=orphan.pk).exists())
+
+    def test_orphaned_detection_detected(self):
+        """Detection with no occurrence should be flagged."""
+        det = Detection.objects.create(
+            source_image=self.source_image,
+            occurrence=None,
+        )
+        report = check_occurrences(project_id=self.project.pk)
+        self.assertIn(det.pk, report.orphaned_detections)
+
+    def test_project_filter(self):
+        """Issues in other projects should not be reported."""
+        other_project = Project.objects.create(name="Other Project")
+        other_deployment = Deployment.objects.create(name="Other Dep", project=other_project)
+        other_event = Event.objects.create(
+            deployment=other_deployment,
+            project=other_project,
+            start=datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc),
+        )
+        Occurrence.objects.create(
+            project=other_project,
+            event=other_event,
+            deployment=other_deployment,
+        )  # orphaned in other project
+
+        report = check_occurrences(project_id=self.project.pk)
+        self.assertEqual(len(report.orphaned_occurrences), 0)
+
+    def test_report_summary(self):
+        """Summary should be a non-empty string when issues exist."""
+        Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+        )
+        report = check_occurrences(project_id=self.project.pk)
+        self.assertTrue(report.has_issues)
+        self.assertIsInstance(report.summary, str)
+        self.assertGreater(len(report.summary), 0)
