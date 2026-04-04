@@ -131,6 +131,7 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
     list_display = (
         "name",
         "project",
+        "time_zone",
         "data_source_uri",
         "captures_count",
         "captures_size",
@@ -142,6 +143,7 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
     search_fields = (
         "id",
         "name",
+        "time_zone",
     )
 
     def start_date(self, obj) -> str | None:
