@@ -1390,7 +1390,7 @@ class TestProcessingServiceAuth(APITestCase):
     def test_authenticate_valid_key(self):
         from django.contrib.auth.models import AnonymousUser
 
-        from ami.ml.models.processing_service import ProcessingServiceAPIKeyAuthentication
+        from ami.ml.auth import ProcessingServiceAPIKeyAuthentication
 
         factory = APIRequestFactory()
         request = factory.get("/", HTTP_AUTHORIZATION=f"Api-Key {self.api_key}")
@@ -1406,7 +1406,7 @@ class TestProcessingServiceAuth(APITestCase):
     def test_authenticate_invalid_key_raises(self):
         from rest_framework.exceptions import AuthenticationFailed
 
-        from ami.ml.models.processing_service import ProcessingServiceAPIKeyAuthentication
+        from ami.ml.auth import ProcessingServiceAPIKeyAuthentication
 
         factory = APIRequestFactory()
         request = factory.get("/", HTTP_AUTHORIZATION="Api-Key invalid.key")
@@ -1417,7 +1417,7 @@ class TestProcessingServiceAuth(APITestCase):
 
     def test_authenticate_non_api_key_passes_through(self):
         """Non Api-Key tokens should return None (fall through to next backend)."""
-        from ami.ml.models.processing_service import ProcessingServiceAPIKeyAuthentication
+        from ami.ml.auth import ProcessingServiceAPIKeyAuthentication
 
         factory = APIRequestFactory()
         request = factory.get("/", HTTP_AUTHORIZATION="Token some_djoser_token")
@@ -1426,7 +1426,7 @@ class TestProcessingServiceAuth(APITestCase):
         self.assertIsNone(result)
 
     def test_authenticate_no_header(self):
-        from ami.ml.models.processing_service import ProcessingServiceAPIKeyAuthentication
+        from ami.ml.auth import ProcessingServiceAPIKeyAuthentication
 
         factory = APIRequestFactory()
         request = factory.get("/")
@@ -1437,7 +1437,7 @@ class TestProcessingServiceAuth(APITestCase):
     def test_revoked_key_raises(self):
         from rest_framework.exceptions import AuthenticationFailed
 
-        from ami.ml.models.processing_service import ProcessingServiceAPIKeyAuthentication
+        from ami.ml.auth import ProcessingServiceAPIKeyAuthentication
 
         self.api_key_obj.revoked = True
         self.api_key_obj.save()
