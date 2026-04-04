@@ -6,7 +6,7 @@ export const convertToServerFieldValues = (fieldValues: EntityFieldValues) => {
   return {
     ...(description ? { description } : {}),
     ...(name ? { name } : {}),
-    project_id: projectId,
+    project: projectId,
     ...(customFields ?? {}),
   }
 }
