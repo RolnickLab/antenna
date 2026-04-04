@@ -8,6 +8,56 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
+class ProcessingServiceClientInfo(pydantic.BaseModel):
+    """Identity metadata sent by a processing service worker.
+
+    Client-reported fields (all optional, sent by the worker):
+        hostname, software, version, platform, pod_name
+
+    Server-observed fields (set by get_client_info(), never from client):
+        ip, user_agent
+    """
+
+    # Client-reported
+    hostname: str = ""
+    software: str = ""
+    version: str = ""
+    platform: str = ""
+    pod_name: str = ""
+
+    # Server-observed (overwritten on the server, cannot be spoofed)
+    ip: str = ""
+    user_agent: str = ""
+
+    class Config:
+        extra = "allow"
+
+
+def get_client_info(request) -> dict:
+    """
+    Extract client_info from request body, merged with server-observed values.
+
+    Server-observed fields (ip, user_agent) always come from the server and
+    cannot be spoofed by the client.
+    Client-reported fields come from request.data["client_info"] when provided.
+    Handles bare-list payloads (legacy /result format) gracefully.
+    """
+    data = request.data if isinstance(request.data, dict) else {}
+    raw = data.get("client_info") or {}
+
+    try:
+        info = ProcessingServiceClientInfo(**raw)
+    except Exception:
+        info = ProcessingServiceClientInfo()
+
+    # Always overwrite server-observed fields to prevent client spoofing
+    forwarded = request.headers.get("x-forwarded-for")
+    info.ip = forwarded.split(",")[0].strip() if forwarded else request.META.get("REMOTE_ADDR", "unknown")
+    info.user_agent = request.headers.get("user-agent", "")
+
+    return info.dict()
+
+
 class BoundingBox(pydantic.BaseModel):
     x1: float
     y1: float
@@ -262,24 +312,6 @@ class PipelineProcessingTask(pydantic.BaseModel):
     # config: PipelineRequestConfigParameters | dict | None = None
 
 
-class ProcessingServiceClientInfo(pydantic.BaseModel):
-    """Identity metadata sent by a processing service worker.
-
-    A single ProcessingService record in the database may have multiple
-    physical workers, pods, or machines running simultaneously. This model
-    lets the server distinguish between them for logging, debugging, and
-    eventually for per-worker health tracking.
-
-    Fields are intentionally left open for now. Processing services can
-    send any key-value pairs they find useful (e.g. hostname, pod_name,
-    software version). The schema will be tightened once real-world usage
-    patterns emerge.
-    """
-
-    class Config:
-        extra = "allow"
-
-
 class PipelineTaskResult(pydantic.BaseModel):
     """
     The result from processing a single PipelineProcessingTask.
@@ -360,12 +392,3 @@ class PipelineRegistrationResponse(pydantic.BaseModel):
     pipelines: list[PipelineConfigResponse] = []
     pipelines_created: list[str] = []
     algorithms_created: list[str] = []
-
-
-class AsyncPipelineRegistrationRequest(pydantic.BaseModel):
-    """
-    Request to register pipelines from an async processing service
-    """
-
-    processing_service_name: str
-    pipelines: list[PipelineConfigResponse] = []
