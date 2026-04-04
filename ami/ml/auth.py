@@ -74,6 +74,11 @@ class HasProcessingServiceAPIKey(permissions.BasePermission):
         if not isinstance(request.auth, ProcessingService):
             return False
 
+        # For detail views (e.g. /jobs/{pk}/tasks/), defer project scoping
+        # to has_object_permission where we can derive it from the object.
+        if view.kwargs.get("pk"):
+            return True
+
         get_active_project = getattr(view, "get_active_project", None)
         if not callable(get_active_project):
             return False
