@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 import PIL.Image
 import PIL.ImageFile
 import requests
+import torch
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -56,29 +57,51 @@ def get_or_download_file(path_or_url, tempdir_prefix="antenna") -> pathlib.Path:
 
     # If path is a local path instead of a URL then urlretrieve will just return that path
 
-    destination_dir = pathlib.Path(tempfile.mkdtemp(prefix=tempdir_prefix))
+    # Use persistent cache directory instead of temp
+    cache_root = (
+        pathlib.Path("/app/cache") if pathlib.Path("/app").exists() else pathlib.Path.home() / ".antenna_cache"
+    )
+    destination_dir = cache_root / tempdir_prefix
     fname = pathlib.Path(urlparse(path_or_url).path).name
     if not destination_dir.exists():
         destination_dir.mkdir(parents=True, exist_ok=True)
-    local_filepath = pathlib.Path(destination_dir) / fname
+    local_filepath = destination_dir / fname
 
     if local_filepath and local_filepath.exists():
-        logger.info(f"Using existing {local_filepath}")
+        logger.info(f"📁 Using cached file: {local_filepath}")
         return local_filepath
 
     else:
-        logger.info(f"Downloading {path_or_url} to {local_filepath}")
+        logger.info(f"⬇️  Downloading {path_or_url} to {local_filepath}")
         headers = {"User-Agent": USER_AGENT}
         response = requests.get(path_or_url, stream=True, headers=headers)
         response.raise_for_status()  # Raise an exception for HTTP errors
 
         with open(local_filepath, "wb") as f:
+            total_size = int(response.headers.get("content-length", 0))
+            downloaded = 0
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
+                downloaded += len(chunk)
+                if total_size > 0:
+                    percent = (downloaded / total_size) * 100
+                    logger.info(f"   Progress: {percent:.1f}% ({downloaded}/{total_size} bytes)")
 
         resulting_filepath = pathlib.Path(local_filepath).resolve()
+        logger.info(f"✅ Download completed: {resulting_filepath}")
         logger.info(f"Downloaded to {resulting_filepath}")
         return resulting_filepath
+
+
+def get_best_device() -> str:
+    """
+    Returns the best available device for running the model.
+    MPS is not supported by the current algorithms.
+    """
+    if torch.cuda.is_available():
+        return f"cuda:{torch.cuda.current_device()}"
+    else:
+        return "cpu"
 
 
 def open_image(fp: str | bytes | pathlib.Path | io.BytesIO, raise_exception: bool = True) -> PIL.Image.Image | None:
