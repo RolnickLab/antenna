@@ -166,7 +166,6 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
 
     def create(self, request, *args, **kwargs):
         data = request.data.copy()
-        data.pop("project", None)  # Legacy field name; use project_id query param
         data["slug"] = slugify(data["name"])
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
