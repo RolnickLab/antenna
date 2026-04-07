@@ -243,10 +243,10 @@ const PipelinesPicker = ({
       value={value ?? ''}
     >
       <Select.Trigger
-        className="h-8 !bg-neutral-700 border-none text-neutral-200 body-small focus:ring-0 focus:ring-offset-0"
+        className="w-auto max-w-full h-8 grow !bg-neutral-700 border-none text-neutral-200 body-small focus:ring-0 focus:ring-offset-0"
         loading={isLoading}
       >
-        <Select.Value placeholder="Select a pipeline" />
+        <Select.Value className="truncate" placeholder="Select a pipeline" />
       </Select.Trigger>
       <Select.Content>
         {pipelines.map((p) => (
