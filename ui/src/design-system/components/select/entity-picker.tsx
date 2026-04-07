@@ -5,7 +5,7 @@ import { STRING, translate } from 'utils/language'
 
 export const EntityPicker = ({
   collection,
-  value,
+  value: _value,
   onValueChange,
 }: {
   collection: string
@@ -16,12 +16,14 @@ export const EntityPicker = ({
   const { entities = [], isLoading } = useEntities(collection, {
     projectId: projectId as string,
   })
+  const value = entities.some((e) => e.id === _value) ? _value : ''
 
   return (
     <Select.Root
+      key={value}
       disabled={isLoading || entities.length === 0}
       onValueChange={onValueChange}
-      value={entities.some((e) => e.id === value) ? value : ''}
+      value={value}
     >
       <Select.Trigger loading={isLoading}>
         <Select.Value placeholder={translate(STRING.SELECT_PLACEHOLDER)} />
