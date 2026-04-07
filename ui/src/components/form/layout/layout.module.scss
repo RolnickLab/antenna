@@ -57,9 +57,19 @@
   gap: 16px;
 }
 
+.formMessage {
+  width: 100%;
+  @include paragraph-small();
+  padding: 8px 16px;
+  background-color: $color-success-100;
+  color: $color-success-700;
+  box-sizing: border-box;
+  border-radius: 6px;
+}
+
 .formError {
   width: 100%;
-  @include paragraph-x-small();
+  @include paragraph-small();
   padding: 8px 32px;
   background-color: $color-destructive-100;
   color: $color-destructive-600;
@@ -70,6 +80,10 @@
     top: $dialog-header-height;
     z-index: 1;
   }
+}
+
+.intro {
+  font-weight: 600;
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {

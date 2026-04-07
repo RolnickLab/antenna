@@ -2,6 +2,21 @@ import classNames from 'classnames'
 import { CSSProperties, ReactNode } from 'react'
 import styles from './layout.module.scss'
 
+export const FormMessage = ({
+  intro,
+  message,
+  style,
+}: {
+  intro?: string
+  message: string
+  style?: CSSProperties
+}) => (
+  <div className={styles.formMessage} style={style}>
+    {intro ? <span className={styles.intro}>{intro}: </span> : null}
+    <span>{message}</span>
+  </div>
+)
+
 export const FormError = ({
   inDialog,
   intro,
@@ -17,7 +32,8 @@ export const FormError = ({
     className={classNames(styles.formError, { [styles.inDialog]: inDialog })}
     style={style}
   >
-    {intro ? `${intro}: ${message}` : message}
+    {intro ? <span className={styles.intro}>{intro}: </span> : null}
+    <span>{message}</span>
   </div>
 )
 

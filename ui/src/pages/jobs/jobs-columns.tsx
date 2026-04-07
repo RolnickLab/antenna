@@ -36,7 +36,6 @@ export const columns = ({
   {
     id: 'status',
     name: translate(STRING.FIELD_LABEL_STATUS),
-    tooltip: translate(STRING.TOOLTIP_STATUS),
     sortField: 'status',
     renderCell: (item: Job) => (
       <StatusTableCell

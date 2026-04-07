@@ -1,5 +1,4 @@
 import { ErrorState } from 'components/error-state/error-state'
-import { FetchInfo } from 'components/fetch-info/fetch-info'
 import { useSessionDetails } from 'data-services/hooks/sessions/useSessionDetails'
 import { Box } from 'design-system/components/box/box'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
@@ -20,10 +19,10 @@ export const SessionDetails = () => {
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { activeOccurrences } = useActiveOccurrences()
   const { activeCaptureId } = useActiveCaptureId()
-  const { session, isLoading, isFetching, error } = useSessionDetails(
-    id as string,
-    { capture: activeCaptureId, occurrence: activeOccurrences[0] }
-  )
+  const { session, isLoading, error } = useSessionDetails(id as string, {
+    capture: activeCaptureId,
+    occurrence: activeOccurrences[0],
+  })
 
   useEffect(() => {
     setDetailBreadcrumb(session ? { title: session.label } : undefined)
@@ -50,11 +49,6 @@ export const SessionDetails = () => {
       <Helmet>
         <meta name="og:image" content={session.exampleCaptures[0]?.src} />
       </Helmet>
-      {isFetching && (
-        <div className={styles.fetchInfoWrapper}>
-          <FetchInfo isLoading={isLoading} />
-        </div>
-      )}
       <div className={styles.playbackWrapper}>
         <Playback session={session} projectId={projectId} />
       </div>

@@ -53,9 +53,17 @@ export const UploadImagesDialog = ({
     !!project?.settings.defaultProcessingPipeline
   )
 
-  const { uploadCaptures, isLoading, isSuccess, error } = useUploadCaptures()
+  const {
+    uploadCaptures,
+    isLoading,
+    isSuccess,
+    error,
+    reset: resetHook,
+  } = useUploadCaptures()
 
+  // Reset on open state change
   useEffect(() => {
+    resetHook()
     setCurrentSection(Section.Images)
     setImages([])
     setDeployment(undefined)
@@ -70,9 +78,7 @@ export const UploadImagesDialog = ({
         </Button>
       </Dialog.Trigger>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
-        <Dialog.Header
-          title={translate(STRING.UPLOAD_CAPTURES)}
-        ></Dialog.Header>
+        <Dialog.Header title={translate(STRING.UPLOAD_CAPTURES)} />
         {error ? <FormError message={error} /> : null}
         <div className={styles.content}>
           {isSuccess ? (
