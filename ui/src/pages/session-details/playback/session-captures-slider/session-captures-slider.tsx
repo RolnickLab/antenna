@@ -25,14 +25,10 @@ export const SessionCapturesSlider = ({
   const showLabels = session.startDate.getTime() !== session.endDate.getTime()
 
   useEffect(() => {
-    if (activeCapture && endDate) {
+    if (activeCapture) {
       setValue(dateToValue({ date: activeCapture.date, startDate, endDate }))
     }
   }, [activeCapture])
-
-  if (!endDate) {
-    return null
-  }
 
   return (
     <div>

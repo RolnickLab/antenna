@@ -73,6 +73,7 @@ export const SelectImagesSection = ({
                   aria-label={translate(STRING.ADD)}
                   className="w-full h-full"
                   onClick={onClick}
+                  type="button"
                 >
                   <div
                     className={buttonVariants({

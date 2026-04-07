@@ -503,7 +503,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_CAPTURE_SET_FORM_INTRO]:
     'In this form, you will define the logic for your capture set. When the capture set is defined, it can be populated with captures from the table view.',
   [STRING.MESSAGE_CAPTURE_SET_TIP]:
-    'To define a capture set for all captures, use method "Full" without filters set.',
+    'To define a capture set for all captures, use method "Full" without setting filters.',
   [STRING.MESSAGE_CAPTURE_SYNC_HIDDEN]:
     'Station must be created before syncing captures.',
   [STRING.MESSAGE_CAPTURE_TOO_MANY]:
@@ -616,9 +616,9 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TOOLTIP_DEVICE]:
     'A device type is the type of equipment or camera used for collecting captures. One or many deployments can be connected to a device type. Device type refers to the model version, category or description of a kind of hardware, not the serial number of an individual device.',
   [STRING.TOOLTIP_JOB]:
-    'A job is a task that requires time to complete and runs in the background. Example of such tasks are processing captures, syncing captures and generating exports.',
+    'A job is a task that requires time to complete and runs in the background. Examples include processing captures, syncing captures, and generating exports.',
   [STRING.TOOLTIP_LATEST_JOB_STATUS]:
-    'A job is a task that requires time to complete and runs in the background. This shows the status for the latest job, related to each {{type}}. Hover the status label for more details about the job type.',
+    'A job is a task that requires time to complete and runs in the background. This shows the status of the latest job for each {{type}}. Hover the status label for more details about the job type.',
   [STRING.TOOLTIP_OCCURRENCE]:
     'An occurrence refers to when an individual is detected in a sequence of one or more captures with no time interruption.',
   [STRING.TOOLTIP_PIPELINE]:
