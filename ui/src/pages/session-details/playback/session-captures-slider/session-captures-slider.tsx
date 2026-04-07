@@ -22,20 +22,29 @@ export const SessionCapturesSlider = ({
   const [value, setValue] = useState(0)
   const startDate = session.startDate
   const endDate = session.endDate
+  const showLabels = session.startDate.getTime() !== session.endDate.getTime()
 
   useEffect(() => {
-    if (activeCapture) {
+    if (activeCapture && endDate) {
       setValue(dateToValue({ date: activeCapture.date, startDate, endDate }))
     }
   }, [activeCapture])
 
+  if (!endDate) {
+    return null
+  }
+
   return (
     <div>
       <TimestampSlider
-        labels={[
-          getFormatedTimeString({ date: startDate }),
-          getFormatedTimeString({ date: endDate }),
-        ]}
+        labels={
+          showLabels
+            ? [
+                getFormatedTimeString({ date: startDate }),
+                getFormatedTimeString({ date: endDate }),
+              ]
+            : []
+        }
         value={value}
         valueLabel={getFormatedTimeString({
           date: valueToDate({ value, startDate, endDate }),
