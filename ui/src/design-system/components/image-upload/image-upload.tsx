@@ -30,7 +30,7 @@ export const ImageUpload = ({
     <>
       <div
         className={classNames(
-          'flex items-center justify-center bg-primary-50',
+          'flex items-center justify-center mb-2 bg-primary-50',
           { 'aspect-video': !imageUrl }
         )}
       >

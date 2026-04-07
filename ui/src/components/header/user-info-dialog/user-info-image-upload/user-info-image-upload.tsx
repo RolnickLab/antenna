@@ -28,7 +28,7 @@ export const UserInfoImageUpload = ({
 
   return (
     <>
-      <div className={classNames('bg-primary-50', styles.container)}>
+      <div className={classNames('mb-2 bg-primary-50', styles.container)}>
         <div className={styles.content}>
           {imageUrl ? (
             <>
