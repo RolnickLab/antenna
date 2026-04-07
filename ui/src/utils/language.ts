@@ -257,13 +257,14 @@ export enum STRING {
   TOOLTIP_DEPLOYMENT,
   TOOLTIP_DEVICE,
   TOOLTIP_JOB,
+  TOOLTIP_LATEST_JOB_STATUS,
   TOOLTIP_OCCURRENCE,
   TOOLTIP_PIPELINE,
   TOOLTIP_PROCESSING_SERVICE,
   TOOLTIP_SCORE,
   TOOLTIP_SESSION,
   TOOLTIP_SITE,
-  TOOLTIP_STATUS,
+
   TOOLTIP_STORAGE,
 
   /* OTHER */
@@ -615,7 +616,9 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TOOLTIP_DEVICE]:
     'A device type is the type of equipment or camera used for collecting captures. One or many deployments can be connected to a device type. Device type refers to the model version, category or description of a kind of hardware, not the serial number of an individual device.',
   [STRING.TOOLTIP_JOB]:
-    'A job is a request for data processing that specifies the data to process and the pipeline to use.',
+    'A job is a task that requires time to complete and runs in the background. Example of such tasks are processing captures, syncing captures and generating exports.',
+  [STRING.TOOLTIP_LATEST_JOB_STATUS]:
+    'A job is a task that requires time to complete and runs in the background. This shows the status for the latest job, related to each {{type}}. Hover the status label for more details about the job type.',
   [STRING.TOOLTIP_OCCURRENCE]:
     'An occurrence refers to when an individual is detected in a sequence of one or more captures with no time interruption.',
   [STRING.TOOLTIP_PIPELINE]:
@@ -628,8 +631,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'A session is a fixed period of time of monitoring for one station. The period is typically one night.',
   [STRING.TOOLTIP_SITE]:
     'A site is a physical location where monitoring is taking place. One or many stations can be connected to a site.',
-  [STRING.TOOLTIP_STATUS]:
-    'A status is the processing stage of a job once submitted: Created > Pending > Started > Success. A Failed status means the job stopped before it had finished.',
   [STRING.TOOLTIP_STORAGE]:
     'A storage is a place where captures are kept, for example a S3 bucket. One or many stations can be connected to a storage.',
 
