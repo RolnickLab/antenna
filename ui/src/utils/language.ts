@@ -167,6 +167,8 @@ export enum STRING {
   /* MESSAGE */
   MESSAGE_CAPTURE_FILENAME,
   MESSAGE_CAPTURE_LIMIT,
+  MESSAGE_CAPTURE_SET_FORM_INTRO,
+  MESSAGE_CAPTURE_SET_TIP,
   MESSAGE_CAPTURE_SYNC_HIDDEN,
   MESSAGE_CAPTURE_TOO_MANY,
   MESSAGE_CAPTURE_UPLOAD_HIDDEN,
@@ -177,6 +179,7 @@ export enum STRING {
   MESSAGE_DEFAULT_PIPELINE,
   MESSAGE_DELETE_CONFIRM,
   MESSAGE_DRAFTS,
+  MESSAGE_EXPORT_TIP,
   MESSAGE_HAS_ACCOUNT,
   MESSAGE_IMAGE_FORMAT,
   MESSAGE_IMAGE_SIZE,
@@ -312,6 +315,7 @@ export enum STRING {
   SUMMARY,
   TABLE_COLUMNS,
   TERMINAL_CLASSIFICATION,
+  TIP,
   UNKNOWN_ERROR,
   UNKNOWN,
   UPDATING_DATA,
@@ -495,6 +499,10 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'Image filename must contain a timestamp with year, month, day, hours, minutes and seconds (e.g. 20210101120000-snapshot.jpg).',
   [STRING.MESSAGE_CAPTURE_LIMIT]:
     'A maximum of {{numCaptures}} captures for each station can be uploaded through the web browser. Configure a data source to upload data in bulk.',
+  [STRING.MESSAGE_CAPTURE_SET_FORM_INTRO]:
+    'In this form, you will define the logic for your capture set. When the capture set is defined, it can be populated with captures from the table view.',
+  [STRING.MESSAGE_CAPTURE_SET_TIP]:
+    'To define a capture set for all captures, use method "Full" without filters set.',
   [STRING.MESSAGE_CAPTURE_SYNC_HIDDEN]:
     'Station must be created before syncing captures.',
   [STRING.MESSAGE_CAPTURE_TOO_MANY]:
@@ -513,6 +521,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_DELETE_CONFIRM]:
     'Are you sure you want to delete this {{type}}?',
   [STRING.MESSAGE_DRAFTS]: 'Drafts are private and limited to one user.',
+  [STRING.MESSAGE_EXPORT_TIP]: 'To include all captures, skip "Capture set".',
   [STRING.MESSAGE_HAS_ACCOUNT]: 'Already have an account?',
   [STRING.MESSAGE_IMAGE_FORMAT]: 'Valid formats are PNG, GIF and JPEG.',
   [STRING.MESSAGE_IMAGE_SIZE]:
@@ -673,6 +682,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SUMMARY]: 'Summary',
   [STRING.TABLE_COLUMNS]: 'Table columns',
   [STRING.TERMINAL_CLASSIFICATION]: 'Terminal classification',
+  [STRING.TIP]: 'Tip',
   [STRING.UNKNOWN_ERROR]: 'Unknown error',
   [STRING.UNKNOWN]: 'Unknown',
   [STRING.UPDATING_DATA]: 'Updating data',

@@ -2,6 +2,7 @@ import { FormController } from 'components/form/form-controller'
 import {
   FormActions,
   FormError,
+  FormMessage,
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
@@ -120,6 +121,10 @@ export const ExportDetailsForm = ({
               />
             </InputContent>
           )}
+        />
+        <FormMessage
+          intro={translate(STRING.TIP)}
+          message={translate(STRING.MESSAGE_EXPORT_TIP)}
         />
       </FormSection>
       <FormActions>

@@ -3,6 +3,7 @@ import { FormField } from 'components/form/form-field'
 import {
   FormActions,
   FormError,
+  FormMessage,
   FormRow,
   FormSection,
 } from 'components/form/layout/layout'
@@ -204,6 +205,9 @@ export const CaptureSetDetailsForm = ({
         />
       )}
       <FormSection>
+        <FormMessage
+          message={translate(STRING.MESSAGE_CAPTURE_SET_FORM_INTRO)}
+        />
         <h3 className="body-large font-bold text-muted-foreground/50">
           General
         </h3>
@@ -365,6 +369,10 @@ export const CaptureSetDetailsForm = ({
             />
           ) : null}
         </FormRow>
+        <FormMessage
+          intro={translate(STRING.TIP)}
+          message={translate(STRING.MESSAGE_CAPTURE_SET_TIP)}
+        />
       </FormSection>
       <FormActions>
         <SaveButton isLoading={isLoading} isSuccess={isSuccess} />
