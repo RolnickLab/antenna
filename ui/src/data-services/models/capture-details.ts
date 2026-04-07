@@ -28,7 +28,7 @@ export class CaptureDetails extends Capture {
       const time1 = j1.updatedAt?.getTime() ?? 0
       const time2 = j2.updatedAt?.getTime() ?? 0
 
-      return time1 - time2
+      return time2 - time1
     })[0]
   }
 
