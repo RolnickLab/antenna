@@ -1,5 +1,4 @@
 import csv
-import datetime
 import json
 import logging
 
@@ -312,6 +311,8 @@ class ExportNewFieldsTest(TestCase):
     def setUp(self):
         self.project, self.deployment = setup_test_project(reuse=False)
         self.user = self.project.owner
+        self.user.name = "Test Verifier"
+        self.user.save()
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
 
@@ -347,7 +348,7 @@ class ExportNewFieldsTest(TestCase):
         classification = detection.classifications.create(
             taxon=taxon,
             score=score,
-            timestamp=datetime.datetime.now(),
+            timestamp=source_image.timestamp,
             algorithm=self.algorithm,
             terminal=True,
         )

@@ -1398,7 +1398,7 @@ class OccurrenceListSerializer(DefaultSerializer):
         context = self.context
         context["occurrence"] = obj
 
-        prediction = obj.find_best_prediction()
+        prediction = obj.best_prediction
         if not prediction:
             return None
 

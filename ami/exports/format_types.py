@@ -150,14 +150,11 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
         count = getattr(obj, "verified_by_count", None)
         if count is not None:
             return "Verified" if count > 0 else "Not verified"
-        return "Verified" if obj.identifications.exists() else "Not verified"
+        return "Verified" if obj.identifications.filter(withdrawn=False).exists() else "Not verified"
 
     def get_verified_by(self, obj):
-        """Returns the name or email of the user who made the best identification."""
-        name = getattr(obj, "verified_by_name", None)
-        if name:
-            return name
-        return getattr(obj, "verified_by_email", None)
+        """Returns the display name of the user who made the best identification."""
+        return getattr(obj, "verified_by_name", None)
 
     def get_agreed_with_algorithm(self, obj):
         """Returns the algorithm name if the identifier explicitly agreed with an ML prediction."""
@@ -201,7 +198,15 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
 
     def get_best_detection_occurrence_url(self, obj):
         """Returns the platform UI link to the occurrence in context."""
-        return obj.context_url()
+        event_id = getattr(obj, "best_detection_event_id", None)
+        source_image_id = getattr(obj, "best_detection_source_image_id", None)
+        if event_id and source_image_id:
+            # @TODO use settings for base URL instead of hardcoding
+            return (
+                f"https://app.preview.insectai.org/sessions/{event_id}"
+                f"?capture={source_image_id}&occurrence={obj.pk}"
+            )
+        return None
 
 
 class CSVExporter(BaseExporter):

@@ -2811,6 +2811,18 @@ class OccurrenceQuerySet(BaseQuerySet):
             .values("source_image__public_base_url")[:1]
         )
 
+        # Subquery to get source_image_id and event_id for building the occurrence URL
+        best_detection_source_image_id_subquery = (
+            Detection.objects.filter(occurrence=OuterRef("pk"))
+            .order_by("-classifications__score", "id")
+            .values("source_image_id")[:1]
+        )
+        best_detection_event_id_subquery = (
+            Detection.objects.filter(occurrence=OuterRef("pk"))
+            .order_by("-classifications__score", "id")
+            .values("source_image__event_id")[:1]
+        )
+
         return self.annotate(
             best_detection_path=models.Subquery(best_detection_path_subquery),
             best_detection_bbox=models.Subquery(best_detection_bbox_subquery),
@@ -2818,6 +2830,8 @@ class OccurrenceQuerySet(BaseQuerySet):
             best_detection_source_image_public_base_url=models.Subquery(
                 best_detection_source_image_public_base_url_subquery
             ),
+            best_detection_source_image_id=models.Subquery(best_detection_source_image_id_subquery),
+            best_detection_event_id=models.Subquery(best_detection_event_id_subquery),
         )
 
     def with_best_machine_prediction(self):
@@ -2860,10 +2874,10 @@ class OccurrenceQuerySet(BaseQuerySet):
 
         return self.annotate(
             verified_by_name=models.Subquery(best_identification_subquery.values("user__name")[:1]),
-            verified_by_email=models.Subquery(best_identification_subquery.values("user__email")[:1]),
             verified_by_count=models.Count(
                 "identifications",
                 filter=Q(identifications__withdrawn=False),
+                distinct=True,
             ),
             agreed_with_algorithm_name=models.Subquery(
                 best_identification_subquery.values("agreed_with_prediction__algorithm__name")[:1]
@@ -3208,12 +3222,12 @@ def update_occurrence_determination(
     new_score = None
 
     top_identification = occurrence.find_best_identification()
-    if top_identification and top_identification.taxon and top_identification.taxon != current_determination:
+    if top_identification and top_identification.taxon:
         new_determination = top_identification.taxon
         new_score = None  # Human ID score is not meaningful for determination_score
-    elif not top_identification:
+    else:
         top_prediction = occurrence.find_best_prediction()
-        if top_prediction and top_prediction.taxon and top_prediction.taxon != current_determination:
+        if top_prediction and top_prediction.taxon:
             new_determination = top_prediction.taxon
             new_score = top_prediction.score
 
@@ -3222,7 +3236,7 @@ def update_occurrence_determination(
         occurrence.determination = new_determination
         needs_update = True
 
-    if new_determination and new_score != occurrence.determination_score:
+    if new_score != occurrence.determination_score:
         logger.debug(f"Changing det. score of {occurrence} from {occurrence.determination_score} to {new_score}")
         occurrence.determination_score = new_score
         needs_update = True
