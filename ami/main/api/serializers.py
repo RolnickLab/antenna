@@ -1319,6 +1319,7 @@ class OccurrenceListSerializer(DefaultSerializer):
     event = EventNestedSerializer(read_only=True)
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
     determination_details = serializers.SerializerMethodField()
+    best_machine_prediction = serializers.SerializerMethodField()
     identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
 
     def get_permissions(self, instance, instance_data):
@@ -1357,6 +1358,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             "detection_images",
             "determination_score",
             "determination_details",
+            "best_machine_prediction",
             "identifications",
             "created_at",
             "updated_at",
@@ -1389,6 +1391,33 @@ class OccurrenceListSerializer(DefaultSerializer):
             identification=identification,
             prediction=prediction,
             score=obj.determination_score,
+        )
+
+    def get_best_machine_prediction(self, obj: Occurrence):
+        """Always return the best machine prediction, regardless of human verification status."""
+        context = self.context
+        context["occurrence"] = obj
+
+        prediction = obj.find_best_prediction()
+        if not prediction:
+            return None
+
+        taxon_data = TaxonNestedSerializer(prediction.taxon, context=context).data if prediction.taxon else None
+        algorithm_data = None
+        if prediction.algorithm:
+            from ami.ml.serializers import AlgorithmNestedSerializer
+
+            algorithm_data = AlgorithmNestedSerializer(prediction.algorithm, context=context).data
+
+        determination_matches = None
+        if obj.determination_id and prediction.taxon_id:
+            determination_matches = obj.determination_id == prediction.taxon_id
+
+        return dict(
+            taxon=taxon_data,
+            algorithm=algorithm_data,
+            score=prediction.score,
+            determination_matches_machine_prediction=determination_matches,
         )
 
 
