@@ -4,6 +4,7 @@ import { CSSProperties, ReactNode } from 'react'
 import styles from './layout.module.scss'
 
 export const FormMessage = ({
+  children,
   className,
   message,
   theme = 'success',
@@ -13,6 +14,7 @@ export const FormMessage = ({
   message: string
   theme?: 'success' | 'warning' | 'destructive'
   withIcon?: boolean
+  children?: ReactNode
 }) => {
   const Icon = {
     success: LightbulbIcon,
@@ -34,6 +36,7 @@ export const FormMessage = ({
     >
       {withIcon ? <Icon className="inline w-4 h-4 mr-2" /> : null}
       <span>{message}</span>
+      {children}
     </div>
   )
 }
