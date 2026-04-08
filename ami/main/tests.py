@@ -2025,25 +2025,18 @@ class TestMLDataManagerCanRunBatchMLJob(APITestCase):
     def _create_ml_job(self):
         return Job.objects.create(name="Test ML Job", project=self.project, job_type_key="ml")
 
-    def test_ml_data_manager_can_run_ml_job(self):
-        self.client.force_authenticate(self.ml_user)
-        job = self._create_ml_job()
-        response = self.client.post(f"/api/v2/jobs/{job.pk}/run/", format="json")
-        self.assertEqual(response.status_code, status.HTTP_200_OK, "MLDataManager should be able to run ML jobs")
-
-    def test_project_manager_can_run_ml_job(self):
-        self.client.force_authenticate(self.pm_user)
-        job = self._create_ml_job()
-        response = self.client.post(f"/api/v2/jobs/{job.pk}/run/", format="json")
-        self.assertEqual(response.status_code, status.HTTP_200_OK, "ProjectManager should be able to run ML jobs")
-
-    def test_basic_member_cannot_run_ml_job(self):
-        self.client.force_authenticate(self.basic_user)
-        job = self._create_ml_job()
-        response = self.client.post(f"/api/v2/jobs/{job.pk}/run/", format="json")
-        self.assertEqual(
-            response.status_code, status.HTTP_403_FORBIDDEN, "BasicMember should NOT be able to run ML jobs"
-        )
+    def test_role_based_ml_job_run_permissions(self):
+        role_matrix = [
+            ("MLDataManager", self.ml_user, status.HTTP_200_OK),
+            ("ProjectManager", self.pm_user, status.HTTP_200_OK),
+            ("BasicMember", self.basic_user, status.HTTP_403_FORBIDDEN),
+        ]
+        for role_name, user, expected_status in role_matrix:
+            with self.subTest(role=role_name):
+                self.client.force_authenticate(user)
+                job = self._create_ml_job()
+                response = self.client.post(f"/api/v2/jobs/{job.pk}/run/", format="json")
+                self.assertEqual(response.status_code, expected_status, f"{role_name} got unexpected status")
 
     def test_ml_data_manager_run_perm_reflected_in_job_detail(self):
         self.client.force_authenticate(self.ml_user)
