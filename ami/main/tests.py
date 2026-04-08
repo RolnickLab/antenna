@@ -41,7 +41,7 @@ from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 from ami.tests.fixtures.storage import populate_bucket
 from ami.users.models import User
-from ami.users.roles import BasicMember, Identifier, ProjectManager
+from ami.users.roles import BasicMember, Identifier, MLDataManager, ProjectManager, create_roles_for_project
 
 logger = logging.getLogger(__name__)
 
@@ -1340,9 +1340,7 @@ class TestRolePermissions(APITestCase):
                     "update": True,
                     "delete": True,
                     "run_single_image": True,
-                    "run": False,
-                    "retry": False,
-                    "cancel": False,
+                    "run": True,
                 },
                 "identification": {"create": True, "update": True, "delete": True},
                 "capture": {"star": True, "unstar": True},
@@ -2006,6 +2004,46 @@ class TestRunSingleImageJobPermission(APITestCase):
             403,
             f"User should NOT be able to run single image job after permission removal, got {response.status_code}",
         )
+
+
+class TestMLDataManagerCanRunBatchMLJob(APITestCase):
+    """Verify that the MLDataManager role grants run_ml_job permission via the role system."""
+
+    def setUp(self):
+        super().setUp()
+        self.project = Project.objects.create(name="Role ML Job Project", description="Test role-based ML job perms")
+        create_roles_for_project(self.project)
+
+        self.ml_user = User.objects.create_user(email="mlmanager@insectai.org", password="password123")
+        self.basic_user = User.objects.create_user(email="basicmember@insectai.org", password="password123")
+        self.pm_user = User.objects.create_user(email="projmanager@insectai.org", password="password123")
+
+        MLDataManager.assign_user(self.ml_user, self.project)
+        BasicMember.assign_user(self.basic_user, self.project)
+        ProjectManager.assign_user(self.pm_user, self.project)
+
+    def _create_ml_job(self):
+        return Job.objects.create(name="Test ML Job", project=self.project, job_type_key="ml")
+
+    def test_role_based_ml_job_run_permissions(self):
+        role_matrix = [
+            ("MLDataManager", self.ml_user, status.HTTP_200_OK),
+            ("ProjectManager", self.pm_user, status.HTTP_200_OK),
+            ("BasicMember", self.basic_user, status.HTTP_403_FORBIDDEN),
+        ]
+        for role_name, user, expected_status in role_matrix:
+            with self.subTest(role=role_name):
+                self.client.force_authenticate(user)
+                job = self._create_ml_job()
+                response = self.client.post(f"/api/v2/jobs/{job.pk}/run/", format="json")
+                self.assertEqual(response.status_code, expected_status, f"{role_name} got unexpected status")
+
+    def test_ml_data_manager_run_perm_reflected_in_job_detail(self):
+        self.client.force_authenticate(self.ml_user)
+        job = self._create_ml_job()
+        response = self.client.get(f"/api/v2/jobs/{job.pk}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("run", response.data.get("user_permissions", []))
 
 
 class TestDraftProjectPermissions(APITestCase):
