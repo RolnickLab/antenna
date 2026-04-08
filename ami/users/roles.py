@@ -141,6 +141,12 @@ class MLDataManager(Role):
         Project.Permissions.DELETE_JOB,
         Project.Permissions.DELETE_OCCURRENCES,
         Project.Permissions.CREATE_PROJECT_PIPELINE_CONFIG,
+        Project.Permissions.UPDATE_PROJECT_PIPELINE_CONFIG,
+        Project.Permissions.DELETE_PROJECT_PIPELINE_CONFIG,
+        Project.Permissions.CREATE_COLLECTION,
+        Project.Permissions.UPDATE_COLLECTION,
+        Project.Permissions.DELETE_COLLECTION,
+        Project.Permissions.POPULATE_COLLECTION,
     }
 
 
