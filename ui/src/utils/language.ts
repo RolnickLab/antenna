@@ -414,7 +414,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_FINISHED_AT]: 'Finished at',
   [STRING.FIELD_LABEL_FIRST_DATE]: 'First date',
   [STRING.FIELD_LABEL_FORMAT]: 'Format',
-  [STRING.FIELD_LABEL_GENERAL]: 'General configuration',
+  [STRING.FIELD_LABEL_GENERAL]: 'General',
   [STRING.FIELD_LABEL_ICON]: 'Icon',
   [STRING.FIELD_LABEL_ID]: 'ID',
   [STRING.FIELD_LABEL_IMAGE]: 'Cover image',
