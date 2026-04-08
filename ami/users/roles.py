@@ -134,8 +134,7 @@ class MLDataManager(Role):
     permissions = BasicMember.permissions | {
         Project.Permissions.CREATE_JOB,
         Project.Permissions.UPDATE_JOB,
-        # RUN ML jobs is revoked for now
-        # Project.Permissions.RUN_ML_JOB,
+        Project.Permissions.RUN_ML_JOB,
         Project.Permissions.RUN_POPULATE_CAPTURES_COLLECTION_JOB,
         Project.Permissions.RUN_DATA_STORAGE_SYNC_JOB,
         Project.Permissions.RUN_DATA_EXPORT_JOB,
