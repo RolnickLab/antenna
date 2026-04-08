@@ -1,21 +1,42 @@
 import classNames from 'classnames'
+import { CircleAlert, InfoIcon, LightbulbIcon } from 'lucide-react'
 import { CSSProperties, ReactNode } from 'react'
 import styles from './layout.module.scss'
 
 export const FormMessage = ({
-  intro,
+  className,
   message,
-  style,
+  theme = 'success',
+  withIcon,
 }: {
-  intro?: string
+  className?: string
   message: string
-  style?: CSSProperties
-}) => (
-  <div className={styles.formMessage} style={style}>
-    {intro ? <span className={styles.intro}>{intro}: </span> : null}
-    <span>{message}</span>
-  </div>
-)
+  theme?: 'success' | 'warning' | 'destructive'
+  withIcon?: boolean
+}) => {
+  const Icon = {
+    success: LightbulbIcon,
+    warning: InfoIcon,
+    destructive: CircleAlert,
+  }[theme]
+
+  return (
+    <div
+      className={classNames(
+        'px-4 py-2 rounded-md body-small',
+        {
+          'bg-[#d8f2ec] text-[#078c6e]': theme === 'success',
+          'bg-warning-50 text-warning-700': theme === 'warning',
+          'bg-destructive-50 text-destructive-700': theme === 'destructive',
+        },
+        className
+      )}
+    >
+      {withIcon ? <Icon className="inline w-4 h-4 mr-2" /> : null}
+      <span>{message}</span>
+    </div>
+  )
+}
 
 export const FormError = ({
   inDialog,
@@ -29,7 +50,11 @@ export const FormError = ({
   style?: CSSProperties
 }) => (
   <div
-    className={classNames(styles.formError, { [styles.inDialog]: inDialog })}
+    className={classNames(
+      styles.formError,
+      'w-full bg-destructive-50 text-destructive-700 body-small',
+      { [styles.inDialog]: inDialog }
+    )}
     style={style}
   >
     {intro ? <span className={styles.intro}>{intro}: </span> : null}

@@ -370,8 +370,8 @@ export const CaptureSetDetailsForm = ({
           ) : null}
         </FormRow>
         <FormMessage
-          intro={translate(STRING.TIP)}
           message={translate(STRING.MESSAGE_CAPTURE_SET_TIP)}
+          withIcon
         />
       </FormSection>
       <FormActions>

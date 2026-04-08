@@ -5,30 +5,38 @@ import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { AlertCircleIcon, Loader2, RefreshCcwIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
+import { parseServerError } from 'utils/parseServerError/parseServerError'
 
 export const PopulateCaptureSet = ({
   captureSet,
+  compact,
+  variant = 'outline',
 }: {
   captureSet: CaptureSet
+  compact?: boolean
+  variant?: 'ghost' | 'outline'
 }) => {
   const { populateCaptureSet, isLoading, error } = usePopulateCaptureSet()
 
+  const tooltip = (() => {
+    if (error) {
+      return parseServerError(error).message
+    }
+
+    if (compact) {
+      return translate(STRING.POPULATE)
+    }
+  })()
+
   return (
-    <BasicTooltip
-      asChild
-      content={
-        error
-          ? 'Could not populate the capture set, please retry.'
-          : translate(STRING.POPULATE)
-      }
-    >
+    <BasicTooltip asChild content={tooltip}>
       <Button
         aria-label={translate(STRING.POPULATE)}
         className={classNames({ 'text-destructive': error })}
         disabled={isLoading}
         onClick={() => populateCaptureSet(captureSet.id)}
-        size="icon"
-        variant="ghost"
+        size={compact ? 'icon' : 'small'}
+        variant={variant}
       >
         {error ? (
           <AlertCircleIcon className="w-4 h-4" />
@@ -37,6 +45,7 @@ export const PopulateCaptureSet = ({
         ) : (
           <RefreshCcwIcon className="w-4 h-4" />
         )}
+        {!compact ? <span>{translate(STRING.POPULATE)}</span> : null}
       </Button>
     </BasicTooltip>
   )

@@ -122,10 +122,7 @@ export const ExportDetailsForm = ({
             </InputContent>
           )}
         />
-        <FormMessage
-          intro={translate(STRING.TIP)}
-          message={translate(STRING.MESSAGE_EXPORT_TIP)}
-        />
+        <FormMessage message={translate(STRING.MESSAGE_EXPORT_TIP)} withIcon />
       </FormSection>
       <FormActions>
         <SaveButton isLoading={isLoading} isSuccess={isSuccess} />

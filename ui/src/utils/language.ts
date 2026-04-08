@@ -168,6 +168,8 @@ export enum STRING {
   MESSAGE_CAPTURE_FILENAME,
   MESSAGE_CAPTURE_LIMIT,
   MESSAGE_CAPTURE_SET_FORM_INTRO,
+  MESSAGE_CAPTURE_SET_COUNT,
+  MESSAGE_CAPTURE_SET_EMPTY,
   MESSAGE_CAPTURE_SET_TIP,
   MESSAGE_CAPTURE_SYNC_HIDDEN,
   MESSAGE_CAPTURE_TOO_MANY,
@@ -502,6 +504,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'A maximum of {{numCaptures}} captures for each station can be uploaded through the web browser. Configure a data source to upload data in bulk.',
   [STRING.MESSAGE_CAPTURE_SET_FORM_INTRO]:
     'In this form, you will define the logic for your capture set. When the capture set is defined, it can be populated with captures from the table view.',
+  [STRING.MESSAGE_CAPTURE_SET_COUNT]: 'This will select {{total}} captures.',
+  [STRING.MESSAGE_CAPTURE_SET_EMPTY]: 'This capture set is empty.',
   [STRING.MESSAGE_CAPTURE_SET_TIP]:
     'To define a capture set for all captures, use method "Full" without setting filters.',
   [STRING.MESSAGE_CAPTURE_SYNC_HIDDEN]:
