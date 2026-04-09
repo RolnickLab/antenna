@@ -53,6 +53,16 @@ export const columns = ({
       type: translate(STRING.ENTITY_TYPE_CAPTURE_SET),
     }),
     renderCell: (item: CaptureSet) => {
+      if (item.currentJob) {
+        return (
+          <StatusTableCell
+            color={item.currentJob.status.color}
+            details={item.currentJob.type.label}
+            label={item.currentJob.status.label}
+          />
+        )
+      }
+
       if (item.canPopulate && item.numImages === 0) {
         return (
           <BasicTableCell>
@@ -61,15 +71,7 @@ export const columns = ({
         )
       }
 
-      return item.currentJob ? (
-        <StatusTableCell
-          color={item.currentJob.status.color}
-          details={item.currentJob.type.label}
-          label={item.currentJob.status.label}
-        />
-      ) : (
-        <></>
-      )
+      return <></>
     },
   },
   {
