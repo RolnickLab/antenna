@@ -1,15 +1,17 @@
 import { FormMessage } from 'components/form/layout/layout'
 import { useCaptureSets } from 'data-services/hooks/capture-sets/useCaptureSets'
-import { ChevronRight } from 'lucide-react'
-import { Select } from 'nova-ui-kit'
+import { ChevronRight, XIcon } from 'lucide-react'
+import { Button, Select } from 'nova-ui-kit'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 
 export const CaptureSetPicker = ({
+  clearable,
   value: _value,
   onValueChange,
 }: {
+  clearable?: boolean
   value?: string
   onValueChange: (value?: string) => void
 }) => {
@@ -22,23 +24,36 @@ export const CaptureSetPicker = ({
 
   return (
     <div className="flex flex-col gap-4">
-      <Select.Root
-        key={value}
-        disabled={isLoading || captureSets.length === 0}
-        onValueChange={onValueChange}
-        value={value}
-      >
-        <Select.Trigger loading={isLoading}>
-          <Select.Value placeholder={translate(STRING.SELECT_PLACEHOLDER)} />
-        </Select.Trigger>
-        <Select.Content className="max-h-72">
-          {captureSets.map((c) => (
-            <Select.Item key={c.id} value={c.id}>
-              {c.name}
-            </Select.Item>
-          ))}
-        </Select.Content>
-      </Select.Root>
+      <div className="flex items-center justify-between gap-2">
+        <Select.Root
+          key={value}
+          disabled={isLoading || captureSets.length === 0}
+          onValueChange={onValueChange}
+          value={value}
+        >
+          <Select.Trigger loading={isLoading}>
+            <Select.Value placeholder={translate(STRING.SELECT_PLACEHOLDER)} />
+          </Select.Trigger>
+          <Select.Content className="max-h-72">
+            {captureSets.map((c) => (
+              <Select.Item key={c.id} value={c.id}>
+                {c.name}
+              </Select.Item>
+            ))}
+          </Select.Content>
+        </Select.Root>
+        {clearable && _value && (
+          <Button
+            aria-label={translate(STRING.CLEAR)}
+            className="shrink-0 text-muted-foreground"
+            onClick={() => onValueChange()}
+            size="icon"
+            variant="ghost"
+          >
+            <XIcon className="w-4 h-4" />
+          </Button>
+        )}
+      </div>
       {captureSet?.numImages !== undefined ? (
         captureSet.numImages === 0 ? (
           <div className="flex flex-col gap-4">

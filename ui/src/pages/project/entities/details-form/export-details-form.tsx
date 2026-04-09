@@ -115,6 +115,7 @@ export const ExportDetailsForm = ({
               }}
             >
               <CaptureSetPicker
+                clearable
                 onValueChange={field.onChange}
                 value={field.value}
               />
