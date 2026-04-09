@@ -51,7 +51,7 @@ export const DeploymentDetailsForm = ({
           latitude: deployment.latitude,
           longitude: deployment.longitude,
         },
-        isValid: startValid,
+        isValid: true,
       },
       [Section.SourceImages]: {
         values: {
@@ -59,7 +59,7 @@ export const DeploymentDetailsForm = ({
           dataSourceSubdir: deployment.dataSourceSubdir,
           dataSourceRegex: deployment.dataSourceRegex,
         },
-        isValid: startValid,
+        isValid: true,
       },
     }}
   >

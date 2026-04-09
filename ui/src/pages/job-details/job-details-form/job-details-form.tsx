@@ -3,19 +3,22 @@ import { FormField } from 'components/form/form-field'
 import {
   FormActions,
   FormError,
+  FormMessage,
   FormRow,
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
 import { API_ROUTES } from 'data-services/constants'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
+import { DocsLink } from 'design-system/components/button/docs-link'
 import { SaveButton } from 'design-system/components/button/save-button'
 import { Checkbox } from 'design-system/components/checkbox/checkbox'
 import { InputContent } from 'design-system/components/input/input'
+import { CaptureSetPicker } from 'design-system/components/select/capture-set-picker'
 import { EntityPicker } from 'design-system/components/select/entity-picker'
 import { useForm } from 'react-hook-form'
 import { useParams } from 'react-router-dom'
-import { APP_ROUTES } from 'utils/constants'
+import { APP_ROUTES, DOCS_LINKS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 
@@ -96,14 +99,16 @@ export const JobDetailsForm = ({
           intro={translate(STRING.MESSAGE_COULD_NOT_SAVE)}
           message={errorMessage}
         />
-      ) : (
-        <FormError
-          inDialog
-          intro="Warning"
-          message="Batch processing is currently in development and problems are likely to occur. If you need data processed, we recommend to reach out to the team for support. Thank you for your patience!"
-        />
-      )}
+      ) : null}
       <FormSection>
+        <div className="flex flex-col items-end gap-4">
+          <FormMessage
+            message="Batch processing is currently in development and problems are likely to occur. If you need data processed, we recommend to reach out to the team for support. Thank you for your patience!"
+            theme="warning"
+            withIcon
+          />
+          <DocsLink href={DOCS_LINKS.PROCESSING_DATA} />
+        </div>
         <FormRow>
           <FormField
             name="name"
@@ -142,8 +147,7 @@ export const JobDetailsForm = ({
                   },
                 }}
               >
-                <EntityPicker
-                  collection={API_ROUTES.CAPTURE_SETS}
+                <CaptureSetPicker
                   onValueChange={field.onChange}
                   value={field.value}
                 />

@@ -54,7 +54,11 @@ export const columns = ({
           keepSearchParams: true,
         })}
       >
-        <BasicTableCell value={item.name} theme={CellTheme.Primary} />
+        <BasicTableCell
+          value={item.name}
+          details={[`${translate(STRING.FIELD_LABEL_ID)}: ${item.id}`]}
+          theme={CellTheme.Primary}
+        />
       </Link>
     ),
   },

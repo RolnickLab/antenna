@@ -46,6 +46,12 @@ export const DeploymentDetailsInfo = ({
         <FormSection title={translate(STRING.FIELD_LABEL_GENERAL)}>
           <FormRow>
             <InputValue
+              label={translate(STRING.FIELD_LABEL_ID)}
+              value={deployment.id}
+            />
+          </FormRow>
+          <FormRow>
+            <InputValue
               label={translate(STRING.FIELD_LABEL_NAME)}
               value={deployment.name}
             />

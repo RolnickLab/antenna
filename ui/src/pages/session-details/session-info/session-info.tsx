@@ -11,6 +11,10 @@ export const SessionInfo = ({ session }: { session: Session }) => {
 
   const fields = [
     {
+      label: translate(STRING.FIELD_LABEL_ID),
+      value: session.id,
+    },
+    {
       label: translate(STRING.FIELD_LABEL_DEPLOYMENT),
       value: session.deploymentLabel,
       to: APP_ROUTES.DEPLOYMENT_DETAILS({
