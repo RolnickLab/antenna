@@ -1,7 +1,9 @@
 import { FormMessage } from 'components/form/layout/layout'
 import { useCaptureSets } from 'data-services/hooks/capture-sets/useCaptureSets'
+import { ChevronRight } from 'lucide-react'
 import { Select } from 'nova-ui-kit'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 
 export const CaptureSetPicker = ({
@@ -39,11 +41,26 @@ export const CaptureSetPicker = ({
       </Select.Root>
       {captureSet?.numImages !== undefined ? (
         captureSet.numImages === 0 ? (
-          <FormMessage
-            message={translate(STRING.MESSAGE_CAPTURE_SET_EMPTY)}
-            theme="warning"
-            withIcon
-          />
+          <div className="flex flex-col gap-4">
+            <FormMessage
+              className="flex justify-between gap-4"
+              message={translate(STRING.MESSAGE_CAPTURE_SET_EMPTY)}
+              theme="warning"
+              withIcon
+            >
+              {captureSet.canPopulate ? (
+                <Link
+                  className="font-bold"
+                  to={APP_ROUTES.CAPTURE_SETS({
+                    projectId: projectId as string,
+                  })}
+                >
+                  <span>{translate(STRING.POPULATE)}</span>
+                  <ChevronRight className="inline w-4 h-4 ml-2" />
+                </Link>
+              ) : null}
+            </FormMessage>
+          </div>
         ) : (
           <FormMessage
             message={translate(STRING.MESSAGE_CAPTURE_SET_COUNT, {

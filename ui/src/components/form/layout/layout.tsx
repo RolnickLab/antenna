@@ -34,8 +34,10 @@ export const FormMessage = ({
         className
       )}
     >
-      {withIcon ? <Icon className="inline w-4 h-4 mr-2" /> : null}
-      <span>{message}</span>
+      <span>
+        {withIcon ? <Icon className="inline w-4 h-4 mr-2" /> : null}
+        {message}
+      </span>
       {children}
     </div>
   )
