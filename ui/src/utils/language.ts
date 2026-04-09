@@ -526,7 +526,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_DELETE_CONFIRM]:
     'Are you sure you want to delete this {{type}}?',
   [STRING.MESSAGE_DRAFTS]: 'Drafts are private and limited to one user.',
-  [STRING.MESSAGE_EXPORT_TIP]: 'To include all captures, skip "Capture set".',
+  [STRING.MESSAGE_EXPORT_TIP]:
+    'We support two export formats: one compact and easy to use, and one that includes all raw data. To include all data in the export, skip "Capture set".',
   [STRING.MESSAGE_HAS_ACCOUNT]: 'Already have an account?',
   [STRING.MESSAGE_IMAGE_FORMAT]: 'Valid formats are PNG, GIF and JPEG.',
   [STRING.MESSAGE_IMAGE_SIZE]:
