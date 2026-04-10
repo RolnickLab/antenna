@@ -7,7 +7,7 @@ from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline, PipelineStage
 from .models.processing_service import ProcessingService
 from .models.project_pipeline_config import ProjectPipelineConfig
-from .schemas import PipelineConfigResponse
+from .schemas import PipelineConfigResponse, ProcessingServiceClientInfo
 
 
 class AlgorithmCategoryMapSerializer(DefaultSerializer):
@@ -138,6 +138,7 @@ class ProcessingServiceSerializer(DefaultSerializer):
     pipelines = PipelineNestedSerializer(many=True, read_only=True)
     projects = serializers.SerializerMethodField()
     is_async = serializers.BooleanField(read_only=True)
+    api_key_prefix = serializers.SerializerMethodField()
     endpoint_url = serializers.CharField(required=False, allow_null=True, allow_blank=False, max_length=1024)
 
     class Meta:
@@ -151,6 +152,8 @@ class ProcessingServiceSerializer(DefaultSerializer):
             "endpoint_url",
             "is_async",
             "pipelines",
+            "api_key_prefix",
+            "last_seen_client_info",
             "created_at",
             "updated_at",
             "last_seen",
@@ -164,7 +167,15 @@ class ProcessingServiceSerializer(DefaultSerializer):
         """
         return list(obj.projects.values_list("id", flat=True))
 
+    def get_api_key_prefix(self, obj):
+        # Use prefetched api_keys to avoid N+1 queries
+        active_keys = [k for k in obj.api_keys.all() if not k.revoked]
+        if not active_keys:
+            return None
+        latest = max(active_keys, key=lambda k: k.created)
+        return latest.prefix
+
 
 class PipelineRegistrationSerializer(serializers.Serializer):
-    processing_service_name = serializers.CharField()
+    client_info = SchemaField(schema=ProcessingServiceClientInfo, required=False, default=None)
     pipelines = SchemaField(schema=list[PipelineConfigResponse], default=[])

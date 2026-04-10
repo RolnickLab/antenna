@@ -223,51 +223,50 @@ class TestProcessingServiceLastSeen(TestCase):
 
 
 class TestProjectPipelineRegistrationUpdatesLastSeen(APITestCase):
-    """Test that async pipeline registration updates last_seen on the processing service."""
+    """Test that API-key-authenticated pipeline registration updates last_seen."""
 
     def setUp(self):
-        from ami.users.roles import ProjectManager, create_roles_for_project
+        from unittest.mock import patch
+
+        from ami.ml.models.processing_service import ProcessingServiceAPIKey
 
         self.user = User.objects.create_user(email="lastseen@example.com")  # type: ignore
         self.project = Project.objects.create(name="Last Seen Project", owner=self.user, create_defaults=False)
-        create_roles_for_project(self.project)
-        ProjectManager.assign_user(self.user, self.project)
+
+        with patch.object(ProcessingService, "get_status"):
+            self.service = ProcessingService.objects.create(name="AsyncTestWorker", endpoint_url=None)
+        self.service.projects.add(self.project)
+        _, self.api_key = ProcessingServiceAPIKey.objects.create_key(name="test-key", processing_service=self.service)
 
     def test_pipeline_registration_marks_service_as_seen(self):
         """Test that POSTing to the pipeline registration endpoint marks the service as last_seen_live."""
         url = f"/api/v2/projects/{self.project.pk}/pipelines/"
-        payload = {
-            "processing_service_name": "AsyncTestWorker",
-            "pipelines": [],
-        }
+        payload = {"pipelines": []}
 
-        self.client.force_authenticate(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Api-Key {self.api_key}")
         response = self.client.post(url, payload, format="json")
         self.assertEqual(response.status_code, 201)
 
-        service = ProcessingService.objects.get(name="AsyncTestWorker")
-        self.assertIsNotNone(service.last_seen)
-        self.assertTrue(service.last_seen_live)
+        self.service.refresh_from_db()
+        self.assertIsNotNone(self.service.last_seen)
+        self.assertTrue(self.service.last_seen_live)
 
     def test_repeated_registration_updates_last_seen(self):
         """Test that re-registering updates the last_seen timestamp."""
         url = f"/api/v2/projects/{self.project.pk}/pipelines/"
-        payload = {
-            "processing_service_name": "AsyncTestWorkerRepeat",
-            "pipelines": [],
-        }
+        payload = {"pipelines": []}
 
-        self.client.force_authenticate(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Api-Key {self.api_key}")
 
         # First registration
         self.client.post(url, payload, format="json")
-        service = ProcessingService.objects.get(name="AsyncTestWorkerRepeat")
-        first_seen = service.last_seen
+        self.service.refresh_from_db()
+        first_seen = self.service.last_seen
 
         # Second registration
         self.client.post(url, payload, format="json")
-        service.refresh_from_db()
-        second_seen = service.last_seen
+        self.service.refresh_from_db()
+        second_seen = self.service.last_seen
 
         self.assertIsNotNone(first_seen)
         self.assertIsNotNone(second_seen)
@@ -1366,3 +1365,426 @@ class TestTaskStateManager(TestCase):
         # Verify all state is gone (get_progress returns None when total_key is deleted)
         progress = self.manager.get_progress("process")
         self.assertIsNone(progress)
+
+
+class TestProcessingServiceAuth(APITestCase):
+    def setUp(self):
+        from unittest.mock import patch
+
+        from ami.ml.models.processing_service import ProcessingServiceAPIKey
+        from ami.users.tests.factories import UserFactory
+
+        self.user = UserFactory(is_staff=True)
+        self.project = Project.objects.create(name="Auth Test Project", owner=self.user)
+        with patch.object(ProcessingService, "get_status"):
+            self.ps = ProcessingService.objects.create(
+                name="Test Service",
+                endpoint_url=None,
+            )
+        self.ps.projects.add(self.project)
+        self.api_key_obj, self.api_key = ProcessingServiceAPIKey.objects.create_key(
+            name="test-key",
+            processing_service=self.ps,
+        )
+
+    def test_authenticate_valid_key(self):
+        from django.contrib.auth.models import AnonymousUser
+
+        from ami.ml.auth import ProcessingServiceAPIKeyAuthentication
+
+        factory = APIRequestFactory()
+        request = factory.get("/", HTTP_AUTHORIZATION=f"Api-Key {self.api_key}")
+
+        auth = ProcessingServiceAPIKeyAuthentication()
+        result = auth.authenticate(request)
+
+        self.assertIsNotNone(result)
+        user, ps = result
+        self.assertEqual(ps.pk, self.ps.pk)
+        self.assertIsInstance(user, AnonymousUser)
+
+    def test_authenticate_invalid_key_raises(self):
+        from rest_framework.exceptions import AuthenticationFailed
+
+        from ami.ml.auth import ProcessingServiceAPIKeyAuthentication
+
+        factory = APIRequestFactory()
+        request = factory.get("/", HTTP_AUTHORIZATION="Api-Key invalid.key")
+
+        auth = ProcessingServiceAPIKeyAuthentication()
+        with self.assertRaises(AuthenticationFailed):
+            auth.authenticate(request)
+
+    def test_authenticate_non_api_key_passes_through(self):
+        """Non Api-Key tokens should return None (fall through to next backend)."""
+        from ami.ml.auth import ProcessingServiceAPIKeyAuthentication
+
+        factory = APIRequestFactory()
+        request = factory.get("/", HTTP_AUTHORIZATION="Token some_djoser_token")
+        auth = ProcessingServiceAPIKeyAuthentication()
+        result = auth.authenticate(request)
+        self.assertIsNone(result)
+
+    def test_authenticate_no_header(self):
+        from ami.ml.auth import ProcessingServiceAPIKeyAuthentication
+
+        factory = APIRequestFactory()
+        request = factory.get("/")
+        auth = ProcessingServiceAPIKeyAuthentication()
+        result = auth.authenticate(request)
+        self.assertIsNone(result)
+
+    def test_revoked_key_raises(self):
+        from rest_framework.exceptions import AuthenticationFailed
+
+        from ami.ml.auth import ProcessingServiceAPIKeyAuthentication
+
+        self.api_key_obj.revoked = True
+        self.api_key_obj.save()
+
+        factory = APIRequestFactory()
+        request = factory.get("/", HTTP_AUTHORIZATION=f"Api-Key {self.api_key}")
+
+        auth = ProcessingServiceAPIKeyAuthentication()
+        with self.assertRaises(AuthenticationFailed):
+            auth.authenticate(request)
+
+
+class TestProcessingServiceAPIKey(TestCase):
+    def _create_ps(self, **kwargs):
+        """Create a ProcessingService, mocking get_status to avoid HTTP calls."""
+        from unittest.mock import patch
+
+        with patch.object(ProcessingService, "get_status"):
+            return ProcessingService.objects.create(**kwargs)
+
+    def test_create_ps_without_api_key(self):
+        """Sync services don't need an API key."""
+        ps = self._create_ps(name="Sync Service", endpoint_url="http://example.com:2000")
+        self.assertEqual(ps.api_keys.count(), 0)
+
+    def test_create_and_assign_api_key(self):
+        from ami.ml.models.processing_service import ProcessingServiceAPIKey
+
+        ps = self._create_ps(name="Async Service", endpoint_url=None)
+        api_key_obj, plaintext_key = ProcessingServiceAPIKey.objects.create_key(
+            name="test-key",
+            processing_service=ps,
+        )
+        self.assertIsNotNone(plaintext_key)
+        self.assertEqual(len(api_key_obj.prefix), 8)
+        self.assertIn(".", plaintext_key)
+        self.assertEqual(ps.api_keys.count(), 1)
+
+    def test_revoke_and_create_new_key(self):
+        from ami.ml.models.processing_service import ProcessingServiceAPIKey
+
+        ps = self._create_ps(name="Service", endpoint_url=None)
+        old_obj, old_key = ProcessingServiceAPIKey.objects.create_key(
+            name="key-1",
+            processing_service=ps,
+        )
+        old_obj.revoked = True
+        old_obj.save()
+
+        new_obj, new_key = ProcessingServiceAPIKey.objects.create_key(
+            name="key-2",
+            processing_service=ps,
+        )
+        self.assertNotEqual(old_key, new_key)
+        self.assertEqual(ps.api_keys.filter(revoked=False).count(), 1)
+        self.assertEqual(ps.api_keys.filter(revoked=True).count(), 1)
+
+    def test_last_seen_client_info_stored(self):
+        ps = self._create_ps(name="Service 2", endpoint_url=None)
+        ps.last_seen_client_info = {"hostname": "node-01", "software": "adc", "version": "2.0"}
+        ps.save()
+        ps.refresh_from_db()
+        self.assertEqual(ps.last_seen_client_info["hostname"], "node-01")
+
+
+class TestProcessingServiceClientInfo(TestCase):
+    def test_valid_client_info(self):
+        from ami.ml.schemas import ProcessingServiceClientInfo
+
+        info = ProcessingServiceClientInfo(
+            hostname="cedar-node-01",
+            software="ami-data-companion",
+            version="2.1.0",
+            platform="Linux x86_64",
+        )
+        self.assertEqual(info.hostname, "cedar-node-01")
+        self.assertEqual(info.software, "ami-data-companion")
+
+    def test_empty_client_info_is_valid(self):
+        from ami.ml.schemas import ProcessingServiceClientInfo
+
+        info = ProcessingServiceClientInfo()
+        self.assertEqual(info.hostname, "")
+        self.assertEqual(info.ip, "")
+
+    def test_extra_fields_allowed(self):
+        from ami.ml.schemas import ProcessingServiceClientInfo
+
+        info = ProcessingServiceClientInfo(
+            hostname="node-01",
+            gpu="A100",
+            cuda="12.0",
+        )
+        self.assertEqual(info.hostname, "node-01")
+        d = info.dict()
+        self.assertEqual(d["gpu"], "A100")
+
+    def test_dict_roundtrip(self):
+        from ami.ml.schemas import ProcessingServiceClientInfo
+
+        info = ProcessingServiceClientInfo(
+            hostname="node-01",
+            software="adc",
+            version="1.0",
+        )
+        d = info.dict()
+        restored = ProcessingServiceClientInfo(**d)
+        self.assertEqual(restored.hostname, "node-01")
+
+
+class TestProcessingServiceSerializerFields(APITestCase):
+    def setUp(self):
+        from ami.users.tests.factories import UserFactory
+
+        self.user = UserFactory(is_staff=True)
+        self.project = Project.objects.create(name="Serializer Test", owner=self.user)
+
+    def test_serializer_includes_api_key_prefix(self):
+        from unittest.mock import patch
+
+        from ami.base.serializers import reverse_with_params
+        from ami.ml.models.processing_service import ProcessingServiceAPIKey
+
+        with patch.object(ProcessingService, "get_status"):
+            ps = ProcessingService.objects.create(name="Test PS Serializer", endpoint_url=None)
+        ps.projects.add(self.project)
+        api_key_obj, _ = ProcessingServiceAPIKey.objects.create_key(
+            name="test-key",
+            processing_service=ps,
+        )
+
+        self.client.force_authenticate(user=self.user)
+        url = reverse_with_params(
+            "api:processingservice-detail",
+            kwargs={"pk": ps.pk},
+            params={"project_id": self.project.pk},
+        )
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("api_key_prefix", resp.data)
+        self.assertEqual(resp.data["api_key_prefix"], api_key_obj.prefix)
+
+    def test_serializer_includes_last_seen_client_info(self):
+        from unittest.mock import patch
+
+        from ami.base.serializers import reverse_with_params
+
+        with patch.object(ProcessingService, "get_status"):
+            ps = ProcessingService.objects.create(name="Test PS ClientInfo", endpoint_url=None)
+        ps.projects.add(self.project)
+        ps.last_seen_client_info = {"hostname": "node-01", "software": "adc"}
+        ps.save()
+
+        self.client.force_authenticate(user=self.user)
+        url = reverse_with_params(
+            "api:processingservice-detail",
+            kwargs={"pk": ps.pk},
+            params={"project_id": self.project.pk},
+        )
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("last_seen_client_info", resp.data)
+        self.assertEqual(resp.data["last_seen_client_info"]["hostname"], "node-01")
+
+    def test_serializer_no_key_shows_null_prefix(self):
+        from unittest.mock import patch
+
+        from ami.base.serializers import reverse_with_params
+
+        with patch.object(ProcessingService, "get_status"):
+            ps = ProcessingService.objects.create(name="No Key PS", endpoint_url=None)
+        ps.projects.add(self.project)
+
+        self.client.force_authenticate(user=self.user)
+        url = reverse_with_params(
+            "api:processingservice-detail",
+            kwargs={"pk": ps.pk},
+            params={"project_id": self.project.pk},
+        )
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(resp.data["api_key_prefix"])
+
+
+class TestGenerateKeyAction(APITestCase):
+    def setUp(self):
+        from unittest.mock import patch
+
+        from ami.users.tests.factories import UserFactory
+
+        self.user = UserFactory(is_staff=True)
+        self.project = Project.objects.create(name="Key Gen Test", owner=self.user)
+        with patch.object(ProcessingService, "get_status"):
+            self.ps = ProcessingService.objects.create(name="Key Gen PS", endpoint_url=None)
+        self.ps.projects.add(self.project)
+
+    def test_generate_key_returns_full_key(self):
+        from ami.base.serializers import reverse_with_params
+
+        self.client.force_authenticate(user=self.user)
+        url = reverse_with_params(
+            "api:processingservice-generate-key",
+            args=[self.ps.pk],
+            params={"project_id": self.project.pk},
+        )
+        resp = self.client.post(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("api_key", resp.data)
+        self.assertIn(".", resp.data["api_key"])
+        self.assertIn("prefix", resp.data)
+
+    def test_regenerate_key_revokes_old_key(self):
+        from ami.base.serializers import reverse_with_params
+        from ami.ml.models.processing_service import ProcessingServiceAPIKey
+
+        ProcessingServiceAPIKey.objects.create_key(
+            name=f"{self.ps.name} key",
+            processing_service=self.ps,
+        )
+        self.assertEqual(self.ps.api_keys.filter(revoked=False).count(), 1)
+
+        self.client.force_authenticate(user=self.user)
+        url = reverse_with_params(
+            "api:processingservice-generate-key",
+            args=[self.ps.pk],
+            params={"project_id": self.project.pk},
+        )
+        resp = self.client.post(url)
+        self.assertEqual(resp.status_code, 200)
+
+        self.assertEqual(self.ps.api_keys.filter(revoked=False).count(), 1)
+        self.assertEqual(self.ps.api_keys.filter(revoked=True).count(), 1)
+
+    def test_full_key_not_in_get_response(self):
+        from ami.base.serializers import reverse_with_params
+        from ami.ml.models.processing_service import ProcessingServiceAPIKey
+
+        ProcessingServiceAPIKey.objects.create_key(
+            name="test-key",
+            processing_service=self.ps,
+        )
+        self.client.force_authenticate(user=self.user)
+        url = reverse_with_params(
+            "api:processingservice-detail",
+            kwargs={"pk": self.ps.pk},
+            params={"project_id": self.project.pk},
+        )
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("api_key_prefix", resp.data)
+        self.assertNotIn("api_key", resp.data)
+
+
+class TestProcessingServiceE2EFlow(APITestCase):
+    """End-to-end: create PS -> generate key -> register pipelines -> verify heartbeat."""
+
+    def setUp(self):
+        from ami.users.tests.factories import UserFactory
+
+        self.user = UserFactory(is_staff=True)
+        self.project = Project.objects.create(name="E2E Project", owner=self.user)
+        from rest_framework.authtoken.models import Token
+
+        self.admin_token = Token.objects.create(user=self.user)
+
+    def test_full_lifecycle(self):
+        from rest_framework.test import APIClient
+
+        from ami.base.serializers import reverse_with_params
+
+        admin_client = APIClient()
+        admin_client.credentials(HTTP_AUTHORIZATION=f"Token {self.admin_token.key}")
+
+        # Step 1: Admin creates PS via API
+        create_url = reverse_with_params("api:processingservice-list", params={"project_id": self.project.pk})
+        resp = admin_client.post(create_url, {"name": "E2E Worker", "description": "Test"}, format="json")
+        self.assertEqual(resp.status_code, 201)
+        ps_id = resp.data["instance"]["id"]
+
+        # Step 2: Generate API key
+        gen_url = reverse_with_params(
+            "api:processingservice-generate-key",
+            args=[ps_id],
+            params={"project_id": self.project.pk},
+        )
+        resp = admin_client.post(gen_url)
+        self.assertEqual(resp.status_code, 200)
+        api_key = resp.data["api_key"]
+        self.assertIn(".", api_key)  # Library format: prefix.secret
+
+        # Step 3: Worker authenticates with API key and registers pipelines
+        worker_client = APIClient()
+        worker_client.credentials(HTTP_AUTHORIZATION=f"Api-Key {api_key}")
+
+        register_url = f"/api/v2/projects/{self.project.pk}/pipelines/"
+        resp = worker_client.post(
+            register_url,
+            {
+                "client_info": {
+                    "hostname": "e2e-test-node",
+                    "software": "test-worker",
+                    "version": "0.1.0",
+                },
+                "pipelines": [],
+            },
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 201)
+
+        # Step 4: Verify PS was updated with heartbeat + client_info
+        ps = ProcessingService.objects.get(pk=ps_id)
+        self.assertTrue(ps.last_seen_live)
+        self.assertEqual(ps.last_seen_client_info["hostname"], "e2e-test-node")
+
+        # Step 5: Verify GET shows prefix but not full key
+        detail_url = reverse_with_params(
+            "api:processingservice-detail",
+            kwargs={"pk": ps_id},
+            params={"project_id": self.project.pk},
+        )
+        resp = admin_client.get(detail_url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.data["last_seen_client_info"]["hostname"], "e2e-test-node")
+        self.assertIn("api_key_prefix", resp.data)
+        self.assertNotIn("api_key", resp.data)
+
+    def test_api_key_denied_for_wrong_project(self):
+        """API key for PS not linked to the target project should be denied."""
+        from unittest.mock import patch
+
+        from rest_framework.test import APIClient
+
+        from ami.ml.models.processing_service import ProcessingServiceAPIKey
+
+        with patch.object(ProcessingService, "get_status"):
+            ps = ProcessingService.objects.create(name="Wrong Project PS", endpoint_url=None)
+        ps.projects.add(self.project)
+        _, api_key = ProcessingServiceAPIKey.objects.create_key(
+            name="test-key",
+            processing_service=ps,
+        )
+
+        other_project = Project.objects.create(name="Other Project", owner=self.user)
+
+        worker_client = APIClient()
+        worker_client.credentials(HTTP_AUTHORIZATION=f"Api-Key {api_key}")
+
+        url = f"/api/v2/projects/{other_project.pk}/pipelines/"
+        resp = worker_client.post(url, {"pipelines": []}, format="json")
+        self.assertIn(resp.status_code, [403, 404])

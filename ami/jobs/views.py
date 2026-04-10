@@ -27,6 +27,7 @@ from ami.jobs.serializers import (
 from ami.jobs.tasks import process_nats_pipeline_result
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
+from ami.ml.auth import HasProcessingServiceAPIKey
 from ami.utils.fields import url_boolean_param
 
 from .models import Job, JobDispatchMode, JobState
@@ -146,6 +147,14 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
     permission_classes = [ObjectPermission]
 
+    def _update_processing_service_heartbeat(self, request):
+        """Update heartbeat for the specific PS identified by API key auth."""
+        from ami.ml.models.processing_service import ProcessingService
+        from ami.ml.schemas import get_client_info
+
+        if isinstance(request.auth, ProcessingService):
+            request.auth.mark_seen(client_info=get_client_info(request))
+
     def get_serializer_class(self):
         """
         Return different serializers for list and detail views.
@@ -247,7 +256,12 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         responses={200: MLJobTasksResponseSerializer},
         parameters=[project_id_doc_param],
     )
-    @action(detail=True, methods=["post"], name="tasks")
+    @action(
+        detail=True,
+        methods=["post"],
+        name="tasks",
+        permission_classes=[ObjectPermission | HasProcessingServiceAPIKey],
+    )
     def tasks(self, request, pk=None):
         """
         Fetch tasks from the job queue (POST).
@@ -278,6 +292,9 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         # Record heartbeat for async processing services on this pipeline
         _mark_pipeline_pull_services_seen(job)
 
+        # Per-PS heartbeat via API key auth
+        self._update_processing_service_heartbeat(request)
+
         # Get tasks from NATS JetStream
         from ami.ml.orchestration.nats_queue import TaskQueueManager
 
@@ -298,7 +315,12 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         responses={200: MLJobResultsResponseSerializer},
         parameters=[project_id_doc_param],
     )
-    @action(detail=True, methods=["post"], name="result")
+    @action(
+        detail=True,
+        methods=["post"],
+        name="result",
+        permission_classes=[ObjectPermission | HasProcessingServiceAPIKey],
+    )
     def result(self, request, pk=None):
         """
         Submit pipeline results.
@@ -312,6 +334,9 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
         # Record heartbeat for async processing services on this pipeline
         _mark_pipeline_pull_services_seen(job)
+
+        # Per-PS heartbeat via API key auth
+        self._update_processing_service_heartbeat(request)
 
         serializer = MLJobResultsRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
