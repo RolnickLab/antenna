@@ -259,6 +259,20 @@ CACHES = {
             # Mimicing memcache behavior.
             # https://github.com/jazzband/django-redis#memcached-exceptions-behavior
             "IGNORE_EXCEPTIONS": True,
+            # TCP keepalive for pooled connections. Without SO_KEEPALIVE the
+            # kernel never sends probes, regardless of host-level sysctl
+            # tuning, so pooled Redis connections can sit idle long enough
+            # for cloud firewalls to silently drop them. The next task to
+            # borrow such a connection from the pool fails with ECONNRESET.
+            # Values mirror CELERY_BROKER_TRANSPORT_OPTIONS.socket_settings
+            # below. See RolnickLab/antenna#1218.
+            "SOCKET_KEEPALIVE": True,
+            "SOCKET_KEEPALIVE_OPTIONS": {
+                socket.TCP_KEEPIDLE: 60,
+                socket.TCP_KEEPINTVL: 10,
+                socket.TCP_KEEPCNT: 9,
+            },
+            "SOCKET_CONNECT_TIMEOUT": 5,
         },
     }
 }
