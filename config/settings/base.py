@@ -426,8 +426,15 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_BROKER_CONNECTION_MAX_RETRIES = None  # Retry forever
 
 
-# Allow large request bodies from ML workers posting classification results
-DATA_UPLOAD_MAX_MEMORY_SIZE = 100 * 1024 * 1024  # 100MB (default 2.5MB)
+# Allow large request bodies from ML workers posting classification results.
+# ML detection+classification payloads for a single batch can easily exceed
+# the Django default (2.5 MB) and even the previous hardcoded 100 MB ceiling.
+# Configurable via env (MB) so staging and production can tune without a
+# code change. See RolnickLab/antenna#1223 for the longer-term fix (worker-
+# side incremental result posting).
+DATA_UPLOAD_MAX_MEMORY_SIZE = (
+    env.int("DJANGO_DATA_UPLOAD_MAX_MEMORY_MB", default=100) * 1024 * 1024  # type: ignore[no-untyped-call]
+)
 
 # django-rest-framework
 # -------------------------------------------------------------------------------
