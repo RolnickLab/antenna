@@ -4,6 +4,7 @@ import typing
 from io import BytesIO
 
 from django.contrib.auth.models import AnonymousUser
+from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection, models
 from django.test import TestCase, override_settings
@@ -15,6 +16,11 @@ from rich import print
 
 from ami.exports.models import DataExport
 from ami.jobs.models import VALID_JOB_TYPES, Job
+from ami.main.api.serializers import (
+    DeploymentListSerializer,
+    DeploymentNestedSerializer,
+    DeploymentNestedSerializerWithLocationAndCounts,
+)
 from ami.main.models import (
     Classification,
     Deployment,
@@ -3782,3 +3788,87 @@ class TestProjectPipelinesAPI(APITestCase):
         self.client.force_authenticate(user=non_member)
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class TestDeploymentTimeZone(TestCase):
+    """Tests for Deployment.time_zone field validation and serializer exposure."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.project, cls.deployment = setup_test_project(reuse=False)
+
+    def test_valid_iana_zones_accepted(self):
+        for tz in ["Europe/London", "Asia/Tokyo", "UTC", "US/Eastern", "Etc/GMT+5"]:
+            self.deployment.time_zone = tz
+            self.deployment.full_clean()
+
+    def test_invalid_zone_rejected(self):
+        for bad in ["Fake/Zone", "Not_A_Zone", "123"]:
+            self.deployment.time_zone = bad
+            with self.assertRaises(ValidationError):
+                self.deployment.full_clean()
+
+    def test_empty_string_rejected(self):
+        self.deployment.time_zone = ""
+        with self.assertRaises(ValidationError):
+            self.deployment.full_clean()
+
+    def test_none_rejected(self):
+        self.deployment.time_zone = None
+        with self.assertRaises(ValidationError):
+            self.deployment.full_clean()
+
+    def test_whitespace_padded_rejected(self):
+        self.deployment.time_zone = " UTC "
+        with self.assertRaises(ValidationError):
+            self.deployment.full_clean()
+
+    def test_default_is_america_new_york(self):
+        d = Deployment(name="tz-default-test", project=self.project)
+        self.assertEqual(d.time_zone, "America/New_York")
+
+    def test_list_serializer_includes_time_zone(self):
+        self.assertIn("time_zone", DeploymentListSerializer.Meta.fields)
+
+    def test_nested_serializer_includes_time_zone(self):
+        self.assertIn("time_zone", DeploymentNestedSerializer.Meta.fields)
+
+    def test_nested_with_location_serializer_includes_time_zone(self):
+        self.assertIn("time_zone", DeploymentNestedSerializerWithLocationAndCounts.Meta.fields)
+
+
+class TestDeploymentTimeZoneAPI(APITestCase):
+    """Tests for Deployment.time_zone via the REST API."""
+
+    def setUp(self):
+        self.user = User.objects.create_superuser(email="tz-test@insectai.org", is_staff=True)
+        self.client.force_authenticate(user=self.user)
+        self.project, self.deployment = setup_test_project(reuse=False)
+
+    def test_api_rejects_invalid_time_zone(self):
+        url = f"/api/v2/deployments/{self.deployment.pk}/"
+        response = self.client.patch(url, {"time_zone": "Fake/Zone"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_api_accepts_valid_time_zone(self):
+        url = f"/api/v2/deployments/{self.deployment.pk}/"
+        response = self.client.patch(url, {"time_zone": "Europe/Berlin"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.deployment.refresh_from_db()
+        self.assertEqual(self.deployment.time_zone, "Europe/Berlin")
+
+    def test_api_list_includes_time_zone(self):
+        url = f"/api/v2/deployments/?project_id={self.project.pk}"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data["results"]
+        row = next((r for r in results if r["id"] == self.deployment.pk), None)
+        self.assertIsNotNone(row)
+        self.assertEqual(row["time_zone"], "America/New_York")
+
+    def test_api_detail_includes_time_zone(self):
+        url = f"/api/v2/deployments/{self.deployment.pk}/"
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("time_zone", response.data)
+        self.assertEqual(response.data["time_zone"], "America/New_York")
