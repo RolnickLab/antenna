@@ -8,7 +8,8 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from ami.exports.models import DataExport
-from ami.main.models import Occurrence, SourceImageCollection
+from ami.main.models import Detection, Identification, Occurrence, SourceImageCollection, Taxon
+from ami.ml.models import Algorithm
 from ami.tests.fixtures.main import (
     create_captures,
     create_occurrences,
@@ -302,3 +303,186 @@ class DataExportPermissionTest(TestCase):
             self.non_member.has_perm(Project.Permissions.CREATE_DATA_EXPORT, self.project),
             "Non-member should not have create_dataexport permission",
         )
+
+
+class ExportNewFieldsTest(TestCase):
+    """Test the new machine prediction, verification, and detection fields in CSV exports."""
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.user = self.project.owner
+        self.user.name = "Test Verifier"
+        self.user.save()
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=4, interval_minutes=1)
+        group_images_into_events(self.deployment)
+        create_taxa(self.project)
+
+        # Create an algorithm for classifications
+        self.algorithm, _ = Algorithm.objects.get_or_create(
+            name="test-classifier",
+            defaults={"key": "test-classifier"},
+        )
+
+        # Create a second taxon for disagreement tests
+        self.taxa = list(Taxon.objects.filter(projects=self.project)[:2])
+        self.taxon_a = self.taxa[0]
+        if len(self.taxa) > 1:
+            self.taxon_b = self.taxa[1]
+        else:
+            self.taxon_b = Taxon.objects.create(name="Test Taxon B")
+            self.taxon_b.projects.add(self.project)
+
+    def _create_occurrence_with_prediction(self, taxon=None, score=0.85):
+        """Create an occurrence with a single detection and ML classification."""
+        taxon = taxon or self.taxon_a
+        source_image = self.project.captures.first()
+        detection = Detection.objects.create(
+            source_image=source_image,
+            timestamp=source_image.timestamp,
+            bbox=[0.1, 0.1, 0.5, 0.5],
+            path="detections/test.jpg",
+        )
+        classification = detection.classifications.create(
+            taxon=taxon,
+            score=score,
+            timestamp=source_image.timestamp,
+            algorithm=self.algorithm,
+            terminal=True,
+        )
+        occurrence = detection.associate_new_occurrence()
+        return occurrence, classification
+
+    def _run_csv_export(self):
+        """Run a CSV export and return the rows as a list of dicts."""
+        data_export = DataExport.objects.create(
+            user=self.user,
+            project=self.project,
+            format="occurrences_simple_csv",
+            job=None,
+        )
+        file_url = data_export.run_export()
+        self.assertIsNotNone(file_url)
+        file_path = file_url.replace("/media/", "")
+        with default_storage.open(file_path, "r") as f:
+            rows = list(csv.DictReader(f))
+        default_storage.delete(file_path)
+        return rows
+
+    def test_ml_prediction_only(self):
+        """Occurrence with only ML prediction: machine prediction fields populated, verified_by null."""
+        occurrence, classification = self._create_occurrence_with_prediction()
+        rows = self._run_csv_export()
+
+        row = next(r for r in rows if int(r["id"]) == occurrence.pk)
+        self.assertEqual(row["best_machine_prediction_name"], self.taxon_a.name)
+        self.assertEqual(row["best_machine_prediction_algorithm"], "test-classifier")
+        self.assertAlmostEqual(float(row["best_machine_prediction_score"]), 0.85, places=2)
+        self.assertEqual(row["verified_by"], "")
+        self.assertEqual(row["verified_by_count"], "0")
+
+    def test_ml_prediction_with_agreeing_human(self):
+        """Human agrees with ML: verified_by set, determination_matches = True, determination_score = None."""
+        occurrence, classification = self._create_occurrence_with_prediction()
+
+        # Human agrees with the same taxon
+        Identification.objects.create(
+            user=self.user,
+            taxon=self.taxon_a,
+            occurrence=occurrence,
+            agreed_with_prediction=classification,
+        )
+
+        rows = self._run_csv_export()
+        row = next(r for r in rows if int(r["id"]) == occurrence.pk)
+
+        # Machine prediction fields still populated
+        self.assertEqual(row["best_machine_prediction_name"], self.taxon_a.name)
+        self.assertAlmostEqual(float(row["best_machine_prediction_score"]), 0.85, places=2)
+
+        # Verification fields
+        verified_by = row["verified_by"]
+        self.assertTrue(verified_by, "verified_by should not be empty")
+        self.assertEqual(row["verified_by_count"], "1")
+        self.assertEqual(row["agreed_with_algorithm"], "test-classifier")
+        self.assertEqual(row["determination_matches_machine_prediction"], "True")
+
+        # determination_score should be empty/None for human-determined occurrences
+        self.assertIn(row["determination_score"], ["", "None", None])
+
+    def test_ml_prediction_with_disagreeing_human(self):
+        """Human disagrees with ML: different determination, determination_matches = False."""
+        occurrence, classification = self._create_occurrence_with_prediction(taxon=self.taxon_a)
+
+        # Human identifies as a different taxon
+        Identification.objects.create(
+            user=self.user,
+            taxon=self.taxon_b,
+            occurrence=occurrence,
+        )
+
+        rows = self._run_csv_export()
+        row = next(r for r in rows if int(r["id"]) == occurrence.pk)
+
+        # Machine prediction still shows original
+        self.assertEqual(row["best_machine_prediction_name"], self.taxon_a.name)
+        # Determination is now the human's choice
+        self.assertEqual(row["determination_name"], self.taxon_b.name)
+        self.assertEqual(row["determination_matches_machine_prediction"], "False")
+        self.assertEqual(row["agreed_with_algorithm"], "")
+
+    def test_multiple_identifications_count(self):
+        """Multiple identifications: verified_by_count reflects all non-withdrawn IDs."""
+        occurrence, _ = self._create_occurrence_with_prediction()
+
+        from ami.users.models import User
+
+        user2 = User.objects.create_user(email="verifier2@test.org")
+
+        Identification.objects.create(user=self.user, taxon=self.taxon_a, occurrence=occurrence)
+        Identification.objects.create(user=user2, taxon=self.taxon_a, occurrence=occurrence)
+
+        rows = self._run_csv_export()
+        row = next(r for r in rows if int(r["id"]) == occurrence.pk)
+        self.assertEqual(row["verified_by_count"], "2")
+
+    def test_detection_bbox_field(self):
+        """Best detection bbox is included in export."""
+        occurrence, _ = self._create_occurrence_with_prediction()
+        rows = self._run_csv_export()
+        row = next(r for r in rows if int(r["id"]) == occurrence.pk)
+        self.assertIn("best_detection_bbox", row)
+        # bbox should be a string representation of the list
+        self.assertIn("0.1", row["best_detection_bbox"])
+
+    def test_csv_has_all_new_fields(self):
+        """All new fields are present as CSV column headers."""
+        self._create_occurrence_with_prediction()
+        rows = self._run_csv_export()
+        self.assertGreater(len(rows), 0)
+        headers = rows[0].keys()
+        expected_fields = [
+            "best_machine_prediction_name",
+            "best_machine_prediction_algorithm",
+            "best_machine_prediction_score",
+            "verified_by",
+            "verified_by_count",
+            "agreed_with_algorithm",
+            "determination_matches_machine_prediction",
+            "best_detection_bbox",
+            "best_detection_source_image_url",
+            "best_detection_occurrence_url",
+        ]
+        for field in expected_fields:
+            self.assertIn(field, headers, f"Missing CSV field: {field}")
+
+    def test_occurrence_url_field(self):
+        """best_detection_occurrence_url contains a valid platform link."""
+        occurrence, _ = self._create_occurrence_with_prediction()
+        rows = self._run_csv_export()
+        row = next(r for r in rows if int(r["id"]) == occurrence.pk)
+        url = row.get("best_detection_occurrence_url", "")
+        if url:
+            self.assertIn(str(occurrence.pk), url)

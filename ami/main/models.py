@@ -2780,6 +2780,8 @@ class OccurrenceQuerySet(BaseQuerySet):
         Adds the following annotations:
         - best_detection_path: The path to the detection image
         - best_detection_bbox: The bounding box of the detection as a list [x1, y1, x2, y2]
+        - best_detection_source_image_path: The path of the source image
+        - best_detection_source_image_public_base_url: The public base URL of the source image
         """
         # Subquery to get the path of the best detection
         # Use id as secondary sort to ensure deterministic results
@@ -2797,9 +2799,89 @@ class OccurrenceQuerySet(BaseQuerySet):
             .values("bbox")[:1]
         )
 
+        # Subquery to get the source image path and public_base_url for the best detection
+        best_detection_source_image_path_subquery = (
+            Detection.objects.filter(occurrence=OuterRef("pk"))
+            .order_by("-classifications__score", "id")
+            .values("source_image__path")[:1]
+        )
+        best_detection_source_image_public_base_url_subquery = (
+            Detection.objects.filter(occurrence=OuterRef("pk"))
+            .order_by("-classifications__score", "id")
+            .values("source_image__public_base_url")[:1]
+        )
+
+        # Subquery to get source_image_id and event_id for building the occurrence URL
+        best_detection_source_image_id_subquery = (
+            Detection.objects.filter(occurrence=OuterRef("pk"))
+            .order_by("-classifications__score", "id")
+            .values("source_image_id")[:1]
+        )
+        best_detection_event_id_subquery = (
+            Detection.objects.filter(occurrence=OuterRef("pk"))
+            .order_by("-classifications__score", "id")
+            .values("source_image__event_id")[:1]
+        )
+
         return self.annotate(
             best_detection_path=models.Subquery(best_detection_path_subquery),
             best_detection_bbox=models.Subquery(best_detection_bbox_subquery),
+            best_detection_source_image_path=models.Subquery(best_detection_source_image_path_subquery),
+            best_detection_source_image_public_base_url=models.Subquery(
+                best_detection_source_image_public_base_url_subquery
+            ),
+            best_detection_source_image_id=models.Subquery(best_detection_source_image_id_subquery),
+            best_detection_event_id=models.Subquery(best_detection_event_id_subquery),
+        )
+
+    def with_best_machine_prediction(self):
+        """
+        Annotate the queryset with fields from the best machine prediction.
+
+        The best prediction is the highest-scoring classification, preferring terminal ones.
+        Same ordering as Occurrence.find_best_prediction(): -terminal, -score.
+
+        Adds the following annotations:
+        - best_machine_prediction_name: The taxon name of the best prediction
+        - best_machine_prediction_score: The confidence score
+        - best_machine_prediction_algorithm: The algorithm name
+        - best_machine_prediction_taxon_id: The taxon ID (for determination_matches comparison)
+        """
+        best_prediction_subquery = Classification.objects.filter(detection__occurrence=OuterRef("pk")).order_by(
+            "-terminal", "-score"
+        )
+
+        return self.annotate(
+            best_machine_prediction_name=models.Subquery(best_prediction_subquery.values("taxon__name")[:1]),
+            best_machine_prediction_score=models.Subquery(best_prediction_subquery.values("score")[:1]),
+            best_machine_prediction_algorithm=models.Subquery(best_prediction_subquery.values("algorithm__name")[:1]),
+            best_machine_prediction_taxon_id=models.Subquery(best_prediction_subquery.values("taxon_id")[:1]),
+        )
+
+    def with_verification_info(self):
+        """
+        Annotate the queryset with verification/identification fields.
+
+        Adds the following annotations:
+        - verified_by_name: The name of the user who made the best identification
+        - verified_by_email: The email of the user (fallback if name is empty)
+        - verified_by_count: The count of non-withdrawn identifications
+        - agreed_with_algorithm_name: The algorithm name the identifier agreed with
+        """
+        best_identification_subquery = Identification.objects.filter(
+            occurrence=OuterRef("pk"), withdrawn=False
+        ).order_by("-created_at")
+
+        return self.annotate(
+            verified_by_name=models.Subquery(best_identification_subquery.values("user__name")[:1]),
+            verified_by_count=models.Count(
+                "identifications",
+                filter=Q(identifications__withdrawn=False),
+                distinct=True,
+            ),
+            agreed_with_algorithm_name=models.Subquery(
+                best_identification_subquery.values("agreed_with_prediction__algorithm__name")[:1]
+            ),
         )
 
     def unique_taxa(self, project: Project | None = None):
@@ -2993,10 +3075,9 @@ class Occurrence(BaseModel):
     def best_detection(self):
         return Detection.objects.filter(occurrence=self).order_by("-classifications__score").first()
 
-    @functools.cached_property
-    def best_prediction(self):
+    def find_best_prediction(self) -> "Classification | None":
         """
-        Use the best prediction as the best identification if there are no human identifications.
+        Find the best machine prediction for this occurrence.
 
         Uses the highest scoring classification (from any algorithm) as the best prediction.
         Considers terminal classifications first, then non-terminal ones.
@@ -3004,20 +3085,35 @@ class Occurrence(BaseModel):
         """
         return self.predictions().order_by("-terminal", "-score").first()
 
-    @functools.cached_property
-    def best_identification(self):
+    def find_best_identification(self) -> "Identification | None":
         """
-        The most recent human identification is used as the best identification.
+        Find the best human identification for this occurrence.
+
+        The most recent non-withdrawn identification is used as the best identification.
 
         @TODO this could use a confidence level chosen manually by the users/experts.
         """
         return Identification.objects.filter(occurrence=self, withdrawn=False).order_by("-created_at").first()
 
+    @functools.cached_property
+    def best_prediction(self):
+        return self.find_best_prediction()
+
+    @functools.cached_property
+    def best_identification(self):
+        return self.find_best_identification()
+
     def get_determination_score(self) -> float | None:
+        """
+        Return the determination score for this occurrence.
+
+        Human identifications return None (score of 1.0 is meaningless).
+        Machine predictions return the classification confidence score.
+        """
         if not self.determination:
             return None
         elif self.best_identification:
-            return self.best_identification.score
+            return None  # Human ID score (1.0) is not meaningful
         elif self.best_prediction:
             return self.best_prediction.score
         else:
@@ -3125,13 +3221,13 @@ def update_occurrence_determination(
     new_determination = None
     new_score = None
 
-    top_identification = occurrence.best_identification
-    if top_identification and top_identification.taxon and top_identification.taxon != current_determination:
+    top_identification = occurrence.find_best_identification()
+    if top_identification and top_identification.taxon:
         new_determination = top_identification.taxon
-        new_score = top_identification.score
-    elif not top_identification:
-        top_prediction = occurrence.best_prediction
-        if top_prediction and top_prediction.taxon and top_prediction.taxon != current_determination:
+        new_score = None  # Human ID score is not meaningful for determination_score
+    else:
+        top_prediction = occurrence.find_best_prediction()
+        if top_prediction and top_prediction.taxon:
             new_determination = top_prediction.taxon
             new_score = top_prediction.score
 
@@ -3140,7 +3236,7 @@ def update_occurrence_determination(
         occurrence.determination = new_determination
         needs_update = True
 
-    if new_score and new_score != occurrence.determination_score:
+    if new_score != occurrence.determination_score:
         logger.debug(f"Changing det. score of {occurrence} from {occurrence.determination_score} to {new_score}")
         occurrence.determination_score = new_score
         needs_update = True
