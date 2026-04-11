@@ -15,6 +15,7 @@ import json
 import logging
 
 import nats
+from asgiref.sync import sync_to_async
 from django.conf import settings
 from nats.js import JetStreamContext
 from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy
@@ -85,15 +86,26 @@ class TaskQueueManager:
         self._streams_logged: set[int] = set()
         self._consumers_logged: set[int] = set()
 
-    def _log(self, level: int, msg: str) -> None:
+    async def _log(self, level: int, msg: str) -> None:
         """Log to both the module logger and the job logger (if set).
 
-        Module logger still fires so ops dashboards (stdout/New Relic) aren't
-        affected. Job logger fires so the UI job log reflects what NATS is doing.
+        Module logger fires synchronously (ops dashboards / stdout / New Relic
+        are unaffected). The job logger call is bridged through
+        ``sync_to_async`` because Django's ``JobLogHandler`` does an ORM
+        ``refresh_from_db`` + ``save`` on every emit — calling that directly
+        from the event loop raises ``SynchronousOnlyOperation`` and the log
+        line is silently dropped. The bridge offloads the handler work to a
+        thread so the line actually lands in ``job.logs.stdout``.
+
+        Exceptions from the job logger are swallowed so logging a lifecycle
+        event never breaks the actual NATS operation.
         """
         logger.log(level, msg)
         if self.job_logger is not None and self.job_logger is not logger:
-            self.job_logger.log(level, msg)
+            try:
+                await sync_to_async(self.job_logger.log)(level, msg)
+            except Exception as e:
+                logger.warning(f"Failed to mirror log to job logger: {e}")
 
     @staticmethod
     def _format_consumer_stats(info) -> str:
@@ -186,7 +198,7 @@ class TaskQueueManager:
         try:
             info = await asyncio.wait_for(self.js.stream_info(stream_name), timeout=NATS_JETSTREAM_TIMEOUT)
             if job_id not in self._streams_logged:
-                self._log(
+                await self._log(
                     logging.INFO,
                     f"Reusing NATS stream {stream_name} "
                     f"(messages={info.state.messages}, last_seq={info.state.last_seq})",
@@ -204,7 +216,7 @@ class TaskQueueManager:
             ),
             timeout=NATS_JETSTREAM_TIMEOUT,
         )
-        self._log(logging.INFO, f"Created NATS stream {stream_name}")
+        await self._log(logging.INFO, f"Created NATS stream {stream_name}")
         self._streams_logged.add(job_id)
 
     async def _ensure_consumer(self, job_id: int):
@@ -229,7 +241,7 @@ class TaskQueueManager:
                 timeout=NATS_JETSTREAM_TIMEOUT,
             )
             if job_id not in self._consumers_logged:
-                self._log(
+                await self._log(
                     logging.INFO,
                     f"Reusing NATS consumer {consumer_name} ({self._format_consumer_stats(info)})",
                 )
@@ -256,7 +268,7 @@ class TaskQueueManager:
             ),
             timeout=NATS_JETSTREAM_TIMEOUT,
         )
-        self._log(
+        await self._log(
             logging.INFO,
             f"Created NATS consumer {consumer_name} "
             f"(max_deliver=5, ack_wait={TASK_TTR}s, "
@@ -299,7 +311,7 @@ class TaskQueueManager:
             # Per-message success logs stay at module level (noise in 10k-image
             # jobs), but a failure on even a single publish deserves to surface
             # in the job log — otherwise the failure path is invisible to users.
-            self._log(logging.ERROR, f"Failed to publish task to stream for job '{job_id}': {e}")
+            await self._log(logging.ERROR, f"Failed to publish task to stream for job '{job_id}': {e}")
             return False
 
     async def reserve_tasks(self, job_id: int, count: int, timeout: float = 5) -> list[PipelineProcessingTask]:
@@ -399,7 +411,7 @@ class TaskQueueManager:
         except Exception as e:
             logger.debug(f"Could not fetch consumer info for {consumer_name} before deletion: {e}")
             return
-        self._log(
+        await self._log(
             logging.INFO,
             f"Finalizing NATS consumer {consumer_name} before deletion " f"({self._format_consumer_stats(info)})",
         )
@@ -425,10 +437,10 @@ class TaskQueueManager:
                 self.js.delete_consumer(stream_name, consumer_name),
                 timeout=NATS_JETSTREAM_TIMEOUT,
             )
-            self._log(logging.INFO, f"Deleted NATS consumer {consumer_name} for job '{job_id}'")
+            await self._log(logging.INFO, f"Deleted NATS consumer {consumer_name} for job '{job_id}'")
             return True
         except Exception as e:
-            self._log(logging.ERROR, f"Failed to delete NATS consumer for job '{job_id}': {e}")
+            await self._log(logging.ERROR, f"Failed to delete NATS consumer for job '{job_id}': {e}")
             return False
 
     async def delete_stream(self, job_id: int) -> bool:
@@ -451,10 +463,10 @@ class TaskQueueManager:
                 self.js.delete_stream(stream_name),
                 timeout=NATS_JETSTREAM_TIMEOUT,
             )
-            self._log(logging.INFO, f"Deleted NATS stream {stream_name} for job '{job_id}'")
+            await self._log(logging.INFO, f"Deleted NATS stream {stream_name} for job '{job_id}'")
             return True
         except Exception as e:
-            self._log(logging.ERROR, f"Failed to delete NATS stream for job '{job_id}': {e}")
+            await self._log(logging.ERROR, f"Failed to delete NATS stream for job '{job_id}': {e}")
             return False
 
     async def _setup_advisory_stream(self):

@@ -1,6 +1,6 @@
 import logging
 
-from asgiref.sync import async_to_sync
+from asgiref.sync import async_to_sync, sync_to_async
 
 from ami.jobs.models import Job, JobState
 from ami.main.models import SourceImage
@@ -116,7 +116,13 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
                         data=task,
                     )
                 except Exception as e:
-                    job.logger.error(f"Failed to queue image {image_pk} to stream for job '{job.pk}': {e}")
+                    # job.logger.error triggers a sync Django ORM save inside
+                    # JobLogHandler.emit, which raises SynchronousOnlyOperation
+                    # when called directly from the event loop. Bridge it so
+                    # the line actually lands in job.logs.stdout.
+                    await sync_to_async(job.logger.error)(
+                        f"Failed to queue image {image_pk} to stream for job '{job.pk}': {e}"
+                    )
                     success = False
 
                 if success:
