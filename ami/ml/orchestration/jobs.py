@@ -22,8 +22,13 @@ def cleanup_async_job_resources(job_id: int, _logger: logging.Logger) -> bool:
     Cleanup failures are logged but don't fail the job - data is already saved.
 
     Args:
-        job_id: The Job ID (integer primary key)
-        _logger: Logger to use for logging cleanup results
+        job_id: The Job ID (integer primary key). For ASYNC_API jobs this should
+            be called with the per-job logger (``job.logger``) so the UI log shows
+            cleanup events and the forensic consumer-stats snapshot that
+            ``TaskQueueManager.cleanup_job_resources`` emits before deletion.
+        _logger: Logger to use for logging cleanup results. Passed through to
+            TaskQueueManager so lifecycle events land on both the module logger
+            and the per-job logger.
     Returns:
         bool: True if both cleanups succeeded, False otherwise
     """
@@ -39,9 +44,10 @@ def cleanup_async_job_resources(job_id: int, _logger: logging.Logger) -> bool:
     except Exception as e:
         _logger.error(f"Error cleaning up Redis state for job {job_id}: {e}")
 
-    # Cleanup NATS resources
+    # Cleanup NATS resources. Pass _logger through so TaskQueueManager can
+    # log final consumer stats and deletion events against the per-job logger.
     async def cleanup():
-        async with TaskQueueManager() as manager:
+        async with TaskQueueManager(job_logger=_logger) as manager:
             return await manager.cleanup_job_resources(job_id)
 
     try:
@@ -97,16 +103,20 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
         successful_queues = 0
         failed_queues = 0
 
-        async with TaskQueueManager() as manager:
+        # Pass job.logger so stream/consumer setup and any publish failures
+        # appear in the UI job log (not just the module logger). Per-image
+        # success logs stay at module level so a 10k-image job doesn't drown
+        # the job log.
+        async with TaskQueueManager(job_logger=job.logger) as manager:
             for image_pk, task in tasks:
                 try:
-                    logger.info(f"Queueing image {image_pk} to stream for job '{job.pk}': {task.image_url}")
+                    logger.debug(f"Queueing image {image_pk} to stream for job '{job.pk}': {task.image_url}")
                     success = await manager.publish_task(
                         job_id=job.pk,
                         data=task,
                     )
                 except Exception as e:
-                    logger.error(f"Failed to queue image {image_pk} to stream for job '{job.pk}': {e}")
+                    job.logger.error(f"Failed to queue image {image_pk} to stream for job '{job.pk}': {e}")
                     success = False
 
                 if success:
