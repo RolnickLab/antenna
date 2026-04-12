@@ -118,12 +118,17 @@ class TaskQueueManager:
         cfg = info.config if info.config is not None else None
         if cfg is None:
             return "config=?"
+
+        def _val(v):
+            """Unwrap enum .value if present, pass through scalars."""
+            return v.value if hasattr(v, "value") else v
+
         return (
-            f"max_deliver={cfg.max_deliver if cfg.max_deliver is not None else '?'}, "
-            f"ack_wait={cfg.ack_wait if cfg.ack_wait is not None else '?'}s, "
-            f"max_ack_pending={cfg.max_ack_pending if cfg.max_ack_pending is not None else '?'}, "
-            f"deliver_policy={cfg.deliver_policy if cfg.deliver_policy is not None else '?'}, "
-            f"ack_policy={cfg.ack_policy if cfg.ack_policy is not None else '?'}"
+            f"max_deliver={_val(cfg.max_deliver) if cfg.max_deliver is not None else '?'}, "
+            f"ack_wait={_val(cfg.ack_wait) if cfg.ack_wait is not None else '?'}s, "
+            f"max_ack_pending={_val(cfg.max_ack_pending) if cfg.max_ack_pending is not None else '?'}, "
+            f"deliver_policy={_val(cfg.deliver_policy) if cfg.deliver_policy is not None else '?'}, "
+            f"ack_policy={_val(cfg.ack_policy) if cfg.ack_policy is not None else '?'}"
         )
 
     @staticmethod
@@ -205,9 +210,11 @@ class TaskQueueManager:
 
         Logs a lifecycle line to both the module and job logger the first time it
         sees a given job in this manager session (creation or reuse). Subsequent
-        calls in the same session are silent, so a job publishing N images doesn't
-        emit N log lines.
+        calls in the same session skip the NATS round-trip entirely — the stream
+        won't be deleted mid-flight (cleanup uses a separate manager session).
         """
+        if job_id in self._streams_logged:
+            return
         if self.js is None:
             raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
 
@@ -216,13 +223,12 @@ class TaskQueueManager:
 
         try:
             info = await asyncio.wait_for(self.js.stream_info(stream_name), timeout=NATS_JETSTREAM_TIMEOUT)
-            if job_id not in self._streams_logged:
-                await self._log(
-                    logging.INFO,
-                    f"Reusing NATS stream {stream_name} "
-                    f"(messages={info.state.messages}, last_seq={info.state.last_seq})",
-                )
-                self._streams_logged.add(job_id)
+            await self._log(
+                logging.INFO,
+                f"Reusing NATS stream {stream_name} "
+                f"(messages={info.state.messages}, last_seq={info.state.last_seq})",
+            )
+            self._streams_logged.add(job_id)
             return
         except nats.js.errors.NotFoundError:
             pass
@@ -245,8 +251,10 @@ class TaskQueueManager:
         to both the module and job logger. On creation the line includes the
         config snapshot (max_deliver, ack_wait, max_ack_pending, deliver_policy,
         ack_policy) so forensic readers can see exactly what delivery semantics
-        were in effect.
+        were in effect. Subsequent calls skip the NATS round-trip.
         """
+        if job_id in self._consumers_logged:
+            return
         if self.js is None:
             raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
 
@@ -259,12 +267,11 @@ class TaskQueueManager:
                 self.js.consumer_info(stream_name, consumer_name),
                 timeout=NATS_JETSTREAM_TIMEOUT,
             )
-            if job_id not in self._consumers_logged:
-                await self._log(
-                    logging.INFO,
-                    f"Reusing NATS consumer {consumer_name} ({self._format_consumer_stats(info)})",
-                )
-                self._consumers_logged.add(job_id)
+            await self._log(
+                logging.INFO,
+                f"Reusing NATS consumer {consumer_name} ({self._format_consumer_stats(info)})",
+            )
+            self._consumers_logged.add(job_id)
             return
         except asyncio.TimeoutError:
             raise  # NATS unreachable — let caller handle it
