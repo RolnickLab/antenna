@@ -192,9 +192,12 @@ def _fail_job(job_id: int, reason: str) -> None:
             job.save(update_fields=["status", "progress", "finished_at"])
 
         job.logger.error(f"Job {job_id} marked as FAILURE: {reason}")
-        cleanup_async_job_resources(job.pk, job.logger)
+        cleanup_async_job_resources(job.pk, job.logger, job_logger=job.logger)
     except Job.DoesNotExist:
         logger.error(f"Cannot fail job {job_id}: not found")
+        # No job_logger here — the job row is gone, so cleanup lifecycle lines
+        # have nowhere to be mirrored to. TaskQueueManager falls through to
+        # the module logger.
         cleanup_async_job_resources(job_id, logger)
 
 
@@ -423,7 +426,7 @@ def cleanup_async_job_if_needed(job) -> None:
         # import here to avoid circular imports
         from ami.ml.orchestration.jobs import cleanup_async_job_resources
 
-        cleanup_async_job_resources(job.pk, job.logger)
+        cleanup_async_job_resources(job.pk, job.logger, job_logger=job.logger)
 
 
 @task_prerun.connect(sender=run_job)

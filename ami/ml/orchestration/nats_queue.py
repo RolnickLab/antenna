@@ -249,8 +249,11 @@ class TaskQueueManager:
             return
         except asyncio.TimeoutError:
             raise  # NATS unreachable — let caller handle it
-        except Exception:
-            # Consumer doesn't exist, fall through to create it.
+        except nats.js.errors.NotFoundError:
+            # Consumer doesn't exist, fall through to create it. Other
+            # JetStream errors (auth, API, transient) must propagate so we
+            # don't mask them as "missing consumer" and emit misleading
+            # creation logs.
             pass
 
         await asyncio.wait_for(
