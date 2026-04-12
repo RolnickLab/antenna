@@ -268,14 +268,34 @@ class TestTaskQueueManagerJobLogger(unittest.IsolatedAsyncioTestCase):
 
         return nc, js
 
-    def _make_consumer_info(self, delivered=10, ack_floor=8, num_pending=2, num_ack_pending=2, num_redelivered=1):
-        """Build a ConsumerInfo-like MagicMock with nested SequenceInfo stubs."""
+    def _make_consumer_info(
+        self,
+        delivered=10,
+        ack_floor=8,
+        num_pending=2,
+        num_ack_pending=2,
+        num_redelivered=1,
+        max_deliver=5,
+        ack_wait=30,
+        max_ack_pending=1000,
+        deliver_policy="all",
+        ack_policy="explicit",
+    ):
+        """Build a ConsumerInfo-like MagicMock with nested SequenceInfo stubs
+        and a config sub-object for creation-time logging."""
         info = MagicMock()
         info.delivered = MagicMock(consumer_seq=delivered)
         info.ack_floor = MagicMock(consumer_seq=ack_floor)
         info.num_pending = num_pending
         info.num_ack_pending = num_ack_pending
         info.num_redelivered = num_redelivered
+        info.config = MagicMock(
+            max_deliver=max_deliver,
+            ack_wait=ack_wait,
+            max_ack_pending=max_ack_pending,
+            deliver_policy=deliver_policy,
+            ack_policy=ack_policy,
+        )
         return info
 
     def _make_stream_info(self, messages=5, last_seq=5):
@@ -307,6 +327,7 @@ class TestTaskQueueManagerJobLogger(unittest.IsolatedAsyncioTestCase):
         nc, js = self._create_mock_nats_connection()
         js.stream_info.side_effect = nats.js.errors.NotFoundError()
         js.consumer_info.side_effect = nats.js.errors.NotFoundError()
+        js.add_consumer = AsyncMock(return_value=self._make_consumer_info(delivered=0, ack_floor=0))
 
         job_logger = self._make_captured_logger()
         captured = job_logger._captured  # type: ignore[attr-defined]
@@ -338,6 +359,7 @@ class TestTaskQueueManagerJobLogger(unittest.IsolatedAsyncioTestCase):
         # First call hits NotFound (create path), subsequent calls succeed (reuse path)
         js.stream_info.side_effect = [nats.js.errors.NotFoundError(), self._make_stream_info()]
         js.consumer_info.side_effect = [nats.js.errors.NotFoundError(), self._make_consumer_info()]
+        js.add_consumer = AsyncMock(return_value=self._make_consumer_info(delivered=0, ack_floor=0))
 
         job_logger = self._make_captured_logger()
         captured = job_logger._captured  # type: ignore[attr-defined]
@@ -478,6 +500,7 @@ class TestTaskQueueManagerJobLogger(unittest.IsolatedAsyncioTestCase):
         nc, js = self._create_mock_nats_connection()
         js.stream_info.side_effect = nats.js.errors.NotFoundError()
         js.consumer_info.side_effect = nats.js.errors.NotFoundError()
+        js.add_consumer = AsyncMock(return_value=self._make_consumer_info(delivered=0, ack_floor=0))
 
         with patch("ami.ml.orchestration.nats_queue.get_connection", AsyncMock(return_value=(nc, js))):
             async with TaskQueueManager() as manager:  # no job_logger passed

@@ -108,8 +108,27 @@ class TaskQueueManager:
                 logger.warning(f"Failed to mirror log to job logger: {e}")
 
     @staticmethod
+    def _format_consumer_config(info) -> str:
+        """Format ConsumerInfo config into a compact creation-time string.
+
+        Reads the actual config from the ConsumerInfo returned by
+        ``add_consumer`` or ``consumer_info``, so the log always reflects
+        what the server accepted rather than what we requested.
+        """
+        cfg = info.config if info.config is not None else None
+        if cfg is None:
+            return "config=?"
+        return (
+            f"max_deliver={cfg.max_deliver if cfg.max_deliver is not None else '?'}, "
+            f"ack_wait={cfg.ack_wait if cfg.ack_wait is not None else '?'}s, "
+            f"max_ack_pending={cfg.max_ack_pending if cfg.max_ack_pending is not None else '?'}, "
+            f"deliver_policy={cfg.deliver_policy if cfg.deliver_policy is not None else '?'}, "
+            f"ack_policy={cfg.ack_policy if cfg.ack_policy is not None else '?'}"
+        )
+
+    @staticmethod
     def _format_consumer_stats(info) -> str:
-        """Format ConsumerInfo into a compact stats string.
+        """Format ConsumerInfo into a compact runtime stats string.
 
         All nats-py ConsumerInfo fields are Optional, so defensive access is
         required: this method renders missing values as '?'. Used for both
@@ -256,7 +275,7 @@ class TaskQueueManager:
             # creation logs.
             pass
 
-        await asyncio.wait_for(
+        info = await asyncio.wait_for(
             self.js.add_consumer(
                 stream=stream_name,
                 config=ConsumerConfig(
@@ -273,11 +292,7 @@ class TaskQueueManager:
         )
         await self._log(
             logging.INFO,
-            f"Created NATS consumer {consumer_name} "
-            f"(max_deliver=5, ack_wait={TASK_TTR}s, "
-            f"max_ack_pending={self.max_ack_pending}, "
-            f"deliver_policy={DeliverPolicy.ALL.value}, "
-            f"ack_policy={AckPolicy.EXPLICIT.value})",
+            f"Created NATS consumer {consumer_name} ({self._format_consumer_config(info)})",
         )
         self._consumers_logged.add(job_id)
 
