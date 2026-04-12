@@ -11,11 +11,7 @@ from ami.ml.schemas import PipelineProcessingTask
 logger = logging.getLogger(__name__)
 
 
-def cleanup_async_job_resources(
-    job_id: int,
-    _logger: logging.Logger,
-    job_logger: logging.Logger | None = None,
-) -> bool:
+def cleanup_async_job_resources(job_id: int, job_logger: logging.Logger | None = None) -> bool:
     """
     Clean up NATS JetStream and Redis resources for a completed job.
 
@@ -27,19 +23,15 @@ def cleanup_async_job_resources(
 
     Args:
         job_id: The Job ID (integer primary key).
-        _logger: Logger to use for the local Redis/NATS outcome lines emitted
-            by this function itself. May be a plain module logger when the
-            caller has no job context (e.g. the ``Job.DoesNotExist`` path in
-            ``_fail_job``).
-        job_logger: Optional per-job logger (``job.logger``) to forward to
-            ``TaskQueueManager`` so the UI job log sees the forensic
-            consumer-stats snapshot and the stream/consumer delete lines.
-            Must only be set when the caller actually has a ``job.logger`` —
-            otherwise cleanup lifecycle lines would be mirrored into an
-            unrelated module logger.
+        job_logger: Per-job logger (``job.logger``) when the caller has a job
+            context. Falls back to the module logger when None (e.g. the
+            ``Job.DoesNotExist`` path in ``_fail_job``). Also forwarded to
+            ``TaskQueueManager`` so the forensic consumer-stats snapshot and
+            stream/consumer delete lines land in the UI job log.
     Returns:
         bool: True if both cleanups succeeded, False otherwise
     """
+    _log = job_logger or logger
     redis_success = False
     nats_success = False
 
@@ -47,15 +39,14 @@ def cleanup_async_job_resources(
     try:
         state_manager = AsyncJobStateManager(job_id)
         state_manager.cleanup()
-        _logger.info(f"Cleaned up Redis state for job {job_id}")
+        _log.info(f"Cleaned up Redis state for job {job_id}")
         redis_success = True
     except Exception as e:
-        _logger.error(f"Error cleaning up Redis state for job {job_id}: {e}")
+        _log.error(f"Error cleaning up Redis state for job {job_id}: {e}")
 
-    # Cleanup NATS resources. Forward the per-job logger (if any) so the
-    # forensic pre-delete consumer-stats snapshot and the delete lifecycle
-    # lines land in the UI job log. When job_logger is None (e.g. the
-    # Job.DoesNotExist fallback), TaskQueueManager falls back to the module
+    # Cleanup NATS resources. Forward job_logger to TaskQueueManager so the
+    # forensic pre-delete consumer-stats snapshot lands in the UI job log.
+    # When job_logger is None, TaskQueueManager falls back to the module
     # logger only.
     async def cleanup():
         async with TaskQueueManager(job_logger=job_logger) as manager:
@@ -64,11 +55,11 @@ def cleanup_async_job_resources(
     try:
         nats_success = async_to_sync(cleanup)()
         if nats_success:
-            _logger.info(f"Cleaned up NATS resources for job {job_id}")
+            _log.info(f"Cleaned up NATS resources for job {job_id}")
         else:
-            _logger.warning(f"Failed to clean up NATS resources for job {job_id}")
+            _log.warning(f"Failed to clean up NATS resources for job {job_id}")
     except Exception as e:
-        _logger.error(f"Error cleaning up NATS resources for job {job_id}: {e}")
+        _log.error(f"Error cleaning up NATS resources for job {job_id}: {e}")
 
     return redis_success and nats_success
 
