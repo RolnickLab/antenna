@@ -32,13 +32,14 @@ def cleanup_async_job_resources(job_id: int) -> bool:
     Returns:
         bool: True if both cleanups succeeded, False otherwise
     """
-    job_logger: logging.Logger | None = None
+    # Resolve the logger up front: job.logger when the Job exists, module
+    # logger otherwise. Matches the pattern used by save_results.
+    job: Job | None = None
     try:
         job = Job.objects.get(pk=job_id)
-        job_logger = job.logger
     except Job.DoesNotExist:
         pass
-    _log = job_logger or logger
+    job_logger: logging.Logger = job.logger if job else logger
 
     redis_success = False
     nats_success = False
@@ -47,27 +48,26 @@ def cleanup_async_job_resources(job_id: int) -> bool:
     try:
         state_manager = AsyncJobStateManager(job_id)
         state_manager.cleanup()
-        _log.info(f"Cleaned up Redis state for job {job_id}")
+        job_logger.info(f"Cleaned up Redis state for job {job_id}")
         redis_success = True
     except Exception as e:
-        _log.error(f"Error cleaning up Redis state for job {job_id}: {e}")
+        job_logger.error(f"Error cleaning up Redis state for job {job_id}: {e}")
 
-    # Cleanup NATS resources. Forward job_logger to TaskQueueManager so the
-    # forensic pre-delete consumer-stats snapshot lands in the UI job log.
-    # When job_logger is None, TaskQueueManager falls back to the module
-    # logger only.
+    # Cleanup NATS resources. Only forward a real per-job logger to
+    # TaskQueueManager — passing the module logger would mirror cleanup
+    # lifecycle lines into an unrelated logger.
     async def cleanup():
-        async with TaskQueueManager(job_logger=job_logger) as manager:
+        async with TaskQueueManager(job_logger=job.logger if job else None) as manager:
             return await manager.cleanup_job_resources(job_id)
 
     try:
         nats_success = async_to_sync(cleanup)()
         if nats_success:
-            _log.info(f"Cleaned up NATS resources for job {job_id}")
+            job_logger.info(f"Cleaned up NATS resources for job {job_id}")
         else:
-            _log.warning(f"Failed to clean up NATS resources for job {job_id}")
+            job_logger.warning(f"Failed to clean up NATS resources for job {job_id}")
     except Exception as e:
-        _log.error(f"Error cleaning up NATS resources for job {job_id}: {e}")
+        job_logger.error(f"Error cleaning up NATS resources for job {job_id}: {e}")
 
     return redis_success and nats_success
 
