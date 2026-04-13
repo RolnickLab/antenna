@@ -118,6 +118,8 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
                         data=task,
                     )
                 except Exception as e:
+                    # Module logger gets the full traceback for ops dashboards.
+                    logger.exception("Failed to queue image %s to stream for job '%s'", image_pk, job.pk)
                     # job.logger.error triggers a sync Django ORM save inside
                     # JobLogHandler.emit, which raises SynchronousOnlyOperation
                     # when called directly from the event loop. Bridge it so

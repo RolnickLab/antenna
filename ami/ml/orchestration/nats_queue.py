@@ -223,10 +223,12 @@ class TaskQueueManager:
 
         try:
             info = await asyncio.wait_for(self.js.stream_info(stream_name), timeout=NATS_JETSTREAM_TIMEOUT)
+            state = info.state
+            messages = state.messages if state is not None else "?"
+            last_seq = state.last_seq if state is not None else "?"
             await self._log(
                 logging.INFO,
-                f"Reusing NATS stream {stream_name} "
-                f"(messages={info.state.messages}, last_seq={info.state.last_seq})",
+                f"Reusing NATS stream {stream_name} (messages={messages}, last_seq={last_seq})",
             )
             self._streams_logged.add(job_id)
             return
