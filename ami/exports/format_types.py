@@ -102,6 +102,7 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
     verified_by = serializers.SerializerMethodField()
     participant_count = serializers.IntegerField(default=0)
     agreed_with_algorithm = serializers.SerializerMethodField()
+    agreed_with_user = serializers.SerializerMethodField()
     determination_matches_machine_prediction = serializers.SerializerMethodField()
 
     # Detection fields
@@ -131,6 +132,7 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
             "verified_by",
             "participant_count",
             "agreed_with_algorithm",
+            "agreed_with_user",
             "determination_matches_machine_prediction",
             "detections_count",
             "first_appearance_timestamp",
@@ -157,6 +159,10 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
     def get_agreed_with_algorithm(self, obj):
         """Returns the algorithm name if the identifier explicitly agreed with an ML prediction."""
         return getattr(obj, "agreed_with_algorithm_name", None)
+
+    def get_agreed_with_user(self, obj):
+        """Returns the email of the prior identifier the best identification explicitly agreed with."""
+        return getattr(obj, "agreed_with_user_email", None)
 
     def get_determination_matches_machine_prediction(self, obj):
         """Returns whether the determination taxon matches the best machine prediction taxon."""

@@ -433,6 +433,34 @@ class ExportNewFieldsTest(TestCase):
         self.assertEqual(row["determination_matches_machine_prediction"], "False")
         self.assertEqual(row["agreed_with_algorithm"], "")
 
+    def test_human_agrees_with_another_human(self):
+        """User B agrees with user A's identification: agreed_with_user exposes A's email."""
+        from ami.users.models import User
+
+        user_a = User.objects.create_user(email="user-a@test.org")
+        user_b = User.objects.create_user(email="user-b@test.org")
+
+        occurrence, _ = self._create_occurrence_with_prediction()
+
+        id_a = Identification.objects.create(
+            user=user_a,
+            taxon=self.taxon_b,
+            occurrence=occurrence,
+        )
+        Identification.objects.create(
+            user=user_b,
+            taxon=self.taxon_b,
+            occurrence=occurrence,
+            agreed_with_identification=id_a,
+        )
+
+        rows = self._run_csv_export()
+        row = next(r for r in rows if int(r["id"]) == occurrence.pk)
+
+        self.assertEqual(row["agreed_with_user"], "user-a@test.org")
+        # Not agreeing with an ML prediction
+        self.assertEqual(row["agreed_with_algorithm"], "")
+
     def test_multiple_identifications_count(self):
         """Multiple identifications: verified_by_count reflects all non-withdrawn IDs."""
         occurrence, _ = self._create_occurrence_with_prediction()
@@ -470,6 +498,7 @@ class ExportNewFieldsTest(TestCase):
             "verified_by",
             "participant_count",
             "agreed_with_algorithm",
+            "agreed_with_user",
             "determination_matches_machine_prediction",
             "best_detection_bbox",
             "best_detection_source_image_url",

@@ -2852,6 +2852,7 @@ class OccurrenceQuerySet(BaseQuerySet):
         - verified_by_name: The name of the user who made the best identification
         - participant_count: The count of distinct users who made non-withdrawn identifications
         - agreed_with_algorithm_name: The algorithm name the identifier agreed with
+        - agreed_with_user_email: The email of the prior identifier the best identification agreed with
         """
         best_identification_subquery = Identification.objects.filter(
             occurrence=OuterRef("pk"), withdrawn=False
@@ -2866,6 +2867,9 @@ class OccurrenceQuerySet(BaseQuerySet):
             ),
             agreed_with_algorithm_name=models.Subquery(
                 best_identification_subquery.values("agreed_with_prediction__algorithm__name")[:1]
+            ),
+            agreed_with_user_email=models.Subquery(
+                best_identification_subquery.values("agreed_with_identification__user__email")[:1]
             ),
         )
 
