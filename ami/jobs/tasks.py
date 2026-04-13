@@ -192,7 +192,7 @@ def _fail_job(job_id: int, reason: str) -> None:
             job.save(update_fields=["status", "progress", "finished_at"])
 
         job.logger.error(f"Job {job_id} marked as FAILURE: {reason}")
-        cleanup_async_job_resources(job.pk, job_logger=job.logger)
+        cleanup_async_job_resources(job.pk)
     except Job.DoesNotExist:
         logger.error(f"Cannot fail job {job_id}: not found")
         cleanup_async_job_resources(job_id)
@@ -423,7 +423,7 @@ def cleanup_async_job_if_needed(job) -> None:
         # import here to avoid circular imports
         from ami.ml.orchestration.jobs import cleanup_async_job_resources
 
-        cleanup_async_job_resources(job.pk, job_logger=job.logger)
+        cleanup_async_job_resources(job.pk)
 
 
 @task_prerun.connect(sender=run_job)

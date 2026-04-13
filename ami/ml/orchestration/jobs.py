@@ -11,7 +11,7 @@ from ami.ml.schemas import PipelineProcessingTask
 logger = logging.getLogger(__name__)
 
 
-def cleanup_async_job_resources(job_id: int, job_logger: logging.Logger | None = None) -> bool:
+def cleanup_async_job_resources(job_id: int) -> bool:
     """
     Clean up NATS JetStream and Redis resources for a completed job.
 
@@ -21,17 +21,25 @@ def cleanup_async_job_resources(job_id: int, job_logger: logging.Logger | None =
 
     Cleanup failures are logged but don't fail the job - data is already saved.
 
+    Resolves the job (and its per-job logger) internally so callers only need
+    to pass the ``job_id`` — matches the pattern used by ``save_results`` in
+    ``ami/jobs/tasks.py``. If the ``Job`` row is gone (e.g. the
+    ``Job.DoesNotExist`` path in ``_fail_job``), the function falls back to
+    the module logger and TaskQueueManager's module-logger path.
+
     Args:
         job_id: The Job ID (integer primary key).
-        job_logger: Per-job logger (``job.logger``) when the caller has a job
-            context. Falls back to the module logger when None (e.g. the
-            ``Job.DoesNotExist`` path in ``_fail_job``). Also forwarded to
-            ``TaskQueueManager`` so the forensic consumer-stats snapshot and
-            stream/consumer delete lines land in the UI job log.
     Returns:
         bool: True if both cleanups succeeded, False otherwise
     """
+    job_logger: logging.Logger | None = None
+    try:
+        job = Job.objects.get(pk=job_id)
+        job_logger = job.logger
+    except Job.DoesNotExist:
+        pass
     _log = job_logger or logger
+
     redis_success = False
     nats_success = False
 
