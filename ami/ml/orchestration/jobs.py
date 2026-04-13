@@ -1,6 +1,6 @@
 import logging
 
-from asgiref.sync import async_to_sync, sync_to_async
+from asgiref.sync import async_to_sync
 
 from ami.jobs.models import Job, JobState
 from ami.main.models import SourceImage
@@ -113,27 +113,28 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
         successful_queues = 0
         failed_queues = 0
 
-        # Pass job.logger so stream/consumer setup and any publish failures
-        # appear in the UI job log (not just the module logger). Per-image
-        # success logs stay at module level so a 10k-image job doesn't drown
-        # the job log.
+        # Pass job.logger so stream/consumer setup, per-image debug lines, and
+        # publish failures all appear in the UI job log (not just the module
+        # logger). All log calls inside this block go through manager.log_async
+        # so module + job logger stay in sync with one consistent API — and
+        # the sync_to_async bridge for JobLogHandler's ORM save lives in one
+        # place instead of being re-implemented at every call site.
         async with TaskQueueManager(job_logger=job.logger) as manager:
             for image_pk, task in tasks:
                 try:
-                    logger.debug(f"Queueing image {image_pk} to stream for job '{job.pk}': {task.image_url}")
+                    await manager.log_async(
+                        logging.DEBUG,
+                        f"Queueing image {image_pk} to stream for job '{job.pk}': {task.image_url}",
+                    )
                     success = await manager.publish_task(
                         job_id=job.pk,
                         data=task,
                     )
                 except Exception as e:
-                    # Module logger gets the full traceback for ops dashboards.
-                    logger.exception("Failed to queue image %s to stream for job '%s'", image_pk, job.pk)
-                    # job.logger.error triggers a sync Django ORM save inside
-                    # JobLogHandler.emit, which raises SynchronousOnlyOperation
-                    # when called directly from the event loop. Bridge it so
-                    # the line actually lands in job.logs.stdout.
-                    await sync_to_async(job.logger.error)(
-                        f"Failed to queue image {image_pk} to stream for job '{job.pk}': {e}"
+                    await manager.log_async(
+                        logging.ERROR,
+                        f"Failed to queue image {image_pk} to stream for job '{job.pk}': {e}",
+                        exc_info=True,
                     )
                     success = False
 
