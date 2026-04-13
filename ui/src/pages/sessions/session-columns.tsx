@@ -46,7 +46,11 @@ export const columns = ({
     name: translate(STRING.FIELD_LABEL_SESSION),
     renderCell: (item: Session) => (
       <Link to={APP_ROUTES.SESSION_DETAILS({ projectId, sessionId: item.id })}>
-        <BasicTableCell value={item.label} theme={CellTheme.Primary} />
+        <BasicTableCell
+          value={item.label}
+          details={[`${translate(STRING.FIELD_LABEL_ID)}: ${item.id}`]}
+          theme={CellTheme.Primary}
+        />
       </Link>
     ),
   },

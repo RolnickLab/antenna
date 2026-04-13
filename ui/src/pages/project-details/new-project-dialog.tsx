@@ -8,7 +8,6 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { NewProjectForm } from './new-project-form'
-import styles from './styles.module.scss'
 
 const CLOSE_TIMEOUT = 1000
 
@@ -37,30 +36,28 @@ export const NewProjectDialog = ({
       </Dialog.Trigger>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)} isCompact>
         <Dialog.Header title={label} />
-        <div className={styles.content}>
-          <NewProjectForm
-            error={error}
-            isLoading={isLoading}
-            isSuccess={isSuccess}
-            onSubmit={async (data) => {
-              const response = await createProject(data)
+        <NewProjectForm
+          error={error}
+          isLoading={isLoading}
+          isSuccess={isSuccess}
+          onSubmit={async (data) => {
+            const response = await createProject(data)
 
-              setTimeout(() => {
-                setIsOpen(false)
-              }, CLOSE_TIMEOUT)
+            setTimeout(() => {
+              setIsOpen(false)
+            }, CLOSE_TIMEOUT)
 
-              if (response.data.id) {
-                navigate(
-                  getAppRoute({
-                    to: APP_ROUTES.PROJECT_DETAILS({
-                      projectId: `${response.data.id}`,
-                    }),
-                  })
-                )
-              }
-            }}
-          />
-        </div>
+            if (response.data.id) {
+              navigate(
+                getAppRoute({
+                  to: APP_ROUTES.PROJECT_DETAILS({
+                    projectId: `${response.data.id}`,
+                  }),
+                })
+              )
+            }
+          }}
+        />
       </Dialog.Content>
     </Dialog.Root>
   )
