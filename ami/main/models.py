@@ -2811,18 +2811,6 @@ class OccurrenceQuerySet(BaseQuerySet):
             .values("source_image__public_base_url")[:1]
         )
 
-        # Subquery to get source_image_id and event_id for building the occurrence URL
-        best_detection_source_image_id_subquery = (
-            Detection.objects.filter(occurrence=OuterRef("pk"))
-            .order_by("-classifications__score", "id")
-            .values("source_image_id")[:1]
-        )
-        best_detection_event_id_subquery = (
-            Detection.objects.filter(occurrence=OuterRef("pk"))
-            .order_by("-classifications__score", "id")
-            .values("source_image__event_id")[:1]
-        )
-
         return self.annotate(
             best_detection_path=models.Subquery(best_detection_path_subquery),
             best_detection_bbox=models.Subquery(best_detection_bbox_subquery),
@@ -2830,8 +2818,6 @@ class OccurrenceQuerySet(BaseQuerySet):
             best_detection_source_image_public_base_url=models.Subquery(
                 best_detection_source_image_public_base_url_subquery
             ),
-            best_detection_source_image_id=models.Subquery(best_detection_source_image_id_subquery),
-            best_detection_event_id=models.Subquery(best_detection_event_id_subquery),
         )
 
     def with_best_machine_prediction(self):
@@ -2864,8 +2850,7 @@ class OccurrenceQuerySet(BaseQuerySet):
 
         Adds the following annotations:
         - verified_by_name: The name of the user who made the best identification
-        - verified_by_email: The email of the user (fallback if name is empty)
-        - verified_by_count: The count of non-withdrawn identifications
+        - participant_count: The count of distinct users who made non-withdrawn identifications
         - agreed_with_algorithm_name: The algorithm name the identifier agreed with
         """
         best_identification_subquery = Identification.objects.filter(
@@ -2874,8 +2859,8 @@ class OccurrenceQuerySet(BaseQuerySet):
 
         return self.annotate(
             verified_by_name=models.Subquery(best_identification_subquery.values("user__name")[:1]),
-            verified_by_count=models.Count(
-                "identifications",
+            participant_count=models.Count(
+                "identifications__user",
                 filter=Q(identifications__withdrawn=False),
                 distinct=True,
             ),

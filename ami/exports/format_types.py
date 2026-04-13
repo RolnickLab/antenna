@@ -100,7 +100,7 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
 
     # Verification fields
     verified_by = serializers.SerializerMethodField()
-    verified_by_count = serializers.IntegerField(default=0)
+    participant_count = serializers.IntegerField(default=0)
     agreed_with_algorithm = serializers.SerializerMethodField()
     determination_matches_machine_prediction = serializers.SerializerMethodField()
 
@@ -110,7 +110,6 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
     best_detection_width = serializers.SerializerMethodField()
     best_detection_height = serializers.SerializerMethodField()
     best_detection_source_image_url = serializers.SerializerMethodField()
-    best_detection_occurrence_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Occurrence
@@ -130,7 +129,7 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
             "best_machine_prediction_algorithm",
             "best_machine_prediction_score",
             "verified_by",
-            "verified_by_count",
+            "participant_count",
             "agreed_with_algorithm",
             "determination_matches_machine_prediction",
             "detections_count",
@@ -142,12 +141,11 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
             "best_detection_width",
             "best_detection_height",
             "best_detection_source_image_url",
-            "best_detection_occurrence_url",
         ]
 
     def get_verification_status(self, obj):
         """Returns 'Verified' if the occurrence has non-withdrawn identifications."""
-        count = getattr(obj, "verified_by_count", None)
+        count = getattr(obj, "participant_count", None)
         if count is not None:
             return "Verified" if count > 0 else "Not verified"
         return "Verified" if obj.identifications.filter(withdrawn=False).exists() else "Not verified"
@@ -194,18 +192,6 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
             import urllib.parse
 
             return urllib.parse.urljoin(base_url, path.lstrip("/"))
-        return None
-
-    def get_best_detection_occurrence_url(self, obj):
-        """Returns the platform UI link to the occurrence in context."""
-        event_id = getattr(obj, "best_detection_event_id", None)
-        source_image_id = getattr(obj, "best_detection_source_image_id", None)
-        if event_id and source_image_id:
-            # @TODO use settings for base URL instead of hardcoding
-            return (
-                f"https://app.preview.insectai.org/sessions/{event_id}"
-                f"?capture={source_image_id}&occurrence={obj.pk}"
-            )
         return None
 
 

@@ -381,7 +381,7 @@ class ExportNewFieldsTest(TestCase):
         self.assertEqual(row["best_machine_prediction_algorithm"], "test-classifier")
         self.assertAlmostEqual(float(row["best_machine_prediction_score"]), 0.85, places=2)
         self.assertEqual(row["verified_by"], "")
-        self.assertEqual(row["verified_by_count"], "0")
+        self.assertEqual(row["participant_count"], "0")
 
     def test_ml_prediction_with_agreeing_human(self):
         """Human agrees with ML: verified_by set, determination_matches = True, determination_score = None."""
@@ -405,7 +405,7 @@ class ExportNewFieldsTest(TestCase):
         # Verification fields
         verified_by = row["verified_by"]
         self.assertTrue(verified_by, "verified_by should not be empty")
-        self.assertEqual(row["verified_by_count"], "1")
+        self.assertEqual(row["participant_count"], "1")
         self.assertEqual(row["agreed_with_algorithm"], "test-classifier")
         self.assertEqual(row["determination_matches_machine_prediction"], "True")
 
@@ -446,7 +446,7 @@ class ExportNewFieldsTest(TestCase):
 
         rows = self._run_csv_export()
         row = next(r for r in rows if int(r["id"]) == occurrence.pk)
-        self.assertEqual(row["verified_by_count"], "2")
+        self.assertEqual(row["participant_count"], "2")
 
     def test_detection_bbox_field(self):
         """Best detection bbox is included in export."""
@@ -468,21 +468,11 @@ class ExportNewFieldsTest(TestCase):
             "best_machine_prediction_algorithm",
             "best_machine_prediction_score",
             "verified_by",
-            "verified_by_count",
+            "participant_count",
             "agreed_with_algorithm",
             "determination_matches_machine_prediction",
             "best_detection_bbox",
             "best_detection_source_image_url",
-            "best_detection_occurrence_url",
         ]
         for field in expected_fields:
             self.assertIn(field, headers, f"Missing CSV field: {field}")
-
-    def test_occurrence_url_field(self):
-        """best_detection_occurrence_url contains a valid platform link."""
-        occurrence, _ = self._create_occurrence_with_prediction()
-        rows = self._run_csv_export()
-        row = next(r for r in rows if int(r["id"]) == occurrence.pk)
-        url = row.get("best_detection_occurrence_url", "")
-        if url:
-            self.assertIn(str(occurrence.pk), url)
