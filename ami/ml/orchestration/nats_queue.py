@@ -115,7 +115,7 @@ class TaskQueueManager:
         ``add_consumer`` or ``consumer_info``, so the log always reflects
         what the server accepted rather than what we requested.
         """
-        cfg = info.config if info.config is not None else None
+        cfg = info.config
         if cfg is None:
             return "config=?"
 
@@ -275,13 +275,11 @@ class TaskQueueManager:
             )
             self._consumers_logged.add(job_id)
             return
-        except asyncio.TimeoutError:
-            raise  # NATS unreachable — let caller handle it
         except nats.js.errors.NotFoundError:
             # Consumer doesn't exist, fall through to create it. Other
-            # JetStream errors (auth, API, transient) must propagate so we
-            # don't mask them as "missing consumer" and emit misleading
-            # creation logs.
+            # JetStream errors (auth, API, transient) and asyncio.TimeoutError
+            # propagate naturally — we don't want to mask them as "missing
+            # consumer" and emit misleading creation logs.
             pass
 
         info = await asyncio.wait_for(
@@ -436,11 +434,15 @@ class TaskQueueManager:
                 timeout=NATS_JETSTREAM_TIMEOUT,
             )
         except Exception as e:
+            # Broad catch is intentional here (unlike _ensure_consumer): at
+            # cleanup time we tolerate any failure — stream gone, consumer
+            # already deleted, auth, timeout — so the delete calls below
+            # still get a chance to run.
             logger.debug(f"Could not fetch consumer info for {consumer_name} before deletion: {e}")
             return
         await self._log(
             logging.INFO,
-            f"Finalizing NATS consumer {consumer_name} before deletion " f"({self._format_consumer_stats(info)})",
+            f"Finalizing NATS consumer {consumer_name} before deletion ({self._format_consumer_stats(info)})",
         )
 
     async def delete_consumer(self, job_id: int) -> bool:
