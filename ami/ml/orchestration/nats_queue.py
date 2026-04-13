@@ -107,6 +107,20 @@ class TaskQueueManager:
 
         Exceptions from the job logger are swallowed so logging a lifecycle
         event never breaks the actual NATS operation.
+
+        FUTURE: this currently mirrors granular per-job lifecycle (stream /
+        consumer create+reuse, per-image debug, forensic stats) to BOTH the
+        module logger and the job logger. The longer-term preference is to
+        route — granular lifecycle stays on ``job.logger`` only (matching
+        ``ami.jobs.tasks.save_results`` and friends, where ``job.logger`` has
+        ``propagate=False`` and never reaches stdout / NR), with the module
+        logger reserved for true ops signals (connection failures, NATS-side
+        errors). Kept symmetric for now because async ML processing is still
+        being stabilized and the extra stdout visibility is helping us
+        debug. Once we trust the per-job UI log as the canonical place to
+        inspect a job, switch ``log_async`` to route-not-mirror at INFO/DEBUG
+        and only auto-mirror at WARNING+ (so true error signals still always
+        reach ops dashboards).
         """
         logger.log(level, msg, exc_info=exc_info)
         if self.job_logger is not None and self.job_logger is not logger:
