@@ -192,6 +192,62 @@ class TestProcessingServiceLastSeen(TestCase):
         self.assertIsNotNone(service.last_seen)
         self.assertFalse(service.last_seen_live)
 
+    def test_mark_seen_merges_client_info(self):
+        """Test that heartbeat mark_seen() merges client_info instead of overwriting.
+
+        Registration sets rich client_info (hostname, software, version).
+        Subsequent heartbeats (task polling) should update server-observed fields
+        (ip, user_agent) but preserve client-reported fields when the new values are empty.
+        """
+        service = ProcessingService.objects.create(name="Merge Test", endpoint_url=None)
+
+        # Simulate registration with rich client_info
+        registration_info = {
+            "hostname": "gpu-worker-01",
+            "software": "ami-data-companion",
+            "version": "1.2.3",
+            "platform": "linux",
+            "ip": "10.0.0.1",
+            "user_agent": "python-requests/2.31",
+        }
+        service.mark_seen(client_info=registration_info)
+        service.refresh_from_db()
+        self.assertEqual(service.last_seen_client_info["hostname"], "gpu-worker-01")
+        self.assertEqual(service.last_seen_client_info["software"], "ami-data-companion")
+
+        # Simulate heartbeat with only server-observed fields (empty client-reported)
+        heartbeat_info = {
+            "hostname": "",
+            "software": "",
+            "version": "",
+            "platform": "",
+            "ip": "10.0.0.2",  # IP may change
+            "user_agent": "python-requests/2.31",
+        }
+        service.mark_seen(client_info=heartbeat_info)
+        service.refresh_from_db()
+
+        # Server-observed fields updated
+        self.assertEqual(service.last_seen_client_info["ip"], "10.0.0.2")
+        # Client-reported fields preserved from registration
+        self.assertEqual(service.last_seen_client_info["hostname"], "gpu-worker-01")
+        self.assertEqual(service.last_seen_client_info["software"], "ami-data-companion")
+        self.assertEqual(service.last_seen_client_info["version"], "1.2.3")
+
+    def test_mark_seen_client_info_overwrite_with_new_values(self):
+        """Test that non-empty client-reported fields DO overwrite existing values."""
+        service = ProcessingService.objects.create(name="Overwrite Test", endpoint_url=None)
+
+        service.mark_seen(client_info={"hostname": "old-host", "software": "v1", "ip": "1.1.1.1"})
+        service.refresh_from_db()
+
+        service.mark_seen(client_info={"hostname": "new-host", "software": "v2", "ip": "2.2.2.2"})
+        service.refresh_from_db()
+
+        self.assertEqual(service.last_seen_client_info["hostname"], "new-host")
+        self.assertEqual(service.last_seen_client_info["software"], "v2")
+        self.assertEqual(service.last_seen_client_info["ip"], "2.2.2.2")
+
     def test_get_status_updates_last_seen_for_sync_service(self):
         """Test that get_status() updates last_seen fields for sync services (even if endpoint is unreachable)."""
         service = ProcessingService.objects.create(name="Sync Service", endpoint_url="http://nonexistent-host:9999")

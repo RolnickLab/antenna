@@ -178,17 +178,30 @@ class ProcessingService(BaseModel):
             algorithms_created=algorithms_created,
         )
 
+    # Fields in client_info that are set by the server (get_client_info) and
+    # should always be overwritten, even when the new value is empty.
+    _SERVER_OBSERVED_CLIENT_FIELDS = frozenset({"ip", "user_agent"})
+
     def mark_seen(self, live: bool = True, client_info: dict | None = None) -> None:
         """
         Record that we heard from this processing service.
         Used by async/pull-mode services that don't have an endpoint to check.
         Optionally persists client_info (ip, user_agent, hostname, etc.) from the request.
+
+        Client-reported fields (hostname, software, version, etc.) are merged
+        non-destructively: a heartbeat with empty values won't overwrite rich
+        data saved during registration. Server-observed fields (ip, user_agent)
+        are always updated since they reflect the current request.
         """
         self.last_seen = datetime.datetime.now()
         self.last_seen_live = live
         update_fields = ["last_seen", "last_seen_live"]
         if client_info is not None:
-            self.last_seen_client_info = client_info
+            merged = dict(self.last_seen_client_info or {})
+            for key, value in client_info.items():
+                if key in self._SERVER_OBSERVED_CLIENT_FIELDS or value:
+                    merged[key] = value
+            self.last_seen_client_info = merged
             update_fields.append("last_seen_client_info")
         self.save(update_fields=update_fields)
 
