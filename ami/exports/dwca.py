@@ -9,6 +9,9 @@ import datetime
 import logging
 import tempfile
 import zipfile
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 from xml.etree import ElementTree as ET
 
 from django.utils.text import slugify
@@ -19,90 +22,124 @@ logger = logging.getLogger(__name__)
 DWC = "http://rs.tdwg.org/dwc/terms/"
 DC = "http://purl.org/dc/terms/"
 
+
+@dataclass(frozen=True)
+class DwCAField:
+    """A single column mapping in a DwC-A text file.
+
+    Ties together the Darwin Core term URI (written to meta.xml), the
+    TSV header, and the extractor that produces the cell value from a
+    model instance. Consolidating all three here makes the field the
+    unit of test and review, and lets meta.xml be derived from the
+    same list instead of reconstructed in parallel.
+    """
+
+    term: str
+    header: str
+    extract: Callable[[Any, str], str]
+    required: bool = False  # GBIF acceptance bar; informational today, validated later.
+
+
 # ──────────────────────────────────────────────────────────────
-# Event field definitions: (dwc_term_uri, header_name, getter)
+# Event field definitions
 # ──────────────────────────────────────────────────────────────
 
-EVENT_FIELDS: list[tuple[str, str, object]] = [
-    (DWC + "eventID", "eventID", lambda e, slug: f"urn:ami:event:{slug}:{e.id}"),
-    (DWC + "eventDate", "eventDate", lambda e, slug: _format_event_date(e)),
-    (DWC + "eventTime", "eventTime", lambda e, slug: _format_time(e.start)),
-    (DWC + "year", "year", lambda e, slug: str(e.start.year) if e.start else ""),
-    (DWC + "month", "month", lambda e, slug: str(e.start.month) if e.start else ""),
-    (DWC + "day", "day", lambda e, slug: str(e.start.day) if e.start else ""),
-    (DWC + "samplingProtocol", "samplingProtocol", lambda e, slug: "automated light trap with camera"),
-    (DWC + "sampleSizeValue", "sampleSizeValue", lambda e, slug: str(e.captures_count or 0)),
-    (DWC + "sampleSizeUnit", "sampleSizeUnit", lambda e, slug: "images"),
-    (DWC + "samplingEffort", "samplingEffort", lambda e, slug: _format_duration(e)),
-    (DWC + "locationID", "locationID", lambda e, slug: e.deployment.name if e.deployment else ""),
-    (
+EVENT_FIELDS: list[DwCAField] = [
+    DwCAField(DWC + "eventID", "eventID", lambda e, slug: f"urn:ami:event:{slug}:{e.id}", required=True),
+    DwCAField(DWC + "eventDate", "eventDate", lambda e, slug: _format_event_date(e), required=True),
+    DwCAField(DWC + "eventTime", "eventTime", lambda e, slug: _format_time(e.start)),
+    DwCAField(DWC + "year", "year", lambda e, slug: str(e.start.year) if e.start else ""),
+    DwCAField(DWC + "month", "month", lambda e, slug: str(e.start.month) if e.start else ""),
+    DwCAField(DWC + "day", "day", lambda e, slug: str(e.start.day) if e.start else ""),
+    DwCAField(DWC + "samplingProtocol", "samplingProtocol", lambda e, slug: "automated light trap with camera"),
+    DwCAField(DWC + "sampleSizeValue", "sampleSizeValue", lambda e, slug: str(e.captures_count or 0)),
+    DwCAField(DWC + "sampleSizeUnit", "sampleSizeUnit", lambda e, slug: "images"),
+    DwCAField(DWC + "samplingEffort", "samplingEffort", lambda e, slug: _format_duration(e)),
+    DwCAField(DWC + "locationID", "locationID", lambda e, slug: e.deployment.name if e.deployment else ""),
+    DwCAField(
         DWC + "decimalLatitude",
         "decimalLatitude",
         lambda e, slug: _format_coord(e.deployment.latitude if e.deployment else None),
+        required=True,
     ),
-    (
+    DwCAField(
         DWC + "decimalLongitude",
         "decimalLongitude",
         lambda e, slug: _format_coord(e.deployment.longitude if e.deployment else None),
+        required=True,
     ),
-    (DWC + "geodeticDatum", "geodeticDatum", lambda e, slug: "WGS84"),
-    (DWC + "datasetName", "datasetName", lambda e, slug: e.project.name if e.project else ""),
-    (DC + "license", "license", lambda e, slug: (e.project.license if e.project else "") or ""),
-    (DC + "rightsHolder", "rightsHolder", lambda e, slug: (e.project.rights_holder if e.project else "") or ""),
-    (DC + "modified", "modified", lambda e, slug: _format_datetime(e.updated_at)),
+    DwCAField(DWC + "geodeticDatum", "geodeticDatum", lambda e, slug: "WGS84"),
+    DwCAField(DWC + "datasetName", "datasetName", lambda e, slug: e.project.name if e.project else ""),
+    DwCAField(DC + "license", "license", lambda e, slug: (e.project.license if e.project else "") or ""),
+    DwCAField(
+        DC + "rightsHolder", "rightsHolder", lambda e, slug: (e.project.rights_holder if e.project else "") or ""
+    ),
+    DwCAField(DC + "modified", "modified", lambda e, slug: _format_datetime(e.updated_at)),
 ]
 
 # ──────────────────────────────────────────────────────────────
 # Occurrence field definitions
 # ──────────────────────────────────────────────────────────────
 
-OCCURRENCE_FIELDS: list[tuple[str, str, object]] = [
-    (DWC + "eventID", "eventID", lambda o, slug: f"urn:ami:event:{slug}:{o.event_id}" if o.event_id else ""),
-    (DWC + "occurrenceID", "occurrenceID", lambda o, slug: f"urn:ami:occurrence:{slug}:{o.id}"),
-    (DWC + "basisOfRecord", "basisOfRecord", lambda o, slug: "MachineObservation"),
-    (DWC + "occurrenceStatus", "occurrenceStatus", lambda o, slug: "present"),
-    (DWC + "scientificName", "scientificName", lambda o, slug: o.determination.name if o.determination else ""),
-    (
+OCCURRENCE_FIELDS: list[DwCAField] = [
+    DwCAField(
+        DWC + "eventID",
+        "eventID",
+        lambda o, slug: f"urn:ami:event:{slug}:{o.event_id}" if o.event_id else "",
+        required=True,
+    ),
+    DwCAField(
+        DWC + "occurrenceID", "occurrenceID", lambda o, slug: f"urn:ami:occurrence:{slug}:{o.id}", required=True
+    ),
+    DwCAField(DWC + "basisOfRecord", "basisOfRecord", lambda o, slug: "MachineObservation", required=True),
+    DwCAField(DWC + "occurrenceStatus", "occurrenceStatus", lambda o, slug: "present"),
+    DwCAField(
+        DWC + "scientificName",
+        "scientificName",
+        lambda o, slug: o.determination.name if o.determination else "",
+        required=True,
+    ),
+    DwCAField(
         DWC + "taxonRank",
         "taxonRank",
         lambda o, slug: (o.determination.rank.lower() if o.determination and o.determination.rank else ""),
     ),
-    (DWC + "kingdom", "kingdom", lambda o, slug: _get_rank_from_parents(o, "KINGDOM")),
-    (DWC + "phylum", "phylum", lambda o, slug: _get_rank_from_parents(o, "PHYLUM")),
-    (DWC + "class", "class", lambda o, slug: _get_rank_from_parents(o, "CLASS")),
-    (DWC + "order", "order", lambda o, slug: _get_rank_from_parents(o, "ORDER")),
-    (DWC + "family", "family", lambda o, slug: _get_rank_from_parents(o, "FAMILY")),
-    (DWC + "genus", "genus", lambda o, slug: _get_rank_from_parents(o, "GENUS")),
-    (
+    DwCAField(DWC + "kingdom", "kingdom", lambda o, slug: _get_rank_from_parents(o, "KINGDOM")),
+    DwCAField(DWC + "phylum", "phylum", lambda o, slug: _get_rank_from_parents(o, "PHYLUM")),
+    DwCAField(DWC + "class", "class", lambda o, slug: _get_rank_from_parents(o, "CLASS")),
+    DwCAField(DWC + "order", "order", lambda o, slug: _get_rank_from_parents(o, "ORDER")),
+    DwCAField(DWC + "family", "family", lambda o, slug: _get_rank_from_parents(o, "FAMILY")),
+    DwCAField(DWC + "genus", "genus", lambda o, slug: _get_rank_from_parents(o, "GENUS")),
+    DwCAField(
         DWC + "specificEpithet",
         "specificEpithet",
         lambda o, slug: get_specific_epithet(o.determination.name if o.determination else ""),
     ),
-    (
+    DwCAField(
         DWC + "vernacularName",
         "vernacularName",
         lambda o, slug: (o.determination.common_name_en or "") if o.determination else "",
     ),
-    (
+    DwCAField(
         DWC + "taxonID",
         "taxonID",
-        lambda o, slug: str(o.determination.gbif_taxon_key)
-        if o.determination and o.determination.gbif_taxon_key
-        else "",
+        lambda o, slug: (
+            str(o.determination.gbif_taxon_key) if o.determination and o.determination.gbif_taxon_key else ""
+        ),
     ),
-    (DWC + "individualCount", "individualCount", lambda o, slug: "1"),
-    (DWC + "identifiedBy", "identifiedBy", lambda o, slug: o.get_identified_by()),
-    (
+    DwCAField(DWC + "individualCount", "individualCount", lambda o, slug: "1"),
+    DwCAField(DWC + "identifiedBy", "identifiedBy", lambda o, slug: o.get_identified_by()),
+    DwCAField(
         DWC + "dateIdentified",
         "dateIdentified",
         lambda o, slug: _format_datetime(o.get_identified_date()),
     ),
-    (
+    DwCAField(
         DWC + "identificationVerificationStatus",
         "identificationVerificationStatus",
         lambda o, slug: _get_verification_status(o),
     ),
-    (DC + "modified", "modified", lambda o, slug: _format_datetime(o.updated_at)),
+    DwCAField(DC + "modified", "modified", lambda o, slug: _format_datetime(o.updated_at)),
 ]
 
 
@@ -200,14 +237,17 @@ def _get_verification_status(occurrence) -> str:
 
 
 def write_tsv(
-    filepath: str, fields: list[tuple[str, str, object]], queryset, project_slug: str, progress_callback=None
+    filepath: str,
+    fields: list[DwCAField],
+    queryset,
+    project_slug: str,
+    progress_callback=None,
 ):
     """Write a tab-delimited file from a queryset using field definitions.
 
     Returns the number of records written.
     """
-    headers = [f[1] for f in fields]
-    getters = [f[2] for f in fields]
+    headers = [f.header for f in fields]
     records_written = 0
 
     with open(filepath, "w", encoding="utf-8", newline="") as f:
@@ -215,7 +255,7 @@ def write_tsv(
         writer.writerow(headers)
 
         for obj in queryset.iterator(chunk_size=500):
-            row = [getter(obj, project_slug) for getter in getters]
+            row = [field.extract(obj, project_slug) for field in fields]
             writer.writerow(row)
             records_written += 1
             if progress_callback and records_written % 500 == 0:
@@ -230,62 +270,73 @@ def write_tsv(
 
 
 def generate_meta_xml(
-    event_fields, occurrence_fields, event_filename="event.txt", occurrence_filename="occurrence.txt"
+    event_fields: list[DwCAField],
+    occurrence_fields: list[DwCAField],
+    event_filename: str = "event.txt",
+    occurrence_filename: str = "occurrence.txt",
 ) -> str:
-    """Generate DwC-A meta.xml descriptor mapping columns to DwC term URIs."""
+    """Generate DwC-A meta.xml descriptor mapping columns to DwC term URIs.
+
+    meta.xml is derived directly from the field catalogues so that term URIs
+    can never drift from the TSV columns. Column 0 carries both a structural
+    role (<id> in core, <coreid> in extension) and a term mapping (<field>),
+    matching GBIF IPT output.
+    """
 
     archive = ET.Element("archive")
     archive.set("xmlns", "http://rs.tdwg.org/dwc/text/")
     archive.set("metadata", "eml.xml")
 
-    # Core: Event
-    core = ET.SubElement(archive, "core")
-    core.set("rowType", DWC + "Event")
-    core.set("encoding", "UTF-8")
-    core.set("fieldsTerminatedBy", "\\t")
-    core.set("linesTerminatedBy", "\\n")
-    core.set("fieldsEnclosedBy", '"')
-    core.set("ignoreHeaderLines", "1")
+    _append_table(
+        archive,
+        tag="core",
+        row_type=DWC + "Event",
+        filename=event_filename,
+        fields=event_fields,
+        id_tag="id",
+    )
+    _append_table(
+        archive,
+        tag="extension",
+        row_type=DWC + "Occurrence",
+        filename=occurrence_filename,
+        fields=occurrence_fields,
+        id_tag="coreid",
+    )
 
-    files = ET.SubElement(core, "files")
-    location = ET.SubElement(files, "location")
-    location.text = event_filename
-
-    # Column 0 is the id (eventID)
-    id_elem = ET.SubElement(core, "id")
-    id_elem.set("index", "0")
-
-    for i, (term_uri, _header, _) in enumerate(event_fields):
-        field = ET.SubElement(core, "field")
-        field.set("index", str(i))
-        field.set("term", term_uri)
-
-    # Extension: Occurrence
-    extension = ET.SubElement(archive, "extension")
-    extension.set("rowType", DWC + "Occurrence")
-    extension.set("encoding", "UTF-8")
-    extension.set("fieldsTerminatedBy", "\\t")
-    extension.set("linesTerminatedBy", "\\n")
-    extension.set("fieldsEnclosedBy", '"')
-    extension.set("ignoreHeaderLines", "1")
-
-    files = ET.SubElement(extension, "files")
-    location = ET.SubElement(files, "location")
-    location.text = occurrence_filename
-
-    # Column 0 is the coreid (eventID foreign key)
-    coreid = ET.SubElement(extension, "coreid")
-    coreid.set("index", "0")
-
-    for i, (term_uri, _header, _) in enumerate(occurrence_fields):
-        field = ET.SubElement(extension, "field")
-        field.set("index", str(i))
-        field.set("term", term_uri)
-
-    # Format with XML declaration
     ET.indent(archive, space="  ")
     xml_str = ET.tostring(archive, encoding="unicode", xml_declaration=False)
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + xml_str + "\n"
+
+
+def _append_table(
+    archive: ET.Element,
+    *,
+    tag: str,
+    row_type: str,
+    filename: str,
+    fields: list[DwCAField],
+    id_tag: str,
+) -> None:
+    table = ET.SubElement(archive, tag)
+    table.set("rowType", row_type)
+    table.set("encoding", "UTF-8")
+    table.set("fieldsTerminatedBy", "\\t")
+    table.set("linesTerminatedBy", "\\n")
+    table.set("fieldsEnclosedBy", '"')
+    table.set("ignoreHeaderLines", "1")
+
+    files = ET.SubElement(table, "files")
+    location = ET.SubElement(files, "location")
+    location.text = filename
+
+    id_elem = ET.SubElement(table, id_tag)
+    id_elem.set("index", "0")
+
+    for i, field in enumerate(fields):
+        field_elem = ET.SubElement(table, "field")
+        field_elem.set("index", str(i))
+        field_elem.set("term", field.term)
 
 
 # ──────────────────────────────────────────────────────────────
