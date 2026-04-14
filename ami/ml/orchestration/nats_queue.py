@@ -482,9 +482,10 @@ class TaskQueueManager:
     async def log_consumer_stats_snapshot(self, job_id: int) -> None:
         """Log a mid-flight snapshot of the consumer state for a running job.
 
-        Used by the periodic `log_running_async_job_stats` beat task so operators
-        can see deliver/ack/pending counts without waiting for the job to finish.
-        Tolerant of missing stream/consumer like the cleanup-time variant.
+        Called by the ``running_job_snapshots`` sub-check of the periodic
+        ``jobs_health_check`` beat task so operators can see deliver/ack/pending
+        counts without waiting for the job to finish. Tolerant of missing
+        stream/consumer like the cleanup-time variant.
         """
         await self._log_consumer_stats(job_id, prefix="NATS consumer status")
 

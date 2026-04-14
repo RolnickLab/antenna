@@ -1,3 +1,4 @@
+import dataclasses
 import datetime
 import functools
 import logging
@@ -9,6 +10,7 @@ from asgiref.sync import async_to_sync
 from celery.signals import task_failure, task_postrun, task_prerun
 from django.db import transaction
 
+from ami.main.checks.schemas import IntegrityCheckResult
 from ami.ml.orchestration.async_job_state import AsyncJobStateManager
 from ami.ml.orchestration.nats_queue import TaskQueueManager
 from ami.ml.schemas import PipelineResultsError, PipelineResultsResponse
@@ -407,20 +409,31 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
     return results
 
 
-# Beat schedule is every 15 minutes for jobs_health_check; expire queued copies
-# that accumulate while a worker is unavailable so we don't process a backlog.
-# Kept just under the schedule interval so a backlog is dropped but a single
-# delayed copy still runs. Going below the interval would risk every copy
-# expiring before a worker picks it up under moderate broker pressure.
+# Expire queued copies that accumulate while a worker is unavailable so we
+# don't process a backlog when a worker reconnects. Kept below the 15-minute
+# schedule interval so a backlog is dropped but a single delayed copy still
+# runs. Going well below the interval would risk every copy expiring before
+# a worker picks it up under moderate broker pressure — change this in lock-
+# step with the crontab in migration 0020.
 _JOBS_HEALTH_BEAT_EXPIRES = 60 * 14
 
 
-def _run_stale_jobs_check() -> dict:
-    """Reconcile jobs stuck in running states past FAILED_CUTOFF_HOURS.
+@dataclasses.dataclass
+class JobsHealthCheckResult:
+    """Nested result of one :func:`jobs_health_check` tick.
 
-    Returns `{checked, fixed, unfixable}` so it composes with other health
-    checks that return the same shape.
+    Each field is the summary for one sub-check and uses the shared
+    :class:`IntegrityCheckResult` shape so operators see a uniform
+    ``checked / fixed / unfixable`` triple regardless of which check ran.
+    Add a new field here when adding a sub-check to the umbrella.
     """
+
+    stale_jobs: IntegrityCheckResult
+    running_job_snapshots: IntegrityCheckResult
+
+
+def _run_stale_jobs_check() -> IntegrityCheckResult:
+    """Reconcile jobs stuck in running states past FAILED_CUTOFF_HOURS."""
     results = check_stale_jobs()
     updated = sum(1 for r in results if r["action"] == "updated")
     revoked = sum(1 for r in results if r["action"] == "revoked")
@@ -430,39 +443,20 @@ def _run_stale_jobs_check() -> dict:
         updated,
         revoked,
     )
-    return {"checked": len(results), "fixed": updated + revoked, "unfixable": 0}
+    return IntegrityCheckResult(checked=len(results), fixed=updated + revoked, unfixable=0)
 
 
-@celery_app.task(soft_time_limit=300, time_limit=360, expires=_JOBS_HEALTH_BEAT_EXPIRES)
-def jobs_health_check() -> dict:
-    """Umbrella beat task for periodic job-health checks.
+def _run_running_job_snapshot_check() -> IntegrityCheckResult:
+    """Log a NATS consumer snapshot for each running async_api job.
 
-    Each sub-check returns `{checked, fixed, unfixable}`. Add new checks here
-    — they share the 15-minute cadence and `expires` guarantees. Keep checks
-    cheap (DB scans, light reconciliation); long-running repair work belongs
-    in its own task.
-    """
-    return {
-        "stale_jobs": _run_stale_jobs_check(),
-    }
-
-
-# Expire faster than the stale-job task — this is observability, a skipped
-# cycle is fine and we'd rather not pile up backlog of snapshot work.
-_ASYNC_STATS_BEAT_EXPIRES = 60 * 4
-
-
-@celery_app.task(soft_time_limit=180, time_limit=240, expires=_ASYNC_STATS_BEAT_EXPIRES)
-def log_running_async_job_stats() -> dict:
-    """Log a NATS consumer snapshot (delivered/ack/pending/redelivered) per running async_api job.
-
-    Writes to the per-job logger so operators see counts in the job's UI log
-    without waiting for it to finish. Read-only: no status changes.
+    Observation-only: ``fixed`` stays 0 because no state is altered. Jobs
+    that error during snapshot are counted in ``unfixable`` — a persistently
+    stuck job will be picked up on the next tick by ``_run_stale_jobs_check``.
     """
     from ami.jobs.models import Job, JobDispatchMode, JobState
 
-    # Resolve each job's per-job logger synchronously — the property touches Django
-    # ORM via its JobLogHandler, which is only safe outside the event loop.
+    # Resolve each job's per-job logger synchronously — the property touches
+    # Django ORM via JobLogHandler, which is only safe outside the event loop.
     running_jobs = list(
         Job.objects.filter(
             status__in=JobState.running_states(),
@@ -470,46 +464,57 @@ def log_running_async_job_stats() -> dict:
         )
     )
     if not running_jobs:
-        return {"checked": 0}
+        return IntegrityCheckResult()
 
-    async def _snapshot_one(job) -> None:
-        async with TaskQueueManager(job_logger=job.logger) as manager:
-            await manager.log_consumer_stats_snapshot(job.pk)
+    errors = 0
 
-    async def _snapshot_all():
-        # Fast path: reuse one TaskQueueManager (and thus one NATS connection)
-        # for the whole tick so cost stays O(1) in the number of running jobs.
-        # The manager's `job_logger` attribute is read fresh by `log_async` on
-        # every call, so swapping it per iteration routes lifecycle lines to
-        # the right job UI. `_setup_advisory_stream` (called in `__aenter__`)
-        # only logs via the module logger, so the initial logger choice does
-        # not leak into an unrelated job's log.
-        try:
-            async with TaskQueueManager(job_logger=running_jobs[0].logger) as manager:
-                for job in running_jobs:
-                    try:
-                        manager.job_logger = job.logger
-                        await manager.log_consumer_stats_snapshot(job.pk)
-                    except Exception:
-                        # One job's NATS failure must not block snapshots for others.
-                        logger.exception("Failed to snapshot NATS consumer stats for job %s", job.pk)
-            return
-        except Exception:
-            # Shared path failed at setup/teardown — could be NATS down (in which
-            # case per-job will fail identically and we'll log once per job) or
-            # a bug specific to reusing one manager (in which case per-job still
-            # works and we keep getting snapshots). Fall back rather than losing
-            # visibility for the whole tick.
-            logger.exception("Shared-connection snapshot failed; falling back to per-job connections")
+    async def _snapshot_all() -> None:
+        nonlocal errors
+        # One NATS connection per tick — on a 15-min cadence a per-job fallback
+        # is not worth the code. If the shared connection fails to set up, we
+        # skip this tick's snapshots and try fresh on the next one.
+        async with TaskQueueManager(job_logger=running_jobs[0].logger) as manager:
+            for job in running_jobs:
+                try:
+                    # `log_async` reads `job_logger` fresh each call, so
+                    # swapping per iteration routes lifecycle lines to the
+                    # right job's UI log.
+                    manager.job_logger = job.logger
+                    await manager.log_consumer_stats_snapshot(job.pk)
+                except Exception:
+                    errors += 1
+                    logger.exception("Failed to snapshot NATS consumer stats for job %s", job.pk)
 
-        for job in running_jobs:
-            try:
-                await _snapshot_one(job)
-            except Exception:
-                logger.exception("Failed to snapshot NATS consumer stats for job %s", job.pk)
+    try:
+        async_to_sync(_snapshot_all)()
+    except Exception:
+        logger.exception("Shared-connection snapshot setup failed; skipping this tick")
+        errors = len(running_jobs)
 
-    async_to_sync(_snapshot_all)()
-    return {"checked": len(running_jobs)}
+    logger.info(
+        "running_job_snapshots check: %d running async job(s), %d error(s)",
+        len(running_jobs),
+        errors,
+    )
+    return IntegrityCheckResult(checked=len(running_jobs), fixed=0, unfixable=errors)
+
+
+@celery_app.task(soft_time_limit=300, time_limit=360, expires=_JOBS_HEALTH_BEAT_EXPIRES)
+def jobs_health_check() -> dict:
+    """Umbrella beat task for periodic job-health checks.
+
+    Composes reconciliation (stale jobs) with observation (NATS consumer
+    snapshots for running async jobs) so both land in the same 15-minute
+    tick — a quietly hung async job gets a snapshot entry right before the
+    reconciler decides whether to revoke it. Returns the serialized form of
+    :class:`JobsHealthCheckResult` so celery's default JSON backend can store
+    it; add new sub-checks by extending that dataclass and calling them here.
+    """
+    result = JobsHealthCheckResult(
+        stale_jobs=_run_stale_jobs_check(),
+        running_job_snapshots=_run_running_job_snapshot_check(),
+    )
+    return dataclasses.asdict(result)
 
 
 def cleanup_async_job_if_needed(job) -> None:

@@ -5,7 +5,7 @@ def create_periodic_tasks(apps, schema_editor):
     CrontabSchedule = apps.get_model("django_celery_beat", "CrontabSchedule")
     PeriodicTask = apps.get_model("django_celery_beat", "PeriodicTask")
 
-    stale_schedule, _ = CrontabSchedule.objects.get_or_create(
+    schedule, _ = CrontabSchedule.objects.get_or_create(
         minute="*/15",
         hour="*",
         day_of_week="*",
@@ -16,34 +16,18 @@ def create_periodic_tasks(apps, schema_editor):
         name="jobs.health_check",
         defaults={
             "task": "ami.jobs.tasks.jobs_health_check",
-            "crontab": stale_schedule,
-            "description": "Umbrella job-health checks (stale job reconciler, future integrity checks)",
-        },
-    )
-
-    stats_schedule, _ = CrontabSchedule.objects.get_or_create(
-        minute="*/5",
-        hour="*",
-        day_of_week="*",
-        day_of_month="*",
-        month_of_year="*",
-    )
-    PeriodicTask.objects.get_or_create(
-        name="jobs.log_running_async_job_stats",
-        defaults={
-            "task": "ami.jobs.tasks.log_running_async_job_stats",
-            "crontab": stats_schedule,
-            "description": "Log NATS consumer delivered/ack/pending stats for each running async_api job",
+            "crontab": schedule,
+            "description": (
+                "Umbrella job-health checks: stale-job reconciler plus a NATS "
+                "consumer snapshot for each running async_api job."
+            ),
         },
     )
 
 
 def delete_periodic_tasks(apps, schema_editor):
     PeriodicTask = apps.get_model("django_celery_beat", "PeriodicTask")
-
-    PeriodicTask.objects.filter(
-        name__in=["jobs.check_stale_jobs", "jobs.log_running_async_job_stats"],
-    ).delete()
+    PeriodicTask.objects.filter(name="jobs.health_check").delete()
 
 
 class Migration(migrations.Migration):
