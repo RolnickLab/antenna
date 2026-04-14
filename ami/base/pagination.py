@@ -1,5 +1,6 @@
+from django.core.exceptions import ValidationError
 from django.forms import BooleanField
-from rest_framework.pagination import LimitOffsetPagination
+from rest_framework.pagination import LimitOffsetPagination, remove_query_param, replace_query_param
 from rest_framework.response import Response
 
 from .permissions import add_collection_level_permissions
@@ -54,8 +55,6 @@ class LimitOffsetPaginationWithPermissions(LimitOffsetPagination):
             if not self._has_next:
                 return None
             url = self.request.build_absolute_uri()
-            from rest_framework.pagination import replace_query_param
-
             url = replace_query_param(url, self.limit_query_param, self.limit)
             return replace_query_param(url, self.offset_query_param, self.offset + self.limit)
         return super().get_next_link()
@@ -66,12 +65,10 @@ class LimitOffsetPaginationWithPermissions(LimitOffsetPagination):
             if self.offset <= 0:
                 return None
             url = self.request.build_absolute_uri()
-            from rest_framework.pagination import replace_query_param
-
             url = replace_query_param(url, self.limit_query_param, self.limit)
             offset = max(0, self.offset - self.limit)
             if offset == 0:
-                return url
+                return remove_query_param(url, self.offset_query_param)
             return replace_query_param(url, self.offset_query_param, offset)
         return super().get_previous_link()
 
@@ -105,7 +102,7 @@ class LimitOffsetPaginationWithPermissions(LimitOffsetPagination):
             return True
         try:
             return not BooleanField(required=False).clean(raw)
-        except Exception:
+        except ValidationError:
             return True
 
     def _get_current_model(self):
