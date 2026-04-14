@@ -3782,3 +3782,76 @@ class TestProjectPipelinesAPI(APITestCase):
         self.client.force_authenticate(user=non_member)
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class BackfillDeterminationScoreTest(TestCase):
+    def setUp(self):
+        from io import StringIO as _StringIO  # noqa: F401  (avoid top-level churn)
+
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=2)
+        create_taxa(self.project)
+        self.taxon = self.project.taxa.first()
+        self.user = User.objects.create_user(email="identifier@test.org")  # type: ignore
+
+        source_image = self.project.captures.first()
+        assert source_image is not None
+
+        det_ml = Detection.objects.create(
+            source_image=source_image,
+            timestamp=source_image.timestamp,
+            bbox=[0.1, 0.1, 0.5, 0.5],
+            path="detections/ml.jpg",
+        )
+        self.ml_only_occ = det_ml.associate_new_occurrence()
+        Occurrence.objects.filter(pk=self.ml_only_occ.pk).update(determination=self.taxon, determination_score=0.9)
+
+        det_human = Detection.objects.create(
+            source_image=source_image,
+            timestamp=source_image.timestamp,
+            bbox=[0.1, 0.1, 0.5, 0.5],
+            path="detections/human.jpg",
+        )
+        self.human_occ = det_human.associate_new_occurrence()
+        Identification.objects.create(user=self.user, taxon=self.taxon, occurrence=self.human_occ)
+        # Simulate legacy bad data: determination_score was populated despite a human
+        # identification existing. Identification.save() clears it, so use .update()
+        # to bypass the save hook and recreate the legacy state.
+        Occurrence.objects.filter(pk=self.human_occ.pk).update(determination=self.taxon, determination_score=0.7)
+
+    def test_dry_run_reports_without_writing(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command("backfill_determination_score", "--dry-run", stdout=out)
+        self.assertIn("Would clear determination_score on 1", out.getvalue())
+
+        self.ml_only_occ.refresh_from_db()
+        self.human_occ.refresh_from_db()
+        self.assertEqual(self.ml_only_occ.determination_score, 0.9)
+        self.assertEqual(self.human_occ.determination_score, 0.7)
+
+    def test_clears_only_human_determined_scores(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command("backfill_determination_score", stdout=out)
+        self.assertIn("Cleared determination_score on 1", out.getvalue())
+
+        self.ml_only_occ.refresh_from_db()
+        self.human_occ.refresh_from_db()
+        self.assertEqual(self.ml_only_occ.determination_score, 0.9)
+        self.assertIsNone(self.human_occ.determination_score)
+
+    def test_withdrawn_identifications_are_not_human_determined(self):
+        from django.core.management import call_command
+
+        Identification.objects.filter(occurrence=self.human_occ).update(withdrawn=True)
+        Occurrence.objects.filter(pk=self.human_occ.pk).update(determination_score=0.7)
+        call_command("backfill_determination_score")
+        self.human_occ.refresh_from_db()
+        self.assertEqual(self.human_occ.determination_score, 0.7)

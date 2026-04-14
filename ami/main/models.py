@@ -3145,12 +3145,11 @@ class Occurrence(BaseModel):
                 save=True,
             )
 
-        if self.determination and not self.determination_score:
-            # This may happen for legacy occurrences that were created
-            # before the determination_score field was added
-            # @TODO remove
+        if self.determination and self.determination_score is None and not self.best_identification:
+            # Legacy occurrences created before the determination_score field existed.
+            # Human-determined occurrences intentionally have a null score, so skip them.
             self.determination_score = self.get_determination_score()
-            if not self.determination_score:
+            if self.determination_score is None:
                 logger.warning(f"Could not determine score for {self}")
             else:
                 self.save(update_determination=False)
@@ -3176,7 +3175,9 @@ class Occurrence(BaseModel):
 
 
 def update_occurrence_determination(
-    occurrence: Occurrence, current_determination: typing.Optional["Taxon"] = None, save=True
+    occurrence: Occurrence,
+    current_determination: "Taxon | int | None" = None,
+    save=True,
 ) -> bool:
     """
     Update the determination of the occurrence based on the identifications & predictions.
@@ -3185,9 +3186,8 @@ def update_occurrence_determination(
     If there are no identifications, set the determination to the top prediction.
 
     The `current_determination` is the determination currently saved in the database.
-    The `occurrence` object may already have a different un-saved determination set
-    so it is necessary to retrieve the current determination from the database, but
-    this can also be passed in as an argument to avoid an extra database query.
+    It may be passed as a Taxon instance or as a taxon id to avoid a DB lookup; when
+    omitted, the current determination id is fetched from the DB.
 
     @TODO Add tests for this important method!
     """
@@ -3201,12 +3201,13 @@ def update_occurrence_determination(
     if hasattr(occurrence, "best_identification"):
         del occurrence.best_identification
 
-    current_determination = (
-        current_determination
-        or Occurrence.objects.select_related("determination")
-        .values("determination")
-        .get(pk=occurrence.pk)["determination"]
-    )
+    if isinstance(current_determination, Taxon):
+        current_determination_id = current_determination.pk
+    elif current_determination is not None:
+        current_determination_id = current_determination
+    else:
+        current_determination_id = Occurrence.objects.values_list("determination_id", flat=True).get(pk=occurrence.pk)
+
     new_determination = None
     new_score = None
 
@@ -3220,8 +3221,8 @@ def update_occurrence_determination(
             new_determination = top_prediction.taxon
             new_score = top_prediction.score
 
-    if new_determination and new_determination != current_determination:
-        logger.debug(f"Changing det. of {occurrence} from {current_determination} to {new_determination}")
+    if new_determination and new_determination.pk != current_determination_id:
+        logger.debug(f"Changing det. of {occurrence} from taxon#{current_determination_id} to {new_determination}")
         occurrence.determination = new_determination
         needs_update = True
 
