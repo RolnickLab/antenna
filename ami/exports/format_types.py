@@ -195,10 +195,16 @@ class DwCAExporter(BaseExporter):
     file_format = "zip"
 
     def get_queryset(self):
-        """Return the occurrence queryset (used by BaseExporter for record count)."""
+        """Return the occurrence queryset (used by BaseExporter for record count).
+
+        Applies the project's default filters (score threshold, include/exclude taxa).
+        Low-confidence ML output is gated here to avoid publishing unreviewed
+        classifications to downstream consumers (e.g. GBIF).
+        """
         return (
             Occurrence.objects.valid()  # type: ignore[union-attr]
             .filter(project=self.project, event__isnull=False, determination__isnull=False)
+            .apply_default_filters(self.project)  # type: ignore[union-attr]
             .select_related(
                 "determination",
                 "event",

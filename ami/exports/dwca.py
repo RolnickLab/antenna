@@ -47,6 +47,8 @@ EVENT_FIELDS: list[tuple[str, str, object]] = [
     ),
     (DWC + "geodeticDatum", "geodeticDatum", lambda e, slug: "WGS84"),
     (DWC + "datasetName", "datasetName", lambda e, slug: e.project.name if e.project else ""),
+    (DC + "license", "license", lambda e, slug: (e.project.license if e.project else "") or ""),
+    (DC + "rightsHolder", "rightsHolder", lambda e, slug: (e.project.rights_holder if e.project else "") or ""),
     (DC + "modified", "modified", lambda e, slug: _format_datetime(e.updated_at)),
 ]
 
@@ -89,6 +91,12 @@ OCCURRENCE_FIELDS: list[tuple[str, str, object]] = [
         else "",
     ),
     (DWC + "individualCount", "individualCount", lambda o, slug: "1"),
+    (DWC + "identifiedBy", "identifiedBy", lambda o, slug: o.get_identified_by()),
+    (
+        DWC + "dateIdentified",
+        "dateIdentified",
+        lambda o, slug: _format_datetime(o.get_identified_date()),
+    ),
     (
         DWC + "identificationVerificationStatus",
         "identificationVerificationStatus",
@@ -327,10 +335,24 @@ def generate_eml_xml(project) -> str:
     contact_org = ET.SubElement(contact, "organizationName")
     contact_org.text = "Automated Monitoring of Insects (AMI)"
 
-    # Intellectual rights
+    # Intellectual rights (required by GBIF). Project.license should be an
+    # SPDX identifier or URL; fall back to a conservative "rights reserved"
+    # statement when unset rather than claiming a CC license the data isn't
+    # actually under.
     rights = ET.SubElement(dataset, "intellectualRights")
     rights_para = ET.SubElement(rights, "para")
-    rights_para.text = "This work is licensed under a Creative Commons Attribution 4.0 International License."
+    project_license = (getattr(project, "license", "") or "").strip()
+    if project_license:
+        rights_para.text = project_license
+    else:
+        rights_para.text = "All rights reserved. No license specified."
+
+    if getattr(project, "rights_holder", ""):
+        # EML's <additionalInfo> is the standard slot for rights-holder text
+        # when the license block doesn't carry it.
+        additional = ET.SubElement(dataset, "additionalInfo")
+        additional_para = ET.SubElement(additional, "para")
+        additional_para.text = f"Rights holder: {project.rights_holder}"
 
     ET.indent(eml, space="  ")
     xml_str = ET.tostring(eml, encoding="unicode", xml_declaration=False)
