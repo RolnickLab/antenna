@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 from asgiref.sync import async_to_sync
 from celery.signals import task_failure, task_postrun, task_prerun
 from django.db import transaction
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import RedisError
 
 from ami.ml.orchestration.async_job_state import AsyncJobStateManager
 from ami.ml.orchestration.nats_queue import TaskQueueManager
@@ -47,7 +49,17 @@ def run_job(self, job_id: int) -> None:
 
 @celery_app.task(
     bind=True,
-    max_retries=0,  # don't retry since we already have retry logic in the NATS queue
+    # Retry on transient Redis/connection errors so a single connection reset
+    # doesn't flip the job to FAILURE mid-processing. Backoff is bounded well
+    # below soft_time_limit so retries never leak past the task deadline.
+    # Terminal failures (e.g. PipelineResultsError validation) are raised
+    # from other exception types and are not retried here.
+    # See RolnickLab/antenna#1219.
+    autoretry_for=(RedisError, RedisConnectionError, ConnectionError),
+    retry_backoff=True,
+    retry_backoff_max=30,
+    retry_jitter=True,
+    max_retries=5,
     soft_time_limit=300,  # 5 minutes
     time_limit=360,  # 6 minutes
 )
@@ -84,11 +96,24 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
 
     state_manager = AsyncJobStateManager(job_id)
 
-    progress_info = state_manager.update_state(processed_image_ids, stage="process", failed_image_ids=failed_image_ids)
+    try:
+        progress_info = state_manager.update_state(
+            processed_image_ids, stage="process", failed_image_ids=failed_image_ids
+        )
+    except RedisError as e:
+        # Transient (connection reset, broker blip, timeout). Celery will retry
+        # via autoretry_for; NATS hasn't been acked yet so redelivery is not
+        # a concern. Log so the real cause is visible in task logs rather than
+        # the misleading "Redis state missing" that users saw in #1219.
+        logger.warning(f"Transient Redis error updating job {job_id} state (stage=process); Celery will retry: {e}")
+        raise
+
     if not progress_info:
-        # Acknowledge the task to prevent retries, since we don't know the state
+        # State keys genuinely missing (the total-images key returned None).
+        # Ack so NATS stops redelivering and fail the job — there's no state
+        # left to reconcile against.
         _ack_task_via_nats(reply_subject, logger)
-        _fail_job(job_id, "Redis state missing for job")
+        _fail_job(job_id, "Job state keys not found in Redis (likely cleaned up concurrently)")
         return
 
     try:
@@ -146,13 +171,24 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         acked = True
         # Update job stage with calculated progress
 
-        progress_info = state_manager.update_state(
-            processed_image_ids,
-            stage="results",
-        )
+        try:
+            progress_info = state_manager.update_state(
+                processed_image_ids,
+                stage="results",
+            )
+        except RedisError as e:
+            # Transient. NATS is acked and results are saved, but those writes
+            # are idempotent so a Celery retry is safe: save_results dedupes on
+            # re-run and SREM is a no-op on already-removed ids. Log to the
+            # job logger so the cause is visible in the UI task log, then let
+            # autoretry_for pick it up.
+            job.logger.warning(
+                f"Transient Redis error updating job {job_id} state (stage=results); Celery will retry: {e}"
+            )
+            raise
 
         if not progress_info:
-            _fail_job(job_id, "Redis state missing for job")
+            _fail_job(job_id, "Job state keys not found in Redis (likely cleaned up concurrently)")
             return
 
         # update complete state based on latest progress info after saving results
@@ -170,6 +206,11 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
             captures=captures_count,
         )
 
+    except RedisError:
+        # Logged above at the specific update_state call site; re-raise so
+        # Celery's autoretry_for handles the transient rather than this broad
+        # except swallowing it.
+        raise
     except Exception as e:
         error = f"Error processing pipeline result for job {job_id}: {e}"
         if not acked:
