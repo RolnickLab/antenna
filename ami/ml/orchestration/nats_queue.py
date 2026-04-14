@@ -108,6 +108,15 @@ class TaskQueueManager:
         Exceptions from the job logger are swallowed so logging a lifecycle
         event never breaks the actual NATS operation.
 
+        Gated by ``isEnabledFor`` up front so a disabled level returns
+        immediately without paying for the ``sync_to_async`` round-trip.
+        Matters most at DEBUG during large queues — stdlib ``Logger.log``
+        does the same level check internally before formatting a message;
+        we have to do it explicitly here because the job-logger mirror
+        happens through ``sync_to_async`` (ThreadPoolExecutor submit), which
+        would otherwise fire once per image even when the handler is about
+        to drop the record.
+
         FUTURE: this currently mirrors granular per-job lifecycle (stream /
         consumer create+reuse, per-image debug, forensic stats) to BOTH the
         module logger and the job logger. The longer-term preference is to
@@ -122,8 +131,15 @@ class TaskQueueManager:
         and only auto-mirror at WARNING+ (so true error signals still always
         reach ops dashboards).
         """
-        logger.log(level, msg, exc_info=exc_info)
-        if self.job_logger is not None and self.job_logger is not logger:
+        module_enabled = logger.isEnabledFor(level)
+        job_enabled = (
+            self.job_logger is not None and self.job_logger is not logger and self.job_logger.isEnabledFor(level)
+        )
+        if not module_enabled and not job_enabled:
+            return
+        if module_enabled:
+            logger.log(level, msg, exc_info=exc_info)
+        if job_enabled:
             try:
                 await sync_to_async(self.job_logger.log)(level, msg, exc_info=exc_info)
             except Exception as e:
