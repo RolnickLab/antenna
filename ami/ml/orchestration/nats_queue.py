@@ -232,8 +232,17 @@ class TaskQueueManager:
 
         Logs a lifecycle line to both the module and job logger the first time it
         sees a given job in this manager session (creation or reuse). Subsequent
-        calls in the same session skip the NATS round-trip entirely — the stream
-        won't be deleted mid-flight (cleanup uses a separate manager session).
+        calls in the same session skip the NATS round-trip entirely via the
+        ``_streams_logged`` set.
+
+        Concurrency note: ``Job.cancel()`` can trigger ``cleanup_async_job_resources``
+        in the request thread while this manager is still in its publish loop in
+        the Celery worker, so the stream *can* be deleted mid-flight from a
+        different manager session. The early-return is still safe in that case —
+        subsequent ``publish_task`` calls will fail loudly (``self.js.publish``
+        returns an error, caught and logged by ``publish_task``) rather than
+        silently recreating the stream without a consumer. Failing loud on a
+        cancel race is the correct behavior.
         """
         if job_id in self._streams_logged:
             return
@@ -275,7 +284,13 @@ class TaskQueueManager:
         to both the module and job logger. On creation the line includes the
         config snapshot (max_deliver, ack_wait, max_ack_pending, deliver_policy,
         ack_policy) so forensic readers can see exactly what delivery semantics
-        were in effect. Subsequent calls skip the NATS round-trip.
+        were in effect. Subsequent calls skip the NATS round-trip via the
+        ``_consumers_logged`` set.
+
+        Same concurrency caveat as ``_ensure_stream``: a concurrent cancel can
+        delete the consumer mid-flight. The early-return stays safe because
+        downstream ``publish_task`` fails loudly rather than silently recreating
+        an orphan consumer.
         """
         if job_id in self._consumers_logged:
             return
