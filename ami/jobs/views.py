@@ -28,6 +28,7 @@ from ami.jobs.tasks import process_nats_pipeline_result
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
 from ami.ml.auth import HasProcessingServiceAPIKey
+from ami.ml.models.processing_service import ProcessingService
 from ami.utils.fields import url_boolean_param
 
 from .models import Job, JobDispatchMode, JobState
@@ -149,7 +150,6 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
     def _update_processing_service_heartbeat(self, request):
         """Update heartbeat for the specific PS identified by API key auth."""
-        from ami.ml.models.processing_service import ProcessingService
         from ami.ml.schemas import get_client_info
 
         if isinstance(request.auth, ProcessingService):
@@ -289,11 +289,13 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         if not job.pipeline:
             raise ValidationError("This job does not have a pipeline configured")
 
-        # Record heartbeat for async processing services on this pipeline
-        _mark_pipeline_pull_services_seen(job)
-
-        # Per-PS heartbeat via API key auth
-        self._update_processing_service_heartbeat(request)
+        # Record heartbeat. When the request is API-key-authenticated we know the
+        # exact PS, so use the precise per-PS heartbeat. Fall back to the bulk
+        # pipeline-level heartbeat for token-authenticated requests (transition period).
+        if isinstance(request.auth, ProcessingService):
+            self._update_processing_service_heartbeat(request)
+        else:
+            _mark_pipeline_pull_services_seen(job)
 
         # Get tasks from NATS JetStream
         from ami.ml.orchestration.nats_queue import TaskQueueManager
@@ -332,11 +334,11 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
         job = self.get_object()
 
-        # Record heartbeat for async processing services on this pipeline
-        _mark_pipeline_pull_services_seen(job)
-
-        # Per-PS heartbeat via API key auth
-        self._update_processing_service_heartbeat(request)
+        # Record heartbeat (see comment in tasks() for rationale)
+        if isinstance(request.auth, ProcessingService):
+            self._update_processing_service_heartbeat(request)
+        else:
+            _mark_pipeline_pull_services_seen(job)
 
         serializer = MLJobResultsRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)

@@ -76,6 +76,10 @@ class HasProcessingServiceAPIKey(permissions.BasePermission):
 
         # For detail views (e.g. /jobs/{pk}/tasks/), defer project scoping
         # to has_object_permission where we can derive it from the object.
+        # CONTRACT: all detail-level actions using this permission MUST call
+        # self.get_object() so that DRF invokes has_object_permission().
+        # Actions that fetch objects manually without get_object() will bypass
+        # project-scoping checks.
         if view.kwargs.get("pk"):
             return True
 

@@ -76,10 +76,11 @@ class ProcessingServiceAdmin(AdminBase):
     ]
     readonly_fields = ["last_seen_client_info"]
 
-    @admin.action(description="Generate API key for selected processing services")
+    @admin.action(description="Generate API key for selected processing services (revokes existing)")
     def generate_api_key(self, request, queryset):
         for ps in queryset:
-            api_key_obj, plaintext_key = ProcessingServiceAPIKey.objects.create_key(
+            ps.api_keys.filter(revoked=False).update(revoked=True)
+            _, plaintext_key = ProcessingServiceAPIKey.objects.create_key(
                 name=f"{ps.name} key",
                 processing_service=ps,
             )

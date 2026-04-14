@@ -29,8 +29,31 @@ class ProcessingServiceClientInfo(pydantic.BaseModel):
     ip: str = ""
     user_agent: str = ""
 
+    # Max number of extra fields and max length per extra value to prevent
+    # unbounded storage from arbitrary client-supplied keys.
+    _MAX_EXTRA_FIELDS = 20
+    _MAX_EXTRA_VALUE_LEN = 500
+
     class Config:
         extra = "allow"
+
+    @pydantic.validator("*", pre=True, each_item=False)
+    def _truncate_strings(cls, v):
+        if isinstance(v, str) and len(v) > 500:
+            return v[:500]
+        return v
+
+    @pydantic.root_validator(pre=False)
+    def _limit_extra_fields(cls, values):
+        known = set(cls.__fields__)
+        extra_keys = [k for k in values if k not in known]
+        if len(extra_keys) > cls._MAX_EXTRA_FIELDS:
+            for key in extra_keys[cls._MAX_EXTRA_FIELDS :]:
+                del values[key]
+        for key in extra_keys:
+            if key in values and isinstance(values[key], str) and len(values[key]) > cls._MAX_EXTRA_VALUE_LEN:
+                values[key] = values[key][: cls._MAX_EXTRA_VALUE_LEN]
+        return values
 
 
 def get_client_info(request) -> dict:
@@ -50,7 +73,9 @@ def get_client_info(request) -> dict:
     except Exception:
         info = ProcessingServiceClientInfo()
 
-    # Always overwrite server-observed fields to prevent client spoofing
+    # Always overwrite server-observed fields to prevent client spoofing.
+    # Note: X-Forwarded-For can be spoofed unless a trusted proxy strips it.
+    # This IP is informational (debugging/audit) and not used for access control.
     forwarded = request.headers.get("x-forwarded-for")
     info.ip = forwarded.split(",")[0].strip() if forwarded else request.META.get("REMOTE_ADDR", "unknown")
     info.user_agent = request.headers.get("user-agent", "")
@@ -112,7 +137,7 @@ class AlgorithmReference(pydantic.BaseModel):
 
 class AlgorithmCategoryMapResponse(pydantic.BaseModel):
     data: list[dict] = pydantic.Field(
-        default_factory=dict,
+        default_factory=list,
         description="Complete data for each label, such as id, gbif_key, explicit index, source, etc.",
         examples=[
             [
