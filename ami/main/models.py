@@ -2834,7 +2834,7 @@ class OccurrenceQuerySet(BaseQuerySet):
         - best_machine_prediction_taxon_id: The taxon ID (for determination_matches comparison)
         """
         best_prediction_subquery = Classification.objects.filter(detection__occurrence=OuterRef("pk")).order_by(
-            "-terminal", "-score"
+            "-terminal", "-score", "-pk"
         )
 
         return self.annotate(
@@ -3068,11 +3068,17 @@ class Occurrence(BaseModel):
         """
         Find the best machine prediction for this occurrence.
 
-        Uses the highest scoring classification (from any algorithm) as the best prediction.
-        Considers terminal classifications first, then non-terminal ones.
-        (Terminal classifications are the final classifications of a pipeline, non-terminal are intermediate models.)
+        Ordering matches OccurrenceQuerySet.with_best_machine_prediction() so that the
+        API's cached `best_prediction` and the CSV export's annotated fields agree.
+        Terminal classifications win over non-terminal, then highest score, with pk as
+        the deterministic tiebreaker.
         """
-        return self.predictions().order_by("-terminal", "-score").first()
+        return (
+            Classification.objects.filter(detection__occurrence=self)
+            .select_related("taxon", "algorithm")
+            .order_by("-terminal", "-score", "-pk")
+            .first()
+        )
 
     def find_best_identification(self) -> "Identification | None":
         """
@@ -3221,8 +3227,11 @@ def update_occurrence_determination(
             new_determination = top_prediction.taxon
             new_score = top_prediction.score
 
-    if new_determination and new_determination.pk != current_determination_id:
-        logger.debug(f"Changing det. of {occurrence} from taxon#{current_determination_id} to {new_determination}")
+    new_determination_id = new_determination.pk if new_determination else None
+    if new_determination_id != current_determination_id:
+        logger.debug(
+            f"Changing det. of {occurrence} from taxon#{current_determination_id} to taxon#{new_determination_id}"
+        )
         occurrence.determination = new_determination
         needs_update = True
 

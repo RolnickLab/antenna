@@ -1400,7 +1400,12 @@ class OccurrenceListSerializer(DefaultSerializer):
 
         prediction = obj.best_prediction
         if not prediction:
-            return None
+            return dict(
+                taxon=None,
+                algorithm=None,
+                score=None,
+                determination_matches_machine_prediction=None,
+            )
 
         taxon_data = TaxonNestedSerializer(prediction.taxon, context=context).data if prediction.taxon else None
         algorithm_data = None

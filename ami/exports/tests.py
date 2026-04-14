@@ -485,6 +485,55 @@ class ExportNewFieldsTest(TestCase):
         # bbox should be a string representation of the list
         self.assertIn("0.1", row["best_detection_bbox"])
 
+    def test_api_and_csv_pick_same_best_prediction_with_mixed_terminal(self):
+        """find_best_prediction() and with_best_machine_prediction() must agree.
+
+        With both a high-score non-terminal classification and a lower-score terminal
+        classification, the terminal row should win in both the API's cached
+        best_prediction and the CSV's annotated best_machine_prediction_* fields.
+        """
+        alg_intermediate, _ = Algorithm.objects.get_or_create(
+            name="intermediate-classifier", defaults={"key": "intermediate-classifier"}
+        )
+        alg_terminal, _ = Algorithm.objects.get_or_create(
+            name="terminal-classifier", defaults={"key": "terminal-classifier"}
+        )
+        source_image = self.project.captures.first()
+        detection = Detection.objects.create(
+            source_image=source_image,
+            timestamp=source_image.timestamp,
+            bbox=[0.1, 0.1, 0.5, 0.5],
+            path="detections/mixed.jpg",
+        )
+        detection.classifications.create(
+            taxon=self.taxon_a,
+            score=0.95,
+            timestamp=source_image.timestamp,
+            algorithm=alg_intermediate,
+            terminal=False,
+        )
+        detection.classifications.create(
+            taxon=self.taxon_b,
+            score=0.80,
+            timestamp=source_image.timestamp,
+            algorithm=alg_terminal,
+            terminal=True,
+        )
+        occurrence = detection.associate_new_occurrence()
+
+        rows = self._run_csv_export()
+        row = next(r for r in rows if int(r["id"]) == occurrence.pk)
+
+        self.assertEqual(row["best_machine_prediction_name"], self.taxon_b.name)
+        self.assertEqual(row["best_machine_prediction_algorithm"], "terminal-classifier")
+        self.assertAlmostEqual(float(row["best_machine_prediction_score"]), 0.80, places=2)
+
+        occurrence.refresh_from_db()
+        api_best = occurrence.find_best_prediction()
+        self.assertIsNotNone(api_best)
+        self.assertEqual(api_best.taxon_id, self.taxon_b.pk)
+        self.assertEqual(api_best.algorithm.name, "terminal-classifier")
+
     def test_csv_has_all_new_fields(self):
         """All new fields are present as CSV column headers."""
         self._create_occurrence_with_prediction()
