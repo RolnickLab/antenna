@@ -13,11 +13,11 @@ def create_periodic_tasks(apps, schema_editor):
         month_of_year="*",
     )
     PeriodicTask.objects.get_or_create(
-        name="jobs.check_stale_jobs",
+        name="jobs.health_check",
         defaults={
-            "task": "ami.jobs.tasks.check_stale_jobs_task",
+            "task": "ami.jobs.tasks.jobs_health_check",
             "crontab": stale_schedule,
-            "description": "Reconcile jobs stuck in running states past FAILED_CUTOFF_HOURS",
+            "description": "Umbrella job-health checks (stale job reconciler, future integrity checks)",
         },
     )
 

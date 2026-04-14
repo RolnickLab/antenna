@@ -407,32 +407,44 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
     return results
 
 
-# Beat schedule is every 15 minutes for check_stale_jobs; expire queued copies
+# Beat schedule is every 15 minutes for jobs_health_check; expire queued copies
 # that accumulate while a worker is unavailable so we don't process a backlog.
 # Kept just under the schedule interval so a backlog is dropped but a single
 # delayed copy still runs. Going below the interval would risk every copy
 # expiring before a worker picks it up under moderate broker pressure.
-_STALE_JOB_BEAT_EXPIRES = 60 * 14
+_JOBS_HEALTH_BEAT_EXPIRES = 60 * 14
 
 
-@celery_app.task(soft_time_limit=300, time_limit=360, expires=_STALE_JOB_BEAT_EXPIRES)
-def check_stale_jobs_task() -> dict:
-    """Celery Beat entry point for `check_stale_jobs`.
+def _run_stale_jobs_check() -> dict:
+    """Reconcile jobs stuck in running states past FAILED_CUTOFF_HOURS.
 
-    Runs the existing stale-job reconciler on a schedule so jobs don't silently
-    sit in a running state for days when their Celery task is gone or the
-    worker crashed. Returns a summary dict for flower / task-result visibility.
+    Returns `{checked, fixed, unfixable}` so it composes with other health
+    checks that return the same shape.
     """
     results = check_stale_jobs()
     updated = sum(1 for r in results if r["action"] == "updated")
     revoked = sum(1 for r in results if r["action"] == "revoked")
     logger.info(
-        "check_stale_jobs_task finished: %d stale job(s), %d updated from Celery, %d revoked",
+        "stale_jobs check: %d stale job(s), %d updated from Celery, %d revoked",
         len(results),
         updated,
         revoked,
     )
-    return {"total": len(results), "updated": updated, "revoked": revoked}
+    return {"checked": len(results), "fixed": updated + revoked, "unfixable": 0}
+
+
+@celery_app.task(soft_time_limit=300, time_limit=360, expires=_JOBS_HEALTH_BEAT_EXPIRES)
+def jobs_health_check() -> dict:
+    """Umbrella beat task for periodic job-health checks.
+
+    Each sub-check returns `{checked, fixed, unfixable}`. Add new checks here
+    — they share the 15-minute cadence and `expires` guarantees. Keep checks
+    cheap (DB scans, light reconciliation); long-running repair work belongs
+    in its own task.
+    """
+    return {
+        "stale_jobs": _run_stale_jobs_check(),
+    }
 
 
 # Expire faster than the stale-job task — this is observability, a skipped

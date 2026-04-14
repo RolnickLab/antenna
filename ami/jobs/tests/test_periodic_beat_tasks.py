@@ -5,11 +5,11 @@ from django.test import TestCase
 from django.utils import timezone
 
 from ami.jobs.models import Job, JobDispatchMode, JobState
-from ami.jobs.tasks import check_stale_jobs_task, log_running_async_job_stats
+from ami.jobs.tasks import jobs_health_check, log_running_async_job_stats
 from ami.main.models import Project
 
 
-class CheckStaleJobsTaskTest(TestCase):
+class JobsHealthCheckTest(TestCase):
     def setUp(self):
         self.project = Project.objects.create(name="Beat schedule test project")
 
@@ -20,15 +20,18 @@ class CheckStaleJobsTaskTest(TestCase):
         return job
 
     @patch("ami.jobs.tasks.cleanup_async_job_if_needed")
-    def test_returns_summary_counts(self, _mock_cleanup):
+    def test_returns_nested_summary_counts(self, _mock_cleanup):
         self._create_stale_job()
         self._create_stale_job()
-        result = check_stale_jobs_task()
-        self.assertEqual(result, {"total": 2, "updated": 0, "revoked": 2})
+        result = jobs_health_check()
+        self.assertEqual(result, {"stale_jobs": {"checked": 2, "fixed": 2, "unfixable": 0}})
 
     def test_no_stale_jobs_returns_zero_summary(self):
         self._create_stale_job(hours_ago=1)  # recent — not stale
-        self.assertEqual(check_stale_jobs_task(), {"total": 0, "updated": 0, "revoked": 0})
+        self.assertEqual(
+            jobs_health_check(),
+            {"stale_jobs": {"checked": 0, "fixed": 0, "unfixable": 0}},
+        )
 
 
 class LogRunningAsyncJobStatsTest(TestCase):
