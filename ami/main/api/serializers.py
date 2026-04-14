@@ -1393,19 +1393,18 @@ class OccurrenceListSerializer(DefaultSerializer):
             score=obj.determination_score,
         )
 
-    def get_best_machine_prediction(self, obj: Occurrence):
-        """Always return the best machine prediction, regardless of human verification status."""
+    def get_best_machine_prediction(self, obj: Occurrence) -> dict | None:
+        """Return the best machine prediction for this occurrence, or null if none exists.
+
+        Populated regardless of human verification status, so clients can always show
+        the ML result alongside a human-set determination.
+        """
         context = self.context
         context["occurrence"] = obj
 
         prediction = obj.best_prediction
         if not prediction:
-            return dict(
-                taxon=None,
-                algorithm=None,
-                score=None,
-                determination_matches_machine_prediction=None,
-            )
+            return None
 
         taxon_data = TaxonNestedSerializer(prediction.taxon, context=context).data if prediction.taxon else None
         algorithm_data = None

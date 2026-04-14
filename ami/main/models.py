@@ -55,6 +55,13 @@ logger = logging.getLogger(__name__)
 # Constants
 _POST_TITLE_MAX_LENGTH: Final = 80
 
+# Shared ordering for "best machine prediction" selection. Used by both
+# Occurrence.find_best_prediction() (row-at-a-time, e.g. the API) and
+# OccurrenceQuerySet.with_best_machine_prediction() (bulk-annotated, e.g. the CSV
+# export). They must use the same ordering — otherwise the two code paths can pick
+# different classifications for the same occurrence.
+BEST_MACHINE_PREDICTION_ORDER: Final = ("-terminal", "-score", "-pk")
+
 
 class TaxonRank(OrderedEnum):
     KINGDOM = "KINGDOM"
@@ -2824,8 +2831,10 @@ class OccurrenceQuerySet(BaseQuerySet):
         """
         Annotate the queryset with fields from the best machine prediction.
 
-        The best prediction is the highest-scoring classification, preferring terminal ones.
-        Same ordering as Occurrence.find_best_prediction(): -terminal, -score.
+        The "best prediction" rule is shared with Occurrence.find_best_prediction() via
+        BEST_MACHINE_PREDICTION_ORDER. If you change the ordering in one place, update it
+        in the other — otherwise the API's cached `best_prediction` and the annotations
+        exposed by this method can pick different classifications for the same occurrence.
 
         Adds the following annotations:
         - best_machine_prediction_name: The taxon name of the best prediction
@@ -2834,7 +2843,7 @@ class OccurrenceQuerySet(BaseQuerySet):
         - best_machine_prediction_taxon_id: The taxon ID (for determination_matches comparison)
         """
         best_prediction_subquery = Classification.objects.filter(detection__occurrence=OuterRef("pk")).order_by(
-            "-terminal", "-score", "-pk"
+            *BEST_MACHINE_PREDICTION_ORDER
         )
 
         return self.annotate(
@@ -3068,15 +3077,15 @@ class Occurrence(BaseModel):
         """
         Find the best machine prediction for this occurrence.
 
-        Ordering matches OccurrenceQuerySet.with_best_machine_prediction() so that the
-        API's cached `best_prediction` and the CSV export's annotated fields agree.
-        Terminal classifications win over non-terminal, then highest score, with pk as
-        the deterministic tiebreaker.
+        Ordering is shared with OccurrenceQuerySet.with_best_machine_prediction() via
+        BEST_MACHINE_PREDICTION_ORDER so that the API's cached `best_prediction` and
+        the CSV export's annotated fields agree. Terminal classifications win over
+        non-terminal, then highest score, with pk as the deterministic tiebreaker.
         """
         return (
             Classification.objects.filter(detection__occurrence=self)
             .select_related("taxon", "algorithm")
-            .order_by("-terminal", "-score", "-pk")
+            .order_by(*BEST_MACHINE_PREDICTION_ORDER)
             .first()
         )
 

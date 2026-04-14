@@ -3855,3 +3855,44 @@ class BackfillDeterminationScoreTest(TestCase):
         call_command("backfill_determination_score")
         self.human_occ.refresh_from_db()
         self.assertEqual(self.human_occ.determination_score, 0.7)
+
+
+class UpdateOccurrenceDeterminationTest(TestCase):
+    """Tests for the update_occurrence_determination() function."""
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=1)
+        create_taxa(self.project)
+        self.taxon = self.project.taxa.first()
+        self.user = User.objects.create_user(email="identifier@test.org")  # type: ignore
+
+    def _create_occurrence(self):
+        source_image = self.project.captures.first()
+        assert source_image is not None
+        detection = Detection.objects.create(
+            source_image=source_image,
+            timestamp=source_image.timestamp,
+            bbox=[0.1, 0.1, 0.5, 0.5],
+            path="detections/update_det_test.jpg",
+        )
+        return detection.associate_new_occurrence()
+
+    def test_determination_cleared_when_last_identification_withdrawn_and_no_prediction(self):
+        """When the only authority (a human identification) is withdrawn and there is no
+        machine prediction, update_occurrence_determination() must clear
+        occurrence.determination rather than leave the stale taxon in place."""
+        occurrence = self._create_occurrence()
+        identification = Identification.objects.create(user=self.user, taxon=self.taxon, occurrence=occurrence)
+        occurrence.refresh_from_db()
+        self.assertEqual(occurrence.determination_id, self.taxon.pk)
+
+        # Identification.save() fires update_occurrence_determination(), so withdrawing
+        # and saving is enough to exercise the path. No predictions exist, so the
+        # previous guard would leave occurrence.determination unchanged.
+        identification.withdrawn = True
+        identification.save()
+
+        occurrence.refresh_from_db()
+        self.assertIsNone(occurrence.determination_id)
+        self.assertIsNone(occurrence.determination_score)
