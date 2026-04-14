@@ -3782,3 +3782,129 @@ class TestProjectPipelinesAPI(APITestCase):
         self.client.force_authenticate(user=non_member)
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class TestIntegrityChecks(TestCase):
+    """Tests for the ami.main.checks integrity check framework."""
+
+    def setUp(self):
+        from ami.tests.fixtures.main import create_captures
+
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=3)
+        group_images_into_events(deployment=self.deployment)
+        create_taxa(project=self.project)
+        create_occurrences(deployment=self.deployment, num=3)
+
+        # Every fixture occurrence should start with a determination set.
+        self.assertEqual(
+            Occurrence.objects.filter(project=self.project, determination__isnull=False).count(),
+            3,
+        )
+
+    def _null_out_determinations(self, occurrence_pks: list[int]) -> None:
+        """Simulate the partial-save bug by clearing determinations via raw UPDATE."""
+        Occurrence.objects.filter(pk__in=occurrence_pks).update(
+            determination=None,
+            determination_score=None,
+        )
+
+    def test_get_missing_determination_finds_only_affected_rows(self):
+        from ami.main.checks import get_occurrences_missing_determination
+
+        broken_pks = list(Occurrence.objects.filter(project=self.project).values_list("pk", flat=True)[:2])
+        self._null_out_determinations(broken_pks)
+
+        qs = get_occurrences_missing_determination(project_id=self.project.pk)
+
+        self.assertEqual(set(qs.values_list("pk", flat=True)), set(broken_pks))
+
+    def test_get_missing_determination_excludes_occurrences_without_classifications(self):
+        from ami.main.checks import get_occurrences_missing_determination
+
+        empty_occurrence = Occurrence.objects.create(project=self.project, deployment=self.deployment)
+
+        qs = get_occurrences_missing_determination(project_id=self.project.pk)
+
+        self.assertNotIn(empty_occurrence.pk, list(qs.values_list("pk", flat=True)))
+
+    def test_reconcile_dry_run_reports_without_saving(self):
+        from ami.main.checks import reconcile_missing_determinations
+
+        broken_pks = list(Occurrence.objects.filter(project=self.project).values_list("pk", flat=True)[:2])
+        self._null_out_determinations(broken_pks)
+
+        result = reconcile_missing_determinations(project_id=self.project.pk, dry_run=True)
+
+        self.assertEqual(result.checked, 2)
+        self.assertEqual(result.fixed, 0)
+        self.assertEqual(result.unfixable, 0)
+        self.assertEqual(
+            Occurrence.objects.filter(pk__in=broken_pks, determination__isnull=True).count(),
+            2,
+            "dry_run must not modify the database",
+        )
+
+    def test_reconcile_fixes_missing_determinations(self):
+        from ami.main.checks import reconcile_missing_determinations
+
+        broken_pks = list(Occurrence.objects.filter(project=self.project).values_list("pk", flat=True)[:2])
+        self._null_out_determinations(broken_pks)
+
+        result = reconcile_missing_determinations(project_id=self.project.pk, dry_run=False)
+
+        self.assertEqual(result.checked, 2)
+        self.assertEqual(result.fixed, 2)
+        self.assertEqual(result.unfixable, 0)
+        self.assertFalse(
+            Occurrence.objects.filter(pk__in=broken_pks, determination__isnull=True).exists(),
+            "reconcile should have populated determination from best prediction",
+        )
+
+    def test_reconcile_scoped_by_project_ignores_other_projects(self):
+        from ami.main.checks import reconcile_missing_determinations
+        from ami.tests.fixtures.main import create_captures
+
+        other_project, other_deployment = setup_test_project(reuse=False)
+        create_captures(deployment=other_deployment, num_nights=1, images_per_night=3)
+        group_images_into_events(deployment=other_deployment)
+        create_taxa(project=other_project)
+        create_occurrences(deployment=other_deployment, num=2)
+
+        other_broken = list(Occurrence.objects.filter(project=other_project).values_list("pk", flat=True))
+        mine_broken = list(Occurrence.objects.filter(project=self.project).values_list("pk", flat=True)[:1])
+        self._null_out_determinations(other_broken + mine_broken)
+
+        result = reconcile_missing_determinations(project_id=self.project.pk, dry_run=False)
+
+        self.assertEqual(result.checked, 1)
+        self.assertEqual(result.fixed, 1)
+        self.assertTrue(
+            Occurrence.objects.filter(pk__in=other_broken, determination__isnull=True).exists(),
+            "other project's occurrences must not be touched",
+        )
+
+    def test_reconcile_scoped_by_occurrence_ids(self):
+        from ami.main.checks import reconcile_missing_determinations
+
+        all_pks = list(Occurrence.objects.filter(project=self.project).values_list("pk", flat=True))
+        self._null_out_determinations(all_pks)
+
+        result = reconcile_missing_determinations(occurrence_ids=all_pks[:1], dry_run=False)
+
+        self.assertEqual(result.checked, 1)
+        self.assertEqual(result.fixed, 1)
+        self.assertEqual(
+            Occurrence.objects.filter(pk__in=all_pks[1:], determination__isnull=True).count(),
+            len(all_pks) - 1,
+            "occurrences not listed must not be fixed",
+        )
+
+    def test_reconcile_no_issues_returns_zero_checked(self):
+        from ami.main.checks import reconcile_missing_determinations
+
+        result = reconcile_missing_determinations(project_id=self.project.pk, dry_run=False)
+
+        self.assertEqual(result.checked, 0)
+        self.assertEqual(result.fixed, 0)
+        self.assertEqual(result.unfixable, 0)
