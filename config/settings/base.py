@@ -393,6 +393,13 @@ CELERY_REDIS_BACKEND_HEALTH_CHECK_INTERVAL = 30  # Check health every 30s
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_ENABLE_PREFETCH_COUNT_REDUCTION = True
 
+# Worker concurrency (prefork pool size)
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-concurrency
+# Default when unset is os.cpu_count(), which underutilises this workload because
+# process_nats_pipeline_result is DB/Redis-bound and spends most of its time on I/O.
+# Override via CELERY_WORKER_CONCURRENCY env var per deployment.
+CELERY_WORKER_CONCURRENCY = env.int("CELERY_WORKER_CONCURRENCY", default=16)
+
 # Cancel & return to queue if connection is lost
 # https://docs.celeryq.dev/en/latest/userguide/configuration.html#worker-cancel-long-running-tasks-on-connection-loss
 CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
