@@ -455,8 +455,6 @@ def _run_running_job_snapshot_check() -> IntegrityCheckResult:
     """
     from ami.jobs.models import Job, JobDispatchMode, JobState
 
-    # Resolve each job's per-job logger synchronously — the property touches
-    # Django ORM via JobLogHandler, which is only safe outside the event loop.
     running_jobs = list(
         Job.objects.filter(
             status__in=JobState.running_states(),
@@ -466,6 +464,11 @@ def _run_running_job_snapshot_check() -> IntegrityCheckResult:
     if not running_jobs:
         return IntegrityCheckResult()
 
+    # Resolve each job's per-job logger synchronously before entering the
+    # event loop — ``Job.logger`` attaches a ``JobLogHandler`` on first access
+    # which touches the Django ORM, so it is only safe to call from a sync
+    # context.
+    job_loggers = [(job, job.logger) for job in running_jobs]
     errors = 0
 
     async def _snapshot_all() -> None:
@@ -473,13 +476,13 @@ def _run_running_job_snapshot_check() -> IntegrityCheckResult:
         # One NATS connection per tick — on a 15-min cadence a per-job fallback
         # is not worth the code. If the shared connection fails to set up, we
         # skip this tick's snapshots and try fresh on the next one.
-        async with TaskQueueManager(job_logger=running_jobs[0].logger) as manager:
-            for job in running_jobs:
+        async with TaskQueueManager(job_logger=job_loggers[0][1]) as manager:
+            for job, job_logger in job_loggers:
                 try:
-                    # `log_async` reads `job_logger` fresh each call, so
+                    # ``log_async`` reads ``job_logger`` fresh each call, so
                     # swapping per iteration routes lifecycle lines to the
                     # right job's UI log.
-                    manager.job_logger = job.logger
+                    manager.job_logger = job_logger
                     await manager.log_consumer_stats_snapshot(job.pk)
                 except Exception:
                     errors += 1
@@ -488,15 +491,35 @@ def _run_running_job_snapshot_check() -> IntegrityCheckResult:
     try:
         async_to_sync(_snapshot_all)()
     except Exception:
-        logger.exception("Shared-connection snapshot setup failed; skipping this tick")
+        # Covers both ``__aenter__`` setup failures (no iteration ran) and the
+        # rare ``__aexit__`` teardown failure after a clean loop. In the
+        # teardown case this overwrites the per-iteration count with the total
+        # — accepted: a persistent failure will show up again next tick.
+        logger.exception("Shared-connection snapshot failed; marking tick unfixable")
         errors = len(running_jobs)
 
-    logger.info(
+    log_fn = logger.warning if errors else logger.info
+    log_fn(
         "running_job_snapshots check: %d running async job(s), %d error(s)",
         len(running_jobs),
         errors,
     )
     return IntegrityCheckResult(checked=len(running_jobs), fixed=0, unfixable=errors)
+
+
+def _safe_run_sub_check(name: str, fn: Callable[[], IntegrityCheckResult]) -> IntegrityCheckResult:
+    """Run one umbrella sub-check, returning an ``unfixable=1`` sentinel on failure.
+
+    The umbrella composes independent sub-checks; one failing must not block
+    the others. A raised exception is logged and surfaced as a single
+    ``unfixable`` entry so operators watching the task result in Flower see
+    the check failed rather than reading zero and assuming all-clear.
+    """
+    try:
+        return fn()
+    except Exception:
+        logger.exception("%s sub-check failed; continuing umbrella", name)
+        return IntegrityCheckResult(checked=0, fixed=0, unfixable=1)
 
 
 @celery_app.task(soft_time_limit=300, time_limit=360, expires=_JOBS_HEALTH_BEAT_EXPIRES)
@@ -511,8 +534,8 @@ def jobs_health_check() -> dict:
     it; add new sub-checks by extending that dataclass and calling them here.
     """
     result = JobsHealthCheckResult(
-        stale_jobs=_run_stale_jobs_check(),
-        running_job_snapshots=_run_running_job_snapshot_check(),
+        stale_jobs=_safe_run_sub_check("stale_jobs", _run_stale_jobs_check),
+        running_job_snapshots=_safe_run_sub_check("running_job_snapshots", _run_running_job_snapshot_check),
     )
     return dataclasses.asdict(result)
 
