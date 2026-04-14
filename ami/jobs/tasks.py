@@ -407,6 +407,69 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
     return results
 
 
+# Beat schedule is every 15 minutes for check_stale_jobs; expire queued copies
+# that accumulate while a worker is unavailable so we don't process a backlog.
+_STALE_JOB_BEAT_EXPIRES = 60 * 10
+
+
+@celery_app.task(soft_time_limit=300, time_limit=360, expires=_STALE_JOB_BEAT_EXPIRES)
+def check_stale_jobs_task() -> dict:
+    """Celery Beat entry point for `check_stale_jobs`.
+
+    Runs the existing stale-job reconciler on a schedule so jobs don't silently
+    sit in a running state for days when their Celery task is gone or the
+    worker crashed. Returns a summary dict for flower / task-result visibility.
+    """
+    results = check_stale_jobs()
+    updated = sum(1 for r in results if r["action"] == "updated")
+    revoked = sum(1 for r in results if r["action"] == "revoked")
+    logger.info(
+        "check_stale_jobs_task finished: %d stale job(s), %d updated from Celery, %d revoked",
+        len(results),
+        updated,
+        revoked,
+    )
+    return {"total": len(results), "updated": updated, "revoked": revoked}
+
+
+# Expire faster than the stale-job task — this is observability, a skipped
+# cycle is fine and we'd rather not pile up backlog of snapshot work.
+_ASYNC_STATS_BEAT_EXPIRES = 60 * 4
+
+
+@celery_app.task(soft_time_limit=180, time_limit=240, expires=_ASYNC_STATS_BEAT_EXPIRES)
+def log_running_async_job_stats() -> dict:
+    """Log a NATS consumer snapshot (delivered/ack/pending/redelivered) per running async_api job.
+
+    Writes to the per-job logger so operators see counts in the job's UI log
+    without waiting for it to finish. Read-only: no status changes.
+    """
+    from ami.jobs.models import Job, JobDispatchMode, JobState
+
+    # Resolve each job's per-job logger synchronously — the property touches Django
+    # ORM via its JobLogHandler, which is only safe outside the event loop.
+    running_jobs = list(
+        Job.objects.filter(
+            status__in=JobState.running_states(),
+            dispatch_mode=JobDispatchMode.ASYNC_API,
+        )
+    )
+    if not running_jobs:
+        return {"checked": 0}
+
+    async def _snapshot_all():
+        for job in running_jobs:
+            try:
+                async with TaskQueueManager(job_logger=job.logger) as manager:
+                    await manager.log_consumer_stats_snapshot(job.pk)
+            except Exception:
+                # One job's NATS failure must not block snapshots for others.
+                logger.exception("Failed to snapshot NATS consumer stats for job %s", job.pk)
+
+    async_to_sync(_snapshot_all)()
+    return {"checked": len(running_jobs)}
+
+
 def cleanup_async_job_if_needed(job) -> None:
     """
     Clean up async resources (NATS/Redis) if this job uses them.

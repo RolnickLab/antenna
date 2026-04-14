@@ -477,6 +477,18 @@ class TaskQueueManager:
         redelivered before the consumer vanished. Failures here must NOT block
         cleanup — if the consumer or stream is already gone, just skip it.
         """
+        await self._log_consumer_stats(job_id, prefix="Finalizing NATS consumer", suffix="before deletion")
+
+    async def log_consumer_stats_snapshot(self, job_id: int) -> None:
+        """Log a mid-flight snapshot of the consumer state for a running job.
+
+        Used by the periodic `log_running_async_job_stats` beat task so operators
+        can see deliver/ack/pending counts without waiting for the job to finish.
+        Tolerant of missing stream/consumer like the cleanup-time variant.
+        """
+        await self._log_consumer_stats(job_id, prefix="NATS consumer status")
+
+    async def _log_consumer_stats(self, job_id: int, *, prefix: str, suffix: str = "") -> None:
         if self.js is None:
             return
         stream_name = self._get_stream_name(job_id)
@@ -487,15 +499,15 @@ class TaskQueueManager:
                 timeout=NATS_JETSTREAM_TIMEOUT,
             )
         except Exception as e:
-            # Broad catch is intentional here (unlike _ensure_consumer): at
-            # cleanup time we tolerate any failure — stream gone, consumer
-            # already deleted, auth, timeout — so the delete calls below
-            # still get a chance to run.
-            logger.debug(f"Could not fetch consumer info for {consumer_name} before deletion: {e}")
+            # Broad catch is intentional: if the consumer or stream is gone we
+            # just skip — callers (cleanup, periodic snapshot) should never fail
+            # because we couldn't read stats.
+            logger.debug(f"Could not fetch consumer info for {consumer_name}: {e}")
             return
+        tail = f" {suffix}" if suffix else ""
         await self.log_async(
             logging.INFO,
-            f"Finalizing NATS consumer {consumer_name} before deletion ({self._format_consumer_stats(info)})",
+            f"{prefix} {consumer_name}{tail} ({self._format_consumer_stats(info)})",
         )
 
     async def delete_consumer(self, job_id: int) -> bool:
