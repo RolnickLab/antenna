@@ -85,6 +85,28 @@ class LogRunningAsyncJobStatsTest(TestCase):
         self.assertIn(job_ok.pk, calls)
         self.assertIn(job_broken.pk, calls)
 
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_shared_connection_failure_falls_back_to_per_job(self, mock_manager_cls):
+        job_a = self._create_async_job()
+        job_b = self._create_async_job()
+
+        instance = mock_manager_cls.return_value
+        # First __aenter__ (shared path) blows up; subsequent ones (per-job
+        # fallback) succeed. Simulates a bug that only affects the shared path.
+        instance.__aenter__ = AsyncMock(
+            side_effect=[RuntimeError("shared path broken"), instance, instance],
+        )
+        instance.__aexit__ = AsyncMock(return_value=False)
+        instance.log_consumer_stats_snapshot = AsyncMock()
+
+        result = log_running_async_job_stats()
+
+        self.assertEqual(result, {"checked": 2})
+        # Shared attempt + one fresh manager per job = 3 __aenter__ calls total.
+        self.assertEqual(instance.__aenter__.await_count, 3)
+        snapshots = [call.args[0] for call in instance.log_consumer_stats_snapshot.await_args_list]
+        self.assertCountEqual(snapshots, [job_a.pk, job_b.pk])
+
     def test_non_async_jobs_skipped(self):
         job = Job.objects.create(project=self.project, name="sync job", status=JobState.STARTED)
         # default dispatch_mode should not be ASYNC_API

@@ -460,10 +460,14 @@ def log_running_async_job_stats() -> dict:
     if not running_jobs:
         return {"checked": 0}
 
+    async def _snapshot_one(job) -> None:
+        async with TaskQueueManager(job_logger=job.logger) as manager:
+            await manager.log_consumer_stats_snapshot(job.pk)
+
     async def _snapshot_all():
-        # Reuse one TaskQueueManager (and thus one NATS connection) for the
-        # whole tick so cost stays O(1) in the number of running jobs. The
-        # manager's `job_logger` attribute is read fresh by `log_async` on
+        # Fast path: reuse one TaskQueueManager (and thus one NATS connection)
+        # for the whole tick so cost stays O(1) in the number of running jobs.
+        # The manager's `job_logger` attribute is read fresh by `log_async` on
         # every call, so swapping it per iteration routes lifecycle lines to
         # the right job UI. `_setup_advisory_stream` (called in `__aenter__`)
         # only logs via the module logger, so the initial logger choice does
@@ -477,10 +481,20 @@ def log_running_async_job_stats() -> dict:
                     except Exception:
                         # One job's NATS failure must not block snapshots for others.
                         logger.exception("Failed to snapshot NATS consumer stats for job %s", job.pk)
+            return
         except Exception:
-            # Connection setup (or teardown) itself failed — log once and
-            # wait for the next beat tick rather than crashing the task.
-            logger.exception("Failed to open NATS connection for consumer snapshots")
+            # Shared path failed at setup/teardown — could be NATS down (in which
+            # case per-job will fail identically and we'll log once per job) or
+            # a bug specific to reusing one manager (in which case per-job still
+            # works and we keep getting snapshots). Fall back rather than losing
+            # visibility for the whole tick.
+            logger.exception("Shared-connection snapshot failed; falling back to per-job connections")
+
+        for job in running_jobs:
+            try:
+                await _snapshot_one(job)
+            except Exception:
+                logger.exception("Failed to snapshot NATS consumer stats for job %s", job.pk)
 
     async_to_sync(_snapshot_all)()
     return {"checked": len(running_jobs)}
