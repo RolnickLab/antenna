@@ -409,7 +409,10 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
 
 # Beat schedule is every 15 minutes for check_stale_jobs; expire queued copies
 # that accumulate while a worker is unavailable so we don't process a backlog.
-_STALE_JOB_BEAT_EXPIRES = 60 * 10
+# Kept just under the schedule interval so a backlog is dropped but a single
+# delayed copy still runs. Going below the interval would risk every copy
+# expiring before a worker picks it up under moderate broker pressure.
+_STALE_JOB_BEAT_EXPIRES = 60 * 14
 
 
 @celery_app.task(soft_time_limit=300, time_limit=360, expires=_STALE_JOB_BEAT_EXPIRES)
@@ -458,13 +461,26 @@ def log_running_async_job_stats() -> dict:
         return {"checked": 0}
 
     async def _snapshot_all():
-        for job in running_jobs:
-            try:
-                async with TaskQueueManager(job_logger=job.logger) as manager:
-                    await manager.log_consumer_stats_snapshot(job.pk)
-            except Exception:
-                # One job's NATS failure must not block snapshots for others.
-                logger.exception("Failed to snapshot NATS consumer stats for job %s", job.pk)
+        # Reuse one TaskQueueManager (and thus one NATS connection) for the
+        # whole tick so cost stays O(1) in the number of running jobs. The
+        # manager's `job_logger` attribute is read fresh by `log_async` on
+        # every call, so swapping it per iteration routes lifecycle lines to
+        # the right job UI. `_setup_advisory_stream` (called in `__aenter__`)
+        # only logs via the module logger, so the initial logger choice does
+        # not leak into an unrelated job's log.
+        try:
+            async with TaskQueueManager(job_logger=running_jobs[0].logger) as manager:
+                for job in running_jobs:
+                    try:
+                        manager.job_logger = job.logger
+                        await manager.log_consumer_stats_snapshot(job.pk)
+                    except Exception:
+                        # One job's NATS failure must not block snapshots for others.
+                        logger.exception("Failed to snapshot NATS consumer stats for job %s", job.pk)
+        except Exception:
+            # Connection setup (or teardown) itself failed — log once and
+            # wait for the next beat tick rather than crashing the task.
+            logger.exception("Failed to open NATS connection for consumer snapshots")
 
     async_to_sync(_snapshot_all)()
     return {"checked": len(running_jobs)}

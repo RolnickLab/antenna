@@ -2,7 +2,8 @@ from django.db import migrations
 
 
 def create_periodic_tasks(apps, schema_editor):
-    from django_celery_beat.models import CrontabSchedule, PeriodicTask
+    CrontabSchedule = apps.get_model("django_celery_beat", "CrontabSchedule")
+    PeriodicTask = apps.get_model("django_celery_beat", "PeriodicTask")
 
     stale_schedule, _ = CrontabSchedule.objects.get_or_create(
         minute="*/15",
@@ -38,7 +39,7 @@ def create_periodic_tasks(apps, schema_editor):
 
 
 def delete_periodic_tasks(apps, schema_editor):
-    from django_celery_beat.models import PeriodicTask
+    PeriodicTask = apps.get_model("django_celery_beat", "PeriodicTask")
 
     PeriodicTask.objects.filter(
         name__in=["jobs.check_stale_jobs", "jobs.log_running_async_job_stats"],
@@ -48,6 +49,7 @@ def delete_periodic_tasks(apps, schema_editor):
 class Migration(migrations.Migration):
     dependencies = [
         ("jobs", "0019_job_dispatch_mode"),
+        ("django_celery_beat", "0018_improve_crontab_helptext"),
     ]
 
     operations = [
