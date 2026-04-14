@@ -27,6 +27,11 @@ class LimitOffsetPaginationWithPermissions(LimitOffsetPagination):
     # Sentinel used internally when COUNT(*) is skipped.
     _SKIP_COUNT = object()
 
+    # Maximum rows scanned when with_counts=true is requested.  If the filtered
+    # result set contains at least this many rows the full COUNT(*) is abandoned
+    # and the response falls back to ``count: null``.
+    LARGE_QUERYSET_THRESHOLD = 10_000
+
     def paginate_queryset(self, queryset, request, view=None):
         self.request = request
         self.limit = self.get_limit(request)
@@ -42,8 +47,16 @@ class LimitOffsetPaginationWithPermissions(LimitOffsetPagination):
             self.count = self._SKIP_COUNT  # type: ignore[assignment]
             return page[: self.limit]
 
-        # Normal path: compute the exact total count.
-        self.count = self.get_count(queryset)
+        # with_counts=true path: attempt a capped count so we never run a
+        # full COUNT(*) against a huge result set.
+        self.count = self._get_capped_count(queryset)
+        if self.count is self._SKIP_COUNT:
+            # Result set exceeds LARGE_QUERYSET_THRESHOLD - fall back to the
+            # probe-based fast path (count stays null in the response).
+            page = list(queryset[self.offset : self.offset + self.limit + 1])
+            self._has_next = len(page) > self.limit
+            return page[: self.limit]
+
         if self.count > self.limit and self.template is not None:
             self.display_page_controls = True
         if self.count == 0 or self.offset > self.count:
@@ -94,6 +107,27 @@ class LimitOffsetPaginationWithPermissions(LimitOffsetPagination):
         # Allow count to be null when WITH_TOTAL_COUNT_PARAM is not requested.
         paginated_schema["properties"]["count"]["nullable"] = True
         return paginated_schema
+
+    def _get_capped_count(self, queryset):
+        """
+        Run a bounded COUNT(*) that stops scanning after ``LARGE_QUERYSET_THRESHOLD``
+        rows.  Returns the exact count when the result set is small, or the
+        ``_SKIP_COUNT`` sentinel when the threshold is reached so callers can
+        fall back gracefully.
+
+        Django translates ``queryset[:N].count()`` into::
+
+            SELECT COUNT(*) FROM (SELECT … LIMIT N) sub
+
+        which is always O(N) regardless of total table size.
+        """
+        # Fetch one extra row beyond the threshold so we can distinguish
+        # "exactly N rows" (exact count returned) from "more than N rows"
+        # (sentinel returned to avoid the full scan).
+        capped = queryset[: self.LARGE_QUERYSET_THRESHOLD + 1].count()
+        if capped <= self.LARGE_QUERYSET_THRESHOLD:
+            return capped
+        return self._SKIP_COUNT
 
     def _should_skip_count(self, request) -> bool:
         """Return True when the caller has not opted in to receiving the total count."""

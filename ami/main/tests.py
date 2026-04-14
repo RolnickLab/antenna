@@ -3860,3 +3860,25 @@ class TestPaginationWithCounts(APITestCase):
         response = self.client.get(self._captures_url(with_counts="false", limit=5))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIsNone(response.json()["count"])
+
+    def test_with_counts_true_falls_back_when_large(self):
+        """
+        When with_counts=true is requested but the result set meets or exceeds
+        LARGE_QUERYSET_THRESHOLD, count is null and next/previous links still work.
+        """
+        from unittest.mock import patch
+
+        from ami.base.pagination import LimitOffsetPaginationWithPermissions
+
+        # Patch the threshold to 1 so even a single row triggers the fallback.
+        with patch.object(LimitOffsetPaginationWithPermissions, "LARGE_QUERYSET_THRESHOLD", 1):
+            total = SourceImage.objects.filter(deployment__project=self.project).count()
+            self.assertGreater(total, 1, "Need at least 2 captures for this test")
+
+            # Page 1 – should see next link but null count.
+            response = self.client.get(self._captures_url(with_counts="true", limit=1))
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            data = response.json()
+            self.assertIsNone(data["count"], "count must be null when threshold is exceeded")
+            self.assertIsNotNone(data["next"], "next link must still be present")
+            self.assertIsNone(data["previous"])
