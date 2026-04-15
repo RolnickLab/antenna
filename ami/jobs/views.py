@@ -267,8 +267,17 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         if job.dispatch_mode != JobDispatchMode.ASYNC_API:
             raise ValidationError("Only async_api jobs have fetchable tasks")
 
-        # Only serve tasks for actively processing jobs
+        user_desc = getattr(request.user, "email", None) or str(request.user)
+        token_id = getattr(request.auth, "pk", None)
+
+        # Only serve tasks for actively processing jobs. Logging the early-exit
+        # makes "phantom-pull" workers (polling against terminal jobs whose NATS
+        # stream still exists) visible from the per-job log view.
         if job.status not in JobState.active_states():
+            job.logger.info(
+                f"Tasks requested for non-active job (status={job.status}); returning empty. "
+                f"user={user_desc}, token_id={token_id}"
+            )
             return Response({"tasks": []})
 
         # Validate that the job has a pipeline
@@ -288,9 +297,14 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         try:
             tasks = async_to_sync(get_tasks)()
         except (asyncio.TimeoutError, OSError, nats.errors.Error) as e:
-            logger.warning("NATS unavailable while fetching tasks for job %s: %s", job.pk, e)
+            msg = f"NATS unavailable while fetching tasks for job {job.pk}: {e}"
+            logger.warning(msg)
+            job.logger.warning(f"{msg} user={user_desc}, token_id={token_id}")
             return Response({"error": "Task queue temporarily unavailable"}, status=503)
 
+        job.logger.info(
+            f"Tasks fetched: requested={batch_size}, delivered={len(tasks)}, " f"user={user_desc}, token_id={token_id}"
+        )
         return Response({"tasks": tasks})
 
     @extend_schema(
@@ -312,6 +326,9 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
         # Record heartbeat for async processing services on this pipeline
         _mark_pipeline_pull_services_seen(job)
+
+        user_desc = getattr(request.user, "email", None) or str(request.user)
+        token_id = getattr(request.auth, "pk", None)
 
         serializer = MLJobResultsRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -343,6 +360,13 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                     job.pk,
                     task.id,
                     reply_subject,
+                )
+                # Mirror to per-job logger so the job log view shows result-POST
+                # activity alongside task-fetch activity. Module-logger line above
+                # stays for ops-level monitoring outside the per-job context.
+                job.logger.info(
+                    f"Queued pipeline result: task_id={task.id}, reply_subject={reply_subject}, "
+                    f"user={user_desc}, token_id={token_id}"
                 )
 
             return Response(

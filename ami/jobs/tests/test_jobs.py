@@ -602,6 +602,95 @@ class TestJobView(APITestCase):
         resp = self.client.post(result_url, bare_list, format="json")
         self.assertEqual(resp.status_code, 400)
 
+    def test_tasks_endpoint_logs_fetch_to_job_logger(self):
+        """Successful task-fetch lands a 'Tasks fetched' line on the per-job logger."""
+        pipeline = self._create_pipeline()
+        job = self._create_ml_job("Job for fetch-logging test", pipeline)
+        job.dispatch_mode = JobDispatchMode.ASYNC_API
+        job.status = JobState.STARTED
+        job.save(update_fields=["dispatch_mode", "status"])
+        images = [
+            SourceImage.objects.create(
+                path=f"fetchlog_{i}.jpg",
+                public_base_url="http://example.com",
+                project=self.project,
+            )
+            for i in range(3)
+        ]
+        queue_images_to_nats(job, images)
+
+        self.client.force_authenticate(user=self.user)
+        tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+        resp = self.client.post(tasks_url, {"batch_size": 2}, format="json")
+        self.assertEqual(resp.status_code, 200)
+
+        job.refresh_from_db()
+        joined = "\n".join(job.logs.stdout)
+        self.assertIn("Tasks fetched", joined)
+        self.assertIn("requested=2", joined)
+        self.assertIn("delivered=", joined)
+        self.assertIn(self.user.email, joined)
+
+    def test_tasks_endpoint_logs_early_exit_for_terminal_job(self):
+        """Polling a terminal-status job produces an empty response and a 'non-active job' log line."""
+        pipeline = self._create_pipeline()
+        job = self._create_ml_job("Job for early-exit log test", pipeline)
+        job.dispatch_mode = JobDispatchMode.ASYNC_API
+        job.status = JobState.SUCCESS
+        job.save(update_fields=["dispatch_mode", "status"])
+
+        self.client.force_authenticate(user=self.user)
+        tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+        resp = self.client.post(tasks_url, {"batch_size": 5}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), {"tasks": []})
+
+        job.refresh_from_db()
+        joined = "\n".join(job.logs.stdout)
+        self.assertIn("non-active job", joined)
+        self.assertIn(f"status={JobState.SUCCESS}", joined)
+
+    def test_result_endpoint_mirrors_queued_log_to_job_logger(self):
+        """The result endpoint mirrors its 'Queued pipeline result' line to the per-job logger."""
+        from unittest.mock import MagicMock, patch
+
+        pipeline = self._create_pipeline()
+        job = self._create_ml_job("Job for result-logging test", pipeline)
+
+        self.client.force_authenticate(user=self.user)
+        result_url = reverse_with_params("api:job-result", args=[job.pk], params={"project_id": self.project.pk})
+
+        result_data = {
+            "results": [
+                {
+                    "reply_subject": "test.reply.logged",
+                    "result": {
+                        "pipeline": "test-pipeline",
+                        "algorithms": {},
+                        "total_time": 0.1,
+                        "source_images": [],
+                        "detections": [],
+                        "errors": None,
+                    },
+                }
+            ]
+        }
+
+        # Keep the Celery task from actually running; the log line is emitted
+        # by the view before delegating to Celery.
+        mock_async_result = MagicMock()
+        mock_async_result.id = "mirrored-task-id"
+        with patch("ami.jobs.views.process_nats_pipeline_result.delay", return_value=mock_async_result):
+            resp = self.client.post(result_url, result_data, format="json")
+        self.assertEqual(resp.status_code, 200)
+
+        job.refresh_from_db()
+        joined = "\n".join(job.logs.stdout)
+        self.assertIn("Queued pipeline result", joined)
+        self.assertIn("mirrored-task-id", joined)
+        self.assertIn("test.reply.logged", joined)
+        self.assertIn(self.user.email, joined)
+
 
 class TestJobDispatchModeFiltering(APITestCase):
     """Test job filtering by dispatch_mode."""
