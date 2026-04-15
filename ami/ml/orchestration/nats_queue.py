@@ -44,6 +44,15 @@ async def get_connection(nats_url: str) -> tuple[nats.NATS, JetStreamContext]:
 
 
 TASK_TTR = getattr(settings, "NATS_TASK_TTR", 30)  # Visibility timeout in seconds (configurable)
+
+# Max delivery attempts per NATS message (1 original + N-1 retries).
+# A processing service that consistently fails (e.g. returns results referencing
+# an algorithm that the pipeline doesn't declare) will burn ADC + worker time on
+# every retry; one retry covers a transient blip and is the right tradeoff.
+# Override per environment via settings.NATS_MAX_DELIVER if that balance needs
+# to change (e.g. a deployment with a flakier network may want a higher value).
+NATS_MAX_DELIVER = getattr(settings, "NATS_MAX_DELIVER", 2)
+
 ADVISORY_STREAM_NAME = "advisories"  # Shared stream for max delivery advisories across all jobs
 
 
@@ -342,7 +351,7 @@ class TaskQueueManager:
                     durable_name=consumer_name,
                     ack_policy=AckPolicy.EXPLICIT,
                     ack_wait=TASK_TTR,  # Visibility timeout (TTR)
-                    max_deliver=5,  # Max retry attempts
+                    max_deliver=NATS_MAX_DELIVER,
                     deliver_policy=DeliverPolicy.ALL,
                     max_ack_pending=self.max_ack_pending,
                     filter_subject=subject,

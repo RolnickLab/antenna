@@ -165,12 +165,29 @@ class TestCleanupAsyncJobResources(TestCase):
         self._verify_resources_cleaned(job.pk)
 
     def test_cleanup_on_job_failure(self):
-        """Test that resources are cleaned up when job fails."""
+        """Test that resources are cleaned up when job fails after progress is complete.
+
+        The Bug C guard in update_job_failure defers FAILURE for ASYNC_API jobs that
+        are still in-flight (progress.is_complete() == False). To exercise the
+        terminal cleanup path via task_failure for an ASYNC_API job, we first drive
+        all stages to complete, then fire the failure signal.
+        """
         job = self._create_job_with_queued_images()
 
         # Set task_id so the failure handler can find the job
         job.task_id = "test-task-failure-123"
         job.save()
+
+        # Drive progress to complete so the Bug C guard in update_job_failure falls
+        # through to cleanup. We mutate the persisted JobProgress directly because
+        # calling _update_job_progress with complete_state=SUCCESS would itself
+        # trigger cleanup (via cleanup_async_job_if_needed inside the progress
+        # update path), defeating the test's intent.
+        for stage in job.progress.stages:
+            stage.progress = 1.0
+            stage.status = JobState.SUCCESS
+        job.save()
+        job.refresh_from_db()
 
         # Simulate job failure by calling the failure signal handler
         update_job_failure(
