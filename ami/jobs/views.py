@@ -223,7 +223,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         if project:
             jobs = jobs.filter(project=project)
         cutoff_hours = IntegerField(required=False, min_value=0).clean(
-            self.request.query_params.get("cutoff_hours", Job.FAILED_CUTOFF_HOURS)
+            self.request.query_params.get("cutoff_hours", Job.FAILED_JOBS_DISPLAY_MAX_HOURS)
         )
         # Filter out completed jobs that have not been updated in the last X hours
         cutoff_datetime = timezone.now() - timezone.timedelta(hours=cutoff_hours)

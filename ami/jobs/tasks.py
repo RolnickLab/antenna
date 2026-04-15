@@ -424,9 +424,14 @@ def _update_job_progress(
         cleanup_async_job_if_needed(job)
 
 
-def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[dict]:
+def check_stale_jobs(minutes: int | None = None, dry_run: bool = False) -> list[dict]:
     """
     Find jobs stuck in a running state past the cutoff and revoke them.
+
+    Cutoff is measured against ``Job.updated_at`` (auto-bumped on every save),
+    so a job that's actively making progress — including async_api jobs that
+    bump on each Redis SREM-driven progress save — is never reaped while
+    healthy. Default cutoff is :attr:`Job.STALLED_JOBS_MAX_MINUTES`.
 
     For each stale job, checks Celery for a terminal task status. REVOKED is
     always trusted. For async_api jobs, SUCCESS and FAILURE are only accepted
@@ -444,10 +449,10 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
 
     from ami.jobs.models import Job, JobDispatchMode, JobState
 
-    if hours is None:
-        hours = Job.FAILED_CUTOFF_HOURS
+    if minutes is None:
+        minutes = Job.STALLED_JOBS_MAX_MINUTES
 
-    cutoff = datetime.datetime.now() - datetime.timedelta(hours=hours)
+    cutoff = datetime.datetime.now() - datetime.timedelta(minutes=minutes)
     stale_pks = list(
         Job.objects.filter(
             status__in=JobState.running_states(),
@@ -496,6 +501,23 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
                     job.finished_at = datetime.datetime.now()
                     job.save()
             else:
+                # Per-job diagnostic: surface enough state at revoke time that an
+                # operator can answer "why was this stalled?" without grepping
+                # back through tick logs. Pairs with the per-tick NATS consumer
+                # snapshots logged by ``_run_running_job_snapshot_check``.
+                stalled_minutes = (datetime.datetime.now() - job.updated_at).total_seconds() / 60
+                stages_summary = (
+                    ", ".join(f"{s.key}={s.progress*100:.1f}% {s.status}" for s in job.progress.stages)
+                    or "(no stages)"
+                )
+                job.logger.warning(
+                    f"Reaping stalled job: no progress for {stalled_minutes:.1f} min "
+                    f"(threshold {minutes} min). previous_status={previous_status}, "
+                    f"celery_state={celery_state}, dispatch_mode={job.dispatch_mode}, "
+                    f"stages: {stages_summary}. "
+                    f"For NATS consumer state at the last tick, see prior "
+                    f"running_job_snapshots logs for this job."
+                )
                 if not dry_run:
                     job.update_status(JobState.REVOKED, save=False)
                     job.finished_at = datetime.datetime.now()
@@ -539,7 +561,7 @@ class JobsHealthCheckResult:
 
 
 def _run_stale_jobs_check() -> IntegrityCheckResult:
-    """Reconcile jobs stuck in running states past FAILED_CUTOFF_HOURS."""
+    """Reconcile jobs stuck in running states past Job.STALLED_JOBS_MAX_MINUTES."""
     results = check_stale_jobs()
     updated = sum(1 for r in results if r["action"] == "updated")
     revoked = sum(1 for r in results if r["action"] == "revoked")
