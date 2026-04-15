@@ -609,3 +609,30 @@ class DwCAExportTest(TestCase):
                     self.assertEqual(len(orphaned), 0, f"Orphaned occurrence eventIDs: {orphaned}")
         finally:
             default_storage.delete(file_path)
+
+    def test_offline_structural_validator(self):
+        """Full archive passes the offline DwC-A structural validator.
+
+        This catches the class of drift bugs (meta.xml term count diverges
+        from TSV columns, dangling coreids, duplicate core ids, empty
+        required fields) that don't show up in diff review. Fast enough to
+        run in unit tests; no network required.
+        """
+        import tempfile
+
+        from ami.exports.dwca import EVENT_FIELDS, OCCURRENCE_FIELDS
+        from ami.exports.dwca_validator import validate_dwca_zip
+
+        required_terms = {f.term for f in EVENT_FIELDS if f.required}
+        required_terms |= {f.term for f in OCCURRENCE_FIELDS if f.required}
+
+        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+            with self._open_zip() as src:
+                tmp.write(src.read())
+            tmp_path = tmp.name
+
+        result = validate_dwca_zip(tmp_path, required_terms=required_terms)
+        self.assertTrue(
+            result.ok,
+            msg="DwC-A structural validator failed:\n" + "\n".join(result.errors),
+        )
