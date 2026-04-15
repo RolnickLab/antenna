@@ -3722,6 +3722,126 @@ class TaxaListGetOrCreateForProjectTestCase(TestCase):
         self.assertEqual(taxa_list_again.description, "Initial description")
 
 
+class TaxaListDedupeMigrationTestCase(TestCase):
+    """Exercise the 0083_dedupe_taxalist_names data migration logic against seeded duplicates."""
+
+    def setUp(self):
+        self.project_a = Project.objects.create(name="Project A")
+        self.project_b = Project.objects.create(name="Project B")
+
+    def _dedupe(self):
+        # Import the forward function from the numbered migration module
+        from importlib import import_module
+
+        from django.apps import apps as real_apps
+
+        mod = import_module("ami.main.migrations.0083_dedupe_taxalist_names")
+        mod.dedupe_taxa_list_names(real_apps, None)
+
+    def test_renames_global_duplicates(self):
+        g1 = TaxaList.objects.create(name="Shared")
+        g2 = TaxaList.objects.create(name="Shared")
+        g3 = TaxaList.objects.create(name="Shared")
+
+        self._dedupe()
+
+        g1.refresh_from_db()
+        g2.refresh_from_db()
+        g3.refresh_from_db()
+        self.assertEqual(g1.name, "Shared")
+        self.assertEqual(g2.name, "Shared (duplicate 2)")
+        self.assertEqual(g3.name, "Shared (duplicate 3)")
+
+    def test_renames_project_scoped_duplicates(self):
+        p1 = TaxaList.objects.create(name="Project Moths")
+        p1.projects.add(self.project_a)
+        p2 = TaxaList.objects.create(name="Project Moths")
+        p2.projects.add(self.project_a)
+
+        self._dedupe()
+
+        p1.refresh_from_db()
+        p2.refresh_from_db()
+        self.assertEqual(p1.name, "Project Moths")
+        self.assertEqual(p2.name, "Project Moths (duplicate 2)")
+
+    def test_leaves_unique_names_untouched(self):
+        g = TaxaList.objects.create(name="Unique Global")
+        p = TaxaList.objects.create(name="Unique Project")
+        p.projects.add(self.project_a)
+
+        self._dedupe()
+
+        g.refresh_from_db()
+        p.refresh_from_db()
+        self.assertEqual(g.name, "Unique Global")
+        self.assertEqual(p.name, "Unique Project")
+
+    def test_same_name_across_different_scopes_untouched(self):
+        """A global list and a project-scoped list sharing a name are not duplicates."""
+        g = TaxaList.objects.create(name="Moths")
+        p = TaxaList.objects.create(name="Moths")
+        p.projects.add(self.project_a)
+
+        self._dedupe()
+
+        g.refresh_from_db()
+        p.refresh_from_db()
+        self.assertEqual(g.name, "Moths")
+        self.assertEqual(p.name, "Moths")
+
+    def test_same_name_across_different_projects_untouched(self):
+        a = TaxaList.objects.create(name="Moths")
+        a.projects.add(self.project_a)
+        b = TaxaList.objects.create(name="Moths")
+        b.projects.add(self.project_b)
+
+        self._dedupe()
+
+        a.refresh_from_db()
+        b.refresh_from_db()
+        self.assertEqual(a.name, "Moths")
+        self.assertEqual(b.name, "Moths")
+
+    def test_resolves_multi_project_overlap(self):
+        """A list participating in multiple projects with conflicts in any one gets renamed."""
+        # x (in A,B) and y (in A) share project A; x is older so y renames.
+        x = TaxaList.objects.create(name="Moths")
+        x.projects.add(self.project_a, self.project_b)
+        y = TaxaList.objects.create(name="Moths")
+        y.projects.add(self.project_a)
+
+        self._dedupe()
+
+        x.refresh_from_db()
+        y.refresh_from_db()
+        self.assertEqual(x.name, "Moths")
+        self.assertEqual(y.name, "Moths (duplicate 2)")
+
+    def test_get_or_create_for_project_works_after_dedupe(self):
+        """After running the migration, get_or_create_for_project returns the oldest without raising."""
+        oldest = TaxaList.objects.create(name="Shared")
+        TaxaList.objects.create(name="Shared")
+        TaxaList.objects.create(name="Shared")
+
+        self._dedupe()
+
+        found, created = TaxaList.objects.get_or_create_for_project(name="Shared", project=None)
+        self.assertFalse(created)
+        self.assertEqual(found.pk, oldest.pk)
+
+    def test_idempotent(self):
+        """Running the migration twice is a no-op on the second run."""
+        TaxaList.objects.create(name="Shared")
+        TaxaList.objects.create(name="Shared")
+
+        self._dedupe()
+        names_after_first = sorted(TaxaList.objects.values_list("name", flat=True))
+        self._dedupe()
+        names_after_second = sorted(TaxaList.objects.values_list("name", flat=True))
+        self.assertEqual(names_after_first, names_after_second)
+
+
 class TestProjectPipelinesAPI(APITestCase):
     """Test the project pipelines API endpoint."""
 
