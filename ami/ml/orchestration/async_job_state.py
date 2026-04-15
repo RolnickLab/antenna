@@ -56,6 +56,7 @@ class JobStateProgress:
     processed: int = 0  # source images completed (success + failed)
     percentage: float = 0.0  # processed / total
     failed: int = 0  # source images that returned an error from the processing service
+    newly_removed: int = 0  # number of IDs actually removed by this SREM call (0 on replay)
 
 
 class AsyncJobStateManager:
@@ -156,6 +157,11 @@ class AsyncJobStateManager:
         # regardless of whether SREM/SADD appear at the front.
         remaining, failed_count, total_raw = results[-3], results[-2], results[-1]
 
+        # SREM's integer return (number of members actually removed) is at results[0]
+        # when processed_image_ids is non-empty. Zero on a replay because the IDs are
+        # no longer in the set. Used by callers to gate idempotent counter accumulation.
+        newly_removed = results[0] if processed_image_ids else 0
+
         if total_raw is None:
             return None
 
@@ -173,6 +179,7 @@ class AsyncJobStateManager:
             processed=processed,
             percentage=percentage,
             failed=failed_count,
+            newly_removed=newly_removed,
         )
 
     def get_progress(self, stage: str) -> "JobStateProgress | None":
