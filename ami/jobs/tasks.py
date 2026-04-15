@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 from asgiref.sync import async_to_sync
 from celery.signals import task_failure, task_postrun, task_prerun
 from django.db import transaction
-from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import RedisError
 
 from ami.main.checks.schemas import IntegrityCheckResult
@@ -59,7 +58,7 @@ def run_job(self, job_id: int) -> None:
     # the task deadline. Terminal failures (e.g. PipelineResultsError
     # validation) are raised from other exception types and not retried here.
     # See RolnickLab/antenna#1219.
-    autoretry_for=(RedisError, RedisConnectionError, ConnectionError),
+    autoretry_for=(RedisError, ConnectionError),
     retry_backoff=True,
     retry_backoff_max=15,
     retry_jitter=True,
