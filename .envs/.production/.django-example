@@ -20,6 +20,13 @@ REDIS_URL=redis://redis:6379/0
 # Celery
 # ------------------------------------------------------------------------------
 
+# Worker concurrency (prefork pool size). Settings default is 8.
+# Recommended for production: 16 on an 8-core host — process_nats_pipeline_result
+# and create_detection_images are DB/Redis-bound, so ~2x cpu_count roughly matches
+# observed drain vs ingress on the antenna queue without saturating pgbouncer.
+# Tune higher only after confirming postgres connection-pool headroom.
+CELERY_WORKER_CONCURRENCY=16
+
 # Flower
 CELERY_FLOWER_USER=
 CELERY_FLOWER_PASSWORD=
