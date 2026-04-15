@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from asgiref.sync import async_to_sync
+from asgiref.sync import async_to_sync, sync_to_async
 from celery.signals import task_failure, task_postrun, task_prerun
 from django.db import transaction
 from redis.exceptions import RedisError
@@ -558,6 +558,7 @@ class JobsHealthCheckResult:
 
     stale_jobs: IntegrityCheckResult
     running_job_snapshots: IntegrityCheckResult
+    zombie_streams: IntegrityCheckResult
 
 
 def _run_stale_jobs_check() -> IntegrityCheckResult:
@@ -635,6 +636,91 @@ def _run_running_job_snapshot_check() -> IntegrityCheckResult:
     return IntegrityCheckResult(checked=len(running_jobs), fixed=0, unfixable=errors)
 
 
+def _run_zombie_streams_check() -> IntegrityCheckResult:
+    """Drain NATS streams that outlived their Django Job.
+
+    Defense-in-depth for the cleanup-on-cancel path: a stream whose Job is in
+    a terminal state (or was deleted) is consuming worker poll cycles for no
+    reason. The age guard (``Job.ZOMBIE_STREAMS_MAX_AGE_MINUTES``) prevents
+    races with freshly-dispatched jobs whose NATS stream is created before
+    ``transaction.on_commit`` persists the Job row.
+
+    Observations-only for healthy in-flight jobs; only drains when both
+    conditions hold:
+
+    * Job is ``None`` or in :meth:`JobState.final_states`
+    * Stream's NATS-reported ``created`` timestamp is older than the threshold
+
+    ``checked`` counts job-shaped streams inspected; ``fixed`` counts those
+    actually drained; ``unfixable`` counts per-stream drain failures.
+    """
+    from ami.jobs.models import Job, JobState
+
+    threshold = datetime.timedelta(minutes=Job.ZOMBIE_STREAMS_MAX_AGE_MINUTES)
+    now = datetime.datetime.now()
+
+    async def _drain_all() -> tuple[int, int, int]:
+        async with TaskQueueManager() as manager:
+            snapshots = await manager.list_job_stream_snapshots()
+            if not snapshots:
+                return 0, 0, 0
+
+            job_ids = [s["job_id"] for s in snapshots]
+            jobs_by_id = await sync_to_async(
+                lambda ids: {j.pk: j for j in Job.objects.filter(pk__in=ids).only("pk", "status")}
+            )(job_ids)
+
+            checked = len(snapshots)
+            drained = 0
+            errored = 0
+            for snap in snapshots:
+                created = snap["created"]
+                age = now - created if created else threshold + datetime.timedelta(minutes=1)
+                if age < threshold:
+                    continue
+                job = jobs_by_id.get(snap["job_id"])
+                job_status = job.status if job else None
+                if job is not None and JobState(job_status) not in JobState.final_states():
+                    continue
+                status_label = str(job_status) if job else "missing"
+                try:
+                    consumer_deleted = await manager.delete_consumer(snap["job_id"])
+                    stream_deleted = await manager.delete_stream(snap["job_id"])
+                except Exception:
+                    errored += 1
+                    logger.exception("Failed draining zombie NATS stream for job %s", snap["job_id"])
+                    continue
+                if stream_deleted:
+                    drained += 1
+                    age_hours = age.total_seconds() / 3600.0
+                    logger.info(
+                        "Drained zombie NATS stream %s (status=%s, age=%.1fh, redelivered=%s, consumer_deleted=%s)",
+                        snap["stream_name"],
+                        status_label,
+                        age_hours,
+                        snap["num_redelivered"],
+                        consumer_deleted,
+                    )
+                else:
+                    errored += 1
+            return checked, drained, errored
+
+    try:
+        checked, drained, errored = async_to_sync(_drain_all)()
+    except Exception:
+        logger.exception("zombie_streams check: connection/setup failed")
+        return IntegrityCheckResult(checked=0, fixed=0, unfixable=1)
+
+    log_fn = logger.warning if errored else logger.info
+    log_fn(
+        "zombie_streams check: %d stream(s) inspected, %d drained, %d error(s)",
+        checked,
+        drained,
+        errored,
+    )
+    return IntegrityCheckResult(checked=checked, fixed=drained, unfixable=errored)
+
+
 def _safe_run_sub_check(name: str, fn: Callable[[], IntegrityCheckResult]) -> IntegrityCheckResult:
     """Run one umbrella sub-check, returning an ``unfixable=1`` sentinel on failure.
 
@@ -664,6 +750,7 @@ def jobs_health_check() -> dict:
     result = JobsHealthCheckResult(
         stale_jobs=_safe_run_sub_check("stale_jobs", _run_stale_jobs_check),
         running_job_snapshots=_safe_run_sub_check("running_job_snapshots", _run_running_job_snapshot_check),
+        zombie_streams=_safe_run_sub_check("zombie_streams", _run_zombie_streams_check),
     )
     return dataclasses.asdict(result)
 

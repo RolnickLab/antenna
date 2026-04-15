@@ -11,8 +11,10 @@ support the visibility timeout semantics we want or a disconnected mode of pulli
 """
 
 import asyncio
+import datetime
 import json
 import logging
+import re
 
 import nats
 from asgiref.sync import sync_to_async
@@ -54,6 +56,27 @@ TASK_TTR = getattr(settings, "NATS_TASK_TTR", 30)  # Visibility timeout in secon
 NATS_MAX_DELIVER = getattr(settings, "NATS_MAX_DELIVER", 2)
 
 ADVISORY_STREAM_NAME = "advisories"  # Shared stream for max delivery advisories across all jobs
+
+
+def _parse_nats_timestamp(raw: str) -> datetime.datetime:
+    """Parse an RFC3339-ish NATS timestamp, tolerating sub-microsecond precision.
+
+    NATS servers emit nanoseconds (``...20494325Z``); Python's ``fromisoformat``
+    rejects anything beyond 6 fractional digits, so we truncate before parsing.
+    Returns a naive datetime in local time to match the rest of the codebase
+    (``settings.USE_TZ = False``).
+    """
+    cleaned = raw.rstrip("Z")
+    if "." in cleaned:
+        head, frac = cleaned.split(".", 1)
+        cleaned = f"{head}.{frac[:6]}"
+    parsed = datetime.datetime.fromisoformat(cleaned)
+    # NATS emits UTC; attach UTC tzinfo if none is present, then convert to the
+    # local zone and drop tzinfo to match the naive-local datetimes used
+    # throughout the codebase (``settings.USE_TZ = False``).
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+    return parsed.astimezone().replace(tzinfo=None)
 
 
 class TaskQueueManager:
@@ -572,6 +595,79 @@ class TaskQueueManager:
         except Exception as e:
             await self.log_async(logging.ERROR, f"Failed to delete NATS stream for job '{job_id}': {e}")
             return False
+
+    async def list_job_stream_snapshots(self) -> list[dict]:
+        """Return a snapshot of every ``job_{N}`` stream currently in JetStream.
+
+        Each entry: ``{"job_id": int, "stream_name": str, "created": datetime,
+        "messages": int, "num_redelivered": int | None}``. ``num_redelivered``
+        is pulled from the matching consumer when present and is ``None`` when
+        the consumer has already been removed (stream-only zombies are still
+        worth reporting).
+
+        Uses the raw ``$JS.API.STREAM.LIST`` endpoint because
+        ``JetStreamContext.streams_info`` in the currently pinned nats.py drops
+        the server-side ``created`` timestamp from :class:`StreamInfo` — we need
+        it here to age zombies out with a safety margin.
+        """
+        if self.nc is None or self.js is None:
+            raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
+
+        snapshots: list[dict] = []
+        offset = 0
+        # $JS.API.STREAM.LIST pages at 256 streams per response; loop so a
+        # deployment with a long tail of zombies is still fully enumerated.
+        while True:
+            resp = await asyncio.wait_for(
+                self.nc.request("$JS.API.STREAM.LIST", json.dumps({"offset": offset}).encode()),
+                timeout=NATS_JETSTREAM_TIMEOUT,
+            )
+            payload = json.loads(resp.data)
+            streams = payload.get("streams") or []
+            if not streams:
+                break
+            for stream in streams:
+                config = stream.get("config") or {}
+                name = config.get("name") or ""
+                match = re.match(r"^job_(\d+)$", name)
+                if not match:
+                    continue
+                job_id = int(match.group(1))
+                created_raw = stream.get("created")
+                try:
+                    created = _parse_nats_timestamp(created_raw) if created_raw else None
+                except ValueError:
+                    created = None
+                state = stream.get("state") or {}
+                snapshots.append(
+                    {
+                        "job_id": job_id,
+                        "stream_name": name,
+                        "created": created,
+                        "messages": int(state.get("messages") or 0),
+                        "num_redelivered": await self._consumer_redelivered_count(job_id),
+                    }
+                )
+            total = int(payload.get("total") or 0)
+            offset += len(streams)
+            if offset >= total:
+                break
+        return snapshots
+
+    async def _consumer_redelivered_count(self, job_id: int) -> int | None:
+        """Return ``num_redelivered`` from the job's consumer, or ``None`` if gone."""
+        if self.js is None:
+            return None
+        stream_name = self._get_stream_name(job_id)
+        consumer_name = self._get_consumer_name(job_id)
+        try:
+            info = await asyncio.wait_for(
+                self.js.consumer_info(stream_name, consumer_name),
+                timeout=NATS_JETSTREAM_TIMEOUT,
+            )
+        except Exception:
+            return None
+        return getattr(info, "num_redelivered", None)
 
     async def _setup_advisory_stream(self):
         """Ensure the shared advisory stream exists to capture max-delivery events.

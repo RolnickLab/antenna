@@ -36,6 +36,10 @@ class JobsHealthCheckTest(TestCase):
         instance.__aenter__ = AsyncMock(return_value=instance)
         instance.__aexit__ = AsyncMock(return_value=False)
         instance.log_consumer_stats_snapshot = AsyncMock()
+        # Zombie-stream sub-check defaults: no streams to inspect, no drains.
+        instance.list_job_stream_snapshots = AsyncMock(return_value=[])
+        instance.delete_consumer = AsyncMock(return_value=True)
+        instance.delete_stream = AsyncMock(return_value=True)
         return instance
 
     def test_reports_both_sub_check_results(self, mock_manager_cls, _mock_cleanup):
@@ -50,6 +54,7 @@ class JobsHealthCheckTest(TestCase):
             {
                 "stale_jobs": {"checked": 2, "fixed": 2, "unfixable": 0},
                 "running_job_snapshots": _empty_check_dict(),
+                "zombie_streams": _empty_check_dict(),
             },
         )
 
@@ -63,6 +68,7 @@ class JobsHealthCheckTest(TestCase):
             {
                 "stale_jobs": _empty_check_dict(),
                 "running_job_snapshots": _empty_check_dict(),
+                "zombie_streams": _empty_check_dict(),
             },
         )
 
@@ -173,3 +179,123 @@ class JobsHealthCheckTest(TestCase):
 
         # checked == 2 (both stale), fixed == 2 (one per branch), unfixable == 0
         self.assertEqual(result["stale_jobs"], {"checked": 2, "fixed": 2, "unfixable": 0})
+
+    def test_zombie_stream_drained_when_job_is_terminal_and_old(self, mock_manager_cls, _mock_cleanup):
+        """An old stream whose Job is in a final state should be drained."""
+        import datetime
+
+        terminal_job = Job.objects.create(project=self.project, name="zombie owner", status=JobState.SUCCESS)
+        instance = self._stub_manager(mock_manager_cls)
+        old_ts = datetime.datetime.now() - datetime.timedelta(minutes=Job.ZOMBIE_STREAMS_MAX_AGE_MINUTES + 5)
+        instance.list_job_stream_snapshots = AsyncMock(
+            return_value=[
+                {
+                    "job_id": terminal_job.pk,
+                    "stream_name": f"job_{terminal_job.pk}",
+                    "created": old_ts,
+                    "messages": 0,
+                    "num_redelivered": 7,
+                }
+            ]
+        )
+
+        result = jobs_health_check()
+
+        self.assertEqual(result["zombie_streams"], {"checked": 1, "fixed": 1, "unfixable": 0})
+        instance.delete_consumer.assert_awaited_once_with(terminal_job.pk)
+        instance.delete_stream.assert_awaited_once_with(terminal_job.pk)
+
+    def test_zombie_stream_drained_when_job_is_missing_and_old(self, mock_manager_cls, _mock_cleanup):
+        """An old stream whose Job row no longer exists should be drained."""
+        import datetime
+
+        instance = self._stub_manager(mock_manager_cls)
+        old_ts = datetime.datetime.now() - datetime.timedelta(minutes=Job.ZOMBIE_STREAMS_MAX_AGE_MINUTES + 1)
+        instance.list_job_stream_snapshots = AsyncMock(
+            return_value=[
+                {
+                    "job_id": 987654,  # no Job row with this pk
+                    "stream_name": "job_987654",
+                    "created": old_ts,
+                    "messages": 3,
+                    "num_redelivered": 0,
+                }
+            ]
+        )
+
+        result = jobs_health_check()
+
+        self.assertEqual(result["zombie_streams"], {"checked": 1, "fixed": 1, "unfixable": 0})
+        instance.delete_stream.assert_awaited_once_with(987654)
+
+    def test_zombie_stream_not_drained_when_below_age_threshold(self, mock_manager_cls, _mock_cleanup):
+        """A fresh stream for a terminal job must NOT be drained (on_commit race guard)."""
+        import datetime
+
+        terminal_job = Job.objects.create(project=self.project, name="fresh zombie?", status=JobState.FAILURE)
+        instance = self._stub_manager(mock_manager_cls)
+        fresh_ts = datetime.datetime.now() - datetime.timedelta(minutes=1)
+        instance.list_job_stream_snapshots = AsyncMock(
+            return_value=[
+                {
+                    "job_id": terminal_job.pk,
+                    "stream_name": f"job_{terminal_job.pk}",
+                    "created": fresh_ts,
+                    "messages": 0,
+                    "num_redelivered": 0,
+                }
+            ]
+        )
+
+        result = jobs_health_check()
+
+        self.assertEqual(result["zombie_streams"], {"checked": 1, "fixed": 0, "unfixable": 0})
+        instance.delete_stream.assert_not_awaited()
+
+    def test_zombie_stream_not_drained_when_job_still_running(self, mock_manager_cls, _mock_cleanup):
+        """An old stream for a still-running job must NOT be drained."""
+        import datetime
+
+        running_job = Job.objects.create(project=self.project, name="still running", status=JobState.STARTED)
+        instance = self._stub_manager(mock_manager_cls)
+        old_ts = datetime.datetime.now() - datetime.timedelta(minutes=Job.ZOMBIE_STREAMS_MAX_AGE_MINUTES + 10)
+        instance.list_job_stream_snapshots = AsyncMock(
+            return_value=[
+                {
+                    "job_id": running_job.pk,
+                    "stream_name": f"job_{running_job.pk}",
+                    "created": old_ts,
+                    "messages": 5,
+                    "num_redelivered": 0,
+                }
+            ]
+        )
+
+        result = jobs_health_check()
+
+        self.assertEqual(result["zombie_streams"], {"checked": 1, "fixed": 0, "unfixable": 0})
+        instance.delete_stream.assert_not_awaited()
+
+    def test_zombie_stream_drain_failure_counts_as_unfixable(self, mock_manager_cls, _mock_cleanup):
+        """A drain that raises should be counted as unfixable without crashing the umbrella."""
+        import datetime
+
+        terminal_job = Job.objects.create(project=self.project, name="unfixable", status=JobState.SUCCESS)
+        instance = self._stub_manager(mock_manager_cls)
+        old_ts = datetime.datetime.now() - datetime.timedelta(minutes=Job.ZOMBIE_STREAMS_MAX_AGE_MINUTES + 2)
+        instance.list_job_stream_snapshots = AsyncMock(
+            return_value=[
+                {
+                    "job_id": terminal_job.pk,
+                    "stream_name": f"job_{terminal_job.pk}",
+                    "created": old_ts,
+                    "messages": 0,
+                    "num_redelivered": 0,
+                }
+            ]
+        )
+        instance.delete_consumer = AsyncMock(side_effect=RuntimeError("nats error"))
+
+        result = jobs_health_check()
+
+        self.assertEqual(result["zombie_streams"], {"checked": 1, "fixed": 0, "unfixable": 1})

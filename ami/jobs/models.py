@@ -824,6 +824,13 @@ class Job(BaseModel):
     # N minutes". 10 is conservative; raise if legitimate long-running jobs get
     # reaped.
     STALLED_JOBS_MAX_MINUTES = 10
+    # Zombie-stream reaper: age threshold above which a NATS stream for a job
+    # in a terminal state (or missing from Django) is considered safe to drop.
+    # Kept well above :attr:`STALLED_JOBS_MAX_MINUTES` so newly-dispatched jobs
+    # whose stream was created before ``transaction.on_commit`` saved the Job
+    # row do not get reaped. Tighten only if ``cleanup-on-cancel`` misses are
+    # still stranding consumer poll cycles after this safety net lands.
+    ZOMBIE_STREAMS_MAX_AGE_MINUTES = STALLED_JOBS_MAX_MINUTES * 6
 
     name = models.CharField(max_length=255)
     queue = models.CharField(max_length=255, default="default")
