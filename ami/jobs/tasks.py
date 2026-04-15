@@ -454,6 +454,23 @@ def check_stale_jobs(minutes: int | None = None, dry_run: bool = False) -> list[
                     job.finished_at = datetime.datetime.now()
                     job.save()
             else:
+                # Per-job diagnostic: surface enough state at revoke time that an
+                # operator can answer "why was this stalled?" without grepping
+                # back through tick logs. Pairs with the per-tick NATS consumer
+                # snapshots logged by ``_run_running_job_snapshot_check``.
+                stalled_minutes = (datetime.datetime.now() - job.updated_at).total_seconds() / 60
+                stages_summary = (
+                    ", ".join(f"{s.key}={s.progress*100:.1f}% {s.status}" for s in job.progress.stages)
+                    or "(no stages)"
+                )
+                job.logger.warning(
+                    f"Reaping stalled job: no progress for {stalled_minutes:.1f} min "
+                    f"(threshold {minutes} min). previous_status={previous_status}, "
+                    f"celery_state={celery_state}, dispatch_mode={job.dispatch_mode}, "
+                    f"stages: {stages_summary}. "
+                    f"For NATS consumer state at the last tick, see prior "
+                    f"running_job_snapshots logs for this job."
+                )
                 if not dry_run:
                     job.update_status(JobState.REVOKED, save=False)
                     job.finished_at = datetime.datetime.now()
