@@ -1,12 +1,8 @@
 import { FormSection } from 'components/form/layout/layout'
 import { FileInput } from 'design-system/components/file-input/file-input'
 import { FileInputAccept } from 'design-system/components/file-input/types'
-import {
-  IconButton,
-  IconButtonShape,
-  IconButtonTheme,
-} from 'design-system/components/icon-button/icon-button'
-import { IconType } from 'design-system/components/icon/icon'
+import { PlusIcon, XIcon } from 'lucide-react'
+import { Button, buttonVariants } from 'nova-ui-kit'
 import { ReactNode } from 'react'
 import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
@@ -50,15 +46,18 @@ export const SelectImagesSection = ({
               <img src={URL.createObjectURL(file)} />
             </div>
             <div className={styles.cancelContainer}>
-              <IconButton
-                icon={IconType.Cross}
-                shape={IconButtonShape.Round}
+              <Button
+                aria-label={translate(STRING.CLEAR)}
                 onClick={() =>
                   setImages(
                     images.filter((image) => image.file.name !== file.name)
                   )
                 }
-              />
+                size="icon"
+                variant="outline"
+              >
+                <XIcon className="w-4 h-4" />
+              </Button>
             </div>
           </Card>
         ))}
@@ -69,13 +68,22 @@ export const SelectImagesSection = ({
               accept={FileInputAccept.Images}
               multiple
               name="select-captures"
-              renderInput={(props) => (
-                <IconButton
-                  {...props}
-                  icon={IconType.Plus}
-                  shape={IconButtonShape.Round}
-                  theme={IconButtonTheme.Success}
-                />
+              renderInput={({ onClick }) => (
+                <button
+                  aria-label={translate(STRING.ADD)}
+                  className="w-full h-full"
+                  onClick={onClick}
+                  type="button"
+                >
+                  <div
+                    className={buttonVariants({
+                      size: 'icon',
+                      variant: 'success',
+                    })}
+                  >
+                    <PlusIcon className="w-4 h-4" />
+                  </div>
+                </button>
               )}
               onChange={(files) => {
                 if (!files) {

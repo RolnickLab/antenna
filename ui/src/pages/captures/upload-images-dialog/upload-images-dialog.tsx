@@ -53,9 +53,17 @@ export const UploadImagesDialog = ({
     !!project?.settings.defaultProcessingPipeline
   )
 
-  const { uploadCaptures, isLoading, isSuccess, error } = useUploadCaptures()
+  const {
+    uploadCaptures,
+    isLoading,
+    isSuccess,
+    error,
+    reset: resetHook,
+  } = useUploadCaptures()
 
+  // Reset on open state change
   useEffect(() => {
+    resetHook()
     setCurrentSection(Section.Images)
     setImages([])
     setDeployment(undefined)
@@ -70,9 +78,7 @@ export const UploadImagesDialog = ({
         </Button>
       </Dialog.Trigger>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)}>
-        <Dialog.Header
-          title={translate(STRING.UPLOAD_CAPTURES)}
-        ></Dialog.Header>
+        <Dialog.Header title={translate(STRING.UPLOAD_CAPTURES)} />
         {error ? <FormError message={error} /> : null}
         <div className={styles.content}>
           {isSuccess ? (
@@ -316,7 +322,7 @@ const SectionUpload = ({
         <span>{translate(STRING.BACK)}</span>
       </Button>
       <Button
-        disabled={!(deployment && images.length)}
+        disabled={isLoading || !(deployment && images.length)}
         onClick={onSubmit}
         size="small"
         variant="success"
@@ -334,31 +340,33 @@ const DefaultPipelineInfo = ({ project }: { project: ProjectDetails }) => (
   <Tooltip.Provider delayDuration={0}>
     <Tooltip.Root>
       <Tooltip.Trigger asChild>
-        <Button size="icon" variant="ghost">
+        <Button aria-label={translate(STRING.INFO)} size="icon" variant="ghost">
           <InfoIcon className="w-4 h-4" />
         </Button>
       </Tooltip.Trigger>
       <Tooltip.Content side="bottom" className="p-4 space-y-4 max-w-xs">
-        {project.settings.defaultProcessingPipeline ? (
-          <InputValue
-            label="Default processing pipeline"
-            value={project.settings.defaultProcessingPipeline?.name}
-          />
-        ) : (
-          <p className="whitespace-normal">
-            The project has no default processing pipeline configured.
-          </p>
-        )}
-        <Link
-          className={classNames(
-            buttonVariants({ size: 'small', variant: 'outline' }),
-            '!w-auto'
+        <div className="flex flex-col gap-4">
+          {project.settings.defaultProcessingPipeline ? (
+            <InputValue
+              label="Default processing pipeline"
+              value={project.settings.defaultProcessingPipeline?.name}
+            />
+          ) : (
+            <p className="body-small whitespace-normal">
+              The project has no default processing pipeline configured.
+            </p>
           )}
-          to={APP_ROUTES.PROCESSING({ projectId: project.id })}
-        >
-          <span>Configure</span>
-          <ChevronRightIcon className="w-4 h-4" />
-        </Link>
+          <Link
+            className={classNames(
+              buttonVariants({ size: 'small', variant: 'ghost' }),
+              '!w-auto self-end'
+            )}
+            to={APP_ROUTES.PROCESSING({ projectId: project.id })}
+          >
+            <span>{translate(STRING.CONFIGURE)}</span>
+            <ChevronRightIcon className="w-4 h-4" />
+          </Link>
+        </div>
       </Tooltip.Content>
     </Tooltip.Root>
   </Tooltip.Provider>

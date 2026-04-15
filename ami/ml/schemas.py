@@ -163,14 +163,14 @@ KnownPipelineChoices = typing.Literal[
 
 class DetectionRequest(pydantic.BaseModel):
     source_image: SourceImageRequest  # the 'original' image
-    bbox: BoundingBox
+    bbox: BoundingBox | None = None
     crop_image_url: str | None = None
     algorithm: AlgorithmReference
 
 
 class DetectionResponse(pydantic.BaseModel):
     source_image_id: str
-    bbox: BoundingBox
+    bbox: BoundingBox | None = None
     inference_time: float | None = None
     algorithm: AlgorithmReference
     timestamp: datetime.datetime
@@ -260,6 +260,24 @@ class PipelineProcessingTask(pydantic.BaseModel):
     # TODO: Do we need these?
     # detections: list[DetectionRequest] | None = None
     # config: PipelineRequestConfigParameters | dict | None = None
+
+
+class ProcessingServiceClientInfo(pydantic.BaseModel):
+    """Identity metadata sent by a processing service worker.
+
+    A single ProcessingService record in the database may have multiple
+    physical workers, pods, or machines running simultaneously. This model
+    lets the server distinguish between them for logging, debugging, and
+    eventually for per-worker health tracking.
+
+    Fields are intentionally left open for now. Processing services can
+    send any key-value pairs they find useful (e.g. hostname, pod_name,
+    software version). The schema will be tightened once real-world usage
+    patterns emerge.
+    """
+
+    class Config:
+        extra = "allow"
 
 
 class PipelineTaskResult(pydantic.BaseModel):

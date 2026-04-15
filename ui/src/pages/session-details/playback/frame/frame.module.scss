@@ -46,6 +46,10 @@
     outline-color: $color-destructive-500;
   }
 
+  &.filtered {
+    outline: 2px solid $color-neutral-300;
+  }
+
   &.active {
     outline: 2px solid $color-primary-2-500;
   }

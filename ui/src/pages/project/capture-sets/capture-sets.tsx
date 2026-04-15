@@ -28,6 +28,7 @@ export const CaptureSets = () => {
       settings: true,
       captures: true,
       'captures-with-detections': true,
+      'total-processed-captures': true,
       status: true,
     }
   )
@@ -47,6 +48,7 @@ export const CaptureSets = () => {
       poll
     )
   const canCreate = userPermissions?.includes(UserPermission.Create)
+  const tableColumns = columns({ projectId: projectId as string })
 
   useEffect(() => {
     // If any capture set has a job in progress, we want to poll the endpoint so we can show job updates
@@ -68,27 +70,22 @@ export const CaptureSets = () => {
         isFetching={isFetching}
         tooltip={translate(STRING.TOOLTIP_CAPTURE_SET)}
       >
-        <ColumnSettings
-          columns={columns(projectId as string)}
-          columnSettings={columnSettings}
-          onColumnSettingsChange={setColumnSettings}
-        />
         {canCreate && (
           <NewEntityDialog
             collection={API_ROUTES.CAPTURE_SETS}
             type={translate(STRING.ENTITY_TYPE_CAPTURE_SET)}
           />
         )}
+        <ColumnSettings
+          columns={tableColumns}
+          columnSettings={columnSettings}
+          onColumnSettingsChange={setColumnSettings}
+        />
       </PageHeader>
       <Table
-        columns={columns(projectId as string).filter((column) => {
-          // Always show action column
-          if (column.id === 'actions') {
-            return true
-          }
-
-          return !!columnSettings[column.id]
-        })}
+        columns={tableColumns.filter(
+          (column) => column.id === 'actions' || !!columnSettings[column.id]
+        )}
         error={error}
         isLoading={isLoading}
         items={captureSets}

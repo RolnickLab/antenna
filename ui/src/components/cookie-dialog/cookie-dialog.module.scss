@@ -47,7 +47,7 @@
 
 .actions {
   display: flex;
-  gap: 16px;
+  gap: 8px;
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
@@ -57,9 +57,5 @@
     max-width: 100%;
     padding: 16px;
     border-radius: 0;
-  }
-
-  .actions {
-    gap: 8px;
   }
 }

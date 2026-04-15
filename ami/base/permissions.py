@@ -77,6 +77,73 @@ def add_collection_level_permissions(user: User | None, response_data: dict, mod
     return response_data
 
 
+def add_m2m_object_permissions(user, instance, project, response_data: dict) -> dict:
+    """
+    Add object-level permissions for models with an M2M relationship to Project.
+
+    The default permission resolution (BaseModel._get_object_perms) relies on
+    get_project(), which returns None for M2M-to-Project models (TaxaList, etc.)
+    because there's no single owning project. This function resolves permissions
+    against a specific project from the request context instead.
+
+    Validates that the instance actually belongs to the given project before
+    granting any permissions (prevents cross-project permission leaks).
+
+    This is a temporary approach for the M2M permission gap described in #1120.
+    Once that issue is resolved, this should be replaced by a generic permission
+    class (Pattern B: Bare M2M) that handles TaxaList, Taxon, ProcessingService,
+    Pipeline, and other M2M-to-Project models uniformly.
+    """
+    perms = set(response_data.get("user_permissions", []))
+
+    if not project or not instance.projects.filter(pk=project.pk).exists():
+        response_data["user_permissions"] = list(perms)
+        return response_data
+
+    if user.is_superuser:
+        perms.update(["update", "delete"])
+    else:
+        model_name = instance._meta.model_name
+        all_perms = get_perms(user, project)
+        for perm in all_perms:
+            if perm.endswith(f"_{model_name}"):
+                action = perm.split("_", 1)[0]
+                if action in {"update", "delete"}:
+                    perms.add(action)
+
+    response_data["user_permissions"] = list(perms)
+    return response_data
+
+
+class IsProjectMemberOrReadOnly(permissions.BasePermission):
+    """
+    Safe methods are allowed for everyone.
+    Unsafe methods (POST, PUT, PATCH, DELETE) require the requesting user to be
+    a member of the active project (resolved via ProjectMixin.get_active_project).
+    """
+
+    def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        if not request.user or not request.user.is_authenticated:
+            return False
+
+        if request.user.is_superuser:  # type: ignore[union-attr]
+            return True
+
+        # view must provide get_active_project (i.e. use ProjectMixin)
+        get_active_project = getattr(view, "get_active_project", None)
+        if not get_active_project:
+            return False
+
+        project = get_active_project()
+        if not project:
+            return False
+
+        return project.members.filter(pk=request.user.pk).exists()
+
+
 class ObjectPermission(permissions.BasePermission):
     """
     Generic permission class that delegates to the model's `check_permission(user, action)` method.

@@ -3,9 +3,10 @@ import {
   DeploymentDetails,
   DeploymentFieldValues,
 } from 'data-services/models/deployment-details'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { FormStepper as _FormStepper } from 'design-system/components/form-stepper/form-stepper'
+import { Loader2Icon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { useCallback, useContext, useMemo } from 'react'
 import { FormContext, FormContextProvider } from 'utils/formContext/formContext'
 import { STRING, translate } from 'utils/language'
@@ -50,7 +51,7 @@ export const DeploymentDetailsForm = ({
           latitude: deployment.latitude,
           longitude: deployment.longitude,
         },
-        isValid: startValid,
+        isValid: true,
       },
       [Section.SourceImages]: {
         values: {
@@ -58,17 +59,20 @@ export const DeploymentDetailsForm = ({
           dataSourceSubdir: deployment.dataSourceSubdir,
           dataSourceRegex: deployment.dataSourceRegex,
         },
-        isValid: startValid,
+        isValid: true,
       },
     }}
   >
     <Dialog.Header title={title}>
       <div className={styles.buttonWrapper}>
         <Button
-          label={translate(STRING.CANCEL)}
           onClick={onCancelClick}
           type="button"
-        />
+          variant="outline"
+          size="small"
+        >
+          <span>{translate(STRING.CANCEL)}</span>
+        </Button>
         <SaveButton isLoading={isLoading} onSubmit={onSubmit} />
       </div>
     </Dialog.Header>
@@ -121,11 +125,14 @@ const SaveButton = ({
   return (
     <Button
       disabled={!allValid || !someDirty || isLoading}
-      label={translate(STRING.SAVE)}
-      loading={isLoading}
-      theme={ButtonTheme.Success}
       onClick={onSaveClick}
-    />
+      size="small"
+      type="button"
+      variant="success"
+    >
+      <span>{translate(STRING.SAVE)}</span>
+      {isLoading ? <Loader2Icon className="w-4 h-4 animate-spin" /> : null}
+    </Button>
   )
 }
 

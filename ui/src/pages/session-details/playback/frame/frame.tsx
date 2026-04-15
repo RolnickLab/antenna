@@ -1,10 +1,10 @@
 import classNames from 'classnames'
+import { DeterminationScore } from 'components/determination-score'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { CaptureDetection } from 'data-services/models/capture'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
-import { InfoIcon } from 'lucide-react'
-import { Button, Tooltip } from 'nova-ui-kit'
+import { Tooltip } from 'nova-ui-kit'
 import {
   OccurrenceDetails,
   TABS,
@@ -19,19 +19,21 @@ import { BoxStyle } from './types'
 const FALLBACK_RATIO = 16 / 9
 
 interface FrameProps {
+  defaultFilters: boolean
+  detections: CaptureDetection[]
+  height: number | null
+  showDetections?: boolean
   src?: string
   width: number | null
-  height: number | null
-  detections: CaptureDetection[]
-  showDetections?: boolean
 }
 
 export const Frame = ({
+  defaultFilters,
+  detections,
+  height,
+  showDetections,
   src,
   width,
-  height,
-  detections,
-  showDetections,
 }: FrameProps) => {
   const [naturalSize, setNaturalSize] = useState<{
     width: number
@@ -127,6 +129,7 @@ export const Frame = ({
         {renderOverlay && <FrameOverlay boxStyles={boxStyles} />}
         <FrameDetections
           boxStyles={boxStyles}
+          defaultFilters={defaultFilters}
           detections={detections}
           showDetections={showDetections}
         />
@@ -173,10 +176,12 @@ const FrameOverlay = ({
 
 const FrameDetections = ({
   boxStyles,
+  defaultFilters,
   detections,
   showDetections,
 }: {
   boxStyles: { [key: number]: BoxStyle }
+  defaultFilters: boolean
   detections: CaptureDetection[]
   showDetections?: boolean
 }) => {
@@ -218,9 +223,12 @@ const FrameDetections = ({
                     style={style}
                     className={classNames(styles.detection, {
                       [styles.active]: isActive,
+                      [styles.filtered]: defaultFilters
+                        ? !detection.occurrenceMeetsCriteria
+                        : false,
+                      [styles.alert]: detection.score < SCORE_THRESHOLDS.ALERT,
                       [styles.warning]:
                         detection.score < SCORE_THRESHOLDS.WARNING,
-                      [styles.alert]: detection.score < SCORE_THRESHOLDS.ALERT,
                       [styles.clickable]: !!detection.occurrenceId,
                     })}
                     onClick={() => {
@@ -231,25 +239,25 @@ const FrameDetections = ({
                   />
                 </Tooltip.Trigger>
                 <Tooltip.Content
-                  className="p-1 z-[1]"
+                  className="p-3 z-[1]"
                   collisionBoundary={containerRef?.current}
                   side="bottom"
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="pl-2 body-sm pt-0.5">
-                      {detection.label}
-                    </span>
-                    <Button
-                      className="h-8 w-8"
+                  <div className="flex flex-col items-start gap-1">
+                    <button
+                      className="body-base text-primary font-medium"
                       disabled={!detection.occurrenceId}
                       onClick={() =>
                         setActiveOccurrence(detection.occurrenceId)
                       }
-                      size="icon"
-                      variant="ghost"
                     >
-                      <InfoIcon className="w-4 h-4" />
-                    </Button>
+                      <span>{detection.label}</span>
+                    </button>
+                    <DeterminationScore
+                      score={detection.score}
+                      scoreLabel={detection.scoreLabel}
+                      verified={detection.score === 1}
+                    />
                   </div>
                 </Tooltip.Content>
               </Tooltip.Root>

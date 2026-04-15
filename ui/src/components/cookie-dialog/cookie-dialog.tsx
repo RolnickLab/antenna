@@ -1,6 +1,6 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { Checkbox } from 'design-system/components/checkbox/checkbox'
+import { Button } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useCookieConsent } from 'utils/cookieConsent/cookieConsentContext'
 import { CookieCategory } from 'utils/cookieConsent/types'
@@ -56,11 +56,13 @@ const IntroContent = ({
       </div>
       <div className={styles.actions}>
         <Button
-          label="Set cookies"
           onClick={() => onSectionChange(CookieDialogSection.SetCookies)}
-        />
+          size="small"
+          variant="outline"
+        >
+          <span>Set cookies</span>
+        </Button>
         <Button
-          label="Refuse cookies"
           onClick={() =>
             setSettings({
               [CookieCategory.Necessary]: true,
@@ -68,10 +70,12 @@ const IntroContent = ({
               [CookieCategory.Performance]: false,
             })
           }
-        />
+          size="small"
+          variant="outline"
+        >
+          <span>Refuse</span>
+        </Button>
         <Button
-          label="Accept cookies"
-          theme={ButtonTheme.Success}
           onClick={() =>
             setSettings({
               [CookieCategory.Necessary]: true,
@@ -79,7 +83,11 @@ const IntroContent = ({
               [CookieCategory.Performance]: true,
             })
           }
-        />
+          size="small"
+          variant="success"
+        >
+          <span>Accept</span>
+        </Button>
       </div>
     </div>
   )
@@ -135,14 +143,19 @@ const SetCookiesContent = ({
       </div>
       <div className={styles.actions}>
         <Button
-          label={translate(STRING.CANCEL)}
           onClick={() => onSectionChange(CookieDialogSection.Intro)}
-        />
+          size="small"
+          variant="outline"
+        >
+          <span>{translate(STRING.CANCEL)}</span>
+        </Button>
         <Button
-          label={translate(STRING.SAVE)}
-          theme={ButtonTheme.Success}
           onClick={() => setSettings(formValues)}
-        />
+          size="small"
+          variant="success"
+        >
+          <span>{translate(STRING.SAVE)}</span>
+        </Button>
       </div>
     </div>
   )

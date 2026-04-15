@@ -10,7 +10,7 @@ from django.test import TestCase, override_settings
 from guardian.shortcuts import assign_perm, get_perms, remove_perm
 from PIL import Image
 from rest_framework import status
-from rest_framework.test import APIRequestFactory, APITestCase
+from rest_framework.test import APIClient, APIRequestFactory, APITestCase
 from rich import print
 
 from ami.exports.models import DataExport
@@ -41,7 +41,7 @@ from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 from ami.tests.fixtures.storage import populate_bucket
 from ami.users.models import User
-from ami.users.roles import BasicMember, Identifier, ProjectManager
+from ami.users.roles import BasicMember, Identifier, MLDataManager, ProjectManager, create_roles_for_project
 
 logger = logging.getLogger(__name__)
 
@@ -1340,9 +1340,7 @@ class TestRolePermissions(APITestCase):
                     "update": True,
                     "delete": True,
                     "run_single_image": True,
-                    "run": False,
-                    "retry": False,
-                    "cancel": False,
+                    "run": True,
                 },
                 "identification": {"create": True, "update": True, "delete": True},
                 "capture": {"star": True, "unstar": True},
@@ -2008,6 +2006,46 @@ class TestRunSingleImageJobPermission(APITestCase):
         )
 
 
+class TestMLDataManagerCanRunBatchMLJob(APITestCase):
+    """Verify that the MLDataManager role grants run_ml_job permission via the role system."""
+
+    def setUp(self):
+        super().setUp()
+        self.project = Project.objects.create(name="Role ML Job Project", description="Test role-based ML job perms")
+        create_roles_for_project(self.project)
+
+        self.ml_user = User.objects.create_user(email="mlmanager@insectai.org", password="password123")
+        self.basic_user = User.objects.create_user(email="basicmember@insectai.org", password="password123")
+        self.pm_user = User.objects.create_user(email="projmanager@insectai.org", password="password123")
+
+        MLDataManager.assign_user(self.ml_user, self.project)
+        BasicMember.assign_user(self.basic_user, self.project)
+        ProjectManager.assign_user(self.pm_user, self.project)
+
+    def _create_ml_job(self):
+        return Job.objects.create(name="Test ML Job", project=self.project, job_type_key="ml")
+
+    def test_role_based_ml_job_run_permissions(self):
+        role_matrix = [
+            ("MLDataManager", self.ml_user, status.HTTP_200_OK),
+            ("ProjectManager", self.pm_user, status.HTTP_200_OK),
+            ("BasicMember", self.basic_user, status.HTTP_403_FORBIDDEN),
+        ]
+        for role_name, user, expected_status in role_matrix:
+            with self.subTest(role=role_name):
+                self.client.force_authenticate(user)
+                job = self._create_ml_job()
+                response = self.client.post(f"/api/v2/jobs/{job.pk}/run/", format="json")
+                self.assertEqual(response.status_code, expected_status, f"{role_name} got unexpected status")
+
+    def test_ml_data_manager_run_perm_reflected_in_job_detail(self):
+        self.client.force_authenticate(self.ml_user)
+        job = self._create_ml_job()
+        response = self.client.get(f"/api/v2/jobs/{job.pk}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("run", response.data.get("user_permissions", []))
+
+
 class TestDraftProjectPermissions(APITestCase):
     def setUp(self) -> None:
         # Users
@@ -2350,8 +2388,8 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         self.user = User.objects.create_user(email="tester@insectai.org", is_staff=False, is_superuser=False)
         self.client.force_authenticate(user=self.user)
 
-        self.url = f"/api/v2/occurrences/?project_id={self.project.pk}&page_size=1000"
-        self.url_taxa = f"/api/v2/taxa/?project_id={self.project.pk}&page_size=1000"
+        self.url = f"/api/v2/occurrences/?project_id={self.project.pk}&limit=1000"
+        self.url_taxa = f"/api/v2/taxa/?project_id={self.project.pk}&limit=1000"
 
     # OccurrenceViewSet tests
     def test_occurrences_respect_project_threshold(self):
@@ -2391,7 +2429,7 @@ class TestProjectDefaultThresholdFilter(APITestCase):
 
     def test_no_project_id_returns_all(self):
         """Without project_id, threshold falls back to 0.0 and returns all occurrences"""
-        url = "/api/v2/occurrences/?page_size=1000"
+        url = "/api/v2/occurrences/?limit=1000"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
@@ -3443,6 +3481,170 @@ class TestProjectDefaultTaxaFilter(APITestCase):
         detail_url = f"/api/v2/taxa/{excluded_taxon.id}/?project_id={self.project.pk}"
         res = self.client.get(detail_url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+
+class TaxaListViewSetPermissionTestCase(TestCase):
+    """Test TaxaListViewSet write permissions for project members vs non-members."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(email="owner@example.com", password="testpass")
+        self.member = User.objects.create_user(email="member@example.com", password="testpass")
+        self.non_member = User.objects.create_user(email="nonmember@example.com", password="testpass")
+        self.project = Project.objects.create(name="Test Project", owner=self.owner)
+        self.project.members.add(self.member)
+        self.taxa_list = TaxaList.objects.create(name="Existing List", description="A list")
+        self.taxa_list.projects.add(self.project)
+        self.client = APIClient()
+        self.list_url = f"/api/v2/taxa/lists/?project_id={self.project.pk}"
+        self.detail_url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/?project_id={self.project.pk}"
+
+    def test_member_can_create_taxa_list(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.post(self.list_url, {"name": "New List"})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_member_can_update_taxa_list(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.patch(self.detail_url, {"name": "Renamed"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.taxa_list.refresh_from_db()
+        self.assertEqual(self.taxa_list.name, "Renamed")
+
+    def test_member_can_delete_taxa_list(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.delete(self.detail_url)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_anonymous_cannot_create_taxa_list(self):
+        response = self.client.post(self.list_url, {"name": "Anon List"})
+        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+
+    def test_anonymous_cannot_update_taxa_list(self):
+        response = self.client.patch(self.detail_url, {"name": "Hacked"})
+        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+
+    def test_non_member_cannot_create_taxa_list(self):
+        self.client.force_authenticate(self.non_member)
+        response = self.client.post(self.list_url, {"name": "Intruder List"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_non_member_cannot_update_taxa_list(self):
+        self.client.force_authenticate(self.non_member)
+        response = self.client.patch(self.detail_url, {"name": "Hacked"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class TaxaListTaxonAPITestCase(TestCase):
+    """Test TaxaList taxa management operations via API."""
+
+    def setUp(self):
+        """Set up test data."""
+        self.user = User.objects.create_user(email="test@example.com", password="testpass")
+        self.project = Project.objects.create(name="Test Project", owner=self.user)
+        self.taxa_list = TaxaList.objects.create(name="Test Taxa List", description="Test description")
+        self.taxa_list.projects.add(self.project)
+        self.taxon1 = Taxon.objects.create(name="Taxon 1", rank="SPECIES")
+        self.taxon2 = Taxon.objects.create(name="Taxon 2", rank="SPECIES")
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        self.base_url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/taxa/?project_id={self.project.pk}"
+
+    def test_add_taxon_returns_201(self):
+        """Test adding taxon to taxa list returns 201."""
+        response = self.client.post(self.base_url, {"taxon_id": self.taxon1.pk})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(self.taxa_list.taxa.filter(pk=self.taxon1.pk).exists())
+        self.assertEqual(response.data["id"], self.taxon1.pk)
+
+    def test_add_duplicate_returns_400(self):
+        """Test adding duplicate taxon returns 400."""
+        self.taxa_list.taxa.add(self.taxon1)
+        response = self.client.post(self.base_url, {"taxon_id": self.taxon1.pk})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("already in this taxa list", str(response.data).lower())
+
+    def test_add_nonexistent_taxon_returns_400(self):
+        """Test adding non-existent taxon returns 400."""
+        response = self.client.post(self.base_url, {"taxon_id": 999999})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_delete_by_taxon_id(self):
+        """Test deleting by taxon ID returns 204."""
+        self.taxa_list.taxa.add(self.taxon1)
+        url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/taxa/{self.taxon1.pk}/?project_id={self.project.pk}"
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(self.taxa_list.taxa.filter(pk=self.taxon1.pk).exists())
+
+    def test_delete_nonexistent_returns_404(self):
+        """Test deleting non-existent taxon returns 404."""
+        url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/taxa/{self.taxon1.pk}/?project_id={self.project.pk}"
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_m2m_relationship_works(self):
+        """Test that M2M relationship still works correctly."""
+        self.taxa_list.taxa.add(self.taxon1)
+        # Should be accessible via M2M relationship
+        self.assertEqual(self.taxa_list.taxa.count(), 1)
+        self.assertIn(self.taxon1, self.taxa_list.taxa.all())
+        # Test reverse relationship
+        self.assertIn(self.taxa_list, self.taxon1.lists.all())
+
+    def test_add_multiple_taxa(self):
+        """Test adding multiple taxa to the same list."""
+        response1 = self.client.post(self.base_url, {"taxon_id": self.taxon1.pk})
+        self.assertEqual(response1.status_code, status.HTTP_201_CREATED)
+
+        response2 = self.client.post(self.base_url, {"taxon_id": self.taxon2.pk})
+        self.assertEqual(response2.status_code, status.HTTP_201_CREATED)
+
+        self.assertEqual(self.taxa_list.taxa.count(), 2)
+
+    def test_remove_one_taxon_keeps_others(self):
+        """Test that removing one taxon doesn't affect others."""
+        self.taxa_list.taxa.add(self.taxon1, self.taxon2)
+
+        url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/taxa/{self.taxon1.pk}/?project_id={self.project.pk}"
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        # taxon1 should be removed
+        self.assertFalse(self.taxa_list.taxa.filter(pk=self.taxon1.pk).exists())
+        # taxon2 should still be there
+        self.assertTrue(self.taxa_list.taxa.filter(pk=self.taxon2.pk).exists())
+        self.assertEqual(self.taxa_list.taxa.count(), 1)
+
+
+class TaxaListTaxonValidationTestCase(TestCase):
+    """Test validation and error cases."""
+
+    def setUp(self):
+        """Set up test data."""
+        self.user = User.objects.create_user(email="test@example.com", password="testpass")
+        self.project = Project.objects.create(name="Test Project", owner=self.user)
+        self.taxa_list = TaxaList.objects.create(name="Test Taxa List")
+        self.taxa_list.projects.add(self.project)
+        self.taxon = Taxon.objects.create(name="Test Taxon", rank="SPECIES")
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        self.base_url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/taxa/?project_id={self.project.pk}"
+
+    def test_add_without_taxon_id_returns_400(self):
+        """Test adding without taxon_id returns 400."""
+        response = self.client.post(self.base_url, {})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_add_with_invalid_taxon_id_returns_400(self):
+        """Test adding with invalid taxon_id returns 400."""
+        response = self.client.post(self.base_url, {"taxon_id": "invalid"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_nonexistent_taxa_list_returns_404(self):
+        """Test adding taxon to non-existent taxa list returns 404."""
+        url = f"/api/v2/taxa/lists/999999/taxa/?project_id={self.project.pk}"
+        response = self.client.post(url, {"taxon_id": self.taxon.pk})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
 class TestProjectPipelinesAPI(APITestCase):

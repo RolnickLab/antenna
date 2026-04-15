@@ -1,15 +1,14 @@
 import { API_ROUTES } from 'data-services/constants'
 import { StorageSource } from 'data-services/models/storage'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { TableColumn, TextAlign } from 'design-system/components/table/types'
+import { Toolbar } from 'design-system/components/toolbar'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { UpdateEntityDialog } from 'pages/project/entities/entity-details-dialog'
-import styles from 'pages/project/entities/styles.module.scss'
 import { STRING, translate } from 'utils/language'
 
-export const columns: (
-  projectId: string
-) => TableColumn<StorageSource>[] = () => [
+export const columns = (): TableColumn<StorageSource>[] => [
   {
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
@@ -54,7 +53,7 @@ export const columns: (
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
     renderCell: (item: StorageSource) => (
-      <BasicTableCell value={item.createdAt} />
+      <DateTableCell date={item.createdAt} />
     ),
   },
   {
@@ -62,18 +61,15 @@ export const columns: (
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
     renderCell: (item: StorageSource) => (
-      <BasicTableCell value={item.updatedAt} />
+      <DateTableCell date={item.updatedAt} />
     ),
   },
   {
     id: 'actions',
     name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
+    sticky: true,
     renderCell: (item: StorageSource) => (
-      <div className={styles.entityActions}>
+      <Toolbar>
         {item.canUpdate && (
           <UpdateEntityDialog
             collection={API_ROUTES.STORAGE}
@@ -88,7 +84,7 @@ export const columns: (
             type="storage"
           />
         )}
-      </div>
+      </Toolbar>
     ),
   },
 ]

@@ -15,9 +15,18 @@ REDIS_URL=redis://redis:6379/0
 # NATS
 NATS_URL=nats://nats:4222
 
+# Upload size limit (integer, binary MiB — multiplied by 1024*1024). 100 MiB default
+# is fine for local dev. Raise only if testing large ML result payloads locally.
+# DJANGO_DATA_UPLOAD_MAX_MEMORY_MB=100
+
 # Celery / Flower
 CELERY_FLOWER_USER=QSocnxapfMvzLqJXSsXtnEZqRkBtsmKT
 CELERY_FLOWER_PASSWORD=BEQgmCtgyrFieKNoGTsux9YIye0I7P5Q7vEgfJD2C4jxmtHDetFaE2jhS7K7rxaf
+
+# Celery worker concurrency (prefork pool size).
+# Default in settings is 8. Lower to 2-4 on memory-constrained dev laptops —
+# each prefork worker is a separate Python process with its own DB connection.
+# CELERY_WORKER_CONCURRENCY=4
 
 # RabbitMQ
 CELERY_BROKER_URL=amqp://rabbituser:rabbitpass@rabbitmq:5672/

@@ -1,5 +1,4 @@
-import { Button, ButtonTheme } from '../../button/button'
-import styles from './page-button.module.scss'
+import { Button } from 'nova-ui-kit'
 
 interface PageButtonProps {
   page: number
@@ -9,10 +8,12 @@ interface PageButtonProps {
 
 export const PageButton = ({ page, active, onClick }: PageButtonProps) => (
   <Button
-    customClass={styles.pageButton}
+    className="px-3"
     disabled={active}
-    label={(page + 1).toLocaleString()}
-    theme={ButtonTheme.Plain}
     onClick={onClick}
-  />
+    size="small"
+    variant="ghost"
+  >
+    <span>{(page + 1).toLocaleString()}</span>
+  </Button>
 )

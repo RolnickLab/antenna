@@ -44,8 +44,10 @@ export class Export extends Entity {
   }
   get filtersLabels(): string[] {
     const filtersObj = this._data.filters || {}
-    return Object.entries(filtersObj).map(([key, _value]) => {
+
+    return Object.entries(filtersObj).map(([_key, _value]) => {
       const value = _value as string
+      const key = _key.replace('collection', 'capture set') // TODO: Temporary fix until backend terminology is updated
 
       return `${snakeCaseToSentenceCase(key)}: ${value}`
     })

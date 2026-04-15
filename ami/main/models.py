@@ -85,6 +85,8 @@ DEFAULT_RANKS = sorted(
     ]
 )
 
+NULL_DETECTIONS_FILTER = Q(bbox__isnull=True) | Q(bbox=[])
+
 
 def get_media_url(path: str) -> str:
     """
@@ -431,6 +433,11 @@ class Project(ProjectSettingsMixin, BaseModel):
         UPDATE_PROJECT_PIPELINE_CONFIG = "update_projectpipelineconfig"
         DELETE_PROJECT_PIPELINE_CONFIG = "delete_projectpipelineconfig"
 
+        # TaxaList permissions
+        CREATE_TAXALIST = "create_taxalist"
+        UPDATE_TAXALIST = "update_taxalist"
+        DELETE_TAXALIST = "delete_taxalist"
+
         # Other permissions
         VIEW_PRIVATE_DATA = "view_private_data"
         DELETE_OCCURRENCES = "delete_occurrences"
@@ -498,6 +505,10 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("create_projectpipelineconfig", "Can register pipelines for the project"),
             ("update_projectpipelineconfig", "Can update pipeline configurations"),
             ("delete_projectpipelineconfig", "Can remove pipelines from the project"),
+            # TaxaList permissions
+            ("create_taxalist", "Can create a taxa list"),
+            ("update_taxalist", "Can update a taxa list"),
+            ("delete_taxalist", "Can delete a taxa list"),
             # Other permissions
             ("view_private_data", "Can view private data"),
         ]
@@ -788,6 +799,7 @@ class Deployment(BaseModel):
         s3_config = deployment.data_source.config
         total_size = 0
         total_files = 0
+        failed = 0
         source_images = []
         django_batch_size = batch_size
         sql_batch_size = 1000
@@ -805,8 +817,34 @@ class Deployment(BaseModel):
             logger.debug(f"Processing file {file_index}: {obj}")
             if not obj:
                 continue
-            source_image = _create_source_image_for_sync(deployment, obj)
+            try:
+                source_image = _create_source_image_for_sync(deployment, obj)
+            except Exception:
+                failed += 1
+                msg = f"Failed to process {obj.get('Key', '?')}"
+                if job:
+                    job.logger.exception(msg)
+                else:
+                    logger.exception(msg)
+                continue
+
             if source_image:
+                # Skip images with unparseable timestamps — they can't be grouped into events
+                if source_image.timestamp is None:
+                    failed += 1
+                    msg = f"No timestamp parsed from filename: {obj['Key']}"
+                    if job:
+                        job.logger.error(msg)
+                    else:
+                        logger.error(msg)
+                    continue
+                elif source_image.timestamp.year < 2000:
+                    msg = f"Suspicious timestamp ({source_image.timestamp.year}) for: {obj['Key']}"
+                    if job:
+                        job.logger.warning(msg)
+                    else:
+                        logger.warning(msg)
+
                 total_files += 1
                 total_size += obj.get("Size", 0)
                 source_images.append(source_image)
@@ -818,7 +856,7 @@ class Deployment(BaseModel):
                 source_images = []
                 if job:
                     job.logger.info(f"Processed {total_files} files")
-                    job.progress.update_stage(job.job_type().key, total_files=total_files)
+                    job.progress.update_stage(job.job_type().key, total_files=total_files, failed=failed)
                     job.update_progress()
 
         if source_images:
@@ -828,7 +866,7 @@ class Deployment(BaseModel):
             )
         if job:
             job.logger.info(f"Processed {total_files} files")
-            job.progress.update_stage(job.job_type().key, total_files=total_files)
+            job.progress.update_stage(job.job_type().key, total_files=total_files, failed=failed)
             job.update_progress()
 
         _compare_totals_for_sync(deployment, total_files)
@@ -1739,6 +1777,19 @@ class SourceImageQuerySet(BaseQuerySet):
             taxa_count=Coalesce(models.Subquery(taxa_subquery, output_field=models.IntegerField()), 0)
         )
 
+    def with_was_processed(self):
+        """
+        Annotate each SourceImage with a boolean `was_processed` indicating
+        whether any detections exist for that image.
+
+        This mirrors `SourceImage.get_was_processed()` but as a queryset
+        annotation for efficient bulk queries.
+        """
+        # @TODO: this returns a was processed status for any algorithm. One the session detail view supports
+        # filtering by algorithm, this should be updated to return was_processed for the selected algorithm.
+        processed_exists = models.Exists(Detection.objects.filter(source_image_id=models.OuterRef("pk")))
+        return self.annotate(was_processed=processed_exists)
+
 
 class SourceImageManager(models.Manager.from_queryset(SourceImageQuerySet)):
     pass
@@ -1838,7 +1889,29 @@ class SourceImage(BaseModel):
             return filesizeformat(self.size)
 
     def get_detections_count(self) -> int:
-        return self.detections.distinct().count()
+        # Detections count excludes detections without bounding boxes
+        # Detections with null bounding boxes are valid and indicates the image was successfully processed
+        return self.detections.exclude(NULL_DETECTIONS_FILTER).count()
+
+    def get_was_processed(self, algorithm_key: str | None = None) -> bool:
+        """
+        Return True if this image has been processed by any algorithm (or a specific one).
+
+        Uses the ``was_processed`` annotation when available (set by
+        ``SourceImageQuerySet.with_was_processed()``). Falls back to a DB query otherwise.
+
+        Do not call in bulk without the annotation — use ``with_was_processed()``
+        on the queryset instead to avoid N+1 queries.
+
+        :param algorithm_key: If provided, only detections from this algorithm are checked.
+                              The annotation does not filter by algorithm; per-algorithm
+                              checks always use a DB query.
+        """
+        if algorithm_key is None and hasattr(self, "was_processed"):
+            return self.was_processed  # type: ignore[return-value]
+        if algorithm_key:
+            return self.detections.filter(detection_algorithm__key=algorithm_key).exists()
+        return self.detections.exists()
 
     def get_base_url(self) -> str | None:
         """
@@ -2008,6 +2081,7 @@ def update_detection_counts(qs: models.QuerySet[SourceImage] | None = None, null
 
     subquery = models.Subquery(
         Detection.objects.filter(source_image_id=models.OuterRef("pk"))
+        .exclude(NULL_DETECTIONS_FILTER)
         .values("source_image_id")
         .annotate(count=models.Count("id"))
         .values("count"),
@@ -2478,6 +2552,15 @@ class Classification(BaseModel):
         super().save(*args, **kwargs)
 
 
+class DetectionQuerySet(BaseQuerySet):
+    def null_detections(self):
+        return self.filter(NULL_DETECTIONS_FILTER)
+
+
+class DetectionManager(models.Manager.from_queryset(DetectionQuerySet)):
+    pass
+
+
 @final
 class Detection(BaseModel):
     """An object detected in an image"""
@@ -2545,6 +2628,8 @@ class Detection(BaseModel):
     classifications: models.QuerySet["Classification"]
     source_image_id: int
     detection_algorithm_id: int
+
+    objects = DetectionManager()
 
     def get_bbox(self):
         if self.bbox:
@@ -3756,7 +3841,18 @@ class SourceImageCollectionQuerySet(BaseQuerySet):
     def with_source_images_with_detections_count(self):
         return self.annotate(
             source_images_with_detections_count=models.Count(
-                "images", filter=models.Q(images__detections__isnull=False), distinct=True
+                "images",
+                filter=(~models.Q(images__detections__bbox__isnull=True) & ~models.Q(images__detections__bbox=[])),
+                distinct=True,
+            )
+        )
+
+    def with_source_images_processed_count(self):
+        return self.annotate(
+            source_images_processed_count=models.Count(
+                "images",
+                filter=models.Q(images__detections__isnull=False),
+                distinct=True,
             )
         )
 
@@ -3867,7 +3963,10 @@ class SourceImageCollection(BaseModel):
 
     def source_images_with_detections_count(self) -> int | None:
         # This should always be pre-populated using queryset annotations
-        # return self.images.filter(detections__isnull=False).count()
+        return None
+
+    def source_images_processed_count(self) -> int | None:
+        # This should always be pre-populated using queryset annotations
         return None
 
     def occurrences_count(self) -> int | None:

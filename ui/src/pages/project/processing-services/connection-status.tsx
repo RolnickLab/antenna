@@ -1,13 +1,13 @@
 import { FormRow } from 'components/form/layout/layout'
 import { useTestProcessingServiceConnection } from 'data-services/hooks/processing-services/useTestProcessingServiceConnection'
 import { InputValue } from 'design-system/components/input/input'
+import { StatusInfo } from 'design-system/components/status-info/status-info'
+import { Status } from 'design-system/components/status-info/types'
 import * as Wizard from 'design-system/components/wizard/wizard'
 import { useEffect, useState } from 'react'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
 import styles from './processing-services.module.scss'
-import { StatusInfo } from './status-info/status-info'
-import { Status } from './status-info/types'
 
 export const ConnectionStatus = ({
   regex,
@@ -128,7 +128,7 @@ export const ConnectionStatus = ({
           <Wizard.Content className={styles.wizardContent}>
             <FormRow>
               <InputValue
-                label="Server Status"
+                label="Server status"
                 value={data?.server_live ? 'Online' : 'Offline'}
               />
               <InputValue

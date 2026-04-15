@@ -22,16 +22,14 @@ export const Breadcrumbs = ({
   } = useContext(BreadcrumbContext)
 
   useEffect(() => {
-    if (activeNavItem.id === 'project') {
-      setMainBreadcrumb(undefined)
-    } else {
+    if (activeNavItem.id !== 'project') {
       setMainBreadcrumb(activeNavItem)
     }
 
     return () => {
       setMainBreadcrumb(undefined)
     }
-  }, [navItems, activeNavItem])
+  }, [navItems, activeNavItem, setMainBreadcrumb])
 
   const breadcrumbs = [
     pageBreadcrumb,

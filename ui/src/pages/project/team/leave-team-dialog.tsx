@@ -2,7 +2,8 @@ import { FormError, FormSection } from 'components/form/layout/layout'
 import { useRemoveMember } from 'data-services/hooks/team/useRemoveMember'
 import { Member } from 'data-services/models/member'
 import * as Dialog from 'design-system/components/dialog/dialog'
-import { CheckIcon, Loader2Icon } from 'lucide-react'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { CheckIcon, Loader2Icon, LogOutIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -22,11 +23,17 @@ export const LeaveTeamDialog = ({ member }: { member: Member }) => {
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Dialog.Trigger asChild>
-        <Button size="small" variant="outline">
-          <span>{translate(STRING.LEAVE_TEAM)}</span>
-        </Button>
-      </Dialog.Trigger>
+      <BasicTooltip asChild content={translate(STRING.LEAVE_TEAM)}>
+        <Dialog.Trigger asChild>
+          <Button
+            aria-label={translate(STRING.LEAVE_TEAM)}
+            size="icon"
+            variant="ghost"
+          >
+            <LogOutIcon className="w-4 h-4" />
+          </Button>
+        </Dialog.Trigger>
+      </BasicTooltip>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)} isCompact>
         {errorMessage && (
           <FormError
@@ -47,7 +54,7 @@ export const LeaveTeamDialog = ({ member }: { member: Member }) => {
               <span>{translate(STRING.CANCEL)}</span>
             </Button>
             <Button
-              disabled={isSuccess}
+              disabled={isLoading || isSuccess}
               onClick={async () => {
                 try {
                   await removeMember(member.id)
