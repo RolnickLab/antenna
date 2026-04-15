@@ -493,6 +493,44 @@ class TestTaskQueueManagerJobLogger(unittest.IsolatedAsyncioTestCase):
             f"expected publish failure on job_logger, got {messages}",
         )
 
+    async def test_log_consumer_stats_snapshot_writes_current_stats(self):
+        """The periodic snapshot helper logs delivered/ack/pending WITHOUT
+        deleting the consumer — it's a mid-flight observability hook."""
+        nc, js = self._create_mock_nats_connection()
+        js.consumer_info.return_value = self._make_consumer_info(
+            delivered=50, ack_floor=40, num_pending=10, num_ack_pending=10, num_redelivered=2
+        )
+
+        job_logger = self._make_captured_logger()
+        captured = job_logger._captured  # type: ignore[attr-defined]
+
+        with patch("ami.ml.orchestration.nats_queue.get_connection", AsyncMock(return_value=(nc, js))):
+            async with TaskQueueManager(job_logger=job_logger) as manager:
+                await manager.log_consumer_stats_snapshot(9)
+
+        messages = [m for _, m in captured]
+        self.assertTrue(
+            any("NATS consumer status job-9-consumer" in m for m in messages),
+            f"expected snapshot line on job_logger, got {messages}",
+        )
+        snapshot_line = next(m for m in messages if "NATS consumer status" in m)
+        for expected in ("delivered=50", "ack_floor=40", "num_redelivered=2"):
+            self.assertIn(expected, snapshot_line)
+        # Must NOT have triggered a delete — this is read-only observability.
+        js.delete_consumer.assert_not_called()
+        js.delete_stream.assert_not_called()
+
+    async def test_log_consumer_stats_snapshot_tolerates_missing_consumer(self):
+        """If the consumer is already gone, the snapshot helper just no-ops."""
+        nc, js = self._create_mock_nats_connection()
+        js.consumer_info.side_effect = nats.js.errors.NotFoundError()
+
+        job_logger = self._make_captured_logger()
+
+        with patch("ami.ml.orchestration.nats_queue.get_connection", AsyncMock(return_value=(nc, js))):
+            async with TaskQueueManager(job_logger=job_logger) as manager:
+                await manager.log_consumer_stats_snapshot(99)  # must not raise
+
     async def test_no_job_logger_falls_back_to_module_logger_only(self):
         """When job_logger is None (e.g., module-level uses like advisory
         listener), lifecycle logs must still be emitted to the module logger

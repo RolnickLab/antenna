@@ -1,3 +1,4 @@
+import dataclasses
 import datetime
 import functools
 import logging
@@ -9,6 +10,7 @@ from asgiref.sync import async_to_sync
 from celery.signals import task_failure, task_postrun, task_prerun
 from django.db import transaction
 
+from ami.main.checks.schemas import IntegrityCheckResult
 from ami.ml.orchestration.async_job_state import AsyncJobStateManager
 from ami.ml.orchestration.nats_queue import TaskQueueManager
 from ami.ml.schemas import PipelineResultsError, PipelineResultsResponse
@@ -405,6 +407,137 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
             results.append({"job_id": job.pk, "action": "revoked", "previous_status": previous_status})
 
     return results
+
+
+# Expire queued copies that accumulate while a worker is unavailable so we
+# don't process a backlog when a worker reconnects. Kept below the 15-minute
+# schedule interval so a backlog is dropped but a single delayed copy still
+# runs. Going well below the interval would risk every copy expiring before
+# a worker picks it up under moderate broker pressure — change this in lock-
+# step with the crontab in migration 0020.
+_JOBS_HEALTH_BEAT_EXPIRES = 60 * 14
+
+
+@dataclasses.dataclass
+class JobsHealthCheckResult:
+    """Nested result of one :func:`jobs_health_check` tick.
+
+    Each field is the summary for one sub-check and uses the shared
+    :class:`IntegrityCheckResult` shape so operators see a uniform
+    ``checked / fixed / unfixable`` triple regardless of which check ran.
+    Add a new field here when adding a sub-check to the umbrella.
+    """
+
+    stale_jobs: IntegrityCheckResult
+    running_job_snapshots: IntegrityCheckResult
+
+
+def _run_stale_jobs_check() -> IntegrityCheckResult:
+    """Reconcile jobs stuck in running states past FAILED_CUTOFF_HOURS."""
+    results = check_stale_jobs()
+    updated = sum(1 for r in results if r["action"] == "updated")
+    revoked = sum(1 for r in results if r["action"] == "revoked")
+    logger.info(
+        "stale_jobs check: %d stale job(s), %d updated from Celery, %d revoked",
+        len(results),
+        updated,
+        revoked,
+    )
+    return IntegrityCheckResult(checked=len(results), fixed=updated + revoked, unfixable=0)
+
+
+def _run_running_job_snapshot_check() -> IntegrityCheckResult:
+    """Log a NATS consumer snapshot for each running async_api job.
+
+    Observation-only: ``fixed`` stays 0 because no state is altered. Jobs
+    that error during snapshot are counted in ``unfixable`` — a persistently
+    stuck job will be picked up on the next tick by ``_run_stale_jobs_check``.
+    """
+    from ami.jobs.models import Job, JobDispatchMode, JobState
+
+    running_jobs = list(
+        Job.objects.filter(
+            status__in=JobState.running_states(),
+            dispatch_mode=JobDispatchMode.ASYNC_API,
+        )
+    )
+    if not running_jobs:
+        return IntegrityCheckResult()
+
+    # Resolve each job's per-job logger synchronously before entering the
+    # event loop — ``Job.logger`` attaches a ``JobLogHandler`` on first access
+    # which touches the Django ORM, so it is only safe to call from a sync
+    # context.
+    job_loggers = [(job, job.logger) for job in running_jobs]
+    errors = 0
+
+    async def _snapshot_all() -> None:
+        nonlocal errors
+        # One NATS connection per tick — on a 15-min cadence a per-job fallback
+        # is not worth the code. If the shared connection fails to set up, we
+        # skip this tick's snapshots and try fresh on the next one.
+        async with TaskQueueManager(job_logger=job_loggers[0][1]) as manager:
+            for job, job_logger in job_loggers:
+                try:
+                    # ``log_async`` reads ``job_logger`` fresh each call, so
+                    # swapping per iteration routes lifecycle lines to the
+                    # right job's UI log.
+                    manager.job_logger = job_logger
+                    await manager.log_consumer_stats_snapshot(job.pk)
+                except Exception:
+                    errors += 1
+                    logger.exception("Failed to snapshot NATS consumer stats for job %s", job.pk)
+
+    try:
+        async_to_sync(_snapshot_all)()
+    except Exception:
+        # Covers both ``__aenter__`` setup failures (no iteration ran) and the
+        # rare ``__aexit__`` teardown failure after a clean loop. In the
+        # teardown case this overwrites the per-iteration count with the total
+        # — accepted: a persistent failure will show up again next tick.
+        logger.exception("Shared-connection snapshot failed; marking tick unfixable")
+        errors = len(running_jobs)
+
+    log_fn = logger.warning if errors else logger.info
+    log_fn(
+        "running_job_snapshots check: %d running async job(s), %d error(s)",
+        len(running_jobs),
+        errors,
+    )
+    return IntegrityCheckResult(checked=len(running_jobs), fixed=0, unfixable=errors)
+
+
+def _safe_run_sub_check(name: str, fn: Callable[[], IntegrityCheckResult]) -> IntegrityCheckResult:
+    """Run one umbrella sub-check, returning an ``unfixable=1`` sentinel on failure.
+
+    The umbrella composes independent sub-checks; one failing must not block
+    the others. A raised exception is logged and surfaced as a single
+    ``unfixable`` entry so operators watching the task result in Flower see
+    the check failed rather than reading zero and assuming all-clear.
+    """
+    try:
+        return fn()
+    except Exception:
+        logger.exception("%s sub-check failed; continuing umbrella", name)
+        return IntegrityCheckResult(checked=0, fixed=0, unfixable=1)
+
+
+@celery_app.task(soft_time_limit=300, time_limit=360, expires=_JOBS_HEALTH_BEAT_EXPIRES)
+def jobs_health_check() -> dict:
+    """Umbrella beat task for periodic job-health checks.
+
+    Composes reconciliation (stale jobs) with observation (NATS consumer
+    snapshots for running async jobs) so both land in the same 15-minute
+    tick — a quietly hung async job gets a snapshot entry right before the
+    reconciler decides whether to revoke it. Returns the serialized form of
+    :class:`JobsHealthCheckResult` so celery's default JSON backend can store
+    it; add new sub-checks by extending that dataclass and calling them here.
+    """
+    result = JobsHealthCheckResult(
+        stale_jobs=_safe_run_sub_check("stale_jobs", _run_stale_jobs_check),
+        running_job_snapshots=_safe_run_sub_check("running_job_snapshots", _run_running_job_snapshot_check),
+    )
+    return dataclasses.asdict(result)
 
 
 def cleanup_async_job_if_needed(job) -> None:
