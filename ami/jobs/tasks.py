@@ -50,14 +50,16 @@ def run_job(self, job_id: int) -> None:
 @celery_app.task(
     bind=True,
     # Retry on transient Redis/connection errors so a single connection reset
-    # doesn't flip the job to FAILURE mid-processing. Backoff is bounded well
-    # below soft_time_limit so retries never leak past the task deadline.
-    # Terminal failures (e.g. PipelineResultsError validation) are raised
-    # from other exception types and are not retried here.
+    # doesn't flip the job to FAILURE mid-processing. Backoff is capped at 15s
+    # (half of NATS ack_wait = TASK_TTR = 30s, see nats_queue.py) so a retry
+    # is likely to complete before JetStream redelivers the same payload to
+    # ADC. retries stay well below soft_time_limit so they never leak past
+    # the task deadline. Terminal failures (e.g. PipelineResultsError
+    # validation) are raised from other exception types and not retried here.
     # See RolnickLab/antenna#1219.
     autoretry_for=(RedisError, RedisConnectionError, ConnectionError),
     retry_backoff=True,
-    retry_backoff_max=30,
+    retry_backoff_max=15,
     retry_jitter=True,
     max_retries=5,
     soft_time_limit=300,  # 5 minutes
@@ -102,10 +104,16 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         )
     except RedisError as e:
         # Transient (connection reset, broker blip, timeout). Celery will retry
-        # via autoretry_for; NATS hasn't been acked yet so redelivery is not
-        # a concern. Log so the real cause is visible in task logs rather than
-        # the misleading "Redis state missing" that users saw in #1219.
-        logger.warning(f"Transient Redis error updating job {job_id} state (stage=process); Celery will retry: {e}")
+        # via autoretry_for. We have NOT yet acked NATS here, so if the retry
+        # budget runs long enough JetStream may redeliver to ADC (ack_wait =
+        # TASK_TTR = 30s, see nats_queue.py); save_results dedupes and SREM is
+        # a no-op on replay, so duplication is cosmetic rather than corrupting.
+        # Log so the real cause is visible in task logs rather than the
+        # misleading "Redis state missing" that users saw in #1219.
+        logger.warning(
+            f"Transient Redis error updating job {job_id} state (stage=process); Celery will retry: {e}",
+            exc_info=True,
+        )
         raise
 
     if not progress_info:
@@ -167,8 +175,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
             classifications_count = sum(len(detection.classifications) for detection in pipeline_result.detections)
             captures_count = len(pipeline_result.source_images)
 
-        _ack_task_via_nats(reply_subject, job.logger)
-        acked = True
+        acked = _ack_task_via_nats(reply_subject, job.logger)
         # Update job stage with calculated progress
 
         try:
@@ -177,13 +184,17 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
                 stage="results",
             )
         except RedisError as e:
-            # Transient. NATS is acked and results are saved, but those writes
-            # are idempotent so a Celery retry is safe: save_results dedupes on
-            # re-run and SREM is a no-op on already-removed ids. Log to the
-            # job logger so the cause is visible in the UI task log, then let
-            # autoretry_for pick it up.
+            # Transient. save_results dedupes on re-run (get_or_create_detection)
+            # and SREM is a no-op on already-removed ids, so a Celery retry is
+            # safe for the DB and Redis sets. The caveat is _update_job_progress
+            # accumulates detections/classifications/captures on the results
+            # stage (see _update_job_progress stage=="results" branch); if this
+            # retry runs a second time (or NATS redelivers to ADC because
+            # ack_wait elapsed before we got here), those counters will inflate
+            # cosmetically. Tracked in #1232.
             job.logger.warning(
-                f"Transient Redis error updating job {job_id} state (stage=results); Celery will retry: {e}"
+                f"Transient Redis error updating job {job_id} state (stage=results); Celery will retry: {e}",
+                exc_info=True,
             )
             raise
 
@@ -239,7 +250,14 @@ def _fail_job(job_id: int, reason: str) -> None:
         cleanup_async_job_resources(job_id)
 
 
-def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> None:
+def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> bool:
+    """
+    Acknowledge a NATS task. Returns True only when JetStream confirmed the ack.
+
+    Callers that gate retry behavior on ack outcome (e.g. the post-save_results
+    path in process_nats_pipeline_result) MUST check the return value — a False
+    means the message is still live and NATS will redeliver after ack_wait.
+    """
     try:
 
         async def ack_task():
@@ -250,11 +268,12 @@ def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> None:
 
         if ack_success:
             job_logger.info(f"Successfully acknowledged task via NATS: {reply_subject}")
-        else:
-            job_logger.warning(f"Failed to acknowledge task via NATS: {reply_subject}")
+            return True
+        job_logger.warning(f"Failed to acknowledge task via NATS: {reply_subject}")
+        return False
     except Exception as ack_error:
-        job_logger.error(f"Error acknowledging task via NATS: {ack_error}")
-        # Don't fail the task if ACK fails - data is already saved
+        job_logger.error(f"Error acknowledging task via NATS: {ack_error}", exc_info=True)
+        return False
 
 
 def _get_current_counts_from_job_progress(job, stage: str) -> tuple[int, int, int]:
