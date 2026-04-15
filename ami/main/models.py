@@ -3704,6 +3704,15 @@ class TaxaListQuerySet(BaseQuerySet):
         - If project is None: looks for/creates a global list (no project associations)
         - If project is provided: looks for/creates a list associated with that project
 
+        :param name: Name of the taxa list.
+        :param project: Project to scope the list to, or None for a global list.
+        :param defaults: Extra field values applied only when creating a new list
+            (ignored on the get path, matching Django's ``get_or_create`` semantics).
+
+        If concurrent callers race past the ``DoesNotExist`` check and both create
+        rows, the next caller will see ``MultipleObjectsReturned`` and fall back
+        to returning the oldest row instead of raising.
+
         Returns:
             Tuple of (TaxaList, created: bool)
         """
@@ -3717,9 +3726,10 @@ class TaxaListQuerySet(BaseQuerySet):
         try:
             return qs.get(), False
         except self.model.DoesNotExist:
-            taxa_list = self.create(name=name, **defaults)
-            if project:
-                taxa_list.projects.add(project)
+            with transaction.atomic():
+                taxa_list = self.create(name=name, **defaults)
+                if project:
+                    taxa_list.projects.add(project)
             return taxa_list, True
         except self.model.MultipleObjectsReturned:
             # Handle existing duplicates gracefully - return the oldest one

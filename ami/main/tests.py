@@ -3647,6 +3647,81 @@ class TaxaListTaxonValidationTestCase(TestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
+class TaxaListGetOrCreateForProjectTestCase(TestCase):
+    """Test TaxaList.objects.get_or_create_for_project()."""
+
+    def setUp(self):
+        self.project_a = Project.objects.create(name="Project A")
+        self.project_b = Project.objects.create(name="Project B")
+
+    def test_creates_new_global_list(self):
+        taxa_list, created = TaxaList.objects.get_or_create_for_project(name="Global Moths", project=None)
+        self.assertTrue(created)
+        self.assertEqual(taxa_list.name, "Global Moths")
+        self.assertEqual(taxa_list.projects.count(), 0)
+
+    def test_creates_new_project_specific_list(self):
+        taxa_list, created = TaxaList.objects.get_or_create_for_project(name="Project A Moths", project=self.project_a)
+        self.assertTrue(created)
+        self.assertEqual(taxa_list.name, "Project A Moths")
+        self.assertIn(self.project_a, taxa_list.projects.all())
+
+    def test_retrieves_existing_global_list(self):
+        existing = TaxaList.objects.create(name="Global Moths")
+        taxa_list, created = TaxaList.objects.get_or_create_for_project(name="Global Moths", project=None)
+        self.assertFalse(created)
+        self.assertEqual(taxa_list.pk, existing.pk)
+
+    def test_retrieves_existing_project_specific_list(self):
+        existing = TaxaList.objects.create(name="Project A Moths")
+        existing.projects.add(self.project_a)
+        taxa_list, created = TaxaList.objects.get_or_create_for_project(name="Project A Moths", project=self.project_a)
+        self.assertFalse(created)
+        self.assertEqual(taxa_list.pk, existing.pk)
+
+    def test_global_and_project_lists_with_same_name_do_not_collide(self):
+        """A global list and a project-scoped list can share a name without MultipleObjectsReturned."""
+        global_list, global_created = TaxaList.objects.get_or_create_for_project(name="Moths", project=None)
+        project_list, project_created = TaxaList.objects.get_or_create_for_project(
+            name="Moths", project=self.project_a
+        )
+        self.assertTrue(global_created)
+        self.assertTrue(project_created)
+        self.assertNotEqual(global_list.pk, project_list.pk)
+        self.assertEqual(global_list.projects.count(), 0)
+        self.assertIn(self.project_a, project_list.projects.all())
+
+    def test_different_projects_with_same_name_do_not_collide(self):
+        list_a, _ = TaxaList.objects.get_or_create_for_project(name="Shared Name", project=self.project_a)
+        list_b, _ = TaxaList.objects.get_or_create_for_project(name="Shared Name", project=self.project_b)
+        self.assertNotEqual(list_a.pk, list_b.pk)
+
+    def test_handles_existing_duplicates_by_returning_oldest(self):
+        """If duplicates already exist in the DB (legacy data), return the oldest rather than raising."""
+        first = TaxaList.objects.create(name="Duplicate Name")
+        TaxaList.objects.create(name="Duplicate Name")
+        TaxaList.objects.create(name="Duplicate Name")
+        taxa_list, created = TaxaList.objects.get_or_create_for_project(name="Duplicate Name", project=None)
+        self.assertFalse(created)
+        self.assertEqual(taxa_list.pk, first.pk)
+
+    def test_defaults_applied_on_create_only(self):
+        taxa_list, created = TaxaList.objects.get_or_create_for_project(
+            name="With Description", project=None, description="Initial description"
+        )
+        self.assertTrue(created)
+        self.assertEqual(taxa_list.description, "Initial description")
+
+        # Calling again with different defaults should retrieve the existing row
+        # and ignore the new defaults (matching Django's get_or_create semantics).
+        taxa_list_again, created = TaxaList.objects.get_or_create_for_project(
+            name="With Description", project=None, description="Ignored description"
+        )
+        self.assertFalse(created)
+        self.assertEqual(taxa_list_again.pk, taxa_list.pk)
+        self.assertEqual(taxa_list_again.description, "Initial description")
+
+
 class TestProjectPipelinesAPI(APITestCase):
     """Test the project pipelines API endpoint."""
 
