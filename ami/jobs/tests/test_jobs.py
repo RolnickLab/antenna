@@ -692,6 +692,96 @@ class TestJobView(APITestCase):
         self.assertIn(self.user.email, joined)
 
 
+class TestJobThroughputLogging(TestCase):
+    """Unit tests for _log_job_throughput (Task 3)."""
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Throughput Test Project")
+        self.pipeline = Pipeline.objects.create(name="Throughput Pipeline", slug="throughput-pipeline")
+        self.pipeline.projects.add(self.project)
+        self.job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Throughput job",
+            pipeline=self.pipeline,
+        )
+
+    def _seed_process_stage(self, processed: int, remaining: int) -> None:
+        self.job.progress.add_stage("process")
+        self.job.progress.update_stage(
+            "process",
+            progress=processed / max(1, processed + remaining),
+            status=JobState.STARTED,
+            processed=processed,
+            remaining=remaining,
+            failed=0,
+        )
+        self.job.save()
+
+    def test_throughput_line_is_well_formed(self):
+        import datetime
+
+        from ami.jobs.tasks import _log_job_throughput
+
+        self._seed_process_stage(processed=10, remaining=90)
+        self.job.started_at = datetime.datetime.now() - datetime.timedelta(minutes=5)
+        self.job.save(update_fields=["started_at"])
+
+        _log_job_throughput(self.job, "process")
+
+        self.job.refresh_from_db()
+        joined = "\n".join(self.job.logs.stdout)
+        self.assertIn("throughput", joined)
+        self.assertIn("processed=10/100", joined)
+        self.assertIn("rate=2.0 imgs/min", joined)
+        # ETA for 90 remaining at 2.0 imgs/min = 45 minutes
+        self.assertIn("ETA=45m", joined)
+
+    def test_throughput_skipped_when_started_at_is_none(self):
+        from ami.jobs.tasks import _log_job_throughput
+
+        self._seed_process_stage(processed=5, remaining=5)
+        self.assertIsNone(self.job.started_at)
+
+        _log_job_throughput(self.job, "process")
+
+        self.job.refresh_from_db()
+        joined = "\n".join(self.job.logs.stdout)
+        self.assertNotIn("throughput", joined)
+
+    def test_throughput_skipped_for_non_processing_stage(self):
+        import datetime
+
+        from ami.jobs.tasks import _log_job_throughput
+
+        self._seed_process_stage(processed=10, remaining=90)
+        self.job.started_at = datetime.datetime.now() - datetime.timedelta(minutes=5)
+        self.job.save(update_fields=["started_at"])
+
+        _log_job_throughput(self.job, "delay")
+
+        self.job.refresh_from_db()
+        joined = "\n".join(self.job.logs.stdout)
+        self.assertNotIn("throughput", joined)
+
+    def test_throughput_with_zero_processed_reports_unknown_eta(self):
+        import datetime
+
+        from ami.jobs.tasks import _log_job_throughput
+
+        self._seed_process_stage(processed=0, remaining=50)
+        self.job.started_at = datetime.datetime.now() - datetime.timedelta(minutes=5)
+        self.job.save(update_fields=["started_at"])
+
+        _log_job_throughput(self.job, "process")
+
+        self.job.refresh_from_db()
+        joined = "\n".join(self.job.logs.stdout)
+        self.assertIn("processed=0/50", joined)
+        self.assertIn("rate=0.0", joined)
+        self.assertIn("ETA=unknown", joined)
+
+
 class TestJobDispatchModeFiltering(APITestCase):
     """Test job filtering by dispatch_mode."""
 
