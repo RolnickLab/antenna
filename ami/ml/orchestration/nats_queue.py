@@ -49,7 +49,8 @@ TASK_TTR = getattr(settings, "NATS_TASK_TTR", 30)  # Visibility timeout in secon
 # A processing service that consistently fails (e.g. returns results referencing
 # an algorithm that the pipeline doesn't declare) will burn ADC + worker time on
 # every retry; one retry covers a transient blip and is the right tradeoff.
-# Hoist to settings (NATS_MAX_DELIVER) when we need per-environment tuning.
+# Override per environment via settings.NATS_MAX_DELIVER if that balance needs
+# to change (e.g. a deployment with a flakier network may want a higher value).
 NATS_MAX_DELIVER = getattr(settings, "NATS_MAX_DELIVER", 2)
 
 ADVISORY_STREAM_NAME = "advisories"  # Shared stream for max delivery advisories across all jobs

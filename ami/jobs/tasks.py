@@ -44,8 +44,13 @@ def run_job(self, job_id: int) -> None:
             job.logger.error(f'Job #{job.pk} "{job.name}" failed: {e}')
             raise
         else:
+            from ami.jobs.models import JobDispatchMode
+
             job.refresh_from_db()
-            job.logger.info(f"Finished job {job}")
+            if job.dispatch_mode == JobDispatchMode.ASYNC_API and not job.progress.is_complete():
+                job.logger.info(f"run_job task exited for job {job}; async results still in-flight via NATS")
+            else:
+                job.logger.info(f"Finished job {job}")
 
 
 @celery_app.task(
@@ -382,7 +387,8 @@ def _update_job_progress(
         # Diagnostic: when max() lifts the percentage to 1.0 from a partial value
         # this worker computed, surface it. A legitimate jump means another
         # worker concurrently completed the stage; an unexpected jump (e.g. the
-        # premature-cleanup pattern from antenna#????) is otherwise invisible.
+        # premature-cleanup pattern described in docs/claude/processing-lifecycle.md
+        # as "Bug B") is otherwise invisible.
         if existing_progress is not None and progress_percentage >= 1.0 and passed_progress < 1.0:
             job.logger.warning(
                 f"Stage '{stage}' progress lifted to 100% by max() guard: "

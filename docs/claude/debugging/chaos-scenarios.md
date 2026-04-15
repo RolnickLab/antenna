@@ -113,8 +113,11 @@ Verifies the terminal path: update_state returns None → ACK → `_fail_job`.
 
 ### Scenario D: ACK/SREM ordering (Bug A crash window)
 
-Verifies Fix 1's reorder: a crash between save_results and results-SREM
-leaves the message redeliverable, not stranded.
+Verifies Fix 1's reorder: a crash anywhere between save_results and the
+ACK leaves the NATS message redeliverable. This scenario drops the
+crash point at the narrowest window — between the results-stage SREM
+(`state_manager.update_state(stage="results")`) and `_ack_task_via_nats`
+— because that is the window that stranded jobs on pre-Fix-1 code.
 
 1. Patch `process_nats_pipeline_result` to `os._exit(1)` between
    `state_manager.update_state(stage="results")` and `_ack_task_via_nats(...)`.
