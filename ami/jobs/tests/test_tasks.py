@@ -731,3 +731,128 @@ class TestResultEndpointWithError(APITestCase):
         self.assertEqual(task_kwargs["job_id"], self.job.pk)
         self.assertEqual(task_kwargs["reply_subject"], "test.reply.error.1")
         self.assertIn("error", task_kwargs["result_data"])
+
+
+class TestLogWorkerAvailability(TransactionTestCase):
+    """Verify the worker-availability log lines emitted when run_job hands an
+    async_api job off to NATS. These replace the previous opaque
+    "async results still in-flight" line with a concrete count of how many
+    workers are actually online for the job's pipeline, plus a WARNING when
+    nothing has been heard from a worker in the last hour (the strong signal
+    that the job will stall indefinitely)."""
+
+    def setUp(self):
+        cache.clear()
+        self.project = Project.objects.create(name="Worker Availability Test")
+        self.pipeline = Pipeline.objects.create(name="Test Pipeline", slug="test_pipeline")
+        self.pipeline.projects.add(self.project)
+        self.collection = SourceImageCollection.objects.create(name="WA Collection", project=self.project)
+        self.job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="WA Test Job",
+            pipeline=self.pipeline,
+            source_image_collection=self.collection,
+            dispatch_mode=JobDispatchMode.ASYNC_API,
+        )
+
+    def tearDown(self):
+        cache.clear()
+
+    def _make_service(self, name: str, last_seen_offset_seconds: int | None, live: bool):
+        """Create a ProcessingService attached to self.pipeline.
+
+        ``last_seen_offset_seconds=None`` leaves last_seen unset (never seen).
+        Positive offset sets last_seen in the past by that many seconds.
+        """
+        import datetime as _dt
+
+        from ami.ml.models.processing_service import ProcessingService
+
+        svc = ProcessingService.objects.create(name=name, endpoint_url=None)
+        svc.pipelines.add(self.pipeline)
+        if last_seen_offset_seconds is not None:
+            svc.last_seen = _dt.datetime.now() - _dt.timedelta(seconds=last_seen_offset_seconds)
+        svc.last_seen_live = live
+        svc.save(update_fields=["last_seen", "last_seen_live"])
+        return svc
+
+    def _run_and_capture(self):
+        """Call _log_worker_availability(self.job) and return (info_lines, warning_lines)
+        captured from the ami.jobs logger."""
+        from ami.jobs.tasks import _log_worker_availability
+
+        # Clear any existing logs on the job so our assertions don't collide with
+        # setup-time noise (e.g. "Adding JobLogHandler" from the first logger touch).
+        with self.assertLogs("ami.jobs", level="INFO") as captured:
+            _log_worker_availability(self.job)
+        return captured.output
+
+    def test_no_workers_emits_info_and_warning(self):
+        """Zero configured services: '0/0 online recently' + WARNING."""
+        output = self._run_and_capture()
+        info_line = next((ln for ln in output if "Waiting for workers" in ln), None)
+        self.assertIsNotNone(info_line, f"missing info line in {output}")
+        self.assertIn("'test_pipeline'", info_line)
+        self.assertIn("(0/0 online recently)", info_line)
+        warn_line = next((ln for ln in output if "Zero workers have been seen" in ln), None)
+        self.assertIsNotNone(warn_line, f"missing warning line in {output}")
+        self.assertIn("WARNING", warn_line)
+        self.assertIn("'test_pipeline'", warn_line)
+        self.assertIn("in the last hour", warn_line)
+
+    def test_one_worker_live_and_recent_no_warning(self):
+        """A service seen 10s ago and live: '1/1 online recently', no WARNING."""
+        self._make_service("fresh-worker", last_seen_offset_seconds=10, live=True)
+        output = self._run_and_capture()
+        info_line = next((ln for ln in output if "Waiting for workers" in ln), None)
+        self.assertIsNotNone(info_line)
+        self.assertIn("(1/1 online recently)", info_line)
+        self.assertFalse(
+            any("Zero workers have been seen" in ln for ln in output),
+            f"unexpected warning in {output}",
+        )
+
+    def test_mixed_services_correct_count(self):
+        """One live+recent, one live-but-stale, one seen-in-hour, one never-seen:
+        online=1/4, no WARNING (someone has been seen in the last hour)."""
+        self._make_service("fresh-live", last_seen_offset_seconds=10, live=True)
+        self._make_service("stale-live", last_seen_offset_seconds=600, live=True)  # 10 min ago
+        self._make_service("recent-dead", last_seen_offset_seconds=600, live=False)
+        self._make_service("never-seen", last_seen_offset_seconds=None, live=False)
+        output = self._run_and_capture()
+        info_line = next((ln for ln in output if "Waiting for workers" in ln), None)
+        self.assertIsNotNone(info_line)
+        self.assertIn("(1/4 online recently)", info_line)
+        self.assertFalse(any("Zero workers have been seen" in ln for ln in output))
+
+    def test_all_services_stale_beyond_hour_emits_warning(self):
+        """Two services, both last seen > 1h ago: '0/2 online recently' + WARNING."""
+        self._make_service("old-1", last_seen_offset_seconds=7200, live=False)  # 2h ago
+        self._make_service("old-2", last_seen_offset_seconds=3700, live=False)  # just over 1h
+        output = self._run_and_capture()
+        info_line = next((ln for ln in output if "Waiting for workers" in ln), None)
+        self.assertIsNotNone(info_line)
+        self.assertIn("(0/2 online recently)", info_line)
+        self.assertTrue(any("Zero workers have been seen" in ln for ln in output))
+
+    def test_service_seen_within_hour_but_not_recent_no_warning(self):
+        """Service seen 30 min ago (not 'online recently' but within the hour):
+        '0/1 online recently', no WARNING — the soft-hour signal is what gates it."""
+        self._make_service("half-hour-old", last_seen_offset_seconds=1800, live=False)
+        output = self._run_and_capture()
+        info_line = next((ln for ln in output if "Waiting for workers" in ln), None)
+        self.assertIsNotNone(info_line)
+        self.assertIn("(0/1 online recently)", info_line)
+        self.assertFalse(any("Zero workers have been seen" in ln for ln in output))
+
+    def test_job_with_no_pipeline_logs_generic_message(self):
+        """Pipeline-less job: a generic waiting line, no pipeline-specific warning."""
+        self.job.pipeline = None
+        self.job.save(update_fields=["pipeline"])
+        output = self._run_and_capture()
+        self.assertTrue(
+            any("Waiting for workers to pick up tasks" in ln and "no pipeline assigned" in ln for ln in output),
+            f"expected generic no-pipeline line in {output}",
+        )
+        self.assertFalse(any("Zero workers have been seen" in ln for ln in output))
