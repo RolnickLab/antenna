@@ -426,15 +426,17 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_BROKER_CONNECTION_MAX_RETRIES = None  # Retry forever
 
 
-# Allow large request bodies from ML workers posting classification results.
-# ML detection+classification payloads for a single batch can easily exceed
-# the Django default (2.5 MB) and even the previous hardcoded 100 MB ceiling.
-# Configurable via env (MB) so staging and production can tune without a
-# code change. See RolnickLab/antenna#1223 for the longer-term fix (worker-
-# side incremental result posting).
-DATA_UPLOAD_MAX_MEMORY_SIZE = (
-    env.int("DJANGO_DATA_UPLOAD_MAX_MEMORY_MB", default=100) * 1024 * 1024  # type: ignore[no-untyped-call]
-)
+# Maximum in-memory request body size for multipart form data and request.body access.
+# ML detection+classification payloads for a single batch can exceed the Django
+# default (2.5 MB). Configurable via env (integer, MB) so operators can tune without
+# a code change. See RolnickLab/antenna#1223 for the longer-term fix (worker-side
+# incremental result posting).
+#
+# Note: this setting does NOT apply to DRF JSON bodies — DRF parsers read from the
+# raw WSGI stream, bypassing the request.body check where Django enforces this limit.
+# JSON enforcement is handled by ami.base.parsers.MaxSizeJSONParser (see REST_FRAMEWORK
+# below). nginx client_max_body_size is the hard outer limit for all request types.
+DATA_UPLOAD_MAX_MEMORY_SIZE = env.int("DJANGO_DATA_UPLOAD_MAX_MEMORY_MB", default=100) * 1024 * 1024
 
 # django-rest-framework
 # -------------------------------------------------------------------------------
@@ -451,6 +453,14 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 10,
     "DEFAULT_VERSIONING_CLASS": "rest_framework.versioning.NamespaceVersioning",
     "HTML_SELECT_CUTOFF": 100,
+    # MaxSizeJSONParser enforces DATA_UPLOAD_MAX_MEMORY_SIZE for JSON bodies.
+    # DRF's default JSONParser bypasses Django's built-in limit by reading the raw WSGI
+    # stream directly; this subclass checks Content-Length before parsing begins.
+    "DEFAULT_PARSER_CLASSES": [
+        "ami.base.parsers.MaxSizeJSONParser",
+        "rest_framework.parsers.FormParser",
+        "rest_framework.parsers.MultiPartParser",
+    ],
 }
 
 # django-cors-headers - https://github.com/adamchainz/django-cors-headers#setup

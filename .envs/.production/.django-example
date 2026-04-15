@@ -20,6 +20,17 @@ REDIS_URL=redis://redis:6379/0
 # Celery
 # ------------------------------------------------------------------------------
 
+# Django
+# ------------------------------------------------------------------------------
+
+# Maximum in-memory request body size (integer, MB). Default is 100 MB.
+# Raise if ADC workers posting large ML result batches (detection + classification
+# payloads) return HTTP 413. global_moths_2024 batches have been observed at
+# 139–321 MB on staging. Must be raised in lockstep with nginx client_max_body_size
+# on the fronting proxy — Django will never see a request nginx rejects.
+# See RolnickLab/antenna#1223 for the longer-term fix (incremental result posting).
+DJANGO_DATA_UPLOAD_MAX_MEMORY_MB=512
+
 # Flower
 CELERY_FLOWER_USER=
 CELERY_FLOWER_PASSWORD=
