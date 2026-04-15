@@ -1366,3 +1366,41 @@ class TestTaskStateManager(TestCase):
         # Verify all state is gone (get_progress returns None when total_key is deleted)
         progress = self.manager.get_progress("process")
         self.assertIsNone(progress)
+
+    def test_update_state_raises_on_redis_error(self):
+        """
+        A transient Redis failure during update_state must propagate, not be
+        swallowed as None. The None return is reserved for the genuine
+        "state actually gone" case (see test below). Conflating the two is
+        the #1219 bug that escalated transient connection resets into fatal
+        job FAILUREs.
+        """
+        from unittest.mock import MagicMock, patch
+
+        from redis.exceptions import RedisError
+
+        self._init_and_verify(self.image_ids)
+
+        # Replace the pipeline context manager with one whose execute() raises.
+        # Everything upstream of execute() is safely called (srem/sadd/scard/get
+        # on a pipeline only queue commands; they don't hit the network until
+        # execute runs), so we only need to blow up at the execute boundary.
+        pipe = MagicMock()
+        pipe.execute.side_effect = RedisError("Connection reset by peer")
+        fake_redis = MagicMock()
+        fake_redis.pipeline.return_value.__enter__.return_value = pipe
+
+        with patch.object(self.manager, "_get_redis", return_value=fake_redis):
+            with self.assertRaises(RedisError):
+                self.manager.update_state({"img1", "img2"}, "process")
+
+    def test_update_state_returns_none_when_state_genuinely_missing(self):
+        """
+        When the job's total-images key is actually missing from Redis (job
+        was never initialized, cleaned up, or TTL expired), update_state
+        returns None. This is the only case that should trigger the
+        terminal "state missing" failure path in the caller.
+        """
+        # Do NOT call initialize_job — the total key doesn't exist.
+        progress = self.manager.update_state({"img1", "img2"}, "process")
+        self.assertIsNone(progress)
