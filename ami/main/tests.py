@@ -3648,9 +3648,16 @@ class TaxaListTaxonValidationTestCase(TestCase):
 
 
 class TestProjectPipelinesAPI(APITestCase):
-    """Test the project pipelines API endpoint."""
+    """Test the project pipelines API endpoint.
+
+    Pipeline registration requires API key authentication (since PR #1194).
+    The processing service is identified by its API key, not by name.
+    """
 
     def setUp(self):
+        from unittest.mock import patch
+
+        from ami.ml.models.processing_service import ProcessingServiceAPIKey
         from ami.users.roles import ProjectManager, create_roles_for_project
 
         self.user = User.objects.create_user(email="test@example.com")  # type: ignore
@@ -3665,76 +3672,68 @@ class TestProjectPipelinesAPI(APITestCase):
         create_roles_for_project(self.other_project)
         ProjectManager.assign_user(self.user, self.project)
 
+        # Create a processing service with API key for registration tests
+        with patch.object(ProcessingService, "get_status"):
+            self.service = ProcessingService.objects.create(name="TestService", endpoint_url=None)
+        self.service.projects.add(self.project)
+        _, self.api_key = ProcessingServiceAPIKey.objects.create_key(name="test-key", processing_service=self.service)
+
     def _get_pipelines_url(self, project_id):
         """Get the pipelines API URL for a project."""
         return f"/api/v2/projects/{project_id}/pipelines/"
 
-    def _get_test_payload(self, service_name: str):
-        """Get a minimal test payload for pipeline registration."""
-        return {
-            "processing_service_name": service_name,
-            "pipelines": [],
-        }
-
-    def test_create_new_service_success(self):
-        """Test creating a new processing service if it doesn't exist."""
+    def test_registration_with_api_key_succeeds(self):
+        """Test that API-key-authenticated registration succeeds."""
         url = self._get_pipelines_url(self.project.pk)
-        payload = self._get_test_payload("NewService")
+        payload = {"pipelines": []}
 
-        self.client.force_authenticate(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Api-Key {self.api_key}")
         response = self.client.post(url, payload, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-
-        # Verify service was created and associated
-        service = ProcessingService.objects.get(name="NewService")
-        self.assertIn(self.project, service.projects.all())
 
     def test_reregistration_is_idempotent(self):
-        """Test that re-registering a service already associated with the project succeeds."""
-        # Create and associate service
-        service = ProcessingService.objects.create(name="ExistingService")
-        service.projects.add(self.project)
-
+        """Test that re-registering the same service succeeds."""
         url = self._get_pipelines_url(self.project.pk)
-        payload = self._get_test_payload("ExistingService")
+        payload = {"pipelines": []}
 
-        self.client.force_authenticate(user=self.user)
-        response = self.client.post(url, payload, format="json")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Api-Key {self.api_key}")
 
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        response1 = self.client.post(url, payload, format="json")
+        self.assertEqual(response1.status_code, status.HTTP_201_CREATED)
 
-    def test_associate_existing_service_success(self):
-        """Test associating existing service with project when not yet associated."""
-        # Create service but don't associate with project
-        service = ProcessingService.objects.create(name="UnassociatedService")
+        response2 = self.client.post(url, payload, format="json")
+        self.assertEqual(response2.status_code, status.HTTP_201_CREATED)
 
+    def test_registration_updates_heartbeat(self):
+        """Test that registration marks the service as seen."""
         url = self._get_pipelines_url(self.project.pk)
-        payload = self._get_test_payload("UnassociatedService")
+        payload = {"pipelines": []}
 
-        self.client.force_authenticate(user=self.user)
-        response = self.client.post(url, payload, format="json")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Api-Key {self.api_key}")
+        self.client.post(url, payload, format="json")
 
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertIn(self.project, service.projects.all())
+        self.service.refresh_from_db()
+        self.assertIsNotNone(self.service.last_seen)
+        self.assertTrue(self.service.last_seen_live)
 
-    def test_unauthorized_project_access_returns_403(self):
-        """Test 403 when user doesn't have write access to project."""
+    def test_wrong_project_denied(self):
+        """Test that API key for a PS not linked to the target project is denied."""
         url = self._get_pipelines_url(self.other_project.pk)
-        payload = self._get_test_payload("UnauthorizedService")
+        payload = {"pipelines": []}
+
+        self.client.credentials(HTTP_AUTHORIZATION=f"Api-Key {self.api_key}")
+        response = self.client.post(url, payload, format="json")
+
+        self.assertIn(response.status_code, [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND])
+
+    def test_user_token_auth_rejected_for_registration(self):
+        """Test that user-token auth is rejected for pipeline registration."""
+        url = self._get_pipelines_url(self.project.pk)
+        payload = {"pipelines": []}
 
         self.client.force_authenticate(user=self.user)
         response = self.client.post(url, payload, format="json")
-
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_invalid_payload_returns_400(self):
-        """Test 400 when payload is invalid."""
-        url = self._get_pipelines_url(self.project.pk)
-        invalid_payload = {"invalid": "data"}
-
-        self.client.force_authenticate(user=self.user)
-        response = self.client.post(url, invalid_payload, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -3771,7 +3770,7 @@ class TestProjectPipelinesAPI(APITestCase):
     def test_unauthenticated_write_returns_401(self):
         """Unauthenticated users cannot register pipelines."""
         url = self._get_pipelines_url(self.project.pk)
-        payload = self._get_test_payload("AnonService")
+        payload = {"pipelines": []}
         response = self.client.post(url, payload, format="json")
         self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
 

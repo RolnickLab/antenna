@@ -9,7 +9,7 @@ python /app/main.py &
 SERVER_PID=$!
 
 # Run registration if API key is configured (non-fatal)
-if [ -n "$ANTENNA_API_KEY" ]; then
+if [ -n "$ANTENNA_API_KEY" ] || [ -n "$ANTENNA_USER" ]; then
     python /app/register.py || echo "Registration failed, continuing in push-mode"
 fi
 
