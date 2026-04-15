@@ -422,6 +422,16 @@ CELERY_REDIS_BACKEND_HEALTH_CHECK_INTERVAL = 30  # Check health every 30s
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_ENABLE_PREFETCH_COUNT_REDUCTION = True
 
+# Worker concurrency (prefork pool size)
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-concurrency
+# Celery's own default when unset is os.cpu_count(), which on the production
+# 8-core host produced an 8-process pool that could not keep up with the antenna
+# queue's DB/Redis-bound tasks (process_nats_pipeline_result, create_detection_images).
+# 8 is a conservative default that keeps local/staging/demo memory footprints
+# reasonable (each prefork worker is a separate Python process with imports +
+# DB connection). Production should override to 16 (see .envs/.production/.django-example).
+CELERY_WORKER_CONCURRENCY = env.int("CELERY_WORKER_CONCURRENCY", default=8)
+
 # Cancel & return to queue if connection is lost
 # https://docs.celeryq.dev/en/latest/userguide/configuration.html#worker-cancel-long-running-tasks-on-connection-loss
 CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
