@@ -460,9 +460,9 @@ CELERY_BROKER_CONNECTION_MAX_RETRIES = None  # Retry forever
 
 # Maximum in-memory request body size for multipart form data and request.body access.
 # ML detection+classification payloads for a single batch can exceed the Django
-# default (2.5 MB). Configurable via env (integer, MB) so operators can tune without
-# a code change. See RolnickLab/antenna#1223 for the longer-term fix (worker-side
-# incremental result posting).
+# default (2.5 MB). Configurable via env (integer, binary MiB — multiplied by
+# 1024*1024) so operators can tune without a code change. See RolnickLab/antenna#1223
+# for the longer-term fix (worker-side incremental result posting).
 #
 # Note: this setting does NOT apply to DRF JSON bodies — DRF parsers read from the
 # raw WSGI stream, bypassing request.body where Django enforces this limit.
