@@ -377,9 +377,14 @@ def _update_job_progress(
         cleanup_async_job_if_needed(job)
 
 
-def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[dict]:
+def check_stale_jobs(minutes: int | None = None, dry_run: bool = False) -> list[dict]:
     """
     Find jobs stuck in a running state past the cutoff and revoke them.
+
+    Cutoff is measured against ``Job.updated_at`` (auto-bumped on every save),
+    so a job that's actively making progress — including async_api jobs that
+    bump on each Redis SREM-driven progress save — is never reaped while
+    healthy. Default cutoff is :attr:`Job.STALLED_JOBS_MAX_MINUTES`.
 
     For each stale job, checks Celery for a terminal task status. REVOKED is
     always trusted. For async_api jobs, SUCCESS and FAILURE are only accepted
@@ -397,10 +402,10 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
 
     from ami.jobs.models import Job, JobDispatchMode, JobState
 
-    if hours is None:
-        hours = Job.FAILED_CUTOFF_HOURS
+    if minutes is None:
+        minutes = Job.STALLED_JOBS_MAX_MINUTES
 
-    cutoff = datetime.datetime.now() - datetime.timedelta(hours=hours)
+    cutoff = datetime.datetime.now() - datetime.timedelta(minutes=minutes)
     stale_pks = list(
         Job.objects.filter(
             status__in=JobState.running_states(),
@@ -492,7 +497,7 @@ class JobsHealthCheckResult:
 
 
 def _run_stale_jobs_check() -> IntegrityCheckResult:
-    """Reconcile jobs stuck in running states past FAILED_CUTOFF_HOURS."""
+    """Reconcile jobs stuck in running states past Job.STALLED_JOBS_MAX_MINUTES."""
     results = check_stale_jobs()
     updated = sum(1 for r in results if r["action"] == "updated")
     revoked = sum(1 for r in results if r["action"] == "revoked")

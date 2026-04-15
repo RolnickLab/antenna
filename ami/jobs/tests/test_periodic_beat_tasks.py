@@ -19,9 +19,9 @@ class JobsHealthCheckTest(TestCase):
     def setUp(self):
         self.project = Project.objects.create(name="Beat schedule test project")
 
-    def _create_stale_job(self, status=JobState.STARTED, hours_ago=100):
+    def _create_stale_job(self, status=JobState.STARTED, minutes_ago=120):
         job = Job.objects.create(project=self.project, name="stale", status=status)
-        Job.objects.filter(pk=job.pk).update(updated_at=timezone.now() - timedelta(hours=hours_ago))
+        Job.objects.filter(pk=job.pk).update(updated_at=timezone.now() - timedelta(minutes=minutes_ago))
         job.refresh_from_db()
         return job
 
@@ -55,7 +55,7 @@ class JobsHealthCheckTest(TestCase):
 
     def test_idle_deployment_returns_all_zeros(self, mock_manager_cls, _mock_cleanup):
         # No stale jobs, no running async jobs.
-        self._create_stale_job(hours_ago=1)  # recent — not stale
+        self._create_stale_job(minutes_ago=5)  # recent — not stale
         self._stub_manager(mock_manager_cls)
 
         self.assertEqual(

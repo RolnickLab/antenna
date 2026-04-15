@@ -36,6 +36,26 @@ class TestJobProgress(TestCase):
         self.assertEqual(job.progress.summary.progress, 0)
         self.assertEqual(job.progress.stages, [])
 
+    def test_save_does_not_inflate_failed_stage_progress(self):
+        """A stage marked FAILURE at partial progress must keep its measured value.
+
+        Regression for the premature ``cleanup_async_job_resources`` path: when a
+        worker writes ``status=FAILURE`` at partial progress (e.g. failed/total
+        crossed FAILURE_THRESHOLD on an early result), ``Job.update_progress``
+        used to coerce ``stage.progress = 1`` on the next save. That made
+        ``is_complete()`` return True and triggered cleanup while async results
+        were still in flight. Progress is a measurement; leave it alone.
+        """
+        job = Job.objects.create(project=self.project, name="Test job - partial failure")
+        job.progress.add_stage("results")
+        job.progress.update_stage("results", progress=0.3, status=JobState.FAILURE)
+        job.save()
+
+        results_stage = job.progress.get_stage("results")
+        self.assertEqual(results_stage.progress, 0.3)
+        self.assertEqual(results_stage.status, JobState.FAILURE)
+        self.assertFalse(job.progress.is_complete())
+
     def test_create_job_with_delay(self):
         job = Job.objects.create(
             job_type_key=MLJob.key,
