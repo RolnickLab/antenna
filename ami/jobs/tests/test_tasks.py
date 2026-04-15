@@ -513,6 +513,118 @@ class TestProcessNatsPipelineResultError(TransactionTestCase):
         mock_manager.acknowledge_task.assert_called_once_with(reply_subject)
 
 
+class TestTaskFailureGuard(TransactionTestCase):
+    """
+    Bug C regression tests for the task_failure signal guard in update_job_failure.
+
+    Pre-PR-#1234 behavior: any exception raised in run_job (even after the images
+    were successfully queued to NATS and ADC workers were processing them) flowed
+    through Celery's task_failure signal and collapsed the job: status → FAILURE
+    and NATS/Redis cleanup destroyed state the result handler depended on.
+
+    Post-PR-#1234 behavior: for ASYNC_API jobs that aren't progress.is_complete()
+    yet, the guard defers terminal state to the async result handler. Non-ASYNC
+    dispatch modes (and ASYNC_API jobs that have actually completed) still take
+    the terminal path.
+
+    Tests here call `update_job_failure` as a plain function with the positional
+    arguments the task_failure signal would pass at runtime. The Celery signal
+    machinery itself is not the subject of the test — the signal handler body is.
+    """
+
+    def setUp(self):
+        cache.clear()
+        self.project = Project.objects.create(name="Bug C Guard Test Project")
+        self.pipeline = Pipeline.objects.create(name="Bug C Pipeline", slug="bug-c-pipeline")
+        self.pipeline.projects.add(self.project)
+        self.collection = SourceImageCollection.objects.create(name="Bug C Collection", project=self.project)
+
+    def tearDown(self):
+        cache.clear()
+
+    def _make_job(self, dispatch_mode: JobDispatchMode, task_id: str) -> Job:
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name=f"{dispatch_mode} bug C test job",
+            pipeline=self.pipeline,
+            source_image_collection=self.collection,
+            dispatch_mode=dispatch_mode,
+        )
+        job.task_id = task_id
+        # Initial status mirrors what run_job has already set via task_prerun by
+        # the time task_failure fires.
+        job.update_status(JobState.STARTED, save=True)
+        return job
+
+    @patch("ami.jobs.tasks.cleanup_async_job_if_needed")
+    def test_task_failure_guard_defers_for_async_api_in_flight(self, mock_cleanup):
+        """
+        Bug C: an exception in run_job post-queue on an ASYNC_API job must NOT
+        flip the job to FAILURE or fire cleanup — results are still arriving
+        via NATS, and tearing down stream/consumer/Redis state now would strand
+        the in-flight images. The guard at tasks.py:729 handles this.
+        """
+        from ami.jobs.tasks import update_job_failure
+
+        job = self._make_job(JobDispatchMode.ASYNC_API, task_id="bug-c-async-task")
+        # Initialize Redis state so progress.is_complete() is False (there are
+        # pending images). Also stand in for the ADC worker's view: it would
+        # still see state here and keep publishing results.
+        image_ids = ["100", "101", "102"]
+        AsyncJobStateManager(job.pk).initialize_job(image_ids)
+
+        with self.assertLogs("ami.jobs", level="WARNING") as captured:
+            update_job_failure(
+                sender=None,
+                task_id=job.task_id,
+                exception=RuntimeError("simulated post-queue crash"),
+            )
+
+        job.refresh_from_db()
+
+        # Job status unchanged: the guard returned before update_status(FAILURE).
+        self.assertEqual(
+            job.status,
+            JobState.STARTED,
+            "ASYNC_API in-flight job should remain STARTED when run_job raises",
+        )
+        # Cleanup deferred: state is still needed by the async result handler.
+        mock_cleanup.assert_not_called()
+        # Redis state untouched — the NATS worker can keep reporting against it.
+        surviving_progress = AsyncJobStateManager(job.pk).get_progress("results")
+        self.assertIsNotNone(surviving_progress)
+        self.assertEqual(surviving_progress.remaining, len(image_ids))
+        # Warning log surfaces the deferred failure. Ops alerting on this phrase
+        # is how the visibility loss described in the PR body is compensated.
+        self.assertTrue(
+            any("deferring FAILURE to async progress handler" in line for line in captured.output),
+            f"expected deferral warning, got: {captured.output}",
+        )
+
+    @patch("ami.jobs.tasks.cleanup_async_job_if_needed")
+    def test_task_failure_marks_sync_api_job_failure_and_cleans_up(self, mock_cleanup):
+        """
+        Contract pair for the ASYNC_API guard: SYNC_API (and INTERNAL) jobs have
+        no in-flight external processing to preserve, so task_failure must still
+        mark FAILURE and invoke cleanup as before.
+        """
+        from ami.jobs.tasks import update_job_failure
+
+        job = self._make_job(JobDispatchMode.SYNC_API, task_id="bug-c-sync-task")
+
+        update_job_failure(
+            sender=None,
+            task_id=job.task_id,
+            exception=RuntimeError("sync api crash"),
+        )
+
+        job.refresh_from_db()
+
+        self.assertEqual(job.status, JobState.FAILURE)
+        mock_cleanup.assert_called_once()
+
+
 class TestResultEndpointWithError(APITestCase):
     """Integration test for the result API endpoint with error results."""
 

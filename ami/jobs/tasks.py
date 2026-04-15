@@ -220,29 +220,22 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         # Counter-inflation guard: only add detection/classification/capture counts
         # when SREM actually removed ids (first processing of this result). On a
         # replay (NATS redelivered the message or the Celery task retried past
-        # the SREM), newly_removed==0 and we skip accumulation to keep the
-        # counters idempotent. The percentage/status path still runs because
+        # the SREM), newly_removed==0 and we pass zeros to keep the counters
+        # idempotent. The percentage/status path still runs because
         # _update_job_progress uses max() and preserves FAILURE regardless.
-        if progress_info.newly_removed > 0:
-            _update_job_progress(
-                job_id,
-                "results",
-                progress_info.percentage,
-                complete_state=complete_state,
-                detections=detections_count,
-                classifications=classifications_count,
-                captures=captures_count,
-            )
-        else:
-            _update_job_progress(
-                job_id,
-                "results",
-                progress_info.percentage,
-                complete_state=complete_state,
-                detections=0,
-                classifications=0,
-                captures=0,
-            )
+        is_first_processing = progress_info.newly_removed > 0
+        counts_to_apply = (
+            (detections_count, classifications_count, captures_count) if is_first_processing else (0, 0, 0)
+        )
+        _update_job_progress(
+            job_id,
+            "results",
+            progress_info.percentage,
+            complete_state=complete_state,
+            detections=counts_to_apply[0],
+            classifications=counts_to_apply[1],
+            captures=counts_to_apply[2],
+        )
 
         # Ack LAST — only after the results-stage SREM and progress commit are
         # durable. If anything above crashes, NATS will redeliver the message
