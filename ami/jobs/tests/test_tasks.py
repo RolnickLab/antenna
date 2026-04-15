@@ -289,6 +289,68 @@ class TestProcessNatsPipelineResultError(TransactionTestCase):
         self.assertEqual(progress.total, 3)
         self.assertEqual(mock_manager.acknowledge_task.call_count, 2)
 
+    @patch("ami.jobs.tasks._fail_job")
+    @patch("ami.jobs.tasks._ack_task_via_nats")
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_transient_redis_error_does_not_fail_job_or_ack(self, mock_manager_class, mock_ack, mock_fail):
+        """
+        #1219: A transient RedisError during update_state must NOT flip the job
+        to FAILURE and must NOT ack the NATS reply. Celery's autoretry_for is
+        responsible for retrying; acking or failing prematurely is what caused
+        the production incident.
+
+        We invoke the task body directly (bypassing Celery's retry machinery)
+        so we can assert the raw behavior: the exception propagates, _fail_job
+        is not called, and the NATS ack helper is not called.
+        """
+        from redis.exceptions import RedisError
+
+        self._setup_mock_nats(mock_manager_class)
+        error_data = self._create_error_result(image_id=str(self.images[0].pk))
+
+        with patch.object(AsyncJobStateManager, "update_state", side_effect=RedisError("reset by peer")):
+            with self.assertRaises(RedisError):
+                # Calling the task as a function runs its body once with no retry.
+                process_nats_pipeline_result(
+                    job_id=self.job.pk,
+                    result_data=error_data,
+                    reply_subject="reply.transient",
+                )
+
+        mock_fail.assert_not_called()
+        mock_ack.assert_not_called()
+
+    @patch("ami.jobs.tasks._fail_job")
+    @patch("ami.jobs.tasks._ack_task_via_nats")
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_genuinely_missing_state_acks_and_fails_job(self, mock_manager_class, mock_ack, mock_fail):
+        """
+        #1219 pairs with the transient case: when the job's total-images key
+        is actually gone from Redis (cleanup race / expiry), the task should
+        ack NATS (to stop redelivery) and fail the job — there's no state
+        to reconcile against. This path is now the ONLY reason _fail_job is
+        called from process_nats_pipeline_result's first call site.
+        """
+        self._setup_mock_nats(mock_manager_class)
+        error_data = self._create_error_result(image_id=str(self.images[0].pk))
+
+        # Wipe out the state that setUp's initialize_job created. Now
+        # update_state will see total_raw=None and return None (genuine).
+        self.state_manager.cleanup()
+
+        process_nats_pipeline_result(
+            job_id=self.job.pk,
+            result_data=error_data,
+            reply_subject="reply.missing",
+        )
+
+        mock_ack.assert_called_once()
+        mock_fail.assert_called_once()
+        # New, accurate message — no longer the misleading "Redis state missing"
+        # that users saw in the UI for transient connection drops.
+        args, _ = mock_fail.call_args
+        self.assertIn("Job state keys not found in Redis", args[1])
+
     @patch("ami.jobs.tasks.TaskQueueManager")
     def test_process_nats_pipeline_result_error_job_not_found(self, mock_manager_class):
         """

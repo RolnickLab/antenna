@@ -127,26 +127,30 @@ class AsyncJobStateManager:
             failed_image_ids: Set of image IDs that failed processing (optional)
 
         Returns:
-            JobStateProgress snapshot, or None if Redis state is missing
-            (job expired or not yet initialized).
-        """
-        try:
-            redis = self._get_redis()
-            pending_key = self._get_pending_key(stage)
+            JobStateProgress snapshot, or None if the job's total-images key is
+            genuinely missing from Redis (job expired, cleaned up concurrently,
+            or never initialized).
 
-            with redis.pipeline() as pipe:
-                if processed_image_ids:
-                    pipe.srem(pending_key, *processed_image_ids)
-                if failed_image_ids:
-                    pipe.sadd(self._failed_key, *failed_image_ids)
-                    pipe.expire(self._failed_key, self.TIMEOUT)
-                pipe.scard(pending_key)
-                pipe.scard(self._failed_key)
-                pipe.get(self._total_key)
-                results = pipe.execute()
-        except RedisError as e:
-            logger.error(f"Redis error updating job {self.job_id} state: {e}")
-            return None
+        Raises:
+            redis.exceptions.RedisError: on transient Redis failures (connection
+                reset, timeout, etc.). Callers should retry; swallowing this
+                here would conflate a fixable transient with the terminal
+                "state genuinely gone" signal expressed by the None return.
+                See RolnickLab/antenna#1219.
+        """
+        redis = self._get_redis()
+        pending_key = self._get_pending_key(stage)
+
+        with redis.pipeline() as pipe:
+            if processed_image_ids:
+                pipe.srem(pending_key, *processed_image_ids)
+            if failed_image_ids:
+                pipe.sadd(self._failed_key, *failed_image_ids)
+                pipe.expire(self._failed_key, self.TIMEOUT)
+            pipe.scard(pending_key)
+            pipe.scard(self._failed_key)
+            pipe.get(self._total_key)
+            results = pipe.execute()
 
         # Last 3 results are always scard(pending), scard(failed), get(total)
         # regardless of whether SREM/SADD appear at the front.
