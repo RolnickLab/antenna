@@ -458,8 +458,16 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_BROKER_CONNECTION_MAX_RETRIES = None  # Retry forever
 
 
-# Allow large request bodies from ML workers posting classification results
-DATA_UPLOAD_MAX_MEMORY_SIZE = 100 * 1024 * 1024  # 100MB (default 2.5MB)
+# Maximum in-memory request body size for multipart form data and request.body access.
+# ML detection+classification payloads for a single batch can exceed the Django
+# default (2.5 MB). Configurable via env (integer, binary MiB — multiplied by
+# 1024*1024) so operators can tune without a code change. See RolnickLab/antenna#1223
+# for the longer-term fix (worker-side incremental result posting).
+#
+# Note: this setting does NOT apply to DRF JSON bodies — DRF parsers read from the
+# raw WSGI stream, bypassing request.body where Django enforces this limit.
+# nginx client_max_body_size is the hard cap for all request types.
+DATA_UPLOAD_MAX_MEMORY_SIZE = env.int("DJANGO_DATA_UPLOAD_MAX_MEMORY_MB", default=100) * 1024 * 1024
 
 # django-rest-framework
 # -------------------------------------------------------------------------------

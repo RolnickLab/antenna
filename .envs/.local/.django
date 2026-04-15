@@ -15,6 +15,10 @@ REDIS_URL=redis://redis:6379/0
 # NATS
 NATS_URL=nats://nats:4222
 
+# Upload size limit (integer, binary MiB — multiplied by 1024*1024). 100 MiB default
+# is fine for local dev. Raise only if testing large ML result payloads locally.
+# DJANGO_DATA_UPLOAD_MAX_MEMORY_MB=100
+
 # Celery / Flower
 CELERY_FLOWER_USER=QSocnxapfMvzLqJXSsXtnEZqRkBtsmKT
 CELERY_FLOWER_PASSWORD=BEQgmCtgyrFieKNoGTsux9YIye0I7P5Q7vEgfJD2C4jxmtHDetFaE2jhS7K7rxaf
