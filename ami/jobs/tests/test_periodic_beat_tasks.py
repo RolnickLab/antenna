@@ -38,6 +38,7 @@ class JobsHealthCheckTest(TestCase):
         instance.log_consumer_stats_snapshot = AsyncMock()
         # Zombie-stream sub-check defaults: no streams to inspect, no drains.
         instance.list_job_stream_snapshots = AsyncMock(return_value=[])
+        instance.populate_redelivered_counts = AsyncMock(return_value=None)
         instance.delete_consumer = AsyncMock(return_value=True)
         instance.delete_stream = AsyncMock(return_value=True)
         return instance
@@ -299,3 +300,47 @@ class JobsHealthCheckTest(TestCase):
         result = jobs_health_check()
 
         self.assertEqual(result["zombie_streams"], {"checked": 1, "fixed": 0, "unfixable": 1})
+
+    def test_zombie_stream_skipped_when_created_is_none(self, mock_manager_cls, _mock_cleanup):
+        """A snapshot with created=None must be skipped (unfixable), never drained.
+
+        The age guard exists to protect streams whose Job row hasn't committed yet.
+        A missing/unparseable timestamp means we cannot determine age, so the safe
+        default is to leave the stream alone and report it as unfixable.
+        """
+        instance = self._stub_manager(mock_manager_cls)
+        instance.list_job_stream_snapshots = AsyncMock(
+            return_value=[
+                {
+                    "job_id": 111222,
+                    "stream_name": "job_111222",
+                    "created": None,
+                    "messages": 2,
+                    "num_redelivered": None,
+                }
+            ]
+        )
+
+        result = jobs_health_check()
+
+        self.assertEqual(result["zombie_streams"], {"checked": 1, "fixed": 0, "unfixable": 1})
+        instance.delete_consumer.assert_not_awaited()
+        instance.delete_stream.assert_not_awaited()
+
+    def test_list_job_stream_snapshots_raises_on_nats_error_payload(self, mock_manager_cls, _mock_cleanup):
+        """list_job_stream_snapshots must raise (not return []) when the NATS server responds with an error.
+
+        Returning [] would mask an outage — the caller would silently interpret
+        "zero zombies" when NATS is actually unavailable.
+        """
+        import nats.errors
+
+        instance = self._stub_manager(mock_manager_cls)
+        instance.list_job_stream_snapshots = AsyncMock(
+            side_effect=nats.errors.Error("NATS STREAM.LIST error 503: no responders available for request")
+        )
+
+        result = jobs_health_check()
+
+        # _safe_run_sub_check catches the exception and records unfixable=1.
+        self.assertEqual(result["zombie_streams"], {"checked": 0, "fixed": 0, "unfixable": 1})

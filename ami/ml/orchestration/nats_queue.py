@@ -599,16 +599,20 @@ class TaskQueueManager:
     async def list_job_stream_snapshots(self) -> list[dict]:
         """Return a snapshot of every ``job_{N}`` stream currently in JetStream.
 
-        Each entry: ``{"job_id": int, "stream_name": str, "created": datetime,
-        "messages": int, "num_redelivered": int | None}``. ``num_redelivered``
-        is pulled from the matching consumer when present and is ``None`` when
-        the consumer has already been removed (stream-only zombies are still
-        worth reporting).
+        Each entry: ``{"job_id": int, "stream_name": str, "created": datetime | None,
+        "messages": int, "num_redelivered": None}``. ``num_redelivered`` is always
+        ``None`` here — call :meth:`populate_redelivered_counts` on the subset of
+        interest (e.g. drain candidates) to fill it in, avoiding O(N) consumer-info
+        round-trips for every stream on every beat tick.
 
         Uses the raw ``$JS.API.STREAM.LIST`` endpoint because
         ``JetStreamContext.streams_info`` in the currently pinned nats.py drops
         the server-side ``created`` timestamp from :class:`StreamInfo` — we need
         it here to age zombies out with a safety margin.
+
+        Raises :class:`nats.errors.Error` if the NATS server responds with an error
+        payload (e.g. 503 no-responders), so the caller can surface it as an outage
+        rather than silently treating it as "zero streams."
         """
         if self.nc is None or self.js is None:
             raise RuntimeError("Connection is not open. Use TaskQueueManager as an async context manager.")
@@ -623,6 +627,11 @@ class TaskQueueManager:
                 timeout=NATS_JETSTREAM_TIMEOUT,
             )
             payload = json.loads(resp.data)
+            if payload.get("error"):
+                err = payload["error"]
+                raise nats.errors.Error(
+                    f"NATS STREAM.LIST error {err.get('code')}: {err.get('description', 'unknown')}"
+                )
             streams = payload.get("streams") or []
             if not streams:
                 break
@@ -645,7 +654,7 @@ class TaskQueueManager:
                         "stream_name": name,
                         "created": created,
                         "messages": int(state.get("messages") or 0),
-                        "num_redelivered": await self._consumer_redelivered_count(job_id),
+                        "num_redelivered": None,
                     }
                 )
             total = int(payload.get("total") or 0)
@@ -653,6 +662,21 @@ class TaskQueueManager:
             if offset >= total:
                 break
         return snapshots
+
+    async def populate_redelivered_counts(self, snapshots: list[dict], concurrency: int = 8) -> None:
+        """Fill in ``num_redelivered`` in-place for the given snapshot dicts.
+
+        Fetches consumer info concurrently (bounded by *concurrency*) so that
+        callers can limit per-consumer round-trips to a filtered subset rather
+        than fetching for all streams on every beat tick.
+        """
+        sem = asyncio.Semaphore(concurrency)
+
+        async def _fetch_one(snap: dict) -> None:
+            async with sem:
+                snap["num_redelivered"] = await self._consumer_redelivered_count(snap["job_id"])
+
+        await asyncio.gather(*(_fetch_one(s) for s in snapshots))
 
     async def _consumer_redelivered_count(self, job_id: int) -> int | None:
         """Return ``num_redelivered`` from the job's consumer, or ``None`` if gone."""

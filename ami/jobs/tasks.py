@@ -673,16 +673,44 @@ def _run_zombie_streams_check() -> IntegrityCheckResult:
             checked = len(snapshots)
             drained = 0
             errored = 0
+
+            # First pass: classify each snapshot.  Streams with a missing
+            # created timestamp are skipped (unfixable) rather than drained —
+            # the age guard exists precisely to protect streams whose Job row
+            # hasn't committed yet, so an unparseable timestamp must be treated
+            # as "unknown age / unsafe to drain".
+            ages: dict[int, datetime.timedelta] = {}
+            candidates: list[dict] = []
             for snap in snapshots:
                 created = snap["created"]
-                age = now - created if created else threshold + datetime.timedelta(minutes=1)
+                if created is None:
+                    logger.warning(
+                        "Skipping zombie drain for stream %s: created timestamp missing",
+                        snap["stream_name"],
+                    )
+                    errored += 1
+                    continue
+                age = now - created
                 if age < threshold:
                     continue
                 job = jobs_by_id.get(snap["job_id"])
                 job_status = job.status if job else None
                 if job is not None and JobState(job_status) not in JobState.final_states():
                     continue
+                ages[snap["job_id"]] = age
+                candidates.append(snap)
+
+            # Populate num_redelivered only for drain candidates to avoid an
+            # O(N) NATS round-trip on every beat tick for all historical streams.
+            if candidates:
+                await manager.populate_redelivered_counts(candidates)
+
+            # Second pass: drain each candidate.
+            for snap in candidates:
+                job = jobs_by_id.get(snap["job_id"])
+                job_status = job.status if job else None
                 status_label = str(job_status) if job else "missing"
+                age = ages[snap["job_id"]]
                 try:
                     consumer_deleted = await manager.delete_consumer(snap["job_id"])
                     stream_deleted = await manager.delete_stream(snap["job_id"])
