@@ -771,6 +771,7 @@ class TestLogWorkerAvailability(TransactionTestCase):
 
         svc = ProcessingService.objects.create(name=name, endpoint_url=None)
         svc.pipelines.add(self.pipeline)
+        svc.projects.add(self.project)
         if last_seen_offset_seconds is not None:
             svc.last_seen = _dt.datetime.now() - _dt.timedelta(seconds=last_seen_offset_seconds)
         svc.last_seen_live = live
@@ -778,13 +779,15 @@ class TestLogWorkerAvailability(TransactionTestCase):
         return svc
 
     def _run_and_capture(self):
-        """Call _log_worker_availability(self.job) and return (info_lines, warning_lines)
-        captured from the ami.jobs logger."""
+        """Call _log_worker_availability(self.job) and return captured.output (a flat list
+        of "LEVEL:logger:message" strings) from the per-job logger.
+
+        Uses the specific per-job logger name (f"ami.jobs.{job.pk}") because that logger
+        has propagate=False, so assertLogs("ami.jobs", ...) would catch nothing.
+        """
         from ami.jobs.tasks import _log_worker_availability
 
-        # Clear any existing logs on the job so our assertions don't collide with
-        # setup-time noise (e.g. "Adding JobLogHandler" from the first logger touch).
-        with self.assertLogs("ami.jobs", level="INFO") as captured:
+        with self.assertLogs(f"ami.jobs.{self.job.pk}", level="INFO") as captured:
             _log_worker_availability(self.job)
         return captured.output
 

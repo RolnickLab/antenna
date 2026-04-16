@@ -76,7 +76,7 @@ def _log_worker_availability(job) -> None:
         job.logger.info("Waiting for workers to pick up tasks (job has no pipeline assigned)")
         return
 
-    services = list(pipeline.processing_services.all())
+    services = list(pipeline.processing_services.async_services().filter(projects=job.project_id))
     total = len(services)
     now = datetime.datetime.now()
     online_cutoff = now - PROCESSING_SERVICE_LAST_SEEN_MAX
