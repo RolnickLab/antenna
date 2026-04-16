@@ -9,10 +9,10 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
-            "--hours",
+            "--minutes",
             type=int,
-            default=Job.FAILED_CUTOFF_HOURS,
-            help="Number of hours to consider a job stale (default: %(default)s)",
+            default=Job.STALLED_JOBS_MAX_MINUTES,
+            help="Minutes since last update to consider a job stale (default: %(default)s)",
         )
         parser.add_argument(
             "--dry-run",
@@ -21,7 +21,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        results = check_stale_jobs(hours=options["hours"], dry_run=options["dry_run"])
+        results = check_stale_jobs(minutes=options["minutes"], dry_run=options["dry_run"])
 
         if not results:
             self.stdout.write("No stale jobs found.")

@@ -289,6 +289,200 @@ class TestProcessNatsPipelineResultError(TransactionTestCase):
         self.assertEqual(progress.total, 3)
         self.assertEqual(mock_manager.acknowledge_task.call_count, 2)
 
+    @patch("ami.jobs.tasks._fail_job")
+    @patch("ami.jobs.tasks._ack_task_via_nats")
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_transient_redis_error_does_not_fail_job_or_ack(self, mock_manager_class, mock_ack, mock_fail):
+        """
+        #1219: A transient RedisError during update_state must NOT flip the job
+        to FAILURE and must NOT ack the NATS reply. Celery's autoretry_for is
+        responsible for retrying; acking or failing prematurely is what caused
+        the production incident.
+
+        We invoke the task body directly (bypassing Celery's retry machinery)
+        so we can assert the raw behavior: the exception propagates, _fail_job
+        is not called, and the NATS ack helper is not called.
+        """
+        from redis.exceptions import RedisError
+
+        self._setup_mock_nats(mock_manager_class)
+        error_data = self._create_error_result(image_id=str(self.images[0].pk))
+
+        with patch.object(AsyncJobStateManager, "update_state", side_effect=RedisError("reset by peer")):
+            with self.assertRaises(RedisError):
+                # Calling the task as a function runs its body once with no retry.
+                process_nats_pipeline_result(
+                    job_id=self.job.pk,
+                    result_data=error_data,
+                    reply_subject="reply.transient",
+                )
+
+        mock_fail.assert_not_called()
+        mock_ack.assert_not_called()
+
+    @patch("ami.jobs.tasks._fail_job")
+    @patch("ami.jobs.tasks._ack_task_via_nats")
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_genuinely_missing_state_acks_and_fails_job(self, mock_manager_class, mock_ack, mock_fail):
+        """
+        #1219 pairs with the transient case: when the job's total-images key
+        is actually gone from Redis (cleanup race / expiry), the task should
+        ack NATS (to stop redelivery) and fail the job — there's no state
+        to reconcile against. This path is now the ONLY reason _fail_job is
+        called from process_nats_pipeline_result's first call site.
+        """
+        self._setup_mock_nats(mock_manager_class)
+        error_data = self._create_error_result(image_id=str(self.images[0].pk))
+
+        # Wipe out the state that setUp's initialize_job created. Now
+        # update_state will see total_raw=None and return None (genuine).
+        self.state_manager.cleanup()
+
+        process_nats_pipeline_result(
+            job_id=self.job.pk,
+            result_data=error_data,
+            reply_subject="reply.missing",
+        )
+
+        mock_ack.assert_called_once()
+        mock_fail.assert_called_once()
+        # New, accurate message — no longer the misleading "Redis state missing"
+        # that users saw in the UI for transient connection drops.
+        args, _ = mock_fail.call_args
+        self.assertIn("Job state keys not found in Redis", args[1])
+
+    @patch("ami.jobs.tasks._ack_task_via_nats")
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_ack_deferred_until_after_results_stage_srem(self, mock_manager_class, mock_ack):
+        """
+        Bug A regression: NATS ACK must NOT happen until after the results-stage
+        SREM is durable in Redis. A worker crash between save_results and the
+        results SREM would otherwise strand the image in pending_images:results
+        with NATS already drained (no redelivery) — the job's results stage
+        never reaches 100% and no code path reconciles it.
+
+        This test simulates a crash on the results-stage SREM. Correct behavior:
+        - process-stage SREM succeeded (called first, no crash)
+        - save_results ran
+        - results-stage SREM raised RedisError → exception propagates to Celery
+        - ACK was NOT called (so NATS will redeliver after ack_wait)
+
+        On buggy code (ACK before results SREM), mock_ack would be called before
+        the raise, leaving the id stranded in Redis.
+        """
+        from redis.exceptions import RedisError
+
+        self._setup_mock_nats(mock_manager_class)
+
+        # save_results requires the pipeline to have at least one detection
+        # algorithm. Attach a minimal one so we exercise the full save_results
+        # path before hitting the results-stage SREM we're testing.
+        detection_algorithm = Algorithm.objects.create(
+            name="ack-ordering-detector",
+            key="ack-ordering-detector",
+            task_type=AlgorithmTaskType.LOCALIZATION,
+        )
+        self.pipeline.algorithms.add(detection_algorithm)
+
+        # Use a success result (not an error) so save_results path runs fully.
+        # An empty detections list keeps save_results cheap.
+        success_data = PipelineResultsResponse(
+            pipeline="test-pipeline",
+            algorithms={},
+            total_time=1.0,
+            source_images=[SourceImageResponse(id=str(self.images[0].pk), url="http://example.com/test_image_0.jpg")],
+            detections=[],
+            errors=None,
+        ).dict()
+
+        real_update_state = AsyncJobStateManager.update_state
+
+        def fail_on_results_stage(self, processed_image_ids, stage, failed_image_ids=None):
+            if stage == "results":
+                raise RedisError("connection reset on results SREM")
+            return real_update_state(self, processed_image_ids, stage, failed_image_ids)
+
+        with patch.object(AsyncJobStateManager, "update_state", fail_on_results_stage):
+            with self.assertRaises(RedisError):
+                process_nats_pipeline_result(
+                    job_id=self.job.pk,
+                    result_data=success_data,
+                    reply_subject="reply.ack-ordering",
+                )
+
+        mock_ack.assert_not_called()
+
+        # Process stage SREM ran and removed the id; results stage still holds it,
+        # waiting for a successful retry or NATS redelivery.
+        process_progress = AsyncJobStateManager(self.job.pk).get_progress("process")
+        results_progress = AsyncJobStateManager(self.job.pk).get_progress("results")
+        self.assertEqual(process_progress.processed, 1)
+        self.assertEqual(results_progress.processed, 0)
+
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_results_counter_does_not_inflate_on_replay(self, mock_manager_class):
+        """
+        Bug A companion (antenna#1232): _update_job_progress("results") accumulates
+        detections/classifications/captures by reading existing values and adding
+        new ones — not idempotent. On a NATS redelivery or Celery retry, the same
+        batch can legitimately arrive twice. The fix gates accumulation on
+        update_state's newly_removed (SREM's integer return, 0 on replay).
+
+        Scenario: deliver the same result twice. Counters should reflect one
+        batch, not two.
+        """
+        self._setup_mock_nats(mock_manager_class)
+
+        detection_algorithm = Algorithm.objects.create(
+            name="replay-detector",
+            key="replay-detector",
+            task_type=AlgorithmTaskType.LOCALIZATION,
+        )
+        self.pipeline.algorithms.add(detection_algorithm)
+
+        # Empty-detections success keeps save_results cheap; the counter
+        # accumulation still runs because captures_count = len(source_images) = 1.
+        success_data = PipelineResultsResponse(
+            pipeline="test-pipeline",
+            algorithms={},
+            total_time=1.0,
+            source_images=[SourceImageResponse(id=str(self.images[0].pk), url="http://example.com/test_image_0.jpg")],
+            detections=[],
+            errors=None,
+        ).dict()
+
+        # First delivery: counters should advance by 1 capture.
+        process_nats_pipeline_result.apply(
+            kwargs={"job_id": self.job.pk, "result_data": success_data, "reply_subject": "reply.first"}
+        )
+
+        self.job.refresh_from_db()
+        results_stage = next(s for s in self.job.progress.stages if s.key == "results")
+        captures_after_first = next(
+            (p.value for p in results_stage.params if p.key == "captures"),
+            0,
+        )
+        self.assertEqual(captures_after_first, 1, "first delivery should count 1 capture")
+
+        # Second delivery of the same result (NATS redeliver / Celery retry after
+        # the results SREM was already durable). SREM now returns 0 (id already
+        # gone). Counters must NOT double.
+        process_nats_pipeline_result.apply(
+            kwargs={"job_id": self.job.pk, "result_data": success_data, "reply_subject": "reply.replay"}
+        )
+
+        self.job.refresh_from_db()
+        results_stage = next(s for s in self.job.progress.stages if s.key == "results")
+        captures_after_replay = next(
+            (p.value for p in results_stage.params if p.key == "captures"),
+            0,
+        )
+        self.assertEqual(
+            captures_after_replay,
+            1,
+            f"replay must not inflate captures counter (got {captures_after_replay}, expected 1)",
+        )
+
     @patch("ami.jobs.tasks.TaskQueueManager")
     def test_process_nats_pipeline_result_error_job_not_found(self, mock_manager_class):
         """
@@ -317,6 +511,118 @@ class TestProcessNatsPipelineResultError(TransactionTestCase):
 
         # Assert: Task was acknowledged despite missing job
         mock_manager.acknowledge_task.assert_called_once_with(reply_subject)
+
+
+class TestTaskFailureGuard(TransactionTestCase):
+    """
+    Bug C regression tests for the task_failure signal guard in update_job_failure.
+
+    Pre-PR-#1234 behavior: any exception raised in run_job (even after the images
+    were successfully queued to NATS and ADC workers were processing them) flowed
+    through Celery's task_failure signal and collapsed the job: status → FAILURE
+    and NATS/Redis cleanup destroyed state the result handler depended on.
+
+    Post-PR-#1234 behavior: for ASYNC_API jobs that aren't progress.is_complete()
+    yet, the guard defers terminal state to the async result handler. Non-ASYNC
+    dispatch modes (and ASYNC_API jobs that have actually completed) still take
+    the terminal path.
+
+    Tests here call `update_job_failure` as a plain function with the positional
+    arguments the task_failure signal would pass at runtime. The Celery signal
+    machinery itself is not the subject of the test — the signal handler body is.
+    """
+
+    def setUp(self):
+        cache.clear()
+        self.project = Project.objects.create(name="Bug C Guard Test Project")
+        self.pipeline = Pipeline.objects.create(name="Bug C Pipeline", slug="bug-c-pipeline")
+        self.pipeline.projects.add(self.project)
+        self.collection = SourceImageCollection.objects.create(name="Bug C Collection", project=self.project)
+
+    def tearDown(self):
+        cache.clear()
+
+    def _make_job(self, dispatch_mode: JobDispatchMode, task_id: str) -> Job:
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name=f"{dispatch_mode} bug C test job",
+            pipeline=self.pipeline,
+            source_image_collection=self.collection,
+            dispatch_mode=dispatch_mode,
+        )
+        job.task_id = task_id
+        # Initial status mirrors what run_job has already set via task_prerun by
+        # the time task_failure fires.
+        job.update_status(JobState.STARTED, save=True)
+        return job
+
+    @patch("ami.jobs.tasks.cleanup_async_job_if_needed")
+    def test_task_failure_guard_defers_for_async_api_in_flight(self, mock_cleanup):
+        """
+        Bug C: an exception in run_job post-queue on an ASYNC_API job must NOT
+        flip the job to FAILURE or fire cleanup — results are still arriving
+        via NATS, and tearing down stream/consumer/Redis state now would strand
+        the in-flight images. The guard at tasks.py:729 handles this.
+        """
+        from ami.jobs.tasks import update_job_failure
+
+        job = self._make_job(JobDispatchMode.ASYNC_API, task_id="bug-c-async-task")
+        # Initialize Redis state so progress.is_complete() is False (there are
+        # pending images). Also stand in for the ADC worker's view: it would
+        # still see state here and keep publishing results.
+        image_ids = ["100", "101", "102"]
+        AsyncJobStateManager(job.pk).initialize_job(image_ids)
+
+        with self.assertLogs("ami.jobs", level="WARNING") as captured:
+            update_job_failure(
+                sender=None,
+                task_id=job.task_id,
+                exception=RuntimeError("simulated post-queue crash"),
+            )
+
+        job.refresh_from_db()
+
+        # Job status unchanged: the guard returned before update_status(FAILURE).
+        self.assertEqual(
+            job.status,
+            JobState.STARTED,
+            "ASYNC_API in-flight job should remain STARTED when run_job raises",
+        )
+        # Cleanup deferred: state is still needed by the async result handler.
+        mock_cleanup.assert_not_called()
+        # Redis state untouched — the NATS worker can keep reporting against it.
+        surviving_progress = AsyncJobStateManager(job.pk).get_progress("results")
+        self.assertIsNotNone(surviving_progress)
+        self.assertEqual(surviving_progress.remaining, len(image_ids))
+        # Warning log surfaces the deferred failure. Ops alerting on this phrase
+        # is how the visibility loss described in the PR body is compensated.
+        self.assertTrue(
+            any("deferring FAILURE to async progress handler" in line for line in captured.output),
+            f"expected deferral warning, got: {captured.output}",
+        )
+
+    @patch("ami.jobs.tasks.cleanup_async_job_if_needed")
+    def test_task_failure_marks_sync_api_job_failure_and_cleans_up(self, mock_cleanup):
+        """
+        Contract pair for the ASYNC_API guard: SYNC_API (and INTERNAL) jobs have
+        no in-flight external processing to preserve, so task_failure must still
+        mark FAILURE and invoke cleanup as before.
+        """
+        from ami.jobs.tasks import update_job_failure
+
+        job = self._make_job(JobDispatchMode.SYNC_API, task_id="bug-c-sync-task")
+
+        update_job_failure(
+            sender=None,
+            task_id=job.task_id,
+            exception=RuntimeError("sync api crash"),
+        )
+
+        job.refresh_from_db()
+
+        self.assertEqual(job.status, JobState.FAILURE)
+        mock_cleanup.assert_called_once()
 
 
 class TestResultEndpointWithError(APITestCase):

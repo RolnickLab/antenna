@@ -1,3 +1,4 @@
+import dataclasses
 import datetime
 import functools
 import logging
@@ -8,7 +9,9 @@ from typing import TYPE_CHECKING
 from asgiref.sync import async_to_sync
 from celery.signals import task_failure, task_postrun, task_prerun
 from django.db import transaction
+from redis.exceptions import RedisError
 
+from ami.main.checks.schemas import IntegrityCheckResult
 from ami.ml.orchestration.async_job_state import AsyncJobStateManager
 from ami.ml.orchestration.nats_queue import TaskQueueManager
 from ami.ml.schemas import PipelineResultsError, PipelineResultsResponse
@@ -41,13 +44,30 @@ def run_job(self, job_id: int) -> None:
             job.logger.error(f'Job #{job.pk} "{job.name}" failed: {e}')
             raise
         else:
+            from ami.jobs.models import JobDispatchMode
+
             job.refresh_from_db()
-            job.logger.info(f"Finished job {job}")
+            if job.dispatch_mode == JobDispatchMode.ASYNC_API and not job.progress.is_complete():
+                job.logger.info(f"run_job task exited for job {job}; async results still in-flight via NATS")
+            else:
+                job.logger.info(f"Finished job {job}")
 
 
 @celery_app.task(
     bind=True,
-    max_retries=0,  # don't retry since we already have retry logic in the NATS queue
+    # Retry on transient Redis/connection errors so a single connection reset
+    # doesn't flip the job to FAILURE mid-processing. Backoff is capped at 15s
+    # (half of NATS ack_wait = TASK_TTR = 30s, see nats_queue.py) so a retry
+    # is likely to complete before JetStream redelivers the same payload to
+    # ADC. retries stay well below soft_time_limit so they never leak past
+    # the task deadline. Terminal failures (e.g. PipelineResultsError
+    # validation) are raised from other exception types and not retried here.
+    # See RolnickLab/antenna#1219.
+    autoretry_for=(RedisError, ConnectionError),
+    retry_backoff=True,
+    retry_backoff_max=15,
+    retry_jitter=True,
+    max_retries=5,
     soft_time_limit=300,  # 5 minutes
     time_limit=360,  # 6 minutes
 )
@@ -84,11 +104,30 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
 
     state_manager = AsyncJobStateManager(job_id)
 
-    progress_info = state_manager.update_state(processed_image_ids, stage="process", failed_image_ids=failed_image_ids)
+    try:
+        progress_info = state_manager.update_state(
+            processed_image_ids, stage="process", failed_image_ids=failed_image_ids
+        )
+    except RedisError as e:
+        # Transient (connection reset, broker blip, timeout). Celery will retry
+        # via autoretry_for. We have NOT yet acked NATS here, so if the retry
+        # budget runs long enough JetStream may redeliver to ADC (ack_wait =
+        # TASK_TTR = 30s, see nats_queue.py); save_results dedupes and SREM is
+        # a no-op on replay, so duplication is cosmetic rather than corrupting.
+        # Log so the real cause is visible in task logs rather than the
+        # misleading "Redis state missing" that users saw in #1219.
+        logger.warning(
+            f"Transient Redis error updating job {job_id} state (stage=process); Celery will retry: {e}",
+            exc_info=True,
+        )
+        raise
+
     if not progress_info:
-        # Acknowledge the task to prevent retries, since we don't know the state
+        # State keys genuinely missing (the total-images key returned None).
+        # Ack so NATS stops redelivering and fail the job — there's no state
+        # left to reconcile against.
         _ack_task_via_nats(reply_subject, logger)
-        _fail_job(job_id, "Redis state missing for job")
+        _fail_job(job_id, "Job state keys not found in Redis (likely cleaned up concurrently)")
         return
 
     try:
@@ -142,17 +181,35 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
             classifications_count = sum(len(detection.classifications) for detection in pipeline_result.detections)
             captures_count = len(pipeline_result.source_images)
 
-        _ack_task_via_nats(reply_subject, job.logger)
-        acked = True
-        # Update job stage with calculated progress
-
-        progress_info = state_manager.update_state(
-            processed_image_ids,
-            stage="results",
-        )
+        # Do NOT ack NATS yet. ACK must happen AFTER the results-stage SREM and
+        # _update_job_progress so that a worker crash between save_results and
+        # progress commit leaves the message redeliverable. Previously the ACK
+        # ran here (before SREM): on crash, NATS drained permanently while
+        # Redis pending_images:results kept the id, stranding the job at
+        # partial progress with no path to completion. See antenna#1232.
+        try:
+            progress_info = state_manager.update_state(
+                processed_image_ids,
+                stage="results",
+            )
+        except RedisError as e:
+            # Transient. save_results dedupes on re-run (get_or_create_detection)
+            # and SREM is a no-op on already-removed ids, so a Celery retry is
+            # safe for the DB and Redis sets. Counter accumulation is gated on
+            # progress_info.newly_removed below, so replays will not inflate
+            # detections/classifications/captures (fixes antenna#1232 replay case).
+            job.logger.warning(
+                f"Transient Redis error updating job {job_id} state (stage=results); Celery will retry: {e}",
+                exc_info=True,
+            )
+            raise
 
         if not progress_info:
-            _fail_job(job_id, "Redis state missing for job")
+            # State keys genuinely missing (total-images key returned None). Ack
+            # first so NATS stops redelivering a message whose state is gone,
+            # then fail the job. Mirrors the stage=process missing-state path.
+            _ack_task_via_nats(reply_subject, job.logger)
+            _fail_job(job_id, "Job state keys not found in Redis (likely cleaned up concurrently)")
             return
 
         # update complete state based on latest progress info after saving results
@@ -160,16 +217,39 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         if progress_info.total > 0 and (progress_info.failed / progress_info.total) > FAILURE_THRESHOLD:
             complete_state = JobState.FAILURE
 
+        # Counter-inflation guard: only add detection/classification/capture counts
+        # when SREM actually removed ids (first processing of this result). On a
+        # replay (NATS redelivered the message or the Celery task retried past
+        # the SREM), newly_removed==0 and we pass zeros to keep the counters
+        # idempotent. The percentage/status path still runs because
+        # _update_job_progress uses max() and preserves FAILURE regardless.
+        is_first_processing = progress_info.newly_removed > 0
+        counts_to_apply = (
+            (detections_count, classifications_count, captures_count) if is_first_processing else (0, 0, 0)
+        )
         _update_job_progress(
             job_id,
             "results",
             progress_info.percentage,
             complete_state=complete_state,
-            detections=detections_count,
-            classifications=classifications_count,
-            captures=captures_count,
+            detections=counts_to_apply[0],
+            classifications=counts_to_apply[1],
+            captures=counts_to_apply[2],
         )
 
+        # Ack LAST — only after the results-stage SREM and progress commit are
+        # durable. If anything above crashes, NATS will redeliver the message
+        # and the full result path re-runs idempotently: save_results dedupes
+        # on (detection, source_image), SREM is a no-op on already-removed ids
+        # (newly_removed==0 gates counter accumulation), and the progress
+        # percentage is clamped by max() to never regress.
+        acked = _ack_task_via_nats(reply_subject, job.logger)
+
+    except RedisError:
+        # Logged above at the specific update_state call site; re-raise so
+        # Celery's autoretry_for handles the transient rather than this broad
+        # except swallowing it.
+        raise
     except Exception as e:
         error = f"Error processing pipeline result for job {job_id}: {e}"
         if not acked:
@@ -192,13 +272,20 @@ def _fail_job(job_id: int, reason: str) -> None:
             job.save(update_fields=["status", "progress", "finished_at"])
 
         job.logger.error(f"Job {job_id} marked as FAILURE: {reason}")
-        cleanup_async_job_resources(job.pk, job.logger)
+        cleanup_async_job_resources(job.pk)
     except Job.DoesNotExist:
         logger.error(f"Cannot fail job {job_id}: not found")
-        cleanup_async_job_resources(job_id, logger)
+        cleanup_async_job_resources(job_id)
 
 
-def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> None:
+def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> bool:
+    """
+    Acknowledge a NATS task. Returns True only when JetStream confirmed the ack.
+
+    Callers that gate retry behavior on ack outcome (e.g. the post-save_results
+    path in process_nats_pipeline_result) MUST check the return value — a False
+    means the message is still live and NATS will redeliver after ack_wait.
+    """
     try:
 
         async def ack_task():
@@ -209,11 +296,12 @@ def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> None:
 
         if ack_success:
             job_logger.info(f"Successfully acknowledged task via NATS: {reply_subject}")
-        else:
-            job_logger.warning(f"Failed to acknowledge task via NATS: {reply_subject}")
+            return True
+        job_logger.warning(f"Failed to acknowledge task via NATS: {reply_subject}")
+        return False
     except Exception as ack_error:
-        job_logger.error(f"Error acknowledging task via NATS: {ack_error}")
-        # Don't fail the task if ACK fails - data is already saved
+        job_logger.error(f"Error acknowledging task via NATS: {ack_error}", exc_info=True)
+        return False
 
 
 def _get_current_counts_from_job_progress(job, stage: str) -> tuple[int, int, int]:
@@ -276,8 +364,11 @@ def _update_job_progress(
         # Don't overwrite a stage with a stale progress value.
         # This guards against the race where a slower worker calls _update_job_progress
         # after a faster worker has already marked further progress.
+        passed_progress = progress_percentage
+        existing_progress: float | None = None
         try:
             existing_stage = job.progress.get_stage(stage)
+            existing_progress = existing_stage.progress
             progress_percentage = max(existing_stage.progress, progress_percentage)
             # Explicitly preserve FAILURE: once a stage is marked FAILURE it should
             # never regress to a non-failure state, regardless of enum ordering.
@@ -285,6 +376,18 @@ def _update_job_progress(
                 complete_state = JobState.FAILURE
         except (ValueError, AttributeError):
             pass  # Stage doesn't exist yet; proceed normally
+
+        # Diagnostic: when max() lifts the percentage to 1.0 from a partial value
+        # this worker computed, surface it. A legitimate jump means another
+        # worker concurrently completed the stage; an unexpected jump (e.g. the
+        # premature-cleanup pattern described in docs/claude/processing-lifecycle.md
+        # as "Bug B") is otherwise invisible.
+        if existing_progress is not None and progress_percentage >= 1.0 and passed_progress < 1.0:
+            job.logger.warning(
+                f"Stage '{stage}' progress lifted to 100% by max() guard: "
+                f"this worker passed {passed_progress*100:.1f}%, DB had {existing_progress*100:.1f}%. "
+                f"If no other worker just legitimately finished this stage, this is a state-race symptom."
+            )
 
         # Determine the status to write:
         # - Stage complete (100%): use complete_state (SUCCESS or FAILURE)
@@ -313,12 +416,22 @@ def _update_job_progress(
     # Clean up async resources for completed jobs that use NATS/Redis
     if job.progress.is_complete():
         job = Job.objects.get(pk=job_id)  # Re-fetch outside transaction
+        # Diagnostic: log which stages satisfied the complete condition. Without
+        # this, premature-cleanup bugs (cleanup fires while results are still
+        # mid-flight) are hard to trace back to a specific stage transition.
+        stages_summary = ", ".join(f"{s.key}={s.progress*100:.1f}% {s.status}" for s in job.progress.stages)
+        job.logger.info(f"is_complete()=True after stage='{stage}' update; firing cleanup. Stages: {stages_summary}")
         cleanup_async_job_if_needed(job)
 
 
-def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[dict]:
+def check_stale_jobs(minutes: int | None = None, dry_run: bool = False) -> list[dict]:
     """
     Find jobs stuck in a running state past the cutoff and revoke them.
+
+    Cutoff is measured against ``Job.updated_at`` (auto-bumped on every save),
+    so a job that's actively making progress — including async_api jobs that
+    bump on each Redis SREM-driven progress save — is never reaped while
+    healthy. Default cutoff is :attr:`Job.STALLED_JOBS_MAX_MINUTES`.
 
     For each stale job, checks Celery for a terminal task status. REVOKED is
     always trusted. For async_api jobs, SUCCESS and FAILURE are only accepted
@@ -336,10 +449,10 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
 
     from ami.jobs.models import Job, JobDispatchMode, JobState
 
-    if hours is None:
-        hours = Job.FAILED_CUTOFF_HOURS
+    if minutes is None:
+        minutes = Job.STALLED_JOBS_MAX_MINUTES
 
-    cutoff = datetime.datetime.now() - datetime.timedelta(hours=hours)
+    cutoff = datetime.datetime.now() - datetime.timedelta(minutes=minutes)
     stale_pks = list(
         Job.objects.filter(
             status__in=JobState.running_states(),
@@ -388,6 +501,23 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
                     job.finished_at = datetime.datetime.now()
                     job.save()
             else:
+                # Per-job diagnostic: surface enough state at revoke time that an
+                # operator can answer "why was this stalled?" without grepping
+                # back through tick logs. Pairs with the per-tick NATS consumer
+                # snapshots logged by ``_run_running_job_snapshot_check``.
+                stalled_minutes = (datetime.datetime.now() - job.updated_at).total_seconds() / 60
+                stages_summary = (
+                    ", ".join(f"{s.key}={s.progress*100:.1f}% {s.status}" for s in job.progress.stages)
+                    or "(no stages)"
+                )
+                job.logger.warning(
+                    f"Reaping stalled job: no progress for {stalled_minutes:.1f} min "
+                    f"(threshold {minutes} min). previous_status={previous_status}, "
+                    f"celery_state={celery_state}, dispatch_mode={job.dispatch_mode}, "
+                    f"stages: {stages_summary}. "
+                    f"For NATS consumer state at the last tick, see prior "
+                    f"running_job_snapshots logs for this job."
+                )
                 if not dry_run:
                     job.update_status(JobState.REVOKED, save=False)
                     job.finished_at = datetime.datetime.now()
@@ -407,6 +537,137 @@ def check_stale_jobs(hours: int | None = None, dry_run: bool = False) -> list[di
     return results
 
 
+# Expire queued copies that accumulate while a worker is unavailable so we
+# don't process a backlog when a worker reconnects. Kept below the 15-minute
+# schedule interval so a backlog is dropped but a single delayed copy still
+# runs. Going well below the interval would risk every copy expiring before
+# a worker picks it up under moderate broker pressure — change this in lock-
+# step with the crontab in migration 0020.
+_JOBS_HEALTH_BEAT_EXPIRES = 60 * 14
+
+
+@dataclasses.dataclass
+class JobsHealthCheckResult:
+    """Nested result of one :func:`jobs_health_check` tick.
+
+    Each field is the summary for one sub-check and uses the shared
+    :class:`IntegrityCheckResult` shape so operators see a uniform
+    ``checked / fixed / unfixable`` triple regardless of which check ran.
+    Add a new field here when adding a sub-check to the umbrella.
+    """
+
+    stale_jobs: IntegrityCheckResult
+    running_job_snapshots: IntegrityCheckResult
+
+
+def _run_stale_jobs_check() -> IntegrityCheckResult:
+    """Reconcile jobs stuck in running states past Job.STALLED_JOBS_MAX_MINUTES."""
+    results = check_stale_jobs()
+    updated = sum(1 for r in results if r["action"] == "updated")
+    revoked = sum(1 for r in results if r["action"] == "revoked")
+    logger.info(
+        "stale_jobs check: %d stale job(s), %d updated from Celery, %d revoked",
+        len(results),
+        updated,
+        revoked,
+    )
+    return IntegrityCheckResult(checked=len(results), fixed=updated + revoked, unfixable=0)
+
+
+def _run_running_job_snapshot_check() -> IntegrityCheckResult:
+    """Log a NATS consumer snapshot for each running async_api job.
+
+    Observation-only: ``fixed`` stays 0 because no state is altered. Jobs
+    that error during snapshot are counted in ``unfixable`` — a persistently
+    stuck job will be picked up on the next tick by ``_run_stale_jobs_check``.
+    """
+    from ami.jobs.models import Job, JobDispatchMode, JobState
+
+    running_jobs = list(
+        Job.objects.filter(
+            status__in=JobState.running_states(),
+            dispatch_mode=JobDispatchMode.ASYNC_API,
+        )
+    )
+    if not running_jobs:
+        return IntegrityCheckResult()
+
+    # Resolve each job's per-job logger synchronously before entering the
+    # event loop — ``Job.logger`` attaches a ``JobLogHandler`` on first access
+    # which touches the Django ORM, so it is only safe to call from a sync
+    # context.
+    job_loggers = [(job, job.logger) for job in running_jobs]
+    errors = 0
+
+    async def _snapshot_all() -> None:
+        nonlocal errors
+        # One NATS connection per tick — on a 15-min cadence a per-job fallback
+        # is not worth the code. If the shared connection fails to set up, we
+        # skip this tick's snapshots and try fresh on the next one.
+        async with TaskQueueManager(job_logger=job_loggers[0][1]) as manager:
+            for job, job_logger in job_loggers:
+                try:
+                    # ``log_async`` reads ``job_logger`` fresh each call, so
+                    # swapping per iteration routes lifecycle lines to the
+                    # right job's UI log.
+                    manager.job_logger = job_logger
+                    await manager.log_consumer_stats_snapshot(job.pk)
+                except Exception:
+                    errors += 1
+                    logger.exception("Failed to snapshot NATS consumer stats for job %s", job.pk)
+
+    try:
+        async_to_sync(_snapshot_all)()
+    except Exception:
+        # Covers both ``__aenter__`` setup failures (no iteration ran) and the
+        # rare ``__aexit__`` teardown failure after a clean loop. In the
+        # teardown case this overwrites the per-iteration count with the total
+        # — accepted: a persistent failure will show up again next tick.
+        logger.exception("Shared-connection snapshot failed; marking tick unfixable")
+        errors = len(running_jobs)
+
+    log_fn = logger.warning if errors else logger.info
+    log_fn(
+        "running_job_snapshots check: %d running async job(s), %d error(s)",
+        len(running_jobs),
+        errors,
+    )
+    return IntegrityCheckResult(checked=len(running_jobs), fixed=0, unfixable=errors)
+
+
+def _safe_run_sub_check(name: str, fn: Callable[[], IntegrityCheckResult]) -> IntegrityCheckResult:
+    """Run one umbrella sub-check, returning an ``unfixable=1`` sentinel on failure.
+
+    The umbrella composes independent sub-checks; one failing must not block
+    the others. A raised exception is logged and surfaced as a single
+    ``unfixable`` entry so operators watching the task result in Flower see
+    the check failed rather than reading zero and assuming all-clear.
+    """
+    try:
+        return fn()
+    except Exception:
+        logger.exception("%s sub-check failed; continuing umbrella", name)
+        return IntegrityCheckResult(checked=0, fixed=0, unfixable=1)
+
+
+@celery_app.task(soft_time_limit=300, time_limit=360, expires=_JOBS_HEALTH_BEAT_EXPIRES)
+def jobs_health_check() -> dict:
+    """Umbrella beat task for periodic job-health checks.
+
+    Composes reconciliation (stale jobs) with observation (NATS consumer
+    snapshots for running async jobs) so both land in the same 15-minute
+    tick — a quietly hung async job gets a snapshot entry right before the
+    reconciler decides whether to revoke it. Returns the serialized form of
+    :class:`JobsHealthCheckResult` so celery's default JSON backend can store
+    it; add new sub-checks by extending that dataclass and calling them here.
+    """
+    result = JobsHealthCheckResult(
+        stale_jobs=_safe_run_sub_check("stale_jobs", _run_stale_jobs_check),
+        running_job_snapshots=_safe_run_sub_check("running_job_snapshots", _run_running_job_snapshot_check),
+    )
+    return dataclasses.asdict(result)
+
+
 def cleanup_async_job_if_needed(job) -> None:
     """
     Clean up async resources (NATS/Redis) if this job uses them.
@@ -423,7 +684,7 @@ def cleanup_async_job_if_needed(job) -> None:
         # import here to avoid circular imports
         from ami.ml.orchestration.jobs import cleanup_async_job_resources
 
-        cleanup_async_job_resources(job.pk, job.logger)
+        cleanup_async_job_resources(job.pk)
 
 
 @task_prerun.connect(sender=run_job)
@@ -467,9 +728,25 @@ def update_job_status(sender, task_id, task, state: str, retval=None, **kwargs):
 
 @task_failure.connect(sender=run_job, retry=False)
 def update_job_failure(sender, task_id, exception, *args, **kwargs):
-    from ami.jobs.models import Job, JobState
+    from ami.jobs.models import Job, JobDispatchMode, JobState
 
     job = Job.objects.get(task_id=task_id)
+
+    # For ASYNC_API jobs where images have been queued to NATS but the final
+    # stages have not completed, a run_job failure (e.g. a transient exception
+    # raised *after* queue_images_to_nats returned) would otherwise collapse an
+    # otherwise-healthy async job: NATS workers are still processing, results
+    # are still arriving, but this handler would mark FAILURE and cleanup would
+    # destroy the stream/consumer + Redis state mid-flight. Defer terminal
+    # state to the async result handler, which owns is_complete() transitions.
+    # Mirrors the SUCCESS guard in update_job_status (task_postrun).
+    if job.dispatch_mode == JobDispatchMode.ASYNC_API and not job.progress.is_complete():
+        job.logger.warning(
+            f'Job #{job.pk} "{job.name}" run_job raised but async processing is in-flight; '
+            f"deferring FAILURE to async progress handler: {exception}"
+        )
+        return
+
     job.update_status(JobState.FAILURE, save=False)
 
     job.logger.error(f'Job #{job.pk} "{job.name}" failed: {exception}')
