@@ -810,7 +810,7 @@ class TestTaxonomyViews(TestCase):
     def test_occurrences_for_project(self):
         # Test that occurrences are specific to each project
         for project in [self.project_one, self.project_two]:
-            response = self.client.get(f"/api/v2/occurrences/?project_id={project.pk}")
+            response = self.client.get(f"/api/v2/occurrences/?project_id={project.pk}&with_counts=true")
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()["count"], Occurrence.objects.filter(project=project).count())
 
@@ -853,7 +853,7 @@ class TestTaxonomyViews(TestCase):
         """
         from ami.main.models import Taxon
 
-        response = self.client.get(f"/api/v2/taxa/?project_id={project.pk}")
+        response = self.client.get(f"/api/v2/taxa/?project_id={project.pk}&with_counts=true")
         self.assertEqual(response.status_code, 200)
         project_occurred_taxa = Taxon.objects.filter(occurrences__project=project).distinct()
         # project_any_taxa = Taxon.objects.filter(projects=project)
@@ -3977,3 +3977,103 @@ class TestProjectPipelinesAPI(APITestCase):
         self.client.force_authenticate(user=non_member)
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class TestPaginationWithCounts(APITestCase):
+    """
+    Verify that list endpoints skip the COUNT(*) query by default and include
+    it only when ``with_counts=true`` is passed.
+    """
+
+    def setUp(self) -> None:
+        project, deployment = setup_test_project()
+        create_captures(deployment=deployment, num_nights=2, images_per_night=5)
+        self.project = project
+        self.user = User.objects.create_user(  # type: ignore
+            email="pagination_test@insectai.org",
+            is_staff=True,
+            is_superuser=True,
+        )
+        self.client.force_authenticate(user=self.user)
+        return super().setUp()
+
+    def _captures_url(self, **params):
+        from urllib.parse import urlencode
+
+        base = f"/api/v2/captures/?project_id={self.project.pk}"
+        if params:
+            base += "&" + urlencode(params)
+        return base
+
+    def test_default_response_has_null_count(self):
+        """Without with_counts, the response count field is null."""
+        response = self.client.get(self._captures_url(limit=5))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertIn("count", data)
+        self.assertIsNone(data["count"])
+        self.assertIn("results", data)
+
+    def test_with_counts_true_returns_integer_count(self):
+        """with_counts=true causes count to be an integer."""
+        response = self.client.get(self._captures_url(with_counts="true", limit=5))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertIsNotNone(data["count"])
+        self.assertIsInstance(data["count"], int)
+        self.assertGreater(data["count"], 0)
+
+    def test_next_link_present_when_more_results(self):
+        """next link is returned even without count when more results exist."""
+        total = SourceImage.objects.filter(deployment__project=self.project).count()
+        limit = max(1, total - 1)
+        response = self.client.get(self._captures_url(limit=limit))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertIsNone(data["count"])
+        self.assertIsNotNone(data["next"])
+
+    def test_next_link_absent_on_last_page(self):
+        """next is None when the current page is the last page."""
+        total = SourceImage.objects.filter(deployment__project=self.project).count()
+        response = self.client.get(self._captures_url(limit=total))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertIsNone(data["count"])
+        self.assertIsNone(data["next"])
+
+    def test_previous_link_present_with_nonzero_offset(self):
+        """previous link is returned correctly without count."""
+        response = self.client.get(self._captures_url(limit=2, offset=2))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertIsNone(data["count"])
+        self.assertIsNotNone(data["previous"])
+
+    def test_with_counts_false_explicit(self):
+        """Explicitly passing with_counts=false also returns null count."""
+        response = self.client.get(self._captures_url(with_counts="false", limit=5))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(response.json()["count"])
+
+    def test_with_counts_true_falls_back_when_large(self):
+        """
+        When with_counts=true is requested but the result set meets or exceeds
+        LARGE_QUERYSET_THRESHOLD, count is null and next/previous links still work.
+        """
+        from unittest.mock import patch
+
+        from ami.base.pagination import LimitOffsetPaginationWithPermissions
+
+        # Patch the threshold to 1 so even a single row triggers the fallback.
+        with patch.object(LimitOffsetPaginationWithPermissions, "LARGE_QUERYSET_THRESHOLD", 1):
+            total = SourceImage.objects.filter(deployment__project=self.project).count()
+            self.assertGreater(total, 1, "Need at least 2 captures for this test")
+
+            # Page 1 – should see next link but null count.
+            response = self.client.get(self._captures_url(with_counts="true", limit=1))
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            data = response.json()
+            self.assertIsNone(data["count"], "count must be null when threshold is exceeded")
+            self.assertIsNotNone(data["next"], "next link must still be present")
+            self.assertIsNone(data["previous"])
