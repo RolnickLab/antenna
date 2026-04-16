@@ -163,6 +163,18 @@ class AsyncJobStateManager:
         newly_removed = results[0] if processed_image_ids else 0
 
         if total_raw is None:
+            # Loud diagnostic before the silent None return. The caller will mark
+            # the job FAILURE based on this result, so the operator needs to see
+            # *why* the total key is gone. Distinguishes three different causes
+            # that previously all surfaced as the same hardcoded "likely cleaned
+            # up concurrently" reason string: Redis DB mismatch across hosts,
+            # key eviction, and genuinely-never-initialized state.
+            logger.warning(
+                "Job %s state missing in Redis (stage=%s): %s",
+                self.job_id,
+                stage,
+                self.diagnose_missing_state(),
+            )
             return None
 
         total = int(total_raw)
@@ -181,6 +193,48 @@ class AsyncJobStateManager:
             failed=failed_count,
             newly_removed=newly_removed,
         )
+
+    def diagnose_missing_state(self) -> str:
+        """
+        One-line snapshot of what Redis actually holds for this job.
+
+        Called from the missing-state path in ``update_state`` and from
+        ``_fail_job`` so the FAILURE log and the UI ``progress.errors`` entry
+        distinguish the three common causes — DB mismatch across hosts, key
+        eviction, and never-initialized state — instead of a single hardcoded
+        "likely cleaned up concurrently" guess that all three collapse to.
+
+        Intentionally defensive: any failure to collect diagnostics is
+        swallowed, because the caller is already about to fail the job and
+        an exception from diagnostics would mask the original cause.
+        """
+        try:
+            redis = self._get_redis()
+            kwargs = getattr(redis.connection_pool, "connection_kwargs", {}) or {}
+            db = kwargs.get("db", "?")
+            host = kwargs.get("host", "?")
+            port = kwargs.get("port", "?")
+            # Cursor-safe SCAN over the job's keyspace — cheap even on a busy
+            # Redis because it's filtered server-side and the per-job fanout is
+            # at most a handful of keys (pending:process, pending:results,
+            # failed, total).
+            keys = sorted(k.decode() if isinstance(k, bytes) else k for k in redis.scan_iter(match=self._pattern()))
+            sizes: list[str] = []
+            for key in keys:
+                if key == self._total_key:
+                    sizes.append(f"{key}=<str>")
+                    continue
+                try:
+                    sizes.append(f"{key}=SCARD:{redis.scard(key)}")
+                except RedisError:
+                    sizes.append(f"{key}=<err>")
+            keys_summary = ", ".join(sizes) if sizes else "<none>"
+            return f"redis={host}:{port}/db{db} keys_for_job={keys_summary}"
+        except Exception as e:
+            return f"(diagnostics failed: {e})"
+
+    def _pattern(self) -> str:
+        return f"job:{self.job_id}:*"
 
     def get_progress(self, stage: str) -> "JobStateProgress | None":
         """Read-only progress snapshot for the given stage."""
