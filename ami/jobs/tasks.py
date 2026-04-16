@@ -26,6 +26,14 @@ logger = logging.getLogger(__name__)
 # processed successfully are marked as failed. Also used in MLJob.process_images().
 FAILURE_THRESHOLD = 0.5
 
+# Heartbeat window for the "online recently" count in _log_worker_availability.
+# Intentionally broader than the codebase-wide 60s PROCESSING_SERVICE_LAST_SEEN_MAX:
+# ADC's registration heartbeat can slip past 60s under normal operation, and
+# workers have been observed picking up tasks 3s after this line reported
+# "0/N online recently". The 1-hour WARNING threshold remains the load-bearing
+# "nobody's listening" signal.
+WORKER_AVAILABILITY_ONLINE_CUTOFF = datetime.timedelta(minutes=5)
+
 
 @celery_app.task(bind=True, soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
 def run_job(self, job_id: int) -> None:
@@ -48,9 +56,47 @@ def run_job(self, job_id: int) -> None:
 
             job.refresh_from_db()
             if job.dispatch_mode == JobDispatchMode.ASYNC_API and not job.progress.is_complete():
-                job.logger.info(f"run_job task exited for job {job}; async results still in-flight via NATS")
+                _log_worker_availability(job)
             else:
                 job.logger.info(f"Finished job {job}")
+
+
+def _log_worker_availability(job) -> None:
+    """Log how many workers could actually pick up this job's tasks right now.
+
+    Called when a ``run_job`` task exits for an async_api job whose results are
+    still being pushed back via NATS — the long silence before a worker begins
+    polling is otherwise opaque in the per-job log, making it easy to
+    mistake "no worker registered for this pipeline" for "worker is slow".
+
+    Two thresholds:
+
+    * ``WORKER_AVAILABILITY_ONLINE_CUTOFF`` (5 min) for the informational
+      "online recently" count. Broader than the codebase-wide 60s
+      PROCESSING_SERVICE_LAST_SEEN_MAX because that one is tuned for UI
+      red/green indicators — here we want to avoid false-zero counts when a
+      heartbeat is just slightly stale.
+    * 1 hour for the WARNING — if no processing service on this pipeline
+      has been heard from in that long, the job will almost certainly stall
+      until someone starts a worker.
+    """
+    pipeline = job.pipeline
+    if pipeline is None:
+        job.logger.info("Waiting for workers to pick up tasks (job has no pipeline assigned)")
+        return
+
+    services = list(pipeline.processing_services.async_services().filter(projects=job.project_id))
+    total = len(services)
+    now = datetime.datetime.now()
+    online_cutoff = now - WORKER_AVAILABILITY_ONLINE_CUTOFF
+    hour_cutoff = now - datetime.timedelta(hours=1)
+    online = sum(1 for s in services if s.last_seen_live and s.last_seen and s.last_seen >= online_cutoff)
+    any_recent_hour = any(s.last_seen and s.last_seen >= hour_cutoff for s in services)
+    label = pipeline.slug or pipeline.name
+
+    job.logger.info(f"Waiting for workers to pick up tasks for pipeline '{label}' ({online}/{total} online recently)")
+    if not any_recent_hour:
+        job.logger.warning(f"Zero workers have been seen for pipeline '{label}' in the last hour")
 
 
 @celery_app.task(
