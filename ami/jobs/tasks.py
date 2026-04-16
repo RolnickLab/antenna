@@ -777,7 +777,10 @@ def update_job_status(sender, task_id, task, state: str, retval=None, **kwargs):
     # SUCCESS should only be set when all stages are actually complete
     # This prevents premature SUCCESS when async workers are still processing
     if state == JobState.SUCCESS and not job.progress.is_complete():
-        job.logger.info(
+        # DEBUG — fires on every async_api task_postrun (Celery task ends when
+        # images are queued; async workers drive the actual stages afterward).
+        # Always true under normal operation, so not informative at INFO.
+        job.logger.debug(
             f"Job {job.pk} task completed but stages not finished - " "deferring SUCCESS status to progress handler"
         )
         return
