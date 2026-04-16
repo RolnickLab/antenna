@@ -544,3 +544,58 @@ class TestTaskQueueManagerJobLogger(unittest.IsolatedAsyncioTestCase):
             async with TaskQueueManager() as manager:  # no job_logger passed
                 # Must not raise.
                 await manager.publish_task(1, self._create_sample_task())
+
+    async def test_list_job_stream_snapshots_raises_on_nats_error_payload(self):
+        """list_job_stream_snapshots must raise nats.errors.Error when the NATS
+        server returns an error payload instead of a stream list.
+
+        Returning [] in this case would mask an outage — the caller would
+        silently interpret "zero zombies" while NATS is actually unavailable.
+        """
+        nc, js = self._create_mock_nats_connection()
+
+        error_payload = json.dumps(
+            {"error": {"code": 503, "description": "no responders available for request"}}
+        ).encode()
+        mock_response = MagicMock()
+        mock_response.data = error_payload
+        nc.request = AsyncMock(return_value=mock_response)
+
+        with patch("ami.ml.orchestration.nats_queue.get_connection", AsyncMock(return_value=(nc, js))):
+            async with TaskQueueManager() as manager:
+                with self.assertRaises(nats.errors.Error):
+                    await manager.list_job_stream_snapshots()
+
+    async def test_list_job_stream_snapshots_returns_none_for_num_redelivered(self):
+        """list_job_stream_snapshots returns num_redelivered=None for all snapshots.
+
+        Per-consumer info is deferred to populate_redelivered_counts() so that
+        the O(N) fetch only runs for drain candidates, not every stream.
+        """
+        nc, js = self._create_mock_nats_connection()
+
+        stream_payload = json.dumps(
+            {
+                "total": 1,
+                "streams": [
+                    {
+                        "config": {"name": "job_42"},
+                        "created": "2024-01-01T00:00:00Z",
+                        "state": {"messages": 0},
+                    }
+                ],
+            }
+        ).encode()
+        mock_response = MagicMock()
+        mock_response.data = stream_payload
+        nc.request = AsyncMock(return_value=mock_response)
+
+        with patch("ami.ml.orchestration.nats_queue.get_connection", AsyncMock(return_value=(nc, js))):
+            async with TaskQueueManager() as manager:
+                snapshots = await manager.list_job_stream_snapshots()
+
+        self.assertEqual(len(snapshots), 1)
+        self.assertEqual(snapshots[0]["job_id"], 42)
+        self.assertIsNone(snapshots[0]["num_redelivered"])
+        # consumer_info must NOT have been called — no redelivered fetch during list
+        js.consumer_info.assert_not_called()
