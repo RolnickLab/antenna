@@ -346,10 +346,14 @@ class TestProcessNatsPipelineResultError(TransactionTestCase):
 
         mock_ack.assert_called_once()
         mock_fail.assert_called_once()
-        # New, accurate message — no longer the misleading "Redis state missing"
-        # that users saw in the UI for transient connection drops.
+        # Reason string now leads with the stage and embeds a live Redis
+        # snapshot (DB index + key listing from diagnose_missing_state) so the
+        # failure cause — DB-index drift, eviction, or never-initialized —
+        # is visible in the FAILURE log instead of the previous single
+        # hardcoded "likely cleaned up concurrently" guess.
         args, _ = mock_fail.call_args
-        self.assertIn("Job state keys not found in Redis", args[1])
+        self.assertIn("Job state missing from Redis", args[1])
+        self.assertIn("stage=process", args[1])
 
     @patch("ami.jobs.tasks._ack_task_via_nats")
     @patch("ami.jobs.tasks.TaskQueueManager")
