@@ -471,7 +471,10 @@ def _update_job_progress(
             job.finished_at = datetime.datetime.now()  # Use naive datetime in local time
         job.logger.info(f"Updated job {job_id} progress in stage '{stage}' to {progress_percentage*100}%")
         job.save()
-        _log_job_throughput(job, stage)
+        try:
+            _log_job_throughput(job, stage)
+        except Exception as e:
+            logger.warning("Throughput log failed for job %s: %s", job_id, e)
 
     # Clean up async resources for completed jobs that use NATS/Redis
     if job.progress.is_complete():

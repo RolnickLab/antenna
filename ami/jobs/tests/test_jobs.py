@@ -691,6 +691,98 @@ class TestJobView(APITestCase):
         self.assertIn("test.reply.logged", joined)
         self.assertIn(self.user.email, joined)
 
+    def test_tasks_fetch_log_uses_token_fingerprint_not_full_token(self):
+        """
+        Fix 1: token written to per-job logs is truncated to 8 chars + ellipsis,
+        never the full 40-char DRF bearer secret.
+        """
+        from rest_framework.authtoken.models import Token
+
+        pipeline = self._create_pipeline()
+        job = self._create_ml_job("Job for token-fingerprint test", pipeline)
+        job.dispatch_mode = JobDispatchMode.ASYNC_API
+        job.status = JobState.STARTED
+        job.save(update_fields=["dispatch_mode", "status"])
+        images = [
+            SourceImage.objects.create(
+                path=f"tokentest_{i}.jpg",
+                public_base_url="http://example.com",
+                project=self.project,
+            )
+            for i in range(2)
+        ]
+        queue_images_to_nats(job, images)
+
+        token, _ = Token.objects.get_or_create(user=self.user)
+        # Authenticate with the actual token object so request.auth.pk is set
+        self.client.force_authenticate(user=self.user, token=token)
+
+        tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+        resp = self.client.post(tasks_url, {"batch_size": 2}, format="json")
+        self.assertEqual(resp.status_code, 200)
+
+        job.refresh_from_db()
+        joined = "\n".join(job.logs.stdout)
+        # Full token key must NOT appear anywhere in logs
+        self.assertNotIn(token.key, joined)
+        # Fingerprint (first 8 chars + ellipsis) MUST appear
+        expected_fingerprint = f"{token.key[:8]}…"
+        self.assertIn(expected_fingerprint, joined)
+
+    def test_tasks_fetch_zero_delivered_does_not_log_to_stdout(self):
+        """
+        Fix 2: when delivered==0, the log line is emitted at DEBUG and must not
+        land in job.logs.stdout (JobLogHandler only captures INFO and above).
+        """
+        pipeline = self._create_pipeline()
+        job = self._create_ml_job("Job for zero-delivered test", pipeline)
+        job.dispatch_mode = JobDispatchMode.ASYNC_API
+        job.status = JobState.STARTED
+        job.save(update_fields=["dispatch_mode", "status"])
+        # Do NOT queue any images — NATS will return 0 tasks.
+
+        self.client.force_authenticate(user=self.user)
+        tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+        resp = self.client.post(tasks_url, {"batch_size": 5}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()["tasks"]), 0)
+
+        job.refresh_from_db()
+        # No Tasks fetched line should appear in stdout for a zero-delivery poll
+        joined = "\n".join(job.logs.stdout)
+        self.assertNotIn("Tasks fetched", joined)
+
+    def test_tasks_fetch_nonzero_delivered_logs_to_stdout(self):
+        """
+        Fix 2: when delivered>0, the log line is emitted at INFO and lands in
+        job.logs.stdout with the correct delivered count.
+        """
+        pipeline = self._create_pipeline()
+        job = self._create_ml_job("Job for nonzero-delivered test", pipeline)
+        job.dispatch_mode = JobDispatchMode.ASYNC_API
+        job.status = JobState.STARTED
+        job.save(update_fields=["dispatch_mode", "status"])
+        images = [
+            SourceImage.objects.create(
+                path=f"nonzero_{i}.jpg",
+                public_base_url="http://example.com",
+                project=self.project,
+            )
+            for i in range(3)
+        ]
+        queue_images_to_nats(job, images)
+
+        self.client.force_authenticate(user=self.user)
+        tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+        resp = self.client.post(tasks_url, {"batch_size": 3}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()["tasks"]), 3)
+
+        job.refresh_from_db()
+        joined = "\n".join(job.logs.stdout)
+        self.assertIn("Tasks fetched", joined)
+        self.assertIn("delivered=3", joined)
+
 
 class TestJobThroughputLogging(TestCase):
     """Unit tests for _log_job_throughput (Task 3)."""
