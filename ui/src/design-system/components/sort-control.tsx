@@ -1,3 +1,4 @@
+import classNames from 'classnames'
 import { ArrowUpDownIcon } from 'lucide-react'
 import { buttonVariants, Select } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
@@ -24,7 +25,10 @@ export const SortControl = ({ columns, setSort, sort }: SortControlProps) => {
     >
       <BasicTooltip asChild content={translate(STRING.SORT_BY)}>
         <Select.Trigger
-          className={buttonVariants({ size: 'small', variant: 'outline' })}
+          className={classNames(
+            buttonVariants({ size: 'small', variant: 'outline' }),
+            'w-auto'
+          )}
         >
           <ArrowUpDownIcon className="w-4 h-4" />
           <span>{column ? column.name : translate(STRING.SORT_BY)}</span>

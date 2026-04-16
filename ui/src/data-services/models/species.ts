@@ -1,4 +1,3 @@
-import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { UserPermission } from 'utils/user/types'
 import { Taxon } from './taxa'
 
@@ -37,10 +36,8 @@ export class Species extends Taxon {
     return this._species.cover_image_url || null
   }
 
-  get createdAt(): string {
-    return getFormatedDateTimeString({
-      date: new Date(this._species.created_at),
-    })
+  get createdAt(): Date {
+    return new Date(this._species.created_at)
   }
 
   get fieldguideId(): string | null {
@@ -67,14 +64,12 @@ export class Species extends Taxon {
       : undefined
   }
 
-  get lastSeenLabel() {
+  get lastSeen() {
     if (!this._species.last_detected) {
       return undefined
     }
 
-    const date = new Date(this._species.last_detected)
-
-    return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`
+    return new Date(this._species.last_detected)
   }
 
   get numDetections(): number {
@@ -109,10 +104,11 @@ export class Species extends Taxon {
     return tags.sort((t1: Tag, t2: Tag) => t1.id - t2.id)
   }
 
-  get updatedAt(): string {
-    return getFormatedDateTimeString({
-      date: new Date(this._species.updated_at),
-    })
+  get updatedAt(): Date | undefined {
+    if (!this._species.updated_at) {
+      return undefined
+    }
+    return new Date(this._species.updated_at)
   }
 
   get userPermissions(): UserPermission[] {

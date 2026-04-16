@@ -2,6 +2,7 @@ from django.utils import timezone
 
 from ami.main.models import Classification, Detection, Occurrence, SourceImageCollection, Taxon, TaxonRank
 from ami.ml.post_processing.base import BasePostProcessingTask
+from ami.ml.schemas import BoundingBox
 
 
 class SmallSizeFilterTask(BasePostProcessingTask):
@@ -58,10 +59,11 @@ class SmallSizeFilterTask(BasePostProcessingTask):
                 self.logger.debug(f"Detection {det.pk}: missing source image dims, skipping")
                 continue
 
-            det_w, det_h = det.width(), det.height()
-            if not det_w or not det_h:
-                self.logger.warning(f"Detection {det.pk}: invalid bbox dims (width={det_w}, height={det_h}), skipping")
+            bbox_obj = BoundingBox.from_coords(det.bbox, raise_on_error=False)
+            if not bbox_obj:
+                self.logger.warning(f"Detection {det.pk}: invalid bbox, skipping")
                 continue
+            det_w, det_h = bbox_obj.width, bbox_obj.height
             det_area = det_w * det_h
             img_area = img_w * img_h
             rel_area = det_area / img_area if img_area else 0

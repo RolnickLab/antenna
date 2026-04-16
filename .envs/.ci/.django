@@ -26,3 +26,7 @@ CELERY_BROKER_URL=amqp://rabbituser:rabbitpass@rabbitmq:5672/
 CELERY_RESULT_BACKEND=rpc:// # Use RabbitMQ for results backend
 RABBITMQ_DEFAULT_USER=rabbituser
 RABBITMQ_DEFAULT_PASS=rabbitpass
+
+# NATS
+# ------------------------------------------------------------------------------
+NATS_URL=nats://nats:4222

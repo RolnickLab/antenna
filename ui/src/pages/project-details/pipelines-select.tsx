@@ -52,7 +52,7 @@ export const PipelinesSelect = ({
           <span>{pipeline?.name}</span>
         </Select.Value>
       </Select.Trigger>
-      <Select.Content className="max-h-72">
+      <Select.Content>
         {pipelines.map((p) => (
           <Select.Item className="h-auto min-h-12 py-2" key={p.id} value={p.id}>
             <div className="grid gap-1">

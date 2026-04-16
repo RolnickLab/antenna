@@ -1,31 +1,23 @@
-import classNames from 'classnames'
 import { Badge } from 'design-system/components/badge/badge'
-import { ChevronRightIcon } from 'lucide-react'
-import { buttonVariants, Tooltip } from 'nova-ui-kit'
-import { Link } from 'react-router-dom'
+import { Info } from 'design-system/components/info-tooltip'
+import { Tooltip } from 'nova-ui-kit'
 import { APP_ROUTES } from 'utils/constants'
+import { STRING, translate } from 'utils/language'
 
 export const DefaultPipelineBadge = ({ projectId }: { projectId: string }) => (
   <Tooltip.Provider delayDuration={0}>
     <Tooltip.Root>
       <Tooltip.Trigger>
-        <Badge label="Default" />
+        <Badge label={translate(STRING.DEFAULT)} />
       </Tooltip.Trigger>
-      <Tooltip.Content side="bottom" className="p-4 space-y-4 max-w-xs">
-        <p className="whitespace-normal">
-          This is the default pipeline used for processing images in this
-          project.
-        </p>
-        <Link
-          className={classNames(
-            buttonVariants({ size: 'small', variant: 'outline' }),
-            '!w-auto'
-          )}
-          to={APP_ROUTES.PROCESSING({ projectId: projectId })}
-        >
-          <span>Configure</span>
-          <ChevronRightIcon className="w-4 h-4" />
-        </Link>
+      <Tooltip.Content side="bottom" className="p-4 max-w-xs">
+        <Info
+          text={translate(STRING.MESSAGE_DEFAULT_PIPELINE)}
+          link={{
+            text: translate(STRING.CONFIGURE),
+            to: APP_ROUTES.PROCESSING({ projectId: projectId }),
+          }}
+        />
       </Tooltip.Content>
     </Tooltip.Root>
   </Tooltip.Provider>

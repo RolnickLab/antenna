@@ -1,4 +1,5 @@
 import { CONSTANTS } from 'nova-ui-kit'
+import plugin from 'tailwindcss/plugin'
 import { BREAKPOINTS } from './src/components/constants'
 
 /** @type {import('tailwindcss').Config} */
@@ -15,7 +16,14 @@ module.exports = {
     extend: {
       backgroundImage: CONSTANTS.GRADIENTS,
       colors: CONSTANTS.COLOR_THEME,
+      boxShadow: {
+        toolbar: '0px 4px 16px rgba(0, 0, 0, 0.1)',
+      },
     },
   },
-  plugins: [],
+  plugins: [
+    plugin(function ({ addVariant }) {
+      addVariant('hover-device', '@media (hover: hover)')
+    }),
+  ],
 }

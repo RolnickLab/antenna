@@ -30,12 +30,12 @@ jobs:
         working-directory: ui
     steps:
       - name: Checkout Code Repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Install Node.js
         uses: actions/setup-node@v6
         with:
-          node-version-file: 'ui/.nvmrc'
+          node-version-file: "ui/.nvmrc"
 
       - name: Install Dependencies
         run: yarn install
@@ -46,6 +46,9 @@ jobs:
       - name: Run Linter
         run: yarn lint
 
+      - name: Run Type Check
+        run: yarn type-check
+
   test:
     runs-on: ubuntu-latest
     defaults:
@@ -53,12 +56,12 @@ jobs:
         working-directory: ui
     steps:
       - name: Checkout Code Repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Install Node.js
         uses: actions/setup-node@v6
         with:
-          node-version-file: 'ui/.nvmrc'
+          node-version-file: "ui/.nvmrc"
 
       - name: Install Dependencies
         run: yarn install

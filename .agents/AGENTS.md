@@ -276,7 +276,8 @@ Processing services are FastAPI applications that implement the AMI ML API contr
 **Health Checks:**
 - Cached status with 3 retries and exponential backoff (0s, 2s, 4s)
 - Celery Beat task runs periodic checks (`ami.ml.tasks.check_processing_services_online`)
-- Status stored in `ProcessingService.last_checked_live` boolean field
+- Status stored in `ProcessingService.last_seen_live` boolean field
+- Async/pull-mode services update status via `mark_seen()` when they register pipelines
 - UI shows red/green indicator based on cached status
 
 Location: `processing_services/` directory contains example implementations
@@ -649,6 +650,54 @@ images = SourceImage.objects.annotate(det_count=Count('detections'))
 - Import and call with `.delay()` for async: `run_job.delay(job_id)`
 - Use `@shared_task` decorator for all tasks
 - Check Flower UI for debugging: http://localhost:5555
+
+### E2E Testing & Monitoring Async Jobs
+
+Run an end-to-end ML job test:
+```bash
+docker compose run --rm django python manage.py test_ml_job_e2e \
+  --project 18 --dispatch-mode async_api --collection 142 --pipeline "global_moths_2024"
+```
+
+For monitoring running jobs (Django ORM, REST API, NATS consumer state, Redis counters, worker logs, etc.), see `docs/claude/reference/monitoring-async-jobs.md`.
+
+### Chaos testing async_api jobs (Redis/NATS fault injection)
+
+For changes to the async result handler (`ami/jobs/tasks.py::process_nats_pipeline_result`, `ami/ml/orchestration/async_job_state.py`) or to error-handling around Redis/NATS, the unit tests in `ami/jobs/tests/test_tasks.py` and `ami/ml/tests.py` invoke the Celery task body directly and therefore **do not exercise `autoretry_for`, real Celery retry backoff, or the NATS redelivery boundary**. Use the procedure below to verify those under a live stack.
+
+**Prereqs**: Antenna stack up (`docker compose ps` → django/celeryworker/redis/nats/rabbitmq healthy), ADC worker running for the pipeline under test, and a fresh `SourceImageCollection` on project 18 (existing collections have already-processed detections that `pipeline.filter_processed_images()` will skip).
+
+**Fault injection utilities:**
+
+1. **`chaos_monkey` management command** (`ami/jobs/management/commands/chaos_monkey.py`) — wipes state at runtime:
+   ```bash
+   docker compose exec django python manage.py chaos_monkey flush redis   # FLUSHDB
+   docker compose exec django python manage.py chaos_monkey flush nats    # delete all JetStream streams
+   ```
+   `flush redis` simulates the "job state keys genuinely gone" scenario — `update_state()` returns `None` and the caller takes the terminal-fail path.
+
+2. **One-shot transient `RedisError` via sentinel file** — patch `AsyncJobStateManager.update_state` at the top of the method body to consume `/tmp/inject-redis-fault` and raise `RedisError(...)`. Arm with `docker compose exec celeryworker touch /tmp/inject-redis-fault`. The file auto-removes on first hit, so exactly one task invocation sees the fault; retries succeed. Revert the edit and restart celeryworker after the test. `redis-cli CLIENT KILL TYPE normal` does NOT work for this — django-redis's connection pool transparently reconnects and the raised error is absorbed before `update_state` sees it.
+
+3. **Python-level `redis-py` timeout fault** — set `socket_timeout` low in `CACHES['default']['OPTIONS']` and use `DEBUG SLEEP` on Redis. Heavier setup; only useful for timeout-specific tests.
+
+**Procedure for retry-behaviour validation** (e.g., #1231 and future PRs touching the retry path):
+
+1. Create a fresh 20–50 image collection and populate it (large enough that Process stage takes >10s — time to inject mid-flight).
+2. Arm fault injection (sentinel file for transient test; `chaos_monkey` is run inline for the genuine-loss test).
+3. Start a `Monitor` on celery worker logs filtering for your terminal signals:
+   ```bash
+   docker compose logs celeryworker --since 5s --follow 2>&1 | grep --line-buffered -E \
+     'Transient Redis error|Job state keys not found|process_nats_pipeline_result\[[^]]+\] retry|MaxRetriesExceeded|Changing status of job <JOB_ID>'
+   ```
+4. Kick off the job via `POST /api/v2/jobs/?start_now=true` (or `test_ml_job_e2e`) and poll until `progress.stages[process].progress >= 10%` before injecting the fault.
+5. Record the log evidence (retry warning + Celery `retry: Retry in Ns` line OR the `FAILURE` message with the accurate `_fail_job` text) and the terminal job status.
+6. Revert any code patches, restart affected services (`docker compose restart celeryworker`), confirm `git diff` is empty.
+
+**Gotchas:**
+- The first ~1 min after restarting celeryworker, the `check_processing_services_online` beat task monopolises `ForkPoolWorker-16` retrying unreachable services. Populate/job tasks pick up fine on other workers, but logs are noisy.
+- If Django has been up > ~1 day, RabbitMQ AMQP connections go stale (`ConnectionResetError: [Errno 104]` when enqueuing). `docker compose restart django` fixes it — do this before any chaos run.
+- Celery code is volume-mounted; edits to `ami/**` only take effect after `docker compose restart celeryworker`.
+- Fault-injection patches are disruptive — revert them **and** `git diff` to verify before committing anything.
 
 ### Running a Single Test
 

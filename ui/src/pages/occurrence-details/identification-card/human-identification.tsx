@@ -17,6 +17,7 @@ import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getAppRoute } from 'utils/getAppRoute'
+import { STRING, translate } from 'utils/language'
 import { UserInfo, UserPermission } from 'utils/user/types'
 import { Agree } from '../agree/agree'
 
@@ -109,6 +110,7 @@ export const HumanIdentification = ({
                 )}
                 {showDelete && (
                   <Button
+                    aria-label={translate(STRING.DELETE)}
                     onClick={() => setDeleteIdOpen(true)}
                     size="icon"
                     variant="ghost"

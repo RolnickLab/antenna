@@ -12,15 +12,28 @@ DJANGO_SUPERUSER_PASSWORD=localadmin
 # Redis
 REDIS_URL=redis://redis:6379/0
 
+# NATS
+NATS_URL=nats://nats:4222
+
+# Upload size limit (integer, binary MiB — multiplied by 1024*1024). 100 MiB default
+# is fine for local dev. Raise only if testing large ML result payloads locally.
+# DJANGO_DATA_UPLOAD_MAX_MEMORY_MB=100
+
 # Celery / Flower
 CELERY_FLOWER_USER=QSocnxapfMvzLqJXSsXtnEZqRkBtsmKT
 CELERY_FLOWER_PASSWORD=BEQgmCtgyrFieKNoGTsux9YIye0I7P5Q7vEgfJD2C4jxmtHDetFaE2jhS7K7rxaf
+
+# Celery worker concurrency (prefork pool size).
+# Default in settings is 8. Lower to 2-4 on memory-constrained dev laptops —
+# each prefork worker is a separate Python process with its own DB connection.
+# CELERY_WORKER_CONCURRENCY=4
 
 # RabbitMQ
 CELERY_BROKER_URL=amqp://rabbituser:rabbitpass@rabbitmq:5672/
 CELERY_RESULT_BACKEND=rpc:// # Use RabbitMQ for results backend
 RABBITMQ_DEFAULT_USER=rabbituser
 RABBITMQ_DEFAULT_PASS=rabbitpass
+RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit consumer_timeout 604800000
 
 # Attempting to keep Flower from showing workers as offline
 # FLOWER_BROKER_API=REDIS_URL

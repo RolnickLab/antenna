@@ -1,15 +1,18 @@
 type FilterType =
-  | 'deployment'
-  | 'event'
-  | 'occurrence'
+  | 'apply_defaults'
   | 'capture'
-  | 'detections__source_image'
-  | 'taxon'
-  | 'timestamp'
   | 'collection'
   | 'collections'
+  | 'deployment'
+  | 'detections__source_image'
+  | 'event'
+  | 'include_unobserved'
+  | 'occurrence'
   | 'source_image_collection'
   | 'source_image_single'
+  | 'taxa_list_id'
+  | 'taxon'
+  | 'timestamp'
 
 export const getAppRoute = ({
   to,
@@ -26,7 +29,7 @@ export const getAppRoute = ({
     keepSearchParams ? window.location.search : undefined
   )
   Object.entries(filters).forEach(([name, value]) => {
-    if (value !== undefined) {
+    if (value !== undefined && value !== null) {
       searchParams.set(name, value)
     }
   })

@@ -16,6 +16,7 @@ import { buttonVariants, TaxonDetails } from 'nova-ui-kit'
 import { Helmet } from 'react-helmet-async'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
+import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
@@ -72,7 +73,7 @@ export const SpeciesDetails = ({
               target="_blank"
             >
               <LockIcon className="w-4 h-4" />
-              <span>Admin</span>
+              <span>{translate(STRING.ADMIN)}</span>
             </Link>
           </div>
         ) : null}
@@ -121,7 +122,13 @@ export const SpeciesDetails = ({
                   </InfoBlockField>
                 ) : null}
                 <InfoBlockField label="Last seen">
-                  <InfoBlockFieldValue value={species.lastSeenLabel} />
+                  <InfoBlockFieldValue
+                    value={
+                      species.lastSeen
+                        ? getFormatedDateTimeString({ date: species.lastSeen })
+                        : undefined
+                    }
+                  />
                 </InfoBlockField>
                 {hasChildren ? (
                   <InfoBlockField label="Child taxa">

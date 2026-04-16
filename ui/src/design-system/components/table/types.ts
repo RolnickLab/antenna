@@ -15,15 +15,16 @@ export enum TextAlign {
 export interface TableColumn<T> {
   id: string
   name: string
-  tooltip?: string
+  renderCell: (item: T, rowIndex: number, columnIndex: number) => JSX.Element
   sortField?: string
+  sticky?: boolean
   styles?: {
     textAlign?: TextAlign
     padding?: string
     width?: string | number
   }
+  tooltip?: string
   visuallyHidden?: boolean
-  renderCell: (item: T, rowIndex: number, columnIndex: number) => JSX.Element
 }
 
 // TODO: This type is no longer used for tables only and should be extracted

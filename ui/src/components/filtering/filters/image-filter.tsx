@@ -10,7 +10,7 @@ export const ImageFilter = ({ value }: FilterProps) => {
   })()
 
   return (
-    <div className="px-2 pt-0.5">
+    <div className="pt-0.5">
       <span className="text-muted-foreground">{label}</span>
     </div>
   )

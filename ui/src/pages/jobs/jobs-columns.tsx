@@ -1,19 +1,23 @@
+import { API_ROUTES } from 'data-services/constants'
 import { Job } from 'data-services/models/job'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import { CellTheme, TableColumn } from 'design-system/components/table/types'
+import { Toolbar } from 'design-system/components/toolbar'
 import { CancelJob } from 'pages/job-details/job-actions/cancel-job'
 import { QueueJob } from 'pages/job-details/job-actions/queue-job'
+import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
-import { DeleteJobsDialog } from './delete-jobs-dialog'
-import styles from './jobs.module.scss'
 
-export const columns: (projectId: string) => TableColumn<Job>[] = (
+export const columns = ({
+  projectId,
+}: {
   projectId: string
-) => [
+}): TableColumn<Job>[] => [
   {
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
@@ -32,7 +36,6 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
   {
     id: 'status',
     name: translate(STRING.FIELD_LABEL_STATUS),
-    tooltip: translate(STRING.TOOLTIP_STATUS),
     sortField: 'status',
     renderCell: (item: Job) => (
       <StatusTableCell
@@ -51,6 +54,7 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     id: 'deployment',
     sortField: 'deployment',
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
+    tooltip: translate(STRING.TOOLTIP_DEPLOYMENT),
     renderCell: (item: Job) =>
       item.deployment ? (
         <Link
@@ -72,11 +76,13 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     id: 'pipeline',
     sortField: 'pipeline',
     name: translate(STRING.FIELD_LABEL_PIPELINE),
+    tooltip: translate(STRING.TOOLTIP_PIPELINE),
     renderCell: (item: Job) => <BasicTableCell value={item.pipeline?.name} />,
   },
   {
     id: 'source-image',
-    name: translate(STRING.FIELD_LABEL_SOURCE_IMAGE),
+    name: translate(STRING.FIELD_LABEL_CAPTURE),
+    tooltip: translate(STRING.TOOLTIP_CAPTURE),
     renderCell: (item: Job) =>
       item.sourceImage?.sessionId ? (
         <Link
@@ -102,7 +108,8 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
   {
     id: 'source-image-collection',
     sortField: 'source_image_collection',
-    name: translate(STRING.FIELD_LABEL_SOURCE_IMAGES_COLLECTION),
+    name: translate(STRING.FIELD_LABEL_CAPTURE_SET),
+    tooltip: translate(STRING.TOOLTIP_CAPTURE_SET),
     renderCell: (item: Job) => (
       <BasicTableCell value={item.sourceImages?.name} />
     ),
@@ -111,39 +118,42 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
-    renderCell: (item: Job) => <BasicTableCell value={item.createdAt} />,
+    renderCell: (item: Job) => <DateTableCell date={item.createdAt} />,
   },
   {
     id: 'updated-at',
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
-    renderCell: (item: Job) => <BasicTableCell value={item.updatedAt} />,
+    renderCell: (item: Job) => <DateTableCell date={item.updatedAt} />,
   },
   {
     id: 'started-at',
     name: translate(STRING.FIELD_LABEL_STARTED_AT),
     sortField: 'started_at',
-    renderCell: (item: Job) => <BasicTableCell value={item.startedAt} />,
+    renderCell: (item: Job) => <DateTableCell date={item.startedAt} />,
   },
   {
     id: 'finished-at',
     name: translate(STRING.FIELD_LABEL_FINISHED_AT),
     sortField: 'finished_at',
-    renderCell: (item: Job) => <BasicTableCell value={item.finishedAt} />,
+    renderCell: (item: Job) => <DateTableCell date={item.finishedAt} />,
   },
   {
     id: 'actions',
     name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
+    sticky: true,
     renderCell: (item: Job) => (
-      <div className={styles.jobActions}>
-        {item.canQueue && <QueueJob jobId={item.id} />}
-        {item.canCancel && <CancelJob jobId={item.id} />}
-        {item.canDelete && <DeleteJobsDialog id={item.id} />}
-      </div>
+      <Toolbar>
+        {item.canQueue && <QueueJob compact jobId={item.id} />}
+        {item.canCancel && <CancelJob compact jobId={item.id} />}
+        {item.canDelete && (
+          <DeleteEntityDialog
+            collection={API_ROUTES.JOBS}
+            id={item.id}
+            type={translate(STRING.ENTITY_TYPE_JOB)}
+          />
+        )}
+      </Toolbar>
     ),
   },
 ]

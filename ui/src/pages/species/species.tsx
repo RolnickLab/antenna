@@ -7,7 +7,6 @@ import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails
 import { useTaxaLists } from 'data-services/hooks/taxa-lists/useTaxaLists'
 import { useTags } from 'data-services/hooks/taxa-tags/useTags'
 import * as Dialog from 'design-system/components/dialog/dialog'
-import { IconType } from 'design-system/components/icon/icon'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
 import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
@@ -15,6 +14,7 @@ import { SortControl } from 'design-system/components/sort-control'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
+import { Grid2x2Icon, TableIcon } from 'lucide-react'
 import { SpeciesDetails, TABS } from 'pages/species-details/species-details'
 import { useContext, useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -104,12 +104,12 @@ export const Species = () => {
                 {
                   value: 'table',
                   label: translate(STRING.TAB_ITEM_TABLE),
-                  icon: IconType.TableView,
+                  Icon: TableIcon,
                 },
                 {
                   value: 'gallery',
                   label: translate(STRING.TAB_ITEM_GALLERY),
-                  icon: IconType.GalleryView,
+                  Icon: Grid2x2Icon,
                 },
               ]}
               value={selectedView}
@@ -196,8 +196,8 @@ const SpeciesDetailsDialog = ({ id }: { id: string }) => {
     >
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
-        isLoading={isLoading}
         error={error}
+        isLoading={isLoading}
       >
         {species ? (
           <SpeciesDetails

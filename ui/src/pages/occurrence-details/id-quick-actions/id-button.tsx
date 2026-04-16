@@ -1,10 +1,10 @@
+import classNames from 'classnames'
 import { IdentificationFieldValues } from 'data-services/hooks/identifications/types'
 import { useCreateIdentifications } from 'data-services/hooks/identifications/useCreateIdentifications'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { IconType } from 'design-system/components/icon/icon'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { AlertCircleIcon, CheckIcon, Loader2Icon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { useMemo } from 'react'
-import styles from './id-quick-actions.module.scss'
 import { useRecentIdentifications } from './useRecentOptions'
 
 interface IdButtonProps {
@@ -34,22 +34,30 @@ export const IdButton = ({
   const { addRecentIdentification } = useRecentIdentifications()
 
   return (
-    <Tooltip content={error} contentStyle={{ zIndex: 3 }}>
+    <BasicTooltip asChild content={error}>
       <Button
-        customClass={styles.idButton}
-        details={details}
-        disabled={isSuccess}
-        icon={
-          isSuccess ? IconType.RadixCheck : error ? IconType.Error : undefined
-        }
-        label={label}
-        loading={isLoading}
-        theme={error ? ButtonTheme.Error : undefined}
+        className={classNames('justify-between', { 'text-destructive': error })}
+        disabled={isLoading || isSuccess}
         onClick={() => {
           addRecentIdentification({ label, details, value: taxonId })
           createIdentifications(identificationParams)
         }}
-      />
-    </Tooltip>
+        size="small"
+        variant="outline"
+      >
+        <span>{label}</span>
+        {error ? (
+          <AlertCircleIcon className="w-4 h-4" />
+        ) : isSuccess ? (
+          <CheckIcon className="w-4 h-4" />
+        ) : isLoading ? (
+          <Loader2Icon className="w-4 h-4 animate-spin" />
+        ) : (
+          <span className="body-overline-xsmall text-muted-foreground">
+            {details}
+          </span>
+        )}
+      </Button>
+    </BasicTooltip>
   )
 }

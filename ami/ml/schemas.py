@@ -15,8 +15,35 @@ class BoundingBox(pydantic.BaseModel):
     y2: float
 
     @classmethod
-    def from_coords(cls, coords: list[float]) -> "BoundingBox":
-        return cls(x1=coords[0], y1=coords[1], x2=coords[2], y2=coords[3])
+    def from_coords(cls, coords: typing.Any, raise_on_error: bool = True) -> "BoundingBox | None":
+        """
+        Create BoundingBox from coordinate list [x1, y1, x2, y2].
+
+        Args:
+            coords: List of 4 float coordinates
+            raise_on_error: If True (default), raises ValueError on invalid input.
+                           If False, returns None on invalid input.
+        """
+        if not isinstance(coords, list) or len(coords) != 4:
+            if raise_on_error:
+                if not isinstance(coords, list):
+                    raise ValueError(f"BoundingBox coords must be a list, got {type(coords).__name__}")
+                raise ValueError(f"BoundingBox coords must have 4 elements, got {len(coords)}")
+            return None
+        try:
+            return cls(x1=coords[0], y1=coords[1], x2=coords[2], y2=coords[3])
+        except (TypeError, pydantic.ValidationError) as e:
+            if raise_on_error:
+                raise ValueError(f"Invalid BoundingBox coordinates: {e}") from e
+            return None
+
+    @property
+    def width(self) -> float:
+        return abs(self.x2 - self.x1)
+
+    @property
+    def height(self) -> float:
+        return abs(self.y2 - self.y1)
 
     def to_string(self) -> str:
         return f"{self.x1},{self.y1},{self.x2},{self.y2}"
@@ -136,14 +163,14 @@ KnownPipelineChoices = typing.Literal[
 
 class DetectionRequest(pydantic.BaseModel):
     source_image: SourceImageRequest  # the 'original' image
-    bbox: BoundingBox
+    bbox: BoundingBox | None = None
     crop_image_url: str | None = None
     algorithm: AlgorithmReference
 
 
 class DetectionResponse(pydantic.BaseModel):
     source_image_id: str
-    bbox: BoundingBox
+    bbox: BoundingBox | None = None
     inference_time: float | None = None
     algorithm: AlgorithmReference
     timestamp: datetime.datetime
@@ -214,6 +241,56 @@ class PipelineResultsResponse(pydantic.BaseModel):
     errors: list | str | None = None
 
 
+class PipelineResultsError(pydantic.BaseModel):
+    """Error result when pipeline processing fails for an image."""
+
+    error: str
+    image_id: str | None = None
+
+
+class PipelineProcessingTask(pydantic.BaseModel):
+    """
+    A task representing a single image or detection to be processed in an async pipeline.
+    """
+
+    id: str
+    image_id: str
+    image_url: str
+    reply_subject: str | None = None  # The NATS subject to send the result to
+    # TODO: Do we need these?
+    # detections: list[DetectionRequest] | None = None
+    # config: PipelineRequestConfigParameters | dict | None = None
+
+
+class ProcessingServiceClientInfo(pydantic.BaseModel):
+    """Identity metadata sent by a processing service worker.
+
+    A single ProcessingService record in the database may have multiple
+    physical workers, pods, or machines running simultaneously. This model
+    lets the server distinguish between them for logging, debugging, and
+    eventually for per-worker health tracking.
+
+    Fields are intentionally left open for now. Processing services can
+    send any key-value pairs they find useful (e.g. hostname, pod_name,
+    software version). The schema will be tightened once real-world usage
+    patterns emerge.
+    """
+
+    class Config:
+        extra = "allow"
+
+
+class PipelineTaskResult(pydantic.BaseModel):
+    """
+    The result from processing a single PipelineProcessingTask.
+
+    Note: this schema is called `AntennaTaskResult` in the ADC worker processing service.
+    """
+
+    reply_subject: str  # The reply_subject from the PipelineProcessingTask
+    result: PipelineResultsResponse | PipelineResultsError
+
+
 class PipelineStageParam(pydantic.BaseModel):
     """A configurable parameter of a stage of a pipeline."""
 
@@ -272,7 +349,7 @@ class ProcessingServiceStatusResponse(pydantic.BaseModel):
     error: str | None = None
     server_live: bool | None = None
     pipelines_online: list[str] = []
-    endpoint_url: str
+    endpoint_url: str | None = None
     latency: float
 
 
@@ -283,3 +360,12 @@ class PipelineRegistrationResponse(pydantic.BaseModel):
     pipelines: list[PipelineConfigResponse] = []
     pipelines_created: list[str] = []
     algorithms_created: list[str] = []
+
+
+class AsyncPipelineRegistrationRequest(pydantic.BaseModel):
+    """
+    Request to register pipelines from an async processing service
+    """
+
+    processing_service_name: str
+    pipelines: list[PipelineConfigResponse] = []

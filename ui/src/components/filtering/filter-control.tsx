@@ -1,9 +1,11 @@
+import { InfoTooltip } from 'design-system/components/info-tooltip'
 import { XIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
+import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
 import { AlgorithmFilter, NotAlgorithmFilter } from './filters/algorithm-filter'
 import { BooleanFilter } from './filters/boolean-filter'
-import { CollectionFilter } from './filters/collection-filter'
+import { CaptureSetFilter } from './filters/capture-set-filter'
 import { DateFilter } from './filters/date-filter'
 import { ImageFilter } from './filters/image-filter'
 import { PipelineFilter } from './filters/pipeline-filter'
@@ -22,8 +24,8 @@ const ComponentMap: {
   [key: string]: (props: FilterProps) => JSX.Element
 } = {
   algorithm: AlgorithmFilter,
-  collection: CollectionFilter,
-  collections: CollectionFilter,
+  collection: CaptureSetFilter,
+  collections: CaptureSetFilter,
   date_end: DateFilter,
   date_start: DateFilter,
   deployment: StationFilter,
@@ -35,7 +37,7 @@ const ComponentMap: {
   not_tag_id: TagFilter,
   not_taxa_list_id: TaxaListFilter,
   pipeline: PipelineFilter,
-  source_image_collection: CollectionFilter,
+  source_image_collection: CaptureSetFilter,
   source_image_single: ImageFilter,
   status: StatusFilter,
   tag_id: TagFilter,
@@ -72,9 +74,12 @@ export const FilterControl = ({
 
   return (
     <div>
-      <label className="flex pl-2 pb-3 text-muted-foreground body-overline-small font-bold">
-        {filter.label}
-      </label>
+      <div className="min-h-8 flex items-center gap-1">
+        <span className="text-muted-foreground body-overline-small font-bold pt-0.5">
+          {filter.label}
+        </span>
+        {filter.tooltip ? <InfoTooltip {...filter.tooltip} /> : null}
+      </div>
       <div className="flex items-center justify-between gap-2">
         <FilterComponent
           data={data}
@@ -85,6 +90,7 @@ export const FilterControl = ({
         />
         {clearable && filter.value && (
           <Button
+            aria-label={translate(STRING.CLEAR)}
             className="shrink-0 text-muted-foreground"
             onClick={() => clearFilter(field)}
             size="icon"

@@ -46,6 +46,11 @@ Antenna uses [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](ht
 
       # To stream the logs
       docker compose logs -f django celeryworker ui-dev
+
+      # To stop the ui-dev container, you must specify the profile when running `down` or `stop`
+      docker compose --profile ui-dev down
+      # Or!
+      docker compose --profile "*" down
       ```
       _**Note that this will create a `ui/node_modules` folder if one does not exist yet. This folder is created by the mounting of the `/ui` folder
       for the `ui-dev` service, and is written by a `root` user.
@@ -66,6 +71,7 @@ docker compose -f processing_services/example/docker-compose.yml up -d
 - Django admin: http://localhost:8000/admin/
 - OpenAPI / Swagger documentation: http://localhost:8000/api/v2/docs/
 - Minio UI: http://minio:9001, Minio service: http://minio:9000
+- NATS dashboard: https://natsdashboard.com/ (Add localhost)
 
 NOTE: If one of these services is not working properly, it could be due another process is using the port. You can check for this with `lsof -i :<PORT_NUMBER>`.
 
@@ -138,9 +144,13 @@ pip install -r requirements/local.txt
 
 #### Helpful Commands
 
-##### Run the docker compose stack in the background
+##### Run the Docker compose stack in the background
 
     docker compose up -d
+
+##### Rebuild Docker images
+
+    docker compose build
 
 ##### Watch the logs of Django & the backend workers
 
@@ -318,6 +328,7 @@ Antenna supports remote debugging with debugpy for both Django and Celery servic
 
 ### Troubleshooting
 
+- **Problems after pull**: If Dockerfiles or dependencies have been updated, make sure to rebuild the Docker images: `docker compose build`. For source code changes, this is not needed.
 - **Connection refused**: Make sure you copied `docker-compose.override-example.yml` to `docker-compose.override.yml`
 - **Debugger not stopping**: Verify breakpoints are set in code that actually executes
 - **Port conflicts**: Check that ports 5678 and 5679 aren't already in use on your host machine

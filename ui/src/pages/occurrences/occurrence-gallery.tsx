@@ -6,18 +6,13 @@ import { Occurrence } from 'data-services/models/occurrence'
 import { Taxon } from 'data-services/models/taxa'
 import cardStyles from 'design-system/components/card/card.module.scss'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
-import { CheckIcon } from 'lucide-react'
-import { Button, IdentificationScore } from 'nova-ui-kit'
-import { Agree } from 'pages/occurrence-details/agree/agree'
-import { IdQuickActions } from 'pages/occurrence-details/id-quick-actions/id-quick-actions'
-import { SuggestIdPopover } from 'pages/occurrence-details/suggest-id/suggest-id-popover'
+import { CheckIcon, ImageIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
-import { UserPermission } from 'utils/user/types'
-import { useUserInfo } from 'utils/user/userInfoContext'
+import { OccurrenceActions } from './occurrence-actions'
 
 export const isGenusOrBelow = (taxon: Taxon) =>
   taxon.rank === 'GENUS' ||
@@ -41,7 +36,6 @@ export const OccurrenceGallery = ({
 }) => {
   const isSelecting = selectedItems?.length > 0
   const { projectId } = useParams()
-  const { userInfo } = useUserInfo()
 
   if (isLoading) {
     return (
@@ -76,8 +70,6 @@ export const OccurrenceGallery = ({
             keepSearchParams: true,
           })
           const image = item.images[0]
-          const canUpdate = item.userPermissions.includes(UserPermission.Update)
-          const agreed = userInfo ? item.userAgreed(userInfo.id) : false
           const checked = selectedItems.includes(item.id)
           const onCheckedToggle = () => {
             onSelectedItemsChange?.(
@@ -98,11 +90,23 @@ export const OccurrenceGallery = ({
                     className="w-full h-full relative cursor-pointer"
                     onClick={onCheckedToggle}
                   >
-                    <img src={image.src} className={cardStyles.image} />
+                    {image ? (
+                      <img src={image.src} className={cardStyles.image} />
+                    ) : (
+                      <div className={cardStyles.image}>
+                        <ImageIcon className="w-8 h-8 text-muted-foreground" />
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <Link className="w-full h-full relative" to={detailsRoute}>
-                    <img src={image.src} className={cardStyles.image} />
+                    {image ? (
+                      <img src={image.src} className={cardStyles.image} />
+                    ) : (
+                      <div className={cardStyles.image}>
+                        <ImageIcon className="w-8 h-8 text-muted-foreground" />
+                      </div>
+                    )}
                   </Link>
                 )}
                 {selectable ? (
@@ -113,6 +117,7 @@ export const OccurrenceGallery = ({
                     )}
                   >
                     <Button
+                      aria-label={translate(STRING.SELECT)}
                       className={classNames('hover:text-opacity-100', {
                         'text-opacity-0': !checked,
                         'group-hover:text-opacity-100': isSelecting,
@@ -127,61 +132,23 @@ export const OccurrenceGallery = ({
                 ) : null}
               </div>
               <div className="grow flex flex-col justify-between gap-2 p-4">
-                <div className="flex items-center gap-2">
-                  <Link to={detailsRoute}>
-                    <span
-                      className={classNames(
-                        'body-base font-medium text-primary',
-                        {
-                          italic: isGenusOrBelow(item.determinationTaxon),
-                        }
-                      )}
-                    >
-                      {item.determinationTaxon.name}
-                    </span>
-                  </Link>
-                </div>
-                <div className="flex flex-wrap items-center justify-start gap-2">
-                  {item.determinationScore !== undefined ? (
-                    <BasicTooltip
-                      content={
-                        item.determinationVerified
-                          ? translate(STRING.VERIFIED_BY, {
-                              name: item.determinationVerifiedBy?.name,
-                            })
-                          : translate(STRING.MACHINE_PREDICTION_SCORE, {
-                              score: `${item.determinationScore}`,
-                            })
+                <Link to={detailsRoute}>
+                  <span
+                    className={classNames(
+                      'body-base font-medium text-primary',
+                      {
+                        italic: isGenusOrBelow(item.determinationTaxon),
                       }
-                    >
-                      <IdentificationScore
-                        confirmed={item.determinationVerified}
-                        confidenceScore={item.determinationScore}
-                      />
-                    </BasicTooltip>
-                  ) : null}
-                  {!isSelecting && canUpdate && (
-                    <>
-                      <Agree
-                        agreed={agreed}
-                        agreeWith={{
-                          identificationId: item.determinationIdentificationId,
-                          predictionId: item.determinationPredictionId,
-                        }}
-                        applied
-                        compact
-                        occurrenceId={item.id}
-                        taxonId={item.determinationTaxon.id}
-                      />
-                      <SuggestIdPopover occurrenceIds={[item.id]} />
-                      <IdQuickActions
-                        occurrenceIds={[item.id]}
-                        occurrenceTaxa={[item.determinationTaxon]}
-                        zIndex={1}
-                      />
-                    </>
-                  )}
-                </div>
+                    )}
+                  >
+                    {item.determinationTaxon.name}
+                  </span>
+                </Link>
+                <OccurrenceActions
+                  item={item}
+                  showActions={!isSelecting}
+                  showScore
+                />
               </div>
             </div>
           )

@@ -19,8 +19,18 @@
   height: 100%;
   outline: none;
 
-  &[data-state='on'] {
+  &.active {
     background-color: $color-neutral-600;
+  }
+
+  &.first {
+    border-top-left-radius: 6px;
+    border-bottom-left-radius: 6px;
+  }
+
+  &.last {
+    border-top-right-radius: 6px;
+    border-bottom-right-radius: 6px;
   }
 
   &:hover {
@@ -30,21 +40,5 @@
 
   &:focus-visible {
     box-shadow: 0 0 0 2px $color-generic-black;
-  }
-}
-
-.itemWrapper {
-  &:first-child {
-    .item {
-      border-top-left-radius: 6px;
-      border-bottom-left-radius: 6px;
-    }
-  }
-
-  &:last-child {
-    .item {
-      border-top-right-radius: 6px;
-      border-bottom-right-radius: 6px;
-    }
   }
 }

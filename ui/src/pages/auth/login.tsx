@@ -2,12 +2,11 @@ import classNames from 'classnames'
 import { FormField } from 'components/form/form-field'
 import { FormConfig } from 'components/form/types'
 import { useLogin } from 'data-services/hooks/auth/useLogin'
-import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
-import { Loader2Icon } from 'lucide-react'
+import { ExternalLinkIcon, Loader2Icon } from 'lucide-react'
 import { Button, buttonVariants } from 'nova-ui-kit'
 import { useForm } from 'react-hook-form'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { APP_ROUTES, LANDING_PAGE_WAITLIST_URL } from 'utils/constants'
+import { APP_ROUTES, LANDING_PAGE_CONTACT_URL } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import { usePageBreadcrumb } from 'utils/usePageBreadcrumb'
@@ -40,7 +39,6 @@ export const Login = () => {
     onSuccess: () => navigate(state?.to ?? APP_ROUTES.HOME),
   })
   const {
-    getValues,
     control,
     handleSubmit,
     setError: setFieldError,
@@ -83,18 +81,6 @@ export const Login = () => {
         )}
       </form>
       <div className={styles.outro}>
-        <p className={styles.text}>
-          {translate(STRING.FORGOT_PASSWORD)}{' '}
-          <Link
-            to={APP_ROUTES.RESET_PASSWORD}
-            state={{ email: getValues('email') ?? undefined }}
-          >
-            {translate(STRING.RESET)}
-          </Link>
-        </p>
-        <p className={classNames(styles.text, styles.divider)}>
-          {translate(STRING.OR).toUpperCase()}
-        </p>
         <Link
           className={buttonVariants({ size: 'small', variant: 'outline' })}
           to={APP_ROUTES.HOME}
@@ -102,19 +88,19 @@ export const Login = () => {
           <span>{translate(STRING.VIEW_PUBLIC_PROJECTS)}</span>
         </Link>
         <a
-          href={LANDING_PAGE_WAITLIST_URL}
+          href={LANDING_PAGE_CONTACT_URL}
           rel="noreferrer"
           target="_blank"
           className={buttonVariants({ size: 'small', variant: 'outline' })}
         >
-          <span>{translate(STRING.SIGN_UP)}</span>
-          <Icon
-            type={IconType.ExternalLink}
-            theme={IconTheme.Primary}
-            size={14}
-          />
+          <span>Get in touch</span>
+          <ExternalLinkIcon className="w-4 h-4" />
         </a>
       </div>
+      <p className={styles.text}>
+        {translate(STRING.FORGOT_PASSWORD)} Please reach out and we will help
+        you.
+      </p>
     </>
   )
 }

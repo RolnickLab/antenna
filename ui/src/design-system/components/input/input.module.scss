@@ -12,14 +12,6 @@
   margin-bottom: 4px;
 }
 
-.label {
-  display: block;
-  @include paragraph-small();
-  font-weight: 600;
-  color: $color-neutral-700;
-  white-space: nowrap;
-}
-
 .error {
   display: block;
   @include paragraph-xx-small();
@@ -29,18 +21,6 @@
 
   &::first-letter {
     text-transform: capitalize;
-  }
-}
-
-.value {
-  display: block;
-  @include paragraph-small();
-  color: $color-neutral-300;
-  white-space: pre-wrap;
-
-  &.link {
-    color: $color-primary-1-600;
-    font-weight: 600;
   }
 }
 

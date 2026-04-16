@@ -1,112 +1,66 @@
-import { IdentificationFieldValues } from 'data-services/hooks/identifications/types'
-import { useCreateIdentifications } from 'data-services/hooks/identifications/useCreateIdentifications'
 import { Occurrence } from 'data-services/models/occurrence'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
-import { AlertCircleIcon, CheckIcon, Loader2Icon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
+import { IdentificationScore } from 'nova-ui-kit'
+import { Agree } from 'pages/occurrence-details/agree/agree'
 import { IdQuickActions } from 'pages/occurrence-details/id-quick-actions/id-quick-actions'
 import { SuggestIdPopover } from 'pages/occurrence-details/suggest-id/suggest-id-popover'
-import { useMemo } from 'react'
 import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
 import { useUserInfo } from 'utils/user/userInfoContext'
 
 export const OccurrenceActions = ({
-  occurrences = [],
+  item,
+  showScore,
+  showActions,
 }: {
-  occurrences?: Occurrence[]
+  item: Occurrence
+  showActions?: boolean
+  showScore?: boolean
 }) => {
   const { userInfo } = useUserInfo()
-
-  const allAgreed = !occurrences.some((occurrence) => {
-    const agreed = userInfo ? occurrence.userAgreed(userInfo.id) : false
-
-    return !agreed
-  })
-
-  const canUpdate = occurrences[0]?.userPermissions.includes(
-    UserPermission.Update
-  )
-
-  if (!canUpdate) {
-    return null
-  }
+  const canUpdate = item.userPermissions.includes(UserPermission.Update)
+  const agreed = userInfo ? item.userAgreed(userInfo.id) : false
 
   return (
-    <div className="flex items-center justify-center gap-2">
-      <Agree allAgreed={allAgreed} occurrences={occurrences} />
-      <SuggestIdPopover
-        occurrenceIds={occurrences.map((occurrence) => occurrence.id)}
-      />
-      <IdQuickActions
-        occurrenceIds={occurrences.map((occurrence) => occurrence.id)}
-        occurrenceTaxa={occurrences.map(
-          (occurrence) => occurrence.determinationTaxon
-        )}
-      />
+    <div className="flex flex-wrap items-center justify-start gap-2">
+      {showScore && item.determinationScore !== undefined ? (
+        <BasicTooltip
+          content={
+            item.determinationVerified
+              ? translate(STRING.VERIFIED_BY, {
+                  name: item.determinationVerifiedBy?.name,
+                })
+              : translate(STRING.MACHINE_PREDICTION_SCORE, {
+                  score: `${item.determinationScore}`,
+                })
+          }
+        >
+          <IdentificationScore
+            confirmed={item.determinationVerified}
+            confidenceScore={item.determinationScore}
+          />
+        </BasicTooltip>
+      ) : null}
+      {showActions && canUpdate ? (
+        <>
+          <Agree
+            agreed={agreed}
+            agreeWith={{
+              identificationId: item.determinationIdentificationId,
+              predictionId: item.determinationPredictionId,
+            }}
+            applied
+            compact
+            occurrenceId={item.id}
+            taxonId={item.determinationTaxon.id}
+          />
+          <SuggestIdPopover occurrenceIds={[item.id]} />
+          <IdQuickActions
+            occurrenceIds={[item.id]}
+            occurrenceTaxa={[item.determinationTaxon]}
+          />
+        </>
+      ) : null}
     </div>
-  )
-}
-
-const Agree = ({
-  occurrences = [],
-  allAgreed,
-}: {
-  occurrences?: Occurrence[]
-  allAgreed: boolean
-}) => {
-  const { userInfo } = useUserInfo()
-
-  const occurrenceIds = occurrences.map((occurrence) => occurrence.id)
-
-  const agreeParams: IdentificationFieldValues[] = useMemo(
-    () =>
-      occurrences
-        .filter((occurrences) => {
-          const agreed = userInfo?.id
-            ? userInfo.id === occurrences.determinationVerifiedBy?.id
-            : false
-
-          return !agreed
-        })
-        .map((occurrence) => ({
-          agreeWith: {
-            identificationId: occurrence.determinationIdentificationId,
-            predictionId: occurrence.determinationPredictionId,
-          },
-          occurrenceId: occurrence.id,
-          taxonId: occurrence.determinationTaxon.id,
-        })),
-    [occurrences]
-  )
-
-  const { createIdentifications, isLoading, isSuccess, error } =
-    useCreateIdentifications(occurrenceIds)
-
-  if (isSuccess || allAgreed) {
-    return (
-      <Button disabled size="small" variant="outline">
-        <CheckIcon className="w-4 h-4 " />
-        <span>{translate(STRING.CONFIRMED)}</span>
-      </Button>
-    )
-  }
-
-  return (
-    <BasicTooltip content={error}>
-      <Button
-        size="small"
-        variant="outline"
-        onClick={() => createIdentifications(agreeParams)}
-      >
-        {error ? (
-          <AlertCircleIcon className="w-4 h-4 mr-2 text-destructive" />
-        ) : null}
-        <span>{translate(STRING.CONFIRM)}</span>
-        {isLoading ? (
-          <Loader2Icon className="w-4 h-4 ml-2 animate-spin" />
-        ) : null}
-      </Button>
-    </BasicTooltip>
   )
 }

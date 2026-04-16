@@ -1,15 +1,19 @@
 import { Entity } from 'data-services/models/entity'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { TableColumn } from 'design-system/components/table/types'
+import { Toolbar } from 'design-system/components/toolbar'
 import { STRING, translate } from 'utils/language'
 import { DeleteEntityDialog } from './delete-entity-dialog'
 import { UpdateEntityDialog } from './entity-details-dialog'
-import styles from './styles.module.scss'
 
-export const columns: (
-  collection: string,
+export const columns = ({
+  collection,
+  type,
+}: {
+  collection: string
   type: string
-) => TableColumn<Entity>[] = (collection: string, type: string) => [
+}): TableColumn<Entity>[] => [
   {
     id: 'id',
     name: translate(STRING.FIELD_LABEL_ID),
@@ -27,10 +31,7 @@ export const columns: (
     name: translate(STRING.FIELD_LABEL_DESCRIPTION),
     renderCell: (item: Entity) => (
       <BasicTableCell
-        style={{
-          width: '320px',
-          whiteSpace: 'normal',
-        }}
+        style={{ width: '320px', whiteSpace: 'normal' }}
         value={item.description}
       />
     ),
@@ -39,23 +40,20 @@ export const columns: (
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
-    renderCell: (item: Entity) => <BasicTableCell value={item.createdAt} />,
+    renderCell: (item: Entity) => <DateTableCell date={item.createdAt} />,
   },
   {
     id: 'updated-at',
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
-    renderCell: (item: Entity) => <BasicTableCell value={item.updatedAt} />,
+    renderCell: (item: Entity) => <DateTableCell date={item.updatedAt} />,
   },
   {
     id: 'actions',
     name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
+    sticky: true,
     renderCell: (item: Entity) => (
-      <div className={styles.entityActions}>
+      <Toolbar>
         {item.canUpdate && (
           <UpdateEntityDialog
             collection={collection}
@@ -71,7 +69,7 @@ export const columns: (
             type={type}
           />
         )}
-      </div>
+      </Toolbar>
     ),
   },
 ]

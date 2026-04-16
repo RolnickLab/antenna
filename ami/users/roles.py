@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 class Role:
     """Base class for all roles."""
 
+    display_name = ""
+    description = ""
     permissions = {Project.Permissions.VIEW_PROJECT}
 
     # @TODO : Refactor after adding the project <-> Group formal relationship
@@ -51,21 +53,71 @@ class Role:
         """Checks if the user has any role assigned to a given project."""
         return any(role_class.has_role(user, project) for role_class in Role.__subclasses__())
 
+    @staticmethod
+    def get_supported_roles():
+        """
+        Returns all supported role classes in the system.
+        """
+        return list(Role.__subclasses__())
+
+    @staticmethod
+    def get_user_roles(project, user):
+        """
+        Returns the names of roles assigned to a user for a specific project.
+        Or empty list if no role is found.
+        """
+        user_roles = []
+        for role_cls in Role.__subclasses__():
+            if role_cls.has_role(user, project):
+                user_roles.append(role_cls)
+        return user_roles
+
+    @staticmethod
+    def get_primary_role(project, user):
+        """
+        Return the role class with the most permissions for a user on a project.
+
+        In practice, a user should only have one role per project, but in case of multiple roles,
+        we return the one with the most permissions.
+
+        The original design allowed multiple roles per user per project, but it was later decided to
+        that from a UX and management perspective, a single role per user per project is preferable.
+        """
+        roles = Role.get_user_roles(project, user)
+        if not roles:
+            return None
+        return max(roles, key=lambda r: len(r.permissions))
+
 
 class BasicMember(Role):
+    display_name = "Basic member"
+    description = "Basic project members have read access to projects. They can also process single captures."
     permissions = Role.permissions | {
         Project.Permissions.VIEW_PRIVATE_DATA,
         Project.Permissions.STAR_SOURCE_IMAGE,
         Project.Permissions.CREATE_JOB,
         Project.Permissions.RUN_SINGLE_IMAGE_JOB,
+        Project.Permissions.VIEW_USER_PROJECT_MEMBERSHIP,
     }
 
 
 class Researcher(Role):
-    permissions = BasicMember.permissions | {Project.Permissions.TRIGGER_EXPORT}
+    display_name = "Researcher"
+    description = "Researchers have all basic member permissions, plus the ability to create and delete data exports."
+    # Note: UPDATE_DATA_EXPORT is intentionally excluded - only superusers can modify exports.
+    # Users should delete and recreate exports if they need different settings.
+    permissions = BasicMember.permissions | {
+        Project.Permissions.CREATE_DATA_EXPORT,
+        Project.Permissions.DELETE_DATA_EXPORT,
+    }
 
 
 class Identifier(Role):
+    display_name = "Identifier"
+    description = (
+        "Identifiers have all basic member permissions, plus the ability to create, "
+        "update, and delete occurrence identifications."
+    )
     permissions = BasicMember.permissions | {
         Project.Permissions.CREATE_IDENTIFICATION,
         Project.Permissions.UPDATE_IDENTIFICATION,
@@ -74,20 +126,37 @@ class Identifier(Role):
 
 
 class MLDataManager(Role):
+    display_name = "ML data manager"
+    description = (
+        "Machine learning data managers have all basic member permissions, plus the ability to "
+        "manage jobs and export data."
+    )
     permissions = BasicMember.permissions | {
         Project.Permissions.CREATE_JOB,
         Project.Permissions.UPDATE_JOB,
-        # RUN ML jobs is revoked for now
-        # Project.Permissions.RUN_ML_JOB,
+        Project.Permissions.RUN_ML_JOB,
         Project.Permissions.RUN_POPULATE_CAPTURES_COLLECTION_JOB,
         Project.Permissions.RUN_DATA_STORAGE_SYNC_JOB,
         Project.Permissions.RUN_DATA_EXPORT_JOB,
         Project.Permissions.DELETE_JOB,
         Project.Permissions.DELETE_OCCURRENCES,
+        Project.Permissions.CREATE_PROJECT_PIPELINE_CONFIG,
+        Project.Permissions.UPDATE_PROJECT_PIPELINE_CONFIG,
+        Project.Permissions.DELETE_PROJECT_PIPELINE_CONFIG,
+        Project.Permissions.CREATE_COLLECTION,
+        Project.Permissions.UPDATE_COLLECTION,
+        Project.Permissions.DELETE_COLLECTION,
+        Project.Permissions.POPULATE_COLLECTION,
     }
 
 
 class ProjectManager(Role):
+    display_name = "Project manager"
+    description = (
+        "Project managers have full administrative access. This includes all permissions from other roles, "
+        "plus the ability to manage project settings, members, stations, capture sets, storage, "
+        "and all other project resources."
+    )
     permissions = (
         BasicMember.permissions
         | Researcher.permissions
@@ -97,7 +166,6 @@ class ProjectManager(Role):
             Project.Permissions.UPDATE_PROJECT,
             Project.Permissions.DELETE_PROJECT,
             Project.Permissions.IMPORT_DATA,
-            Project.Permissions.MANAGE_MEMBERS,
             Project.Permissions.POPULATE_COLLECTION,
             Project.Permissions.CREATE_COLLECTION,
             Project.Permissions.DELETE_COLLECTION,
@@ -122,6 +190,15 @@ class ProjectManager(Role):
             Project.Permissions.CREATE_SOURCE_IMAGE_UPLOAD,
             Project.Permissions.UPDATE_SOURCE_IMAGE_UPLOAD,
             Project.Permissions.DELETE_SOURCE_IMAGE_UPLOAD,
+            Project.Permissions.CREATE_USER_PROJECT_MEMBERSHIP,
+            Project.Permissions.UPDATE_USER_PROJECT_MEMBERSHIP,
+            Project.Permissions.DELETE_USER_PROJECT_MEMBERSHIP,
+            Project.Permissions.CREATE_PROJECT_PIPELINE_CONFIG,
+            Project.Permissions.UPDATE_PROJECT_PIPELINE_CONFIG,
+            Project.Permissions.DELETE_PROJECT_PIPELINE_CONFIG,
+            Project.Permissions.CREATE_TAXALIST,
+            Project.Permissions.UPDATE_TAXALIST,
+            Project.Permissions.DELETE_TAXALIST,
         }
     )
 

@@ -10,7 +10,7 @@ from django.test import TestCase, override_settings
 from guardian.shortcuts import assign_perm, get_perms, remove_perm
 from PIL import Image
 from rest_framework import status
-from rest_framework.test import APIRequestFactory, APITestCase
+from rest_framework.test import APIClient, APIRequestFactory, APITestCase
 from rich import print
 
 from ami.exports.models import DataExport
@@ -41,7 +41,7 @@ from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 from ami.tests.fixtures.storage import populate_bucket
 from ami.users.models import User
-from ami.users.roles import BasicMember, Identifier, ProjectManager
+from ami.users.roles import BasicMember, Identifier, MLDataManager, ProjectManager, create_roles_for_project
 
 logger = logging.getLogger(__name__)
 
@@ -604,6 +604,45 @@ class TestSourceImageCollections(TestCase):
         # Verify we got images from both specified deployments
         self.assertGreater(collection_images.filter(deployment=deployment_two).count(), 0)
         self.assertGreater(collection_images.filter(deployment=deployment_three).count(), 0)
+
+    def test_interval_sample_multiple_deployments(self):
+        """
+        Ensure interval sampling applies independently per deployment (station).
+
+        Create two deployments with captures spaced 1 minute apart for a few hours,
+        then sample with `minute_interval=60` and verify the total sampled count equals
+        the sum of per-deployment hourly samples.
+        """
+        from ami.main.models import SourceImage, SourceImageCollection, sample_captures_by_interval
+
+        # Create a new project and two deployments
+        project = Project.objects.create(name="Multi Dep Project", create_defaults=False)
+        dep1 = Deployment.objects.create(name="Dep One", project=project)
+        dep2 = Deployment.objects.create(name="Dep Two", project=project)
+
+        # Create captures: 3 hours worth of captures at 1-minute intervals (~180 images)
+        images_per_night = 180
+        create_captures(deployment=dep1, num_nights=1, images_per_night=images_per_night, interval_minutes=1)
+        create_captures(deployment=dep2, num_nights=1, images_per_night=images_per_night, interval_minutes=1)
+
+        collection = SourceImageCollection.objects.create(
+            name="Test Multi-Dep Interval",
+            project=project,
+            method="interval",
+            kwargs={"minute_interval": 60},
+        )
+        collection.save()
+        collection.populate_sample()
+
+        sampled_count = collection.images.count()
+
+        # Compute expected by sampling each deployment separately
+        expected = 0
+        for dep in [dep1, dep2]:
+            qs = SourceImage.objects.filter(deployment=dep).exclude(timestamp=None).order_by("timestamp")
+            expected += len(list(sample_captures_by_interval(60, qs)))
+
+        self.assertEqual(sampled_count, expected)
 
 
 class TestTaxonomy(TestCase):
@@ -1301,9 +1340,7 @@ class TestRolePermissions(APITestCase):
                     "update": True,
                     "delete": True,
                     "run_single_image": True,
-                    "run": False,
-                    "retry": False,
-                    "cancel": False,
+                    "run": True,
                 },
                 "identification": {"create": True, "update": True, "delete": True},
                 "capture": {"star": True, "unstar": True},
@@ -1969,6 +2006,46 @@ class TestRunSingleImageJobPermission(APITestCase):
         )
 
 
+class TestMLDataManagerCanRunBatchMLJob(APITestCase):
+    """Verify that the MLDataManager role grants run_ml_job permission via the role system."""
+
+    def setUp(self):
+        super().setUp()
+        self.project = Project.objects.create(name="Role ML Job Project", description="Test role-based ML job perms")
+        create_roles_for_project(self.project)
+
+        self.ml_user = User.objects.create_user(email="mlmanager@insectai.org", password="password123")
+        self.basic_user = User.objects.create_user(email="basicmember@insectai.org", password="password123")
+        self.pm_user = User.objects.create_user(email="projmanager@insectai.org", password="password123")
+
+        MLDataManager.assign_user(self.ml_user, self.project)
+        BasicMember.assign_user(self.basic_user, self.project)
+        ProjectManager.assign_user(self.pm_user, self.project)
+
+    def _create_ml_job(self):
+        return Job.objects.create(name="Test ML Job", project=self.project, job_type_key="ml")
+
+    def test_role_based_ml_job_run_permissions(self):
+        role_matrix = [
+            ("MLDataManager", self.ml_user, status.HTTP_200_OK),
+            ("ProjectManager", self.pm_user, status.HTTP_200_OK),
+            ("BasicMember", self.basic_user, status.HTTP_403_FORBIDDEN),
+        ]
+        for role_name, user, expected_status in role_matrix:
+            with self.subTest(role=role_name):
+                self.client.force_authenticate(user)
+                job = self._create_ml_job()
+                response = self.client.post(f"/api/v2/jobs/{job.pk}/run/", format="json")
+                self.assertEqual(response.status_code, expected_status, f"{role_name} got unexpected status")
+
+    def test_ml_data_manager_run_perm_reflected_in_job_detail(self):
+        self.client.force_authenticate(self.ml_user)
+        job = self._create_ml_job()
+        response = self.client.get(f"/api/v2/jobs/{job.pk}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("run", response.data.get("user_permissions", []))
+
+
 class TestDraftProjectPermissions(APITestCase):
     def setUp(self) -> None:
         # Users
@@ -2311,8 +2388,8 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         self.user = User.objects.create_user(email="tester@insectai.org", is_staff=False, is_superuser=False)
         self.client.force_authenticate(user=self.user)
 
-        self.url = f"/api/v2/occurrences/?project_id={self.project.pk}"
-        self.url_taxa = f"/api/v2/taxa/?project_id={self.project.pk}"
+        self.url = f"/api/v2/occurrences/?project_id={self.project.pk}&limit=1000"
+        self.url_taxa = f"/api/v2/taxa/?project_id={self.project.pk}&limit=1000"
 
     # OccurrenceViewSet tests
     def test_occurrences_respect_project_threshold(self):
@@ -2332,10 +2409,12 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         """apply_defaults=false should allow explicit classification_threshold to override project default"""
         res = self.client.get(self.url + "&apply_defaults=false&classification_threshold=0.2")
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        ids = {o["id"] for o in res.data["results"]}
-        # Both sets should be included with threshold=0.2
-        for occ in list(self.high_occurrences) + list(self.low_occurrences):
-            self.assertIn(occ.id, ids)
+
+        # Check that our test occurrences are present
+        expected_ids = {occ.id for occ in list(self.high_occurrences) + list(self.low_occurrences)}
+        returned_ids = {o["id"] for o in res.data["results"]}
+
+        self.assertTrue(expected_ids.issubset(returned_ids), f"Missing occurrence IDs: {expected_ids - returned_ids}")
 
     def test_query_threshold_ignored_when_defaults_applied(self):
         """classification_threshold param is ignored if apply_defaults is not false"""
@@ -2350,13 +2429,15 @@ class TestProjectDefaultThresholdFilter(APITestCase):
 
     def test_no_project_id_returns_all(self):
         """Without project_id, threshold falls back to 0.0 and returns all occurrences"""
-        url = "/api/v2/occurrences/"
+        url = "/api/v2/occurrences/?limit=1000"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        ids = {o["id"] for o in res.data["results"]}
-        # All occurrences should appear
-        for occ in list(self.high_occurrences) + list(self.low_occurrences):
-            self.assertIn(occ.id, ids)
+
+        # Check that our test occurrences are present (don't assume all in DB are ours)
+        expected_ids = {occ.pk for occ in list(self.high_occurrences) + list(self.low_occurrences)}
+        returned_ids = {o["id"] for o in res.data["results"]}
+
+        self.assertTrue(expected_ids.issubset(returned_ids), f"Missing occurrence IDs: {expected_ids - returned_ids}")
 
     def test_retrieve_occurrence_respects_threshold(self):
         """Detail retrieval should 404 if occurrence is filtered out by threshold"""
@@ -2386,10 +2467,14 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         """apply_defaults=false should allow low-score taxa to appear"""
         res = self.client.get(self.url_taxa + "&apply_defaults=false&classification_threshold=0.2")
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        names = {t["name"] for t in res.data["results"]}
 
-        for occ in list(self.high_occurrences) + list(self.low_occurrences):
-            self.assertIn(occ.determination.name, names)
+        # Check that our test taxa are present
+        expected_names = {occ.determination.name for occ in list(self.high_occurrences) + list(self.low_occurrences)}
+        returned_names = {t["name"] for t in res.data["results"]}
+
+        self.assertTrue(
+            expected_names.issubset(returned_names), f"Missing taxa names: {expected_names - returned_names}"
+        )
 
     def test_query_threshold_ignored_when_defaults_applied_taxa(self):
         """classification_threshold is ignored when defaults apply"""
@@ -3396,3 +3481,499 @@ class TestProjectDefaultTaxaFilter(APITestCase):
         detail_url = f"/api/v2/taxa/{excluded_taxon.id}/?project_id={self.project.pk}"
         res = self.client.get(detail_url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+
+class TaxaListViewSetPermissionTestCase(TestCase):
+    """Test TaxaListViewSet write permissions for project members vs non-members."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(email="owner@example.com", password="testpass")
+        self.member = User.objects.create_user(email="member@example.com", password="testpass")
+        self.non_member = User.objects.create_user(email="nonmember@example.com", password="testpass")
+        self.project = Project.objects.create(name="Test Project", owner=self.owner)
+        self.project.members.add(self.member)
+        self.taxa_list = TaxaList.objects.create(name="Existing List", description="A list")
+        self.taxa_list.projects.add(self.project)
+        self.client = APIClient()
+        self.list_url = f"/api/v2/taxa/lists/?project_id={self.project.pk}"
+        self.detail_url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/?project_id={self.project.pk}"
+
+    def test_member_can_create_taxa_list(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.post(self.list_url, {"name": "New List"})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_member_can_update_taxa_list(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.patch(self.detail_url, {"name": "Renamed"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.taxa_list.refresh_from_db()
+        self.assertEqual(self.taxa_list.name, "Renamed")
+
+    def test_member_can_delete_taxa_list(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.delete(self.detail_url)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_anonymous_cannot_create_taxa_list(self):
+        response = self.client.post(self.list_url, {"name": "Anon List"})
+        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+
+    def test_anonymous_cannot_update_taxa_list(self):
+        response = self.client.patch(self.detail_url, {"name": "Hacked"})
+        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+
+    def test_non_member_cannot_create_taxa_list(self):
+        self.client.force_authenticate(self.non_member)
+        response = self.client.post(self.list_url, {"name": "Intruder List"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_non_member_cannot_update_taxa_list(self):
+        self.client.force_authenticate(self.non_member)
+        response = self.client.patch(self.detail_url, {"name": "Hacked"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class TaxaListTaxonAPITestCase(TestCase):
+    """Test TaxaList taxa management operations via API."""
+
+    def setUp(self):
+        """Set up test data."""
+        self.user = User.objects.create_user(email="test@example.com", password="testpass")
+        self.project = Project.objects.create(name="Test Project", owner=self.user)
+        self.taxa_list = TaxaList.objects.create(name="Test Taxa List", description="Test description")
+        self.taxa_list.projects.add(self.project)
+        self.taxon1 = Taxon.objects.create(name="Taxon 1", rank="SPECIES")
+        self.taxon2 = Taxon.objects.create(name="Taxon 2", rank="SPECIES")
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        self.base_url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/taxa/?project_id={self.project.pk}"
+
+    def test_add_taxon_returns_201(self):
+        """Test adding taxon to taxa list returns 201."""
+        response = self.client.post(self.base_url, {"taxon_id": self.taxon1.pk})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(self.taxa_list.taxa.filter(pk=self.taxon1.pk).exists())
+        self.assertEqual(response.data["id"], self.taxon1.pk)
+
+    def test_add_duplicate_returns_400(self):
+        """Test adding duplicate taxon returns 400."""
+        self.taxa_list.taxa.add(self.taxon1)
+        response = self.client.post(self.base_url, {"taxon_id": self.taxon1.pk})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("already in this taxa list", str(response.data).lower())
+
+    def test_add_nonexistent_taxon_returns_400(self):
+        """Test adding non-existent taxon returns 400."""
+        response = self.client.post(self.base_url, {"taxon_id": 999999})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_delete_by_taxon_id(self):
+        """Test deleting by taxon ID returns 204."""
+        self.taxa_list.taxa.add(self.taxon1)
+        url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/taxa/{self.taxon1.pk}/?project_id={self.project.pk}"
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(self.taxa_list.taxa.filter(pk=self.taxon1.pk).exists())
+
+    def test_delete_nonexistent_returns_404(self):
+        """Test deleting non-existent taxon returns 404."""
+        url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/taxa/{self.taxon1.pk}/?project_id={self.project.pk}"
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_m2m_relationship_works(self):
+        """Test that M2M relationship still works correctly."""
+        self.taxa_list.taxa.add(self.taxon1)
+        # Should be accessible via M2M relationship
+        self.assertEqual(self.taxa_list.taxa.count(), 1)
+        self.assertIn(self.taxon1, self.taxa_list.taxa.all())
+        # Test reverse relationship
+        self.assertIn(self.taxa_list, self.taxon1.lists.all())
+
+    def test_add_multiple_taxa(self):
+        """Test adding multiple taxa to the same list."""
+        response1 = self.client.post(self.base_url, {"taxon_id": self.taxon1.pk})
+        self.assertEqual(response1.status_code, status.HTTP_201_CREATED)
+
+        response2 = self.client.post(self.base_url, {"taxon_id": self.taxon2.pk})
+        self.assertEqual(response2.status_code, status.HTTP_201_CREATED)
+
+        self.assertEqual(self.taxa_list.taxa.count(), 2)
+
+    def test_remove_one_taxon_keeps_others(self):
+        """Test that removing one taxon doesn't affect others."""
+        self.taxa_list.taxa.add(self.taxon1, self.taxon2)
+
+        url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/taxa/{self.taxon1.pk}/?project_id={self.project.pk}"
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        # taxon1 should be removed
+        self.assertFalse(self.taxa_list.taxa.filter(pk=self.taxon1.pk).exists())
+        # taxon2 should still be there
+        self.assertTrue(self.taxa_list.taxa.filter(pk=self.taxon2.pk).exists())
+        self.assertEqual(self.taxa_list.taxa.count(), 1)
+
+
+class TaxaListTaxonValidationTestCase(TestCase):
+    """Test validation and error cases."""
+
+    def setUp(self):
+        """Set up test data."""
+        self.user = User.objects.create_user(email="test@example.com", password="testpass")
+        self.project = Project.objects.create(name="Test Project", owner=self.user)
+        self.taxa_list = TaxaList.objects.create(name="Test Taxa List")
+        self.taxa_list.projects.add(self.project)
+        self.taxon = Taxon.objects.create(name="Test Taxon", rank="SPECIES")
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+        self.base_url = f"/api/v2/taxa/lists/{self.taxa_list.pk}/taxa/?project_id={self.project.pk}"
+
+    def test_add_without_taxon_id_returns_400(self):
+        """Test adding without taxon_id returns 400."""
+        response = self.client.post(self.base_url, {})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_add_with_invalid_taxon_id_returns_400(self):
+        """Test adding with invalid taxon_id returns 400."""
+        response = self.client.post(self.base_url, {"taxon_id": "invalid"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_nonexistent_taxa_list_returns_404(self):
+        """Test adding taxon to non-existent taxa list returns 404."""
+        url = f"/api/v2/taxa/lists/999999/taxa/?project_id={self.project.pk}"
+        response = self.client.post(url, {"taxon_id": self.taxon.pk})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class TaxaListGetOrCreateForProjectTestCase(TestCase):
+    """Test TaxaList.objects.get_or_create_for_project()."""
+
+    def setUp(self):
+        self.project_a = Project.objects.create(name="Project A")
+        self.project_b = Project.objects.create(name="Project B")
+
+    def test_creates_new_global_list(self):
+        taxa_list, created = TaxaList.objects.get_or_create_for_project(name="Global Moths", project=None)
+        self.assertTrue(created)
+        self.assertEqual(taxa_list.name, "Global Moths")
+        self.assertEqual(taxa_list.projects.count(), 0)
+
+    def test_creates_new_project_specific_list(self):
+        taxa_list, created = TaxaList.objects.get_or_create_for_project(name="Project A Moths", project=self.project_a)
+        self.assertTrue(created)
+        self.assertEqual(taxa_list.name, "Project A Moths")
+        self.assertIn(self.project_a, taxa_list.projects.all())
+
+    def test_retrieves_existing_global_list(self):
+        existing = TaxaList.objects.create(name="Global Moths")
+        taxa_list, created = TaxaList.objects.get_or_create_for_project(name="Global Moths", project=None)
+        self.assertFalse(created)
+        self.assertEqual(taxa_list.pk, existing.pk)
+
+    def test_retrieves_existing_project_specific_list(self):
+        existing = TaxaList.objects.create(name="Project A Moths")
+        existing.projects.add(self.project_a)
+        taxa_list, created = TaxaList.objects.get_or_create_for_project(name="Project A Moths", project=self.project_a)
+        self.assertFalse(created)
+        self.assertEqual(taxa_list.pk, existing.pk)
+
+    def test_global_and_project_lists_with_same_name_do_not_collide(self):
+        """A global list and a project-scoped list can share a name without MultipleObjectsReturned."""
+        global_list, global_created = TaxaList.objects.get_or_create_for_project(name="Moths", project=None)
+        project_list, project_created = TaxaList.objects.get_or_create_for_project(
+            name="Moths", project=self.project_a
+        )
+        self.assertTrue(global_created)
+        self.assertTrue(project_created)
+        self.assertNotEqual(global_list.pk, project_list.pk)
+        self.assertEqual(global_list.projects.count(), 0)
+        self.assertIn(self.project_a, project_list.projects.all())
+
+    def test_different_projects_with_same_name_do_not_collide(self):
+        list_a, _ = TaxaList.objects.get_or_create_for_project(name="Shared Name", project=self.project_a)
+        list_b, _ = TaxaList.objects.get_or_create_for_project(name="Shared Name", project=self.project_b)
+        self.assertNotEqual(list_a.pk, list_b.pk)
+
+    def test_handles_existing_duplicates_by_returning_oldest(self):
+        """If duplicates already exist in the DB (legacy data), return the oldest rather than raising."""
+        first = TaxaList.objects.create(name="Duplicate Name")
+        TaxaList.objects.create(name="Duplicate Name")
+        TaxaList.objects.create(name="Duplicate Name")
+        taxa_list, created = TaxaList.objects.get_or_create_for_project(name="Duplicate Name", project=None)
+        self.assertFalse(created)
+        self.assertEqual(taxa_list.pk, first.pk)
+
+    def test_defaults_applied_on_create_only(self):
+        taxa_list, created = TaxaList.objects.get_or_create_for_project(
+            name="With Description", project=None, description="Initial description"
+        )
+        self.assertTrue(created)
+        self.assertEqual(taxa_list.description, "Initial description")
+
+        # Calling again with different defaults should retrieve the existing row
+        # and ignore the new defaults (matching Django's get_or_create semantics).
+        taxa_list_again, created = TaxaList.objects.get_or_create_for_project(
+            name="With Description", project=None, description="Ignored description"
+        )
+        self.assertFalse(created)
+        self.assertEqual(taxa_list_again.pk, taxa_list.pk)
+        self.assertEqual(taxa_list_again.description, "Initial description")
+
+
+class TaxaListDedupeMigrationTestCase(TestCase):
+    """Exercise the 0083_dedupe_taxalist_names data migration logic against seeded duplicates."""
+
+    def setUp(self):
+        self.project_a = Project.objects.create(name="Project A")
+        self.project_b = Project.objects.create(name="Project B")
+
+    def _dedupe(self):
+        # Import the forward function from the numbered migration module
+        from importlib import import_module
+
+        from django.apps import apps as real_apps
+
+        mod = import_module("ami.main.migrations.0083_dedupe_taxalist_names")
+        mod.dedupe_taxa_list_names(real_apps, None)
+
+    def test_renames_global_duplicates(self):
+        g1 = TaxaList.objects.create(name="Shared")
+        g2 = TaxaList.objects.create(name="Shared")
+        g3 = TaxaList.objects.create(name="Shared")
+
+        self._dedupe()
+
+        g1.refresh_from_db()
+        g2.refresh_from_db()
+        g3.refresh_from_db()
+        self.assertEqual(g1.name, "Shared")
+        self.assertEqual(g2.name, "Shared (duplicate 2)")
+        self.assertEqual(g3.name, "Shared (duplicate 3)")
+
+    def test_renames_project_scoped_duplicates(self):
+        p1 = TaxaList.objects.create(name="Project Moths")
+        p1.projects.add(self.project_a)
+        p2 = TaxaList.objects.create(name="Project Moths")
+        p2.projects.add(self.project_a)
+
+        self._dedupe()
+
+        p1.refresh_from_db()
+        p2.refresh_from_db()
+        self.assertEqual(p1.name, "Project Moths")
+        self.assertEqual(p2.name, "Project Moths (duplicate 2)")
+
+    def test_leaves_unique_names_untouched(self):
+        g = TaxaList.objects.create(name="Unique Global")
+        p = TaxaList.objects.create(name="Unique Project")
+        p.projects.add(self.project_a)
+
+        self._dedupe()
+
+        g.refresh_from_db()
+        p.refresh_from_db()
+        self.assertEqual(g.name, "Unique Global")
+        self.assertEqual(p.name, "Unique Project")
+
+    def test_same_name_across_different_scopes_untouched(self):
+        """A global list and a project-scoped list sharing a name are not duplicates."""
+        g = TaxaList.objects.create(name="Moths")
+        p = TaxaList.objects.create(name="Moths")
+        p.projects.add(self.project_a)
+
+        self._dedupe()
+
+        g.refresh_from_db()
+        p.refresh_from_db()
+        self.assertEqual(g.name, "Moths")
+        self.assertEqual(p.name, "Moths")
+
+    def test_same_name_across_different_projects_untouched(self):
+        a = TaxaList.objects.create(name="Moths")
+        a.projects.add(self.project_a)
+        b = TaxaList.objects.create(name="Moths")
+        b.projects.add(self.project_b)
+
+        self._dedupe()
+
+        a.refresh_from_db()
+        b.refresh_from_db()
+        self.assertEqual(a.name, "Moths")
+        self.assertEqual(b.name, "Moths")
+
+    def test_resolves_multi_project_overlap(self):
+        """A list participating in multiple projects with conflicts in any one gets renamed."""
+        # x (in A,B) and y (in A) share project A; x is older so y renames.
+        x = TaxaList.objects.create(name="Moths")
+        x.projects.add(self.project_a, self.project_b)
+        y = TaxaList.objects.create(name="Moths")
+        y.projects.add(self.project_a)
+
+        self._dedupe()
+
+        x.refresh_from_db()
+        y.refresh_from_db()
+        self.assertEqual(x.name, "Moths")
+        self.assertEqual(y.name, "Moths (duplicate 2)")
+
+    def test_get_or_create_for_project_works_after_dedupe(self):
+        """After running the migration, get_or_create_for_project returns the oldest without raising."""
+        oldest = TaxaList.objects.create(name="Shared")
+        TaxaList.objects.create(name="Shared")
+        TaxaList.objects.create(name="Shared")
+
+        self._dedupe()
+
+        found, created = TaxaList.objects.get_or_create_for_project(name="Shared", project=None)
+        self.assertFalse(created)
+        self.assertEqual(found.pk, oldest.pk)
+
+    def test_idempotent(self):
+        """Running the migration twice is a no-op on the second run."""
+        TaxaList.objects.create(name="Shared")
+        TaxaList.objects.create(name="Shared")
+
+        self._dedupe()
+        names_after_first = sorted(TaxaList.objects.values_list("name", flat=True))
+        self._dedupe()
+        names_after_second = sorted(TaxaList.objects.values_list("name", flat=True))
+        self.assertEqual(names_after_first, names_after_second)
+
+
+class TestProjectPipelinesAPI(APITestCase):
+    """Test the project pipelines API endpoint."""
+
+    def setUp(self):
+        from ami.users.roles import ProjectManager, create_roles_for_project
+
+        self.user = User.objects.create_user(email="test@example.com")  # type: ignore
+        self.other_user = User.objects.create_user(email="other@example.com")  # type: ignore
+
+        # Create projects with explicit ownership
+        self.project = Project.objects.create(name="Test Project", owner=self.user, create_defaults=True)
+        self.other_project = Project.objects.create(name="Other Project", owner=self.other_user, create_defaults=True)
+
+        # Create role groups and assign permissions
+        create_roles_for_project(self.project)
+        create_roles_for_project(self.other_project)
+        ProjectManager.assign_user(self.user, self.project)
+
+    def _get_pipelines_url(self, project_id):
+        """Get the pipelines API URL for a project."""
+        return f"/api/v2/projects/{project_id}/pipelines/"
+
+    def _get_test_payload(self, service_name: str):
+        """Get a minimal test payload for pipeline registration."""
+        return {
+            "processing_service_name": service_name,
+            "pipelines": [],
+        }
+
+    def test_create_new_service_success(self):
+        """Test creating a new processing service if it doesn't exist."""
+        url = self._get_pipelines_url(self.project.pk)
+        payload = self._get_test_payload("NewService")
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(url, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        # Verify service was created and associated
+        service = ProcessingService.objects.get(name="NewService")
+        self.assertIn(self.project, service.projects.all())
+
+    def test_reregistration_is_idempotent(self):
+        """Test that re-registering a service already associated with the project succeeds."""
+        # Create and associate service
+        service = ProcessingService.objects.create(name="ExistingService")
+        service.projects.add(self.project)
+
+        url = self._get_pipelines_url(self.project.pk)
+        payload = self._get_test_payload("ExistingService")
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(url, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_associate_existing_service_success(self):
+        """Test associating existing service with project when not yet associated."""
+        # Create service but don't associate with project
+        service = ProcessingService.objects.create(name="UnassociatedService")
+
+        url = self._get_pipelines_url(self.project.pk)
+        payload = self._get_test_payload("UnassociatedService")
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(url, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn(self.project, service.projects.all())
+
+    def test_unauthorized_project_access_returns_403(self):
+        """Test 403 when user doesn't have write access to project."""
+        url = self._get_pipelines_url(self.other_project.pk)
+        payload = self._get_test_payload("UnauthorizedService")
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(url, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_invalid_payload_returns_400(self):
+        """Test 400 when payload is invalid."""
+        url = self._get_pipelines_url(self.project.pk)
+        invalid_payload = {"invalid": "data"}
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(url, invalid_payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_list_pipelines(self):
+        """Test listing pipelines for a project returns the project's enabled pipelines."""
+        url = self._get_pipelines_url(self.project.pk)
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.json()["results"]
+        self.assertGreater(len(results), 0)
+
+        # All returned pipelines should belong to this project
+        project_pipeline_names = set(
+            Pipeline.objects.filter(projects=self.project, project_pipeline_configs__enabled=True)
+            .values_list("name", flat=True)
+            .distinct()
+        )
+        response_names = {p["name"] for p in results}
+        self.assertEqual(response_names, project_pipeline_names)
+
+    def test_list_pipelines_draft_project_non_member(self):
+        """Non-members cannot list pipelines on draft projects."""
+        self.project.draft = True
+        self.project.save()
+
+        non_member = User.objects.create_user(email="nonmember@example.com")  # type: ignore
+        url = self._get_pipelines_url(self.project.pk)
+        self.client.force_authenticate(user=non_member)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_unauthenticated_write_returns_401(self):
+        """Unauthenticated users cannot register pipelines."""
+        url = self._get_pipelines_url(self.project.pk)
+        payload = self._get_test_payload("AnonService")
+        response = self.client.post(url, payload, format="json")
+        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+
+    def test_list_pipelines_public_project_non_member(self):
+        """Non-members can list pipelines on public projects."""
+        non_member = User.objects.create_user(email="reader@example.com")  # type: ignore
+        url = self._get_pipelines_url(self.project.pk)
+        self.client.force_authenticate(user=non_member)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)

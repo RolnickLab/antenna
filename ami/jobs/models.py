@@ -15,13 +15,39 @@ from guardian.shortcuts import get_perms
 
 from ami.base.models import BaseModel
 from ami.base.schemas import ConfigurableStage, ConfigurableStageParam
-from ami.jobs.tasks import run_job
+from ami.jobs.tasks import cleanup_async_job_if_needed, run_job
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.ml.post_processing.registry import get_postprocessing_task
 from ami.utils.schemas import OrderedEnum
 
 logger = logging.getLogger(__name__)
+
+
+class JobDispatchMode(models.TextChoices):
+    """
+    How a job dispatches its workload.
+
+    Jobs are configured and launched by users in the UI, then dispatched to
+    Celery workers. This enum describes what the worker does with the work:
+
+    - INTERNAL: All work happens within the platform (Celery worker handles it directly).
+    - SYNC_API: Worker calls an external processing service API and waits for each response.
+    - ASYNC_API: Worker queues items to a message broker (NATS) for external processing
+      service workers to pick up and process independently.
+    """
+
+    # Work is handled entirely within the platform, no external service calls.
+    # e.g. DataStorageSyncJob, DataExportJob, SourceImageCollectionPopulateJob
+    INTERNAL = "internal", "Internal"
+
+    # Worker loops over items, sends each to an external processing service
+    # endpoint synchronously, and waits for the response before continuing.
+    SYNC_API = "sync_api", "Sync API"
+
+    # Worker publishes all items to a message broker (NATS). External processing
+    # service workers consume and process them independently, reporting results back.
+    ASYNC_API = "async_api", "Async API"
 
 
 class JobState(str, OrderedEnum):
@@ -62,6 +88,11 @@ class JobState(str, OrderedEnum):
     def failed_states(cls):
         return [cls.FAILURE, cls.REVOKED, cls.UNKNOWN]
 
+    @classmethod
+    def active_states(cls):
+        """States where a job is actively processing and should serve tasks to workers."""
+        return [cls.STARTED, cls.RETRY]
+
 
 def get_status_label(status: JobState, progress: float) -> str:
     """
@@ -83,7 +114,7 @@ def python_slugify(value: str) -> str:
 
 
 class JobProgressSummary(pydantic.BaseModel):
-    """Summary of all stages of a job"""
+    """Top-level status and progress for a job, shown in the UI."""
 
     status: JobState = JobState.CREATED
     progress: float = 0
@@ -106,7 +137,17 @@ stage_parameters = JobProgressStageDetail.__fields__.keys()
 
 
 class JobProgress(pydantic.BaseModel):
-    """The full progress of a job and its stages."""
+    """
+    The user-facing progress of a job, stored as JSONB on the Job model.
+
+    This is what the UI displays and what external APIs read. Contains named
+    stages ("process", "results") with per-stage params (progress percentage,
+    detections/classifications/captures counts, failed count).
+
+    For async (NATS) jobs, updated by _update_job_progress() in ami/jobs/tasks.py
+    which copies snapshots from the internal Redis-backed AsyncJobStateManager.
+    For sync jobs, updated directly in MLJob.process_images().
+    """
 
     summary: JobProgressSummary
     stages: list[JobProgressStageDetail]
@@ -196,6 +237,34 @@ class JobProgress(pydantic.BaseModel):
         for stage in self.stages:
             stage.progress = 0
             stage.status = status
+            # Reset numeric param values to 0
+            for param in stage.params:
+                if isinstance(param.value, (int, float)):
+                    param.value = 0
+
+    def is_complete(self) -> bool:
+        """
+        Check if all stages have finished processing.
+
+        A job is considered complete when ALL of its stages have:
+        - progress >= 1.0 (fully processed)
+        - status in a final state (SUCCESS, FAILURE, or REVOKED)
+
+        This method works for any job type regardless of which stages it has.
+        It's used by the Celery task_postrun signal to determine whether to
+        set the job's final SUCCESS status, or defer to async progress handlers.
+
+        Related: Job.update_progress() calculates the aggregate
+        progress percentage across all stages for display purposes. This method
+        is a binary check for completion that considers both progress AND status.
+
+        Returns:
+            True if all stages are complete, False otherwise.
+            Returns False if job has no stages (shouldn't happen in practice).
+        """
+        if not self.stages:
+            return False
+        return all(stage.progress >= 1.0 and stage.status in JobState.final_states() for stage in self.stages)
 
     class Config:
         use_enum_values = True
@@ -267,26 +336,29 @@ class JobLogHandler(logging.Handler):
         # Log to the current app logger
         logger.log(record.levelno, self.format(record))
 
-        # Write to the logs field on the job instance
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        msg = f"[{timestamp}] {record.levelname} {self.format(record)}"
-        if msg not in self.job.logs.stdout:
-            self.job.logs.stdout.insert(0, msg)
-
-        # Write a simpler copy of any errors to the errors field
-        if record.levelno >= logging.ERROR:
-            if record.message not in self.job.logs.stderr:
-                self.job.logs.stderr.insert(0, record.message)
-
-        if len(self.job.logs.stdout) > self.max_log_length:
-            self.job.logs.stdout = self.job.logs.stdout[: self.max_log_length]
-
+        # Write to the logs field on the job instance.
+        # Refresh from DB first to reduce the window for concurrent overwrites — each
+        # worker holds its own stale in-memory copy of `logs`, so without a refresh the
+        # last writer always wins and earlier entries are silently dropped.
         # @TODO consider saving logs to the database periodically rather than on every log
         try:
+            self.job.refresh_from_db(fields=["logs"])
+            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            msg = f"[{timestamp}] {record.levelname} {self.format(record)}"
+            if msg not in self.job.logs.stdout:
+                self.job.logs.stdout.insert(0, msg)
+
+            # Write a simpler copy of any errors to the errors field
+            if record.levelno >= logging.ERROR:
+                if record.message not in self.job.logs.stderr:
+                    self.job.logs.stderr.insert(0, record.message)
+
+            if len(self.job.logs.stdout) > self.max_log_length:
+                self.job.logs.stdout = self.job.logs.stdout[: self.max_log_length]
+
             self.job.save(update_fields=["logs"], update_progress=False)
         except Exception as e:
             logger.error(f"Failed to save logs for job #{self.job.pk}: {e}")
-            pass
 
 
 @dataclass
@@ -322,14 +394,12 @@ class MLJob(JobType):
         """
         Procedure for an ML pipeline as a job.
         """
+        from ami.ml.orchestration.jobs import queue_images_to_nats
+
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
         job.save()
-
-        # Keep track of sub-tasks for saving results, pair with batch number
-        save_tasks: list[tuple[int, AsyncResult]] = []
-        save_tasks_completed: list[tuple[int, AsyncResult]] = []
 
         if job.delay:
             update_interval_seconds = 2
@@ -365,7 +435,7 @@ class MLJob(JobType):
             progress=0,
         )
 
-        images = list(
+        images: list[SourceImage] = list(
             # @TODO return generator plus image count
             # @TODO pass to celery group chain?
             job.pipeline.collect_images(
@@ -373,7 +443,7 @@ class MLJob(JobType):
                 deployment=job.deployment,
                 source_images=[job.source_image_single] if job.source_image_single else None,
                 job_id=job.pk,
-                skip_processed=True,
+                reprocess_all_images=job.project.feature_flags.reprocess_all_images,
                 # shuffle=job.shuffle,
             )
         )
@@ -389,8 +459,6 @@ class MLJob(JobType):
             images = images[: job.limit]
             image_count = len(images)
             job.progress.add_stage_param("collect", "Limit", image_count)
-        else:
-            image_count = source_image_count
 
         job.progress.update_stage(
             "collect",
@@ -401,6 +469,32 @@ class MLJob(JobType):
         # End image collection stage
         job.save()
 
+        if job.dispatch_mode == JobDispatchMode.ASYNC_API:
+            queued = queue_images_to_nats(job, images)
+            if not queued:
+                job.logger.error("Aborting job %s because images could not be queued to NATS", job.pk)
+                job.progress.update_stage("collect", status=JobState.FAILURE)
+                job.update_status(JobState.FAILURE)
+                job.finished_at = datetime.datetime.now()
+                job.save()
+                return
+            # When all stages are already complete (e.g. 0 images to process),
+            # finalize the job now since no async results will arrive to trigger completion.
+            if job.progress.is_complete():
+                has_failure = any(s.status in JobState.failed_states() for s in job.progress.stages)
+                job.update_status(JobState.FAILURE if has_failure else JobState.SUCCESS, save=False)
+                job.finished_at = datetime.datetime.now()
+                job.save()
+                cleanup_async_job_if_needed(job)
+        else:
+            cls.process_images(job, images)
+
+    @classmethod
+    def process_images(cls, job, images):
+        image_count = len(images)
+        # Keep track of sub-tasks for saving results, pair with batch number
+        save_tasks: list[tuple[int, AsyncResult]] = []
+        save_tasks_completed: list[tuple[int, AsyncResult]] = []
         total_captures = 0
         total_detections = 0
         total_classifications = 0
@@ -419,6 +513,7 @@ class MLJob(JobType):
                     images=chunk,
                     job_id=job.pk,
                     project_id=job.project.pk,
+                    reprocess_all_images=job.project.feature_flags.reprocess_all_images,
                 )
                 job.logger.info(f"Processed image batch {i+1} in {time.time() - request_sent:.2f}s")
             except Exception as e:
@@ -492,7 +587,8 @@ class MLJob(JobType):
 
         job.logger.info(f"All tasks completed for job {job.pk}")
 
-        FAILURE_THRESHOLD = 0.5
+        from ami.jobs.tasks import FAILURE_THRESHOLD
+
         if image_count and (percent_successful < FAILURE_THRESHOLD):
             job.progress.update_stage("process", status=JobState.FAILURE)
             job.save()
@@ -526,7 +622,8 @@ class DataStorageSyncJob(JobType):
         """
 
         job.progress.add_stage(cls.name)
-        job.progress.add_stage_param(cls.key, "Total files", "")
+        job.progress.add_stage_param(cls.key, "Total files", 0)
+        job.progress.add_stage_param(cls.key, "Failed", 0)
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
@@ -719,8 +816,21 @@ def get_job_type_by_inferred_key(job: "Job") -> type[JobType] | None:
 class Job(BaseModel):
     """A job to be run by the scheduler"""
 
-    # Hide old failed jobs after 3 days
-    FAILED_CUTOFF_HOURS = 24 * 3
+    # UI/API: hide failed jobs older than this from listings (display filter only).
+    FAILED_JOBS_DISPLAY_MAX_HOURS = 24 * 3
+    # Reaper: revoke jobs in :meth:`JobState.running_states` whose ``updated_at``
+    # is older than this. A healthy async_api job bumps ``updated_at`` on every
+    # Redis SREM-driven progress save, so this is effectively "no progress for
+    # N minutes". 10 is conservative; raise if legitimate long-running jobs get
+    # reaped.
+    STALLED_JOBS_MAX_MINUTES = 10
+    # Zombie-stream reaper: age threshold above which a NATS stream for a job
+    # in a terminal state (or missing from Django) is considered safe to drop.
+    # Kept well above :attr:`STALLED_JOBS_MAX_MINUTES` so newly-dispatched jobs
+    # whose stream was created before ``transaction.on_commit`` saved the Job
+    # row do not get reaped. Tighten only if ``cleanup-on-cancel`` misses are
+    # still stranding consumer poll cycles after this safety net lands.
+    ZOMBIE_STREAMS_MAX_AGE_MINUTES = STALLED_JOBS_MAX_MINUTES * 6
 
     name = models.CharField(max_length=255)
     queue = models.CharField(max_length=255, default="default")
@@ -783,6 +893,12 @@ class Job(BaseModel):
         blank=True,
         related_name="jobs",
     )
+    dispatch_mode = models.CharField(
+        max_length=32,
+        choices=JobDispatchMode.choices,
+        default=JobDispatchMode.INTERNAL,
+        help_text="How the job dispatches its workload: internal, sync_api, or async_api.",
+    )
 
     def __str__(self) -> str:
         return f'#{self.pk} "{self.name}" ({self.status})'
@@ -829,6 +945,15 @@ class Job(BaseModel):
             self.progress.add_stage_param(delay_stage.key, "Mood", "😴")
 
         if self.pipeline:
+            # Set dispatch mode based on project feature flags at creation time
+            # so the UI can show the correct mode before the job runs.
+            # Only override if still at the default (INTERNAL), to allow explicit overrides.
+            if self.dispatch_mode == JobDispatchMode.INTERNAL:
+                if self.project and self.project.feature_flags.async_pipeline_workers:
+                    self.dispatch_mode = JobDispatchMode.ASYNC_API
+                else:
+                    self.dispatch_mode = JobDispatchMode.SYNC_API
+
             collect_stage = self.progress.add_stage("Collect")
             self.progress.add_stage_param(collect_stage.key, "Total Images", "")
 
@@ -871,18 +996,27 @@ class Job(BaseModel):
 
     def cancel(self):
         """
-        Terminate the celery task.
+        Cancel a job. For async_api jobs, clean up NATS/Redis resources
+        and transition through CANCELING → REVOKED. For other jobs,
+        revoke the Celery task.
         """
         self.status = JobState.CANCELING
         self.save()
+
         if self.task_id:
             task = run_job.AsyncResult(self.task_id)
             if task:
                 task.revoke(terminate=True)
+            if self.dispatch_mode == JobDispatchMode.ASYNC_API:
+                # For async jobs we need to set the status to revoked here since the task already
+                # finished (it only queues the images).
+                self.status = JobState.REVOKED
                 self.save()
         else:
             self.status = JobState.REVOKED
             self.save()
+
+        cleanup_async_job_if_needed(self)
 
     def update_status(self, status=None, save=True):
         """
@@ -916,14 +1050,21 @@ class Job(BaseModel):
         else:
             for stage in self.progress.stages:
                 if stage.progress > 0 and stage.status == JobState.CREATED:
-                    # Update any stages that have started but are still in the CREATED state
+                    # Promote stages that have started but are still in the CREATED state.
                     stage.status = JobState.STARTED
-                elif stage.status in JobState.final_states() and stage.progress < 1:
-                    # Update any stages that are complete but have a progress less than 1
-                    stage.progress = 1
                 elif stage.progress == 1 and stage.status not in JobState.final_states():
-                    # Update any stages that are complete but are still in the STARTED state
+                    # Promote stages that have measured-100% progress but are still STARTED.
                     stage.status = JobState.SUCCESS
+                # Note: do NOT coerce ``stage.progress = 1`` when status is in a
+                # final state but progress < 1. That branch used to fire when
+                # ``_update_job_progress`` wrote ``status=FAILURE`` at partial
+                # progress (e.g. failed/total temporarily crossed FAILURE_THRESHOLD
+                # early in an async_api job). The save-time coercion silently
+                # bumped progress to 100%, which made ``is_complete()`` return True
+                # and triggered premature ``cleanup_async_job_resources`` while
+                # NATS was still delivering results. Progress is a measurement;
+                # leave it alone. Stuck jobs are reaped by ``check_stale_jobs``
+                # via ``Job.STALLED_JOBS_MAX_MINUTES``.
             total_progress = sum([stage.progress for stage in self.progress.stages]) / len(self.progress.stages)
 
         self.progress.summary.progress = total_progress
@@ -989,11 +1130,15 @@ class Job(BaseModel):
     def logger(self) -> logging.Logger:
         _logger = logging.getLogger(f"ami.jobs.{self.pk}")
 
-        # Only add JobLogHandler if not already present
-        if not any(isinstance(h, JobLogHandler) for h in _logger.handlers):
-            # Also log output to a field on thie model instance
+        # Update or add JobLogHandler, always pointing to the current instance.
+        # The logger is a process-level singleton so its handler may reference a stale
+        # job instance from a previous task execution in this worker process.
+        handler = next((h for h in _logger.handlers if isinstance(h, JobLogHandler)), None)
+        if handler is None:
             logger.info("Adding JobLogHandler to logger for job %s", self.pk)
             _logger.addHandler(JobLogHandler(self))
+        else:
+            handler.job = self
         _logger.propagate = False
         return _logger
 

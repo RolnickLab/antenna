@@ -1,7 +1,6 @@
 import { FilterControl } from 'components/filtering/filter-control'
 import { FilterSection } from 'components/filtering/filter-section'
 import { useSessions } from 'data-services/hooks/sessions/useSessions'
-import { IconType } from 'design-system/components/icon/icon'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
 import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
@@ -9,6 +8,7 @@ import { SortControl } from 'design-system/components/sort-control'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
+import { Grid2X2Icon, TableIcon } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'
@@ -44,6 +44,7 @@ export const Sessions = () => {
     filters,
   })
   const { selectedView, setSelectedView } = useSelectedView('table')
+  const tableColumns = columns({ projectId: projectId as string })
 
   return (
     <>
@@ -66,24 +67,20 @@ export const Sessions = () => {
                 {
                   value: 'table',
                   label: translate(STRING.TAB_ITEM_TABLE),
-                  icon: IconType.TableView,
+                  Icon: TableIcon,
                 },
                 {
                   value: 'gallery',
                   label: translate(STRING.TAB_ITEM_GALLERY),
-                  icon: IconType.GalleryView,
+                  Icon: Grid2X2Icon,
                 },
               ]}
               value={selectedView}
               onValueChange={setSelectedView}
             />
-            <SortControl
-              columns={columns(projectId as string)}
-              setSort={setSort}
-              sort={sort}
-            />
+            <SortControl columns={tableColumns} setSort={setSort} sort={sort} />
             <ColumnSettings
-              columns={columns(projectId as string)}
+              columns={tableColumns}
               columnSettings={columnSettings}
               onColumnSettingsChange={setColumnSettings}
             />
@@ -93,7 +90,7 @@ export const Sessions = () => {
               error={error}
               items={sessions}
               isLoading={isLoading}
-              columns={columns(projectId as string).filter(
+              columns={tableColumns.filter(
                 (column) => !!columnSettings[column.id]
               )}
               sortable

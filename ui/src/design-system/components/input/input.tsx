@@ -1,18 +1,21 @@
 import classNames from 'classnames'
 import _ from 'lodash'
+import { CheckIcon, EyeIcon, PenIcon, XIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import {
   ChangeEvent,
   CSSProperties,
   FocusEvent,
   forwardRef,
   ReactNode,
+  useMemo,
   useState,
 } from 'react'
 import { Link } from 'react-router-dom'
+import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
-import { IconButton, IconButtonTheme } from '../icon-button/icon-button'
-import { IconType } from '../icon/icon'
-import { Tooltip } from '../tooltip/tooltip'
+import { InfoTooltip } from '../info-tooltip'
+import { BasicTooltip } from '../tooltip/basic-tooltip'
 import styles from './input.module.scss'
 
 interface InputProps {
@@ -55,7 +58,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className={styles.container}>
         <div className={styles.labelRow}>
-          <label className={styles.label} htmlFor={name}>
+          <label className="body-small font-semibold" htmlFor={name}>
             {label}
           </label>
           {hasError ? (
@@ -85,17 +88,23 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           />
           {initialType === 'password' && !disabled ? (
             <div className={styles.passwordButtonContainer}>
-              <Tooltip
+              <BasicTooltip
+                align="end"
+                asChild
                 content={`${type === 'password' ? 'Show' : 'Hide'} password`}
               >
-                <IconButton
-                  icon={IconType.BatchId}
-                  theme={IconButtonTheme.Plain}
+                <Button
+                  aria-label={type === 'password' ? 'Show' : 'Hide'}
                   onClick={() =>
                     setType(type === 'password' ? 'text' : 'password')
                   }
-                />
-              </Tooltip>
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <EyeIcon className="w-4 h-4" />
+                </Button>
+              </BasicTooltip>
             </div>
           ) : null}
         </div>
@@ -113,23 +122,40 @@ export const InputValue = ({
   label,
   value,
   to,
+  tooltip,
 }: {
   label: string
-  value?: string | number
+  value?: string | number | Date
   to?: string
+  tooltip?: {
+    text: string
+    link?: {
+      text: string
+      to: string
+    }
+  }
 }) => {
-  const valueLabel =
-    value === undefined || value === ''
-      ? translate(STRING.VALUE_NOT_AVAILABLE)
-      : _.isNumber(value)
-      ? value.toLocaleString()
-      : value
+  const valueLabel = useMemo(() => {
+    if (value === undefined || value === '') {
+      return translate(STRING.VALUE_NOT_AVAILABLE)
+    }
+
+    if (_.isNumber(value)) {
+      return value.toLocaleString()
+    }
+
+    if (_.isDate(value)) {
+      return getFormatedDateTimeString({ date: value })
+    }
+
+    return value
+  }, [value])
 
   return (
-    <InputContent label={label}>
+    <InputContent label={label} tooltip={tooltip}>
       {to ? (
-        <Link to={to} className={classNames(styles.value, styles.link)}>
-          {value}
+        <Link to={to} className="body-small text-primary font-semibold">
+          {valueLabel}
         </Link>
       ) : (
         <span className="body-small text-muted-foreground">{valueLabel}</span>
@@ -139,17 +165,25 @@ export const InputValue = ({
 }
 
 export const InputContent = ({
+  children,
   description,
   error,
   label,
   style,
-  children,
+  tooltip,
 }: {
+  children?: ReactNode
   description?: string
   error?: string
   label: string
   style?: CSSProperties
-  children?: ReactNode
+  tooltip?: {
+    text: string
+    link?: {
+      text: string
+      to: string
+    }
+  }
 }) => {
   const hasError = !!error?.length
   const hasDescription = !!description?.length
@@ -157,7 +191,10 @@ export const InputContent = ({
   return (
     <div className={styles.container} style={style}>
       <div className={styles.labelRow}>
-        <span className={styles.label}>{label}</span>
+        <div className="flex items-center gap-1">
+          <span className="pt-0.5 body-small font-semibold">{label}</span>
+          {tooltip ? <InfoTooltip {...tooltip} /> : null}
+        </div>
         {hasError ? <span className={styles.error}>{error}</span> : undefined}
       </div>
       <div className={styles.content}>{children}</div>
@@ -183,8 +220,8 @@ export const LockedInput = ({
 }) => (
   <div className={styles.lockedInputContainer}>
     <div className={styles.editButtonContainer}>
-      <IconButton
-        icon={editing ? IconType.Cross : IconType.Pencil}
+      <Button
+        aria-label={editing ? translate(STRING.CANCEL) : translate(STRING.EDIT)}
         onClick={() => {
           if (editing) {
             setEditing(false)
@@ -193,15 +230,29 @@ export const LockedInput = ({
             setEditing(true)
           }
         }}
-      />
+        size="icon"
+        type="button"
+        variant="ghost"
+      >
+        {editing ? (
+          <XIcon className="w-4 h-4" />
+        ) : (
+          <PenIcon className="w-4 h-4" />
+        )}
+      </Button>
       {editing && (
-        <IconButton
-          icon={IconType.RadixCheck}
+        <Button
+          aria-label={translate(STRING.CONFIRM)}
           onClick={() => {
             setEditing(false)
             onSubmit()
           }}
-        />
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <CheckIcon className="w-4 h-4" />
+        </Button>
       )}
     </div>
 
@@ -221,7 +272,15 @@ export const EditableInput = ({
   <div className={styles.lockedInputContainer}>
     <div className={styles.editButtonContainer}>
       {!editing && (
-        <IconButton icon={IconType.Pencil} onClick={() => onEdit()} />
+        <Button
+          aria-label={translate(STRING.EDIT)}
+          onClick={() => onEdit()}
+          size="icon"
+          type="button"
+          variant="ghost"
+        >
+          <PenIcon className="w-4 h-4" />
+        </Button>
       )}
     </div>
     {children}

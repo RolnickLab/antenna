@@ -1,15 +1,15 @@
 import classNames from 'classnames'
-import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { ArrowDownIcon, InfoIcon } from 'lucide-react'
 import { TableColumn, TableSortSettings } from '../types'
 import styles from './table-header.module.scss'
 
 interface TableHeaderProps<T> {
   column: TableColumn<T>
+  onSortClick: () => void
   sortable?: boolean
   sortSettings?: TableSortSettings
   visuallyHidden?: boolean
-  onSortClick: () => void
 }
 
 export const TableHeader = <T,>({
@@ -37,15 +37,17 @@ const BasicTableHeader = <T,>({
   column,
   visuallyHidden,
 }: Omit<TableHeaderProps<T>, 'sortSettings' | 'onSortClick'>) => (
-  <Tooltip content={column.tooltip}>
-    <th
-      key={column.id}
-      style={{
-        textAlign: column.styles?.textAlign,
-        width: column.styles?.width,
-      }}
-      className={styles.tableHeader}
-    >
+  <th
+    key={column.id}
+    style={{
+      textAlign: column.styles?.textAlign,
+      width: column.styles?.width,
+    }}
+    className={classNames(styles.tableHeader, {
+      [styles.sticky]: column.sticky,
+    })}
+  >
+    <BasicTooltip asChild content={column.tooltip}>
       <div
         className={classNames(styles.content, {
           [styles.visuallyHidden]: visuallyHidden,
@@ -56,20 +58,20 @@ const BasicTableHeader = <T,>({
           <span>{column.name}</span>
           {column.tooltip ? (
             <div className={styles.iconWrapper}>
-              <Icon type={IconType.Info} theme={IconTheme.Neutral} />
+              <InfoIcon className="w-4 h-4 text-muted-foreground" />
             </div>
           ) : null}
         </div>
       </div>
-    </th>
-  </Tooltip>
+    </BasicTooltip>
+  </th>
 )
 
 const SortableTableHeader = <T,>({
   column,
+  onSortClick,
   sortSettings,
   visuallyHidden,
-  onSortClick,
 }: TableHeaderProps<T>) => {
   const sortActive = sortSettings?.field === column.sortField
 
@@ -87,9 +89,10 @@ const SortableTableHeader = <T,>({
       style={{ textAlign: column.styles?.textAlign }}
       className={classNames(styles.tableHeader, {
         [styles.active]: sortActive,
+        [styles.sticky]: column.sticky,
       })}
     >
-      <Tooltip content={column.tooltip}>
+      <BasicTooltip asChild content={column.tooltip}>
         <button
           className={classNames(styles.content, styles.sortButton, {
             [styles.visuallyHidden]: visuallyHidden,
@@ -101,7 +104,7 @@ const SortableTableHeader = <T,>({
             <span>{column.name}</span>
             {column.tooltip && !sortActive ? (
               <div className={styles.iconWrapper}>
-                <Icon type={IconType.Info} theme={IconTheme.Neutral} />
+                <InfoIcon className="w-4 h-4 text-muted-foreground" />
               </div>
             ) : null}
             {sortActive ? (
@@ -111,12 +114,12 @@ const SortableTableHeader = <T,>({
                     sortActive && sortSettings?.order === 'asc',
                 })}
               >
-                <Icon type={IconType.Sort} theme={IconTheme.Neutral} />
+                <ArrowDownIcon className="w-4 h-4 text-muted-foreground" />
               </div>
             ) : null}
           </div>
         </button>
-      </Tooltip>
+      </BasicTooltip>
     </th>
   )
 }

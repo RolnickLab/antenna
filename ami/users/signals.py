@@ -1,14 +1,44 @@
 import logging
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 from django.contrib.auth.models import Group
 from django.db import transaction
 from django.db.models.signals import m2m_changed
 from django.dispatch import receiver
 
-from ami.main.models import Project
+from ami.main.models import Project, UserProjectMembership
 from ami.users.roles import Role, create_roles_for_project
 
 logger = logging.getLogger(__name__)
+
+# Thread-safe flag to suppress the manage_project_membership signal handler.
+# When True, the handler returns early without creating/deleting memberships.
+#
+# Why not just disconnect/reconnect the signal?
+# Django signals are global (process-wide). Disconnecting in a request handler
+# suppresses the signal for ALL concurrent requests in the same process, not
+# just the current one. Under concurrent load (gunicorn threads, async workers),
+# another request's group changes would silently skip the handler, leaving
+# users in permission groups without corresponding UserProjectMembership records.
+# ContextVar is scoped to the current thread/coroutine, so suppression only
+# affects the caller that requested it.
+_skip_membership_signal: ContextVar[bool] = ContextVar("_skip_membership_signal", default=False)
+
+
+@contextmanager
+def suppress_membership_signal():
+    """Suppress manage_project_membership for the current thread/coroutine.
+
+    Use this when managing memberships and roles directly (e.g., in API views)
+    so the signal doesn't interfere by creating/deleting memberships in response
+    to the group changes you're making intentionally.
+    """
+    token = _skip_membership_signal.set(True)
+    try:
+        yield
+    finally:
+        _skip_membership_signal.reset(token)
 
 
 def create_roles(sender, **kwargs):
@@ -32,16 +62,27 @@ def create_roles(sender, **kwargs):
 def manage_project_membership(sender, instance, action, reverse, model, pk_set, **kwargs):
     """
     When a user is added/removed from a permissions group, update project members accordingly.
-
     """
     if action not in ["post_add", "post_remove"]:
-        return  # Only handle add and remove actions
+        return
 
-    # Temporarily disconnect the signal before updating project.members to prevent infinite recursion.
-    m2m_changed.disconnect(manage_project_membership, sender=Group.user_set.through)
-    logger.debug("Disconnecting signal to prevent infinite recursion.")
-    try:
-        with transaction.atomic():  # Ensure DB consistency
+    # This handler expects instance=User, pk_set=Group PKs, which is the case
+    # when reverse=False (called via user.groups.add/remove()). All callers go through
+    # Role.assign_user and Role.unassign_user. When reverse=True (group.user_set.add/remove()),
+    # instance is a Group and pk_set contains User PKs, which would break lookups below.
+    if reverse:
+        return
+
+    if _skip_membership_signal.get():
+        logger.debug("Skipping manage_project_membership (suppressed by caller).")
+        return
+
+    # Suppress re-entrancy: Role.assign_user (called elsewhere, e.g. from
+    # set_project_members_permissions in main/signals.py) modifies Group.user_set,
+    # which would fire this handler again. The suppression is scoped to this
+    # thread only via ContextVar — other concurrent requests are unaffected.
+    with suppress_membership_signal():
+        with transaction.atomic():
             for group in Group.objects.filter(pk__in=pk_set):
                 # @TODO : Refactor after adding the project <-> Group formal relationship
                 parts = group.name.split("_")  # Expected format: {project_id}_{project_name}_{Role}
@@ -55,19 +96,14 @@ def manage_project_membership(sender, instance, action, reverse, model, pk_set, 
 
                 user = instance
                 if action == "post_add":
-                    # Add user to project members if not already in
-                    if not project.members.filter(id=user.id).exists():
-                        project.members.add(user)
+                    _, created = UserProjectMembership.objects.get_or_create(project=project, user=user)
+                    if created:
                         logger.info(f"Added {user.email} to project {project.name} members.")
+                    else:
+                        logger.info(f"User {user.email} already a member of project {project.name}.")
 
                 elif action == "post_remove":
-                    # Check if user still has any role in this project and they exist in the project members
                     has_any_role = Role.user_has_any_role(user, project)
-                    if not has_any_role and project.members.filter(id=user.id).exists():
-                        project.members.remove(user)
-                        logger.info(f"Removed {user.email} from project {project.name} members (no remaining roles).")
-
-    finally:
-        # Reconnect the signal after updating members
-        m2m_changed.connect(manage_project_membership, sender=Group.user_set.through)
-        logger.debug("Reconnecting signal after updating project members.")
+                    if not has_any_role:
+                        UserProjectMembership.objects.filter(project=project, user=user).delete()
+                        logger.info(f"Removed {user.email} from project {project.name} members")

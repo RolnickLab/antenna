@@ -16,6 +16,7 @@ services:
       - "db:${DATABASE_IP}"
       - "rabbitmq:${RABBITMQ_IP}"
       - "redis:${REDIS_IP}"
+      - "nats:${NATS_IP}"
     command: /start
     scale: 0  # We don't need the Django service running, but we inherit the worker settings from it.
     restart: always

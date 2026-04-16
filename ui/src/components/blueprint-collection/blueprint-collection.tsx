@@ -1,10 +1,10 @@
 import classNames from 'classnames'
 import { LicenseInfo } from 'components/license-info/license-info'
-import { Icon, IconType } from 'design-system/components/icon/icon'
-import { EyeIcon } from 'lucide-react'
-import { buttonVariants, Tooltip } from 'nova-ui-kit'
+import { ChevronRightIcon } from 'lucide-react'
+import { buttonVariants } from 'nova-ui-kit'
 import { ReactNode, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { STRING, translate } from 'utils/language'
 import styles from './blueprint-collection.module.scss'
 
 export interface BlueprintItem {
@@ -53,17 +53,11 @@ export const BlueprintItem = ({
   return (
     <div className={classNames(styles.blueprintItem, 'group')}>
       <div className={styles.blueprintInfo} style={{ width: size.width }}>
-        {item.countLabel?.length ? (
-          <span className={styles.count}>
-            <Icon type={IconType.Detections} size={12} />
-            <span>{item.countLabel}</span>
-          </span>
-        ) : null}
         <span className="grow text-muted-foreground text-right">
           {item.timeLabel}
         </span>
       </div>
-      <div className={styles.blueprintImage}>
+      <div className="flex flex-col items-center gap-2">
         <img
           src={item.image.src}
           alt=""
@@ -77,34 +71,15 @@ export const BlueprintItem = ({
           }}
         />
         {item.to ? (
-          <Tooltip.Provider delayDuration={0}>
-            <Tooltip.Root>
-              <Tooltip.Trigger asChild>
-                <Link
-                  to={item.to}
-                  className={classNames(
-                    buttonVariants({ size: 'icon', variant: 'outline' }),
-                    'hidden w-8 h-8 absolute right-2 bottom-2 group-hover:flex'
-                  )}
-                >
-                  <EyeIcon className="w-4 h-4" />
-                </Link>
-              </Tooltip.Trigger>
-              <Tooltip.Content side="bottom">
-                <span>Show in session capture</span>
-              </Tooltip.Content>
-            </Tooltip.Root>
-          </Tooltip.Provider>
+          <Link
+            className={buttonVariants({ size: 'small', variant: 'ghost' })}
+            to={item.to}
+          >
+            <span>{translate(STRING.VIEW_IN_SESSION)}</span>
+            <ChevronRightIcon className="w-4 h-4" />
+          </Link>
         ) : null}
       </div>
-      <span
-        className={classNames(
-          styles.blueprintLabel,
-          'body-small text-foreground'
-        )}
-      >
-        {item.label}
-      </span>
     </div>
   )
 }

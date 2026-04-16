@@ -15,12 +15,21 @@ def process_source_images_async(pipeline_choice: str, endpoint_url: str, image_i
     from ami.ml.models.pipeline import Pipeline, process_images, save_results
 
     job = None
-    try:
-        job = Job.objects.get(pk=job_id)
-        job.logger.info(f"Processing {len(image_ids)} images for job {job}")
-    except Job.DoesNotExist as e:
-        logger.error(f"Job {job_id} not found: {e}")
-        pass
+    reprocess_all_images = False
+    if job_id is not None:
+        try:
+            job = Job.objects.get(pk=job_id)
+            reprocess_all_images = job.project.feature_flags.reprocess_all_images
+            job.logger.info(
+                f"Processing {len(image_ids)} images for job {job} (reprocess_all_images={reprocess_all_images})"
+            )
+        except Job.DoesNotExist as e:
+            logger.error(f"Job {job_id} not found: {e}")
+
+    else:
+        logger.info(
+            f"Processing {len(image_ids)} images for job_id=None (reprocess_all_images={reprocess_all_images})"
+        )
 
     images = SourceImage.objects.filter(pk__in=image_ids)
     pipeline = Pipeline.objects.get(slug=pipeline_choice)
@@ -30,6 +39,7 @@ def process_source_images_async(pipeline_choice: str, endpoint_url: str, image_i
         endpoint_url=endpoint_url,
         images=images,
         job_id=job_id,
+        reprocess_all_images=reprocess_all_images,
     )
 
     try:
@@ -85,24 +95,49 @@ def remove_duplicate_classifications(project_id: int | None = None, dry_run: boo
     return num_deleted
 
 
-@celery_app.task(soft_time_limit=10, time_limit=20)
+# Timeout per sync service in the periodic beat task. Shorter than the default (90s for
+# cold-start waits) since a missed check just waits for the next beat cycle.
+# Worst case: 4 attempts (initial + 3 retries) × 8s timeout + backoff (0 + 2 + 4) = 38s per service.
+_BEAT_STATUS_TIMEOUT = 8
+
+# Discard queued copies that built up while the worker was unavailable — the next
+# beat firing will pick things up fresh. Beat schedule is every 5 minutes.
+_BEAT_TASK_EXPIRES = 240
+
+
+@celery_app.task(soft_time_limit=120, time_limit=150, expires=_BEAT_TASK_EXPIRES)
 def check_processing_services_online():
     """
-    Check the status of all processing services and update last checked.
+    Check the status of all processing services and update last_seen/last_seen_live fields.
 
-    @TODO make this async to check all services in parallel
+    - Async services (no endpoint URL): heartbeat is updated by mark_seen() on registration
+      and by _mark_pipeline_pull_services_seen() on task polling. This task marks them offline
+      if last_seen has exceeded PROCESSING_SERVICE_LAST_SEEN_MAX. Runs first so it always
+      executes even if a slow sync check hits the time limit.
+    - Sync services (endpoint URL set): checked sequentially with a short per-request timeout.
+      Safe to skip a cycle — the next beat firing will catch up.
     """
-    from ami.ml.models import ProcessingService
+    import datetime
 
-    logger.info("Checking if processing services are online.")
+    from ami.ml.models.processing_service import PROCESSING_SERVICE_LAST_SEEN_MAX, ProcessingService
 
-    services = ProcessingService.objects.all()
+    logger.info("Checking which processing services are online.")
 
-    for service in services:
-        logger.info(f"Checking service {service}")
+    # Async services first — fast DB-only operation, must not be blocked by sync checks
+    stale_cutoff = datetime.datetime.now() - PROCESSING_SERVICE_LAST_SEEN_MAX
+    stale = ProcessingService.objects.async_services().filter(last_seen_live=True, last_seen__lt=stale_cutoff)
+    count = stale.count()
+    if count:
+        logger.info(
+            f"Marking {count} async service(s) offline (no heartbeat within {PROCESSING_SERVICE_LAST_SEEN_MAX})."
+        )
+        stale.update(last_seen_live=False)
+
+    for service in ProcessingService.objects.sync_services():
+        logger.info(f"Checking push-mode service {service}")
         try:
-            status_response = service.get_status()
+            status_response = service.get_status(timeout=_BEAT_STATUS_TIMEOUT)
             logger.debug(status_response)
-        except Exception as e:
-            logger.error(f"Error checking service {service}: {e}")
+        except Exception:
+            logger.exception("Error checking service %s", service)
             continue
