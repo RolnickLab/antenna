@@ -6,6 +6,7 @@ import textwrap
 import time
 import typing
 import urllib.parse
+import zoneinfo
 from io import BytesIO
 from typing import Final, final  # noqa: F401
 
@@ -682,6 +683,22 @@ def _compare_totals_for_sync(deployment: "Deployment", total_files_found: int):
         )
 
 
+def validate_time_zone(value):
+    """Validate that value is a recognized IANA time zone identifier."""
+    if not isinstance(value, str) or not value:
+        raise ValidationError("Time zone must be a non-empty string.")
+    cleaned = value.strip()
+    if cleaned != value:
+        raise ValidationError("Time zone must not contain leading or trailing whitespace.")
+    try:
+        zoneinfo.ZoneInfo(cleaned)
+    except (KeyError, zoneinfo.ZoneInfoNotFoundError) as exc:
+        raise ValidationError(
+            "%(value)s is not a valid IANA time zone.",
+            params={"value": value},
+        ) from exc
+
+
 @final
 class Deployment(BaseModel):
     """
@@ -692,6 +709,12 @@ class Deployment(BaseModel):
     description = models.TextField(blank=True)
     latitude = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
+    time_zone = models.CharField(
+        max_length=63,
+        default=settings.TIME_ZONE,
+        validators=[validate_time_zone],
+        help_text="IANA time zone identifier (e.g. 'America/New_York', 'Europe/London').",
+    )
     image = models.ImageField(upload_to="deployments", blank=True, null=True)
 
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="deployments")
