@@ -35,6 +35,21 @@ from .serializers import JobListSerializer, JobSerializer, MinimalJobSerializer
 logger = logging.getLogger(__name__)
 
 
+def _actor_log_context(request) -> tuple[str, str | None]:
+    """
+    Return (user_desc, token_fingerprint) for use in per-job log lines.
+
+    token_fingerprint is the first 8 chars of Token.pk followed by an ellipsis.
+    Under DRF TokenAuthentication, Token.pk IS the 40-char bearer secret, so we
+    must never write the full value to job logs (readable by all project members).
+    Returns None for token_fingerprint when no auth token is present.
+    """
+    user_desc = getattr(request.user, "email", None) or str(request.user)
+    token_id = getattr(request.auth, "pk", None)
+    token_fingerprint = f"{str(token_id)[:8]}…" if token_id is not None else None
+    return user_desc, token_fingerprint
+
+
 def _mark_pipeline_pull_services_seen(job: "Job") -> None:
     """
     Record a heartbeat for async (pull-mode) processing services linked to the job's pipeline.
@@ -267,8 +282,17 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         if job.dispatch_mode != JobDispatchMode.ASYNC_API:
             raise ValidationError("Only async_api jobs have fetchable tasks")
 
-        # Only serve tasks for actively processing jobs
+        user_desc, token_fingerprint = _actor_log_context(request)
+
+        # Only serve tasks for actively processing jobs. Logging the early-exit
+        # makes "phantom-pull" workers (polling against terminal jobs whose NATS
+        # stream still exists) visible from the per-job log view.
         if job.status not in JobState.active_states():
+            token_suffix = f", token_id={token_fingerprint}" if token_fingerprint is not None else ""
+            job.logger.info(
+                f"Tasks requested for non-active job (status={job.status}); returning empty. "
+                f"user={user_desc}{token_suffix}"
+            )
             return Response({"tasks": []})
 
         # Validate that the job has a pipeline
@@ -288,9 +312,18 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         try:
             tasks = async_to_sync(get_tasks)()
         except (asyncio.TimeoutError, OSError, nats.errors.Error) as e:
-            logger.warning("NATS unavailable while fetching tasks for job %s: %s", job.pk, e)
+            msg = f"NATS unavailable while fetching tasks for job {job.pk}: {e}"
+            logger.warning(msg)
+            token_suffix = f", token_id={token_fingerprint}" if token_fingerprint is not None else ""
+            job.logger.warning(f"{msg} user={user_desc}{token_suffix}")
             return Response({"error": "Task queue temporarily unavailable"}, status=503)
 
+        token_suffix = f", token_id={token_fingerprint}" if token_fingerprint is not None else ""
+        fetch_msg = f"Tasks fetched: requested={batch_size}, delivered={len(tasks)}, user={user_desc}{token_suffix}"
+        if len(tasks) > 0:
+            job.logger.info(fetch_msg)
+        else:
+            job.logger.debug(fetch_msg)
         return Response({"tasks": tasks})
 
     @extend_schema(
@@ -312,6 +345,8 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
 
         # Record heartbeat for async processing services on this pipeline
         _mark_pipeline_pull_services_seen(job)
+
+        user_desc, token_fingerprint = _actor_log_context(request)
 
         serializer = MLJobResultsRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -343,6 +378,14 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
                     job.pk,
                     task.id,
                     reply_subject,
+                )
+                # Mirror to per-job logger so the job log view shows result-POST
+                # activity alongside task-fetch activity. Module-logger line above
+                # stays for ops-level monitoring outside the per-job context.
+                token_suffix = f", token_id={token_fingerprint}" if token_fingerprint is not None else ""
+                job.logger.info(
+                    f"Queued pipeline result: task_id={task.id}, reply_subject={reply_subject}, "
+                    f"user={user_desc}{token_suffix}"
                 )
 
             return Response(

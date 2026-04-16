@@ -338,6 +338,65 @@ def _get_current_counts_from_job_progress(job, stage: str) -> tuple[int, int, in
         return 0, 0, 0
 
 
+def _format_elapsed(seconds: float) -> str:
+    """Render a duration as `Hh Mm Ss` (hours omitted when zero)."""
+    total = max(0, int(seconds))
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    if h > 0:
+        return f"{h}h {m:02d}m {s:02d}s"
+    return f"{m}m {s:02d}s"
+
+
+def _log_job_throughput(job, stage: str) -> None:
+    """
+    Emit a per-job throughput/ETA line so operators can distinguish stalled-vs-slow
+    vs healthy-but-throttled jobs at a glance in the per-job log view.
+
+    Intentionally a plain division over total elapsed time, not a rolling-window
+    estimate or forecast — accurate enough to spot a stall, cheap to compute, and
+    easy to interpret from a single log line.
+    """
+    if stage not in ("process", "results"):
+        return
+    if not job.started_at:
+        return
+    elapsed_seconds = (datetime.datetime.now() - job.started_at).total_seconds()
+    elapsed_minutes = elapsed_seconds / 60.0
+    if elapsed_minutes < 0.05:
+        # Ratio over <3s of elapsed time is noise, not signal.
+        return
+
+    # The process stage holds the authoritative processed/remaining counts
+    # (results stage only tracks detection/classification/capture counts).
+    try:
+        process_stage = job.progress.get_stage("process")
+    except (ValueError, AttributeError):
+        return
+
+    processed = 0
+    remaining = 0
+    for param in getattr(process_stage, "params", []) or []:
+        if param.key == "processed":
+            processed = param.value or 0
+        elif param.key == "remaining":
+            remaining = param.value or 0
+    total = processed + remaining
+
+    if processed == 0:
+        rate_str = "rate=0.0 imgs/min, ETA=unknown"
+    else:
+        rate = processed / elapsed_minutes
+        remaining_imgs = max(0, total - processed)
+        eta_seconds = (remaining_imgs / rate) * 60.0 if rate > 0 else 0.0
+        rate_str = f"rate={rate:.1f} imgs/min, ETA={_format_elapsed(eta_seconds)}"
+
+    job.logger.info(
+        f"Job {job.pk} throughput: elapsed={_format_elapsed(elapsed_seconds)}, "
+        f"processed={processed}/{total}, {rate_str}"
+    )
+
+
 def _update_job_progress(
     job_id: int, stage: str, progress_percentage: float, complete_state: "JobState", **state_params
 ) -> None:
@@ -412,6 +471,10 @@ def _update_job_progress(
             job.finished_at = datetime.datetime.now()  # Use naive datetime in local time
         job.logger.info(f"Updated job {job_id} progress in stage '{stage}' to {progress_percentage*100}%")
         job.save()
+        try:
+            _log_job_throughput(job, stage)
+        except Exception as e:
+            logger.warning("Throughput log failed for job %s: %s", job_id, e)
 
     # Clean up async resources for completed jobs that use NATS/Redis
     if job.progress.is_complete():
@@ -714,7 +777,10 @@ def update_job_status(sender, task_id, task, state: str, retval=None, **kwargs):
     # SUCCESS should only be set when all stages are actually complete
     # This prevents premature SUCCESS when async workers are still processing
     if state == JobState.SUCCESS and not job.progress.is_complete():
-        job.logger.info(
+        # DEBUG — fires on every async_api task_postrun (Celery task ends when
+        # images are queued; async workers drive the actual stages afterward).
+        # Always true under normal operation, so not informative at INFO.
+        job.logger.debug(
             f"Job {job.pk} task completed but stages not finished - " "deferring SUCCESS status to progress handler"
         )
         return

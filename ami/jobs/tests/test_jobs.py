@@ -602,6 +602,277 @@ class TestJobView(APITestCase):
         resp = self.client.post(result_url, bare_list, format="json")
         self.assertEqual(resp.status_code, 400)
 
+    def test_tasks_endpoint_logs_fetch_to_job_logger(self):
+        """Successful task-fetch lands a 'Tasks fetched' line on the per-job logger."""
+        pipeline = self._create_pipeline()
+        job = self._create_ml_job("Job for fetch-logging test", pipeline)
+        job.dispatch_mode = JobDispatchMode.ASYNC_API
+        job.status = JobState.STARTED
+        job.save(update_fields=["dispatch_mode", "status"])
+        images = [
+            SourceImage.objects.create(
+                path=f"fetchlog_{i}.jpg",
+                public_base_url="http://example.com",
+                project=self.project,
+            )
+            for i in range(3)
+        ]
+        queue_images_to_nats(job, images)
+
+        self.client.force_authenticate(user=self.user)
+        tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+        resp = self.client.post(tasks_url, {"batch_size": 2}, format="json")
+        self.assertEqual(resp.status_code, 200)
+
+        job.refresh_from_db()
+        joined = "\n".join(job.logs.stdout)
+        self.assertIn("Tasks fetched", joined)
+        self.assertIn("requested=2", joined)
+        self.assertIn("delivered=", joined)
+        self.assertIn(self.user.email, joined)
+
+    def test_tasks_endpoint_logs_early_exit_for_terminal_job(self):
+        """Polling a terminal-status job produces an empty response and a 'non-active job' log line."""
+        pipeline = self._create_pipeline()
+        job = self._create_ml_job("Job for early-exit log test", pipeline)
+        job.dispatch_mode = JobDispatchMode.ASYNC_API
+        job.status = JobState.SUCCESS
+        job.save(update_fields=["dispatch_mode", "status"])
+
+        self.client.force_authenticate(user=self.user)
+        tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+        resp = self.client.post(tasks_url, {"batch_size": 5}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), {"tasks": []})
+
+        job.refresh_from_db()
+        joined = "\n".join(job.logs.stdout)
+        self.assertIn("non-active job", joined)
+        self.assertIn(f"status={JobState.SUCCESS}", joined)
+
+    def test_result_endpoint_mirrors_queued_log_to_job_logger(self):
+        """The result endpoint mirrors its 'Queued pipeline result' line to the per-job logger."""
+        from unittest.mock import MagicMock, patch
+
+        pipeline = self._create_pipeline()
+        job = self._create_ml_job("Job for result-logging test", pipeline)
+
+        self.client.force_authenticate(user=self.user)
+        result_url = reverse_with_params("api:job-result", args=[job.pk], params={"project_id": self.project.pk})
+
+        result_data = {
+            "results": [
+                {
+                    "reply_subject": "test.reply.logged",
+                    "result": {
+                        "pipeline": "test-pipeline",
+                        "algorithms": {},
+                        "total_time": 0.1,
+                        "source_images": [],
+                        "detections": [],
+                        "errors": None,
+                    },
+                }
+            ]
+        }
+
+        # Keep the Celery task from actually running; the log line is emitted
+        # by the view before delegating to Celery.
+        mock_async_result = MagicMock()
+        mock_async_result.id = "mirrored-task-id"
+        with patch("ami.jobs.views.process_nats_pipeline_result.delay", return_value=mock_async_result):
+            resp = self.client.post(result_url, result_data, format="json")
+        self.assertEqual(resp.status_code, 200)
+
+        job.refresh_from_db()
+        joined = "\n".join(job.logs.stdout)
+        self.assertIn("Queued pipeline result", joined)
+        self.assertIn("mirrored-task-id", joined)
+        self.assertIn("test.reply.logged", joined)
+        self.assertIn(self.user.email, joined)
+
+    def test_tasks_fetch_log_uses_token_fingerprint_not_full_token(self):
+        """
+        Fix 1: token written to per-job logs is truncated to 8 chars + ellipsis,
+        never the full 40-char DRF bearer secret.
+        """
+        from rest_framework.authtoken.models import Token
+
+        pipeline = self._create_pipeline()
+        job = self._create_ml_job("Job for token-fingerprint test", pipeline)
+        job.dispatch_mode = JobDispatchMode.ASYNC_API
+        job.status = JobState.STARTED
+        job.save(update_fields=["dispatch_mode", "status"])
+        images = [
+            SourceImage.objects.create(
+                path=f"tokentest_{i}.jpg",
+                public_base_url="http://example.com",
+                project=self.project,
+            )
+            for i in range(2)
+        ]
+        queue_images_to_nats(job, images)
+
+        token, _ = Token.objects.get_or_create(user=self.user)
+        # Authenticate with the actual token object so request.auth.pk is set
+        self.client.force_authenticate(user=self.user, token=token)
+
+        tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+        resp = self.client.post(tasks_url, {"batch_size": 2}, format="json")
+        self.assertEqual(resp.status_code, 200)
+
+        job.refresh_from_db()
+        joined = "\n".join(job.logs.stdout)
+        # Full token key must NOT appear anywhere in logs
+        self.assertNotIn(token.key, joined)
+        # Fingerprint (first 8 chars + ellipsis) MUST appear
+        expected_fingerprint = f"{token.key[:8]}…"
+        self.assertIn(expected_fingerprint, joined)
+
+    def test_tasks_fetch_zero_delivered_does_not_log_to_stdout(self):
+        """
+        Fix 2: when delivered==0, the log line is emitted at DEBUG and must not
+        land in job.logs.stdout (JobLogHandler only captures INFO and above).
+        """
+        pipeline = self._create_pipeline()
+        job = self._create_ml_job("Job for zero-delivered test", pipeline)
+        job.dispatch_mode = JobDispatchMode.ASYNC_API
+        job.status = JobState.STARTED
+        job.save(update_fields=["dispatch_mode", "status"])
+        # Do NOT queue any images — NATS will return 0 tasks.
+
+        self.client.force_authenticate(user=self.user)
+        tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+        resp = self.client.post(tasks_url, {"batch_size": 5}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()["tasks"]), 0)
+
+        job.refresh_from_db()
+        # No Tasks fetched line should appear in stdout for a zero-delivery poll
+        joined = "\n".join(job.logs.stdout)
+        self.assertNotIn("Tasks fetched", joined)
+
+    def test_tasks_fetch_nonzero_delivered_logs_to_stdout(self):
+        """
+        Fix 2: when delivered>0, the log line is emitted at INFO and lands in
+        job.logs.stdout with the correct delivered count.
+        """
+        pipeline = self._create_pipeline()
+        job = self._create_ml_job("Job for nonzero-delivered test", pipeline)
+        job.dispatch_mode = JobDispatchMode.ASYNC_API
+        job.status = JobState.STARTED
+        job.save(update_fields=["dispatch_mode", "status"])
+        images = [
+            SourceImage.objects.create(
+                path=f"nonzero_{i}.jpg",
+                public_base_url="http://example.com",
+                project=self.project,
+            )
+            for i in range(3)
+        ]
+        queue_images_to_nats(job, images)
+
+        self.client.force_authenticate(user=self.user)
+        tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+        resp = self.client.post(tasks_url, {"batch_size": 3}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()["tasks"]), 3)
+
+        job.refresh_from_db()
+        joined = "\n".join(job.logs.stdout)
+        self.assertIn("Tasks fetched", joined)
+        self.assertIn("delivered=3", joined)
+
+
+class TestJobThroughputLogging(TestCase):
+    """Unit tests for _log_job_throughput (Task 3)."""
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Throughput Test Project")
+        self.pipeline = Pipeline.objects.create(name="Throughput Pipeline", slug="throughput-pipeline")
+        self.pipeline.projects.add(self.project)
+        self.job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Throughput job",
+            pipeline=self.pipeline,
+        )
+
+    def _seed_process_stage(self, processed: int, remaining: int) -> None:
+        self.job.progress.add_stage("process")
+        self.job.progress.update_stage(
+            "process",
+            progress=processed / max(1, processed + remaining),
+            status=JobState.STARTED,
+            processed=processed,
+            remaining=remaining,
+            failed=0,
+        )
+        self.job.save()
+
+    def test_throughput_line_is_well_formed(self):
+        import datetime
+
+        from ami.jobs.tasks import _log_job_throughput
+
+        self._seed_process_stage(processed=10, remaining=90)
+        self.job.started_at = datetime.datetime.now() - datetime.timedelta(minutes=5)
+        self.job.save(update_fields=["started_at"])
+
+        _log_job_throughput(self.job, "process")
+
+        self.job.refresh_from_db()
+        joined = "\n".join(self.job.logs.stdout)
+        self.assertIn("throughput", joined)
+        self.assertIn("processed=10/100", joined)
+        self.assertIn("rate=2.0 imgs/min", joined)
+        # ETA for 90 remaining at 2.0 imgs/min = 45 minutes
+        self.assertIn("ETA=45m", joined)
+
+    def test_throughput_skipped_when_started_at_is_none(self):
+        from ami.jobs.tasks import _log_job_throughput
+
+        self._seed_process_stage(processed=5, remaining=5)
+        self.assertIsNone(self.job.started_at)
+
+        _log_job_throughput(self.job, "process")
+
+        self.job.refresh_from_db()
+        joined = "\n".join(self.job.logs.stdout)
+        self.assertNotIn("throughput", joined)
+
+    def test_throughput_skipped_for_non_processing_stage(self):
+        import datetime
+
+        from ami.jobs.tasks import _log_job_throughput
+
+        self._seed_process_stage(processed=10, remaining=90)
+        self.job.started_at = datetime.datetime.now() - datetime.timedelta(minutes=5)
+        self.job.save(update_fields=["started_at"])
+
+        _log_job_throughput(self.job, "delay")
+
+        self.job.refresh_from_db()
+        joined = "\n".join(self.job.logs.stdout)
+        self.assertNotIn("throughput", joined)
+
+    def test_throughput_with_zero_processed_reports_unknown_eta(self):
+        import datetime
+
+        from ami.jobs.tasks import _log_job_throughput
+
+        self._seed_process_stage(processed=0, remaining=50)
+        self.job.started_at = datetime.datetime.now() - datetime.timedelta(minutes=5)
+        self.job.save(update_fields=["started_at"])
+
+        _log_job_throughput(self.job, "process")
+
+        self.job.refresh_from_db()
+        joined = "\n".join(self.job.logs.stdout)
+        self.assertIn("processed=0/50", joined)
+        self.assertIn("rate=0.0", joined)
+        self.assertIn("ETA=unknown", joined)
+
 
 class TestJobDispatchModeFiltering(APITestCase):
     """Test job filtering by dispatch_mode."""
