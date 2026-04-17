@@ -79,7 +79,7 @@ def populate_collection(collection_id: int) -> None:
 
     collection = SourceImageCollection.objects.get(id=collection_id)
     if collection:
-        logger.info(f"Populating collection {collection}")
+        logger.info(f"Populating capture set {collection}")
         collection.populate_sample()
     else:
         logger.error(f"SourceImageCollection with id {collection_id} not found")
@@ -94,7 +94,7 @@ def regroup_events(deployment_id: int) -> None:
     if deployment:
         logger.info(f"Grouping captures for {deployment}")
         events = group_images_into_events(deployment)
-        logger.info(f"{deployment } now has {len(events)} events")
+        logger.info(f"{deployment} now has {len(events)} events")
     else:
         logger.error(f"Deployment with id {deployment_id} not found")
 
