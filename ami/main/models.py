@@ -3100,9 +3100,12 @@ class Occurrence(BaseModel):
             return None
 
     def predictions(self):
-        # Retrieve the classification with the max score for each algorithm
+        # Retrieve the classification with the max score for each algorithm.
+        # select_related avoids per-row taxon/algorithm lazy loads when callers
+        # serialize the result (e.g. OccurrenceListSerializer.best_prediction).
         classifications = (
             Classification.objects.filter(detection__occurrence=self)
+            .select_related("taxon", "algorithm")
             .filter(
                 score__in=models.Subquery(
                     Classification.objects.filter(detection__occurrence=self)
