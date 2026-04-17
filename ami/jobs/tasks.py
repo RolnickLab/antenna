@@ -355,6 +355,7 @@ def _fail_job(job_id: int, reason: str) -> None:
             try:
                 job.progress.errors.append(reason)
             except Exception:
+                # Don't let diagnostic-write failures mask the original FAILURE.
                 pass
             job.update_status(JobState.FAILURE, save=False)
             job.finished_at = datetime.datetime.now()

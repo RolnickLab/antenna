@@ -629,6 +629,95 @@ class TestTaskFailureGuard(TransactionTestCase):
         mock_cleanup.assert_called_once()
 
 
+class TestFailJob(TransactionTestCase):
+    """
+    Regression tests for ``_fail_job`` — specifically for the reason-string
+    mirroring into ``progress.errors`` that this PR adds.
+
+    The FAILURE log line alone is not enough for operators; the UI reads
+    ``progress.errors``, and prior to this PR that list stayed empty on the
+    missing-Redis-state path. Any regression that stops appending the reason
+    (e.g. silently dropping it via the defensive ``try/except``) would put
+    operators back in the position of digging through Celery worker logs to
+    find out why a job died.
+    """
+
+    def setUp(self):
+        cache.clear()
+        self.project = Project.objects.create(name="FailJob Test Project")
+        self.pipeline = Pipeline.objects.create(name="FailJob Pipeline", slug="fail-job-pipeline")
+        self.pipeline.projects.add(self.project)
+        self.collection = SourceImageCollection.objects.create(name="FailJob Collection", project=self.project)
+
+    def tearDown(self):
+        cache.clear()
+
+    def _make_job(self, dispatch_mode: JobDispatchMode = JobDispatchMode.ASYNC_API) -> Job:
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name=f"{dispatch_mode} fail-job test",
+            pipeline=self.pipeline,
+            source_image_collection=self.collection,
+            dispatch_mode=dispatch_mode,
+        )
+        job.update_status(JobState.STARTED, save=True)
+        return job
+
+    @patch("ami.ml.orchestration.jobs.cleanup_async_job_resources")
+    def test_fail_job_appends_reason_to_progress_errors(self, mock_cleanup):
+        """
+        Reason string must end up in ``job.progress.errors`` (persisted) so the
+        UI shows the cause of the FAILURE alongside the status change. Before
+        this PR the reason lived only in ``job.logger`` and the UI showed
+        ``errors=[]``. A silent regression here would not be caught by the
+        ``_fail_job`` call-site tests in ``TestProcessNatsPipelineResultError``
+        (they mock ``_fail_job`` entirely).
+        """
+        from ami.jobs.tasks import _fail_job
+
+        job = self._make_job()
+        reason = "Job state missing from Redis (stage=process): redis=host:6379/db1 keys_for_job=<none>"
+
+        _fail_job(job.pk, reason)
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.FAILURE)
+        self.assertIn(
+            reason,
+            job.progress.errors,
+            f"expected reason in progress.errors, got: {job.progress.errors!r}",
+        )
+        # Sanity: the fix also propagates to the DB-persisted copy (i.e. the
+        # update_fields tuple on job.save includes 'progress'). Re-read from a
+        # fresh Job instance to prove the append wasn't only visible on the
+        # in-memory object returned by select_for_update.
+        reloaded = Job.objects.get(pk=job.pk)
+        self.assertIn(reason, reloaded.progress.errors)
+        mock_cleanup.assert_called_once_with(job.pk)
+
+    @patch("ami.ml.orchestration.jobs.cleanup_async_job_resources")
+    def test_fail_job_is_noop_on_already_final_job(self, mock_cleanup):
+        """
+        If the job is already in a final state (e.g. concurrent cleanup
+        beat us), ``_fail_job`` must return early without touching status
+        or progress. This protects against double-failing a job that has
+        already been reconciled to SUCCESS by the reconciler path.
+        """
+        from ami.jobs.tasks import _fail_job
+
+        job = self._make_job()
+        job.update_status(JobState.SUCCESS, save=True)
+        errors_before = list(job.progress.errors)
+
+        _fail_job(job.pk, "should be ignored")
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.SUCCESS)
+        self.assertEqual(job.progress.errors, errors_before)
+        mock_cleanup.assert_not_called()
+
+
 class TestResultEndpointWithError(APITestCase):
     """Integration test for the result API endpoint with error results."""
 

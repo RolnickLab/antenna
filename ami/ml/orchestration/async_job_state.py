@@ -204,6 +204,11 @@ class AsyncJobStateManager:
         eviction, and never-initialized state — instead of a single hardcoded
         "likely cleaned up concurrently" guess that all three collapse to.
 
+        Cost: the internal ``SCAN`` runs only on the failure path (once per
+        job-lifetime FAILURE), and the per-job key fanout is at most four
+        (pending:process, pending:results, failed, total), so the cost is
+        negligible compared to the FAILURE branch it only helps diagnose.
+
         Intentionally defensive: any failure to collect diagnostics is
         swallowed, because the caller is already about to fail the job and
         an exception from diagnostics would mask the original cause.
