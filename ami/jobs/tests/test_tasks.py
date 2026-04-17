@@ -5,6 +5,7 @@ This test suite verifies the critical error handling path when PipelineResultsEr
 is received instead of successful pipeline results.
 """
 
+import datetime
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -859,3 +860,372 @@ class TestLogWorkerAvailability(TransactionTestCase):
             f"expected generic no-pipeline line in {output}",
         )
         self.assertFalse(any("Zero workers have been seen" in ln for ln in output))
+
+
+class TestMarkLostImagesFailed(TransactionTestCase):
+    """Regression tests for the NATS-lost-images reconciler.
+
+    Production incident 2026-04-16 (job 2421): 998 images, 982 processed cleanly,
+    5 explicit failures, and 16 images stuck indefinitely in Redis pending_images
+    after an ADC worker hit a 2h NATS/Redis connection drop. NATS had given up
+    (max_deliver=2) before the worker reconnected, so the messages were gone
+    but the job kept sitting at 98.4% until ``check_stale_jobs`` REVOKED it and
+    discarded the 98% of successful work.
+
+    The right outcome for that job was SUCCESS with ``failed=21/998`` (~2%), not
+    REVOKED. This test shape mirrors the incident: successful SREMs, explicit
+    failures already in ``failed_images``, and a residual "lost" set still in
+    both pending_images:{process,results}. The helper under test should SADD the
+    lost ids to ``failed_images``, SREM them from the pending sets, and let the
+    existing completion logic in ``_update_job_progress`` finalize the job.
+    """
+
+    def setUp(self):
+        cache.clear()
+        self.project = Project.objects.create(name="Lost Images Test Project")
+        self.pipeline = Pipeline.objects.create(name="Lost Pipeline", slug="lost-pipeline")
+        self.pipeline.projects.add(self.project)
+        self.collection = SourceImageCollection.objects.create(name="Lost Coll", project=self.project)
+
+    def tearDown(self):
+        cache.clear()
+
+    def _make_stuck_job(self, total_images: int = 10, already_processed: int = 7, explicit_failures: int = 1):
+        """Build the job-2421 Redis + Job.progress shape.
+
+        Returns (job, set_of_lost_ids). The lost count is derived so the three
+        buckets always sum to ``total_images``.
+        """
+        lost = total_images - already_processed - explicit_failures
+        assert lost > 0, "test requires at least one lost image"
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="job-2421-shape",
+            pipeline=self.pipeline,
+            source_image_collection=self.collection,
+            dispatch_mode=JobDispatchMode.ASYNC_API,
+        )
+        all_ids = [str(i) for i in range(1000, 1000 + total_images)]
+        processed_ids = set(all_ids[:already_processed])
+        failed_ids = set(all_ids[already_processed : already_processed + explicit_failures])
+        lost_ids = set(all_ids[already_processed + explicit_failures :])
+
+        manager = AsyncJobStateManager(job.pk)
+        manager.initialize_job(all_ids)
+        # Successful results for the first bucket: SREM from both pending sets.
+        manager.update_state(processed_ids, stage="process")
+        manager.update_state(processed_ids, stage="results")
+        # Explicit failures: SREM from both pending sets + SADD to failed_images
+        # (mirrors what process_nats_pipeline_result does with a PipelineResultsError).
+        manager.update_state(failed_ids, stage="process", failed_image_ids=failed_ids)
+        manager.update_state(failed_ids, stage="results")
+
+        # Mirror the last _update_job_progress snapshot into job.progress.
+        progress = job.progress
+        collect_stage = progress.get_stage("collect")
+        collect_stage.progress = 1.0
+        collect_stage.status = JobState.SUCCESS
+        non_lost = already_processed + explicit_failures
+        progress.update_stage(
+            "process",
+            progress=non_lost / total_images,
+            status=JobState.STARTED,
+            processed=non_lost,
+            remaining=lost,
+            failed=explicit_failures,
+        )
+        progress.update_stage(
+            "results",
+            progress=non_lost / total_images,
+            status=JobState.STARTED,
+            detections=0,
+            classifications=0,
+            captures=already_processed,
+        )
+        job.status = JobState.STARTED
+        job.save()
+
+        # Force updated_at to appear stale so the helper considers this job.
+        Job.objects.filter(pk=job.pk).update(
+            updated_at=datetime.datetime.now() - datetime.timedelta(minutes=Job.STALLED_JOBS_MAX_MINUTES + 1)
+        )
+        job.refresh_from_db()
+        return job, lost_ids
+
+    def _mock_consumer_state(
+        self,
+        mock_manager_class,
+        num_pending: int = 0,
+        num_ack_pending: int = 0,
+        num_redelivered: int = 0,
+    ):
+        from ami.ml.orchestration.nats_queue import ConsumerState
+
+        mock_manager = AsyncMock()
+        mock_manager.get_consumer_state = AsyncMock(
+            return_value=ConsumerState(
+                num_pending=num_pending,
+                num_ack_pending=num_ack_pending,
+                num_redelivered=num_redelivered,
+            )
+        )
+        mock_manager_class.return_value.__aenter__.return_value = mock_manager
+        mock_manager_class.return_value.__aexit__.return_value = AsyncMock()
+        return mock_manager
+
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_marks_lost_images_as_failed_and_finalizes_success(self, mock_manager_class):
+        """Job-2421 shape: NATS drained (num_pending=0, num_ack_pending=0) while
+        Redis pending still holds redelivery-exhausted ids. The helper should
+        SADD those to failed_images, SREM from pending, and let the existing
+        completion logic (failed/total < FAILURE_THRESHOLD) land the job in SUCCESS.
+        """
+        from ami.jobs.tasks import mark_lost_images_failed
+
+        job, lost_ids = self._make_stuck_job(total_images=10, already_processed=7, explicit_failures=1)
+        self._mock_consumer_state(mock_manager_class, num_pending=0, num_ack_pending=0, num_redelivered=len(lost_ids))
+
+        results = mark_lost_images_failed()
+
+        self.assertEqual(len(results), 1, f"expected one job reconciled, got {results}")
+        self.assertEqual(results[0]["job_id"], job.pk)
+        self.assertEqual(results[0]["lost_count"], len(lost_ids))
+        self.assertEqual(results[0]["action"], "marked_failed")
+
+        job.refresh_from_db()
+        self.assertEqual(
+            job.status,
+            JobState.SUCCESS.value,
+            f"expected SUCCESS (failed=3/10 below FAILURE_THRESHOLD); got {job.status}",
+        )
+        self.assertTrue(job.progress.is_complete(), f"stages not complete: {job.progress.stages}")
+
+        process = job.progress.get_stage("process")
+        self.assertEqual(process.progress, 1.0)
+        failed_param = next((p.value for p in process.params if p.key == "failed"), None)
+        self.assertEqual(
+            failed_param,
+            3,
+            f"process.failed should be explicit_failures (1) + lost (2) = 3, got {failed_param}",
+        )
+        remaining_param = next((p.value for p in process.params if p.key == "remaining"), None)
+        self.assertEqual(remaining_param, 0, f"process.remaining should be 0, got {remaining_param}")
+
+        # Redis state is wiped by cleanup_async_job_if_needed once is_complete()
+        # fires, so we assert against the durable Job.progress snapshot, not
+        # AsyncJobStateManager.get_progress (which returns None after cleanup).
+
+        self.assertTrue(
+            any("job idle past cutoff" in e for e in job.progress.errors),
+            f"expected diagnostic in progress.errors, got {job.progress.errors}",
+        )
+
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_reconciles_when_consumer_shows_undelivered_pending(self, mock_manager_class):
+        """Idle cutoff is the decision signal, not NATS counters. A job with
+        ``updated_at`` >10 min old and ``num_pending > 0`` means ADC hasn't
+        pulled messages for >10 min; those images are stuck regardless of what
+        the NATS stream looks like. Reconcile."""
+        from ami.jobs.tasks import mark_lost_images_failed
+
+        job, lost_ids = self._make_stuck_job()
+        self._mock_consumer_state(mock_manager_class, num_pending=len(lost_ids), num_ack_pending=0, num_redelivered=0)
+
+        results = mark_lost_images_failed()
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["action"], "marked_failed")
+        job.refresh_from_db()
+        self.assertTrue(job.progress.is_complete())
+
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_reconciles_when_consumer_shows_ack_pending(self, mock_manager_class):
+        """Empirical NATS behavior: after ``max_deliver`` exhaustion, messages
+        stay in ``num_ack_pending`` indefinitely (not cleared until stream
+        deletion). This is the exact production failure mode — guarding on
+        ``num_ack_pending > 0`` would block recovery from the bug we're fixing."""
+        from ami.jobs.tasks import mark_lost_images_failed
+
+        job, lost_ids = self._make_stuck_job()
+        self._mock_consumer_state(
+            mock_manager_class, num_pending=0, num_ack_pending=len(lost_ids), num_redelivered=len(lost_ids)
+        )
+
+        results = mark_lost_images_failed()
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["action"], "marked_failed")
+        job.refresh_from_db()
+        self.assertTrue(job.progress.is_complete())
+
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_noop_when_job_updated_recently(self, mock_manager_class):
+        """Idle-threshold guard: a job that updated_at-bumped within the
+        STALLED_JOBS_MAX_MINUTES window is considered in-flight."""
+        from ami.jobs.tasks import mark_lost_images_failed
+
+        job, lost_ids = self._make_stuck_job()
+        # Reverse the staleness applied by _make_stuck_job.
+        Job.objects.filter(pk=job.pk).update(updated_at=datetime.datetime.now())
+        self._mock_consumer_state(mock_manager_class, num_pending=0, num_ack_pending=0, num_redelivered=len(lost_ids))
+
+        results = mark_lost_images_failed()
+
+        self.assertEqual(results, [])
+
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_reconciles_when_num_redelivered_zero_but_redis_has_stuck_ids(self, mock_manager_class):
+        """Pre-#1234 Bug A signature: drained consumer, never-redelivered, but
+        Redis still has pending ids because an ACK landed before the SREM.
+        After dropping the ``num_redelivered > 0`` guard, this case reconciles
+        the same way as the ``max_deliver`` exhaustion case — Redis drives the
+        outcome, not the consumer's delivery history."""
+        from ami.jobs.tasks import mark_lost_images_failed
+
+        job, lost_ids = self._make_stuck_job()
+        self._mock_consumer_state(mock_manager_class, num_pending=0, num_ack_pending=0, num_redelivered=0)
+
+        results = mark_lost_images_failed()
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["action"], "marked_failed")
+        job.refresh_from_db()
+        self.assertTrue(job.progress.is_complete())
+
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_mixed_failures_combine_without_double_counting(self, mock_manager_class):
+        """Already-SADDed explicit failures stay in ``failed_images`` alongside
+        the newly-SADDed lost ids; SADD is idempotent on any accidental overlap.
+        Final progress.failed should be explicit + lost, not 2 * overlap."""
+        from ami.jobs.tasks import mark_lost_images_failed
+
+        # 20 total, 15 processed, 3 explicit failures, 2 lost → failed_total = 5
+        job, lost_ids = self._make_stuck_job(total_images=20, already_processed=15, explicit_failures=3)
+        self._mock_consumer_state(mock_manager_class, num_pending=0, num_ack_pending=0, num_redelivered=len(lost_ids))
+
+        results = mark_lost_images_failed()
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["lost_count"], len(lost_ids))
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.SUCCESS.value)
+        process = job.progress.get_stage("process")
+        failed_param = next((p.value for p in process.params if p.key == "failed"), None)
+        self.assertEqual(failed_param, 5, f"expected 3 explicit + 2 lost = 5, got {failed_param}")
+
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_falls_to_failure_when_lost_over_threshold(self, mock_manager_class):
+        """FAILURE_THRESHOLD (0.5) preserved: a job that loses >50% of its images
+        still lands in FAILURE via the same code path — the helper feeds accurate
+        counts, it does not override the completion rules."""
+        from ami.jobs.tasks import mark_lost_images_failed
+
+        # 10 total, 3 processed, 0 explicit, 7 lost → 7/10 > 0.5 → FAILURE
+        job, lost_ids = self._make_stuck_job(total_images=10, already_processed=3, explicit_failures=0)
+        self._mock_consumer_state(mock_manager_class, num_pending=0, num_ack_pending=0, num_redelivered=len(lost_ids))
+
+        results = mark_lost_images_failed()
+
+        self.assertEqual(len(results), 1)
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.FAILURE.value, f"expected FAILURE for 7/10 lost; got {job.status}")
+
+    def test_reconcile_skips_when_job_updated_at_bumped_after_candidate_select(self):
+        """Race re-validation: between ``mark_lost_images_failed`` reading
+        ``candidate_pks`` and ``_reconcile_lost_images`` writing to Redis, a
+        late ``process_nats_pipeline_result`` could land and bump ``updated_at``
+        past the cutoff. The reconciler must not blindly mark images as failed
+        in that window — it would inflate counters (same id processed AND
+        failed) and overwrite legitimate progress.
+
+        Verified by calling ``_reconcile_lost_images`` directly with a cutoff
+        older than the job's current ``updated_at`` (mimicking the late-result
+        bump). Expected: returns ``"raced"``, no progress.errors written, no
+        Redis SREM/SADD performed.
+        """
+        from ami.jobs.tasks import _reconcile_lost_images
+        from ami.ml.orchestration.nats_queue import ConsumerState
+
+        job, lost_ids = self._make_stuck_job()
+        # Mimic a late result arriving: bump updated_at to "now".
+        Job.objects.filter(pk=job.pk).update(updated_at=datetime.datetime.now())
+
+        # Use a cutoff that the live (post-bump) updated_at will fail. Anything
+        # in the past works; pick 1 minute ago to be comfortably before "now".
+        cutoff = datetime.datetime.now() - datetime.timedelta(minutes=1)
+        consumer_state = ConsumerState(num_pending=0, num_ack_pending=0, num_redelivered=len(lost_ids))
+
+        # Snapshot pre-call Redis state so we can assert it was untouched.
+        manager = AsyncJobStateManager(job.pk)
+        pre_pending = manager.get_pending_image_ids()
+
+        action = _reconcile_lost_images(job.pk, lost_ids, consumer_state, cutoff)
+
+        self.assertEqual(action, "raced")
+        job.refresh_from_db()
+        # progress.errors untouched: no diagnostic from this run.
+        self.assertFalse(
+            any("job idle past cutoff" in e for e in job.progress.errors),
+            f"raced reconcile must not write progress.errors; got {job.progress.errors}",
+        )
+        # Redis pending set unchanged: SREM was never issued.
+        self.assertEqual(manager.get_pending_image_ids(), pre_pending)
+
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_progress_errors_truncates_long_id_list(self, mock_manager_class):
+        """JSONB cap: ``progress.errors`` is rendered in the UI and shipped
+        in the job detail payload. A 200-image job's full sorted id list
+        would be multi-KB per error entry. The diagnostic written to
+        ``progress.errors`` previews the first
+        ``_PROGRESS_ERROR_ID_PREVIEW_LIMIT`` ids and notes "and N more"; the
+        full list is logged separately to the per-job logger.
+        """
+        from ami.jobs.tasks import _PROGRESS_ERROR_ID_PREVIEW_LIMIT, mark_lost_images_failed
+
+        # 25 lost > limit (10) → "and 15 more"
+        job, lost_ids = self._make_stuck_job(total_images=30, already_processed=4, explicit_failures=1)
+        self.assertGreater(len(lost_ids), _PROGRESS_ERROR_ID_PREVIEW_LIMIT)
+        self._mock_consumer_state(mock_manager_class, num_pending=0, num_ack_pending=0, num_redelivered=len(lost_ids))
+
+        results = mark_lost_images_failed()
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["action"], "marked_failed")
+
+        job.refresh_from_db()
+        diagnostic_entry = next((e for e in job.progress.errors if "job idle past cutoff" in e), None)
+        self.assertIsNotNone(diagnostic_entry, f"diagnostic missing; got errors={job.progress.errors}")
+        extra = len(lost_ids) - _PROGRESS_ERROR_ID_PREVIEW_LIMIT
+        self.assertIn(f"and {extra} more", diagnostic_entry)
+
+        # The id list in progress.errors must include the first preview ids
+        # but not the trailing ones. Pick any id beyond the preview window
+        # and assert it's absent.
+        sorted_ids = sorted(lost_ids)
+        self.assertIn(sorted_ids[0], diagnostic_entry)
+        self.assertNotIn(sorted_ids[-1], diagnostic_entry)
+
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_jobs_health_check_runs_lost_images_before_stale_jobs(self, mock_manager_class):
+        """Integration: jobs_health_check should unstick lost-images jobs before
+        check_stale_jobs gets a chance to REVOKE them. A job that would otherwise
+        be revoked (status running + updated_at past cutoff) lands in SUCCESS via
+        the lost-images path."""
+        from ami.jobs.tasks import jobs_health_check
+
+        job, lost_ids = self._make_stuck_job()
+        self._mock_consumer_state(mock_manager_class, num_pending=0, num_ack_pending=0, num_redelivered=len(lost_ids))
+
+        result = jobs_health_check()
+
+        self.assertEqual(result["lost_images"]["fixed"], 1, f"result={result}")
+        # stale_jobs sub-check must not have revoked anything — the job already
+        # terminated in SUCCESS in the earlier step, so it is no longer
+        # running_state by the time check_stale_jobs runs.
+        self.assertEqual(result["stale_jobs"]["fixed"], 0, f"result={result}")
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.SUCCESS.value)

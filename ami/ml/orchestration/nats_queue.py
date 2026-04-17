@@ -15,6 +15,7 @@ import datetime
 import json
 import logging
 import re
+from dataclasses import dataclass
 
 import nats
 from asgiref.sync import sync_to_async
@@ -56,6 +57,20 @@ TASK_TTR = getattr(settings, "NATS_TASK_TTR", 30)  # Visibility timeout in secon
 NATS_MAX_DELIVER = getattr(settings, "NATS_MAX_DELIVER", 2)
 
 ADVISORY_STREAM_NAME = "advisories"  # Shared stream for max delivery advisories across all jobs
+
+
+@dataclass
+class ConsumerState:
+    """A thin, mockable projection of ``nats.js.api.ConsumerInfo``.
+
+    Only the fields the jobs_health_check reconciler needs to decide whether a
+    consumer has genuinely drained — keeping this off the raw nats-py type makes
+    tests trivially buildable without standing up a full ConsumerInfo.
+    """
+
+    num_pending: int | None
+    num_ack_pending: int | None
+    num_redelivered: int | None
 
 
 def _parse_nats_timestamp(raw: str) -> datetime.datetime:
@@ -677,6 +692,35 @@ class TaskQueueManager:
                 snap["num_redelivered"] = await self._consumer_redelivered_count(snap["job_id"])
 
         await asyncio.gather(*(_fetch_one(s) for s in snapshots))
+
+    async def get_consumer_state(self, job_id: int) -> ConsumerState | None:
+        """Return the current consumer counters for a job, or ``None`` if unreachable.
+
+        Tolerant like :meth:`log_consumer_stats_snapshot`: a missing stream /
+        consumer (e.g. the job was already cleaned up) returns ``None`` rather
+        than raising. The reconciler that consumes this result treats ``None``
+        as "skip — nothing to act on" for that job.
+        """
+        if self.js is None:
+            return None
+        stream_name = self._get_stream_name(job_id)
+        consumer_name = self._get_consumer_name(job_id)
+        try:
+            info = await asyncio.wait_for(
+                self.js.consumer_info(stream_name, consumer_name),
+                timeout=NATS_JETSTREAM_TIMEOUT,
+            )
+        except Exception as e:
+            # Broad catch mirrors ``_log_consumer_stats``: if the consumer is
+            # gone or the NATS call errors we want to skip the job, not blow
+            # up the whole reconciler tick.
+            logger.debug(f"Could not fetch consumer state for {consumer_name}: {e}")
+            return None
+        return ConsumerState(
+            num_pending=info.num_pending,
+            num_ack_pending=info.num_ack_pending,
+            num_redelivered=info.num_redelivered,
+        )
 
     async def _consumer_redelivered_count(self, job_id: int) -> int | None:
         """Return ``num_redelivered`` from the job's consumer, or ``None`` if gone."""
