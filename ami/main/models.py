@@ -1840,6 +1840,15 @@ class SourceImage(BaseModel):
     def __str__(self) -> str:
         return f"{self.__class__.__name__} #{self.pk} {self.path}"
 
+    @staticmethod
+    def build_public_url(base_url: str, path: str) -> str:
+        """Join a public base URL with a stored object path.
+
+        Shared with callers that have annotated `public_base_url` + `path` onto a
+        queryset row and want to skip loading the SourceImage instance.
+        """
+        return urllib.parse.urljoin(base_url, path.lstrip("/"))
+
     def public_url(self, raise_errors=False) -> str | None:
         """
         Return the public URL for this image.
@@ -1862,7 +1871,7 @@ class SourceImage(BaseModel):
         ):
             url = ami.utils.s3.get_presigned_url(data_source.config, key=self.path)
         elif self.public_base_url:
-            url = urllib.parse.urljoin(self.public_base_url, self.path.lstrip("/"))
+            url = self.build_public_url(self.public_base_url, self.path)
         else:
             msg = f"Public URL for {self} is not available. Public base URL: '{self.public_base_url}'"
             if raise_errors:

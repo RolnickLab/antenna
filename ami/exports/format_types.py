@@ -8,7 +8,7 @@ from rest_framework import serializers
 
 from ami.exports.base import BaseExporter
 from ami.exports.utils import get_data_in_batches
-from ami.main.models import Occurrence, get_media_url
+from ami.main.models import Occurrence, SourceImage, get_media_url
 from ami.ml.schemas import BoundingBox
 
 logger = logging.getLogger(__name__)
@@ -191,13 +191,16 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
         return bbox.height if bbox else None
 
     def get_best_detection_source_image_url(self, obj):
-        """Returns the public URL to the original source image."""
+        """Returns the public URL to the original source image.
+
+        Built from annotated `path` + `public_base_url` to avoid loading the
+        SourceImage row per occurrence; presigned URLs (private buckets) aren't
+        supported here for the same reason.
+        """
         path = getattr(obj, "best_detection_source_image_path", None)
         base_url = getattr(obj, "best_detection_source_image_public_base_url", None)
         if path and base_url:
-            import urllib.parse
-
-            return urllib.parse.urljoin(base_url, path.lstrip("/"))
+            return SourceImage.build_public_url(base_url, path)
         return None
 
 
