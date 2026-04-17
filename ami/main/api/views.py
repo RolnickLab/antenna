@@ -681,7 +681,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="star")
     def star(self, _request, pk=None) -> Response:
         """
-        Add a source image to the project's starred images capture set.
+        Add a capture to the project's starred images capture set.
         """
         source_image: SourceImage = self.get_object()
         if source_image and source_image.deployment and source_image.deployment.project:
@@ -694,7 +694,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="unstar")
     def unstar(self, _request, pk=None) -> Response:
         """
-        Remove a source image from the project's starred images capture set.
+        Remove a capture from the project's starred images capture set.
         """
         source_image: SourceImage = self.get_object()
         if source_image and source_image.deployment and source_image.deployment.project:
@@ -707,7 +707,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
 
 class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     """
-    Endpoint for viewing capture sets or samples of source images.
+    Endpoint for viewing capture sets or samples of captures.
     """
 
     queryset = (
@@ -766,7 +766,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="populate")
     def populate(self, request, pk=None):
         """
-        Populate a capture set with source images using the configured sampling method and arguments.
+        Populate a capture set with captures using the configured sampling method and arguments.
         """
         collection: SourceImageCollection = self.get_object()
 
@@ -812,7 +812,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="add")
     def add(self, request, pk=None):
         """
-        Add a source image to a capture set.
+        Add a capture to a capture set.
         """
         collection: SourceImageCollection = self.get_object()
         source_image = self._get_source_image()
@@ -828,7 +828,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="remove")
     def remove(self, request, pk=None):
         """
-        Remove a source image from a capture set.
+        Remove a capture from a capture set.
         """
         collection = self.get_object()
         source_image = self._get_source_image()
@@ -991,7 +991,7 @@ class CustomOccurrenceDeterminationFilter(CustomTaxonFilter):
 
 class OccurrenceCollectionFilter(filters.BaseFilterBackend):
     """
-    Filter occurrences by the capture set their detections' source images belong to.
+    Filter occurrences by the capture set their detections' captures belong to.
     """
 
     query_params = ["collection_id", "collection"]  # @TODO remove "collection" param when UI is updated
@@ -1260,7 +1260,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             ),
             OpenApiParameter(
                 name="collection_id",
-                description="Filter occurrences by the capture set their detections' source images belong to.",
+                description="Filter occurrences by the capture set their detections' captures belong to.",
                 required=False,
                 type=OpenApiTypes.INT,
             ),
