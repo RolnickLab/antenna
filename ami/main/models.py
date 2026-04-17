@@ -791,9 +791,14 @@ class Deployment(BaseModel):
         return (first, last)
 
     def get_detections_count(self) -> int | None:
-        """Return detections count filtered by project default filters"""
+        """
+        Return detections count filtered by project default filters.
 
-        qs = Detection.objects.filter(source_image__deployment=self)
+        Excludes null-bbox placeholder detections (records indicating an image
+        was processed and no detections were found) to stay consistent with
+        ``SourceImage.get_detections_count`` and ``Event.get_detections_count``.
+        """
+        qs = Detection.objects.filter(source_image__deployment=self).exclude(NULL_DETECTIONS_FILTER)
         filter_q = build_occurrence_default_filters_q(
             project=self.project,
             request=None,
@@ -1199,8 +1204,13 @@ class Event(BaseModel):
         return self.captures.distinct().count()
 
     def get_detections_count(self) -> int | None:
-        """Return detections count filtered by project default filters"""
-        qs = Detection.objects.filter(source_image__event=self)
+        """
+        Return detections count filtered by project default filters.
+
+        Excludes null-bbox placeholder detections to stay consistent with
+        ``SourceImage.get_detections_count`` and ``Deployment.get_detections_count``.
+        """
+        qs = Detection.objects.filter(source_image__event=self).exclude(NULL_DETECTIONS_FILTER)
         filter_q = build_occurrence_default_filters_q(
             project=self.project,
             request=None,

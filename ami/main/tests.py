@@ -3977,3 +3977,115 @@ class TestProjectPipelinesAPI(APITestCase):
         self.client.force_authenticate(user=non_member)
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class TestCachedCountsDefaultFilters(APITestCase):
+    """Tests for PR #1045: default-filter-aware cached counts.
+
+    Covers three behaviors introduced by the PR:
+      1. Taxa list and detail views return the same ``occurrences_count`` when
+         only the score threshold is applied (no include/exclude filters).
+      2. ``get_detections_count`` is consistent across the
+         SourceImage/Event/Deployment hierarchy and ignores null-bbox
+         placeholder detections.
+      3. The project default-filter signal only fans out a refresh task when
+         the threshold actually changes.
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(project=self.project)
+        create_captures(deployment=self.deployment, num_nights=2, images_per_night=3)
+        create_occurrences(deployment=self.deployment, num=6, determination_score=0.9)
+        return super().setUp()
+
+    def test_taxa_list_and_detail_occurrences_count_parity(self):
+        """List and detail views must agree on occurrences_count under the score threshold.
+
+        Regression for the hazard identified in PR #1045: the list view applies
+        both score and taxa filters, while the detail view bypasses the taxa
+        filter. With no include/exclude taxa configured, both endpoints must
+        still return identical counts for the same taxon.
+        """
+        self.project.default_filters_score_threshold = 0.5
+        self.project.save()
+
+        list_response = self.client.get(f"/api/v2/taxa/?project_id={self.project.pk}")
+        self.assertEqual(list_response.status_code, 200)
+
+        results = list_response.json()["results"]
+        self.assertGreater(len(results), 0, "Expected at least one observed taxon")
+
+        # Pick a taxon that actually has occurrences so the parity check is meaningful
+        taxa_with_occs = [r for r in results if r["occurrences_count"] > 0]
+        self.assertGreater(len(taxa_with_occs), 0, "Expected at least one taxon with occurrences")
+
+        for taxon_from_list in taxa_with_occs:
+            detail_response = self.client.get(f"/api/v2/taxa/{taxon_from_list['id']}/?project_id={self.project.pk}")
+            self.assertEqual(detail_response.status_code, 200)
+            detail_count = detail_response.json()["occurrences_count"]
+            self.assertEqual(
+                detail_count,
+                taxon_from_list["occurrences_count"],
+                f"Taxon {taxon_from_list['id']} has count {taxon_from_list['occurrences_count']} in list "
+                f"but {detail_count} in detail",
+            )
+
+    def test_detection_count_hierarchy_consistency(self):
+        """Deployment/Event/SourceImage detection counts must agree and skip null-bbox rows.
+
+        Regression for the fix in this PR: previously
+        ``SourceImage.get_detections_count`` excluded ``NULL_DETECTIONS_FILTER``
+        while Deployment and Event did not, causing the hierarchy to return
+        divergent numbers.
+        """
+        # Seed a null-bbox placeholder (a successful "no detections" marker) on one capture
+        first_capture = self.deployment.captures.first()
+        assert first_capture is not None
+        Detection.objects.create(
+            source_image=first_capture,
+            timestamp=first_capture.timestamp,
+            bbox=None,
+        )
+
+        images_total = sum(img.get_detections_count() or 0 for img in self.deployment.captures.all())
+        events_total = sum(event.get_detections_count() or 0 for event in self.deployment.events.all())
+        deployment_total = self.deployment.get_detections_count() or 0
+
+        self.assertEqual(images_total, events_total)
+        self.assertEqual(events_total, deployment_total)
+        self.assertGreater(deployment_total, 0, "Expected real detections to survive the null-bbox filter")
+
+        # And crucially the null-bbox placeholder must NOT be counted anywhere
+        raw_detection_count = Detection.objects.filter(source_image__deployment=self.deployment).count()
+        self.assertEqual(
+            deployment_total,
+            raw_detection_count - 1,
+            "Deployment detection count should exclude the 1 null-bbox placeholder",
+        )
+
+    def test_refresh_signal_only_fires_on_threshold_change(self):
+        """Saving a Project without changing the threshold must not enqueue a refresh."""
+        from unittest.mock import patch
+
+        with patch("ami.main.signals.refresh_project_cached_counts.delay") as mock_delay:
+            # Save without changing threshold — should NOT enqueue
+            with self.captureOnCommitCallbacks(execute=True):
+                self.project.description = "unrelated edit"
+                self.project.save()
+            self.assertEqual(
+                mock_delay.call_count,
+                0,
+                "Saving a Project without a threshold change should not enqueue a refresh task",
+            )
+
+            # Save with a changed threshold — should enqueue exactly once
+            with self.captureOnCommitCallbacks(execute=True):
+                self.project.default_filters_score_threshold = 0.77
+                self.project.save()
+            self.assertEqual(
+                mock_delay.call_count,
+                1,
+                "Changing the threshold should enqueue exactly one refresh task",
+            )
+            mock_delay.assert_called_with(self.project.pk)

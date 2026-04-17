@@ -1,11 +1,13 @@
 import logging
 
 from django.contrib.auth.models import Group
+from django.db import transaction
 from django.db.models.signals import m2m_changed, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from guardian.shortcuts import assign_perm
 
 from ami.main.models import Project
+from ami.main.tasks import refresh_project_cached_counts
 from ami.users.roles import BasicMember, ProjectManager, create_roles_for_project
 
 from .models import User
@@ -132,10 +134,16 @@ def delete_project_groups(sender, instance, **kwargs):
 
 def refresh_cached_counts_for_project(project: Project):
     """
-    Refresh cached counts for Deployments and Events belonging to a project.
+    Enqueue a Celery task to refresh cached counts for a project's Deployments
+    and Events after the surrounding transaction commits.
+
+    This fan-out can iterate hundreds of events and dozens of deployments, so
+    running it inline in the request/save path would block the caller. The
+    ``transaction.on_commit`` wrapper guarantees the task only runs if the
+    triggering save succeeds.
     """
-    logger.info(f"Refreshing cached counts for project {project.pk} ({project.name})")
-    project.update_related_calculated_fields()
+    logger.info(f"Scheduling cached-count refresh for project {project.pk} ({project.name})")
+    transaction.on_commit(lambda: refresh_project_cached_counts.delay(project.pk))
 
 
 @receiver(pre_save, sender=Project)
