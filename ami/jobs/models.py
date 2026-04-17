@@ -657,13 +657,13 @@ class DataStorageSyncJob(JobType):
 
 
 class SourceImageCollectionPopulateJob(JobType):
-    name = "Populate captures collection"
+    name = "Populate capture set"
     key = "populate_captures_collection"
 
     @classmethod
     def run(cls, job: "Job"):
         """
-        Run the populate source image collection job.
+        Run the populate capture set job.
 
         This is meant to be called by an async task, not directly.
         """
@@ -675,9 +675,9 @@ class SourceImageCollectionPopulateJob(JobType):
         job.save()
 
         if not job.source_image_collection:
-            raise ValueError("No source image collection provided")
+            raise ValueError("No capture set provided")
 
-        job.logger.info(f"Populating source image collection {job.source_image_collection}")
+        job.logger.info(f"Populating capture set {job.source_image_collection}")
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
@@ -690,11 +690,11 @@ class SourceImageCollectionPopulateJob(JobType):
         job.save()
 
         job.source_image_collection.populate_sample(job=job)
-        job.logger.info(f"Finished populating source image collection {job.source_image_collection}")
+        job.logger.info(f"Finished populating capture set {job.source_image_collection}")
         job.save()
 
         captures_added = job.source_image_collection.images.count()
-        job.logger.info(f"Added {captures_added} captures to source image collection {job.source_image_collection}")
+        job.logger.info(f"Added {captures_added} captures to capture set {job.source_image_collection}")
 
         job.progress.update_stage(
             cls.key,

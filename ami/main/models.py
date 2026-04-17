@@ -153,7 +153,7 @@ def get_or_create_default_collection(project: "Project") -> "SourceImageCollecti
         project=project,
         method="full",
     )
-    logger.info(f"Created default collection for project {project}")
+    logger.info(f"Created default capture set for project {project}")
     return collection
 
 
