@@ -3267,6 +3267,15 @@ class Detection(BaseModel):
             # Supports the "last processed" subquery on the captures list: the
             # latest detection created_at per source image (index scan, top 1).
             models.Index(fields=["source_image", "-created_at"], name="det_srcimg_created_idx"),
+            # Supports the per-occurrence detection timeline and the
+            # Min/Max(detections__timestamp) aggregations on the occurrence list:
+            # ordering and grouping a large detection row set by
+            # (occurrence_id, timestamp DESC). The FK index alone is on
+            # occurrence_id, which forces a sort after the join.
+            models.Index(
+                fields=["occurrence", "-timestamp"],
+                name="detection_occurrence_ts_desc",
+            ),
         ]
 
     def best_classification(self):
