@@ -1320,6 +1320,7 @@ class OccurrenceListSerializer(DefaultSerializer):
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
     determination_details = serializers.SerializerMethodField()
     best_machine_prediction = serializers.SerializerMethodField()
+    determination_matches_machine_prediction = serializers.SerializerMethodField()
     identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
 
     def get_permissions(self, instance, instance_data):
@@ -1358,6 +1359,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             "detection_images",
             "determination_score",
             "determination_details",
+            "determination_matches_machine_prediction",
             "best_machine_prediction",
             "identifications",
             "created_at",
@@ -1413,16 +1415,23 @@ class OccurrenceListSerializer(DefaultSerializer):
 
             algorithm_data = AlgorithmNestedSerializer(prediction.algorithm, context=context).data
 
-        determination_matches = None
-        if obj.determination_id and prediction.taxon_id:
-            determination_matches = obj.determination_id == prediction.taxon_id
-
         return dict(
             taxon=taxon_data,
             algorithm=algorithm_data,
             score=prediction.score,
-            determination_matches_machine_prediction=determination_matches,
         )
+
+    def get_determination_matches_machine_prediction(self, obj: Occurrence) -> bool | None:
+        """Whether the determination taxon matches the best machine prediction taxon.
+
+        Sits at the top level (alongside `determination` / `determination_score`)
+        rather than nested under `best_machine_prediction`, since it's a property
+        of the determination's relationship to the prediction.
+        """
+        prediction = obj.best_prediction
+        if not prediction or not obj.determination_id or not prediction.taxon_id:
+            return None
+        return obj.determination_id == prediction.taxon_id
 
 
 class OccurrenceSerializer(OccurrenceListSerializer):
