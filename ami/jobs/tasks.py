@@ -631,18 +631,29 @@ def mark_lost_images_failed(minutes: int | None = None, dry_run: bool = False) -
             continue
 
         try:
-            _reconcile_lost_images(pk, lost_ids, state)
+            action = _reconcile_lost_images(pk, lost_ids, state, cutoff)
         except Exception:
             logger.exception("mark_lost_images_failed: failed reconciling job %s", pk)
-            results.append({"job_id": pk, "lost_count": len(lost_ids), "action": "error"})
-            continue
+            action = "error"
 
-        results.append({"job_id": pk, "lost_count": len(lost_ids), "action": "marked_failed"})
+        results.append({"job_id": pk, "lost_count": len(lost_ids), "action": action})
 
     return results
 
 
-def _reconcile_lost_images(job_id: int, lost_ids: set[str], consumer_state: ConsumerState) -> None:
+# Cap on how many image ids are written into ``progress.errors``. JSONB field on
+# Job, surfaced in the UI — a 200-image job's full id list would be multi-KB
+# of noise. The full set still goes to ``job.logger.warning`` (DB-backed
+# JobLog table), so it remains recoverable from the UI's logs panel.
+_PROGRESS_ERROR_ID_PREVIEW_LIMIT = 10
+
+
+def _reconcile_lost_images(
+    job_id: int,
+    lost_ids: set[str],
+    consumer_state: ConsumerState,
+    cutoff: datetime.datetime,
+) -> str:
     """Mark *lost_ids* as failed in Redis and push progress to 100% in both stages.
 
     Mirrors the SREM+SADD+progress-update sequence that
@@ -650,8 +661,38 @@ def _reconcile_lost_images(job_id: int, lost_ids: set[str], consumer_state: Cons
     transitions land in the same shape the rest of the pipeline expects. The
     completion decision (SUCCESS vs FAILURE) reuses :data:`FAILURE_THRESHOLD`
     so a job losing >50% of its images still falls through to FAILURE.
+
+    Returns one of:
+
+    - ``"marked_failed"``: reconciliation completed; counters updated.
+    - ``"raced"``: a late ``process_nats_pipeline_result`` bumped
+      ``updated_at`` (or the job left a running state) between candidate
+      selection and now; we defer to the natural completion path.
+    - ``"state_disappeared"``: Redis state vanished mid-reconcile (cleanup
+      fired or a different reconciler tick won the race); leave for
+      ``check_stale_jobs``.
     """
-    from ami.jobs.models import Job, JobState
+    from ami.jobs.models import Job, JobDispatchMode, JobState
+
+    # Re-validate inside ``select_for_update`` before any Redis SREM/SADD. The
+    # candidate list was computed up to a NATS round-trip ago; a late result
+    # arriving in that window would bump ``updated_at`` and disqualify the job.
+    # Without this check, we'd mark images as failed that just got their
+    # results — counter inflation (same id counted as both processed and failed).
+    try:
+        with transaction.atomic():
+            Job.objects.select_for_update().get(
+                pk=job_id,
+                status__in=JobState.running_states(),
+                dispatch_mode=JobDispatchMode.ASYNC_API,
+                updated_at__lt=cutoff,
+            )
+    except Job.DoesNotExist:
+        logger.info(
+            "mark_lost_images_failed: job %s no longer eligible (raced with late result)",
+            job_id,
+        )
+        return "raced"
 
     state_manager = AsyncJobStateManager(job_id)
 
@@ -666,7 +707,7 @@ def _reconcile_lost_images(job_id: int, lost_ids: set[str], consumer_state: Cons
             "mark_lost_images_failed: job %s state disappeared mid-reconcile; " "leaving it for check_stale_jobs",
             job_id,
         )
-        return
+        return "state_disappeared"
 
     complete_state = JobState.SUCCESS
     if process_progress.total > 0 and (process_progress.failed / process_progress.total) > FAILURE_THRESHOLD:
@@ -695,26 +736,38 @@ def _reconcile_lost_images(job_id: int, lost_ids: set[str], consumer_state: Cons
         captures=0,
     )
 
+    sorted_ids = sorted(lost_ids)
+    preview_ids = sorted_ids[:_PROGRESS_ERROR_ID_PREVIEW_LIMIT]
+    extra = len(sorted_ids) - len(preview_ids)
+    ids_summary = f"{preview_ids} ... and {extra} more" if extra else str(preview_ids)
+
     diagnostic = (
         f"jobs_health_check: marked {len(lost_ids)} image(s) as failed "
         f"(job idle past cutoff; NATS consumer "
         f"num_pending={consumer_state.num_pending} "
         f"num_ack_pending={consumer_state.num_ack_pending} "
         f"num_redelivered={consumer_state.num_redelivered}). "
-        f"IDs: {sorted(lost_ids)}"
+        f"IDs: {ids_summary}"
     )
 
-    # Append the diagnostic to ``progress.errors`` so the reason is visible in
-    # the UI alongside the now-accurate ``failed`` count. ``select_for_update``
-    # mirrors :func:`_fail_job` — the row may still be touched concurrently by
-    # a late ``process_nats_pipeline_result`` retry.
+    # Append the (truncated) diagnostic to ``progress.errors`` so the reason is
+    # visible in the UI alongside the now-accurate ``failed`` count.
+    # ``select_for_update`` mirrors :func:`_fail_job` — the row may still be
+    # touched concurrently by a late ``process_nats_pipeline_result`` retry.
     with transaction.atomic():
         job = Job.objects.select_for_update().get(pk=job_id)
         if diagnostic not in job.progress.errors:
             job.progress.errors.append(diagnostic)
             job.save(update_fields=["progress"])
 
-    job.logger.warning(diagnostic)
+    # Per-job logger gets the full id list — JobLog rows are paginated and
+    # not embedded in the job detail payload, so the size is acceptable there.
+    if extra:
+        job.logger.warning("%s (full IDs: %s)", diagnostic, sorted_ids)
+    else:
+        job.logger.warning(diagnostic)
+
+    return "marked_failed"
 
 
 def check_stale_jobs(minutes: int | None = None, dry_run: bool = False) -> list[dict]:
@@ -860,9 +913,8 @@ def _run_mark_lost_images_failed_check() -> IntegrityCheckResult:
 
     Runs BEFORE ``_run_stale_jobs_check`` in :func:`jobs_health_check` — a job
     the reconciler can unstick should land in its natural completion state
-    rather than being REVOKED. Jobs the reconciler can't help (e.g. consumer
-    missing, num_redelivered=0, no pending ids) fall through to
-    ``check_stale_jobs`` unchanged.
+    rather than being REVOKED. Jobs the reconciler can't help (consumer
+    missing or no pending ids) fall through to ``check_stale_jobs`` unchanged.
     """
     results = mark_lost_images_failed()
     fixed = sum(1 for r in results if r["action"] == "marked_failed")

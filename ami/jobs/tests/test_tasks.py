@@ -1133,6 +1133,81 @@ class TestMarkLostImagesFailed(TransactionTestCase):
         job.refresh_from_db()
         self.assertEqual(job.status, JobState.FAILURE.value, f"expected FAILURE for 7/10 lost; got {job.status}")
 
+    def test_reconcile_skips_when_job_updated_at_bumped_after_candidate_select(self):
+        """Race re-validation: between ``mark_lost_images_failed`` reading
+        ``candidate_pks`` and ``_reconcile_lost_images`` writing to Redis, a
+        late ``process_nats_pipeline_result`` could land and bump ``updated_at``
+        past the cutoff. The reconciler must not blindly mark images as failed
+        in that window — it would inflate counters (same id processed AND
+        failed) and overwrite legitimate progress.
+
+        Verified by calling ``_reconcile_lost_images`` directly with a cutoff
+        older than the job's current ``updated_at`` (mimicking the late-result
+        bump). Expected: returns ``"raced"``, no progress.errors written, no
+        Redis SREM/SADD performed.
+        """
+        from ami.jobs.tasks import _reconcile_lost_images
+        from ami.ml.orchestration.nats_queue import ConsumerState
+
+        job, lost_ids = self._make_stuck_job()
+        # Mimic a late result arriving: bump updated_at to "now".
+        Job.objects.filter(pk=job.pk).update(updated_at=datetime.datetime.now())
+
+        # Use a cutoff that the live (post-bump) updated_at will fail. Anything
+        # in the past works; pick 1 minute ago to be comfortably before "now".
+        cutoff = datetime.datetime.now() - datetime.timedelta(minutes=1)
+        consumer_state = ConsumerState(num_pending=0, num_ack_pending=0, num_redelivered=len(lost_ids))
+
+        # Snapshot pre-call Redis state so we can assert it was untouched.
+        manager = AsyncJobStateManager(job.pk)
+        pre_pending = manager.get_pending_image_ids()
+
+        action = _reconcile_lost_images(job.pk, lost_ids, consumer_state, cutoff)
+
+        self.assertEqual(action, "raced")
+        job.refresh_from_db()
+        # progress.errors untouched: no diagnostic from this run.
+        self.assertFalse(
+            any("job idle past cutoff" in e for e in job.progress.errors),
+            f"raced reconcile must not write progress.errors; got {job.progress.errors}",
+        )
+        # Redis pending set unchanged: SREM was never issued.
+        self.assertEqual(manager.get_pending_image_ids(), pre_pending)
+
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_progress_errors_truncates_long_id_list(self, mock_manager_class):
+        """JSONB cap: ``progress.errors`` is rendered in the UI and shipped
+        in the job detail payload. A 200-image job's full sorted id list
+        would be multi-KB per error entry. The diagnostic written to
+        ``progress.errors`` previews the first
+        ``_PROGRESS_ERROR_ID_PREVIEW_LIMIT`` ids and notes "and N more"; the
+        full list is logged separately to the per-job logger.
+        """
+        from ami.jobs.tasks import _PROGRESS_ERROR_ID_PREVIEW_LIMIT, mark_lost_images_failed
+
+        # 25 lost > limit (10) → "and 15 more"
+        job, lost_ids = self._make_stuck_job(total_images=30, already_processed=4, explicit_failures=1)
+        self.assertGreater(len(lost_ids), _PROGRESS_ERROR_ID_PREVIEW_LIMIT)
+        self._mock_consumer_state(mock_manager_class, num_pending=0, num_ack_pending=0, num_redelivered=len(lost_ids))
+
+        results = mark_lost_images_failed()
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["action"], "marked_failed")
+
+        job.refresh_from_db()
+        diagnostic_entry = next((e for e in job.progress.errors if "job idle past cutoff" in e), None)
+        self.assertIsNotNone(diagnostic_entry, f"diagnostic missing; got errors={job.progress.errors}")
+        extra = len(lost_ids) - _PROGRESS_ERROR_ID_PREVIEW_LIMIT
+        self.assertIn(f"and {extra} more", diagnostic_entry)
+
+        # The id list in progress.errors must include the first preview ids
+        # but not the trailing ones. Pick any id beyond the preview window
+        # and assert it's absent.
+        sorted_ids = sorted(lost_ids)
+        self.assertIn(sorted_ids[0], diagnostic_entry)
+        self.assertNotIn(sorted_ids[-1], diagnostic_entry)
+
     @patch("ami.jobs.tasks.TaskQueueManager")
     def test_jobs_health_check_runs_lost_images_before_stale_jobs(self, mock_manager_class):
         """Integration: jobs_health_check should unstick lost-images jobs before
