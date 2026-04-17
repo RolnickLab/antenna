@@ -81,7 +81,7 @@ class JobListSerializer(DefaultSerializer):
         source="source_image_single",
     )
     source_image_collection_id = serializers.PrimaryKeyRelatedField(
-        label="Source Image Collection",
+        label="Capture Set",
         write_only=True,
         required=False,
         allow_null=True,
