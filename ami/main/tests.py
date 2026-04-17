@@ -1143,6 +1143,55 @@ class TestProjectSettingsFiltering(APITestCase):
         self.assertEqual(response_device_ids, exepcted_device_ids)
 
 
+class TestProjectRequiredOnListEndpoints(APITestCase):
+    """
+    Verify that list endpoints on the four hot tables reject requests
+    without a project_id, while opt-out endpoints and unrelated list
+    endpoints remain unaffected.
+    """
+
+    def setUp(self) -> None:
+        self.project, _ = setup_test_project(reuse=False)
+        self.user = User.objects.create_user(email="testuser@insectai.org", is_staff=True)  # type: ignore
+        self.client.force_authenticate(user=self.user)
+        return super().setUp()
+
+    def test_hot_list_endpoints_require_project_id(self):
+        for path in [
+            "/api/v2/classifications/",
+            "/api/v2/occurrences/",
+            "/api/v2/detections/",
+            "/api/v2/captures/",
+        ]:
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, path)
+
+    def test_hot_list_endpoints_accept_with_project_id(self):
+        for path in [
+            "/api/v2/classifications/",
+            "/api/v2/occurrences/",
+            "/api/v2/detections/",
+            "/api/v2/captures/",
+        ]:
+            with self.subTest(path=path):
+                response = self.client.get(f"{path}?project_id={self.project.pk}")
+                self.assertEqual(response.status_code, status.HTTP_200_OK, path)
+
+    def test_summary_requires_project_id(self):
+        self.assertEqual(self.client.get("/api/v2/status/summary/").status_code, status.HTTP_400_BAD_REQUEST)
+        response = self.client.get(f"/api/v2/status/summary/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_unrelated_list_endpoints_still_work_without_project_id(self):
+        # Regression guard: project listing and global taxonomy must not be
+        # affected by the opt-in requirement.
+        for path in ["/api/v2/projects/", "/api/v2/taxa/"]:
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, status.HTTP_200_OK, path)
+
+
 class TestProjectOwnerAutoAssignment(APITestCase):
     def setUp(self) -> None:
         self.user_1 = User.objects.create_user(email="testuser@insectai.org", is_staff=True, is_superuser=True)
