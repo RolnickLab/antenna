@@ -212,6 +212,22 @@ class AsyncJobStateManager:
             failed=failed_count,
         )
 
+    def get_pending_image_ids(self) -> set[str]:
+        """Return the union of image IDs still pending in either stage's set.
+
+        Used by the jobs_health_check reconciler to find ids that NATS has
+        given up redelivering but Redis still tracks as not-yet-processed.
+        Returns an empty set if neither pending set exists.
+        """
+        try:
+            redis = self._get_redis()
+            keys = [self._get_pending_key(stage) for stage in self.STAGES]
+            members = redis.sunion(keys)
+        except RedisError as e:
+            logger.error(f"Redis error reading pending image ids for job {self.job_id}: {e}")
+            return set()
+        return {m.decode() if isinstance(m, (bytes, bytearray)) else str(m) for m in members}
+
     def cleanup(self) -> None:
         """
         Delete all Redis keys associated with this job.
