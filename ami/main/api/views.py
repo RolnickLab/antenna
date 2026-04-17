@@ -991,7 +991,7 @@ class CustomOccurrenceDeterminationFilter(CustomTaxonFilter):
 
 class OccurrenceCollectionFilter(filters.BaseFilterBackend):
     """
-    Filter occurrences by the capture set their detections source images belong to.
+    Filter occurrences by the capture set their detections' source images belong to.
     """
 
     query_params = ["collection_id", "collection"]  # @TODO remove "collection" param when UI is updated
