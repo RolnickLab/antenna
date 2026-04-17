@@ -154,6 +154,51 @@ stranded at partial progress.
      eventually revoke it.
 5. Revert; restart; `git diff` clean.
 
+### Scenario F: max_deliver exhaustion → reconciler marks images failed
+
+Verifies the `mark_lost_images_failed` sub-check inside `jobs_health_check`:
+when NATS has given up redelivering messages (hit `max_deliver`) but Redis
+still tracks them as pending, the reconciler marks them failed so the job
+lands in SUCCESS/FAILURE instead of being REVOKEd by the stale-job reaper
+(which would nuke legitimate processed work).
+
+No code patches required — the chaos is driven entirely by a management
+command.
+
+1. Pick a fake job id (e.g. `999999`) and fake image ids (`img-a,img-b,img-c`).
+2. Seed Redis pending sets:
+   ```
+   docker compose exec django python manage.py shell -c "
+   from ami.ml.orchestration.async_job_state import AsyncJobStateManager
+   AsyncJobStateManager(999999).initialize_job(['img-a', 'img-b', 'img-c'])
+   "
+   ```
+3. Create a minimal Job row with `dispatch_mode=ASYNC_API` and back-date
+   `updated_at` past `STALLED_JOBS_MAX_MINUTES`.
+4. Drive the NATS consumer past `max_deliver` without ADC:
+   ```
+   docker compose exec django python manage.py chaos_monkey exhaust_max_deliver \
+     --job-id 999999 --image-ids img-a,img-b,img-c --ensure-stream
+   ```
+   Takes ~66s (`NATS_MAX_DELIVER × (TASK_TTR + 3s)` + final settle). Prints
+   `num_pending=0 num_ack_pending=3 num_redelivered=3` on exit.
+5. Invoke the reconciler:
+   ```
+   docker compose exec django python manage.py shell -c "
+   from ami.jobs.tasks import mark_lost_images_failed
+   print(mark_lost_images_failed())
+   "
+   ```
+6. Expected:
+   - Reconciler returns `[{'job_id': 999999, 'action': 'marked_failed', 'lost_count': 3}]`.
+   - Job row flips to `FAILURE` (3/3 = 100% > `FAILURE_THRESHOLD`). With a
+     realistic ratio (e.g. 6 lost out of 20, <50%), it would flip to `SUCCESS`.
+   - `job.progress.errors` has a line starting with `jobs_health_check: marked N image(s) as failed (job idle past cutoff; ...)`.
+   - `cleanup_async_job_if_needed` fires on completion; NATS stream + Redis
+     keys deleted.
+7. Cleanup: `Job.objects.filter(pk=999999).delete()` (stream/Redis already
+   drained by the reconciler's cleanup trigger).
+
 ## Gotchas
 
 - **celeryworker startup noise**: first ~60s after restart, the
