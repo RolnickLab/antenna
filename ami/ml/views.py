@@ -56,7 +56,17 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
     def get_queryset(self) -> QuerySet["Algorithm"]:
         qs: QuerySet["Algorithm"] = super().get_queryset()
         qs = qs.with_category_count()  # type: ignore[union-attr] # Custom queryset method
+        project = self.get_active_project()
+        if project:
+            qs = qs.filter(
+                pipelines__project_pipeline_configs__project=project,
+                pipelines__project_pipeline_configs__enabled=True,
+            ).distinct()
         return qs
+
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
 
 class AlgorithmCategoryMapViewSet(DefaultViewSet):
