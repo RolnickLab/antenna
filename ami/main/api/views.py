@@ -681,7 +681,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="star")
     def star(self, _request, pk=None) -> Response:
         """
-        Add a source image to the project's starred images collection.
+        Add a source image to the project's starred images capture set.
         """
         source_image: SourceImage = self.get_object()
         if source_image and source_image.deployment and source_image.deployment.project:
@@ -694,7 +694,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="unstar")
     def unstar(self, _request, pk=None) -> Response:
         """
-        Remove a source image from the project's starred images collection.
+        Remove a source image from the project's starred images capture set.
         """
         source_image: SourceImage = self.get_object()
         if source_image and source_image.deployment and source_image.deployment.project:
@@ -707,7 +707,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
 
 class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     """
-    Endpoint for viewing collections or samples of source images.
+    Endpoint for viewing capture sets or samples of source images.
     """
 
     queryset = (
@@ -766,26 +766,26 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="populate")
     def populate(self, request, pk=None):
         """
-        Populate a collection with source images using the configured sampling method and arguments.
+        Populate a capture set with source images using the configured sampling method and arguments.
         """
         collection: SourceImageCollection = self.get_object()
 
         if collection:
             from ami.jobs.models import Job, SourceImageCollectionPopulateJob
 
-            assert collection.project, "Collection must be associated with a project"
+            assert collection.project, "Capture set must be associated with a project"
             job = Job.objects.create(
-                name=f"Populate captures for collection {collection.pk}",
+                name=f"Populate captures for capture set {collection.pk}",
                 project=collection.project,
                 source_image_collection=collection,
                 job_type_key=SourceImageCollectionPopulateJob.key,
             )
             job.enqueue()
-            msg = f"Populating captures for collection {collection.pk} in background."
+            msg = f"Populating captures for capture set {collection.pk} in background."
             logger.info(msg)
             return Response({"job_id": job.pk, "project_id": collection.project.pk})
         else:
-            raise api_exceptions.ValidationError(detail="Invalid collection requested")
+            raise api_exceptions.ValidationError(detail="Invalid capture set requested")
 
     def _get_source_image(self):
         """
@@ -812,7 +812,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="add")
     def add(self, request, pk=None):
         """
-        Add a source image to a collection.
+        Add a source image to a capture set.
         """
         collection: SourceImageCollection = self.get_object()
         source_image = self._get_source_image()
@@ -828,7 +828,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="remove")
     def remove(self, request, pk=None):
         """
-        Remove a source image from a collection.
+        Remove a source image from a capture set.
         """
         collection = self.get_object()
         source_image = self._get_source_image()
@@ -991,7 +991,7 @@ class CustomOccurrenceDeterminationFilter(CustomTaxonFilter):
 
 class OccurrenceCollectionFilter(filters.BaseFilterBackend):
     """
-    Filter occurrences by the collection their detections source images belong to.
+    Filter occurrences by the capture set their detections source images belong to.
     """
 
     query_params = ["collection_id", "collection"]  # @TODO remove "collection" param when UI is updated
@@ -1158,7 +1158,7 @@ class OccurrenceTaxaListFilter(filters.BaseFilterBackend):
 
 class TaxonCollectionFilter(filters.BaseFilterBackend):
     """
-    Filter taxa by the collection their occurrences belong to.
+    Filter taxa by the capture set their occurrences belong to.
     """
 
     query_param = "collection"
@@ -1260,7 +1260,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             ),
             OpenApiParameter(
                 name="collection_id",
-                description="Filter occurrences by the collection their detections' source images belong to.",
+                description="Filter occurrences by the capture set their detections' source images belong to.",
                 required=False,
                 type=OpenApiTypes.INT,
             ),

@@ -49,12 +49,12 @@ class ExportViewSet(DefaultViewSet, ProjectMixin):
                 collection = SourceImageCollection.objects.get(pk=collection_id)
             except SourceImageCollection.DoesNotExist:
                 return Response(
-                    {"error": "Collection does not exist."},
+                    {"error": "Capture set does not exist."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             if collection.project != project:
                 return Response(
-                    {"error": "Collection does not belong to the selected project."},
+                    {"error": "Capture set does not belong to the selected project."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -73,7 +73,7 @@ class ExportViewSet(DefaultViewSet, ProjectMixin):
         data_export.save()
         data_export.update_record_count()
 
-        job_name = f"Export occurrences{f' for collection {collection.pk}' if collection else ''}"
+        job_name = f"Export occurrences{f' for capture set {collection.pk}' if collection else ''}"
         job = Job.objects.create(
             name=job_name,
             project=project,
