@@ -11,6 +11,20 @@ services:
     networks:
       - antenna_network
 
+  celeryworker_minimal:
+    build:
+      context: ./minimal
+    command: ./celery_worker/start_celery.sh
+    environment:
+      - CELERY_BROKER_URL=amqp://rabbituser:rabbitpass@rabbitmq:5672//
+    extra_hosts:
+      - minio:host-gateway
+    networks:
+      - antenna_network
+    volumes: # fixes drift issue
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
   ml_backend_example:
     build:
       context: ./example
@@ -22,6 +36,20 @@ services:
       - minio:host-gateway
     networks:
       - antenna_network
+
+  celeryworker_example:
+    build:
+      context: ./example
+    command: ./celery_worker/start_celery.sh
+    environment:
+      - CELERY_BROKER_URL=amqp://rabbituser:rabbitpass@rabbitmq:5672//
+    extra_hosts:
+      - minio:host-gateway
+    networks:
+      - antenna_network
+    volumes: # fixes drift issue
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
 
 networks:
   antenna_network:

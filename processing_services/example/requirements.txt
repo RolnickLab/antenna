@@ -7,3 +7,5 @@ transformers==4.50.3
 torch==2.6.0
 torchvision==0.21.0
 scipy==1.16.0
+celery==5.4.0
+redis==5.2.1
