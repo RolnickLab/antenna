@@ -4089,3 +4089,39 @@ class TestCachedCountsDefaultFilters(APITestCase):
                 "Changing the threshold should enqueue exactly one refresh task",
             )
             mock_delay.assert_called_with(self.project.pk)
+
+    def test_source_image_cached_counts_refresh_on_threshold_change(self):
+        """SourceImage.detections_count cache must track filter-aware get_detections_count().
+
+        Regression for CodeRabbit review on PR #1045: Project.update_related_calculated_fields
+        previously updated Event and Deployment cached counts but left
+        SourceImage.detections_count unchanged, so the cached field would diverge
+        from the filter-aware getter after a default-filters change.
+        """
+        self.project.default_filters_score_threshold = 0.5
+        self.project.save()
+        self.project.update_related_calculated_fields()
+
+        for image in self.deployment.captures.all():
+            image.refresh_from_db()
+            self.assertEqual(
+                image.detections_count,
+                image.get_detections_count(),
+                f"SourceImage {image.pk} cache ({image.detections_count}) differs from "
+                f"filter-aware count ({image.get_detections_count()}) at threshold 0.5",
+            )
+
+        # Raise the threshold above the seeded determination_score of 0.9 — every
+        # occurrence-linked detection should now drop out of the filtered count.
+        self.project.default_filters_score_threshold = 0.95
+        self.project.save()
+        self.project.update_related_calculated_fields()
+
+        for image in self.deployment.captures.all():
+            image.refresh_from_db()
+            self.assertEqual(
+                image.detections_count,
+                image.get_detections_count(),
+                f"SourceImage {image.pk} cache stale after raising threshold: "
+                f"cache={image.detections_count}, fresh={image.get_detections_count()}",
+            )
