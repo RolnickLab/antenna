@@ -55,6 +55,11 @@ logger = logging.getLogger(__name__)
 # Constants
 _POST_TITLE_MAX_LENGTH: Final = 80
 
+# Ordering for "best machine prediction" selection used by
+# OccurrenceQuerySet.with_best_machine_prediction(). Terminal classifications win
+# over non-terminal, then highest score, with pk as the deterministic tiebreaker.
+BEST_MACHINE_PREDICTION_ORDER: Final = ("-terminal", "-score", "-pk")
+
 
 class TaxonRank(OrderedEnum):
     KINGDOM = "KINGDOM"
@@ -1894,6 +1899,15 @@ class SourceImage(BaseModel):
     def __str__(self) -> str:
         return f"{self.__class__.__name__} #{self.pk} {self.path}"
 
+    @staticmethod
+    def build_public_url(base_url: str, path: str) -> str:
+        """Join a public base URL with a stored object path.
+
+        Shared with callers that have annotated `public_base_url` + `path` onto a
+        queryset row and want to skip loading the SourceImage instance.
+        """
+        return urllib.parse.urljoin(base_url, path.lstrip("/"))
+
     def public_url(self, raise_errors=False) -> str | None:
         """
         Return the public URL for this image.
@@ -1916,7 +1930,7 @@ class SourceImage(BaseModel):
         ):
             url = ami.utils.s3.get_presigned_url(data_source.config, key=self.path)
         elif self.public_base_url:
-            url = urllib.parse.urljoin(self.public_base_url, self.path.lstrip("/"))
+            url = self.build_public_url(self.public_base_url, self.path)
         else:
             msg = f"Public URL for {self} is not available. Public base URL: '{self.public_base_url}'"
             if raise_errors:
@@ -2865,6 +2879,8 @@ class OccurrenceQuerySet(BaseQuerySet):
         Adds the following annotations:
         - best_detection_path: The path to the detection image
         - best_detection_bbox: The bounding box of the detection as a list [x1, y1, x2, y2]
+        - best_detection_capture_path: The path of the source capture image
+        - best_detection_capture_public_base_url: The public base URL of the source capture image
         """
         # Subquery to get the path of the best detection
         # Use id as secondary sort to ensure deterministic results
@@ -2882,9 +2898,76 @@ class OccurrenceQuerySet(BaseQuerySet):
             .values("bbox")[:1]
         )
 
+        # Subquery to get the source capture path and public_base_url for the best detection
+        best_detection_capture_path_subquery = (
+            Detection.objects.filter(occurrence=OuterRef("pk"))
+            .order_by("-classifications__score", "id")
+            .values("source_image__path")[:1]
+        )
+        best_detection_capture_public_base_url_subquery = (
+            Detection.objects.filter(occurrence=OuterRef("pk"))
+            .order_by("-classifications__score", "id")
+            .values("source_image__public_base_url")[:1]
+        )
+
         return self.annotate(
             best_detection_path=models.Subquery(best_detection_path_subquery),
             best_detection_bbox=models.Subquery(best_detection_bbox_subquery),
+            best_detection_capture_path=models.Subquery(best_detection_capture_path_subquery),
+            best_detection_capture_public_base_url=models.Subquery(best_detection_capture_public_base_url_subquery),
+        )
+
+    def with_best_machine_prediction(self):
+        """
+        Annotate the queryset with fields from the best machine prediction.
+
+        Uses BEST_MACHINE_PREDICTION_ORDER to pick the winner: terminal classifications
+        first, then highest score, with pk as the deterministic tiebreaker.
+
+        Adds the following annotations:
+        - best_machine_prediction_name: The taxon name of the best prediction
+        - best_machine_prediction_score: The confidence score
+        - best_machine_prediction_algorithm: The algorithm name
+        - best_machine_prediction_taxon_id: The taxon ID (for determination_matches comparison)
+        """
+        best_prediction_subquery = Classification.objects.filter(detection__occurrence=OuterRef("pk")).order_by(
+            *BEST_MACHINE_PREDICTION_ORDER
+        )
+
+        return self.annotate(
+            best_machine_prediction_name=models.Subquery(best_prediction_subquery.values("taxon__name")[:1]),
+            best_machine_prediction_score=models.Subquery(best_prediction_subquery.values("score")[:1]),
+            best_machine_prediction_algorithm=models.Subquery(best_prediction_subquery.values("algorithm__name")[:1]),
+            best_machine_prediction_taxon_id=models.Subquery(best_prediction_subquery.values("taxon_id")[:1]),
+        )
+
+    def with_verification_info(self):
+        """
+        Annotate the queryset with verification/identification fields.
+
+        Adds the following annotations:
+        - verified_by_name: The name of the user who made the best identification
+        - participant_count: The count of distinct users who made non-withdrawn identifications
+        - agreed_with_algorithm_name: The algorithm name the identifier agreed with
+        - agreed_with_user_email: The email of the prior identifier the best identification agreed with
+        """
+        best_identification_subquery = Identification.objects.filter(
+            occurrence=OuterRef("pk"), withdrawn=False
+        ).order_by("-created_at")
+
+        return self.annotate(
+            verified_by_name=models.Subquery(best_identification_subquery.values("user__name")[:1]),
+            participant_count=models.Count(
+                "identifications__user",
+                filter=Q(identifications__withdrawn=False),
+                distinct=True,
+            ),
+            agreed_with_algorithm_name=models.Subquery(
+                best_identification_subquery.values("agreed_with_prediction__algorithm__name")[:1]
+            ),
+            agreed_with_user_email=models.Subquery(
+                best_identification_subquery.values("agreed_with_identification__user__email")[:1]
+            ),
         )
 
     def unique_taxa(self, project: Project | None = None):
@@ -3109,9 +3192,12 @@ class Occurrence(BaseModel):
             return None
 
     def predictions(self):
-        # Retrieve the classification with the max score for each algorithm
+        # Retrieve the classification with the max score for each algorithm.
+        # select_related avoids per-row taxon/algorithm lazy loads when callers
+        # serialize the result (e.g. OccurrenceListSerializer.best_prediction).
         classifications = (
             Classification.objects.filter(detection__occurrence=self)
+            .select_related("taxon", "algorithm")
             .filter(
                 score__in=models.Subquery(
                     Classification.objects.filter(detection__occurrence=self)
