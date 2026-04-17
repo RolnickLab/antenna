@@ -54,12 +54,28 @@ services:
     ports: []
     command: /start-celeryworker
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "/celery/healthcheck.sh"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 90s
+    labels:
+      - "autoheal=true"
 
   celerybeat:
     <<: *django
     ports: []
     command: /start-celerybeat
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "/celery/healthcheck-beat.sh"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    labels:
+      - "autoheal=true"
 
   flower:
     <<: *django
@@ -69,6 +85,19 @@ services:
     restart: always
     volumes:
       - ./data/flower/:/data/
+
+  autoheal:
+    # Docker Compose has no native restart-on-unhealthy (swarm-only feature).
+    # willfarrell/autoheal watches the docker socket and restarts any container
+    # labeled `autoheal=true` that Docker has marked unhealthy.
+    image: willfarrell/autoheal:1.2.0
+    restart: always
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=autoheal
+      - AUTOHEAL_INTERVAL=10
+      - AUTOHEAL_START_PERIOD=60
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
 
   redis:
     image: redis:6

@@ -27,3 +27,22 @@ services:
     ports: []
     command: /start-celeryworker
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "/celery/healthcheck.sh"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 90s
+    labels:
+      - "autoheal=true"
+
+  autoheal:
+    image: willfarrell/autoheal:1.2.0
+    container_name: ami_worker_autoheal
+    restart: always
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=autoheal
+      - AUTOHEAL_INTERVAL=10
+      - AUTOHEAL_START_PERIOD=60
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
