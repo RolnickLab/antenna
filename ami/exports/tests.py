@@ -547,7 +547,7 @@ class ExportNewFieldsTest(TestCase):
             "agreed_with_user",
             "determination_matches_machine_prediction",
             "best_detection_bbox",
-            "best_detection_source_image_url",
+            "best_detection_capture_url",
         ]
         for field in expected_fields:
             self.assertIn(field, headers, f"Missing CSV field: {field}")

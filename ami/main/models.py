@@ -2794,8 +2794,8 @@ class OccurrenceQuerySet(BaseQuerySet):
         Adds the following annotations:
         - best_detection_path: The path to the detection image
         - best_detection_bbox: The bounding box of the detection as a list [x1, y1, x2, y2]
-        - best_detection_source_image_path: The path of the source image
-        - best_detection_source_image_public_base_url: The public base URL of the source image
+        - best_detection_capture_path: The path of the source capture image
+        - best_detection_capture_public_base_url: The public base URL of the source capture image
         """
         # Subquery to get the path of the best detection
         # Use id as secondary sort to ensure deterministic results
@@ -2813,13 +2813,13 @@ class OccurrenceQuerySet(BaseQuerySet):
             .values("bbox")[:1]
         )
 
-        # Subquery to get the source image path and public_base_url for the best detection
-        best_detection_source_image_path_subquery = (
+        # Subquery to get the source capture path and public_base_url for the best detection
+        best_detection_capture_path_subquery = (
             Detection.objects.filter(occurrence=OuterRef("pk"))
             .order_by("-classifications__score", "id")
             .values("source_image__path")[:1]
         )
-        best_detection_source_image_public_base_url_subquery = (
+        best_detection_capture_public_base_url_subquery = (
             Detection.objects.filter(occurrence=OuterRef("pk"))
             .order_by("-classifications__score", "id")
             .values("source_image__public_base_url")[:1]
@@ -2828,10 +2828,8 @@ class OccurrenceQuerySet(BaseQuerySet):
         return self.annotate(
             best_detection_path=models.Subquery(best_detection_path_subquery),
             best_detection_bbox=models.Subquery(best_detection_bbox_subquery),
-            best_detection_source_image_path=models.Subquery(best_detection_source_image_path_subquery),
-            best_detection_source_image_public_base_url=models.Subquery(
-                best_detection_source_image_public_base_url_subquery
-            ),
+            best_detection_capture_path=models.Subquery(best_detection_capture_path_subquery),
+            best_detection_capture_public_base_url=models.Subquery(best_detection_capture_public_base_url_subquery),
         )
 
     def with_best_machine_prediction(self):

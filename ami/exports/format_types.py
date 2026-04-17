@@ -110,7 +110,7 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
     best_detection_bbox = serializers.SerializerMethodField()
     best_detection_width = serializers.SerializerMethodField()
     best_detection_height = serializers.SerializerMethodField()
-    best_detection_source_image_url = serializers.SerializerMethodField()
+    best_detection_capture_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Occurrence
@@ -142,15 +142,15 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
             "best_detection_bbox",
             "best_detection_width",
             "best_detection_height",
-            "best_detection_source_image_url",
+            "best_detection_capture_url",
         ]
 
-    def get_verification_status(self, obj):
-        """Returns 'Verified' if the occurrence has non-withdrawn identifications."""
+    def get_verification_status(self, obj) -> bool:
+        """True if the occurrence has any non-withdrawn human identification."""
         count = getattr(obj, "participant_count", None)
         if count is not None:
-            return "Verified" if count > 0 else "Not verified"
-        return "Verified" if obj.identifications.filter(withdrawn=False).exists() else "Not verified"
+            return count > 0
+        return obj.identifications.filter(withdrawn=False).exists()
 
     def get_verified_by(self, obj):
         """Returns the display name of the user who made the best identification."""
@@ -190,15 +190,15 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
         bbox = BoundingBox.from_coords(getattr(obj, "best_detection_bbox", None), raise_on_error=False)
         return bbox.height if bbox else None
 
-    def get_best_detection_source_image_url(self, obj):
-        """Returns the public URL to the original source image.
+    def get_best_detection_capture_url(self, obj):
+        """Returns the public URL to the source capture (original full-frame image).
 
         Built from annotated `path` + `public_base_url` to avoid loading the
-        SourceImage row per occurrence; presigned URLs (private buckets) aren't
-        supported here for the same reason.
+        capture (SourceImage) row per occurrence; presigned URLs for private
+        buckets aren't supported here for the same reason.
         """
-        path = getattr(obj, "best_detection_source_image_path", None)
-        base_url = getattr(obj, "best_detection_source_image_public_base_url", None)
+        path = getattr(obj, "best_detection_capture_path", None)
+        base_url = getattr(obj, "best_detection_capture_public_base_url", None)
         if path and base_url:
             return SourceImage.build_public_url(base_url, path)
         return None
