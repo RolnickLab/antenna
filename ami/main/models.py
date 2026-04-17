@@ -152,16 +152,41 @@ def get_or_create_default_collection(project: "Project") -> "SourceImageCollecti
     return collection
 
 
+def get_project_default_filters():
+    """
+    Read default taxa names from Django settings (read from environment variables)
+    and return corresponding Taxon objects.
+    """
+    include_taxa = list(Taxon.objects.filter(name__in=settings.DEFAULT_INCLUDE_TAXA))
+    exclude_taxa = list(Taxon.objects.filter(name__in=settings.DEFAULT_EXCLUDE_TAXA))
+
+    return {"default_include_taxa": include_taxa, "default_exclude_taxa": exclude_taxa}
+
+
 def get_or_create_default_project(user: User) -> "Project":
     """
     Create a default project for a user.
 
-    Default related objects like devices and research sites will be created
-    when the project is saved for the first time.
-    If the project already exists, it will be returned without modification.
+    When a new project is created, default related objects (device, site,
+    deployment, collection, processing service) and default taxa filters are
+    initialized explicitly. ``get_or_create`` bypasses ``ProjectManager.create``,
+    so we call ``create_related_defaults`` here instead of relying on the manager.
     """
-    project, _created = Project.objects.get_or_create(name="Scratch Project", owner=user, create_defaults=True)
-    logger.info(f"Created default project for user {user}")
+    project, created = Project.objects.get_or_create(name="Scratch Project", owner=user)
+    if created:
+        logger.info(f"Created default project for user {user}")
+        Project.objects.create_related_defaults(project)
+        defaults = get_project_default_filters()
+
+        if defaults["default_include_taxa"]:
+            project.default_filters_include_taxa.set(defaults["default_include_taxa"])
+            logger.info(f"Set {len(defaults['default_include_taxa'])} default include taxa for project {project}")
+        if defaults["default_exclude_taxa"]:
+            project.default_filters_exclude_taxa.set(defaults["default_exclude_taxa"])
+            logger.info(f"Set {len(defaults['default_exclude_taxa'])} default exclude taxa for project {project}")
+        project.save()
+    else:
+        logger.info(f"Loaded existing default project for user {user}")
     return project
 
 
@@ -317,7 +342,7 @@ class Project(ProjectSettingsMixin, BaseModel):
 
     def update_related_calculated_fields(self):
         """
-        Update calculated fields for all related events and deployments.
+        Update calculated fields for all related events, deployments, and source images.
         """
         # Update events
         for event in self.events.all():
@@ -326,6 +351,10 @@ class Project(ProjectSettingsMixin, BaseModel):
         # Update deployments
         for deployment in self.deployments.all():
             deployment.update_calculated_fields(save=True)
+
+        # Update source image cached detection counts using the project's default filters
+        # so SourceImage.detections_count stays consistent with get_detections_count().
+        update_detection_counts(qs=SourceImage.objects.filter(project=self), project=self)
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
@@ -767,6 +796,23 @@ class Deployment(BaseModel):
         )
         return (first, last)
 
+    def get_detections_count(self) -> int | None:
+        """
+        Return detections count filtered by project default filters.
+
+        Excludes null-bbox placeholder detections (records indicating an image
+        was processed and no detections were found) to stay consistent with
+        ``SourceImage.get_detections_count`` and ``Event.get_detections_count``.
+        """
+        qs = Detection.objects.filter(source_image__deployment=self).exclude(NULL_DETECTIONS_FILTER)
+        filter_q = build_occurrence_default_filters_q(
+            project=self.project,
+            request=None,
+            occurrence_accessor="occurrence",
+        )
+
+        return qs.filter(filter_q).distinct().count()
+
     def first_date(self) -> datetime.date | None:
         return self.first_capture_timestamp.date() if self.first_capture_timestamp else None
 
@@ -999,7 +1045,7 @@ class Deployment(BaseModel):
 
         self.events_count = self.events.count()
         self.captures_count = self.data_source_total_files or self.captures.count()
-        self.detections_count = Detection.objects.filter(Q(source_image__deployment=self)).count()
+        self.detections_count = self.get_detections_count()
         occ_qs = self.occurrences.filter(event__isnull=False).apply_default_filters(  # type: ignore
             project=self.project,
             request=None,
@@ -1164,7 +1210,20 @@ class Event(BaseModel):
         return self.captures.distinct().count()
 
     def get_detections_count(self) -> int | None:
-        return Detection.objects.filter(Q(source_image__event=self)).count()
+        """
+        Return detections count filtered by project default filters.
+
+        Excludes null-bbox placeholder detections to stay consistent with
+        ``SourceImage.get_detections_count`` and ``Deployment.get_detections_count``.
+        """
+        qs = Detection.objects.filter(source_image__event=self).exclude(NULL_DETECTIONS_FILTER)
+        filter_q = build_occurrence_default_filters_q(
+            project=self.project,
+            request=None,
+            occurrence_accessor="occurrence",
+        )
+
+        return qs.filter(filter_q).distinct().count()
 
     def get_occurrences_count(self, classification_threshold: float = 0) -> int:
         """
@@ -1889,9 +1948,23 @@ class SourceImage(BaseModel):
             return filesizeformat(self.size)
 
     def get_detections_count(self) -> int:
-        # Detections count excludes detections without bounding boxes
-        # Detections with null bounding boxes are valid and indicates the image was successfully processed
-        return self.detections.exclude(NULL_DETECTIONS_FILTER).count()
+        """
+        Return detections count filtered by project default filters.
+
+        Excludes detections without bounding boxes — those are placeholder records
+        indicating the image was successfully processed and no detections were found.
+        """
+        qs = self.detections.exclude(NULL_DETECTIONS_FILTER)
+        project = self.project
+        if not project:
+            return qs.distinct().count()
+
+        q = build_occurrence_default_filters_q(
+            project=project,
+            request=None,
+            occurrence_accessor="occurrence",
+        )
+        return qs.filter(q).distinct().count()
 
     def get_was_processed(self, algorithm_key: str | None = None) -> bool:
         """
@@ -2069,9 +2142,17 @@ class SourceImage(BaseModel):
         ]
 
 
-def update_detection_counts(qs: models.QuerySet[SourceImage] | None = None, null_only=False) -> int:
+def update_detection_counts(
+    qs: models.QuerySet[SourceImage] | None = None,
+    null_only=False,
+    project: "Project | None" = None,
+) -> int:
     """
     Update the detection count for all source images using a bulk update query.
+
+    When ``project`` is provided, the count is filtered by that project's default
+    filters so the cached ``SourceImage.detections_count`` stays consistent with
+    ``SourceImage.get_detections_count()``.
 
     @TODO Needs testing.
     """
@@ -2079,12 +2160,16 @@ def update_detection_counts(qs: models.QuerySet[SourceImage] | None = None, null
     if null_only:
         qs = qs.filter(detections_count__isnull=True)
 
+    detection_qs = Detection.objects.filter(source_image_id=models.OuterRef("pk")).exclude(NULL_DETECTIONS_FILTER)
+    if project is not None:
+        filter_q = build_occurrence_default_filters_q(
+            project=project,
+            request=None,
+            occurrence_accessor="occurrence",
+        )
+        detection_qs = detection_qs.filter(filter_q)
     subquery = models.Subquery(
-        Detection.objects.filter(source_image_id=models.OuterRef("pk"))
-        .exclude(NULL_DETECTIONS_FILTER)
-        .values("source_image_id")
-        .annotate(count=models.Count("id"))
-        .values("count"),
+        detection_qs.values("source_image_id").annotate(count=models.Count("id")).values("count"),
         output_field=models.IntegerField(),
     )
     start_time = time.time()
