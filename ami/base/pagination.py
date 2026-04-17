@@ -5,23 +5,25 @@ from rest_framework.response import Response
 
 from .permissions import add_collection_level_permissions
 
-# Query parameter name used to request the total count in paginated list responses.
-# When not provided or set to false, COUNT(*) is skipped for performance on large tables.
+# Query parameter name used to opt out of the total count in paginated list responses.
+# Pass ``?with_counts=false`` to skip COUNT(*) for performance on large tables.
 WITH_TOTAL_COUNT_PARAM = "with_counts"
 
 
 class LimitOffsetPaginationWithPermissions(LimitOffsetPagination):
     """
-    LimitOffsetPagination that optionally skips the expensive COUNT(*) query.
+    LimitOffsetPagination that lets callers opt out of the expensive COUNT(*) query.
 
-    By default the total count is not computed (``with_counts`` defaults to
-    ``False``).  Callers that need the total for pagination UI can pass
-    ``?with_counts=true``; all other callers get a fast response where
-    ``count`` is ``null`` in the JSON payload.
+    Default behavior matches DRF's upstream LimitOffsetPagination: ``count`` is
+    computed (via a capped COUNT(*), see ``LARGE_QUERYSET_THRESHOLD``) and
+    returned in the response. Callers that don't need the total can pass
+    ``?with_counts=false`` to skip the count entirely and receive ``count: null``
+    instead. In that mode ``next`` / ``previous`` links are still computed
+    correctly by fetching one extra row to detect whether a following page exists.
 
-    When the count is skipped, ``next`` / ``previous`` cursor links are still
-    computed correctly by fetching one extra row to detect whether a following
-    page exists.
+    A follow-up PR will flip the default to ``false`` and teach the UI to
+    request counts only when needed. Until then the default preserves existing
+    behavior so no frontend changes are required.
     """
 
     # Sentinel used internally when COUNT(*) is skipped.
@@ -104,7 +106,8 @@ class LimitOffsetPaginationWithPermissions(LimitOffsetPagination):
 
     def get_paginated_response_schema(self, schema):
         paginated_schema = super().get_paginated_response_schema(schema)
-        # Allow count to be null when WITH_TOTAL_COUNT_PARAM is not requested.
+        # count is null when the caller passes with_counts=false, or when a
+        # with_counts=true request exceeds LARGE_QUERYSET_THRESHOLD.
         paginated_schema["properties"]["count"]["nullable"] = True
         return paginated_schema
 
@@ -130,14 +133,14 @@ class LimitOffsetPaginationWithPermissions(LimitOffsetPagination):
         return self._SKIP_COUNT
 
     def _should_skip_count(self, request) -> bool:
-        """Return True when the caller has not opted in to receiving the total count."""
+        """Return True when the caller has explicitly opted out of the total count."""
         raw = request.query_params.get(WITH_TOTAL_COUNT_PARAM, None)
         if raw is None:
-            return True
+            return False
         try:
             return not BooleanField(required=False).clean(raw)
         except ValidationError:
-            return True
+            return False
 
     def _get_current_model(self):
         """

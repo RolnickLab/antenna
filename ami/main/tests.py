@@ -810,7 +810,7 @@ class TestTaxonomyViews(TestCase):
     def test_occurrences_for_project(self):
         # Test that occurrences are specific to each project
         for project in [self.project_one, self.project_two]:
-            response = self.client.get(f"/api/v2/occurrences/?project_id={project.pk}&with_counts=true")
+            response = self.client.get(f"/api/v2/occurrences/?project_id={project.pk}")
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()["count"], Occurrence.objects.filter(project=project).count())
 
@@ -853,7 +853,7 @@ class TestTaxonomyViews(TestCase):
         """
         from ami.main.models import Taxon
 
-        response = self.client.get(f"/api/v2/taxa/?project_id={project.pk}&with_counts=true")
+        response = self.client.get(f"/api/v2/taxa/?project_id={project.pk}")
         self.assertEqual(response.status_code, 200)
         project_occurred_taxa = Taxon.objects.filter(occurrences__project=project).distinct()
         # project_any_taxa = Taxon.objects.filter(projects=project)
@@ -3786,8 +3786,13 @@ class TestProjectPipelinesAPI(APITestCase):
 
 class TestPaginationWithCounts(APITestCase):
     """
-    Verify that list endpoints skip the COUNT(*) query by default and include
-    it only when ``with_counts=true`` is passed.
+    Verify the ``with_counts`` opt-out on list endpoints.
+
+    Default behavior preserves DRF's count field (so existing UI code keeps
+    working). Callers can pass ``with_counts=false`` to skip the COUNT(*)
+    query and receive ``count: null``. A capped count (see
+    ``LARGE_QUERYSET_THRESHOLD``) caps the worst-case scan even on the
+    default path.
     """
 
     def setUp(self) -> None:
@@ -3810,61 +3815,63 @@ class TestPaginationWithCounts(APITestCase):
             base += "&" + urlencode(params)
         return base
 
-    def test_default_response_has_null_count(self):
-        """Without with_counts, the response count field is null."""
+    def test_default_response_includes_integer_count(self):
+        """By default, count is an integer (preserves existing behavior)."""
         response = self.client.get(self._captures_url(limit=5))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertIsInstance(data["count"], int)
+        self.assertGreater(data["count"], 0)
+
+    def test_with_counts_true_returns_integer_count(self):
+        """Explicit with_counts=true also returns an integer count."""
+        response = self.client.get(self._captures_url(with_counts="true", limit=5))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertIsInstance(data["count"], int)
+        self.assertGreater(data["count"], 0)
+
+    def test_with_counts_false_returns_null_count(self):
+        """with_counts=false skips COUNT(*) and returns count: null."""
+        response = self.client.get(self._captures_url(with_counts="false", limit=5))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
         self.assertIn("count", data)
         self.assertIsNone(data["count"])
         self.assertIn("results", data)
 
-    def test_with_counts_true_returns_integer_count(self):
-        """with_counts=true causes count to be an integer."""
-        response = self.client.get(self._captures_url(with_counts="true", limit=5))
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = response.json()
-        self.assertIsNotNone(data["count"])
-        self.assertIsInstance(data["count"], int)
-        self.assertGreater(data["count"], 0)
-
-    def test_next_link_present_when_more_results(self):
+    def test_with_counts_false_next_link_present_when_more_results(self):
         """next link is returned even without count when more results exist."""
         total = SourceImage.objects.filter(deployment__project=self.project).count()
         limit = max(1, total - 1)
-        response = self.client.get(self._captures_url(limit=limit))
+        response = self.client.get(self._captures_url(with_counts="false", limit=limit))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
         self.assertIsNone(data["count"])
         self.assertIsNotNone(data["next"])
 
-    def test_next_link_absent_on_last_page(self):
+    def test_with_counts_false_next_link_absent_on_last_page(self):
         """next is None when the current page is the last page."""
         total = SourceImage.objects.filter(deployment__project=self.project).count()
-        response = self.client.get(self._captures_url(limit=total))
+        response = self.client.get(self._captures_url(with_counts="false", limit=total))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
         self.assertIsNone(data["count"])
         self.assertIsNone(data["next"])
 
-    def test_previous_link_present_with_nonzero_offset(self):
+    def test_with_counts_false_previous_link_present_with_nonzero_offset(self):
         """previous link is returned correctly without count."""
-        response = self.client.get(self._captures_url(limit=2, offset=2))
+        response = self.client.get(self._captures_url(with_counts="false", limit=2, offset=2))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
         self.assertIsNone(data["count"])
         self.assertIsNotNone(data["previous"])
 
-    def test_with_counts_false_explicit(self):
-        """Explicitly passing with_counts=false also returns null count."""
-        response = self.client.get(self._captures_url(with_counts="false", limit=5))
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIsNone(response.json()["count"])
-
-    def test_with_counts_true_falls_back_when_large(self):
+    def test_count_falls_back_to_null_when_result_set_exceeds_threshold(self):
         """
-        When with_counts=true is requested but the result set meets or exceeds
-        LARGE_QUERYSET_THRESHOLD, count is null and next/previous links still work.
+        When the (default) count path is taken but the result set meets or
+        exceeds LARGE_QUERYSET_THRESHOLD, count is null and next/previous
+        links still work via the probe-based path.
         """
         from unittest.mock import patch
 
@@ -3875,8 +3882,7 @@ class TestPaginationWithCounts(APITestCase):
             total = SourceImage.objects.filter(deployment__project=self.project).count()
             self.assertGreater(total, 1, "Need at least 2 captures for this test")
 
-            # Page 1 – should see next link but null count.
-            response = self.client.get(self._captures_url(with_counts="true", limit=1))
+            response = self.client.get(self._captures_url(limit=1))
             self.assertEqual(response.status_code, status.HTTP_200_OK)
             data = response.json()
             self.assertIsNone(data["count"], "count must be null when threshold is exceeded")
