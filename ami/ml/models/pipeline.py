@@ -995,6 +995,10 @@ def save_results(
     event_ids = [img.event_id for img in source_images]  # type: ignore
     update_calculated_fields_for_events(pks=event_ids)
 
+    deployment_ids = {img.deployment_id for img in source_images if img.deployment_id}
+    for deployment in Deployment.objects.filter(pk__in=deployment_ids):
+        deployment.update_calculated_fields(save=True)
+
     total_time = time.time() - start_time
     job_logger.info(f"Saved results from pipeline {pipeline} in {total_time:.2f} seconds")
 
