@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from asgiref.sync import async_to_sync
+from asgiref.sync import async_to_sync, sync_to_async
 from celery.signals import task_failure, task_postrun, task_prerun
 from django.db import transaction
 from redis.exceptions import RedisError
@@ -25,6 +25,14 @@ logger = logging.getLogger(__name__)
 # Minimum success rate. Jobs with fewer than this fraction of images
 # processed successfully are marked as failed. Also used in MLJob.process_images().
 FAILURE_THRESHOLD = 0.5
+
+# Heartbeat window for the "online recently" count in _log_worker_availability.
+# Intentionally broader than the codebase-wide 60s PROCESSING_SERVICE_LAST_SEEN_MAX:
+# ADC's registration heartbeat can slip past 60s under normal operation, and
+# workers have been observed picking up tasks 3s after this line reported
+# "0/N online recently". The 1-hour WARNING threshold remains the load-bearing
+# "nobody's listening" signal.
+WORKER_AVAILABILITY_ONLINE_CUTOFF = datetime.timedelta(minutes=5)
 
 
 @celery_app.task(bind=True, soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
@@ -48,9 +56,47 @@ def run_job(self, job_id: int) -> None:
 
             job.refresh_from_db()
             if job.dispatch_mode == JobDispatchMode.ASYNC_API and not job.progress.is_complete():
-                job.logger.info(f"run_job task exited for job {job}; async results still in-flight via NATS")
+                _log_worker_availability(job)
             else:
                 job.logger.info(f"Finished job {job}")
+
+
+def _log_worker_availability(job) -> None:
+    """Log how many workers could actually pick up this job's tasks right now.
+
+    Called when a ``run_job`` task exits for an async_api job whose results are
+    still being pushed back via NATS — the long silence before a worker begins
+    polling is otherwise opaque in the per-job log, making it easy to
+    mistake "no worker registered for this pipeline" for "worker is slow".
+
+    Two thresholds:
+
+    * ``WORKER_AVAILABILITY_ONLINE_CUTOFF`` (5 min) for the informational
+      "online recently" count. Broader than the codebase-wide 60s
+      PROCESSING_SERVICE_LAST_SEEN_MAX because that one is tuned for UI
+      red/green indicators — here we want to avoid false-zero counts when a
+      heartbeat is just slightly stale.
+    * 1 hour for the WARNING — if no processing service on this pipeline
+      has been heard from in that long, the job will almost certainly stall
+      until someone starts a worker.
+    """
+    pipeline = job.pipeline
+    if pipeline is None:
+        job.logger.info("Waiting for workers to pick up tasks (job has no pipeline assigned)")
+        return
+
+    services = list(pipeline.processing_services.async_services().filter(projects=job.project_id))
+    total = len(services)
+    now = datetime.datetime.now()
+    online_cutoff = now - WORKER_AVAILABILITY_ONLINE_CUTOFF
+    hour_cutoff = now - datetime.timedelta(hours=1)
+    online = sum(1 for s in services if s.last_seen_live and s.last_seen and s.last_seen >= online_cutoff)
+    any_recent_hour = any(s.last_seen and s.last_seen >= hour_cutoff for s in services)
+    label = pipeline.slug or pipeline.name
+
+    job.logger.info(f"Waiting for workers to pick up tasks for pipeline '{label}' ({online}/{total} online recently)")
+    if not any_recent_hour:
+        job.logger.warning(f"Zero workers have been seen for pipeline '{label}' in the last hour")
 
 
 @celery_app.task(
@@ -338,6 +384,65 @@ def _get_current_counts_from_job_progress(job, stage: str) -> tuple[int, int, in
         return 0, 0, 0
 
 
+def _format_elapsed(seconds: float) -> str:
+    """Render a duration as `Hh Mm Ss` (hours omitted when zero)."""
+    total = max(0, int(seconds))
+    h, rem = divmod(total, 3600)
+    m, s = divmod(rem, 60)
+    if h > 0:
+        return f"{h}h {m:02d}m {s:02d}s"
+    return f"{m}m {s:02d}s"
+
+
+def _log_job_throughput(job, stage: str) -> None:
+    """
+    Emit a per-job throughput/ETA line so operators can distinguish stalled-vs-slow
+    vs healthy-but-throttled jobs at a glance in the per-job log view.
+
+    Intentionally a plain division over total elapsed time, not a rolling-window
+    estimate or forecast — accurate enough to spot a stall, cheap to compute, and
+    easy to interpret from a single log line.
+    """
+    if stage not in ("process", "results"):
+        return
+    if not job.started_at:
+        return
+    elapsed_seconds = (datetime.datetime.now() - job.started_at).total_seconds()
+    elapsed_minutes = elapsed_seconds / 60.0
+    if elapsed_minutes < 0.05:
+        # Ratio over <3s of elapsed time is noise, not signal.
+        return
+
+    # The process stage holds the authoritative processed/remaining counts
+    # (results stage only tracks detection/classification/capture counts).
+    try:
+        process_stage = job.progress.get_stage("process")
+    except (ValueError, AttributeError):
+        return
+
+    processed = 0
+    remaining = 0
+    for param in getattr(process_stage, "params", []) or []:
+        if param.key == "processed":
+            processed = param.value or 0
+        elif param.key == "remaining":
+            remaining = param.value or 0
+    total = processed + remaining
+
+    if processed == 0:
+        rate_str = "rate=0.0 imgs/min, ETA=unknown"
+    else:
+        rate = processed / elapsed_minutes
+        remaining_imgs = max(0, total - processed)
+        eta_seconds = (remaining_imgs / rate) * 60.0 if rate > 0 else 0.0
+        rate_str = f"rate={rate:.1f} imgs/min, ETA={_format_elapsed(eta_seconds)}"
+
+    job.logger.info(
+        f"Job {job.pk} throughput: elapsed={_format_elapsed(elapsed_seconds)}, "
+        f"processed={processed}/{total}, {rate_str}"
+    )
+
+
 def _update_job_progress(
     job_id: int, stage: str, progress_percentage: float, complete_state: "JobState", **state_params
 ) -> None:
@@ -412,6 +517,10 @@ def _update_job_progress(
             job.finished_at = datetime.datetime.now()  # Use naive datetime in local time
         job.logger.info(f"Updated job {job_id} progress in stage '{stage}' to {progress_percentage*100}%")
         job.save()
+        try:
+            _log_job_throughput(job, stage)
+        except Exception as e:
+            logger.warning("Throughput log failed for job %s: %s", job_id, e)
 
     # Clean up async resources for completed jobs that use NATS/Redis
     if job.progress.is_complete():
@@ -558,6 +667,7 @@ class JobsHealthCheckResult:
 
     stale_jobs: IntegrityCheckResult
     running_job_snapshots: IntegrityCheckResult
+    zombie_streams: IntegrityCheckResult
 
 
 def _run_stale_jobs_check() -> IntegrityCheckResult:
@@ -635,6 +745,119 @@ def _run_running_job_snapshot_check() -> IntegrityCheckResult:
     return IntegrityCheckResult(checked=len(running_jobs), fixed=0, unfixable=errors)
 
 
+def _run_zombie_streams_check() -> IntegrityCheckResult:
+    """Drain NATS streams that outlived their Django Job.
+
+    Defense-in-depth for the cleanup-on-cancel path: a stream whose Job is in
+    a terminal state (or was deleted) is consuming worker poll cycles for no
+    reason. The age guard (``Job.ZOMBIE_STREAMS_MAX_AGE_MINUTES``) prevents
+    races with freshly-dispatched jobs whose NATS stream is created before
+    ``transaction.on_commit`` persists the Job row.
+
+    Observations-only for healthy in-flight jobs; only drains when both
+    conditions hold:
+
+    * Job is ``None`` or in :meth:`JobState.final_states`
+    * Stream's NATS-reported ``created`` timestamp is older than the threshold
+
+    ``checked`` counts job-shaped streams inspected; ``fixed`` counts those
+    actually drained; ``unfixable`` counts per-stream drain failures.
+    """
+    from ami.jobs.models import Job, JobState
+
+    threshold = datetime.timedelta(minutes=Job.ZOMBIE_STREAMS_MAX_AGE_MINUTES)
+    now = datetime.datetime.now()
+
+    async def _drain_all() -> tuple[int, int, int]:
+        async with TaskQueueManager() as manager:
+            snapshots = await manager.list_job_stream_snapshots()
+            if not snapshots:
+                return 0, 0, 0
+
+            job_ids = [s["job_id"] for s in snapshots]
+            jobs_by_id = await sync_to_async(
+                lambda ids: {j.pk: j for j in Job.objects.filter(pk__in=ids).only("pk", "status")}
+            )(job_ids)
+
+            checked = len(snapshots)
+            drained = 0
+            errored = 0
+
+            # First pass: classify each snapshot.  Streams with a missing
+            # created timestamp are skipped (unfixable) rather than drained —
+            # the age guard exists precisely to protect streams whose Job row
+            # hasn't committed yet, so an unparseable timestamp must be treated
+            # as "unknown age / unsafe to drain".
+            ages: dict[int, datetime.timedelta] = {}
+            candidates: list[dict] = []
+            for snap in snapshots:
+                created = snap["created"]
+                if created is None:
+                    logger.warning(
+                        "Skipping zombie drain for stream %s: created timestamp missing",
+                        snap["stream_name"],
+                    )
+                    errored += 1
+                    continue
+                age = now - created
+                if age < threshold:
+                    continue
+                job = jobs_by_id.get(snap["job_id"])
+                job_status = job.status if job else None
+                if job is not None and JobState(job_status) not in JobState.final_states():
+                    continue
+                ages[snap["job_id"]] = age
+                candidates.append(snap)
+
+            # Populate num_redelivered only for drain candidates to avoid an
+            # O(N) NATS round-trip on every beat tick for all historical streams.
+            if candidates:
+                await manager.populate_redelivered_counts(candidates)
+
+            # Second pass: drain each candidate.
+            for snap in candidates:
+                job = jobs_by_id.get(snap["job_id"])
+                job_status = job.status if job else None
+                status_label = str(job_status) if job else "missing"
+                age = ages[snap["job_id"]]
+                try:
+                    consumer_deleted = await manager.delete_consumer(snap["job_id"])
+                    stream_deleted = await manager.delete_stream(snap["job_id"])
+                except Exception:
+                    errored += 1
+                    logger.exception("Failed draining zombie NATS stream for job %s", snap["job_id"])
+                    continue
+                if stream_deleted:
+                    drained += 1
+                    age_hours = age.total_seconds() / 3600.0
+                    logger.info(
+                        "Drained zombie NATS stream %s (status=%s, age=%.1fh, redelivered=%s, consumer_deleted=%s)",
+                        snap["stream_name"],
+                        status_label,
+                        age_hours,
+                        snap["num_redelivered"],
+                        consumer_deleted,
+                    )
+                else:
+                    errored += 1
+            return checked, drained, errored
+
+    try:
+        checked, drained, errored = async_to_sync(_drain_all)()
+    except Exception:
+        logger.exception("zombie_streams check: connection/setup failed")
+        return IntegrityCheckResult(checked=0, fixed=0, unfixable=1)
+
+    log_fn = logger.warning if errored else logger.info
+    log_fn(
+        "zombie_streams check: %d stream(s) inspected, %d drained, %d error(s)",
+        checked,
+        drained,
+        errored,
+    )
+    return IntegrityCheckResult(checked=checked, fixed=drained, unfixable=errored)
+
+
 def _safe_run_sub_check(name: str, fn: Callable[[], IntegrityCheckResult]) -> IntegrityCheckResult:
     """Run one umbrella sub-check, returning an ``unfixable=1`` sentinel on failure.
 
@@ -664,6 +887,7 @@ def jobs_health_check() -> dict:
     result = JobsHealthCheckResult(
         stale_jobs=_safe_run_sub_check("stale_jobs", _run_stale_jobs_check),
         running_job_snapshots=_safe_run_sub_check("running_job_snapshots", _run_running_job_snapshot_check),
+        zombie_streams=_safe_run_sub_check("zombie_streams", _run_zombie_streams_check),
     )
     return dataclasses.asdict(result)
 
@@ -714,7 +938,10 @@ def update_job_status(sender, task_id, task, state: str, retval=None, **kwargs):
     # SUCCESS should only be set when all stages are actually complete
     # This prevents premature SUCCESS when async workers are still processing
     if state == JobState.SUCCESS and not job.progress.is_complete():
-        job.logger.info(
+        # DEBUG — fires on every async_api task_postrun (Celery task ends when
+        # images are queued; async workers drive the actual stages afterward).
+        # Always true under normal operation, so not informative at INFO.
+        job.logger.debug(
             f"Job {job.pk} task completed but stages not finished - " "deferring SUCCESS status to progress handler"
         )
         return
