@@ -55,11 +55,9 @@ logger = logging.getLogger(__name__)
 # Constants
 _POST_TITLE_MAX_LENGTH: Final = 80
 
-# Shared ordering for "best machine prediction" selection. Used by both
-# Occurrence.find_best_prediction() (row-at-a-time, e.g. the API) and
-# OccurrenceQuerySet.with_best_machine_prediction() (bulk-annotated, e.g. the CSV
-# export). They must use the same ordering — otherwise the two code paths can pick
-# different classifications for the same occurrence.
+# Ordering for "best machine prediction" selection used by
+# OccurrenceQuerySet.with_best_machine_prediction(). Terminal classifications win
+# over non-terminal, then highest score, with pk as the deterministic tiebreaker.
 BEST_MACHINE_PREDICTION_ORDER: Final = ("-terminal", "-score", "-pk")
 
 
@@ -2831,10 +2829,8 @@ class OccurrenceQuerySet(BaseQuerySet):
         """
         Annotate the queryset with fields from the best machine prediction.
 
-        The "best prediction" rule is shared with Occurrence.find_best_prediction() via
-        BEST_MACHINE_PREDICTION_ORDER. If you change the ordering in one place, update it
-        in the other — otherwise the API's cached `best_prediction` and the annotations
-        exposed by this method can pick different classifications for the same occurrence.
+        Uses BEST_MACHINE_PREDICTION_ORDER to pick the winner: terminal classifications
+        first, then highest score, with pk as the deterministic tiebreaker.
 
         Adds the following annotations:
         - best_machine_prediction_name: The taxon name of the best prediction
@@ -3073,51 +3069,31 @@ class Occurrence(BaseModel):
     def best_detection(self):
         return Detection.objects.filter(occurrence=self).order_by("-classifications__score").first()
 
-    def find_best_prediction(self) -> "Classification | None":
+    @functools.cached_property
+    def best_prediction(self):
         """
-        Find the best machine prediction for this occurrence.
+        Use the best prediction as the best identification if there are no human identifications.
 
-        Ordering is shared with OccurrenceQuerySet.with_best_machine_prediction() via
-        BEST_MACHINE_PREDICTION_ORDER so that the API's cached `best_prediction` and
-        the CSV export's annotated fields agree. Terminal classifications win over
-        non-terminal, then highest score, with pk as the deterministic tiebreaker.
+        Uses the highest scoring classification (from any algorithm) as the best prediction.
+        Considers terminal classifications first, then non-terminal ones.
+        (Terminal classifications are the final classifications of a pipeline, non-terminal are intermediate models.)
         """
-        return (
-            Classification.objects.filter(detection__occurrence=self)
-            .select_related("taxon", "algorithm")
-            .order_by(*BEST_MACHINE_PREDICTION_ORDER)
-            .first()
-        )
+        return self.predictions().order_by("-terminal", "-score").first()
 
-    def find_best_identification(self) -> "Identification | None":
+    @functools.cached_property
+    def best_identification(self):
         """
-        Find the best human identification for this occurrence.
-
-        The most recent non-withdrawn identification is used as the best identification.
+        The most recent human identification is used as the best identification.
 
         @TODO this could use a confidence level chosen manually by the users/experts.
         """
         return Identification.objects.filter(occurrence=self, withdrawn=False).order_by("-created_at").first()
 
-    @functools.cached_property
-    def best_prediction(self):
-        return self.find_best_prediction()
-
-    @functools.cached_property
-    def best_identification(self):
-        return self.find_best_identification()
-
     def get_determination_score(self) -> float | None:
-        """
-        Return the determination score for this occurrence.
-
-        Human identifications return None (score of 1.0 is meaningless).
-        Machine predictions return the classification confidence score.
-        """
         if not self.determination:
             return None
         elif self.best_identification:
-            return None  # Human ID score (1.0) is not meaningful
+            return self.best_identification.score
         elif self.best_prediction:
             return self.best_prediction.score
         else:
@@ -3160,11 +3136,12 @@ class Occurrence(BaseModel):
                 save=True,
             )
 
-        if self.determination and self.determination_score is None and not self.best_identification:
-            # Legacy occurrences created before the determination_score field existed.
-            # Human-determined occurrences intentionally have a null score, so skip them.
+        if self.determination and not self.determination_score:
+            # This may happen for legacy occurrences that were created
+            # before the determination_score field was added
+            # @TODO remove
             self.determination_score = self.get_determination_score()
-            if self.determination_score is None:
+            if not self.determination_score:
                 logger.warning(f"Could not determine score for {self}")
             else:
                 self.save(update_determination=False)
@@ -3190,9 +3167,7 @@ class Occurrence(BaseModel):
 
 
 def update_occurrence_determination(
-    occurrence: Occurrence,
-    current_determination: "Taxon | int | None" = None,
-    save=True,
+    occurrence: Occurrence, current_determination: typing.Optional["Taxon"] = None, save=True
 ) -> bool:
     """
     Update the determination of the occurrence based on the identifications & predictions.
@@ -3201,8 +3176,9 @@ def update_occurrence_determination(
     If there are no identifications, set the determination to the top prediction.
 
     The `current_determination` is the determination currently saved in the database.
-    It may be passed as a Taxon instance or as a taxon id to avoid a DB lookup; when
-    omitted, the current determination id is fetched from the DB.
+    The `occurrence` object may already have a different un-saved determination set
+    so it is necessary to retrieve the current determination from the database, but
+    this can also be passed in as an argument to avoid an extra database query.
 
     @TODO Add tests for this important method!
     """
@@ -3216,35 +3192,31 @@ def update_occurrence_determination(
     if hasattr(occurrence, "best_identification"):
         del occurrence.best_identification
 
-    if isinstance(current_determination, Taxon):
-        current_determination_id = current_determination.pk
-    elif current_determination is not None:
-        current_determination_id = current_determination
-    else:
-        current_determination_id = Occurrence.objects.values_list("determination_id", flat=True).get(pk=occurrence.pk)
-
+    current_determination = (
+        current_determination
+        or Occurrence.objects.select_related("determination")
+        .values("determination")
+        .get(pk=occurrence.pk)["determination"]
+    )
     new_determination = None
     new_score = None
 
-    top_identification = occurrence.find_best_identification()
-    if top_identification and top_identification.taxon:
+    top_identification = occurrence.best_identification
+    if top_identification and top_identification.taxon and top_identification.taxon != current_determination:
         new_determination = top_identification.taxon
-        new_score = None  # Human ID score is not meaningful for determination_score
-    else:
-        top_prediction = occurrence.find_best_prediction()
-        if top_prediction and top_prediction.taxon:
+        new_score = top_identification.score
+    elif not top_identification:
+        top_prediction = occurrence.best_prediction
+        if top_prediction and top_prediction.taxon and top_prediction.taxon != current_determination:
             new_determination = top_prediction.taxon
             new_score = top_prediction.score
 
-    new_determination_id = new_determination.pk if new_determination else None
-    if new_determination_id != current_determination_id:
-        logger.debug(
-            f"Changing det. of {occurrence} from taxon#{current_determination_id} to taxon#{new_determination_id}"
-        )
+    if new_determination and new_determination != current_determination:
+        logger.debug(f"Changing det. of {occurrence} from {current_determination} to {new_determination}")
         occurrence.determination = new_determination
         needs_update = True
 
-    if new_score != occurrence.determination_score:
+    if new_score and new_score != occurrence.determination_score:
         logger.debug(f"Changing det. score of {occurrence} from {occurrence.determination_score} to {new_score}")
         occurrence.determination_score = new_score
         needs_update = True

@@ -384,7 +384,7 @@ class ExportNewFieldsTest(TestCase):
         self.assertEqual(row["participant_count"], "0")
 
     def test_ml_prediction_with_agreeing_human(self):
-        """Human agrees with ML: verified_by set, determination_matches = True, determination_score = None."""
+        """Human agrees with ML: verified_by set, determination_matches = True."""
         occurrence, classification = self._create_occurrence_with_prediction()
 
         # Human agrees with the same taxon
@@ -408,9 +408,6 @@ class ExportNewFieldsTest(TestCase):
         self.assertEqual(row["participant_count"], "1")
         self.assertEqual(row["agreed_with_algorithm"], "test-classifier")
         self.assertEqual(row["determination_matches_machine_prediction"], "True")
-
-        # determination_score should be empty/None for human-determined occurrences
-        self.assertIn(row["determination_score"], ["", "None", None])
 
     def test_ml_prediction_with_disagreeing_human(self):
         """Human disagrees with ML: different determination, determination_matches = False."""
@@ -486,7 +483,7 @@ class ExportNewFieldsTest(TestCase):
         self.assertIn("0.1", row["best_detection_bbox"])
 
     def test_api_and_csv_pick_same_best_prediction_with_mixed_terminal(self):
-        """find_best_prediction() and with_best_machine_prediction() must agree.
+        """Occurrence.best_prediction and with_best_machine_prediction() must agree.
 
         With both a high-score non-terminal classification and a lower-score terminal
         classification, the terminal row should win in both the API's cached
@@ -529,7 +526,7 @@ class ExportNewFieldsTest(TestCase):
         self.assertAlmostEqual(float(row["best_machine_prediction_score"]), 0.80, places=2)
 
         occurrence.refresh_from_db()
-        api_best = occurrence.find_best_prediction()
+        api_best = occurrence.best_prediction
         self.assertIsNotNone(api_best)
         self.assertEqual(api_best.taxon_id, self.taxon_b.pk)
         self.assertEqual(api_best.algorithm.name, "terminal-classifier")
