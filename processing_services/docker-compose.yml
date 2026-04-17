@@ -10,17 +10,11 @@ services:
       - minio:host-gateway
     networks:
       - antenna_network
-    # MODE=api+worker runs both the v1 FastAPI service and the v2 worker
-    # poll loop in one container. start.sh handles sequencing: FastAPI first
-    # (for register.py to read /info), then register.py, then worker loop.
-    # For pure v1 testing, set MODE=api. For pure v2, set MODE=worker.
-    environment:
-      MODE: api+worker
-      ANTENNA_API_URL: http://django:8000
-      ANTENNA_DEFAULT_PROJECT_NAME: Default Project
-      ANTENNA_USER: antenna@insectai.org
-      ANTENNA_PASSWORD: localadmin
-      ANTENNA_SERVICE_NAME: minimal-worker-dev
+    # start.sh dispatches on MODE: api | worker | api+worker. For api+worker,
+    # start.sh runs FastAPI first (for register.py to read /info), then
+    # register.py, then the worker poll loop.
+    env_file:
+      - ./minimal/.env.dev
 
   ml_backend_example:
     build:
