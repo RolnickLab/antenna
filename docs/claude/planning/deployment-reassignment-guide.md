@@ -32,9 +32,9 @@ This guide covers the full relationship map, edge cases, and a validation checkl
 
 | Resource | Relationship | Reassignment strategy |
 |---|---|---|
-| **S3StorageSource** | FK on Deployment (`data_source`) | Clone if `project_id` points to source project; update deployment FK |
-| **Device** | FK on Deployment | Clone if `project_id` = source project; or set NULL (shared) |
-| **Site** | FK on Deployment (`research_site`) | Clone if `project_id` = source project; or set NULL (shared) |
+| **S3StorageSource** | FK on Deployment (`data_source`) | If shared with other deployments in source project, clone; if exclusive, reassign `project_id` to target |
+| **Device** | FK on Deployment | If shared with other deployments in source project, clone; if exclusive, reassign `project_id`. No-op if `project_id` is NULL or belongs to another project |
+| **Site** | FK on Deployment (`research_site`) | If shared with other deployments in source project, clone; if exclusive, reassign `project_id`. No-op if `project_id` is NULL or belongs to another project |
 | **SourceImageCollection** | M2M with SourceImage, FK to Project | Split: remove moved images from source collection; optionally create mirror collection in target project |
 | **Tag** | FK to Project (CASCADE) | Not deployment-scoped — usually not moved |
 | **TaxaList** | M2M to Project | Add target project to M2M if relevant lists exist |

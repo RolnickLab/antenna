@@ -361,6 +361,31 @@ class TestErrorHandling(MoveProjectDataSetupMixin, TestCase):
         with self.assertRaises(CommandError, msg="Must specify"):
             _run_command(*self._base_args())
 
+    def test_source_equals_target(self):
+        with self.assertRaises(CommandError, msg="cannot be the same"):
+            _run_command(
+                *self._base_args(),
+                "--target-project",
+                str(self.source_project.pk),
+            )
+
+    def test_duplicate_deployment_ids(self):
+        """Duplicate IDs in --deployment-ids should be deduplicated, not cause errors."""
+        target = _create_project(self.owner, "Target")
+        dep_id = str(self.deployment.pk)
+        # Should succeed with deduplicated IDs
+        _run_command(
+            "--source-project",
+            str(self.source_project.pk),
+            "--deployment-ids",
+            f"{dep_id},{dep_id}",
+            "--target-project",
+            str(target.pk),
+            "--execute",
+        )
+        self.deployment.refresh_from_db()
+        self.assertEqual(self.deployment.project_id, target.pk)
+
 
 class TestSharedResourceCloning(MoveProjectDataSetupMixin, TestCase):
     """Test clone-vs-reassign logic for Device, Site, and S3StorageSource."""

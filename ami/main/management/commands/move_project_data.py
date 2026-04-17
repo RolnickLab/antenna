@@ -141,7 +141,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         source_project_id = options["source_project"]
-        deployment_ids = [int(x.strip()) for x in options["deployment_ids"].split(",")]
+        deployment_ids = list(dict.fromkeys(int(x.strip()) for x in options["deployment_ids"].split(",")))
         execute = options["execute"]
         clone_pipelines = not options["no_clone_pipelines"]
         clone_collections = not options["no_clone_collections"]
@@ -174,6 +174,8 @@ class Command(BaseCommand):
         create_project_name = options.get("create_project")
         if create_project_name and options.get("target_project"):
             raise CommandError("Use either --target-project or --create-project, not both")
+        if options.get("target_project") and options["target_project"] == source_project_id:
+            raise CommandError("Target project cannot be the same as source project")
 
         if create_project_name:
             self.log(f"Target project: NEW — '{create_project_name}'")
@@ -223,6 +225,7 @@ class Command(BaseCommand):
         for model_name, count in source_pre.items():
             self.log(f"    {model_name:20s} {count:>10,}")
 
+        target_pre = {}
         if target_project:
             target_pre = collect_project_counts(target_project.pk)
             self.log(f"\n  Target project totals ({target_project.name}):")
@@ -261,9 +264,11 @@ class Command(BaseCommand):
                 else (
                     f"will CLONE (owned by source project {dev.project_id})"
                     if dev.project_id == source_project_id and other_deps.exists()
-                    else f"will REASSIGN (owned by source project {dev.project_id})"
-                    if dev.project_id == source_project_id
-                    else f"no change needed (owned by project {dev.project_id})"
+                    else (
+                        f"will REASSIGN (owned by source project {dev.project_id})"
+                        if dev.project_id == source_project_id
+                        else f"no change needed (owned by project {dev.project_id})"
+                    )
                 )
             )
             self.log(f"  Device '{dev.name}' (id={dev_id}): {action}")
@@ -281,9 +286,11 @@ class Command(BaseCommand):
                 else (
                     f"will CLONE (owned by source project {site.project_id})"
                     if site.project_id == source_project_id and other_deps.exists()
-                    else f"will REASSIGN (owned by source project {site.project_id})"
-                    if site.project_id == source_project_id
-                    else f"no change needed (owned by project {site.project_id})"
+                    else (
+                        f"will REASSIGN (owned by source project {site.project_id})"
+                        if site.project_id == source_project_id
+                        else f"no change needed (owned by project {site.project_id})"
+                    )
                 )
             )
             self.log(f"  Site '{site.name}' (id={site_id}): {action}")
@@ -343,7 +350,7 @@ class Command(BaseCommand):
                     role_to_assign = Identifier
                     role_source = "default (not a source member)"
                 identifier_role_map[uid] = role_to_assign
-                self.log(f"    {user.email}: " f"{role_to_assign.display_name} ({role_source})")
+                self.log(f"    User id={uid}: " f"{role_to_assign.display_name} ({role_source})")
 
         # Default filter config
         self.log("\n  Source project default filters:")
@@ -573,7 +580,7 @@ class Command(BaseCommand):
                         target_project.members.add(user)
                         role_cls.assign_user(user, target_project)
                         added_count += 1
-                        self.log(f"  [13/16] Added {user.email}" f" as {role_cls.display_name}")
+                        self.log(f"  [13/16] Added user id={uid}" f" as {role_cls.display_name}")
                 if added_count == 0:
                     self.log("  [13/16] All identifiers already members")
                 else:
@@ -603,17 +610,157 @@ class Command(BaseCommand):
             target_project.save()
             self.log(f"  [16/16] Score threshold:" f" {target_project.default_filters_score_threshold}")
 
-        # --- Post-move: update cached fields (outside transaction) ---
+            # --- Validation (inside transaction — rolls back on failure) ---
+            self.log(f"\n{'─' * 60}")
+            self.log("  VALIDATION (inside transaction)")
+            self.log(f"{'─' * 60}")
+            errors = []
+
+            # Per-deployment row count integrity
+            all_ok = True
+            for dep in Deployment.objects.filter(pk__in=deployment_ids).select_related(
+                "project", "device", "research_site"
+            ):
+                snap_after = collect_deployment_snapshot(dep.pk)
+                snap_before = per_dep_snapshots[dep.pk]
+                for model_name in snap_after:
+                    before = snap_before[model_name]
+                    after = snap_after[model_name]
+                    if before != after:
+                        all_ok = False
+                        self.log(f"  FAIL: {dep.name} {model_name}" f" before={before:,} after={after:,}")
+
+            if not all_ok:
+                errors.append("Per-deployment row counts changed (see above)")
+
+            # FK integrity: all moved data points to target project
+            for model_name, model_cls, filter_field in [
+                ("Events", Event, "deployment_id__in"),
+                ("SourceImages", SourceImage, "deployment_id__in"),
+                ("Occurrences", Occurrence, "deployment_id__in"),
+                ("Jobs", Job, "deployment_id__in"),
+            ]:
+                bad = model_cls.objects.filter(**{filter_field: deployment_ids}).exclude(project_id=target_id).count()
+                if bad:
+                    errors.append(f"{bad} {model_name} still pointing to wrong project")
+                    self.log(f"  FAIL: {bad} {model_name} still pointing to wrong project")
+                else:
+                    self.log(f"  OK: All {model_name} point to target project")
+
+            # Indirect access consistency
+            dets_via_project = Detection.objects.filter(
+                source_image__project_id=target_id, source_image__deployment_id__in=deployment_ids
+            ).count()
+            dets_via_dep = Detection.objects.filter(source_image__deployment_id__in=deployment_ids).count()
+            if dets_via_project != dets_via_dep:
+                errors.append(
+                    f"Detection count mismatch: via project={dets_via_project}, via deployment={dets_via_dep}"
+                )
+                self.log(
+                    f"  FAIL: Detection count mismatch:"
+                    f" via project={dets_via_project}, via deployment={dets_via_dep}"
+                )
+            else:
+                self.log(
+                    f"  OK: Detections consistent"
+                    f" ({dets_via_project:,} via project, {dets_via_dep:,} via deployment)"
+                )
+
+            cls_via_project = Classification.objects.filter(
+                detection__source_image__project_id=target_id,
+                detection__source_image__deployment_id__in=deployment_ids,
+            ).count()
+            cls_via_dep = Classification.objects.filter(
+                detection__source_image__deployment_id__in=deployment_ids
+            ).count()
+            if cls_via_project != cls_via_dep:
+                errors.append(
+                    f"Classification count mismatch:" f" via project={cls_via_project}, via deployment={cls_via_dep}"
+                )
+                self.log(
+                    f"  FAIL: Classification count mismatch:"
+                    f" via project={cls_via_project}, via deployment={cls_via_dep}"
+                )
+            else:
+                self.log(f"  OK: Classifications consistent ({cls_via_project:,})")
+
+            idents_via_project = Identification.objects.filter(
+                occurrence__project_id=target_id, occurrence__deployment_id__in=deployment_ids
+            ).count()
+            idents_via_dep = Identification.objects.filter(occurrence__deployment_id__in=deployment_ids).count()
+            if idents_via_project != idents_via_dep:
+                errors.append(
+                    f"Identification count mismatch:"
+                    f" via project={idents_via_project}, via deployment={idents_via_dep}"
+                )
+                self.log(
+                    f"  FAIL: Identification count mismatch:"
+                    f" via project={idents_via_project}, via deployment={idents_via_dep}"
+                )
+            else:
+                self.log(f"  OK: Identifications consistent ({idents_via_project:,})")
+
+            # Source project has no leaked data from moved deployments
+            for model_name, model_cls in [
+                ("Events", Event),
+                ("SourceImages", SourceImage),
+                ("Occurrences", Occurrence),
+            ]:
+                leaked = model_cls.objects.filter(
+                    project_id=source_project_id, deployment_id__in=deployment_ids
+                ).count()
+                if leaked:
+                    errors.append(f"{leaked} {model_name} leaked in source project")
+                else:
+                    self.log(f"  OK: No {model_name} leaked in source project")
+
+            # Collection integrity
+            source_colls = SourceImageCollection.objects.filter(project_id=source_project_id)
+            for coll in source_colls:
+                leaked = coll.images.filter(deployment_id__in=deployment_ids).count()
+                if leaked:
+                    errors.append(f"Source collection '{coll.name}' still has {leaked} moved images")
+            if not any("collection" in e for e in errors):
+                self.log("  OK: No moved images in source collections")
+
+            # Conservation: source + target = original totals
+            source_post = collect_project_counts(source_project_id)
+            target_post = collect_project_counts(target_id)
+            for model_name in source_pre:
+                combined = source_post[model_name] + target_post[model_name]
+                original = source_pre[model_name] + target_pre.get(model_name, 0)
+                if combined != original:
+                    errors.append(
+                        f"Conservation failed for {model_name}: "
+                        f"source({source_post[model_name]})"
+                        f" + target({target_post[model_name]})"
+                        f" = {combined} != original({original})"
+                    )
+                else:
+                    self.log(f"  OK: Conservation check passed for {model_name}" f" ({combined:,} = {original:,})")
+
+            # --- Validation verdict (inside transaction) ---
+            if errors:
+                self.log(f"\n{'=' * 60}")
+                self.log("  VALIDATION FAILED — ROLLING BACK", style=self.style.ERROR)
+                for err in errors:
+                    self.log(f"    ✗ {err}", style=self.style.ERROR)
+                self.log(f"{'=' * 60}")
+                raise CommandError(
+                    "Post-move validation failed; transaction rolled back." " See log output above for details."
+                )
+
+            self.log("  ALL VALIDATION CHECKS PASSED")
+
+        # --- Post-transaction: update cached fields (idempotent) ---
         self.log(f"\n{'─' * 60}")
         self.log("  UPDATING CACHED FIELDS")
         self.log(f"{'─' * 60}")
 
-        # Update deployment cached counts
         for dep in Deployment.objects.filter(pk__in=deployment_ids):
             dep.update_calculated_fields(save=True)
             self.log(f"  Deployment '{dep.name}' (id={dep.pk}): cached fields updated")
 
-        # Update event cached counts for moved events
         from ami.main.models import update_calculated_fields_for_events
 
         moved_event_pks = list(Event.objects.filter(deployment_id__in=deployment_ids).values_list("pk", flat=True))
@@ -621,7 +768,6 @@ class Command(BaseCommand):
             update_calculated_fields_for_events(pks=moved_event_pks)
             self.log(f"  Updated cached fields for {len(moved_event_pks)} events")
 
-        # Update both projects' related calculated fields (events + deployments)
         self.log("  Updating source project cached fields...")
         source_project.update_related_calculated_fields()
         self.log(f"  Source project '{source_project.name}': related fields updated")
@@ -630,161 +776,22 @@ class Command(BaseCommand):
         target_project.update_related_calculated_fields()
         self.log(f"  Target project (id={target_id}): related fields updated")
 
-        # --- Post-move: per-deployment after snapshot ---
+        # --- Summary ---
         self.log(f"\n{'─' * 60}")
-        self.log("  AFTER — Per-deployment breakdown")
+        self.log("  POST-MOVE SUMMARY")
         self.log(f"{'─' * 60}")
 
-        all_ok = True
-        for dep in Deployment.objects.filter(pk__in=deployment_ids).select_related(
-            "project", "device", "research_site"
-        ):
-            snap_after = collect_deployment_snapshot(dep.pk)
-            snap_before = per_dep_snapshots[dep.pk]
-            self.log(f"\n  {dep.name} (id={dep.pk}):")
-            self.log(f"    Project:         {dep.project.name} (id={dep.project_id})")
-            dev_name = dep.device.name if dep.device else "None"
-            site_name = dep.research_site.name if dep.research_site else "None"
-            self.log(f"    Device:          {dev_name} (id={dep.device_id})")
-            self.log(f"    Site:            {site_name} (id={dep.research_site_id})")
-            self.log(f"    S3 Source:       id={dep.data_source_id}")
-            for model_name in snap_after:
-                before = snap_before[model_name]
-                after = snap_after[model_name]
-                status = "OK" if before == after else "MISMATCH"
-                if status != "OK":
-                    all_ok = False
-                self.log(f"    {model_name:20s} before={before:>10,}  after={after:>10,}  {status}")
-
-        # --- Post-move: aggregate snapshot ---
-        self.log(f"\n{'─' * 60}")
-        self.log("  AFTER — Aggregate totals")
-        self.log(f"{'─' * 60}")
-
-        post_snapshot = collect_aggregate_snapshot(deployment_ids)
-        for model_name, count in post_snapshot.items():
-            pre_count = pre_snapshot[model_name]
-            status = "OK" if count == pre_count else f"MISMATCH (was {pre_count})"
-            if count != pre_count:
-                all_ok = False
-            self.log(f"  {model_name:20s} {count:>10,}  {status}")
-
-        source_post = collect_project_counts(source_project_id)
-        self.log(f"\n  Source project ({source_project.name}) after move:")
-        for model_name, count in source_post.items():
+        source_final = collect_project_counts(source_project_id)
+        self.log(f"\n  Source project ({source_project.name}):")
+        for model_name, count in source_final.items():
             diff = source_pre[model_name] - count
             self.log(f"    {model_name:20s} {count:>10,}  (moved {diff:,})")
 
-        target_post = collect_project_counts(target_id)
-        self.log(f"\n  Target project (id={target_id}) after move:")
-        for model_name, count in target_post.items():
+        target_final = collect_project_counts(target_id)
+        self.log(f"\n  Target project (id={target_id}):")
+        for model_name, count in target_final.items():
             self.log(f"    {model_name:20s} {count:>10,}")
 
-        # --- Validation ---
-        self.log(f"\n{'─' * 60}")
-        self.log("  VALIDATION")
-        self.log(f"{'─' * 60}")
-        errors = []
-
-        # FK integrity: all moved data points to target project
-        for model_name, model_cls, filter_field in [
-            ("Events", Event, "deployment_id__in"),
-            ("SourceImages", SourceImage, "deployment_id__in"),
-            ("Occurrences", Occurrence, "deployment_id__in"),
-            ("Jobs", Job, "deployment_id__in"),
-        ]:
-            bad = model_cls.objects.filter(**{filter_field: deployment_ids}).exclude(project_id=target_id).count()
-            if bad:
-                errors.append(f"{bad} {model_name} still pointing to wrong project")
-                self.log(f"  FAIL: {bad} {model_name} still pointing to wrong project")
-            else:
-                self.log(f"  OK: All {model_name} point to target project")
-
-        # Indirect access consistency
-        dets_via_project = Detection.objects.filter(
-            source_image__project_id=target_id, source_image__deployment_id__in=deployment_ids
-        ).count()
-        dets_via_dep = Detection.objects.filter(source_image__deployment_id__in=deployment_ids).count()
-        if dets_via_project != dets_via_dep:
-            errors.append(f"Detection count mismatch: via project={dets_via_project}, via deployment={dets_via_dep}")
-            self.log(
-                f"  FAIL: Detection count mismatch: via project={dets_via_project}, via deployment={dets_via_dep}"
-            )
-        else:
-            self.log(
-                f"  OK: Detections consistent ({dets_via_project:,} via project, {dets_via_dep:,} via deployment)"
-            )
-
-        cls_via_project = Classification.objects.filter(
-            detection__source_image__project_id=target_id, detection__source_image__deployment_id__in=deployment_ids
-        ).count()
-        cls_via_dep = Classification.objects.filter(detection__source_image__deployment_id__in=deployment_ids).count()
-        if cls_via_project != cls_via_dep:
-            errors.append(
-                f"Classification count mismatch: via project={cls_via_project}, via deployment={cls_via_dep}"
-            )
-            self.log(
-                f"  FAIL: Classification count mismatch: via project={cls_via_project}, via deployment={cls_via_dep}"
-            )
-        else:
-            self.log(f"  OK: Classifications consistent ({cls_via_project:,})")
-
-        idents_via_project = Identification.objects.filter(
-            occurrence__project_id=target_id, occurrence__deployment_id__in=deployment_ids
-        ).count()
-        idents_via_dep = Identification.objects.filter(occurrence__deployment_id__in=deployment_ids).count()
-        if idents_via_project != idents_via_dep:
-            errors.append(
-                f"Identification count mismatch: via project={idents_via_project}, via deployment={idents_via_dep}"
-            )
-            self.log(
-                f"  FAIL: Identification count mismatch:"
-                f" via project={idents_via_project}, via deployment={idents_via_dep}"
-            )
-        else:
-            self.log(f"  OK: Identifications consistent ({idents_via_project:,})")
-
-        # Source project has no leaked data from moved deployments
-        for model_name, model_cls in [("Events", Event), ("SourceImages", SourceImage), ("Occurrences", Occurrence)]:
-            leaked = model_cls.objects.filter(project_id=source_project_id, deployment_id__in=deployment_ids).count()
-            if leaked:
-                errors.append(f"{leaked} {model_name} leaked in source project")
-            else:
-                self.log(f"  OK: No {model_name} leaked in source project")
-
-        # Collection integrity
-        source_colls = SourceImageCollection.objects.filter(project_id=source_project_id)
-        for coll in source_colls:
-            leaked = coll.images.filter(deployment_id__in=deployment_ids).count()
-            if leaked:
-                errors.append(f"Source collection '{coll.name}' still has {leaked} moved images")
-        self.log("  OK: No moved images in source collections" if not any("collection" in e for e in errors) else "")
-
-        # Conservation: source + target = original totals
-        for model_name in source_pre:
-            combined = source_post[model_name] + target_post[model_name]
-            original = source_pre[model_name] + target_pre.get(model_name, 0)
-            if combined != original:
-                errors.append(
-                    f"Conservation failed for {model_name}: "
-                    f"source({source_post[model_name]}) + target({target_post[model_name]}) = {combined} "
-                    f"!= original({original})"
-                )
-            else:
-                self.log(f"  OK: Conservation check passed for {model_name} ({combined:,} = {original:,})")
-
-        # Per-deployment row count integrity
-        if not all_ok:
-            errors.append("Per-deployment row counts changed (see breakdown above)")
-
-        # --- Final verdict ---
         self.log(f"\n{'=' * 60}")
-        if errors:
-            self.log("  VALIDATION FAILED", style=self.style.ERROR)
-            for err in errors:
-                self.log(f"    ✗ {err}", style=self.style.ERROR)
-            self.log(f"{'=' * 60}")
-            raise CommandError("Post-move validation failed; see log output above for details.")
-        else:
-            self.log("  ALL VALIDATION CHECKS PASSED", style=self.style.SUCCESS)
+        self.log("  MOVE COMPLETE", style=self.style.SUCCESS)
         self.log(f"{'=' * 60}")
