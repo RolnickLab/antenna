@@ -41,6 +41,10 @@ class JobsHealthCheckTest(TestCase):
         instance.populate_redelivered_counts = AsyncMock(return_value=None)
         instance.delete_consumer = AsyncMock(return_value=True)
         instance.delete_stream = AsyncMock(return_value=True)
+        # Lost-images sub-check default: no consumer state available (e.g. no
+        # async_api stale jobs). Individual tests override when exercising the
+        # reconciler path.
+        instance.get_consumer_state = AsyncMock(return_value=None)
         return instance
 
     def test_reports_both_sub_check_results(self, mock_manager_cls, _mock_cleanup):
@@ -53,6 +57,7 @@ class JobsHealthCheckTest(TestCase):
         self.assertEqual(
             result,
             {
+                "lost_images": _empty_check_dict(),
                 "stale_jobs": {"checked": 2, "fixed": 2, "unfixable": 0},
                 "running_job_snapshots": _empty_check_dict(),
                 "zombie_streams": _empty_check_dict(),
@@ -67,6 +72,7 @@ class JobsHealthCheckTest(TestCase):
         self.assertEqual(
             jobs_health_check(),
             {
+                "lost_images": _empty_check_dict(),
                 "stale_jobs": _empty_check_dict(),
                 "running_job_snapshots": _empty_check_dict(),
                 "zombie_streams": _empty_check_dict(),

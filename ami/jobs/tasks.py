@@ -13,7 +13,7 @@ from redis.exceptions import RedisError
 
 from ami.main.checks.schemas import IntegrityCheckResult
 from ami.ml.orchestration.async_job_state import AsyncJobStateManager
-from ami.ml.orchestration.nats_queue import TaskQueueManager
+from ami.ml.orchestration.nats_queue import ConsumerState, TaskQueueManager
 from ami.ml.schemas import PipelineResultsError, PipelineResultsResponse
 from ami.tasks import default_soft_time_limit, default_time_limit
 from config import celery_app
@@ -533,6 +533,190 @@ def _update_job_progress(
         cleanup_async_job_if_needed(job)
 
 
+def mark_lost_images_failed(minutes: int | None = None, dry_run: bool = False) -> list[dict]:
+    """Reconcile running async_api jobs that have been idle past the cutoff
+    while Redis still tracks images as pending.
+
+    **Decision signals** (all must hold):
+
+    1. :attr:`Job.updated_at` older than ``minutes`` — every successful result
+       save bumps ``updated_at``, so 10+ minutes of silence means no batch has
+       landed. ADC has stopped processing this job, for any reason.
+    2. Redis ``job:{id}:pending_images:{process,results}`` still has ids —
+       there is real work left to reconcile.
+    3. NATS consumer exists (``get_consumer_state`` returns not-None) — the
+       job is a live async_api job we own state for.
+
+    No NATS-counter-based guards. Empirically, JetStream keeps messages in
+    ``num_ack_pending`` even after ``max_deliver`` is hit and the messages are
+    dropped from delivery; those counters are not reliable signals of whether
+    the queue is still making progress. Time-based staleness + "Redis still
+    has work" are the signals that matter.
+
+    **Why this is safe:**
+
+    - Late NATS deliveries are idempotent: ``save_results`` dedupes on
+      ``(detection, source_image)``, SREM on already-removed ids is a no-op
+      with ``newly_removed == 0`` gating counter accumulation (see
+      ``processing-lifecycle.md`` §2), and ``_update_job_progress`` clamps
+      percentage with ``max()``. A late result arriving post-reconcile saves
+      its detections and its SREM/SADD is a no-op.
+    - Runs BEFORE :func:`check_stale_jobs` in :func:`jobs_health_check` so
+      a job the reconciler can unstick lands in its natural completion state
+      (SUCCESS or FAILURE via :data:`FAILURE_THRESHOLD`) rather than being
+      REVOKEd and losing legitimate successful work.
+
+    ``get_consumer_state`` is still called per candidate, but only so the
+    current ``num_redelivered`` can be logged in the diagnostic — operators
+    get a one-glance signal distinguishing "max_deliver exhausted" from
+    "never delivered" after the fact.
+
+    Returns a list of per-job result dicts (``job_id``, ``lost_count``,
+    ``action``) mirroring :func:`check_stale_jobs` for consistency in
+    operator logs.
+    """
+    from ami.jobs.models import Job, JobDispatchMode, JobState
+
+    if minutes is None:
+        minutes = Job.STALLED_JOBS_MAX_MINUTES
+
+    cutoff = datetime.datetime.now() - datetime.timedelta(minutes=minutes)
+    candidate_pks = list(
+        Job.objects.filter(
+            status__in=JobState.running_states(),
+            dispatch_mode=JobDispatchMode.ASYNC_API,
+            updated_at__lt=cutoff,
+        ).values_list("pk", flat=True)
+    )
+    if not candidate_pks:
+        return []
+
+    async def _fetch_states() -> dict[int, ConsumerState | None]:
+        states: dict[int, ConsumerState | None] = {}
+        async with TaskQueueManager() as manager:
+            for pk in candidate_pks:
+                try:
+                    states[pk] = await manager.get_consumer_state(pk)
+                except Exception:
+                    # get_consumer_state already swallows per-consumer errors
+                    # and returns None, but a truly unexpected failure (e.g.
+                    # connection reset mid-loop) should not blow up the whole
+                    # reconciler tick — mark this pk as "skip" and continue.
+                    logger.exception("mark_lost_images_failed: consumer_state failed for job %s", pk)
+                    states[pk] = None
+        return states
+
+    try:
+        consumer_states = async_to_sync(_fetch_states)()
+    except Exception:
+        logger.exception("mark_lost_images_failed: failed to open NATS connection")
+        return []
+
+    results: list[dict] = []
+    for pk in candidate_pks:
+        state = consumer_states.get(pk)
+        if state is None:
+            # Consumer missing: either cleanup already fired or we have no
+            # NATS-level record. Either way, reconciling without a consumer
+            # means we can't verify the state is ours — skip.
+            continue
+
+        state_manager = AsyncJobStateManager(pk)
+        lost_ids = state_manager.get_pending_image_ids()
+        if not lost_ids:
+            continue
+
+        if dry_run:
+            results.append({"job_id": pk, "lost_count": len(lost_ids), "action": "dry-run"})
+            continue
+
+        try:
+            _reconcile_lost_images(pk, lost_ids, state)
+        except Exception:
+            logger.exception("mark_lost_images_failed: failed reconciling job %s", pk)
+            results.append({"job_id": pk, "lost_count": len(lost_ids), "action": "error"})
+            continue
+
+        results.append({"job_id": pk, "lost_count": len(lost_ids), "action": "marked_failed"})
+
+    return results
+
+
+def _reconcile_lost_images(job_id: int, lost_ids: set[str], consumer_state: ConsumerState) -> None:
+    """Mark *lost_ids* as failed in Redis and push progress to 100% in both stages.
+
+    Mirrors the SREM+SADD+progress-update sequence that
+    :func:`process_nats_pipeline_result` runs on every result, so the stage
+    transitions land in the same shape the rest of the pipeline expects. The
+    completion decision (SUCCESS vs FAILURE) reuses :data:`FAILURE_THRESHOLD`
+    so a job losing >50% of its images still falls through to FAILURE.
+    """
+    from ami.jobs.models import Job, JobState
+
+    state_manager = AsyncJobStateManager(job_id)
+
+    # Stage "process": SREM from pending_images:process and SADD to failed_images.
+    process_progress = state_manager.update_state(lost_ids, stage="process", failed_image_ids=lost_ids)
+    # Stage "results": SREM from pending_images:results. failed_image_ids
+    # already covered by the previous call (SADD is idempotent anyway).
+    results_progress = state_manager.update_state(lost_ids, stage="results")
+
+    if not process_progress or not results_progress:
+        logger.warning(
+            "mark_lost_images_failed: job %s state disappeared mid-reconcile; " "leaving it for check_stale_jobs",
+            job_id,
+        )
+        return
+
+    complete_state = JobState.SUCCESS
+    if process_progress.total > 0 and (process_progress.failed / process_progress.total) > FAILURE_THRESHOLD:
+        complete_state = JobState.FAILURE
+
+    _update_job_progress(
+        job_id,
+        "process",
+        process_progress.percentage,
+        complete_state=complete_state,
+        processed=process_progress.processed,
+        remaining=process_progress.remaining,
+        failed=process_progress.failed,
+    )
+    # Results-stage counters are accumulated inside _update_job_progress, so
+    # passing zeros here preserves whatever save_results already counted on
+    # the non-lost branch. We do NOT have detections/classifications for the
+    # lost images — by definition we never got their results.
+    _update_job_progress(
+        job_id,
+        "results",
+        results_progress.percentage,
+        complete_state=complete_state,
+        detections=0,
+        classifications=0,
+        captures=0,
+    )
+
+    diagnostic = (
+        f"jobs_health_check: marked {len(lost_ids)} image(s) as failed "
+        f"(job idle past cutoff; NATS consumer "
+        f"num_pending={consumer_state.num_pending} "
+        f"num_ack_pending={consumer_state.num_ack_pending} "
+        f"num_redelivered={consumer_state.num_redelivered}). "
+        f"IDs: {sorted(lost_ids)}"
+    )
+
+    # Append the diagnostic to ``progress.errors`` so the reason is visible in
+    # the UI alongside the now-accurate ``failed`` count. ``select_for_update``
+    # mirrors :func:`_fail_job` — the row may still be touched concurrently by
+    # a late ``process_nats_pipeline_result`` retry.
+    with transaction.atomic():
+        job = Job.objects.select_for_update().get(pk=job_id)
+        if diagnostic not in job.progress.errors:
+            job.progress.errors.append(diagnostic)
+            job.save(update_fields=["progress"])
+
+    job.logger.warning(diagnostic)
+
+
 def check_stale_jobs(minutes: int | None = None, dry_run: bool = False) -> list[dict]:
     """
     Find jobs stuck in a running state past the cutoff and revoke them.
@@ -665,9 +849,31 @@ class JobsHealthCheckResult:
     Add a new field here when adding a sub-check to the umbrella.
     """
 
+    lost_images: IntegrityCheckResult
     stale_jobs: IntegrityCheckResult
     running_job_snapshots: IntegrityCheckResult
     zombie_streams: IntegrityCheckResult
+
+
+def _run_mark_lost_images_failed_check() -> IntegrityCheckResult:
+    """Mark NATS-lost pending images as failed so their jobs can finalize.
+
+    Runs BEFORE ``_run_stale_jobs_check`` in :func:`jobs_health_check` — a job
+    the reconciler can unstick should land in its natural completion state
+    rather than being REVOKED. Jobs the reconciler can't help (e.g. consumer
+    missing, num_redelivered=0, no pending ids) fall through to
+    ``check_stale_jobs`` unchanged.
+    """
+    results = mark_lost_images_failed()
+    fixed = sum(1 for r in results if r["action"] == "marked_failed")
+    unfixable = sum(1 for r in results if r["action"] == "error")
+    logger.info(
+        "lost_images check: %d candidate(s), %d marked failed, %d error(s)",
+        len(results),
+        fixed,
+        unfixable,
+    )
+    return IntegrityCheckResult(checked=len(results), fixed=fixed, unfixable=unfixable)
 
 
 def _run_stale_jobs_check() -> IntegrityCheckResult:
@@ -884,7 +1090,12 @@ def jobs_health_check() -> dict:
     :class:`JobsHealthCheckResult` so celery's default JSON backend can store
     it; add new sub-checks by extending that dataclass and calling them here.
     """
+    # Order matters: the ``lost_images`` reconciler runs BEFORE ``stale_jobs``
+    # so that jobs whose only remaining problem is NATS-dropped pending ids
+    # land in SUCCESS/FAILURE via _update_job_progress rather than REVOKE.
+    # Jobs the reconciler can't help still fall through to check_stale_jobs.
     result = JobsHealthCheckResult(
+        lost_images=_safe_run_sub_check("lost_images", _run_mark_lost_images_failed_check),
         stale_jobs=_safe_run_sub_check("stale_jobs", _run_stale_jobs_check),
         running_job_snapshots=_safe_run_sub_check("running_job_snapshots", _run_running_job_snapshot_check),
         zombie_streams=_safe_run_sub_check("zombie_streams", _run_zombie_streams_check),
