@@ -26,12 +26,8 @@ export interface TableColumn<T> {
   renderCell: (item: T, rowIndex: number, columnIndex: number) => JSX.Element
 }
 
+// TODO: This type is no longer used for tables only and should be extracted
 export interface TableSortSettings {
   field: string
   order: 'asc' | 'desc'
-}
-
-export interface TablePaginationSettings {
-  page: number
-  perPage: number
 }

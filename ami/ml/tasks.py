@@ -54,7 +54,7 @@ def create_detection_images(source_image_ids: list[int]):
             logger.error(f"Error creating detection images for SourceImage {source_image.pk}: {str(e)}")
 
     total_time = time.time() - start_time
-    logger.info(f"Created detection images for {len(source_image_ids)} capture(s) in {total_time:.2f} seconds")
+    logger.info(f"Created detection images for {len(source_image_ids)} capture(s) in {total_time: .2f} seconds")
 
 
 @celery_app.task(soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
@@ -141,6 +141,11 @@ def check_ml_job_status(ml_job_id: int):
         job.update_status(JobState.FAILURE)
         job.finished_at = datetime.datetime.now()
         job.save()
+
+        # Remove remaining tasks from the queue
+        for ml_task_record in job.ml_task_records.all():
+            ml_task_record.kill_task()
+
         raise Exception(error_msg)
 
 
@@ -159,17 +164,25 @@ def check_dangling_ml_jobs():
 
     for job in inprogress_jobs:
         last_checked = job.last_checked
-        if (
-            last_checked is None
-            or (
-                datetime.datetime.now(datetime.timezone.utc) - last_checked.replace(tzinfo=datetime.timezone.utc)
-            ).total_seconds()
-            > 5 * 60  # 5 minutes
-        ):
-            logger.warning(f"Job {job.pk} appears to be dangling. Marking as failed.")
-            job.logger.error(f"Job {job.pk} appears to be dangling. Marking as failed.")
+        if not last_checked:
+            logger.warning(f"Job {job.pk} has no last_checked time. Marking as dangling.")
+            seconds_since_checked = float("inf")
+        else:
+            seconds_since_checked = (datetime.datetime.now() - last_checked).total_seconds()
+        if last_checked is None or seconds_since_checked > 24 * 60 * 60:  # 24 hours
+            logger.warning(
+                f"Job {job.pk} appears to be dangling since {last_checked} "
+                f"was {seconds_since_checked} ago. Marking as failed."
+            )
+            job.logger.warning(
+                f"Job {job.pk} appears to be dangling since {last_checked} "
+                f"was {seconds_since_checked} ago. Marking as failed."
+            )
             job.update_status(JobState.REVOKED)
             job.finished_at = datetime.datetime.now()
             job.save()
+
+            for ml_task_record in job.ml_task_records.all():
+                ml_task_record.kill_task()
         else:
             logger.info(f"Job {job.pk} is active. Last checked at {last_checked}.")

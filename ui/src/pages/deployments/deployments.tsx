@@ -1,5 +1,6 @@
 import { useDeployments } from 'data-services/hooks/deployments/useDeployments'
 import { PageHeader } from 'design-system/components/page-header/page-header'
+import { SortControl } from 'design-system/components/sort-control'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import { DeploymentDetailsDialog } from 'pages/deployment-details/deployment-details-dialog'
@@ -45,12 +46,17 @@ export const Deployments = () => {
         isFetching={isFetching}
         tooltip={translate(STRING.TOOLTIP_DEPLOYMENT)}
       >
+        <SortControl
+          columns={columns(projectId as string)}
+          setSort={setSort}
+          sort={sort}
+        />
+        {canCreate ? <NewDeploymentDialog /> : null}
         <ColumnSettings
           columns={columns(projectId as string)}
           columnSettings={columnSettings}
           onColumnSettingsChange={setColumnSettings}
         />
-        {canCreate ? <NewDeploymentDialog /> : null}
       </PageHeader>
       <Table
         columns={columns(projectId as string).filter(

@@ -77,7 +77,7 @@ def get_status_label(status: JobState, progress: float) -> str:
     if status in [JobState.CREATED, JobState.PENDING, JobState.RECEIVED]:
         return "Waiting to start"
     elif status in [JobState.STARTED, JobState.RETRY, JobState.SUCCESS]:
-        return f"{progress:.0%} complete"
+        return f"{progress: .0%} complete"
     else:
         return f"{status.name}"
 
@@ -138,14 +138,14 @@ class JobProgress(pydantic.BaseModel):
         for stage in self.stages:
             if stage.key == stage_key:
                 return stage
-        raise ValueError(f"Job stage with key '{stage_key}' not found in progress")
+        raise ValueError(f"Job stage with key '{stage_key}' not in progress")
 
     def get_stage_param(self, stage_key: str, param_key: str) -> ConfigurableStageParam:
         stage = self.get_stage(stage_key)
         for param in stage.params:
             if param.key == param_key:
                 return param
-        raise ValueError(f"Job stage parameter with key '{param_key}' not found in stage '{stage_key}'")
+        raise ValueError(f"Job stage parameter with key '{param_key}' not in stage '{stage_key}'")
 
     def add_stage_param(self, stage_key: str, param_name: str, value: typing.Any = None) -> ConfigurableStageParam:
         stage = self.get_stage(stage_key)
@@ -396,9 +396,9 @@ class MLJob(JobType):
                     inprogress_subtask.task_id = save_results_task.id
                     task_id = save_results_task.id
                     inprogress_subtask.save()
-                    job.logger.info(f"Started save results task {inprogress_subtask.task_id}")
+                    job.logger.debug(f"Started save results task {inprogress_subtask.task_id}")
                 else:
-                    job.logger.info("A save results task is already in progress, will not start another one yet.")
+                    job.logger.debug("A save results task is already in progress, will not start another one yet.")
                     continue
 
             task = AsyncResult(task_id)
@@ -407,16 +407,41 @@ class MLJob(JobType):
                 inprogress_subtask.status = (
                     MLSubtaskState.SUCCESS.name if task.successful() else MLSubtaskState.FAIL.name
                 )
-                inprogress_subtask.raw_traceback = task.traceback
 
                 if task.traceback:
-                    # TODO: Error logs will have many tracebacks
-                    # could add some processing to provide a concise error summary
                     job.logger.error(f"Subtask {task_name} ({task_id}) failed: {task.traceback}")
+                    inprogress_subtask.status = MLSubtaskState.FAIL.name
+                    inprogress_subtask.raw_traceback = task.traceback
+                    continue
 
                 results_dict = task.result
                 if task_name == MLSubtaskNames.process_pipeline_request.name:
-                    results = PipelineResultsResponse(**results_dict)
+                    try:
+                        results = PipelineResultsResponse(**results_dict)
+
+                    except Exception as e:
+                        error_msg = (
+                            f"Subtask {task_name} ({task_id}) failed since it received "
+                            f"an invalid PipelineResultsResponse.\n"
+                            f"Error: {e}\n"
+                            f"Raw result: {results_dict}"
+                        )
+                        job.logger.error(error_msg)
+                        inprogress_subtask.status = MLSubtaskState.FAIL.name
+                        inprogress_subtask.raw_traceback = error_msg
+                        continue
+
+                    if results.errors:
+                        error_detail = results.errors if isinstance(results.errors, str) else f"{results.errors}"
+                        error_msg = (
+                            f"Subtask {task_name} ({task_id}) failed since the "
+                            f"PipelineResultsResponse contains errors: {error_detail}"
+                        )
+                        job.logger.error(error_msg)
+                        inprogress_subtask.status = MLSubtaskState.FAIL.name
+                        inprogress_subtask.raw_traceback = error_msg
+                        continue
+
                     num_captures = len(results.source_images)
                     num_detections = len(results.detections)
                     num_classifications = len([c for d in results.detections for c in d.classifications])
@@ -505,7 +530,7 @@ class MLJob(JobType):
                 f"{inprogress_subtasks.count()} inprogress subtasks remaining out of {total_subtasks} total subtasks."
             )
             inprogress_task_ids = [task.task_id for task in inprogress_subtasks]
-            job.logger.info(f"Subtask ids: {inprogress_task_ids}")  # TODO: remove this? not very useful to the user
+            job.logger.debug(f"Subtask ids: {inprogress_task_ids}")
             return False
         else:
             job.logger.info("No inprogress subtasks left.")
@@ -749,7 +774,7 @@ class MLJob(JobType):
             job.logger.info(
                 "Submitted batch image processing tasks "
                 f"(task_name={MLSubtaskNames.process_pipeline_request.name}) in "
-                f"{time.time() - request_sent:.2f}s"
+                f"{time.time() - request_sent: .2f}s"
             )
 
         except Exception as e:
@@ -999,6 +1024,7 @@ class MLSubtaskState(str, OrderedEnum):
     STARTED = "STARTED"
     SUCCESS = "SUCCESS"
     FAIL = "FAIL"
+    REVOKED = "REVOKED"
 
 
 class MLTaskRecord(BaseModel):
@@ -1041,6 +1067,17 @@ class MLTaskRecord(BaseModel):
         if self.status == MLSubtaskState.PENDING.name and self.task_name != MLSubtaskNames.save_results.name:
             raise ValueError(f"{self.task_name} tasks cannot have a PENDING status.")
 
+    def kill_task(self):
+        """
+        Kill the celery task associated with this MLTaskRecord.
+        """
+        from config.celery_app import app as celery_app
+
+        if self.task_id:
+            celery_app.control.revoke(self.task_id, terminate=True, signal="SIGTERM")
+            self.status = MLSubtaskState.REVOKED.name
+            self.save(update_fields=["status"])
+
 
 class Job(BaseModel):
     """A job to be run by the scheduler"""
@@ -1050,7 +1087,7 @@ class Job(BaseModel):
 
     name = models.CharField(max_length=255)
     queue = models.CharField(max_length=255, default="default")
-    last_checked = models.DateTimeField(null=True, blank=True)
+    last_checked = models.DateTimeField(null=True, blank=True, default=datetime.datetime.now)
     scheduled_at = models.DateTimeField(null=True, blank=True)
     started_at = models.DateTimeField(null=True, blank=True)
     finished_at = models.DateTimeField(null=True, blank=True)

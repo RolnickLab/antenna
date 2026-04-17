@@ -10,7 +10,6 @@ volumes:
     driver: local
   node_modules:
 
-
 services:
   django: &django
     build:
@@ -65,30 +64,28 @@ services:
       dockerfile: ../compose/local/ui/Dockerfile
     ports:
       - "4000:4000"
-    volumes:
-      - ./.git:/app/.git:ro
-      - ./ui:/app
-      - node_modules:/app/node_modules
     depends_on:
       - django
     environment:
-      - CHOKIDAR_USEPOLLING=true
       - API_PROXY_TARGET=http://django:8000
 
-  docs:
-    image: ami_local_docs
+  ui-dev:
+    profiles:
+      - ui-dev
     build:
-      context: .
-      dockerfile: ./compose/local/docs/Dockerfile
-    env_file:
-      - ./.envs/.local/.django
-    volumes:
-      - ./docs:/docs:z
-      - ./config:/app/config:z
-      - ./ami:/app/ami:z
+      context: ./ui
+      dockerfile: ../compose/local/ui/Dockerfile
     ports:
-      - "9025:9000"
-    command: /start-docs
+      - "4000:4000"
+    depends_on:
+      - django
+    volumes:
+      - ./.git:/app/.git:ro
+      - ./ui:/app
+    entrypoint: ["sh", "-c", "yarn install && yarn start --debug --host 0.0.0.0 --port 4000"]
+    environment:
+      - API_PROXY_TARGET=http://django:8000
+      - CHOKIDAR_USEPOLLING=true
 
   redis:
     image: redis:6
@@ -102,10 +99,7 @@ services:
     <<: *django
     image: ami_local_celeryworker
     scale: 1
-    # For remote debugging with debugpy, should get overridden for production
-    # Also make sure to install debugpy in your requirements/local.txt
-    ports:
-      - "5678:5678"
+    ports: []
     # start the worker with antenna_celeryworker to ensure it's discoverable by ami.ml.signals.get_worker_name
     command:
       - sh
@@ -143,9 +137,8 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: rabbituser
-      RABBITMQ_DEFAULT_PASS: rabbitpass
+    env_file:
+      - ./.envs/.local/.django
     networks:
       - antenna_network
 
@@ -161,7 +154,7 @@ services:
     ports:
       - "9001:9001"
     healthcheck:
-      test: [ "CMD", "mc", "ready", "local" ]
+      test: ["CMD", "mc", "ready", "local"]
       interval: 5s
       timeout: 5s
       retries: 5

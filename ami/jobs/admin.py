@@ -66,3 +66,11 @@ class MLTaskRecordAdmin(AdminBase):
         "task_name",
         "status",
     )
+
+    @admin.action()
+    def kill_task(self, request: HttpRequest, queryset: QuerySet[MLTaskRecord]) -> None:
+        for ml_task_record in queryset:
+            ml_task_record.kill_task()
+        self.message_user(request, f"Killed {queryset.count()} ML task(s).")
+
+    actions = [kill_task]

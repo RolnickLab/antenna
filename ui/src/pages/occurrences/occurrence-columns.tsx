@@ -206,6 +206,7 @@ const TaxonCell = ({
                   predictionId: item.determinationPredictionId,
                 }}
                 applied
+                compact
                 occurrenceId={item.id}
                 taxonId={item.determinationTaxon.id}
               />

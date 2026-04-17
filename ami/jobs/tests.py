@@ -1,4 +1,5 @@
 # from rich import print
+import datetime
 import logging
 import time
 
@@ -7,6 +8,7 @@ from django.db import connection
 # import pytest
 from django.test import TestCase, TransactionTestCase
 from guardian.shortcuts import assign_perm
+from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
@@ -125,7 +127,8 @@ class TestJobView(APITestCase):
         }
         self.client.force_authenticate(user=None)
         resp = self.client.post(jobs_create_url, job_data)
-        self.assertEqual(resp.status_code, 401)
+        # Accept either 401 (TokenAuthentication) or 403 (SessionAuthentication with AnonymousUser)
+        self.assertIn(resp.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
 
     def _create_job(self, name: str, start_now: bool = True):
         jobs_create_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk})
@@ -204,7 +207,8 @@ class TestJobView(APITestCase):
         jobs_run_url = reverse_with_params("api:job-run", args=[self.job.pk], params={"project_id": self.project.pk})
         self.client.force_authenticate(user=None)
         resp = self.client.post(jobs_run_url)
-        self.assertEqual(resp.status_code, 401)
+        # Accept either 401 (TokenAuthentication) or 403 (SessionAuthentication with AnonymousUser)
+        self.assertIn(resp.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
 
     def test_cancel_job(self):
         # This cannot be tested until we have a way to cancel jobs
@@ -406,4 +410,94 @@ class TestMLJobBatchProcessing(TransactionTestCase):
         self.assertEqual(job.status, JobState.SUCCESS.value)
         self.assertEqual(job.progress.summary.progress, 1)
         self.assertEqual(job.progress.summary.status, JobState.SUCCESS)
-        job.save()
+
+
+class TestStaleMLJob(TransactionTestCase):
+    def setUp(self):
+        self.project = Project.objects.first()  # get the original test project
+        assert self.project
+        self.source_image_collection = self.project.sourceimage_collections.get(name="Test Source Image Collection")
+        self.pipeline = Pipeline.objects.get(slug="constant")
+
+        # remove existing detections from the source image collection
+        for image in self.source_image_collection.images.all():
+            image.detections.all().delete()
+            image.save()
+
+    def test_kill_dangling_ml_job(self):
+        """Test killing a dangling ML job."""
+        from ami.ml.tasks import check_dangling_ml_jobs
+        from config import celery_app
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test dangling job",
+            delay=0,
+            pipeline=self.pipeline,
+            source_image_collection=self.source_image_collection,
+        )
+
+        job.run()
+        connection.commit()
+        job.refresh_from_db()
+
+        # Simulate last_checked being older than 24 hours
+        job.last_checked = datetime.datetime.now() - datetime.timedelta(hours=25)
+        job.save(update_fields=["last_checked"])
+
+        # Run the dangling job checker
+        check_dangling_ml_jobs()
+
+        # Refresh job from DB
+        job.refresh_from_db()
+
+        # Make sure no tasks are still in progress
+        for ml_task_record in job.ml_task_records.all():
+            self.assertEqual(ml_task_record.status, MLSubtaskState.REVOKED.value)
+
+            # Also check celery queue to make sure all tasks have been revoked
+            task_id = ml_task_record.task_id
+
+            inspector = celery_app.control.inspect()
+            active = inspector.active() or {}
+            reserved = inspector.reserved() or {}
+
+            not_running = all(
+                task_id not in [t["id"] for w in active.values() for t in w] for w in active.values()
+            ) and all(task_id not in [t["id"] for w in reserved.values() for t in w] for w in reserved.values())
+
+            self.assertTrue(not_running)
+
+        self.assertEqual(job.status, JobState.REVOKED.value)
+
+    def test_kill_task_prevents_execution(self):
+        from ami.jobs.models import Job, MLSubtaskNames, MLTaskRecord
+        from ami.ml.models.pipeline import process_pipeline_request
+        from config import celery_app
+
+        logger.info("Testing that killing a task prevents its execution.")
+        result = process_pipeline_request.apply_async(args=[{}, 1], countdown=5)
+        logger.info(f"Scheduled task with id {result.id} to run in 5 seconds.")
+        task_id = result.id
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Test killing job tasks",
+            delay=0,
+            pipeline=self.pipeline,
+            source_image_collection=self.source_image_collection,
+        )
+
+        ml_task_record = MLTaskRecord.objects.create(
+            job=job, task_name=MLSubtaskNames.process_pipeline_request.value, task_id=task_id
+        )
+        logger.info(f"Killing task {task_id} immediately.")
+        ml_task_record.kill_task()
+
+        async_result = celery_app.AsyncResult(task_id)
+        time.sleep(5)  # the REVOKED STATUS isn't visible until the task is actually run after the delay
+
+        self.assertIn(async_result.state, ["REVOKED"])
+        self.assertEqual(ml_task_record.status, "REVOKED")

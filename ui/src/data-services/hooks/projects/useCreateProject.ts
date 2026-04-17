@@ -7,6 +7,7 @@ import { useUser } from 'utils/user/userContext'
 const convertToServerFieldValues = (fieldValues: any) => ({
   name: fieldValues.name,
   description: fieldValues.description,
+  draft: true,
   settings: {
     default_processing_pipeline_id: fieldValues.defaultProcessingPipeline
       ? fieldValues.defaultProcessingPipeline.id
