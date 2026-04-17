@@ -1,6 +1,10 @@
 """
 Worker poll loop. Mode B (all-pipelines) per the design doc.
 
+Iterates each of this container's registered pipeline slugs in turn, so the
+slug for any given job is always the outer loop variable — no reverse lookup
+from job_id → slug needed.
+
 # TODO(follow-up): add --pipeline <slug> flag (mode A) so multiple workers can
 #   run side-by-side as competing consumers for the same pipeline.
 # TODO(follow-up): add --job-id <id> flag (mode C) for one-shot drain-and-exit
@@ -13,9 +17,9 @@ import logging
 import os
 import signal
 import time
-from collections import defaultdict
 
 from api.api import pipeline_choices  # type: ignore[import-not-found]
+from api.schemas import ProcessingServiceClientInfo  # type: ignore[import-not-found]
 
 from .client import AntennaClient
 from .runner import process_task
@@ -24,12 +28,12 @@ logger = logging.getLogger(__name__)
 
 
 class Loop:
-    def __init__(self, client: AntennaClient, client_info: dict) -> None:
+    def __init__(self, client: AntennaClient, client_info: ProcessingServiceClientInfo) -> None:
         self.client = client
         self.client_info = client_info
         self.shutdown = False
-        self.poll_interval = float(os.environ.get("WORKER_POLL_INTERVAL_SECONDS", "2.0"))
-        self.batch_size = int(os.environ.get("WORKER_BATCH_SIZE", "4"))
+        self.poll_interval = float(os.environ["WORKER_POLL_INTERVAL_SECONDS"])
+        self.batch_size = int(os.environ["WORKER_BATCH_SIZE"])
 
     def _install_signal_handlers(self) -> None:
         def _stop(signum, frame):  # noqa: ARG001
@@ -55,48 +59,26 @@ class Loop:
                 time.sleep(self.poll_interval)
 
     def _iterate(self, my_slugs: list[str]) -> bool:
-        """One poll cycle. Returns True if any work was done."""
-        job_ids = self.client.list_active_jobs(my_slugs)
-        if not job_ids:
-            return False
-
+        """One poll cycle across all registered slugs. Returns True if any work was done."""
         did_work = False
-        for job_id in job_ids:
-            tasks = self.client.reserve_tasks(job_id, self.batch_size, client_info=self.client_info)
-            if not tasks:
-                continue
-            did_work = True
-
-            # Group tasks by pipeline slug. Antenna doesn't return the slug on the
-            # task itself, but all tasks in a job share the same pipeline — we know
-            # which slug because we filtered list_active_jobs by it. Reverse-lookup
-            # from job_id → slug by re-listing, falling back to per-slug try.
-            slug = self._slug_for_job(job_id, my_slugs)
-            if slug is None:
-                logger.warning("Could not determine pipeline slug for job %s; skipping %d task(s)", job_id, len(tasks))
-                continue
-
-            results = [process_task(task, slug) for task in tasks]
-            ack = self.client.submit_results(job_id, results, client_info=self.client_info)
-            logger.info(
-                "Job %s: processed %d task(s), results_queued=%s",
-                job_id,
-                len(tasks),
-                ack.get("results_queued"),
-            )
-        return did_work
-
-    def _slug_for_job(self, job_id: int, my_slugs: list[str]) -> str | None:
-        """Which of our registered slugs does this job belong to?
-
-        One GET per slug is wasteful but this is a stub — fine for now. Cache
-        in memory per-iteration since list_active_jobs just ran.
-        """
-        cache: dict[str, set[int]] = defaultdict(set)
         for slug in my_slugs:
-            # Ask Antenna for just this slug's active jobs; membership → slug.
-            jobs = self.client.list_active_jobs([slug])
-            cache[slug].update(jobs)
-            if job_id in jobs:
-                return slug
-        return None
+            if self.shutdown:
+                break
+            job_ids = self.client.list_active_jobs(slug)
+            for job_id in job_ids:
+                if self.shutdown:
+                    break
+                tasks = self.client.reserve_tasks(job_id, self.batch_size, client_info=self.client_info)
+                if not tasks:
+                    continue
+                did_work = True
+                results = [process_task(task, slug) for task in tasks]
+                ack = self.client.submit_results(job_id, results, client_info=self.client_info)
+                logger.info(
+                    "Job %s (%s): processed %d task(s), results_queued=%s",
+                    job_id,
+                    slug,
+                    len(tasks),
+                    ack.get("results_queued"),
+                )
+        return did_work

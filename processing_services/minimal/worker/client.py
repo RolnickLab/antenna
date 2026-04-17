@@ -10,9 +10,14 @@ connection pooling tricks beyond what Session gives for free.
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 import requests
+from api.schemas import (  # type: ignore[import-not-found]
+    PipelineProcessingTask,
+    PipelineTaskResult,
+    ProcessingServiceClientInfo,
+    TasksResponse,
+)
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -39,47 +44,51 @@ class AntennaClient:
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
 
-    def list_active_jobs(self, pipeline_slugs: list[str]) -> list[int]:
+    def list_active_jobs(self, pipeline_slug: str) -> list[int]:
         """
-        Find STARTED jobs across the stub's registered pipelines.
+        Find STARTED job ids for a single pipeline slug.
 
-        Calls GET /jobs/?pipeline=<slug>&status=STARTED&ids_only=true once per
-        slug. Returns a flat de-duplicated list. One call per slug is necessary
-        because the endpoint's `pipeline` filter is single-valued.
+        Calls GET /jobs/?pipeline=<slug>&status=STARTED&ids_only=true. Returns
+        a flat de-duplicated list. The endpoint's `pipeline` filter is
+        single-valued so we accept a single slug at a time; callers iterate.
         """
+        try:
+            resp = self.session.get(
+                f"{self.api_url}/api/v2/jobs/",
+                params={"pipeline": pipeline_slug, "status": "STARTED", "ids_only": "true"},
+                timeout=self.timeout,
+            )
+            resp.raise_for_status()
+        except requests.RequestException as e:
+            logger.warning("list_active_jobs failed for pipeline=%s: %s", pipeline_slug, e)
+            return []
+
+        payload = resp.json()
+        # `ids_only=true` returns a flat list. Some list endpoints return
+        # {"results": [...]}; handle both.
+        entries = payload if isinstance(payload, list) else payload.get("results", [])
         ids: set[int] = set()
-        for slug in pipeline_slugs:
-            try:
-                resp = self.session.get(
-                    f"{self.api_url}/api/v2/jobs/",
-                    params={"pipeline": slug, "status": "STARTED", "ids_only": "true"},
-                    timeout=self.timeout,
-                )
-                resp.raise_for_status()
-            except requests.RequestException as e:
-                logger.warning("list_active_jobs failed for pipeline=%s: %s", slug, e)
-                continue
-
-            payload = resp.json()
-            # `ids_only=true` returns a flat list. Some list endpoints return
-            # {"results": [...]}; handle both.
-            entries = payload if isinstance(payload, list) else payload.get("results", [])
-            for entry in entries:
-                if isinstance(entry, dict) and "id" in entry:
-                    ids.add(int(entry["id"]))
-                elif isinstance(entry, int):
-                    ids.add(entry)
+        for entry in entries:
+            if isinstance(entry, dict) and "id" in entry:
+                ids.add(int(entry["id"]))
+            elif isinstance(entry, int):
+                ids.add(entry)
         return sorted(ids)
 
-    def reserve_tasks(self, job_id: int, batch_size: int, client_info: dict | None = None) -> list[dict]:
+    def reserve_tasks(
+        self,
+        job_id: int,
+        batch_size: int,
+        client_info: ProcessingServiceClientInfo | None = None,
+    ) -> list[PipelineProcessingTask]:
         """
         POST /jobs/{id}/tasks/ — reserve up to batch_size tasks from the NATS
         queue for the given job. Antenna proxies NATS internally; we never
         touch NATS from here.
         """
-        body: dict[str, Any] = {"batch_size": batch_size}
-        if client_info:
-            body["client_info"] = client_info
+        body: dict = {"batch_size": batch_size}
+        if client_info is not None:
+            body["client_info"] = client_info.model_dump(mode="json")
         resp = self.session.post(
             f"{self.api_url}/api/v2/jobs/{job_id}/tasks/",
             json=body,
@@ -89,18 +98,22 @@ class AntennaClient:
             logger.info("Task queue temporarily unavailable for job %s", job_id)
             return []
         resp.raise_for_status()
-        return resp.json().get("tasks", [])
+        return TasksResponse.model_validate(resp.json()).tasks
 
-    def submit_results(self, job_id: int, results: list[dict], client_info: dict | None = None) -> dict:
+    def submit_results(
+        self,
+        job_id: int,
+        results: list[PipelineTaskResult],
+        client_info: ProcessingServiceClientInfo | None = None,
+    ) -> dict:
         """
         POST /jobs/{id}/result/ — deliver a list of PipelineTaskResult items.
 
-        Each item is {"reply_subject": str, "result": PipelineResultsResponse | PipelineResultsError}.
         Antenna queues one Celery task per result for async processing.
         """
-        body: dict[str, Any] = {"results": results}
-        if client_info:
-            body["client_info"] = client_info
+        body: dict = {"results": [r.model_dump(mode="json") for r in results]}
+        if client_info is not None:
+            body["client_info"] = client_info.model_dump(mode="json")
         resp = self.session.post(
             f"{self.api_url}/api/v2/jobs/{job_id}/result/",
             json=body,

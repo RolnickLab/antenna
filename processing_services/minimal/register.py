@@ -1,70 +1,72 @@
 """
 Self-register this processing service's pipelines with Antenna.
 
-Modeled on the PR #1194 version (which targets API-key auth once merged). For
-now this targets main, which still uses user-token auth and requires
-`processing_service_name` in the registration body.
+What this does, in order:
+  1. Resolve an Authorization header (env var or fallback login).
+  2. Resolve the target project id (env var, else look up by name).
+  3. Fetch our own /info to get the list of pipelines this container serves.
+  4. POST that list to `/api/v2/projects/{id}/pipelines/` so Antenna knows which
+     async pipelines this ProcessingService can handle.
 
-Auth priority:
-  1. ANTENNA_API_KEY set → use `Api-Key <key>` (TODO: activate once PR #1194 merges)
-  2. ANTENNA_API_AUTH_TOKEN set → use `Token <token>`
-  3. ANTENNA_USER / ANTENNA_PASSWORD → log in, use the returned token.
+About identity: on main, the server looks up / creates a `ProcessingService`
+record by the `processing_service_name` field in the request body, and grants
+write access based on the Authorization header's user. PR #1194 changes that
+to use API keys — the PS record is derived from the key itself and
+`processing_service_name` is no longer sent. We tolerate both by sending
+`processing_service_name` now; #1194-enabled Antenna will ignore the field and
+pick the PS from the key.
 
-Self-provisioning (option 3) matches the local-dev and CI defaults baked into
-.envs/.local/.django (antenna@insectai.org / localadmin).
-
-Environment:
-  ANTENNA_API_URL          Base URL (e.g. http://django:8000)
-  ANTENNA_PROJECT_ID       Project PK OR ANTENNA_DEFAULT_PROJECT_NAME to resolve to one.
-  ANTENNA_DEFAULT_PROJECT_NAME  Fallback lookup by name (default: "Default Project")
-  ANTENNA_SERVICE_NAME     ProcessingService name (default: minimal-worker-<hostname>)
-  ANTENNA_API_KEY          Optional (future, PR #1194 path)
-  ANTENNA_API_AUTH_TOKEN   Optional static token (skips login)
-  ANTENNA_USER             Fallback login email (default: antenna@insectai.org)
-  ANTENNA_PASSWORD         Fallback login password (default: localadmin)
+Env vars are read via `os.environ[...]` without fallbacks — the .env file is
+expected to provide them. See `processing_services/.env.example`.
 """
 
 import logging
 import os
-import platform
-import socket
 import sys
 import time
 
 import requests
+from api.api import pipelines as pipeline_classes  # type: ignore[import-not-found]
+from api.schemas import (  # type: ignore[import-not-found]
+    AsyncPipelineRegistrationRequest,
+    PipelineConfigResponse,
+    ProcessingServiceClientInfo,
+)
 
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 20
 RETRY_DELAY = 3  # seconds
 
-DEFAULT_USER = "antenna@insectai.org"
-DEFAULT_PASSWORD = "localadmin"
-DEFAULT_PROJECT_NAME = "Default Project"
-LOCAL_INFO_URL = "http://localhost:2000/info"
-LOCAL_LIVEZ_URL = "http://localhost:2000/livez"
+CACHED_AUTH_HEADER_PATH = "/tmp/antenna_auth_header"
 
 
-def get_client_info() -> dict:
-    """Identity metadata sent to Antenna.
+def get_client_info() -> ProcessingServiceClientInfo:
+    """Identity metadata sent to Antenna in the registration body.
 
-    Extra keys are allowed by the ProcessingServiceClientInfo schema (Config.extra = "allow"),
-    so it's fine to add more here; main's registration endpoint currently ignores this field
-    and PR #1194 reads it.
+    `ProcessingServiceClientInfo` has `extra="allow"`, so any keys here are
+    forwarded verbatim. On main the registration serializer ignores unknown
+    fields; PR #1194 consumes this field.
     """
-    return {
-        "hostname": socket.gethostname(),
-        "software": "antenna-minimal-worker",
-        "version": "0.1.0",
-        "platform": platform.platform(),
-    }
+    import platform
+    import socket
+
+    return ProcessingServiceClientInfo.model_validate(
+        {
+            "hostname": socket.gethostname(),
+            "software": "antenna-minimal-worker",
+            "version": "0.1.0",
+            "platform": platform.platform(),
+        }
+    )
 
 
 def auth_header() -> dict[str, str] | None:
     """Pick an auth header based on what env vars are set, or None to trigger login flow."""
     api_key = os.environ.get("ANTENNA_API_KEY")
     if api_key:
-        # TODO(PR #1194): Api-Key auth is enabled on Antenna once #1194 merges.
+        # PR #1194 path. Harmless on main — main ignores unknown auth schemes
+        # and falls through to the next header, which we don't send.
         return {"Authorization": f"Api-Key {api_key}"}
 
     token = os.environ.get("ANTENNA_API_AUTH_TOKEN")
@@ -93,7 +95,7 @@ def resolve_project_id(api_url: str, headers: dict[str, str]) -> str:
     if explicit:
         return explicit
 
-    name = os.environ.get("ANTENNA_DEFAULT_PROJECT_NAME", DEFAULT_PROJECT_NAME)
+    name = os.environ["ANTENNA_DEFAULT_PROJECT_NAME"]
     resp = requests.get(f"{api_url}/api/v2/projects/", headers=headers, timeout=10)
     resp.raise_for_status()
     for project in resp.json().get("results", []):
@@ -104,44 +106,45 @@ def resolve_project_id(api_url: str, headers: dict[str, str]) -> str:
     raise RuntimeError(f"No project found with name '{name}' — ensure_default_project should have created it")
 
 
-def fetch_own_pipelines() -> list[dict]:
-    resp = requests.get(LOCAL_INFO_URL, timeout=5)
-    resp.raise_for_status()
-    return resp.json().get("pipelines", [])
+def fetch_own_pipelines() -> list[PipelineConfigResponse]:
+    """Return the pipeline configs this container serves.
+
+    Imported directly from the api module rather than fetched over HTTP from
+    the co-located FastAPI service — register.py runs in the same container,
+    and importing avoids having to wait for FastAPI to be up (which it isn't
+    in MODE=worker).
+    """
+    return [p.config for p in pipeline_classes]
 
 
-def wait_for_local_server() -> None:
-    for attempt in range(MAX_RETRIES):
-        try:
-            r = requests.get(LOCAL_LIVEZ_URL, timeout=2)
-            if r.status_code == 200:
-                return
-        except (requests.ConnectionError, requests.Timeout):
-            pass
-        logger.info("Waiting for local FastAPI server (%d/%d)", attempt + 1, MAX_RETRIES)
-        time.sleep(RETRY_DELAY)
-    raise RuntimeError("Local FastAPI server did not come up in time")
-
-
-def register(api_url: str, project_id: str, headers: dict[str, str], pipelines: list[dict]) -> None:
+def register(
+    api_url: str,
+    project_id: str,
+    headers: dict[str, str],
+    pipelines: list[PipelineConfigResponse],
+) -> None:
     """POST pipelines to the project registration endpoint.
 
-    Body shape for main:
-        {"processing_service_name": str, "pipelines": [...], "client_info": {...}}
-    PR #1194 drops `processing_service_name`. Sending both now is safe because
-    main's serializer ignores unknown fields and #1194's serializer ignores
-    `processing_service_name`.
+    Sends the schema-defined `AsyncPipelineRegistrationRequest` body. We also
+    attach a `client_info` field, which is ignored on main (unknown field) and
+    read by PR #1194.
     """
-    service_name = os.environ.get("ANTENNA_SERVICE_NAME", f"minimal-worker-{socket.gethostname()}")
-    payload = {
-        "processing_service_name": service_name,
-        "pipelines": pipelines,
-        "client_info": get_client_info(),
-    }
+    service_name = os.environ["ANTENNA_SERVICE_NAME"]
+    body = AsyncPipelineRegistrationRequest(
+        processing_service_name=service_name,
+        pipelines=pipelines,
+    ).model_dump(mode="json")
+    body["client_info"] = get_client_info().model_dump(mode="json")
+
     url = f"{api_url}/api/v2/projects/{project_id}/pipelines/"
-    resp = requests.post(url, json=payload, headers=headers, timeout=30)
+    resp = requests.post(url, json=body, headers=headers, timeout=30)
     if resp.status_code in (200, 201):
-        logger.info("Registered %d pipelines as '%s' (project=%s)", len(pipelines), service_name, project_id)
+        logger.info(
+            "Registered %d pipelines as '%s' (project=%s)",
+            len(pipelines),
+            service_name,
+            project_id,
+        )
         return
     raise RuntimeError(f"Registration failed: {resp.status_code} {resp.text}")
 
@@ -149,12 +152,8 @@ def register(api_url: str, project_id: str, headers: dict[str, str], pipelines: 
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
-    api_url = os.environ.get("ANTENNA_API_URL")
-    if not api_url:
-        logger.error("ANTENNA_API_URL not set; skipping registration")
-        return 0
+    api_url = os.environ["ANTENNA_API_URL"]
 
-    wait_for_local_server()
     pipelines = fetch_own_pipelines()
     if not pipelines:
         logger.warning("No pipelines found from local /info; nothing to register")
@@ -163,8 +162,8 @@ def main() -> int:
     # Auth: use explicit header if provided, else log in.
     headers = auth_header()
     if headers is None:
-        email = os.environ.get("ANTENNA_USER", DEFAULT_USER)
-        password = os.environ.get("ANTENNA_PASSWORD", DEFAULT_PASSWORD)
+        email = os.environ["ANTENNA_USER"]
+        password = os.environ["ANTENNA_PASSWORD"]
         # Retry login so we tolerate "Django not up yet".
         for attempt in range(MAX_RETRIES):
             try:
@@ -193,7 +192,7 @@ def main() -> int:
 
     # Cache the resolved id and auth header for worker_main.py to reuse.
     os.environ["ANTENNA_PROJECT_ID"] = project_id
-    with open("/tmp/antenna_auth_header", "w") as f:
+    with open(CACHED_AUTH_HEADER_PATH, "w") as f:
         f.write(next(iter(headers.values())))
 
     for attempt in range(MAX_RETRIES):
