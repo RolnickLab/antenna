@@ -1551,9 +1551,8 @@ class TestAlgorithmViewSetProjectFilter(APITestCase):
         self.client.force_authenticate(user=self.user)
 
     def _list_algorithm_names(self, project_id=None):
-        url = "/api/v2/ml/algorithms/"
-        if project_id is not None:
-            url += f"?project_id={project_id}"
+        params = {"project_id": project_id} if project_id is not None else {}
+        url = reverse_with_params("api:algorithm-list", params=params)
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         return {row["name"] for row in response.json()["results"]}
@@ -1573,3 +1572,14 @@ class TestAlgorithmViewSetProjectFilter(APITestCase):
         self.assertIn("Algo Disabled", names)
         self.assertIn("Algo Other Project", names)
         self.assertIn("Algo Orphan", names)
+
+    def test_detail_endpoint_unscoped_even_with_project_id(self):
+        """Detail stays unscoped so historical classification links still resolve."""
+        url = reverse_with_params(
+            "api:algorithm-detail",
+            kwargs={"pk": self.algo_disabled.pk},
+            params={"project_id": self.project.pk},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["name"], "Algo Disabled")
