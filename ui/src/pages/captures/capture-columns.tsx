@@ -47,7 +47,7 @@ export const columns = ({
   },
   {
     id: 'timestamp',
-    name: translate(STRING.FIELD_LABEL_TIMESTAMP),
+    name: translate(STRING.FIELD_LABEL_CAPTURE),
     sortField: 'timestamp',
     renderCell: (item: Capture) => {
       const detailsRoute = item.sessionId
@@ -67,6 +67,7 @@ export const columns = ({
           <Link to={detailsRoute}>
             <BasicTableCell
               value={item.dateTimeLabel}
+              details={[`${translate(STRING.FIELD_LABEL_ID)}: ${item.id}`]}
               theme={CellTheme.Primary}
             />
           </Link>

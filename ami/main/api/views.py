@@ -681,7 +681,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="star")
     def star(self, _request, pk=None) -> Response:
         """
-        Add a source image to the project's starred images collection.
+        Add a capture to the project's starred images capture set.
         """
         source_image: SourceImage = self.get_object()
         if source_image and source_image.deployment and source_image.deployment.project:
@@ -694,7 +694,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="unstar")
     def unstar(self, _request, pk=None) -> Response:
         """
-        Remove a source image from the project's starred images collection.
+        Remove a capture from the project's starred images capture set.
         """
         source_image: SourceImage = self.get_object()
         if source_image and source_image.deployment and source_image.deployment.project:
@@ -707,7 +707,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
 
 class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     """
-    Endpoint for viewing collections or samples of source images.
+    Endpoint for viewing capture sets or samples of captures.
     """
 
     queryset = (
@@ -766,26 +766,26 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="populate")
     def populate(self, request, pk=None):
         """
-        Populate a collection with source images using the configured sampling method and arguments.
+        Populate a capture set with captures using the configured sampling method and arguments.
         """
         collection: SourceImageCollection = self.get_object()
 
         if collection:
             from ami.jobs.models import Job, SourceImageCollectionPopulateJob
 
-            assert collection.project, "Collection must be associated with a project"
+            assert collection.project, "Capture set must be associated with a project"
             job = Job.objects.create(
-                name=f"Populate captures for collection {collection.pk}",
+                name=f"Populate captures for capture set {collection.pk}",
                 project=collection.project,
                 source_image_collection=collection,
                 job_type_key=SourceImageCollectionPopulateJob.key,
             )
             job.enqueue()
-            msg = f"Populating captures for collection {collection.pk} in background."
+            msg = f"Populating captures for capture set {collection.pk} in background."
             logger.info(msg)
             return Response({"job_id": job.pk, "project_id": collection.project.pk})
         else:
-            raise api_exceptions.ValidationError(detail="Invalid collection requested")
+            raise api_exceptions.ValidationError(detail="Invalid capture set requested")
 
     def _get_source_image(self):
         """
@@ -812,7 +812,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="add")
     def add(self, request, pk=None):
         """
-        Add a source image to a collection.
+        Add a capture to a capture set.
         """
         collection: SourceImageCollection = self.get_object()
         source_image = self._get_source_image()
@@ -828,7 +828,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="remove")
     def remove(self, request, pk=None):
         """
-        Remove a source image from a collection.
+        Remove a capture from a capture set.
         """
         collection = self.get_object()
         source_image = self._get_source_image()
@@ -991,7 +991,7 @@ class CustomOccurrenceDeterminationFilter(CustomTaxonFilter):
 
 class OccurrenceCollectionFilter(filters.BaseFilterBackend):
     """
-    Filter occurrences by the collection their detections source images belong to.
+    Filter occurrences by the capture set their detections' captures belong to.
     """
 
     query_params = ["collection_id", "collection"]  # @TODO remove "collection" param when UI is updated
@@ -1158,7 +1158,7 @@ class OccurrenceTaxaListFilter(filters.BaseFilterBackend):
 
 class TaxonCollectionFilter(filters.BaseFilterBackend):
     """
-    Filter taxa by the collection their occurrences belong to.
+    Filter taxa by the capture set their occurrences belong to.
     """
 
     query_param = "collection"
@@ -1260,7 +1260,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             ),
             OpenApiParameter(
                 name="collection_id",
-                description="Filter occurrences by the collection their detections' source images belong to.",
+                description="Filter occurrences by the capture set their detections' captures belong to.",
                 required=False,
                 type=OpenApiTypes.INT,
             ),
@@ -1501,7 +1501,11 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
                 qs = self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)
             if self.action == "retrieve":
                 qs = self.get_taxa_observed(
-                    qs, project, include_unobserved=include_unobserved, apply_default_filters=False
+                    qs,
+                    project,
+                    include_unobserved=include_unobserved,
+                    apply_default_score_filter=True,
+                    apply_default_taxa_filter=False,
                 )
                 qs = qs.prefetch_related(
                     Prefetch(
@@ -1519,7 +1523,12 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         return qs
 
     def get_taxa_observed(
-        self, qs: QuerySet, project: Project, include_unobserved=False, apply_default_filters=True
+        self,
+        qs: QuerySet,
+        project: Project,
+        include_unobserved=False,
+        apply_default_score_filter=True,
+        apply_default_taxa_filter=True,
     ) -> QuerySet:
         """
         If a project is passed, only return taxa that have been observed.
@@ -1537,15 +1546,21 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         # Respects apply_defaults flag: build_occurrence_default_filters_q checks it internally
         from ami.main.models_future.filters import build_occurrence_default_filters_q
 
-        default_filters_q = build_occurrence_default_filters_q(project, self.request, occurrence_accessor="")
+        default_filters_q = build_occurrence_default_filters_q(
+            project,
+            self.request,
+            occurrence_accessor="",
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=apply_default_taxa_filter,
+        )
 
         # Combine base occurrence filters with default filters
         base_filter = models.Q(
             occurrence_filters,
             determination_id=models.OuterRef("id"),
         )
-        if apply_default_filters:
-            base_filter = base_filter & default_filters_q
+
+        base_filter = base_filter & default_filters_q
 
         # Count occurrences - uses composite index (determination_id, project_id, event_id, determination_score)
         occurrences_count_subquery = models.Subquery(

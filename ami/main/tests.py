@@ -41,7 +41,7 @@ from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 from ami.tests.fixtures.storage import populate_bucket
 from ami.users.models import User
-from ami.users.roles import BasicMember, Identifier, ProjectManager
+from ami.users.roles import BasicMember, Identifier, MLDataManager, ProjectManager, create_roles_for_project
 
 logger = logging.getLogger(__name__)
 
@@ -1340,9 +1340,7 @@ class TestRolePermissions(APITestCase):
                     "update": True,
                     "delete": True,
                     "run_single_image": True,
-                    "run": False,
-                    "retry": False,
-                    "cancel": False,
+                    "run": True,
                 },
                 "identification": {"create": True, "update": True, "delete": True},
                 "capture": {"star": True, "unstar": True},
@@ -2008,6 +2006,46 @@ class TestRunSingleImageJobPermission(APITestCase):
         )
 
 
+class TestMLDataManagerCanRunBatchMLJob(APITestCase):
+    """Verify that the MLDataManager role grants run_ml_job permission via the role system."""
+
+    def setUp(self):
+        super().setUp()
+        self.project = Project.objects.create(name="Role ML Job Project", description="Test role-based ML job perms")
+        create_roles_for_project(self.project)
+
+        self.ml_user = User.objects.create_user(email="mlmanager@insectai.org", password="password123")
+        self.basic_user = User.objects.create_user(email="basicmember@insectai.org", password="password123")
+        self.pm_user = User.objects.create_user(email="projmanager@insectai.org", password="password123")
+
+        MLDataManager.assign_user(self.ml_user, self.project)
+        BasicMember.assign_user(self.basic_user, self.project)
+        ProjectManager.assign_user(self.pm_user, self.project)
+
+    def _create_ml_job(self):
+        return Job.objects.create(name="Test ML Job", project=self.project, job_type_key="ml")
+
+    def test_role_based_ml_job_run_permissions(self):
+        role_matrix = [
+            ("MLDataManager", self.ml_user, status.HTTP_200_OK),
+            ("ProjectManager", self.pm_user, status.HTTP_200_OK),
+            ("BasicMember", self.basic_user, status.HTTP_403_FORBIDDEN),
+        ]
+        for role_name, user, expected_status in role_matrix:
+            with self.subTest(role=role_name):
+                self.client.force_authenticate(user)
+                job = self._create_ml_job()
+                response = self.client.post(f"/api/v2/jobs/{job.pk}/run/", format="json")
+                self.assertEqual(response.status_code, expected_status, f"{role_name} got unexpected status")
+
+    def test_ml_data_manager_run_perm_reflected_in_job_detail(self):
+        self.client.force_authenticate(self.ml_user)
+        job = self._create_ml_job()
+        response = self.client.get(f"/api/v2/jobs/{job.pk}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("run", response.data.get("user_permissions", []))
+
+
 class TestDraftProjectPermissions(APITestCase):
     def setUp(self) -> None:
         # Users
@@ -2350,8 +2388,8 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         self.user = User.objects.create_user(email="tester@insectai.org", is_staff=False, is_superuser=False)
         self.client.force_authenticate(user=self.user)
 
-        self.url = f"/api/v2/occurrences/?project_id={self.project.pk}&page_size=1000"
-        self.url_taxa = f"/api/v2/taxa/?project_id={self.project.pk}&page_size=1000"
+        self.url = f"/api/v2/occurrences/?project_id={self.project.pk}&limit=1000"
+        self.url_taxa = f"/api/v2/taxa/?project_id={self.project.pk}&limit=1000"
 
     # OccurrenceViewSet tests
     def test_occurrences_respect_project_threshold(self):
@@ -2391,7 +2429,7 @@ class TestProjectDefaultThresholdFilter(APITestCase):
 
     def test_no_project_id_returns_all(self):
         """Without project_id, threshold falls back to 0.0 and returns all occurrences"""
-        url = "/api/v2/occurrences/?page_size=1000"
+        url = "/api/v2/occurrences/?limit=1000"
         res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
@@ -3609,6 +3647,201 @@ class TaxaListTaxonValidationTestCase(TestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
+class TaxaListGetOrCreateForProjectTestCase(TestCase):
+    """Test TaxaList.objects.get_or_create_for_project()."""
+
+    def setUp(self):
+        self.project_a = Project.objects.create(name="Project A")
+        self.project_b = Project.objects.create(name="Project B")
+
+    def test_creates_new_global_list(self):
+        taxa_list, created = TaxaList.objects.get_or_create_for_project(name="Global Moths", project=None)
+        self.assertTrue(created)
+        self.assertEqual(taxa_list.name, "Global Moths")
+        self.assertEqual(taxa_list.projects.count(), 0)
+
+    def test_creates_new_project_specific_list(self):
+        taxa_list, created = TaxaList.objects.get_or_create_for_project(name="Project A Moths", project=self.project_a)
+        self.assertTrue(created)
+        self.assertEqual(taxa_list.name, "Project A Moths")
+        self.assertIn(self.project_a, taxa_list.projects.all())
+
+    def test_retrieves_existing_global_list(self):
+        existing = TaxaList.objects.create(name="Global Moths")
+        taxa_list, created = TaxaList.objects.get_or_create_for_project(name="Global Moths", project=None)
+        self.assertFalse(created)
+        self.assertEqual(taxa_list.pk, existing.pk)
+
+    def test_retrieves_existing_project_specific_list(self):
+        existing = TaxaList.objects.create(name="Project A Moths")
+        existing.projects.add(self.project_a)
+        taxa_list, created = TaxaList.objects.get_or_create_for_project(name="Project A Moths", project=self.project_a)
+        self.assertFalse(created)
+        self.assertEqual(taxa_list.pk, existing.pk)
+
+    def test_global_and_project_lists_with_same_name_do_not_collide(self):
+        """A global list and a project-scoped list can share a name without MultipleObjectsReturned."""
+        global_list, global_created = TaxaList.objects.get_or_create_for_project(name="Moths", project=None)
+        project_list, project_created = TaxaList.objects.get_or_create_for_project(
+            name="Moths", project=self.project_a
+        )
+        self.assertTrue(global_created)
+        self.assertTrue(project_created)
+        self.assertNotEqual(global_list.pk, project_list.pk)
+        self.assertEqual(global_list.projects.count(), 0)
+        self.assertIn(self.project_a, project_list.projects.all())
+
+    def test_different_projects_with_same_name_do_not_collide(self):
+        list_a, _ = TaxaList.objects.get_or_create_for_project(name="Shared Name", project=self.project_a)
+        list_b, _ = TaxaList.objects.get_or_create_for_project(name="Shared Name", project=self.project_b)
+        self.assertNotEqual(list_a.pk, list_b.pk)
+
+    def test_handles_existing_duplicates_by_returning_oldest(self):
+        """If duplicates already exist in the DB (legacy data), return the oldest rather than raising."""
+        first = TaxaList.objects.create(name="Duplicate Name")
+        TaxaList.objects.create(name="Duplicate Name")
+        TaxaList.objects.create(name="Duplicate Name")
+        taxa_list, created = TaxaList.objects.get_or_create_for_project(name="Duplicate Name", project=None)
+        self.assertFalse(created)
+        self.assertEqual(taxa_list.pk, first.pk)
+
+    def test_defaults_applied_on_create_only(self):
+        taxa_list, created = TaxaList.objects.get_or_create_for_project(
+            name="With Description", project=None, description="Initial description"
+        )
+        self.assertTrue(created)
+        self.assertEqual(taxa_list.description, "Initial description")
+
+        # Calling again with different defaults should retrieve the existing row
+        # and ignore the new defaults (matching Django's get_or_create semantics).
+        taxa_list_again, created = TaxaList.objects.get_or_create_for_project(
+            name="With Description", project=None, description="Ignored description"
+        )
+        self.assertFalse(created)
+        self.assertEqual(taxa_list_again.pk, taxa_list.pk)
+        self.assertEqual(taxa_list_again.description, "Initial description")
+
+
+class TaxaListDedupeMigrationTestCase(TestCase):
+    """Exercise the 0083_dedupe_taxalist_names data migration logic against seeded duplicates."""
+
+    def setUp(self):
+        self.project_a = Project.objects.create(name="Project A")
+        self.project_b = Project.objects.create(name="Project B")
+
+    def _dedupe(self):
+        # Import the forward function from the numbered migration module
+        from importlib import import_module
+
+        from django.apps import apps as real_apps
+
+        mod = import_module("ami.main.migrations.0083_dedupe_taxalist_names")
+        mod.dedupe_taxa_list_names(real_apps, None)
+
+    def test_renames_global_duplicates(self):
+        g1 = TaxaList.objects.create(name="Shared")
+        g2 = TaxaList.objects.create(name="Shared")
+        g3 = TaxaList.objects.create(name="Shared")
+
+        self._dedupe()
+
+        g1.refresh_from_db()
+        g2.refresh_from_db()
+        g3.refresh_from_db()
+        self.assertEqual(g1.name, "Shared")
+        self.assertEqual(g2.name, "Shared (duplicate 2)")
+        self.assertEqual(g3.name, "Shared (duplicate 3)")
+
+    def test_renames_project_scoped_duplicates(self):
+        p1 = TaxaList.objects.create(name="Project Moths")
+        p1.projects.add(self.project_a)
+        p2 = TaxaList.objects.create(name="Project Moths")
+        p2.projects.add(self.project_a)
+
+        self._dedupe()
+
+        p1.refresh_from_db()
+        p2.refresh_from_db()
+        self.assertEqual(p1.name, "Project Moths")
+        self.assertEqual(p2.name, "Project Moths (duplicate 2)")
+
+    def test_leaves_unique_names_untouched(self):
+        g = TaxaList.objects.create(name="Unique Global")
+        p = TaxaList.objects.create(name="Unique Project")
+        p.projects.add(self.project_a)
+
+        self._dedupe()
+
+        g.refresh_from_db()
+        p.refresh_from_db()
+        self.assertEqual(g.name, "Unique Global")
+        self.assertEqual(p.name, "Unique Project")
+
+    def test_same_name_across_different_scopes_untouched(self):
+        """A global list and a project-scoped list sharing a name are not duplicates."""
+        g = TaxaList.objects.create(name="Moths")
+        p = TaxaList.objects.create(name="Moths")
+        p.projects.add(self.project_a)
+
+        self._dedupe()
+
+        g.refresh_from_db()
+        p.refresh_from_db()
+        self.assertEqual(g.name, "Moths")
+        self.assertEqual(p.name, "Moths")
+
+    def test_same_name_across_different_projects_untouched(self):
+        a = TaxaList.objects.create(name="Moths")
+        a.projects.add(self.project_a)
+        b = TaxaList.objects.create(name="Moths")
+        b.projects.add(self.project_b)
+
+        self._dedupe()
+
+        a.refresh_from_db()
+        b.refresh_from_db()
+        self.assertEqual(a.name, "Moths")
+        self.assertEqual(b.name, "Moths")
+
+    def test_resolves_multi_project_overlap(self):
+        """A list participating in multiple projects with conflicts in any one gets renamed."""
+        # x (in A,B) and y (in A) share project A; x is older so y renames.
+        x = TaxaList.objects.create(name="Moths")
+        x.projects.add(self.project_a, self.project_b)
+        y = TaxaList.objects.create(name="Moths")
+        y.projects.add(self.project_a)
+
+        self._dedupe()
+
+        x.refresh_from_db()
+        y.refresh_from_db()
+        self.assertEqual(x.name, "Moths")
+        self.assertEqual(y.name, "Moths (duplicate 2)")
+
+    def test_get_or_create_for_project_works_after_dedupe(self):
+        """After running the migration, get_or_create_for_project returns the oldest without raising."""
+        oldest = TaxaList.objects.create(name="Shared")
+        TaxaList.objects.create(name="Shared")
+        TaxaList.objects.create(name="Shared")
+
+        self._dedupe()
+
+        found, created = TaxaList.objects.get_or_create_for_project(name="Shared", project=None)
+        self.assertFalse(created)
+        self.assertEqual(found.pk, oldest.pk)
+
+    def test_idempotent(self):
+        """Running the migration twice is a no-op on the second run."""
+        TaxaList.objects.create(name="Shared")
+        TaxaList.objects.create(name="Shared")
+
+        self._dedupe()
+        names_after_first = sorted(TaxaList.objects.values_list("name", flat=True))
+        self._dedupe()
+        names_after_second = sorted(TaxaList.objects.values_list("name", flat=True))
+        self.assertEqual(names_after_first, names_after_second)
+
+
 class TestProjectPipelinesAPI(APITestCase):
     """Test the project pipelines API endpoint."""
 
@@ -3744,3 +3977,151 @@ class TestProjectPipelinesAPI(APITestCase):
         self.client.force_authenticate(user=non_member)
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class TestCachedCountsDefaultFilters(APITestCase):
+    """Tests for PR #1045: default-filter-aware cached counts.
+
+    Covers three behaviors introduced by the PR:
+      1. Taxa list and detail views return the same ``occurrences_count`` when
+         only the score threshold is applied (no include/exclude filters).
+      2. ``get_detections_count`` is consistent across the
+         SourceImage/Event/Deployment hierarchy and ignores null-bbox
+         placeholder detections.
+      3. The project default-filter signal only fans out a refresh task when
+         the threshold actually changes.
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(project=self.project)
+        create_captures(deployment=self.deployment, num_nights=2, images_per_night=3)
+        create_occurrences(deployment=self.deployment, num=6, determination_score=0.9)
+        return super().setUp()
+
+    def test_taxa_list_and_detail_occurrences_count_parity(self):
+        """List and detail views must agree on occurrences_count under the score threshold.
+
+        Regression for the hazard identified in PR #1045: the list view applies
+        both score and taxa filters, while the detail view bypasses the taxa
+        filter. With no include/exclude taxa configured, both endpoints must
+        still return identical counts for the same taxon.
+        """
+        self.project.default_filters_score_threshold = 0.5
+        self.project.save()
+
+        list_response = self.client.get(f"/api/v2/taxa/?project_id={self.project.pk}")
+        self.assertEqual(list_response.status_code, 200)
+
+        results = list_response.json()["results"]
+        self.assertGreater(len(results), 0, "Expected at least one observed taxon")
+
+        # Pick a taxon that actually has occurrences so the parity check is meaningful
+        taxa_with_occs = [r for r in results if r["occurrences_count"] > 0]
+        self.assertGreater(len(taxa_with_occs), 0, "Expected at least one taxon with occurrences")
+
+        for taxon_from_list in taxa_with_occs:
+            detail_response = self.client.get(f"/api/v2/taxa/{taxon_from_list['id']}/?project_id={self.project.pk}")
+            self.assertEqual(detail_response.status_code, 200)
+            detail_count = detail_response.json()["occurrences_count"]
+            self.assertEqual(
+                detail_count,
+                taxon_from_list["occurrences_count"],
+                f"Taxon {taxon_from_list['id']} has count {taxon_from_list['occurrences_count']} in list "
+                f"but {detail_count} in detail",
+            )
+
+    def test_detection_count_hierarchy_consistency(self):
+        """Deployment/Event/SourceImage detection counts must agree and skip null-bbox rows.
+
+        Regression for the fix in this PR: previously
+        ``SourceImage.get_detections_count`` excluded ``NULL_DETECTIONS_FILTER``
+        while Deployment and Event did not, causing the hierarchy to return
+        divergent numbers.
+        """
+        # Seed a null-bbox placeholder (a successful "no detections" marker) on one capture
+        first_capture = self.deployment.captures.first()
+        assert first_capture is not None
+        Detection.objects.create(
+            source_image=first_capture,
+            timestamp=first_capture.timestamp,
+            bbox=None,
+        )
+
+        images_total = sum(img.get_detections_count() or 0 for img in self.deployment.captures.all())
+        events_total = sum(event.get_detections_count() or 0 for event in self.deployment.events.all())
+        deployment_total = self.deployment.get_detections_count() or 0
+
+        self.assertEqual(images_total, events_total)
+        self.assertEqual(events_total, deployment_total)
+        self.assertGreater(deployment_total, 0, "Expected real detections to survive the null-bbox filter")
+
+        # And crucially the null-bbox placeholder must NOT be counted anywhere
+        raw_detection_count = Detection.objects.filter(source_image__deployment=self.deployment).count()
+        self.assertEqual(
+            deployment_total,
+            raw_detection_count - 1,
+            "Deployment detection count should exclude the 1 null-bbox placeholder",
+        )
+
+    def test_refresh_signal_only_fires_on_threshold_change(self):
+        """Saving a Project without changing the threshold must not enqueue a refresh."""
+        from unittest.mock import patch
+
+        with patch("ami.main.signals.refresh_project_cached_counts.delay") as mock_delay:
+            # Save without changing threshold — should NOT enqueue
+            with self.captureOnCommitCallbacks(execute=True):
+                self.project.description = "unrelated edit"
+                self.project.save()
+            self.assertEqual(
+                mock_delay.call_count,
+                0,
+                "Saving a Project without a threshold change should not enqueue a refresh task",
+            )
+
+            # Save with a changed threshold — should enqueue exactly once
+            with self.captureOnCommitCallbacks(execute=True):
+                self.project.default_filters_score_threshold = 0.77
+                self.project.save()
+            self.assertEqual(
+                mock_delay.call_count,
+                1,
+                "Changing the threshold should enqueue exactly one refresh task",
+            )
+            mock_delay.assert_called_with(self.project.pk)
+
+    def test_source_image_cached_counts_refresh_on_threshold_change(self):
+        """SourceImage.detections_count cache must track filter-aware get_detections_count().
+
+        Regression for CodeRabbit review on PR #1045: Project.update_related_calculated_fields
+        previously updated Event and Deployment cached counts but left
+        SourceImage.detections_count unchanged, so the cached field would diverge
+        from the filter-aware getter after a default-filters change.
+        """
+        self.project.default_filters_score_threshold = 0.5
+        self.project.save()
+        self.project.update_related_calculated_fields()
+
+        for image in self.deployment.captures.all():
+            image.refresh_from_db()
+            self.assertEqual(
+                image.detections_count,
+                image.get_detections_count(),
+                f"SourceImage {image.pk} cache ({image.detections_count}) differs from "
+                f"filter-aware count ({image.get_detections_count()}) at threshold 0.5",
+            )
+
+        # Raise the threshold above the seeded determination_score of 0.9 — every
+        # occurrence-linked detection should now drop out of the filtered count.
+        self.project.default_filters_score_threshold = 0.95
+        self.project.save()
+        self.project.update_related_calculated_fields()
+
+        for image in self.deployment.captures.all():
+            image.refresh_from_db()
+            self.assertEqual(
+                image.detections_count,
+                image.get_detections_count(),
+                f"SourceImage {image.pk} cache stale after raising threshold: "
+                f"cache={image.detections_count}, fresh={image.get_detections_count()}",
+            )

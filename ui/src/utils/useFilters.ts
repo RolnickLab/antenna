@@ -185,7 +185,6 @@ export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
   {
     label: 'Status',
     field: 'status',
-    tooltip: { text: translate(STRING.TOOLTIP_STATUS) },
   },
   {
     label: 'Type',

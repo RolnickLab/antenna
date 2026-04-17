@@ -18,9 +18,11 @@ export const InfoTooltip = (props: {
           <InfoIcon className="w-4 h-4" />
         </Button>
       </Tooltip.Trigger>
-      <Tooltip.Content side="bottom" className="p-4 max-w-xs">
-        <Info {...props} />
-      </Tooltip.Content>
+      <Tooltip.Portal>
+        <Tooltip.Content side="bottom" className="p-4 max-w-xs">
+          <Info {...props} />
+        </Tooltip.Content>
+      </Tooltip.Portal>
     </Tooltip.Root>
   </Tooltip.Provider>
 )

@@ -247,6 +247,27 @@ ANYMAIL = {
 SENDGRID_SANDBOX_MODE_IN_DEBUG = False
 SENDGRID_ECHO_TO_STDOUT = True
 
+# TCP keepalive (shared by Redis cache and Celery/RabbitMQ broker)
+# ------------------------------------------------------------------------------
+# Without SO_KEEPALIVE set on the client socket, the kernel never sends
+# keepalive probes regardless of host-level sysctl tuning. Long-idle pooled
+# connections are then vulnerable to silent drops by stateful cloud firewalls
+# (the failure mode behind #1218, and the trigger for #1073).
+#
+# Default probe schedule: start after 60s idle, retry every 10s, give up
+# after 9 failed attempts -> first dead-connection detection at ~150s.
+#
+# These defaults are safe for all environments: no-ops on localhost
+# (local dev, docker-compose staging/demo), protective anywhere upstream
+# infrastructure can drop idle connections. Production operators can
+# override via env vars if their network needs different tuning (e.g. a
+# more aggressive firewall might warrant a shorter idle).
+TCP_KEEPALIVE_OPTIONS = {
+    socket.TCP_KEEPIDLE: env.int("TCP_KEEPALIVE_IDLE", default=60),
+    socket.TCP_KEEPINTVL: env.int("TCP_KEEPALIVE_INTVL", default=10),
+    socket.TCP_KEEPCNT: env.int("TCP_KEEPALIVE_CNT", default=9),
+}
+
 # CACHES
 # ------------------------------------------------------------------------------
 # https://docs.djangoproject.com/en/dev/ref/settings/#caches
@@ -259,6 +280,14 @@ CACHES = {
             # Mimicing memcache behavior.
             # https://github.com/jazzband/django-redis#memcached-exceptions-behavior
             "IGNORE_EXCEPTIONS": True,
+            # TCP keepalive -- see TCP_KEEPALIVE_OPTIONS above.
+            "SOCKET_KEEPALIVE": env.bool("REDIS_CACHE_SOCKET_KEEPALIVE", default=True),
+            "SOCKET_KEEPALIVE_OPTIONS": TCP_KEEPALIVE_OPTIONS,
+            # Cap connect-time to fail fast if the Redis host is unreachable,
+            # rather than hanging pooled-connection acquisition indefinitely.
+            # 5s is well above normal connect latency; raise in high-latency
+            # networks.
+            "SOCKET_CONNECT_TIMEOUT": env.int("REDIS_CACHE_SOCKET_CONNECT_TIMEOUT", default=5),
         },
     }
 }
@@ -393,6 +422,16 @@ CELERY_REDIS_BACKEND_HEALTH_CHECK_INTERVAL = 30  # Check health every 30s
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_ENABLE_PREFETCH_COUNT_REDUCTION = True
 
+# Worker concurrency (prefork pool size)
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-concurrency
+# Celery's own default when unset is os.cpu_count(), which on the production
+# 8-core host produced an 8-process pool that could not keep up with the antenna
+# queue's DB/Redis-bound tasks (process_nats_pipeline_result, create_detection_images).
+# 8 is a conservative default that keeps local/staging/demo memory footprints
+# reasonable (each prefork worker is a separate Python process with imports +
+# DB connection). Production should override to 16 (see .envs/.production/.django-example).
+CELERY_WORKER_CONCURRENCY = env.int("CELERY_WORKER_CONCURRENCY", default=8)
+
 # Cancel & return to queue if connection is lost
 # https://docs.celeryq.dev/en/latest/userguide/configuration.html#worker-cancel-long-running-tasks-on-connection-loss
 CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
@@ -400,17 +439,10 @@ CELERY_WORKER_CANCEL_LONG_RUNNING_TASKS_ON_CONNECTION_LOSS = True
 # RabbitMQ broker connection settings
 # These settings improve reliability for long-running workers with intermittent network issues
 CELERY_BROKER_TRANSPORT_OPTIONS = {
-    # Custom TCP Keepalives to ensure network stack doesn't silently drop connections
+    # TCP keepalive so the network stack doesn't silently drop connections.
+    # Shared schedule with the Redis cache above -- see TCP_KEEPALIVE_OPTIONS.
     "socket_keepalive": True,
-    "socket_settings": {
-        # Start sending Keepalive packets after 60 seconds of silence.
-        # This forces traffic on the wire, preventing the OpenStack 1-hour timeout.
-        socket.TCP_KEEPIDLE: 60,
-        # If no response, retry every 10 seconds.
-        socket.TCP_KEEPINTVL: 10,
-        # Give up and close connection after 9 failed attempts.
-        socket.TCP_KEEPCNT: 9,
-    },
+    "socket_settings": TCP_KEEPALIVE_OPTIONS,
     # Connection Stability Settings
     "socket_connect_timeout": 40,  # Max time to establish connection
     "retry_on_timeout": True,  # Retry operations if they time out
@@ -426,8 +458,16 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_BROKER_CONNECTION_MAX_RETRIES = None  # Retry forever
 
 
-# Allow large request bodies from ML workers posting classification results
-DATA_UPLOAD_MAX_MEMORY_SIZE = 100 * 1024 * 1024  # 100MB (default 2.5MB)
+# Maximum in-memory request body size for multipart form data and request.body access.
+# ML detection+classification payloads for a single batch can exceed the Django
+# default (2.5 MB). Configurable via env (integer, binary MiB — multiplied by
+# 1024*1024) so operators can tune without a code change. See RolnickLab/antenna#1223
+# for the longer-term fix (worker-side incremental result posting).
+#
+# Note: this setting does NOT apply to DRF JSON bodies — DRF parsers read from the
+# raw WSGI stream, bypassing request.body where Django enforces this limit.
+# nginx client_max_body_size is the hard cap for all request types.
+DATA_UPLOAD_MAX_MEMORY_SIZE = env.int("DJANGO_DATA_UPLOAD_MAX_MEMORY_MB", default=100) * 1024 * 1024
 
 # django-rest-framework
 # -------------------------------------------------------------------------------
@@ -508,3 +548,6 @@ DEFAULT_PROCESSING_SERVICE_ENDPOINT = env(
     "DEFAULT_PROCESSING_SERVICE_ENDPOINT", default=None  # type: ignore[no-untyped-call]
 )
 DEFAULT_PIPELINES_ENABLED = env.list("DEFAULT_PIPELINES_ENABLED", default=None)  # type: ignore[no-untyped-call]
+# Default taxa filters
+DEFAULT_INCLUDE_TAXA = env.list("DEFAULT_INCLUDE_TAXA", default=[])  # type: ignore[no-untyped-call]
+DEFAULT_EXCLUDE_TAXA = env.list("DEFAULT_EXCLUDE_TAXA", default=[])  # type: ignore[no-untyped-call]

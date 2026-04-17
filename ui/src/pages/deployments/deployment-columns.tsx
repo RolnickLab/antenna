@@ -54,7 +54,11 @@ export const columns = ({
           keepSearchParams: true,
         })}
       >
-        <BasicTableCell value={item.name} theme={CellTheme.Primary} />
+        <BasicTableCell
+          value={item.name}
+          details={[`${translate(STRING.FIELD_LABEL_ID)}: ${item.id}`]}
+          theme={CellTheme.Primary}
+        />
       </Link>
     ),
   },
@@ -77,7 +81,9 @@ export const columns = ({
   {
     id: 'status',
     name: 'Latest job status',
-    tooltip: translate(STRING.TOOLTIP_STATUS),
+    tooltip: translate(STRING.TOOLTIP_LATEST_JOB_STATUS, {
+      type: translate(STRING.ENTITY_TYPE_DEPLOYMENT),
+    }),
     renderCell: (item: Deployment) => {
       if (!item.currentJob) {
         return <></>
