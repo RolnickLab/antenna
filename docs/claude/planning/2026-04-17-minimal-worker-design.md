@@ -82,22 +82,22 @@ processing_services/minimal/
 ├── main.py                  # unchanged FastAPI entry
 ├── register.py              # self-provision + register pipelines (token-auth path now)
 ├── requirements.txt         # unchanged (requests + pydantic already present)
-├── api/                     # unchanged v1 push-mode code
+├── .env.dev                 # dev-env defaults loaded by docker-compose.yml (MODE, creds, worker tuning)
+├── api/                     # v1 push-mode code + shared schemas
 │   ├── api.py
 │   ├── algorithms.py
 │   ├── pipelines.py
-│   ├── schemas.py
+│   ├── schemas.py           # single source of truth — v1 and v2 classes both live here
 │   └── utils.py
 ├── worker/
 │   ├── __init__.py
 │   ├── client.py            # requests.Session wrapper for Antenna REST
 │   ├── loop.py              # poll / reserve / process / submit loop
-│   ├── runner.py            # turn one PipelineProcessingTask into a PipelineTaskResult
-│   └── schemas.py           # local mirror of PipelineProcessingTask, PipelineTaskResult, etc.
+│   └── runner.py            # turn one PipelineProcessingTask into a PipelineTaskResult
 └── worker_main.py           # entry used by MODE=worker and the third child in MODE=api+worker
 ```
 
-`worker/runner.py` imports the existing `api/pipelines.py` and `api/algorithms.py` so stub detection/classification behavior is identical between v1 `/process` and v2 pull. No duplicated pipeline logic.
+`worker/runner.py` imports from `api/pipelines.py` and `api/schemas.py` so stub detection/classification behavior is identical between v1 `/process` and v2 pull. No duplicated pipeline logic, no duplicated schemas — the v2-specific classes (`PipelineProcessingTask`, `PipelineTaskResult`, `PipelineResultsError`, `ProcessingServiceClientInfo`, `AsyncPipelineRegistrationRequest`) live alongside the v1 ones in `api/schemas.py` and both paths import from there.
 
 ### Wire format
 
@@ -124,19 +124,22 @@ All 3 endpoints use `Authorization: Token <token>` for now. See "Forward compati
 #   for test harnesses that want to drain and exit.
 my_slugs = list(pipeline_choices.keys())
 while not shutdown:
-    active_job_ids = client.list_active_jobs(pipelines=my_slugs)
-    if not active_job_ids:
+    did_work = False
+    for slug in my_slugs:
+        for job_id in client.list_active_jobs(slug):
+            tasks = client.reserve_tasks(job_id, batch_size=WORKER_BATCH_SIZE)
+            if not tasks:
+                continue
+            did_work = True
+            results = [runner.process(task, slug) for task in tasks]  # exceptions → PipelineResultsError
+            client.submit_results(job_id, results)
+    if not did_work:
         sleep(WORKER_POLL_INTERVAL_SECONDS)
-        continue
-    for job_id in active_job_ids:
-        tasks = client.reserve_tasks(job_id, batch_size=WORKER_BATCH_SIZE)
-        if not tasks:
-            continue
-        results = [runner.process(task) for task in tasks]  # exceptions → PipelineResultsError
-        client.submit_results(job_id, results)
 ```
 
 Per-task errors are captured and posted as `PipelineResultsError` so the NATS ACK path still fires. That's important for exercising the retry / stale-job-cutoff / MaxRetriesExceeded paths (see CLAUDE.md on chaos testing).
+
+The outer iteration is per-slug rather than "list all jobs for all slugs at once" specifically to avoid a job→slug reverse-lookup: the slug is the outer loop variable, so `runner.process(task, slug)` gets it for free. Mirrors how the ADC worker (see comparison below) is typically run — pinned to a single slug per process.
 
 ### Automation and sequencing
 
@@ -160,16 +163,19 @@ The management command is gated by `ENSURE_DEFAULT_PROJECT=1` so it's opt-in. Se
 
 ### Env var contract
 
-| Var | Default | Used by | Purpose |
+All env vars are read with `os.environ[...]` (no hard-coded fallbacks in Python code). The defaults below live in `processing_services/minimal/.env.dev`, which is loaded via `env_file:` in `processing_services/docker-compose.yml`. For a different deployment, copy `.env.dev` and point `env_file` at the copy, or set env vars in the container orchestrator of choice.
+
+| Var | `.env.dev` value | Used by | Purpose |
 |---|---|---|---|
-| `MODE` | `api` (Dockerfile) / `api+worker` (dev compose) / `api` (CI compose) | `start.sh` | container entry mode |
+| `MODE` | `api+worker` (dev) / `api` (Dockerfile default, so CI gets it) | `start.sh` | container entry mode |
 | `ANTENNA_API_URL` | `http://django:8000` | register.py, worker | Antenna base URL |
-| `ANTENNA_PROJECT_ID` | `1` | register.py, worker | project to register + poll under |
-| `ANTENNA_USER` | `antenna@insectai.org` | register.py | local dev superuser |
-| `ANTENNA_PASSWORD` | `localadmin` | register.py | local dev superuser password |
+| `ANTENNA_PROJECT_ID` | unset (resolved via name lookup) | register.py, worker | project to register + poll under |
+| `ANTENNA_DEFAULT_PROJECT_NAME` | `Default Project` | register.py | project name to resolve when PROJECT_ID not set |
+| `ANTENNA_USER` | `antenna@insectai.org` | register.py, worker | dev superuser (matches `.envs/.local/.django`) |
+| `ANTENNA_PASSWORD` | `localadmin` | register.py, worker | dev superuser password |
 | `ANTENNA_API_AUTH_TOKEN` | unset | register.py, worker | if set, skip login and use this token directly |
 | `ANTENNA_API_KEY` | unset | register.py, worker | TODO (PR #1194): if set, use `Api-Key <key>` auth |
-| `ANTENNA_SERVICE_NAME` | `minimal-worker-{hostname}` | register.py | ProcessingService record name |
+| `ANTENNA_SERVICE_NAME` | `minimal-worker-dev` | register.py | ProcessingService DB record label |
 | `WORKER_POLL_INTERVAL_SECONDS` | `2.0` | worker | sleep when no active jobs |
 | `WORKER_BATCH_SIZE` | `4` | worker | tasks per reserve call (matches ADC default) |
 | `WORKER_REQUEST_TIMEOUT_SECONDS` | `30` | worker | per-HTTP-call timeout |
@@ -178,7 +184,7 @@ The management command is gated by `ENSURE_DEFAULT_PROJECT=1` so it's opt-in. Se
 ### Docker compose changes
 
 **`processing_services/docker-compose.yml`** (local dev overlay):
-- `ml_backend_minimal` gains `environment: MODE=api+worker, ANTENNA_API_URL, ANTENNA_PROJECT_ID, ANTENNA_USER, ANTENNA_PASSWORD`.
+- `ml_backend_minimal` gains `env_file: ./minimal/.env.dev` — a checked-in file that sets all the MODE/Antenna/worker env vars in one place. No inline `environment:` duplicates the defaults.
 - `depends_on: django` (condition: `service_started`; the worker's register.py retries).
 
 **`docker-compose.ci.yml`:**
@@ -199,6 +205,45 @@ The management command is gated by `ENSURE_DEFAULT_PROJECT=1` so it's opt-in. Se
 PR #1194 changes the request body (drops `processing_service_name`, adds `client_info`). We send both `processing_service_name` and a `client_info` dict now — the former is required by main, the latter is ignored by main (extra fields are allowed). When #1194 lands, a one-line change removes `processing_service_name` from the registration payload.
 
 The worker's tasks/result endpoints already support token auth today and will support Api-Key after #1194; same conditional header-selection logic.
+
+## Comparison with prior / external implementations
+
+### Against the ADC worker (external: `RolnickLab/ami-data-companion`)
+
+The ADC is the only production PSv2 worker today. This stub aims to exercise the same Antenna code paths without the ADC's runtime cost.
+
+**Mirrors:**
+- HTTP-only interaction with Antenna. No direct NATS or RabbitMQ connection from the worker; Antenna proxies NATS JetStream behind `/jobs/{id}/tasks/` and `/jobs/{id}/result/`.
+- Registration shape: `POST /api/v2/projects/{id}/pipelines/` with the same `AsyncPipelineRegistrationRequest` body.
+- Task/result wire format: `PipelineProcessingTask` in, `PipelineTaskResult` out. Errors → `PipelineResultsError` so the `reply_subject` ACK still fires.
+- Retry/backoff pattern: `requests.Session` + `urllib3.util.retry.Retry` on 5xx + network errors; no retry on 4xx.
+- Client info forwarding: `ProcessingServiceClientInfo` (hostname, software, version) sent on each request.
+
+**Divergences:**
+- **Pipeline scope per process.** ADC invocations pin to one pipeline via `ami worker --pipeline <slug>`. The stub iterates over all slugs it serves (mode B), because a test harness wants to submit jobs for any of the stub's pipelines and have them picked up without spawning multiple workers. TODOs in `loop.py` leave room for mode A (slug-filtered) and mode C (job-pinned) flags.
+- **Model loading.** ADC loads real torch weights into GPU memory on startup; can take minutes. The stub loads no models — `ConstantPipeline` returns a fixed bounding box, `RandomDetectionRandomSpeciesPipeline` returns random ones. `docker compose up` → processing in seconds.
+- **Runtime environment.** ADC runs under a conda env with torch/transformers/CUDA; setup is outside docker. The stub runs on the existing `python:3.11-slim` Dockerfile, zero extra deps beyond what `/process` already needs.
+- **Job-queue implementation knowledge.** The ADC has a dedicated `trapdata.antenna` subpackage with `AntennaClient`, `AntennaConfig`, CLI wiring, and its own ACK bookkeeping. The stub collapses all that to ~100 lines in `worker/` because the stub doesn't need configuration flexibility — just enough to exercise the Antenna side.
+
+### Against PR #1011 (Celery-direct worker, never merged)
+
+PR #1011 (author: @vanessavmac) was an earlier attempt at PSv2 that took a different architectural path. It's worth explaining why the NATS/API approach wins for this stub's use case.
+
+**How #1011 worked:**
+- Added a `celery_worker/` subdirectory to each processing service (`minimal/`, `example/`).
+- That worker imported `celery` + `kombu` and connected **directly to Antenna's RabbitMQ broker** (`amqp://rabbituser:rabbitpass@rabbitmq:5672//`).
+- Antenna dispatched ML work by enqueuing `process_pipeline_request` tasks onto `ml-pipeline-<slug>` queues. The PS celery worker was a Celery consumer bound to those queues.
+- No HTTP between Antenna and the PS for task dispatch — Celery/RabbitMQ handled it. The PS still served `/info`/`/process` over HTTP for registration and v1 compatibility.
+- Refactored `api.py` → `processing.py` to extract `process_pipeline_request`, shared by the HTTP endpoint and the Celery task.
+
+**Why NATS/API wins here:**
+- **Deployability across trust boundaries.** Celery-direct requires the PS to have broker credentials and network access to RabbitMQ. That's fine inside a single `docker compose` stack but breaks down for a GPU fleet behind a firewall, an external partner's infrastructure, or anywhere the PS is outside the Antenna network perimeter. NATS/API gives the PS an HTTP-only surface with a per-service auth token (or API key post-#1194).
+- **Coupling surface.** Celery-direct ties the PS to the exact broker, Celery version, queue routing conventions, and task signatures that Antenna uses. NATS/API exposes only the JSON shape of three endpoints. Easier to evolve on Antenna's side without breaking external workers.
+- **Matches the ADC.** #1011 predates the ADC's PSv2 work; the ADC uses the NATS/API path, not Celery-direct. Converging on ADC's contract means one protocol for Antenna to support and one stub (this one) that mirrors what production workers actually do.
+- **Competing consumers.** Celery/RabbitMQ's queue semantics do give you competing consumers for free. The NATS path gets the same property via JetStream's pull-subscribe — Antenna's `nats_queue.py` already wires this up. Not a differentiator either way.
+
+**What #1011 got right that this PR inherits:**
+- Factor shared processing logic out of the FastAPI endpoint so both v1 and v2 call the same code. This PR does the same (see `api.api.pipeline_choices` used by both `/process` and `worker/runner.py`) — the factoring is slightly lighter-touch because the stub pipelines already expose `pipeline_choices` at module level.
 
 ## Testing strategy
 
