@@ -44,14 +44,14 @@ class AntennaClient:
         """
         Find STARTED job ids for a single pipeline slug.
 
-        Calls GET /jobs/?pipeline=<slug>&status=STARTED&ids_only=true. Returns
-        a flat de-duplicated list. The endpoint's `pipeline` filter is
-        single-valued so we accept a single slug at a time; callers iterate.
+        Calls GET /jobs/?pipeline__slug=<slug>&status=STARTED&ids_only=true.
+        The server's `pipeline` filter expects a DB id; `pipeline__slug` is
+        the slug-based alias exposed by JobFilterSet.
         """
         try:
             resp = self.session.get(
                 f"{self.api_url}/api/v2/jobs/",
-                params={"pipeline": pipeline_slug, "status": "STARTED", "ids_only": "true"},
+                params={"pipeline__slug": pipeline_slug, "status": "STARTED", "ids_only": "true"},
                 timeout=self.timeout,
             )
             resp.raise_for_status()
