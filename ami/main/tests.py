@@ -2345,49 +2345,12 @@ class TestDraftProjectPermissions(APITestCase):
             else:
                 self.assertEqual(value, 0, f"Outsider should see exactly 0 for {key} in draft project, got {value}")
 
-        # Test 3: Get global counts for both users
+        # Test 3: Global summary is no longer allowed — endpoint requires project_id (400).
         outsider_global_response = self._auth_get(self.outsider, global_url)
         member_global_response = self._auth_get(self.member, global_url)
 
-        self.assertEqual(outsider_global_response.status_code, 200)
-        self.assertEqual(member_global_response.status_code, 200)
-
-        outsider_global_data: dict[str, typing.Any] = outsider_global_response.json()
-        member_global_data: dict[str, typing.Any] = member_global_response.json()
-
-        # Test 4: Verify exact differences in global counts
-        for key in draft_project_counts.keys():
-            if key in project_count_keys:
-                # Skip project counts as they are not affected by draft status
-                continue
-
-            if key in ("num_taxa", "num_species", "taxa_count"):  # Two are deprecated aliases! @TOOD
-                # Taxa can be in multiple projects, so skip exact count check
-                logger.debug(f"Skipping exact count check for {key} due to potential multi-project association")
-                continue
-
-            outsider_global_count: int = outsider_global_data.get(key, 0)
-            member_global_count: int = member_global_data.get(key, 0)
-            draft_project_count: int = draft_project_counts[key]
-
-            # The difference should be exactly the draft project counts
-            # (assuming member has no other draft project access)
-            expected_member_count: int = outsider_global_count + draft_project_count
-
-            self.assertEqual(
-                member_global_count,
-                expected_member_count,
-                f"Member global count for {key} should be exactly {expected_member_count} "
-                f"(outsider: {outsider_global_count} + draft project: {draft_project_count}), "
-                f"got {member_global_count}",
-            )
-
-            logger.info(
-                f"{key} exact counts - Draft project: {draft_project_count}, "
-                f"Outsider global: {outsider_global_count}, "
-                f"Member global: {member_global_count}, "
-                f"Difference: {member_global_count - outsider_global_count}"
-            )
+        self.assertEqual(outsider_global_response.status_code, 400)
+        self.assertEqual(member_global_response.status_code, 400)
 
         # Test 5: Verify behavior when project becomes non-draft
         self.project.draft = False
@@ -2476,17 +2439,11 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         for occ in self.low_occurrences:
             self.assertNotIn(occ.id, ids)
 
-    def test_no_project_id_returns_all(self):
-        """Without project_id, threshold falls back to 0.0 and returns all occurrences"""
+    def test_no_project_id_requires_project(self):
+        """Occurrence list now requires project_id to avoid unfiltered hot-table scans."""
         url = "/api/v2/occurrences/?limit=1000"
         res = self.client.get(url)
-        self.assertEqual(res.status_code, status.HTTP_200_OK)
-
-        # Check that our test occurrences are present (don't assume all in DB are ours)
-        expected_ids = {occ.pk for occ in list(self.high_occurrences) + list(self.low_occurrences)}
-        returned_ids = {o["id"] for o in res.data["results"]}
-
-        self.assertTrue(expected_ids.issubset(returned_ids), f"Missing occurrence IDs: {expected_ids - returned_ids}")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_retrieve_occurrence_respects_threshold(self):
         """Detail retrieval should 404 if occurrence is filtered out by threshold"""

@@ -923,18 +923,9 @@ class DetectionViewSet(DefaultViewSet, ProjectMixin):
 
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
+        # Force project_id validation before pagination triggers a full-table COUNT.
+        self.get_active_project()
         return super().list(request, *args, **kwargs)
-
-    # def get_queryset(self):
-    #     """
-    #     Return a different queryset for list and detail views.
-    #     """
-
-    #     if self.action == "list":
-    #         return Detection.objects.select_related().all()
-    #     else:
-    #         return Detection.objects.select_related(
-    #             "detection_algorithm").all()
 
 
 class CustomTaxonFilter(filters.BaseFilterBackend):
