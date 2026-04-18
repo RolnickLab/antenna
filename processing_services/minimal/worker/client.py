@@ -12,14 +12,10 @@ from __future__ import annotations
 import logging
 
 import requests
-from api.schemas import (  # type: ignore[import-not-found]
-    PipelineProcessingTask,
-    PipelineTaskResult,
-    ProcessingServiceClientInfo,
-    TasksResponse,
-)
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+from .schemas import PipelineProcessingTask, PipelineTaskResult, ProcessingServiceClientInfo, TasksResponse
 
 logger = logging.getLogger(__name__)
 

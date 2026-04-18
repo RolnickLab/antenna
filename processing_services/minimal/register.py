@@ -27,9 +27,9 @@ import time
 
 import requests
 from api.api import pipelines as pipeline_classes  # type: ignore[import-not-found]
-from api.schemas import (  # type: ignore[import-not-found]
+from api.schemas import PipelineConfigResponse  # type: ignore[import-not-found]
+from worker.schemas import (  # type: ignore[import-not-found]
     AsyncPipelineRegistrationRequest,
-    PipelineConfigResponse,
     ProcessingServiceClientInfo,
 )
 

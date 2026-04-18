@@ -87,17 +87,20 @@ processing_services/minimal/
 │   ├── api.py
 │   ├── algorithms.py
 │   ├── pipelines.py
-│   ├── schemas.py           # single source of truth — v1 and v2 classes both live here
+│   ├── schemas.py           # v1 schemas + v1/v2 shared schemas (PipelineResultsResponse, PipelineConfigResponse, ...)
 │   └── utils.py
 ├── worker/
 │   ├── __init__.py
 │   ├── client.py            # requests.Session wrapper for Antenna REST
 │   ├── loop.py              # poll / reserve / process / submit loop
-│   └── runner.py            # turn one PipelineProcessingTask into a PipelineTaskResult
+│   ├── runner.py            # turn one PipelineProcessingTask into a PipelineTaskResult
+│   └── schemas.py           # v2-only schemas (PipelineProcessingTask, PipelineTaskResult, ProcessingServiceClientInfo, AsyncPipelineRegistrationRequest, ...)
 └── worker_main.py           # entry used by MODE=worker and the third child in MODE=api+worker
 ```
 
-`worker/runner.py` imports from `api/pipelines.py` and `api/schemas.py` so stub detection/classification behavior is identical between v1 `/process` and v2 pull. No duplicated pipeline logic, no duplicated schemas — the v2-specific classes (`PipelineProcessingTask`, `PipelineTaskResult`, `PipelineResultsError`, `ProcessingServiceClientInfo`, `AsyncPipelineRegistrationRequest`) live alongside the v1 ones in `api/schemas.py` and both paths import from there.
+Schemas are split so the v1 FastAPI side doesn't have to know anything about pull-mode types. Shared classes that are wire-format on both sides (`PipelineResultsResponse`, `PipelineConfigResponse`, `SourceImageResponse`, etc.) stay in `api/schemas.py`; pull-mode-only types (`PipelineProcessingTask`, `PipelineTaskResult`, `PipelineResultsError`, `ProcessingServiceClientInfo`, `AsyncPipelineRegistrationRequest`) live in `worker/schemas.py`, which imports the shared ones from `api.schemas`.
+
+`worker/runner.py` imports from `api/pipelines.py` and `api/schemas.py` so stub detection/classification behavior is identical between v1 `/process` and v2 pull. No duplicated pipeline logic.
 
 ### Wire format
 

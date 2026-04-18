@@ -17,14 +17,9 @@ import logging
 import time
 
 from api.api import pipeline_choices  # type: ignore[import-not-found]
-from api.schemas import (  # type: ignore[import-not-found]
-    PipelineProcessingTask,
-    PipelineResultsError,
-    PipelineResultsResponse,
-    PipelineTaskResult,
-    SourceImage,
-    SourceImageResponse,
-)
+from api.schemas import PipelineResultsResponse, SourceImage, SourceImageResponse  # type: ignore[import-not-found]
+
+from .schemas import PipelineProcessingTask, PipelineResultsError, PipelineTaskResult
 
 logger = logging.getLogger(__name__)
 
