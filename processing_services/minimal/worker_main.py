@@ -18,7 +18,7 @@ import sys
 import time
 
 import requests
-from api.schemas import ProcessingServiceClientInfo  # type: ignore[import-not-found]
+from worker.schemas import ProcessingServiceClientInfo  # type: ignore[import-not-found]
 
 LOG = logging.getLogger(__name__)
 

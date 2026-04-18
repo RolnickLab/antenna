@@ -19,10 +19,10 @@ import signal
 import time
 
 from api.api import pipeline_choices  # type: ignore[import-not-found]
-from api.schemas import ProcessingServiceClientInfo  # type: ignore[import-not-found]
 
 from .client import AntennaClient
 from .runner import process_task
+from .schemas import ProcessingServiceClientInfo
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +45,11 @@ class Loop:
 
     def run(self) -> None:
         self._install_signal_handlers()
-        my_slugs = list(pipeline_choices.keys())
-        logger.info("Polling for jobs on pipelines: %s", my_slugs)
+        logger.info("Polling for jobs on pipelines: %s", list(pipeline_choices))
 
         while not self.shutdown:
             try:
-                iterated = self._iterate(my_slugs)
+                iterated = self._iterate()
             except Exception:
                 # Log full traceback and keep going; a faulty poll shouldn't kill the worker.
                 logger.exception("Poll iteration failed")
@@ -58,10 +57,10 @@ class Loop:
             if not iterated:
                 time.sleep(self.poll_interval)
 
-    def _iterate(self, my_slugs: list[str]) -> bool:
-        """One poll cycle across all registered slugs. Returns True if any work was done."""
+    def _iterate(self) -> bool:
+        """One poll cycle across all registered pipeline slugs. Returns True if any work was done."""
         did_work = False
-        for slug in my_slugs:
+        for slug in pipeline_choices:
             if self.shutdown:
                 break
             job_ids = self.client.list_active_jobs(slug)
