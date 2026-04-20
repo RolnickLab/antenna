@@ -10,6 +10,7 @@ from asgiref.sync import async_to_sync, sync_to_async
 from celery.signals import task_failure, task_postrun, task_prerun
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 from redis.exceptions import RedisError
 
 from ami.main.checks.schemas import IntegrityCheckResult
@@ -79,7 +80,7 @@ def update_pipeline_pull_services_seen(job_id: int, seen_at_iso: str | None = No
     if not job.pipeline_id:
         return
 
-    seen_at = datetime.datetime.fromisoformat(seen_at_iso) if seen_at_iso is not None else datetime.datetime.now()
+    seen_at = datetime.datetime.fromisoformat(seen_at_iso) if seen_at_iso is not None else timezone.now()
     throttle_cutoff = seen_at - datetime.timedelta(seconds=HEARTBEAT_THROTTLE_SECONDS)
 
     services_qs = job.pipeline.processing_services.async_services().filter(projects=job.project_id)
