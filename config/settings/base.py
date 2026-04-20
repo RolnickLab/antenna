@@ -403,7 +403,10 @@ CELERY_TASK_TIME_LIMIT = 4 * 60 * 60 * 24  # 4 days
 # TODO: set to whatever value is adequate in your circumstances
 CELERY_TASK_SOFT_TIME_LIMIT = 3 * 60 * 60 * 24  # 3 days
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#beat-scheduler
-CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+# HeartbeatDatabaseScheduler extends DatabaseScheduler to touch /tmp/beat-heartbeat
+# on every tick so the celerybeat Docker healthcheck can detect a frozen
+# scheduler (ami/celery_schedulers.py).
+CELERY_BEAT_SCHEDULER = "ami.celery_schedulers:HeartbeatDatabaseScheduler"
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-send-task-events
 CELERY_WORKER_SEND_TASK_EVENTS = True
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#std-setting-task_send_sent_event

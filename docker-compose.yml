@@ -108,16 +108,31 @@ services:
     <<: *django
     image: ami_local_celeryworker
     scale: 1
-    ports: []
+    # For remote debugging with debugpy, set CELERY_DEBUG=1 in environment
+    # To disable watchfiles auto-reload, set CELERY_NO_RELOAD=1
+    ports:
+      - "5679:5679"
     command: /start-celeryworker
     depends_on:
       - rabbitmq
+    healthcheck:
+      test: ["CMD-SHELL", "/celery/healthcheck.sh"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 90s
 
   celerybeat:
     <<: *django
     image: ami_local_celerybeat
     ports: []
     command: /start-celerybeat
+    healthcheck:
+      test: ["CMD-SHELL", "/celery/healthcheck-beat.sh"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
 
   flower:
     <<: *django

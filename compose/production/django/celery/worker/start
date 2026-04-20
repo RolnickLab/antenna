@@ -12,8 +12,18 @@ set -o nounset
 #
 # With prefork pool (default), each CPU gets a worker process.
 # Example: 8 CPUs × 2 GiB = 16 GiB max total worker memory
+#
+# These options work in conjunction with the Docker healthcheck:
+# - Healthcheck (celery inspect ping) detects STUCK workers (not responding)
+# - These options prevent RESOURCE LEAKS (memory/task buildup over time)
+# - Autoheal restarts UNHEALTHY containers
+# - restart:always brings containers back after any exit
 
 MAX_TASKS_PER_CHILD=100
 MAX_MEMORY_PER_CHILD=2097152  # 2 GiB in KB
 
-exec newrelic-admin run-program celery -A config.celery_app worker --queues=antenna -l INFO --max-tasks-per-child=$MAX_TASKS_PER_CHILD --max-memory-per-child=$MAX_MEMORY_PER_CHILD
+exec newrelic-admin run-program celery -A config.celery_app worker \
+    --queues=antenna \
+    -l INFO \
+    --max-tasks-per-child=$MAX_TASKS_PER_CHILD \
+    --max-memory-per-child=$MAX_MEMORY_PER_CHILD
