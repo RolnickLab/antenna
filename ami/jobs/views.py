@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import logging
 
 import kombu.exceptions
@@ -69,7 +70,7 @@ def _mark_pipeline_pull_services_seen(job: "Job") -> None:
     if not job.pipeline_id:
         return
     try:
-        update_pipeline_pull_services_seen.delay(job.pk, seen_at_iso=timezone.now().isoformat())
+        update_pipeline_pull_services_seen.delay(job.pk, seen_at_iso=datetime.datetime.now().isoformat())
     except (kombu.exceptions.KombuError, ConnectionError, OSError) as exc:
         msg = f"Failed to enqueue non-critical pipeline heartbeat for job {job.pk}: {exc}"
         logger.warning(msg)
