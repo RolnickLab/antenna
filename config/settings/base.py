@@ -423,8 +423,9 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_ENABLE_PREFETCH_COUNT_REDUCTION = True
 
 # Split Celery work across three queues so one class of task can't starve
-# another. Each compose file defines a dedicated worker service per queue;
-# see docker-compose.*.yml. Tasks not listed here fall back to the default
+# another. Staging/production/worker compose files each run a dedicated
+# worker service per queue; local/CI use a single worker consuming all queues.
+# See docker-compose.*.yml. Tasks not listed here fall back to the default
 # queue (antenna).
 #
 #   antenna     — default: beat tasks, cache refreshes, sync jobs, misc housekeeping
