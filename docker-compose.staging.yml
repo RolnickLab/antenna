@@ -22,9 +22,10 @@
 # Docker network.
 #
 # Required env files:
-#   .envs/.production/.compose   — DATABASE_IP
-#   .envs/.production/.django    — Django settings, CELERY_BROKER_URL, NATS_URL, etc.
-#   .envs/.production/.postgres  — POSTGRES_HOST=db, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD
+#   .envs/.production/.compose    — DATABASE_IP
+#   .envs/.production/.django     — Django settings, CELERY_BROKER_URL, NATS_URL, etc.
+#   .envs/.production/.postgres   — POSTGRES_HOST=db, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD
+#   .envs/.production/.pgbouncer  — DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME, POOL_MODE, etc.
 
 services:
   django: &django
@@ -36,6 +37,7 @@ services:
       - redis
       - rabbitmq
       - nats
+      - pgbouncer
     env_file:
       - ./.envs/.production/.django
       - ./.envs/.production/.postgres
@@ -69,6 +71,19 @@ services:
     restart: always
     volumes:
       - ./data/flower/:/data/
+
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.25.1-p0
+    env_file:
+      - ./.envs/.production/.pgbouncer
+    extra_hosts:
+      - "db:${DATABASE_IP:?Set DATABASE_IP in .envs/.production/.compose}"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-p", "6432", "-U", "ami"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: always
 
   redis:
     image: redis:6
