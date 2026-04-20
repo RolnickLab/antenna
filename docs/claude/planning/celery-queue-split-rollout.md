@@ -1,6 +1,6 @@
 # Celery queue split — rollout plan
 
-Branch: `feat/celery-queue-split` (commit `f772045b`). Opened against `main`.
+Branch: `feat/celery-queue-split`. Opened against `main`.
 
 ## What the change does
 
@@ -18,12 +18,12 @@ Worker start script is parameterized via `CELERY_QUEUES` env var (default
 
 **Topology (production):**
 
-- `ami-live` runs only the `antenna` worker (alongside Django + beat + flower).
+- The app host runs only the `antenna` worker (alongside Django + beat + flower).
   Heavy bursty work is kept off the app host.
-- Dedicated worker hosts (`ami-worker-2`, `ami-worker-3`) run all three
-  services via `docker-compose.worker.yml`. Each queue has its own container
-  on each worker host so a burst on one class cannot saturate the pool and
-  starve another.
+- Dedicated worker hosts run all three services via
+  `docker-compose.worker.yml`. Each queue has its own container on each
+  worker host so a burst on one class cannot saturate the pool and starve
+  another.
 
 ## Why this is needed (motivating incident)
 
@@ -50,7 +50,9 @@ will cleanly nuke.
 
 ### Apply changes on demo (no push, no reset script)
 
-1. scp the three changed files onto the demo host:
+1. scp the files needed for the demo path onto the demo host (the branch
+   also modifies the local and production/worker compose files, but those
+   don't apply to the single-box staging deploy):
    - `config/settings/base.py`
    - `compose/production/django/celery/worker/start`
    - `docker-compose.staging.yml` (demo uses the staging compose file)
@@ -89,7 +91,7 @@ a few minutes.
    to avoid unrouted tasks piling up on an unread queue:
    - First: worker-only hosts (now run three dedicated services — `antenna`,
      `jobs`, `ml_results`)
-   - Second: ami-live (now runs only the `antenna` worker; the previous
+   - Second: the app host (now runs only the `antenna` worker; the previous
      single-queue worker is reconfigured to the `antenna` queue only)
 5. Post-deploy: same queue / consumer verification as on demo, but counting
    consumers across both worker hosts (e.g. `jobs` queue should show 2
