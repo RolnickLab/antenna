@@ -21,9 +21,43 @@ services:
     scale: 0  # We don't need the Django service running, but we inherit the worker settings from it.
     restart: always
 
+  # Dedicated worker hosts carry the heavy jobs and ml_results queues so the
+  # main app host (see docker-compose.production.yml) only serves the
+  # lightweight antenna queue alongside Django/beat.
+  #
+  # Each queue runs in its own container so a burst on one class (e.g.
+  # ml_results fan-out from a big async_api job) cannot saturate the pool and
+  # starve another (e.g. run_job). Every host runs all three services for
+  # capacity; to pin a host to fewer queues, remove services from an override
+  # file or scale them to 0.
+  #
+  # CELERY_WORKER_CONCURRENCY is inherited from .envs/.production/.django and
+  # applies per service. On small worker VMs that adds up (3 × concurrency
+  # prefork processes per host) — tune in the env file if memory pressure
+  # becomes a problem.
   celeryworker:
     <<: *django
-    scale: 1  # 1 worker per machine, celery will scale worker pool to the number of available CPUs.
+    scale: 1
     ports: []
     command: /start-celeryworker
+    environment:
+      CELERY_QUEUES: "antenna"
+    restart: always
+
+  celeryworker_jobs:
+    <<: *django
+    scale: 1
+    ports: []
+    command: /start-celeryworker
+    environment:
+      CELERY_QUEUES: "jobs"
+    restart: always
+
+  celeryworker_ml:
+    <<: *django
+    scale: 1
+    ports: []
+    command: /start-celeryworker
+    environment:
+      CELERY_QUEUES: "ml_results"
     restart: always
