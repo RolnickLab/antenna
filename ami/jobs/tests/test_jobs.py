@@ -1047,7 +1047,7 @@ class TestPipelineHeartbeatTask(APITestCase):
 
     def test_tasks_endpoint_dispatches_heartbeat_task(self):
         """The /tasks endpoint calls update_pipeline_pull_services_seen.delay(), not the DB directly."""
-        from unittest.mock import patch
+        from unittest.mock import ANY, patch
 
         job = self.job
         job.status = JobState.STARTED
@@ -1071,11 +1071,11 @@ class TestPipelineHeartbeatTask(APITestCase):
             resp = self.client.post(tasks_url, {"batch_size": 1}, format="json")
 
         self.assertEqual(resp.status_code, 200)
-        mock_delay.assert_called_once_with(job.pk)
+        mock_delay.assert_called_once_with(job.pk, seen_at_iso=ANY)
 
     def test_result_endpoint_dispatches_heartbeat_task(self):
         """The /result endpoint calls update_pipeline_pull_services_seen.delay(), not the DB directly."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import ANY, MagicMock, patch
 
         user = User.objects.create_user(email="hbresult@example.com", is_superuser=True, is_active=True)
         self.client.force_authenticate(user=user)
@@ -1108,7 +1108,37 @@ class TestPipelineHeartbeatTask(APITestCase):
             resp = self.client.post(result_url, result_data, format="json")
 
         self.assertEqual(resp.status_code, 200)
-        mock_delay.assert_called_once_with(self.job.pk)
+        mock_delay.assert_called_once_with(self.job.pk, seen_at_iso=ANY)
+
+    def test_tasks_endpoint_tolerates_heartbeat_dispatch_failure(self):
+        """Heartbeat enqueue errors should not fail the /tasks response."""
+        from unittest.mock import patch
+
+        from kombu.exceptions import OperationalError
+
+        job = self.job
+        job.status = JobState.STARTED
+        job.save(update_fields=["status"])
+
+        image = SourceImage.objects.create(
+            path="hb_tasks_broker.jpg",
+            public_base_url="http://example.com",
+            project=self.project,
+        )
+        queue_images_to_nats(job, [image])
+
+        user = User.objects.create_user(email="hbbroker@example.com", is_superuser=True, is_active=True)
+        self.client.force_authenticate(user=user)
+
+        with patch(
+            "ami.jobs.views.update_pipeline_pull_services_seen.delay",
+            side_effect=OperationalError("broker unavailable"),
+        ):
+            tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+            resp = self.client.post(tasks_url, {"batch_size": 1}, format="json")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()["tasks"]), 1)
 
     def test_heartbeat_task_updates_last_seen_when_stale(self):
         """update_pipeline_pull_services_seen writes last_seen when the service is stale."""
@@ -1122,11 +1152,12 @@ class TestPipelineHeartbeatTask(APITestCase):
         self.service.last_seen_live = False
         self.service.save(update_fields=["last_seen", "last_seen_live"])
 
-        update_pipeline_pull_services_seen(self.job.pk)
+        seen_at = datetime.datetime.now()
+        update_pipeline_pull_services_seen(self.job.pk, seen_at_iso=seen_at.isoformat())
 
         self.service.refresh_from_db()
         self.assertTrue(self.service.last_seen_live)
-        self.assertGreater(self.service.last_seen, old_time)
+        self.assertEqual(self.service.last_seen, seen_at)
 
     def test_heartbeat_task_skips_update_when_recent(self):
         """update_pipeline_pull_services_seen skips the UPDATE when last_seen is within the throttle window."""
@@ -1140,7 +1171,7 @@ class TestPipelineHeartbeatTask(APITestCase):
         self.service.last_seen_live = True
         self.service.save(update_fields=["last_seen", "last_seen_live"])
 
-        update_pipeline_pull_services_seen(self.job.pk)
+        update_pipeline_pull_services_seen(self.job.pk, seen_at_iso=datetime.datetime.now().isoformat())
 
         self.service.refresh_from_db()
         # last_seen should not have advanced significantly (throttle skipped the UPDATE)
@@ -1175,8 +1206,25 @@ class TestPipelineHeartbeatTask(APITestCase):
         self.service.last_seen = old_time
         self.service.save(update_fields=["last_seen"])
 
-        update_pipeline_pull_services_seen(job_no_pipeline.pk)
+        update_pipeline_pull_services_seen(job_no_pipeline.pk, seen_at_iso=datetime.datetime.now().isoformat())
 
         # Service last_seen should be unchanged because the task returned early
         self.service.refresh_from_db()
         self.assertAlmostEqual(self.service.last_seen.timestamp(), old_time.timestamp(), delta=1.0)
+
+    def test_heartbeat_task_does_not_regress_newer_last_seen(self):
+        """Delayed heartbeats must not overwrite a newer last_seen value."""
+        import datetime
+
+        from ami.jobs.tasks import update_pipeline_pull_services_seen
+
+        newer_time = datetime.datetime.now()
+        delayed_seen_at = newer_time - datetime.timedelta(minutes=1)
+        self.service.last_seen = newer_time
+        self.service.last_seen_live = True
+        self.service.save(update_fields=["last_seen", "last_seen_live"])
+
+        update_pipeline_pull_services_seen(self.job.pk, seen_at_iso=delayed_seen_at.isoformat())
+
+        self.service.refresh_from_db()
+        self.assertEqual(self.service.last_seen, newer_time)

@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import logging
 
 import kombu.exceptions
@@ -57,9 +58,10 @@ def _mark_pipeline_pull_services_seen(job: "Job") -> None:
 
     Dispatches update_pipeline_pull_services_seen via Celery .delay() so the view
     is never blocked on the DB write. The task throttles writes to at most once per
-    ~30 seconds per job, keeping last_seen current relative to the 60s
-    PROCESSING_SERVICE_LAST_SEEN_MAX threshold without hammering the same rows on
-    every concurrent task-fetch or result-submit request.
+    ~30 seconds per pipeline within this project, keeping last_seen current
+    relative to the 60s PROCESSING_SERVICE_LAST_SEEN_MAX threshold without
+    hammering the same rows on every concurrent task-fetch or result-submit
+    request.
 
     Per-service scoping is not yet possible — marks ALL async services on the
     pipeline within this project as live. Once application-token auth lands
@@ -67,7 +69,12 @@ def _mark_pipeline_pull_services_seen(job: "Job") -> None:
     """
     if not job.pipeline_id:
         return
-    update_pipeline_pull_services_seen.delay(job.pk)
+    try:
+        update_pipeline_pull_services_seen.delay(job.pk, seen_at_iso=datetime.datetime.now().isoformat())
+    except (kombu.exceptions.KombuError, ConnectionError, OSError) as exc:
+        msg = f"Failed to enqueue non-critical pipeline heartbeat for job {job.pk}: {exc}"
+        logger.warning(msg)
+        job.logger.warning(msg)
 
 
 class JobFilterSet(filters.FilterSet):
