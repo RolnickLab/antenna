@@ -1,0 +1,22 @@
+# pgbouncer connection pool config (transaction pooling in front of Postgres).
+# Used by the staging/demo/branch-preview stack — see docker-compose.staging.yml.
+#
+# Copy to .envs/.production/.pgbouncer and fill in real values.
+# The upstream DB is reached via the `db` extra_hosts alias, which is set from
+# DATABASE_IP in .envs/.production/.compose.
+
+DB_HOST=db
+DB_PORT=5432
+DB_USER=ami
+DB_PASSWORD=change-me
+DB_NAME=ami
+
+POOL_MODE=transaction
+AUTH_TYPE=scram-sha-256
+
+MAX_CLIENT_CONN=200
+DEFAULT_POOL_SIZE=20
+RESERVE_POOL_SIZE=5
+SERVER_IDLE_TIMEOUT=600
+
+LISTEN_PORT=6432
