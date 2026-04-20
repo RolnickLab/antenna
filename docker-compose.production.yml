@@ -25,6 +25,10 @@ services:
     scale: 1  # Can't scale until the load balancer is within the compose config
     restart: always
 
+  # Only the antenna (default) queue runs here, alongside beat. The jobs and
+  # ml_results queues are served by dedicated worker hosts (see
+  # docker-compose.worker.yml) so heavy, bursty ML work doesn't compete with
+  # Django/beat for CPU and memory on this box.
   celeryworker:
     <<: *django
     scale: 1
@@ -32,24 +36,6 @@ services:
     command: /start-celeryworker
     environment:
       CELERY_QUEUES: "antenna"
-    restart: always
-
-  celeryworker_jobs:
-    <<: *django
-    scale: 1
-    ports: []
-    command: /start-celeryworker
-    environment:
-      CELERY_QUEUES: "jobs"
-    restart: always
-
-  celeryworker_ml:
-    <<: *django
-    scale: 1
-    ports: []
-    command: /start-celeryworker
-    environment:
-      CELERY_QUEUES: "ml_results"
     restart: always
 
   celerybeat:

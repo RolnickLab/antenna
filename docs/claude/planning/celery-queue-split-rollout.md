@@ -7,15 +7,23 @@ Branch: `feat/celery-queue-split` (commit `f772045b`). Opened against `main`.
 Splits Celery tasks across three RabbitMQ queues, each consumed by a
 dedicated worker service, so one class of task cannot starve another:
 
-| Queue        | Tasks                                                    | Rationale                                                                   |
-| ------------ | -------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `antenna`    | default — beat, cache refresh, sync, model_task, misc    | Fast, high-turnover housekeeping                                            |
-| `jobs`       | `run_job`                                                | Can hold a worker slot for hours                                            |
-| `ml_results` | `process_nats_pipeline_result`, `save_results`           | Bursty, ~180 tasks / 5 min per active async_api job                         |
+| Queue        | Tasks                                                                       | Rationale                                           |
+| ------------ | --------------------------------------------------------------------------- | --------------------------------------------------- |
+| `antenna`    | default — beat, cache refresh, sync, misc                                   | Fast, high-turnover housekeeping                    |
+| `jobs`       | `run_job`                                                                   | Can hold a worker slot for hours                    |
+| `ml_results` | `process_nats_pipeline_result`, `save_results`, `create_detection_images`   | Bursty, ~180 tasks / 5 min per active async_api job |
 
 Worker start script is parameterized via `CELERY_QUEUES` env var (default
-`antenna`), so one image serves all three services. `docker-compose.worker.yml`
-(worker-only hosts) consumes all three queues as spillover capacity.
+`antenna`), so one image serves all three services.
+
+**Topology (production):**
+
+- `ami-live` runs only the `antenna` worker (alongside Django + beat + flower).
+  Heavy bursty work is kept off the app host.
+- Dedicated worker hosts (`ami-worker-2`, `ami-worker-3`) run all three
+  services via `docker-compose.worker.yml`. Each queue has its own container
+  on each worker host so a burst on one class cannot saturate the pool and
+  starve another.
 
 ## Why this is needed (motivating incident)
 
@@ -77,12 +85,15 @@ a few minutes.
 2. Code review (queue routing is a system-level change; at least one
    reviewer familiar with the Celery topology)
 3. Merge to `main`
-4. Production deploy must update **all three** celery-consuming hosts in
-   this order to avoid unrouted tasks piling up on an unread queue:
-   - First: worker-only hosts (spillover pool consumes all three queues)
-   - Second: ami-live (which adds the dedicated `celeryworker_jobs` and
-     `celeryworker_ml` services)
-5. Post-deploy: same queue / consumer verification as on demo
+4. Production deploy must update the celery-consuming hosts in this order
+   to avoid unrouted tasks piling up on an unread queue:
+   - First: worker-only hosts (now run three dedicated services — `antenna`,
+     `jobs`, `ml_results`)
+   - Second: ami-live (now runs only the `antenna` worker; the previous
+     single-queue worker is reconfigured to the `antenna` queue only)
+5. Post-deploy: same queue / consumer verification as on demo, but counting
+   consumers across both worker hosts (e.g. `jobs` queue should show 2
+   consumers = one per worker host)
 
 ## Things that could go wrong and how we'd notice
 
@@ -97,7 +108,12 @@ a few minutes.
 - **Beat scheduler uses wrong queue for a scheduled task** — only an
   issue if a beat task name happens to match a `CELERY_TASK_ROUTES` key.
   Currently routed tasks (`run_job`, `process_nats_pipeline_result`,
-  `save_results`) are not in the beat schedule, so this shouldn't happen.
+  `save_results`, `create_detection_images`) are not in the beat schedule,
+  so this shouldn't happen.
+- **Worker VM memory pressure** — splitting the previous single-container
+  worker into three doubles the baseline prefork process count on each VM
+  (3 × `CELERY_WORKER_CONCURRENCY`). Watch RSS after deploy; if memory is
+  tight, lower `CELERY_WORKER_CONCURRENCY` in the worker host `.env`.
 
 ## Related
 
