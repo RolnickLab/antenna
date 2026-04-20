@@ -422,6 +422,23 @@ CELERY_REDIS_BACKEND_HEALTH_CHECK_INTERVAL = 30  # Check health every 30s
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_ENABLE_PREFETCH_COUNT_REDUCTION = True
 
+# Split Celery work across three queues so one class of task can't starve
+# another. Staging/production/worker compose files each run a dedicated
+# worker service per queue; local/CI use a single worker consuming all queues.
+# See docker-compose.*.yml. Tasks not listed here fall back to the default
+# queue (antenna).
+#
+#   antenna     — default: beat tasks, cache refreshes, sync jobs, misc housekeeping
+#   jobs        — long-running run_job invocations (can hold a slot for hours)
+#   ml_results  — high-volume process_nats_pipeline_result + save_results bursts,
+#                 plus create_detection_images (emitted from save_results)
+CELERY_TASK_ROUTES = {
+    "ami.jobs.tasks.run_job": {"queue": "jobs"},
+    "ami.jobs.tasks.process_nats_pipeline_result": {"queue": "ml_results"},
+    "ami.ml.models.pipeline.save_results": {"queue": "ml_results"},
+    "ami.ml.tasks.create_detection_images": {"queue": "ml_results"},
+}
+
 # Worker concurrency (prefork pool size)
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-concurrency
 # Celery's own default when unset is os.cpu_count(), which on the production

@@ -6,6 +6,10 @@ set -o nounset
 
 # Production Celery worker with memory leak protections
 #
+# Consumes queues specified by CELERY_QUEUES env var (default: "antenna").
+# Override in compose to run dedicated workers per queue class, e.g.
+# CELERY_QUEUES=ml_results for a worker that only handles ML result tasks.
+#
 # Worker protections:
 # --max-tasks-per-child=100 - Restart worker process after 100 tasks
 # --max-memory-per-child=2097152 - Restart if worker process exceeds 2 GiB (in KB)
@@ -15,5 +19,6 @@ set -o nounset
 
 MAX_TASKS_PER_CHILD=100
 MAX_MEMORY_PER_CHILD=2097152  # 2 GiB in KB
+QUEUES="${CELERY_QUEUES:-antenna}"
 
-exec newrelic-admin run-program celery -A config.celery_app worker --queues=antenna -l INFO --max-tasks-per-child=$MAX_TASKS_PER_CHILD --max-memory-per-child=$MAX_MEMORY_PER_CHILD
+exec newrelic-admin run-program celery -A config.celery_app worker --queues="$QUEUES" -l INFO --max-tasks-per-child=$MAX_TASKS_PER_CHILD --max-memory-per-child=$MAX_MEMORY_PER_CHILD
