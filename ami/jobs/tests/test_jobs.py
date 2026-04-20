@@ -11,6 +11,7 @@ from ami.base.serializers import reverse_with_params
 from ami.jobs.models import Job, JobDispatchMode, JobProgress, JobState, MLJob, SourceImageCollectionPopulateJob
 from ami.main.models import Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
+from ami.ml.models.processing_service import ProcessingService
 from ami.ml.orchestration.jobs import queue_images_to_nats
 from ami.users.models import User
 
@@ -1016,3 +1017,143 @@ class TestJobDispatchModeFiltering(APITestCase):
         resp = self.client.post(tasks_url, {"batch_size": 1}, format="json")
         self.assertEqual(resp.status_code, 400)
         self.assertIn("async_api", resp.json()[0].lower())
+
+
+class TestPipelineHeartbeatTask(APITestCase):
+    """
+    Unit tests for update_pipeline_pull_services_seen and the view-level
+    _mark_pipeline_pull_services_seen fire-and-forget dispatch.
+    """
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        # Cache-based gate in _mark_pipeline_pull_services_seen would otherwise
+        # carry over between tests and suppress the .delay() we want to assert.
+        cache.clear()
+
+        self.project = Project.objects.create(name="Heartbeat Test Project")
+        self.pipeline = Pipeline.objects.create(name="Heartbeat Pipeline", slug="heartbeat-pipeline")
+        self.pipeline.projects.add(self.project)
+        self.collection = SourceImageCollection.objects.create(name="HB Collection", project=self.project)
+        self.job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Heartbeat Test Job",
+            pipeline=self.pipeline,
+            source_image_collection=self.collection,
+            dispatch_mode=JobDispatchMode.ASYNC_API,
+        )
+        self.service = ProcessingService.objects.create(
+            name="Heartbeat Worker",
+            endpoint_url=None,  # None = pull-mode / async service
+        )
+        self.service.pipelines.add(self.pipeline)
+        self.service.projects.add(self.project)
+
+    def test_tasks_endpoint_dispatches_heartbeat_task(self):
+        """The /tasks endpoint calls update_pipeline_pull_services_seen.delay(), not the DB directly."""
+        from unittest.mock import patch
+
+        job = self.job
+        job.status = JobState.STARTED
+        job.save(update_fields=["status"])
+
+        images = [
+            SourceImage.objects.create(
+                path=f"hb_tasks_{i}.jpg",
+                public_base_url="http://example.com",
+                project=self.project,
+            )
+            for i in range(2)
+        ]
+        queue_images_to_nats(job, images)
+
+        user = User.objects.create_user(email="hbtest@example.com", is_superuser=True, is_active=True)
+        self.client.force_authenticate(user=user)
+
+        with patch("ami.jobs.views.update_pipeline_pull_services_seen.delay") as mock_delay:
+            tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+            resp = self.client.post(tasks_url, {"batch_size": 1}, format="json")
+
+        self.assertEqual(resp.status_code, 200)
+        mock_delay.assert_called_once_with(job.pk)
+
+    def test_result_endpoint_dispatches_heartbeat_task(self):
+        """The /result endpoint calls update_pipeline_pull_services_seen.delay(), not the DB directly."""
+        from unittest.mock import MagicMock, patch
+
+        user = User.objects.create_user(email="hbresult@example.com", is_superuser=True, is_active=True)
+        self.client.force_authenticate(user=user)
+
+        result_data = {
+            "results": [
+                {
+                    "reply_subject": "test.reply.hb",
+                    "result": {
+                        "pipeline": "heartbeat-pipeline",
+                        "algorithms": {},
+                        "total_time": 0.1,
+                        "source_images": [],
+                        "detections": [],
+                        "errors": None,
+                    },
+                }
+            ]
+        }
+
+        mock_async_result = MagicMock()
+        mock_async_result.id = "hb-task-id"
+        with (
+            patch("ami.jobs.views.process_nats_pipeline_result.delay", return_value=mock_async_result),
+            patch("ami.jobs.views.update_pipeline_pull_services_seen.delay") as mock_delay,
+        ):
+            result_url = reverse_with_params(
+                "api:job-result", args=[self.job.pk], params={"project_id": self.project.pk}
+            )
+            resp = self.client.post(result_url, result_data, format="json")
+
+        self.assertEqual(resp.status_code, 200)
+        mock_delay.assert_called_once_with(self.job.pk)
+
+    def test_tasks_endpoint_tolerates_heartbeat_dispatch_failure(self):
+        """Heartbeat enqueue errors should not fail the /tasks response."""
+        from unittest.mock import patch
+
+        from kombu.exceptions import OperationalError
+
+        job = self.job
+        job.status = JobState.STARTED
+        job.save(update_fields=["status"])
+
+        image = SourceImage.objects.create(
+            path="hb_tasks_broker.jpg",
+            public_base_url="http://example.com",
+            project=self.project,
+        )
+        queue_images_to_nats(job, [image])
+
+        user = User.objects.create_user(email="hbbroker@example.com", is_superuser=True, is_active=True)
+        self.client.force_authenticate(user=user)
+
+        with patch(
+            "ami.jobs.views.update_pipeline_pull_services_seen.delay",
+            side_effect=OperationalError("broker unavailable"),
+        ):
+            tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+            resp = self.client.post(tasks_url, {"batch_size": 1}, format="json")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()["tasks"]), 1)
+
+    def test_view_gate_suppresses_redundant_dispatches(self):
+        """Rapid repeated calls to _mark_pipeline_pull_services_seen should only enqueue once per window."""
+        from unittest.mock import patch
+
+        from ami.jobs.views import _mark_pipeline_pull_services_seen
+
+        with patch("ami.jobs.views.update_pipeline_pull_services_seen.delay") as mock_delay:
+            for _ in range(5):
+                _mark_pipeline_pull_services_seen(self.job)
+
+        self.assertEqual(mock_delay.call_count, 1)

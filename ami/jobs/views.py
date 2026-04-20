@@ -4,6 +4,7 @@ import logging
 import kombu.exceptions
 import nats.errors
 from asgiref.sync import async_to_sync
+from django.core.cache import cache
 from django.db.models import Q
 from django.db.models.query import QuerySet
 from django.forms import IntegerField
@@ -24,7 +25,7 @@ from ami.jobs.serializers import (
     MLJobTasksRequestSerializer,
     MLJobTasksResponseSerializer,
 )
-from ami.jobs.tasks import process_nats_pipeline_result
+from ami.jobs.tasks import HEARTBEAT_THROTTLE_SECONDS, process_nats_pipeline_result, update_pipeline_pull_services_seen
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
 from ami.utils.fields import url_boolean_param
@@ -52,26 +53,31 @@ def _actor_log_context(request) -> tuple[str, str | None]:
 
 def _mark_pipeline_pull_services_seen(job: "Job") -> None:
     """
-    Record a heartbeat for async (pull-mode) processing services linked to the job's pipeline.
+    Enqueue a fire-and-forget heartbeat for async (pull-mode) processing services
+    linked to the job's pipeline.
 
-    Called on every task-fetch and result-submit request so that the worker's polling activity
-    keeps last_seen/last_seen_live current. The periodic check_processing_services_online task
-    will mark services offline if this heartbeat stops arriving within PROCESSING_SERVICE_LAST_SEEN_MAX.
+    A Redis cache gate skips the dispatch when a heartbeat for the same
+    (pipeline, project) has already fired within HEARTBEAT_THROTTLE_SECONDS,
+    so under concurrent polling we avoid broker + task churn. The Celery task
+    keeps the DB write off the HTTP request path.
 
-    IMPORTANT: This marks ALL async services on the pipeline within this project as live, not just
-    the specific service that made the request. If multiple async services share the same pipeline
-    within a project, a single worker polling will keep all of them appearing online.
-    Once application-token auth is available (PR #1117), this should be scoped to the individual
-    calling service instead.
+    Cache key scope: currently `heartbeat:pipeline:<pipeline_id>:project:<project_id>`
+    because we cannot yet identify the specific calling service. Once
+    application-token auth lands (PR #1117), the key should become
+    `heartbeat:service:<service_id>` so each service gets its own throttle
+    window and one service's poll does not suppress another's heartbeat.
     """
-    import datetime
-
     if not job.pipeline_id:
         return
-    job.pipeline.processing_services.async_services().filter(projects=job.project_id).update(
-        last_seen=datetime.datetime.now(),
-        last_seen_live=True,
-    )
+    cache_key = f"heartbeat:pipeline:{job.pipeline_id}:project:{job.project_id}"
+    if not cache.add(cache_key, 1, timeout=HEARTBEAT_THROTTLE_SECONDS):
+        return
+    try:
+        update_pipeline_pull_services_seen.delay(job.pk)
+    except (kombu.exceptions.KombuError, ConnectionError, OSError) as exc:
+        msg = f"Failed to enqueue non-critical pipeline heartbeat for job {job.pk}: {exc}"
+        logger.warning(msg)
+        job.logger.warning(msg)
 
 
 class JobFilterSet(filters.FilterSet):
