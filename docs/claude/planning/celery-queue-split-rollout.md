@@ -39,7 +39,7 @@ investigation surfaced.
 
 Goal: validate on demo **without** merging to `main` or running the
 standard deploy flow. Files are scp'd directly onto the demo host; the
-repo is left in a known dirty state that a subsequent `reset_demo_to_branch.sh`
+repo is left in a known dirty state that a subsequent `reset_to_branch.sh`
 will cleanly nuke.
 
 ### Pre-flight (confirm clean window)
@@ -75,7 +75,7 @@ will cleanly nuke.
 
 ### Rollback
 
-`~/reset_demo_to_branch.sh main` restores the deployment branch to `main`,
+`~/reset_to_branch.sh main` restores the deployment branch to `main`,
 wiping our scp'd changes. Demo goes back to single-worker config within
 a few minutes.
 
