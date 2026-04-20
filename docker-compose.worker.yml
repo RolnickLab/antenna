@@ -26,4 +26,9 @@ services:
     scale: 1  # 1 worker per machine, celery will scale worker pool to the number of available CPUs.
     ports: []
     command: /start-celeryworker
+    environment:
+      # Worker hosts (ami-worker-2, ami-worker-3) consume all three queues by
+      # default to add capacity to every pool. To dedicate a worker host to one
+      # queue, override CELERY_QUEUES in its .env file.
+      CELERY_QUEUES: "antenna,jobs,ml_results"
     restart: always

@@ -30,6 +30,26 @@ services:
     scale: 1
     ports: []
     command: /start-celeryworker
+    environment:
+      CELERY_QUEUES: "antenna"
+    restart: always
+
+  celeryworker_jobs:
+    <<: *django
+    scale: 1
+    ports: []
+    command: /start-celeryworker
+    environment:
+      CELERY_QUEUES: "jobs"
+    restart: always
+
+  celeryworker_ml:
+    <<: *django
+    scale: 1
+    ports: []
+    command: /start-celeryworker
+    environment:
+      CELERY_QUEUES: "ml_results"
     restart: always
 
   celerybeat:
