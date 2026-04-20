@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 from asgiref.sync import async_to_sync, sync_to_async
 from celery.signals import task_failure, task_postrun, task_prerun
 from django.db import transaction
-from django.db.models import Q
 from redis.exceptions import RedisError
 
 from ami.main.checks.schemas import IntegrityCheckResult
@@ -35,34 +34,26 @@ FAILURE_THRESHOLD = 0.5
 # "nobody's listening" signal.
 WORKER_AVAILABILITY_ONLINE_CUTOFF = datetime.timedelta(minutes=5)
 
-# Minimum interval between heartbeat DB writes for a given (pipeline, project).
-# PROCESSING_SERVICE_LAST_SEEN_MAX is 60s; writing at most once per 30s keeps
-# shared last_seen rows current without hammering them on every concurrent
-# request for the same pipeline within a project.
+# Minimum interval between heartbeat dispatches for a given (pipeline, project).
+# The view-level Redis cache gate uses this window to skip .delay() under
+# concurrent polling; the task itself does no throttling.
 HEARTBEAT_THROTTLE_SECONDS = 30
-HEARTBEAT_TASK_EXPIRES_SECONDS = HEARTBEAT_THROTTLE_SECONDS * 2
 
 
 @celery_app.task(
     soft_time_limit=10,
     time_limit=15,
-    expires=HEARTBEAT_TASK_EXPIRES_SECONDS,
     ignore_result=True,
     # No retries — a missed heartbeat is benign; retrying adds load for no gain.
 )
-def update_pipeline_pull_services_seen(job_id: int, seen_at_iso: str | None = None) -> None:
+def update_pipeline_pull_services_seen(job_id: int) -> None:
     """
     Fire-and-forget heartbeat task: record last_seen/last_seen_live for async
     (pull-mode) processing services linked to a job's pipeline.
 
-    Called via .delay() from the tasks and result view endpoints so the HTTP
-    request is never blocked on this DB write.
-
-    Throttle: skips the UPDATE if every matching service in the shared
-    (pipeline, project) scope was seen within HEARTBEAT_THROTTLE_SECONDS,
-    cutting write rate under concurrent requests by orders of magnitude while
-    keeping last_seen fresh relative to the 60s
-    PROCESSING_SERVICE_LAST_SEEN_MAX threshold.
+    Throttling lives in the view (Redis cache gate over HEARTBEAT_THROTTLE_SECONDS),
+    so this task is dispatched at most once per (pipeline, project) per window
+    and can just write.
 
     Scope: marks ALL async services on the pipeline within this project as live,
     not just the specific service that made the request. Once application-token
@@ -79,15 +70,10 @@ def update_pipeline_pull_services_seen(job_id: int, seen_at_iso: str | None = No
     if not job.pipeline_id:
         return
 
-    seen_at = datetime.datetime.fromisoformat(seen_at_iso) if seen_at_iso is not None else datetime.datetime.now()
-    throttle_cutoff = seen_at - datetime.timedelta(seconds=HEARTBEAT_THROTTLE_SECONDS)
-
-    services_qs = job.pipeline.processing_services.async_services().filter(projects=job.project_id)
-    stale_services_qs = services_qs.filter(Q(last_seen__isnull=True) | Q(last_seen__lt=throttle_cutoff))
-    if not stale_services_qs.exists():
-        return
-
-    stale_services_qs.update(last_seen=seen_at, last_seen_live=True)
+    job.pipeline.processing_services.async_services().filter(projects=job.project_id).update(
+        last_seen=datetime.datetime.now(),
+        last_seen_live=True,
+    )
 
 
 @celery_app.task(bind=True, soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)

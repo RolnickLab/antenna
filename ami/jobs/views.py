@@ -1,5 +1,4 @@
 import asyncio
-import datetime
 import logging
 
 import kombu.exceptions
@@ -57,13 +56,10 @@ def _mark_pipeline_pull_services_seen(job: "Job") -> None:
     Enqueue a fire-and-forget heartbeat for async (pull-mode) processing services
     linked to the job's pipeline.
 
-    Dispatches update_pipeline_pull_services_seen via Celery .delay() so the view
-    is never blocked on the DB write. A view-level Redis cache gate skips the
-    .delay() entirely when a heartbeat for the same (pipeline, project) has been
-    enqueued within HEARTBEAT_THROTTLE_SECONDS — so under concurrent polling we
-    avoid broker + task churn, not just the DB write. The task itself also
-    re-checks staleness before writing (belt + suspenders, and safe under cache
-    eviction).
+    A Redis cache gate skips the dispatch when a heartbeat for the same
+    (pipeline, project) has already fired within HEARTBEAT_THROTTLE_SECONDS,
+    so under concurrent polling we avoid broker + task churn. The Celery task
+    keeps the DB write off the HTTP request path.
 
     Cache key scope: currently `heartbeat:pipeline:<pipeline_id>:project:<project_id>`
     because we cannot yet identify the specific calling service. Once
@@ -77,7 +73,7 @@ def _mark_pipeline_pull_services_seen(job: "Job") -> None:
     if not cache.add(cache_key, 1, timeout=HEARTBEAT_THROTTLE_SECONDS):
         return
     try:
-        update_pipeline_pull_services_seen.delay(job.pk, seen_at_iso=datetime.datetime.now().isoformat())
+        update_pipeline_pull_services_seen.delay(job.pk)
     except (kombu.exceptions.KombuError, ConnectionError, OSError) as exc:
         msg = f"Failed to enqueue non-critical pipeline heartbeat for job {job.pk}: {exc}"
         logger.warning(msg)

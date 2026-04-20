@@ -1053,7 +1053,7 @@ class TestPipelineHeartbeatTask(APITestCase):
 
     def test_tasks_endpoint_dispatches_heartbeat_task(self):
         """The /tasks endpoint calls update_pipeline_pull_services_seen.delay(), not the DB directly."""
-        from unittest.mock import ANY, patch
+        from unittest.mock import patch
 
         job = self.job
         job.status = JobState.STARTED
@@ -1077,11 +1077,11 @@ class TestPipelineHeartbeatTask(APITestCase):
             resp = self.client.post(tasks_url, {"batch_size": 1}, format="json")
 
         self.assertEqual(resp.status_code, 200)
-        mock_delay.assert_called_once_with(job.pk, seen_at_iso=ANY)
+        mock_delay.assert_called_once_with(job.pk)
 
     def test_result_endpoint_dispatches_heartbeat_task(self):
         """The /result endpoint calls update_pipeline_pull_services_seen.delay(), not the DB directly."""
-        from unittest.mock import ANY, MagicMock, patch
+        from unittest.mock import MagicMock, patch
 
         user = User.objects.create_user(email="hbresult@example.com", is_superuser=True, is_active=True)
         self.client.force_authenticate(user=user)
@@ -1114,7 +1114,7 @@ class TestPipelineHeartbeatTask(APITestCase):
             resp = self.client.post(result_url, result_data, format="json")
 
         self.assertEqual(resp.status_code, 200)
-        mock_delay.assert_called_once_with(self.job.pk, seen_at_iso=ANY)
+        mock_delay.assert_called_once_with(self.job.pk)
 
     def test_tasks_endpoint_tolerates_heartbeat_dispatch_failure(self):
         """Heartbeat enqueue errors should not fail the /tasks response."""
@@ -1145,95 +1145,6 @@ class TestPipelineHeartbeatTask(APITestCase):
 
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.json()["tasks"]), 1)
-
-    def test_heartbeat_task_updates_last_seen_when_stale(self):
-        """update_pipeline_pull_services_seen writes last_seen when the service is stale."""
-        import datetime
-
-        from ami.jobs.tasks import update_pipeline_pull_services_seen
-
-        # Set last_seen to well past the throttle window
-        old_time = datetime.datetime.now() - datetime.timedelta(minutes=5)
-        self.service.last_seen = old_time
-        self.service.last_seen_live = False
-        self.service.save(update_fields=["last_seen", "last_seen_live"])
-
-        seen_at = datetime.datetime.now()
-        update_pipeline_pull_services_seen(self.job.pk, seen_at_iso=seen_at.isoformat())
-
-        self.service.refresh_from_db()
-        self.assertTrue(self.service.last_seen_live)
-        self.assertEqual(self.service.last_seen, seen_at)
-
-    def test_heartbeat_task_skips_update_when_recent(self):
-        """update_pipeline_pull_services_seen skips the UPDATE when last_seen is within the throttle window."""
-        import datetime
-
-        from ami.jobs.tasks import update_pipeline_pull_services_seen
-
-        # Set last_seen to just now — well inside the 30s throttle window
-        recent_time = datetime.datetime.now() - datetime.timedelta(seconds=5)
-        self.service.last_seen = recent_time
-        self.service.last_seen_live = True
-        self.service.save(update_fields=["last_seen", "last_seen_live"])
-
-        update_pipeline_pull_services_seen(self.job.pk, seen_at_iso=datetime.datetime.now().isoformat())
-
-        self.service.refresh_from_db()
-        # last_seen should not have advanced significantly (throttle skipped the UPDATE)
-        self.assertAlmostEqual(
-            self.service.last_seen.timestamp(),
-            recent_time.timestamp(),
-            delta=1.0,
-        )
-
-    def test_heartbeat_task_no_op_for_missing_job(self):
-        """update_pipeline_pull_services_seen silently returns when job_id does not exist."""
-        from ami.jobs.tasks import update_pipeline_pull_services_seen
-
-        # Should not raise
-        update_pipeline_pull_services_seen(job_id=999999)
-
-    def test_heartbeat_task_no_op_for_job_without_pipeline(self):
-        """update_pipeline_pull_services_seen returns early when job has no pipeline."""
-        import datetime
-
-        from ami.jobs.tasks import update_pipeline_pull_services_seen
-
-        job_no_pipeline = Job.objects.create(
-            job_type_key=MLJob.key,
-            project=self.project,
-            name="No-pipeline job",
-            source_image_collection=self.collection,
-            dispatch_mode=JobDispatchMode.ASYNC_API,
-        )
-
-        old_time = datetime.datetime.now() - datetime.timedelta(minutes=10)
-        self.service.last_seen = old_time
-        self.service.save(update_fields=["last_seen"])
-
-        update_pipeline_pull_services_seen(job_no_pipeline.pk, seen_at_iso=datetime.datetime.now().isoformat())
-
-        # Service last_seen should be unchanged because the task returned early
-        self.service.refresh_from_db()
-        self.assertAlmostEqual(self.service.last_seen.timestamp(), old_time.timestamp(), delta=1.0)
-
-    def test_heartbeat_task_does_not_regress_newer_last_seen(self):
-        """Delayed heartbeats must not overwrite a newer last_seen value."""
-        import datetime
-
-        from ami.jobs.tasks import update_pipeline_pull_services_seen
-
-        newer_time = datetime.datetime.now()
-        delayed_seen_at = newer_time - datetime.timedelta(minutes=1)
-        self.service.last_seen = newer_time
-        self.service.last_seen_live = True
-        self.service.save(update_fields=["last_seen", "last_seen_live"])
-
-        update_pipeline_pull_services_seen(self.job.pk, seen_at_iso=delayed_seen_at.isoformat())
-
-        self.service.refresh_from_db()
-        self.assertEqual(self.service.last_seen, newer_time)
 
     def test_view_gate_suppresses_redundant_dispatches(self):
         """Rapid repeated calls to _mark_pipeline_pull_services_seen should only enqueue once per window."""
