@@ -429,11 +429,13 @@ CELERY_WORKER_ENABLE_PREFETCH_COUNT_REDUCTION = True
 #
 #   antenna     — default: beat tasks, cache refreshes, sync jobs, misc housekeeping
 #   jobs        — long-running run_job invocations (can hold a slot for hours)
-#   ml_results  — high-volume process_nats_pipeline_result + save_results bursts
+#   ml_results  — high-volume process_nats_pipeline_result + save_results bursts,
+#                 plus create_detection_images (emitted from save_results)
 CELERY_TASK_ROUTES = {
     "ami.jobs.tasks.run_job": {"queue": "jobs"},
     "ami.jobs.tasks.process_nats_pipeline_result": {"queue": "ml_results"},
     "ami.ml.models.pipeline.save_results": {"queue": "ml_results"},
+    "ami.ml.tasks.create_detection_images": {"queue": "ml_results"},
 }
 
 # Worker concurrency (prefork pool size)
