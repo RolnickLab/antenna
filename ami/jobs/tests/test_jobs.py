@@ -1026,6 +1026,12 @@ class TestPipelineHeartbeatTask(APITestCase):
     """
 
     def setUp(self):
+        from django.core.cache import cache
+
+        # Cache-based gate in _mark_pipeline_pull_services_seen would otherwise
+        # carry over between tests and suppress the .delay() we want to assert.
+        cache.clear()
+
         self.project = Project.objects.create(name="Heartbeat Test Project")
         self.pipeline = Pipeline.objects.create(name="Heartbeat Pipeline", slug="heartbeat-pipeline")
         self.pipeline.projects.add(self.project)
@@ -1228,3 +1234,15 @@ class TestPipelineHeartbeatTask(APITestCase):
 
         self.service.refresh_from_db()
         self.assertEqual(self.service.last_seen, newer_time)
+
+    def test_view_gate_suppresses_redundant_dispatches(self):
+        """Rapid repeated calls to _mark_pipeline_pull_services_seen should only enqueue once per window."""
+        from unittest.mock import patch
+
+        from ami.jobs.views import _mark_pipeline_pull_services_seen
+
+        with patch("ami.jobs.views.update_pipeline_pull_services_seen.delay") as mock_delay:
+            for _ in range(5):
+                _mark_pipeline_pull_services_seen(self.job)
+
+        self.assertEqual(mock_delay.call_count, 1)

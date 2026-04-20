@@ -5,6 +5,7 @@ import logging
 import kombu.exceptions
 import nats.errors
 from asgiref.sync import async_to_sync
+from django.core.cache import cache
 from django.db.models import Q
 from django.db.models.query import QuerySet
 from django.forms import IntegerField
@@ -25,7 +26,7 @@ from ami.jobs.serializers import (
     MLJobTasksRequestSerializer,
     MLJobTasksResponseSerializer,
 )
-from ami.jobs.tasks import process_nats_pipeline_result, update_pipeline_pull_services_seen
+from ami.jobs.tasks import HEARTBEAT_THROTTLE_SECONDS, process_nats_pipeline_result, update_pipeline_pull_services_seen
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
 from ami.utils.fields import url_boolean_param
@@ -57,17 +58,23 @@ def _mark_pipeline_pull_services_seen(job: "Job") -> None:
     linked to the job's pipeline.
 
     Dispatches update_pipeline_pull_services_seen via Celery .delay() so the view
-    is never blocked on the DB write. The task throttles writes to at most once per
-    ~30 seconds per pipeline within this project, keeping last_seen current
-    relative to the 60s PROCESSING_SERVICE_LAST_SEEN_MAX threshold without
-    hammering the same rows on every concurrent task-fetch or result-submit
-    request.
+    is never blocked on the DB write. A view-level Redis cache gate skips the
+    .delay() entirely when a heartbeat for the same (pipeline, project) has been
+    enqueued within HEARTBEAT_THROTTLE_SECONDS — so under concurrent polling we
+    avoid broker + task churn, not just the DB write. The task itself also
+    re-checks staleness before writing (belt + suspenders, and safe under cache
+    eviction).
 
-    Per-service scoping is not yet possible — marks ALL async services on the
-    pipeline within this project as live. Once application-token auth lands
-    (PR #1117) this can be scoped to the individual calling service.
+    Cache key scope: currently `heartbeat:pipeline:<pipeline_id>:project:<project_id>`
+    because we cannot yet identify the specific calling service. Once
+    application-token auth lands (PR #1117), the key should become
+    `heartbeat:service:<service_id>` so each service gets its own throttle
+    window and one service's poll does not suppress another's heartbeat.
     """
     if not job.pipeline_id:
+        return
+    cache_key = f"heartbeat:pipeline:{job.pipeline_id}:project:{job.project_id}"
+    if not cache.add(cache_key, 1, timeout=HEARTBEAT_THROTTLE_SECONDS):
         return
     try:
         update_pipeline_pull_services_seen.delay(job.pk, seen_at_iso=datetime.datetime.now().isoformat())
