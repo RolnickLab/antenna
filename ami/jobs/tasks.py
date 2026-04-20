@@ -34,6 +34,57 @@ FAILURE_THRESHOLD = 0.5
 # "nobody's listening" signal.
 WORKER_AVAILABILITY_ONLINE_CUTOFF = datetime.timedelta(minutes=5)
 
+# Minimum interval between heartbeat DB writes for a given job.
+# PROCESSING_SERVICE_LAST_SEEN_MAX is 60s; writing at most once per 30s keeps
+# last_seen current without hammering the same rows on every concurrent request.
+HEARTBEAT_THROTTLE_SECONDS = 30
+
+
+@celery_app.task(
+    soft_time_limit=10,
+    time_limit=15,
+    # No retries — a missed heartbeat is benign; retrying adds load for no gain.
+)
+def update_pipeline_pull_services_seen(job_id: int) -> None:
+    """
+    Fire-and-forget heartbeat task: record last_seen/last_seen_live for async
+    (pull-mode) processing services linked to a job's pipeline.
+
+    Called via .delay() from the tasks and result view endpoints so the HTTP
+    request is never blocked on this DB write.
+
+    Throttle: skips the UPDATE if all matching services were seen within
+    HEARTBEAT_THROTTLE_SECONDS, cutting write rate under concurrent requests by
+    orders of magnitude while keeping last_seen fresh relative to the 60s
+    PROCESSING_SERVICE_LAST_SEEN_MAX threshold.
+
+    Scope: marks ALL async services on the pipeline within this project as live,
+    not just the specific service that made the request. Once application-token
+    auth is available (PR #1117), this should be scoped to the individual
+    calling service instead.
+    """
+    from ami.jobs.models import Job  # avoid circular import
+
+    try:
+        job = Job.objects.select_related("pipeline").get(pk=job_id)
+    except Job.DoesNotExist:
+        return
+
+    if not job.pipeline_id:
+        return
+
+    now = datetime.datetime.now()
+    throttle_cutoff = now - datetime.timedelta(seconds=HEARTBEAT_THROTTLE_SECONDS)
+
+    services_qs = job.pipeline.processing_services.async_services().filter(projects=job.project_id)
+
+    # Cheap read: skip the UPDATE if every matching service was seen recently.
+    recent_seen = services_qs.values_list("last_seen", flat=True)
+    if recent_seen and all(ts is not None and ts >= throttle_cutoff for ts in recent_seen):
+        return
+
+    services_qs.update(last_seen=now, last_seen_live=True)
+
 
 @celery_app.task(bind=True, soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
 def run_job(self, job_id: int) -> None:

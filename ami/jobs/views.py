@@ -24,7 +24,7 @@ from ami.jobs.serializers import (
     MLJobTasksRequestSerializer,
     MLJobTasksResponseSerializer,
 )
-from ami.jobs.tasks import process_nats_pipeline_result
+from ami.jobs.tasks import process_nats_pipeline_result, update_pipeline_pull_services_seen
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
 from ami.utils.fields import url_boolean_param
@@ -52,26 +52,22 @@ def _actor_log_context(request) -> tuple[str, str | None]:
 
 def _mark_pipeline_pull_services_seen(job: "Job") -> None:
     """
-    Record a heartbeat for async (pull-mode) processing services linked to the job's pipeline.
+    Enqueue a fire-and-forget heartbeat for async (pull-mode) processing services
+    linked to the job's pipeline.
 
-    Called on every task-fetch and result-submit request so that the worker's polling activity
-    keeps last_seen/last_seen_live current. The periodic check_processing_services_online task
-    will mark services offline if this heartbeat stops arriving within PROCESSING_SERVICE_LAST_SEEN_MAX.
+    Dispatches update_pipeline_pull_services_seen via Celery .delay() so the view
+    is never blocked on the DB write. The task throttles writes to at most once per
+    ~30 seconds per job, keeping last_seen current relative to the 60s
+    PROCESSING_SERVICE_LAST_SEEN_MAX threshold without hammering the same rows on
+    every concurrent task-fetch or result-submit request.
 
-    IMPORTANT: This marks ALL async services on the pipeline within this project as live, not just
-    the specific service that made the request. If multiple async services share the same pipeline
-    within a project, a single worker polling will keep all of them appearing online.
-    Once application-token auth is available (PR #1117), this should be scoped to the individual
-    calling service instead.
+    Per-service scoping is not yet possible — marks ALL async services on the
+    pipeline within this project as live. Once application-token auth lands
+    (PR #1117) this can be scoped to the individual calling service.
     """
-    import datetime
-
     if not job.pipeline_id:
         return
-    job.pipeline.processing_services.async_services().filter(projects=job.project_id).update(
-        last_seen=datetime.datetime.now(),
-        last_seen_live=True,
-    )
+    update_pipeline_pull_services_seen.delay(job.pk)
 
 
 class JobFilterSet(filters.FilterSet):
