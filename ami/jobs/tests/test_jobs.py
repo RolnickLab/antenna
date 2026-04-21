@@ -375,7 +375,11 @@ class TestJobView(APITestCase):
         self._create_job("Test job 3", start_now=False)
 
         self.client.force_authenticate(user=self.user)
-        jobs_list_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk, "ids_only": True})
+        # Pass an explicit limit to override the pop()-style default (see test_list_jobs_ids_only_pops_one below).
+        jobs_list_url = reverse_with_params(
+            "api:job-list",
+            params={"project_id": self.project.pk, "ids_only": True, "limit": 10},
+        )
         resp = self.client.get(jobs_list_url)
 
         self.assertEqual(resp.status_code, 200)
@@ -387,6 +391,21 @@ class TestJobView(APITestCase):
         self.assertTrue(all(isinstance(r["id"], int) for r in data["results"]))
         # Verify we don't get the full results structure
         self.assertNotIn("details", data["results"][0])
+
+    def test_list_jobs_ids_only_pops_one(self):
+        """`?ids_only=1` without an explicit limit returns one job (pop()-style handoff)."""
+        self._create_job("Test job 2", start_now=False)
+        self._create_job("Test job 3", start_now=False)
+
+        self.client.force_authenticate(user=self.user)
+        jobs_list_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk, "ids_only": True})
+        resp = self.client.get(jobs_list_url)
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["count"], 3)
+        self.assertEqual(len(data["results"]), 1)
+        self.assertIsInstance(data["results"][0]["id"], int)
 
     def test_list_jobs_with_incomplete_only(self):
         """Test the incomplete_only parameter filters jobs correctly."""
