@@ -333,32 +333,19 @@ class JobLogHandler(logging.Handler):
         super().__init__(*args, **kwargs)
 
     def emit(self, record: logging.LogRecord):
-        # Log to the current app logger
+        # Log to the current app logger (container stdout).
         logger.log(record.levelno, self.format(record))
 
-        # Write to the logs field on the job instance.
-        # Refresh from DB first to reduce the window for concurrent overwrites — each
-        # worker holds its own stale in-memory copy of `logs`, so without a refresh the
-        # last writer always wins and earlier entries are silently dropped.
-        # @TODO consider saving logs to the database periodically rather than on every log
-        try:
-            self.job.refresh_from_db(fields=["logs"])
-            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            msg = f"[{timestamp}] {record.levelname} {self.format(record)}"
-            if msg not in self.job.logs.stdout:
-                self.job.logs.stdout.insert(0, msg)
-
-            # Write a simpler copy of any errors to the errors field
-            if record.levelno >= logging.ERROR:
-                if record.message not in self.job.logs.stderr:
-                    self.job.logs.stderr.insert(0, record.message)
-
-            if len(self.job.logs.stdout) > self.max_log_length:
-                self.job.logs.stdout = self.job.logs.stdout[: self.max_log_length]
-
-            self.job.save(update_fields=["logs"], update_progress=False)
-        except Exception as e:
-            logger.error(f"Failed to save logs for job #{self.job.pk}: {e}")
+        # HOTFIX 2026-04-20: Persisting every log line to ``jobs_job.logs`` is
+        # the dominant remaining source of row-lock contention under concurrent
+        # async_api load. Every call triggered ``UPDATE jobs_job SET logs = ...``
+        # on the shared job row; inside ``ATOMIC_REQUESTS`` a single batched
+        # ``/result`` POST stacked N such UPDATEs in one tx, blocking every ML
+        # worker on the same row for the duration of the request. Short-circuit
+        # here until PR #1259 lands an append-only ``JobLog`` child table.
+        # Container stdout above still captures every line; only the per-job
+        # UI log view goes blank while this hotfix is active.
+        return
 
 
 @dataclass
