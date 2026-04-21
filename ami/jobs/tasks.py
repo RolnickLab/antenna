@@ -509,7 +509,7 @@ def _update_job_progress(
     # (detections/classifications/captures) can drift by one batch under race —
     # cosmetic only, since the underlying `Detection`/`Classification` rows are
     # written authoritatively by `save_results` before this function runs.
-    # See docs/claude/planning/jobs-row-lock-remediation.md and issue #1256.
+    # See issue #1256 and PR #1261.
     with transaction.atomic():
         job = Job.objects.get(pk=job_id)
 

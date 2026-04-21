@@ -85,7 +85,8 @@ job — it only needs the job row to accept result POSTs.
 ### 2. Fire batched POSTs
 
 ```bash
-python scripts/load_test_result_endpoint.py <JOB_ID> <TOKEN> \
+export ANTENNA_TOKEN=<TOKEN>
+python scripts/load_test_result_endpoint.py <JOB_ID> \
     --batch 50 --concurrency 10 --rounds 3
 ```
 
