@@ -636,3 +636,46 @@ class DwCAExportTest(TestCase):
             result.ok,
             msg="DwC-A structural validator failed:\n" + "\n".join(result.errors),
         )
+
+
+class TargetTaxonomicScopeTest(TestCase):
+    """Tests for eco:targetTaxonomicScope derivation from project include taxa."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.project, cls.deployment = setup_test_project(reuse=False)
+        create_taxa(cls.project)
+
+    def test_empty_include_taxa_returns_empty_string(self):
+        from ami.exports.dwca.targetscope import derive_target_taxonomic_scope
+
+        self.project.default_filters_include_taxa.clear()
+        self.assertEqual(derive_target_taxonomic_scope(self.project), "")
+
+    def test_single_taxon_returns_its_name(self):
+        from ami.exports.dwca.targetscope import derive_target_taxonomic_scope
+        from ami.main.models import Taxon
+
+        taxon = Taxon.objects.filter(projects=self.project).first()
+        self.assertIsNotNone(taxon, "Expected at least one taxon on fixture project")
+        self.project.default_filters_include_taxa.set([taxon])
+        self.assertEqual(derive_target_taxonomic_scope(self.project), taxon.name)
+
+    def test_multiple_taxa_returns_lca_name(self):
+        from ami.exports.dwca.targetscope import derive_target_taxonomic_scope
+        from ami.main.models import Taxon
+
+        taxa = list(Taxon.objects.filter(projects=self.project).exclude(parents_json=[])[:2])
+        if len(taxa) < 2:
+            self.skipTest("Fixture does not have two taxa with shared ancestry")
+        for t in taxa:
+            t.save(update_calculated_fields=True)
+            t.refresh_from_db()
+        self.project.default_filters_include_taxa.set(taxa)
+
+        result = derive_target_taxonomic_scope(self.project)
+        self.assertTrue(result, "LCA should resolve to a non-empty ancestor name")
+        for t in taxa:
+            ancestor_names = [p.name for p in t.parents_json] + [t.name]
+            self.assertIn(result, ancestor_names, f"{result} not in ancestry of {t.name}")
