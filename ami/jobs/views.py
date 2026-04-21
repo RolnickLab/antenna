@@ -248,10 +248,19 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         )
         # Filter out completed jobs that have not been updated in the last X hours
         cutoff_datetime = timezone.now() - timezone.timedelta(hours=cutoff_hours)
-        return jobs.exclude(
+        jobs = jobs.exclude(
             status=JobState.failed_states(),
             updated_at__lt=cutoff_datetime,
         )
+        # Worker-polling call path (`ids_only=1`): hand back least-recently-touched
+        # jobs first so concurrent pollers don't all converge on the same oldest
+        # job. `updated_at` freshens on every progress/log/status write, so active
+        # jobs drop to the bottom and starved jobs bubble to the top without
+        # needing a dedicated `last_polled_at` field. Fairness falls out of
+        # existing writes rather than a new column.
+        if self.action == "list" and url_boolean_param(self.request, "ids_only", default=False):
+            jobs = jobs.order_by("updated_at", "pk")
+        return jobs
 
     @extend_schema(
         parameters=[
