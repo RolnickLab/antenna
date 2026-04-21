@@ -170,22 +170,109 @@ event.txt in a later DwC-A iteration.
 
 ---
 
-## Open verification items
+## GBIF guide findings (2026-04-21)
 
-Before finalizing: fetch GBIF Camera Trap Data Publishing Guide and confirm:
-- Current recommendation for DwC-A core (Event vs Occurrence)
-- Canonical approach to linking detection media back to occurrences
-- Any explicit patterns around absence/effort-preserving representation
+Two GBIF guides give **opposite** recommendations for camera-trap data. Resolving the
+tension in AMI's favor:
 
-If the guide contradicts the Event-Core direction, revisit. If it confirms or is silent,
-proceed.
+### Camera-Trap Data Publishing Guide — Occurrence Core + AMDE
+
+Recommends Occurrence Core + Audubon Media Description extension. Reason per the guide
+itself: GBIF portal's UI can't display event-level media when viewing an individual
+occurrence (confirmed by GBIF portal-feedback issue #4216). The guide's own rationale
+acknowledges Model 2 (Event Core + Occurrence + AMDE) is "conceptually superior" but is
+not recommended because of portal display limitations.
+
+The guide explicitly says **"classifications of blanks, vehicles and preferably humans
+should be filtered out"** — i.e. it does not support absence representation. This
+directly sacrifices AMI's core scientific contribution (automated monitoring's
+strongest claim is *provable absence during a known sampling window*).
+
+### Survey & Monitoring Publishing Guide + Humboldt Extension — Event Core
+
+The Humboldt Extension (ratified 2024-2025, 55 terms) is **explicitly an Event-Core
+extension**: "a vocabulary extension to the Darwin Core Event Class." It is the
+GBIF-official pathway for survey and monitoring data.
+
+Terms relevant to AMI, all on event rows:
+
+- `eco:isSamplingEffortReported` = true
+- `eco:samplingEffortValue` + `eco:samplingEffortUnit` — e.g. value=`1440`, unit=`camera-minutes` or trap-nights
+- `eco:samplingEffortProtocol` — free text: "automated camera trap, image interval 10s, continuous overnight monitoring"
+- `eco:isAbsenceReported` = true
+- `eco:targetTaxonomicScope` — e.g. "Lepidoptera" for moth surveys
+- `eco:inventoryTypes` = "trap or sample"
+- `eco:protocolNames` / `eco:protocolDescriptions` — document the ML pipeline as a protocol
+- `eco:hasMaterialSamples` = true, `eco:materialSampleTypes` = "digital images"
+
+Absence pattern (canonical): per-taxon absence `Occurrence` row per Event with
+`dwc:occurrenceStatus = "absent"` and eventID link. AMI can emit absence occurrences in
+a follow-up PR once `project.target_taxa` is defined. For this PR, we declare
+`eco:isAbsenceReported=true` on events to signal the capacity; actual absence rows come
+later.
+
+### Decision (confirmed after research)
+
+**Event Core + Humboldt Extension + Occurrence + Multimedia + MeasurementOrFact.**
+Matches the GBIF survey-data guide and the extension purpose-built for our data shape.
+Trades GBIF portal display of media at the occurrence view (a UI limitation, not a
+data-ingestion limitation) for preserving absence inference and structured sampling
+effort.
+
+The camera-trap guide's Occurrence-Core recommendation is a pragmatic workaround for
+GBIF's portal UX, not a statement of correct data modeling for monitoring data. AMI is
+a survey/monitoring dataset first, a camera-trap records dataset second.
+
+### CamtrapDP positioning
+
+The camera-trap guide explicitly recommends CamtrapDP as the primary format; GBIF
+doesn't yet ingest CamtrapDP in production. So CamtrapDP is still the right next-PR
+target, but for AMI's community (Wildlife Insights, Agouti, EU camera-trap networks)
+rather than as a GBIF ingestion route. DwC-A via Humboldt remains the GBIF path.
 
 ---
 
-## Followups after verification
+## Updated archive shape
 
-1. Fetch + summarize GBIF camera-trap guide findings in this file.
-2. Update PR body with the Event-Core-retained rationale + absence-inference argument.
-3. Write implementation plan via `writing-plans` skill.
-4. Implement in order: extensions + field split + validator → EML 2.2.0 → UI label → tests → docs.
-5. Post the multimedia discussion comment on the PR.
+```
+project_export.zip
+├── meta.xml
+├── eml.xml                       ← EML 2.2.0
+├── event.txt                     ← Event Core (DwC Event terms + Humboldt eco: terms)
+├── occurrence.txt                ← Occurrence extension (coreid=eventID)
+├── multimedia.txt                ← GBIF Multimedia ext (coreid=eventID; occurrenceID column
+│                                    links detection crops back to occurrences)
+└── measurementorfact.txt         ← MoF extension (coreid=eventID; occurrenceID column for
+                                     per-occurrence/per-detection measurements)
+```
+
+`event.txt` carries the Humboldt `eco:` terms as additional columns. They're declared in
+meta.xml via their term URIs. Humboldt is technically registered as its own extension
+(`http://eco.tdwg.org/xml/ecoterm.xml`), but there's precedent for flattening Humboldt
+terms into the Event Core row; GBIF accepts both. We flatten for simplicity — fewer
+files, same semantic content, same GBIF ingestion outcome.
+
+---
+
+## Sources consulted
+
+- GBIF Camera Trap Data Publishing Guide (docs.gbif.org/camera-trap-guide/en/) — §4.3,
+  §4.4.1, §4.4.2, §4.4.3; recommends Occurrence Core + AMDE as portal-pragmatic.
+- GBIF Survey & Monitoring Data Publishing Guide (docs.gbif.org/guide-publishing-survey-data/en/)
+  — recommends Event Core + Humboldt.
+- GBIF Survey & Monitoring Quick-Start Guide (docs.gbif.org/survey-monitoring-quick-start/en/)
+  — Humboldt term-by-term usage.
+- GBIF portal-feedback issue #4216 — confirms Event-level multimedia is "conceptually
+  superior" but GBIF portal UI doesn't display it in occurrence views.
+- Humboldt Extension Implementation Experience Report (eco.tdwg.org).
+
+---
+
+## Followups after design approval
+
+1. Update PR body with Event-Core-retained + Humboldt rationale.
+2. Write implementation plan via `writing-plans` skill.
+3. Implement: extensions + Humboldt terms on event.txt + split `dwca.py` → package →
+   validator extensions → EML 2.2.0 → UI label → tests → docs.
+4. Post the multimedia/bbox discussion comment on the PR (now more concrete: GBIF
+   portal-display caveat is a known trade, not a surprise).
