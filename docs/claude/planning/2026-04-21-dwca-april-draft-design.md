@@ -200,7 +200,11 @@ Terms relevant to AMI, all on event rows:
 - `eco:samplingEffortValue` + `eco:samplingEffortUnit` — e.g. value=`1440`, unit=`camera-minutes` or trap-nights
 - `eco:samplingEffortProtocol` — free text: "automated camera trap, image interval 10s, continuous overnight monitoring"
 - `eco:isAbsenceReported` = true
-- `eco:targetTaxonomicScope` — e.g. "Lepidoptera" for moth surveys
+- `eco:targetTaxonomicScope` — v1: derived from `Project.default_filters_include_taxa`
+  (lowest common ancestor across the M2M; blank if none). v2: sourced from the `TaxaList`
+  curated per Site (`Site.primary_taxa_list`, falling back to `Project`'s default "all
+  possible species" list). The TaxaList is the enumerable scope that later unblocks
+  per-taxon absence occurrences.
 - `eco:inventoryTypes` = "trap or sample"
 - `eco:protocolNames` / `eco:protocolDescriptions` — document the ML pipeline as a protocol
 - `eco:hasMaterialSamples` = true, `eco:materialSampleTypes` = "digital images"
