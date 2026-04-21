@@ -16,6 +16,7 @@ from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.filters import BaseFilterBackend
 from rest_framework.response import Response
 
+from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import ObjectPermission
 from ami.base.views import ProjectMixin
 from ami.jobs.schemas import ids_only_param, incomplete_only_param
@@ -261,6 +262,28 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         if self.action == "list" and url_boolean_param(self.request, "ids_only", default=False):
             jobs = jobs.order_by("updated_at", "pk")
         return jobs
+
+    @property
+    def paginator(self):
+        # Treat `?ids_only=1` as a pop()-style handoff ("what job is next?")
+        # rather than a list() dump: default to one job per response unless the
+        # caller explicitly asks for a batch via ?limit=N or ?page_size=N.
+        # Concurrent pollers drain a cached list serially and starve later jobs;
+        # forcing a re-poll per job lets the `updated_at` fairness sort rotate
+        # work across jobs every iteration. No ADC-side change required.
+        if not hasattr(self, "_paginator"):
+            if (
+                self.action == "list"
+                and url_boolean_param(self.request, "ids_only", default=False)
+                and "limit" not in self.request.query_params
+                and "page_size" not in self.request.query_params
+            ):
+                paginator = LimitOffsetPaginationWithPermissions()
+                paginator.default_limit = 1
+                self._paginator = paginator
+            else:
+                self._paginator = self.pagination_class() if self.pagination_class is not None else None
+        return self._paginator
 
     @extend_schema(
         parameters=[
