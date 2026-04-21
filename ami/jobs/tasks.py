@@ -578,7 +578,13 @@ def _update_job_progress(
             job.progress.summary.status = complete_state
             job.finished_at = datetime.datetime.now()  # Use naive datetime in local time
         job.logger.info(f"Updated job {job_id} progress in stage '{stage}' to {progress_percentage*100}%")
-        job.save()
+        # Narrow the write to the fields we actually mutated. Without this, a full
+        # save() would also overwrite `updated_at`, `logs`, and any other field on
+        # the instance fetched at the top of this block — so a concurrent worker's
+        # append to `progress.errors` (via `_reconcile_lost_images`) or log line
+        # (via JobLogHandler) could be clobbered by a stale read-modify-write.
+        # See PR #1261 review feedback.
+        job.save(update_fields=["progress", "status", "finished_at", "updated_at"])
         try:
             _log_job_throughput(job, stage)
         except Exception as e:
