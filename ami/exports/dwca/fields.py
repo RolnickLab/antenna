@@ -243,3 +243,18 @@ OCCURRENCE_FIELDS: list[DwCAField] = [
         lambda o, slug: _associated_media(o),
     ),
 ]
+
+
+MULTIMEDIA_FIELDS: list[DwCAField] = [
+    DwCAField(DWC + "eventID", "eventID", lambda r, slug: r["eventID"], required=True),
+    DwCAField(DWC + "occurrenceID", "occurrenceID", lambda r, slug: r.get("occurrenceID", "")),
+    DwCAField(DC + "type", "type", lambda r, slug: r.get("type", "StillImage")),
+    DwCAField(DC + "format", "format", lambda r, slug: r.get("format", "image/jpeg")),
+    DwCAField(DC + "identifier", "identifier", lambda r, slug: r["identifier"], required=True),
+    DwCAField(DC + "references", "references", lambda r, slug: r.get("references", "")),
+    DwCAField(DC + "created", "created", lambda r, slug: r.get("created", "")),
+    DwCAField(DC + "license", "license", lambda r, slug: r.get("license", "")),
+    DwCAField(DC + "rightsHolder", "rightsHolder", lambda r, slug: r.get("rightsHolder", "")),
+    DwCAField(DC + "creator", "creator", lambda r, slug: r.get("creator", "")),
+    DwCAField(DC + "description", "description", lambda r, slug: r.get("description", "")),
+]

@@ -5,7 +5,7 @@ while internal code is organized by responsibility.
 """
 
 from ami.exports.dwca.eml import generate_eml_xml
-from ami.exports.dwca.fields import DC, DWC, ECO, EVENT_FIELDS, OCCURRENCE_FIELDS, DwCAField
+from ami.exports.dwca.fields import DC, DWC, ECO, EVENT_FIELDS, MULTIMEDIA_FIELDS, OCCURRENCE_FIELDS, DwCAField
 from ami.exports.dwca.helpers import (
     _format_coord,
     _format_datetime,
@@ -26,6 +26,7 @@ __all__ = [
     "ECO",
     "DwCAField",
     "EVENT_FIELDS",
+    "MULTIMEDIA_FIELDS",
     "OCCURRENCE_FIELDS",
     "create_dwca_zip",
     "generate_eml_xml",
