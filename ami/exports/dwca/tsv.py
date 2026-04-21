@@ -10,22 +10,24 @@ from ami.exports.dwca.fields import DwCAField
 def write_tsv(
     filepath: str,
     fields: list[DwCAField],
-    queryset,
+    source,
     project_slug: str,
     progress_callback=None,
 ):
-    """Write a tab-delimited file from a queryset using field definitions.
+    """Write a tab-delimited file from a queryset or any iterable of row objects.
 
-    Returns the number of records written.
+    Returns the number of records written. A row object can be a model instance
+    or a plain dict — each field's extract callable handles attribute access.
     """
     headers = [f.header for f in fields]
     records_written = 0
+    iterator = source.iterator(chunk_size=500) if hasattr(source, "iterator") else iter(source)
 
     with open(filepath, "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f, delimiter="\t", quoting=csv.QUOTE_MINIMAL, lineterminator="\n")
         writer.writerow(headers)
 
-        for obj in queryset.iterator(chunk_size=500):
+        for obj in iterator:
             row = [field.extract(obj, project_slug) for field in fields]
             writer.writerow(row)
             records_written += 1

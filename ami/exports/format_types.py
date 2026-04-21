@@ -249,8 +249,15 @@ class DwCAExporter(BaseExporter):
         occ_file.close()
 
         try:
+            from ami.exports.dwca.targetscope import derive_target_taxonomic_scope
+
             events_qs = self.get_events_queryset()
-            event_count = write_tsv(event_file.name, EVENT_FIELDS, events_qs, project_slug)
+            events_list = list(events_qs)
+            target_scope = derive_target_taxonomic_scope(self.project)
+            for e in events_list:
+                e._target_taxonomic_scope = target_scope
+
+            event_count = write_tsv(event_file.name, EVENT_FIELDS, events_list, project_slug)
             logger.info(f"DwC-A: wrote {event_count} events")
 
             occ_count = write_tsv(

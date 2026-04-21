@@ -28,6 +28,12 @@ DC = "http://purl.org/dc/terms/"
 ECO = "http://rs.tdwg.org/eco/terms/"
 
 
+def _humboldt_effort_value(event) -> str:
+    """Sampling effort value: prefer image count, fall back to nothing."""
+    count = getattr(event, "captures_count", None) or 0
+    return str(count) if count else ""
+
+
 @dataclass(frozen=True)
 class DwCAField:
     """A single column mapping in a DwC-A text file.
@@ -76,6 +82,69 @@ EVENT_FIELDS: list[DwCAField] = [
         DC + "rightsHolder", "rightsHolder", lambda e, slug: (e.project.rights_holder if e.project else "") or ""
     ),
     DwCAField(DC + "modified", "modified", lambda e, slug: _format_datetime(e.updated_at)),
+    # ── Humboldt Extension (eco:) terms flattened onto event.txt ──
+    DwCAField(
+        ECO + "isSamplingEffortReported",
+        "isSamplingEffortReported",
+        lambda e, slug: "true",
+    ),
+    DwCAField(
+        ECO + "samplingEffortValue",
+        "samplingEffortValue",
+        lambda e, slug: _humboldt_effort_value(e),
+    ),
+    DwCAField(
+        ECO + "samplingEffortUnit",
+        "samplingEffortUnit",
+        lambda e, slug: "images",
+    ),
+    DwCAField(
+        ECO + "samplingEffortProtocol",
+        "samplingEffortProtocol",
+        lambda e, slug: (
+            "automated camera trap with light attractant; continuous overnight monitoring "
+            "with fixed image-capture interval; images processed by ML detector + classifier pipeline"
+        ),
+    ),
+    DwCAField(
+        ECO + "isAbsenceReported",
+        "isAbsenceReported",
+        lambda e, slug: "true",
+    ),
+    DwCAField(
+        ECO + "targetTaxonomicScope",
+        "targetTaxonomicScope",
+        lambda e, slug: getattr(e, "_target_taxonomic_scope", "") or "",
+    ),
+    DwCAField(
+        ECO + "inventoryTypes",
+        "inventoryTypes",
+        lambda e, slug: "trap or sample",
+    ),
+    DwCAField(
+        ECO + "protocolNames",
+        "protocolNames",
+        lambda e, slug: "AMI ML detector + classifier pipeline",
+    ),
+    DwCAField(
+        ECO + "protocolDescriptions",
+        "protocolDescriptions",
+        lambda e, slug: (
+            "Images captured at a fixed interval by an automated monitoring station; each image "
+            "processed through a detector (bounding-box extraction) and classifier (species "
+            "prediction). Occurrences grouped from co-located detections; default filters applied."
+        ),
+    ),
+    DwCAField(
+        ECO + "hasMaterialSamples",
+        "hasMaterialSamples",
+        lambda e, slug: "true",
+    ),
+    DwCAField(
+        ECO + "materialSampleTypes",
+        "materialSampleTypes",
+        lambda e, slug: "digital images",
+    ),
 ]
 
 

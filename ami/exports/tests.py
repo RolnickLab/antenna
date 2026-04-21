@@ -610,6 +610,48 @@ class DwCAExportTest(TestCase):
         finally:
             default_storage.delete(file_path)
 
+    def test_event_has_humboldt_eco_columns(self):
+        """event.txt should carry the Humboldt eco: columns as flattened columns."""
+        expected_columns = {
+            "isSamplingEffortReported",
+            "samplingEffortValue",
+            "samplingEffortUnit",
+            "samplingEffortProtocol",
+            "isAbsenceReported",
+            "targetTaxonomicScope",
+            "inventoryTypes",
+            "protocolNames",
+            "protocolDescriptions",
+            "hasMaterialSamples",
+            "materialSampleTypes",
+        }
+        with self._open_zip() as f:
+            with zipfile.ZipFile(f, "r") as zf:
+                event_data = zf.read("event.txt").decode("utf-8")
+                reader = csv.DictReader(StringIO(event_data), delimiter="\t")
+                fieldnames = set(reader.fieldnames or [])
+                self.assertTrue(
+                    expected_columns.issubset(fieldnames),
+                    f"event.txt missing Humboldt columns: {expected_columns - fieldnames}",
+                )
+                rows = list(reader)
+                self.assertGreater(len(rows), 0)
+                for row in rows:
+                    self.assertEqual(row["isSamplingEffortReported"], "true")
+                    self.assertEqual(row["isAbsenceReported"], "true")
+                    self.assertEqual(row["hasMaterialSamples"], "true")
+                    self.assertEqual(row["materialSampleTypes"], "digital images")
+                    self.assertEqual(row["inventoryTypes"], "trap or sample")
+
+    def test_event_humboldt_terms_in_meta_xml(self):
+        """meta.xml core should declare eco: term URIs for Humboldt columns."""
+        with self._open_zip() as f:
+            with zipfile.ZipFile(f, "r") as zf:
+                meta_xml = zf.read("meta.xml").decode("utf-8")
+                self.assertIn("http://rs.tdwg.org/eco/terms/isSamplingEffortReported", meta_xml)
+                self.assertIn("http://rs.tdwg.org/eco/terms/isAbsenceReported", meta_xml)
+                self.assertIn("http://rs.tdwg.org/eco/terms/targetTaxonomicScope", meta_xml)
+
     def test_offline_structural_validator(self):
         """Full archive passes the offline DwC-A structural validator.
 
