@@ -13,8 +13,45 @@ from ami.ml.models import Pipeline
 from ami.ml.schemas import PipelineProcessingTask, PipelineTaskResult, ProcessingServiceClientInfo
 from ami.ml.serializers import PipelineNestedSerializer
 
-from .models import Job, JobLogs, JobProgress, MLJob
+from .models import Job, JobLog, JobProgress, MLJob
 from .schemas import QueuedTaskAcknowledgment
+
+JOB_LOG_LEVELS_STDERR = {"ERROR", "CRITICAL"}
+JOB_LOG_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
+JOB_LOGS_DEFAULT_LIMIT = 1000
+
+
+def _legacy_logs_shape(job: Job) -> dict[str, list[str]]:
+    legacy = getattr(job, "logs", None)
+    return {
+        "stdout": list(getattr(legacy, "stdout", []) or []),
+        "stderr": list(getattr(legacy, "stderr", []) or []),
+    }
+
+
+def serialize_job_logs(job: Job, *, limit: int = JOB_LOGS_DEFAULT_LIMIT) -> dict[str, list[str]]:
+    """Return ``{stdout, stderr}`` in the shape the UI already parses.
+
+    Reads joined ``JobLog`` rows first (newest-first, capped at ``limit``). Jobs
+    created before the table existed and jobs written while
+    ``JOB_LOG_PERSIST_ENABLED=False`` have no rows and fall back to the legacy
+    ``jobs_job.logs`` JSON column so their UI log panel stays populated.
+    """
+    entries = list(
+        JobLog.objects.filter(job_id=job.pk)
+        .only("created_at", "level", "message")
+        .order_by("-created_at", "-pk")[:limit]
+    )
+    if entries:
+        return {
+            "stdout": [
+                f"[{entry.created_at.strftime(JOB_LOG_TIMESTAMP_FORMAT)}] {entry.level} {entry.message}"
+                for entry in entries
+            ],
+            "stderr": [entry.message for entry in entries if entry.level in JOB_LOG_LEVELS_STDERR],
+        }
+
+    return _legacy_logs_shape(job)
 
 
 class JobProjectNestedSerializer(DefaultSerializer):
@@ -49,7 +86,7 @@ class JobListSerializer(DefaultSerializer):
     source_image_single = SourceImageNestedSerializer(read_only=True)
     data_export = DataExportNestedSerializer(read_only=True)
     progress = SchemaField(schema=JobProgress, read_only=True)
-    logs = SchemaField(schema=JobLogs, read_only=True)
+    logs = serializers.SerializerMethodField()
     job_type = JobTypeSerializer(read_only=True)
     # All jobs created from the Jobs UI are ML jobs (datasync, etc. are created for the user)
     # @TODO Remove this when the UI is updated pass a job type. This should be a required field.
@@ -146,6 +183,16 @@ class JobListSerializer(DefaultSerializer):
             "duration",
             "dispatch_mode",
         ]
+
+    def get_logs(self, obj: Job) -> dict[str, list[str]]:
+        # List responses skip the JobLog query to avoid N+1 — the UI only renders
+        # logs on the detail page, so returning the (typically empty for new jobs)
+        # legacy JSON shape is acceptable. Detail responses go to the joined table
+        # and fall back to the legacy shape for pre-migration jobs.
+        view = self.context.get("view")
+        if getattr(view, "action", None) == "list":
+            return _legacy_logs_shape(obj)
+        return serialize_job_logs(obj)
 
 
 class JobSerializer(JobListSerializer):
