@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from xml.etree import ElementTree as ET
 
 META_NS = "http://rs.tdwg.org/dwc/text/"
+_OCCURRENCE_ID_TERM = "http://rs.tdwg.org/dwc/terms/occurrenceID"
 
 
 @dataclass
@@ -90,6 +91,12 @@ def validate_dwca_zip(zip_path: str, required_terms: set[str] | None = None) -> 
 
         for ext in tables[1:]:
             _validate_extension(zf, ext, core_ids, result, required_terms or set())
+
+        occurrence_ids = _collect_occurrence_ids(zf, tables)
+        for ext in tables[1:]:
+            if ext.filename == "occurrence.txt":
+                continue
+            _validate_occurrence_id_references(zf, ext, occurrence_ids, result)
 
         if "eml.xml" in names:
             try:
@@ -172,6 +179,56 @@ def _parse_meta(meta_root: ET.Element, result: ValidationResult) -> list[_TableS
         )
 
     return tables
+
+
+def _collect_occurrence_ids(zf: zipfile.ZipFile, tables: list[_TableSpec]) -> set[str]:
+    """Return the set of occurrenceID values declared in occurrence.txt."""
+    for t in tables:
+        if t.filename != "occurrence.txt":
+            continue
+        rows = _read_tsv(zf, t.filename, ValidationResult())
+        if rows is None:
+            return set()
+        occ_col = None
+        for idx, term in t.field_terms.items():
+            if term == _OCCURRENCE_ID_TERM:
+                occ_col = idx
+                break
+        if occ_col is None:
+            return set()
+        return {row[occ_col].strip() for row in rows[1:] if occ_col < len(row) and row[occ_col].strip()}
+    return set()
+
+
+def _validate_occurrence_id_references(
+    zf: zipfile.ZipFile,
+    ext: _TableSpec,
+    occurrence_ids: set[str],
+    result: ValidationResult,
+) -> None:
+    """Any extension declaring dwc:occurrenceID must only carry values from occurrence.txt."""
+    occ_col = None
+    for idx, term in ext.field_terms.items():
+        if term == _OCCURRENCE_ID_TERM:
+            occ_col = idx
+            break
+    if occ_col is None:
+        return
+    rows = _read_tsv(zf, ext.filename, result)
+    if rows is None:
+        return
+    missing: set[str] = set()
+    for row in rows[1:]:
+        if occ_col >= len(row):
+            continue
+        val = row[occ_col].strip()
+        if val and val not in occurrence_ids:
+            missing.add(val)
+    if missing:
+        sample = sorted(missing)[:5]
+        result.add_error(
+            f"{ext.filename}: {len(missing)} occurrenceID value(s) do not exist in occurrence.txt. " f"First: {sample}"
+        )
 
 
 def _read_tsv(zf: zipfile.ZipFile, filename: str, result: ValidationResult) -> list[list[str]] | None:

@@ -139,3 +139,48 @@ class DwCAValidatorTests(SimpleTestCase):
         result = validate_dwca_zip(tmp.name)
         self.assertFalse(result.ok)
         self.assertTrue(any("Not a zip" in e for e in result.errors))
+
+    def test_orphaned_occurrence_id_on_extension_row_fails(self):
+        """A multimedia row whose occurrenceID isn't in occurrence.txt should error."""
+        meta = _META_WITH_MULTIMEDIA
+        path = _build_zip(
+            {
+                "meta.xml": meta,
+                "eml.xml": EML_OK,
+                "event.txt": "eventID\teventDate\nE1\t2024-06-15\n",
+                "occurrence.txt": "eventID\toccurrenceID\tbasisOfRecord\nE1\tO1\tMachineObservation\n",
+                "multimedia.txt": "eventID\toccurrenceID\tidentifier\nE1\tO_MISSING\thttp://example.com/a.jpg\n",
+            }
+        )
+        result = validate_dwca_zip(path)
+        self.assertFalse(result.ok)
+        self.assertTrue(any("occurrenceID" in e for e in result.errors))
+
+
+_META_WITH_MULTIMEDIA = """<?xml version="1.0" encoding="UTF-8"?>
+<archive xmlns="http://rs.tdwg.org/dwc/text/" metadata="eml.xml">
+  <core rowType="http://rs.tdwg.org/dwc/terms/Event" encoding="UTF-8"
+        fieldsTerminatedBy="\\t" linesTerminatedBy="\\n" fieldsEnclosedBy='"' ignoreHeaderLines="1">
+    <files><location>event.txt</location></files>
+    <id index="0"/>
+    <field index="0" term="http://rs.tdwg.org/dwc/terms/eventID"/>
+    <field index="1" term="http://rs.tdwg.org/dwc/terms/eventDate"/>
+  </core>
+  <extension rowType="http://rs.tdwg.org/dwc/terms/Occurrence" encoding="UTF-8"
+             fieldsTerminatedBy="\\t" linesTerminatedBy="\\n" fieldsEnclosedBy='"' ignoreHeaderLines="1">
+    <files><location>occurrence.txt</location></files>
+    <coreid index="0"/>
+    <field index="0" term="http://rs.tdwg.org/dwc/terms/eventID"/>
+    <field index="1" term="http://rs.tdwg.org/dwc/terms/occurrenceID"/>
+    <field index="2" term="http://rs.tdwg.org/dwc/terms/basisOfRecord"/>
+  </extension>
+  <extension rowType="http://rs.gbif.org/terms/1.0/Multimedia" encoding="UTF-8"
+             fieldsTerminatedBy="\\t" linesTerminatedBy="\\n" fieldsEnclosedBy='"' ignoreHeaderLines="1">
+    <files><location>multimedia.txt</location></files>
+    <coreid index="0"/>
+    <field index="0" term="http://rs.tdwg.org/dwc/terms/eventID"/>
+    <field index="1" term="http://rs.tdwg.org/dwc/terms/occurrenceID"/>
+    <field index="2" term="http://purl.org/dc/terms/identifier"/>
+  </extension>
+</archive>
+"""
