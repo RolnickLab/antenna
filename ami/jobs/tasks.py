@@ -489,8 +489,19 @@ def _update_job_progress(
 ) -> None:
     from ami.jobs.models import Job, JobState  # avoid circular import
 
+    # NOTE: Previously this used `select_for_update()` inside `transaction.atomic()`
+    # to serialize concurrent progress updates for the same job. Under concurrent
+    # async_api result processing that serialization became a bottleneck: every
+    # ML result task queued a contending exclusive lock on the `jobs_job` row,
+    # stacking behind gunicorn view threads also holding the row under
+    # ATOMIC_REQUESTS. The `max()` guard below still prevents progress regression
+    # between concurrent workers; the trade-off is that accumulated counts
+    # (detections/classifications/captures) can drift by one batch under race —
+    # cosmetic only, since the underlying `Detection`/`Classification` rows are
+    # written authoritatively by `save_results` before this function runs.
+    # See docs/claude/planning/jobs-row-lock-remediation.md and issue #1256.
     with transaction.atomic():
-        job = Job.objects.select_for_update().get(pk=job_id)
+        job = Job.objects.get(pk=job_id)
 
         # For results stage, accumulate detections/classifications/captures counts
         if stage == "results":
