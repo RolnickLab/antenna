@@ -210,6 +210,7 @@ class DwCAExporter(BaseExporter):
                 "event",
                 "deployment",
             )
+            .prefetch_related("detections__source_image")
             .with_detections_count()
             .with_identifications()
         )

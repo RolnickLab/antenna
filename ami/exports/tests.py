@@ -610,6 +610,22 @@ class DwCAExportTest(TestCase):
         finally:
             default_storage.delete(file_path)
 
+    def test_occurrence_has_associated_media_column(self):
+        """occurrence.txt should carry associatedMedia as pipe-separated URLs."""
+        with self._open_zip() as f:
+            with zipfile.ZipFile(f, "r") as zf:
+                occ_data = zf.read("occurrence.txt").decode("utf-8")
+                reader = csv.DictReader(StringIO(occ_data), delimiter="\t")
+                fieldnames = set(reader.fieldnames or [])
+                self.assertIn("associatedMedia", fieldnames)
+                rows = list(reader)
+                non_empty = [r for r in rows if r.get("associatedMedia")]
+                self.assertGreater(len(non_empty), 0, "No occurrences have associatedMedia")
+                for r in non_empty:
+                    self.assertFalse(r["associatedMedia"].endswith("|"))
+                    for part in r["associatedMedia"].split("|"):
+                        self.assertTrue(part.startswith("http"), f"Not a URL: {part}")
+
     def test_event_has_humboldt_eco_columns(self):
         """event.txt should carry the Humboldt eco: columns as flattened columns."""
         expected_columns = {

@@ -34,6 +34,36 @@ def _humboldt_effort_value(event) -> str:
     return str(count) if count else ""
 
 
+def _associated_media(occurrence) -> str:
+    """Pipe-separated distinct public URLs of source captures for this occurrence.
+
+    Ordered by detection timestamp; timestamp-less detections sort last. Uses
+    prefetched detections + source_image; the exporter ensures the prefetch
+    chain so this stays O(N) at write time.
+    """
+    import datetime as _dt
+
+    seen: set[str] = set()
+    urls: list[str] = []
+    _far_future = _dt.datetime.max
+
+    def _sort_key(d):
+        ts = d.timestamp or (d.source_image.timestamp if d.source_image else None)
+        return ts or _far_future
+
+    detections = sorted(occurrence.detections.all(), key=_sort_key)
+    for det in detections:
+        si = det.source_image
+        if si is None:
+            continue
+        url = si.public_url()
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        urls.append(url)
+    return "|".join(urls)
+
+
 @dataclass(frozen=True)
 class DwCAField:
     """A single column mapping in a DwC-A text file.
@@ -207,4 +237,9 @@ OCCURRENCE_FIELDS: list[DwCAField] = [
         lambda o, slug: _get_verification_status(o),
     ),
     DwCAField(DC + "modified", "modified", lambda o, slug: _format_datetime(o.updated_at)),
+    DwCAField(
+        DWC + "associatedMedia",
+        "associatedMedia",
+        lambda o, slug: _associated_media(o),
+    ),
 ]
