@@ -322,7 +322,7 @@ class DwCAExporter(BaseExporter):
                     },
                 ]
             )
-            eml_xml = generate_eml_xml(self.project)
+            eml_xml = generate_eml_xml(self.project, events_list)
 
             zip_path = create_dwca_zip(
                 {

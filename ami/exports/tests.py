@@ -514,21 +514,32 @@ class DwCAExportTest(TestCase):
         self.assertEqual(get_specific_epithet("Homo sapiens sapiens"), "sapiens")
 
     def test_eml_xml_valid(self):
-        """eml.xml should be valid XML with project metadata."""
+        """eml.xml should be valid EML 2.2.0 with coverage, methods, and license."""
         with self._open_zip() as f:
             with zipfile.ZipFile(f, "r") as zf:
                 eml_xml = zf.read("eml.xml").decode("utf-8")
                 root = ET.fromstring(eml_xml)
 
-                # Should have a dataset element
-                ns = {"eml": "eml://ecoinformatics.org/eml-2.1.1"}
+                self.assertIn("eml-2.2.0", eml_xml)
+                ns = {"eml": "https://eml.ecoinformatics.org/eml-2.2.0"}
                 dataset = root.find("eml:dataset", ns) or root.find("dataset")
-                self.assertIsNotNone(dataset, "eml.xml missing <dataset> element")
+                self.assertIsNotNone(dataset, "eml.xml missing <dataset>")
 
-                # Title should match project name
                 title = dataset.find("eml:title", ns) or dataset.find("title")
                 self.assertIsNotNone(title)
                 self.assertEqual(title.text, self.project.name)
+
+                coverage = dataset.find("eml:coverage", ns) or dataset.find("coverage")
+                self.assertIsNotNone(coverage, "Missing <coverage>")
+                self.assertIsNotNone(
+                    coverage.find("eml:geographicCoverage", ns) or coverage.find("geographicCoverage")
+                )
+                self.assertIsNotNone(coverage.find("eml:temporalCoverage", ns) or coverage.find("temporalCoverage"))
+
+                methods = dataset.find("eml:methods", ns) or dataset.find("methods")
+                self.assertIsNotNone(methods, "Missing <methods>")
+                method_step = methods.find("eml:methodStep", ns) or methods.find("methodStep")
+                self.assertIsNotNone(method_step)
 
     def test_dwca_export_with_collection_filter(self):
         """DwC-A export with collection_id filter should only include matching occurrences and their events."""
