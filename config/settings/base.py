@@ -319,6 +319,11 @@ CELERY_RESULT_BACKEND_URL = env("CELERY_RESULT_BACKEND", default=None) or _celer
 # NATS
 # ------------------------------------------------------------------------------
 NATS_URL = env("NATS_URL", default="nats://localhost:4222")  # type: ignore[no-untyped-call]
+# How long a worker has to ack a dispatched task before NATS redelivers it.
+# Must exceed worst-case task duration: S3 download + GPU cold-start + batch
+# inference + synchronous POST of results. With 24 MB images and batch sizes
+# of 8-24, 30s was too tight and caused spurious redeliveries under load.
+NATS_TASK_TTR = env.int("NATS_TASK_TTR", default=60)
 
 # ADMIN
 # ------------------------------------------------------------------------------
