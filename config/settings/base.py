@@ -568,3 +568,12 @@ DEFAULT_PIPELINES_ENABLED = env.list("DEFAULT_PIPELINES_ENABLED", default=None) 
 # Default taxa filters
 DEFAULT_INCLUDE_TAXA = env.list("DEFAULT_INCLUDE_TAXA", default=[])  # type: ignore[no-untyped-call]
 DEFAULT_EXCLUDE_TAXA = env.list("DEFAULT_EXCLUDE_TAXA", default=[])  # type: ignore[no-untyped-call]
+
+# When True, ``JobLogHandler.emit`` persists each log line to ``jobs_job.logs``
+# (JSONB column) so the per-job log feed in the UI stays populated. When False,
+# log lines go to the container stdout logger only — used as an escape hatch
+# under concurrent async_api load where the per-record UPDATE on ``jobs_job.logs``
+# becomes a row-lock contention point (see issue #1256, PR #1261). Default True
+# preserves existing behavior; deployments seeing contention can set to False
+# until the append-only ``JobLog`` child table (PR #1259) is in place.
+JOB_LOG_PERSIST_ENABLED = env.bool("JOB_LOG_PERSIST_ENABLED", default=True)  # type: ignore[no-untyped-call]
