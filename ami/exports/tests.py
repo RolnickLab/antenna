@@ -621,6 +621,22 @@ class DwCAExportTest(TestCase):
         finally:
             default_storage.delete(file_path)
 
+    def test_validator_runs_on_produced_zip(self):
+        """The exporter's own zip should pass its own validator cleanly."""
+        import tempfile
+
+        from ami.exports.dwca_validator import validate_dwca_zip
+
+        with self._open_zip() as f:
+            tf = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+            tf.write(f.read())
+            tf.close()
+            result = validate_dwca_zip(tf.name)
+        self.assertTrue(
+            result.ok,
+            f"Self-produced DwC-A failed own validator: {result.errors}",
+        )
+
     def test_measurementorfact_txt_in_archive(self):
         with self._open_zip() as f:
             with zipfile.ZipFile(f, "r") as zf:

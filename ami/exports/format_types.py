@@ -335,6 +335,19 @@ class DwCAExporter(BaseExporter):
                 eml_xml,
             )
 
+            from ami.exports.dwca_validator import validate_dwca_zip
+
+            validation = validate_dwca_zip(zip_path)
+            for warning in validation.warnings:
+                logger.warning(f"DwC-A validation warning: {warning}")
+            if not validation.ok:
+                for err in validation.errors:
+                    logger.error(f"DwC-A validation error: {err}")
+                raise ValueError(
+                    f"DwC-A archive failed structural validation ({len(validation.errors)} errors). "
+                    f"First: {validation.errors[0]}"
+                )
+
             self.update_export_stats(file_temp_path=zip_path)
             return zip_path
         finally:
