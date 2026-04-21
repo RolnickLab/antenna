@@ -233,36 +233,39 @@ class DwCAExporter(BaseExporter):
 
         from ami.exports.dwca import (
             EVENT_FIELDS,
+            MULTIMEDIA_FIELDS,
             OCCURRENCE_FIELDS,
             create_dwca_zip,
             generate_eml_xml,
             generate_meta_xml,
             write_tsv,
         )
+        from ami.exports.dwca.rows import iter_multimedia_rows
+        from ami.exports.dwca.targetscope import derive_target_taxonomic_scope
 
         project_slug = slugify(self.project.name)
 
-        # Write event.txt
-        event_file = tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8")
-        event_file.close()
-        # Write occurrence.txt
-        occ_file = tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8")
-        occ_file.close()
+        def _tmp_txt():
+            tf = tempfile.NamedTemporaryFile(delete=False, suffix=".txt", mode="w", encoding="utf-8")
+            tf.close()
+            return tf.name
+
+        event_path = _tmp_txt()
+        occ_path = _tmp_txt()
+        multimedia_path = _tmp_txt()
 
         try:
-            from ami.exports.dwca.targetscope import derive_target_taxonomic_scope
-
             events_qs = self.get_events_queryset()
             events_list = list(events_qs)
             target_scope = derive_target_taxonomic_scope(self.project)
             for e in events_list:
                 e._target_taxonomic_scope = target_scope
 
-            event_count = write_tsv(event_file.name, EVENT_FIELDS, events_list, project_slug)
+            event_count = write_tsv(event_path, EVENT_FIELDS, events_list, project_slug)
             logger.info(f"DwC-A: wrote {event_count} events")
 
             occ_count = write_tsv(
-                occ_file.name,
+                occ_path,
                 OCCURRENCE_FIELDS,
                 self.queryset,
                 project_slug,
@@ -270,21 +273,55 @@ class DwCAExporter(BaseExporter):
             )
             logger.info(f"DwC-A: wrote {occ_count} occurrences")
 
-            # Ensure final progress update for small exports (<500 records)
+            mm_count = write_tsv(
+                multimedia_path,
+                MULTIMEDIA_FIELDS,
+                iter_multimedia_rows(events_list, self.queryset, project_slug),
+                project_slug,
+            )
+            logger.info(f"DwC-A: wrote {mm_count} multimedia rows")
+
             if self.total_records:
                 self.update_job_progress(occ_count)
 
-            # Generate metadata
-            meta_xml = generate_meta_xml(EVENT_FIELDS, OCCURRENCE_FIELDS)
+            meta_xml = generate_meta_xml(
+                [
+                    {
+                        "role": "core",
+                        "row_type": "http://rs.tdwg.org/dwc/terms/Event",
+                        "filename": "event.txt",
+                        "fields": EVENT_FIELDS,
+                    },
+                    {
+                        "role": "extension",
+                        "row_type": "http://rs.tdwg.org/dwc/terms/Occurrence",
+                        "filename": "occurrence.txt",
+                        "fields": OCCURRENCE_FIELDS,
+                    },
+                    {
+                        "role": "extension",
+                        "row_type": "http://rs.gbif.org/terms/1.0/Multimedia",
+                        "filename": "multimedia.txt",
+                        "fields": MULTIMEDIA_FIELDS,
+                    },
+                ]
+            )
             eml_xml = generate_eml_xml(self.project)
 
-            # Package into ZIP
-            zip_path = create_dwca_zip(event_file.name, occ_file.name, meta_xml, eml_xml)
+            zip_path = create_dwca_zip(
+                {
+                    "event.txt": event_path,
+                    "occurrence.txt": occ_path,
+                    "multimedia.txt": multimedia_path,
+                },
+                meta_xml,
+                eml_xml,
+            )
 
             self.update_export_stats(file_temp_path=zip_path)
             return zip_path
         finally:
-            for path in [event_file.name, occ_file.name]:
+            for path in (event_path, occ_path, multimedia_path):
                 try:
                     os.unlink(path)
                 except OSError:

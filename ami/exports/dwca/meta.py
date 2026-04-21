@@ -1,45 +1,47 @@
 """Generate the DwC-A descriptor (meta.xml).
 
 meta.xml is derived from the field catalogues so TSV columns cannot drift from
-declared term URIs. This module currently hard-codes the Event-Core + Occurrence
-layout; Task 6 will generalize it to take an arbitrary extension list.
+declared term URIs. The core/extension list is passed in so the caller composes
+the archive shape.
 """
 
 from __future__ import annotations
 
 from xml.etree import ElementTree as ET
 
-from ami.exports.dwca.fields import DWC, DwCAField
+from ami.exports.dwca.fields import DwCAField
 
 
-def generate_meta_xml(
-    event_fields: list[DwCAField],
-    occurrence_fields: list[DwCAField],
-    event_filename: str = "event.txt",
-    occurrence_filename: str = "occurrence.txt",
-) -> str:
-    """Generate DwC-A meta.xml descriptor mapping columns to DwC term URIs."""
+def generate_meta_xml(tables: list[dict]) -> str:
+    """Build meta.xml from a list of table descriptors.
+
+    Each descriptor is a dict:
+        {
+            "role": "core" | "extension",
+            "row_type": <URI>,
+            "filename": "event.txt",
+            "fields": list[DwCAField],
+        }
+
+    The first descriptor must have role="core"; remaining are extensions.
+    """
+    if not tables or tables[0]["role"] != "core":
+        raise ValueError("First table must be the core (role='core')")
 
     archive = ET.Element("archive")
     archive.set("xmlns", "http://rs.tdwg.org/dwc/text/")
     archive.set("metadata", "eml.xml")
 
-    _append_table(
-        archive,
-        tag="core",
-        row_type=DWC + "Event",
-        filename=event_filename,
-        fields=event_fields,
-        id_tag="id",
-    )
-    _append_table(
-        archive,
-        tag="extension",
-        row_type=DWC + "Occurrence",
-        filename=occurrence_filename,
-        fields=occurrence_fields,
-        id_tag="coreid",
-    )
+    for table in tables:
+        tag = table["role"]
+        _append_table(
+            archive,
+            tag=tag,
+            row_type=table["row_type"],
+            filename=table["filename"],
+            fields=table["fields"],
+            id_tag="id" if tag == "core" else "coreid",
+        )
 
     ET.indent(archive, space="  ")
     xml_str = ET.tostring(archive, encoding="unicode", xml_declaration=False)
