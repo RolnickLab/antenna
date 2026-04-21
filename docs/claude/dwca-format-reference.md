@@ -6,14 +6,42 @@ A ZIP archive containing standardized biodiversity data files. The standard form
 
 ## Archive Structure
 
+AMI's April 2026 draft emits a four-file archive with the following layout:
+
 ```
-archive.zip
-├── meta.xml          # Required: describes file structure and term mappings
-├── eml.xml           # Recommended: dataset metadata (Ecological Metadata Language)
-├── event.txt         # Core file (tab-separated)
-├── occurrence.txt    # Extension file (tab-separated)
-└── (other extensions like multimedia.txt, measurementorfact.txt)
+project_export.zip
+├── meta.xml                 DwC-A text-archive descriptor
+├── eml.xml                  EML 2.2.0 dataset metadata
+├── event.txt                Core — Event row per AMI Event, with
+│                              Humboldt eco: columns flattened in
+├── occurrence.txt           Extension — coreid=eventID, one row per
+│                              published Occurrence. associatedMedia
+│                              column carries pipe-separated capture URLs.
+├── multimedia.txt           Extension — coreid=eventID. Two row types:
+│                              - capture rows (occurrenceID blank)
+│                              - detection-crop rows (occurrenceID populated)
+└── measurementorfact.txt    Extension — coreid=eventID. Per-occurrence
+                               classificationScore; per-detection
+                               detectionScore and boundingBox.
 ```
+
+## Humboldt Extension columns on event.txt
+
+Humboldt Extension (`eco:`) terms are flattened onto Event Core rows as the pragmatic alternative to a separate `humboldt.txt` extension (GBIF accepts this shape). The values encode the scientific contribution of automated monitoring: sampling-effort structure + provable absence during known sampling windows.
+
+| Column | Term | Source |
+|---|---|---|
+| isSamplingEffortReported | eco:isSamplingEffortReported | constant `true` |
+| samplingEffortValue | eco:samplingEffortValue | `Event.captures_count` |
+| samplingEffortUnit | eco:samplingEffortUnit | constant `images` |
+| samplingEffortProtocol | eco:samplingEffortProtocol | constant protocol description |
+| isAbsenceReported | eco:isAbsenceReported | constant `true` (per-taxon rows deferred) |
+| targetTaxonomicScope | eco:targetTaxonomicScope | LCA of `Project.default_filters_include_taxa` |
+| inventoryTypes | eco:inventoryTypes | constant `trap or sample` |
+| protocolNames | eco:protocolNames | constant `AMI ML detector + classifier pipeline` |
+| protocolDescriptions | eco:protocolDescriptions | constant pipeline description |
+| hasMaterialSamples | eco:hasMaterialSamples | constant `true` |
+| materialSampleTypes | eco:materialSampleTypes | constant `digital images` |
 
 ## Star Schema
 
@@ -93,10 +121,10 @@ Describes the dataset: title, abstract, creators, geographic/temporal coverage, 
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Note: AMI currently exports EML 2.1.1 -->
-<eml:eml xmlns:eml="eml://ecoinformatics.org/eml-2.1.1"
+<!-- AMI exports EML 2.2.0; includes computed geographic + temporal coverage and a methods section. -->
+<eml:eml xmlns:eml="https://eml.ecoinformatics.org/eml-2.2.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="eml://ecoinformatics.org/eml-2.1.1 https://eml.ecoinformatics.org/eml-2.1.1/eml.xsd"
+         xsi:schemaLocation="https://eml.ecoinformatics.org/eml-2.2.0 https://eml.ecoinformatics.org/eml-2.2.0/eml.xsd"
          packageId="urn:ami:dataset:{project_id}" system="AMI">
   <dataset>
     <title>{project.name}</title>
