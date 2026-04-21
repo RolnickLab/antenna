@@ -77,6 +77,28 @@ def update_pipeline_pull_services_seen(job_id: int) -> None:
     )
 
 
+@celery_app.task(
+    soft_time_limit=10,
+    time_limit=15,
+    ignore_result=True,
+)
+def update_async_services_seen_for_project(project_id: int) -> None:
+    """
+    Heartbeat for idle worker polls on ``GET /api/v2/jobs/?ids_only=1``.
+
+    Unlike ``update_pipeline_pull_services_seen`` — which is pipeline-scoped and
+    only fires when a worker hits /tasks/ or /result/ for an active job — this
+    marks every async processing service attached to the polling project as
+    seen. The list endpoint has no pipeline context, so scope is the project.
+    """
+    from ami.ml.models import ProcessingService  # avoid circular import
+
+    ProcessingService.objects.async_services().filter(projects=project_id).update(
+        last_seen=datetime.datetime.now(),
+        last_seen_live=True,
+    )
+
+
 @celery_app.task(bind=True, soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
 def run_job(self, job_id: int) -> None:
     from ami.jobs.models import Job

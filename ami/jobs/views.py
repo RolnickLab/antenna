@@ -26,7 +26,12 @@ from ami.jobs.serializers import (
     MLJobTasksRequestSerializer,
     MLJobTasksResponseSerializer,
 )
-from ami.jobs.tasks import HEARTBEAT_THROTTLE_SECONDS, process_nats_pipeline_result, update_pipeline_pull_services_seen
+from ami.jobs.tasks import (
+    HEARTBEAT_THROTTLE_SECONDS,
+    process_nats_pipeline_result,
+    update_async_services_seen_for_project,
+    update_pipeline_pull_services_seen,
+)
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
 from ami.utils.fields import url_boolean_param
@@ -50,6 +55,29 @@ def _actor_log_context(request) -> tuple[str, str | None]:
     token_id = getattr(request.auth, "pk", None)
     token_fingerprint = f"{str(token_id)[:8]}…" if token_id is not None else None
     return user_desc, token_fingerprint
+
+
+def _mark_async_services_seen_for_project(project_id: int) -> None:
+    """
+    Heartbeat for idle worker polls on ``GET /api/v2/jobs/?ids_only=1``.
+
+    The pipeline-scoped heartbeat in ``_mark_pipeline_pull_services_seen`` only
+    fires when a worker hits /tasks/ or /result/ on an active job; workers idling
+    on the list endpoint between jobs had no heartbeat path at all, so their
+    ``last_seen`` would age out of ``PROCESSING_SERVICE_LAST_SEEN_MAX`` and the
+    UI would flip them to offline despite being actively online.
+
+    Scope: marks every async service attached to the polling project. The list
+    endpoint has no pipeline context to narrow by. Once application-token auth
+    lands (PR #1117), this should be scoped to the specific calling service.
+    """
+    cache_key = f"heartbeat:list:project:{project_id}"
+    if not cache.add(cache_key, 1, timeout=HEARTBEAT_THROTTLE_SECONDS):
+        return
+    try:
+        update_async_services_seen_for_project.delay(project_id)
+    except (kombu.exceptions.KombuError, ConnectionError, OSError) as exc:
+        logger.warning(f"Failed to enqueue non-critical project heartbeat for project {project_id}: {exc}")
 
 
 def _mark_pipeline_pull_services_seen(job: "Job") -> None:
@@ -295,6 +323,13 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         ]
     )
     def list(self, request, *args, **kwargs):
+        # Worker-polling call path: record heartbeat for async processing services
+        # on the polling project. Throttled via Redis so concurrent pollers don't
+        # churn the DB/broker.
+        if url_boolean_param(request, "ids_only", default=False):
+            project = self.get_active_project()
+            if project is not None:
+                _mark_async_services_seen_for_project(project.pk)
         return super().list(request, *args, **kwargs)
 
     @extend_schema(

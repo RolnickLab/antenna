@@ -1176,3 +1176,102 @@ class TestPipelineHeartbeatTask(APITestCase):
                 _mark_pipeline_pull_services_seen(self.job)
 
         self.assertEqual(mock_delay.call_count, 1)
+
+
+class TestListEndpointHeartbeat(APITestCase):
+    """
+    Unit tests for _mark_async_services_seen_for_project and the list endpoint's
+    heartbeat dispatch on ``?ids_only=1`` polls.
+    """
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+
+        self.project = Project.objects.create(name="List Heartbeat Project")
+        self.service = ProcessingService.objects.create(
+            name="List Heartbeat Worker",
+            endpoint_url=None,
+        )
+        self.service.projects.add(self.project)
+
+        self.user = User.objects.create_user(email="list-heartbeat@example.com", is_superuser=True, is_active=True)
+        self.client.force_authenticate(user=self.user)
+
+    def test_list_with_ids_only_dispatches_heartbeat(self):
+        from unittest.mock import patch
+
+        list_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk, "ids_only": True})
+        with patch("ami.jobs.views.update_async_services_seen_for_project.delay") as mock_delay:
+            resp = self.client.get(list_url)
+
+        self.assertEqual(resp.status_code, 200)
+        mock_delay.assert_called_once_with(self.project.pk)
+
+    def test_list_without_ids_only_does_not_dispatch_heartbeat(self):
+        from unittest.mock import patch
+
+        list_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk})
+        with patch("ami.jobs.views.update_async_services_seen_for_project.delay") as mock_delay:
+            resp = self.client.get(list_url)
+
+        self.assertEqual(resp.status_code, 200)
+        mock_delay.assert_not_called()
+
+    def test_list_heartbeat_tolerates_dispatch_failure(self):
+        """Broker unavailability on heartbeat enqueue must not break the list response."""
+        from unittest.mock import patch
+
+        from kombu.exceptions import OperationalError
+
+        list_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk, "ids_only": True})
+        with patch(
+            "ami.jobs.views.update_async_services_seen_for_project.delay",
+            side_effect=OperationalError("broker unavailable"),
+        ):
+            resp = self.client.get(list_url)
+
+        self.assertEqual(resp.status_code, 200)
+
+    def test_view_gate_suppresses_redundant_list_dispatches(self):
+        """Rapid repeated list polls should dispatch at most once per throttle window."""
+        from unittest.mock import patch
+
+        from ami.jobs.views import _mark_async_services_seen_for_project
+
+        with patch("ami.jobs.views.update_async_services_seen_for_project.delay") as mock_delay:
+            for _ in range(5):
+                _mark_async_services_seen_for_project(self.project.pk)
+
+        self.assertEqual(mock_delay.call_count, 1)
+
+    def test_task_updates_all_project_async_services(self):
+        """The celery task marks every async service on the project live."""
+        import datetime
+
+        from ami.jobs.tasks import update_async_services_seen_for_project
+
+        other_async = ProcessingService.objects.create(name="Other Async", endpoint_url=None)
+        other_async.projects.add(self.project)
+        sync_service = ProcessingService.objects.create(
+            name="Sync Service", endpoint_url="http://nonexistent-host:9999"
+        )
+        sync_service.projects.add(self.project)
+        sync_last_seen_before = ProcessingService.objects.get(pk=sync_service.pk).last_seen
+
+        before = datetime.datetime.now() - datetime.timedelta(seconds=1)
+        update_async_services_seen_for_project(self.project.pk)
+
+        self.service.refresh_from_db()
+        other_async.refresh_from_db()
+        sync_service.refresh_from_db()
+
+        self.assertTrue(self.service.last_seen_live)
+        self.assertIsNotNone(self.service.last_seen)
+        self.assertGreaterEqual(self.service.last_seen, before)
+        self.assertTrue(other_async.last_seen_live)
+        # Sync services (with endpoint URL) are not touched by this task — last_seen
+        # may be set by the creation-time get_status() ping, but should be unchanged
+        # after the task runs.
+        self.assertEqual(sync_service.last_seen, sync_last_seen_before)
