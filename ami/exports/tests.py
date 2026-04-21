@@ -610,6 +610,27 @@ class DwCAExportTest(TestCase):
         finally:
             default_storage.delete(file_path)
 
+    def test_measurementorfact_txt_in_archive(self):
+        with self._open_zip() as f:
+            with zipfile.ZipFile(f, "r") as zf:
+                self.assertIn("measurementorfact.txt", zf.namelist())
+                data = zf.read("measurementorfact.txt").decode("utf-8")
+                reader = csv.DictReader(StringIO(data), delimiter="\t")
+                rows = list(reader)
+                self.assertGreater(len(rows), 0)
+                types = {r["measurementType"] for r in rows}
+                self.assertIn("classificationScore", types)
+                for r in rows:
+                    self.assertTrue(r["eventID"], "MoF row missing eventID")
+                    self.assertTrue(r["occurrenceID"], "MoF row missing occurrenceID in this PR")
+
+    def test_meta_xml_declares_mof_extension(self):
+        with self._open_zip() as f:
+            with zipfile.ZipFile(f, "r") as zf:
+                meta_xml = zf.read("meta.xml").decode("utf-8")
+                self.assertIn("measurementorfact.txt", meta_xml)
+                self.assertIn("http://rs.gbif.org/terms/1.0/MeasurementOrFact", meta_xml)
+
     def test_multimedia_txt_in_archive(self):
         with self._open_zip() as f:
             with zipfile.ZipFile(f, "r") as zf:

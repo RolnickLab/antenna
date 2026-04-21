@@ -233,6 +233,7 @@ class DwCAExporter(BaseExporter):
 
         from ami.exports.dwca import (
             EVENT_FIELDS,
+            MOF_FIELDS,
             MULTIMEDIA_FIELDS,
             OCCURRENCE_FIELDS,
             create_dwca_zip,
@@ -240,7 +241,7 @@ class DwCAExporter(BaseExporter):
             generate_meta_xml,
             write_tsv,
         )
-        from ami.exports.dwca.rows import iter_multimedia_rows
+        from ami.exports.dwca.rows import iter_mof_rows, iter_multimedia_rows
         from ami.exports.dwca.targetscope import derive_target_taxonomic_scope
 
         project_slug = slugify(self.project.name)
@@ -253,6 +254,7 @@ class DwCAExporter(BaseExporter):
         event_path = _tmp_txt()
         occ_path = _tmp_txt()
         multimedia_path = _tmp_txt()
+        mof_path = _tmp_txt()
 
         try:
             events_qs = self.get_events_queryset()
@@ -281,6 +283,14 @@ class DwCAExporter(BaseExporter):
             )
             logger.info(f"DwC-A: wrote {mm_count} multimedia rows")
 
+            mof_count = write_tsv(
+                mof_path,
+                MOF_FIELDS,
+                iter_mof_rows(self.queryset, project_slug),
+                project_slug,
+            )
+            logger.info(f"DwC-A: wrote {mof_count} measurementOrFact rows")
+
             if self.total_records:
                 self.update_job_progress(occ_count)
 
@@ -304,6 +314,12 @@ class DwCAExporter(BaseExporter):
                         "filename": "multimedia.txt",
                         "fields": MULTIMEDIA_FIELDS,
                     },
+                    {
+                        "role": "extension",
+                        "row_type": "http://rs.gbif.org/terms/1.0/MeasurementOrFact",
+                        "filename": "measurementorfact.txt",
+                        "fields": MOF_FIELDS,
+                    },
                 ]
             )
             eml_xml = generate_eml_xml(self.project)
@@ -313,6 +329,7 @@ class DwCAExporter(BaseExporter):
                     "event.txt": event_path,
                     "occurrence.txt": occ_path,
                     "multimedia.txt": multimedia_path,
+                    "measurementorfact.txt": mof_path,
                 },
                 meta_xml,
                 eml_xml,
@@ -321,7 +338,7 @@ class DwCAExporter(BaseExporter):
             self.update_export_stats(file_temp_path=zip_path)
             return zip_path
         finally:
-            for path in (event_path, occ_path, multimedia_path):
+            for path in (event_path, occ_path, multimedia_path, mof_path):
                 try:
                     os.unlink(path)
                 except OSError:

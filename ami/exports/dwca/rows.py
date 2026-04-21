@@ -6,6 +6,8 @@ pattern handles both query-backed tables and computed row streams uniformly.
 
 from __future__ import annotations
 
+import json
+
 from ami.exports.dwca.helpers import _format_datetime
 
 
@@ -89,6 +91,76 @@ def iter_multimedia_rows(events_qs, occurrences_qs, project_slug: str):
                     "creator": "",
                     "description": "Cropped detection from source capture",
                 }
+
+
+def iter_mof_rows(occurrences_qs, project_slug: str):
+    """Yield dicts for measurementorfact.txt rows.
+
+    Per occurrence:
+      - classificationScore (value = occurrence.determination_score, unit = proportion)
+
+    Per detection:
+      - detectionScore (value = detection.detection_score, unit = proportion)
+      - boundingBox (value = JSON [x1,y1,x2,y2], unit = pixels)
+    """
+    for occ in occurrences_qs.select_related("determination", "event").prefetch_related(
+        "detections__detection_algorithm",
+        "detections__classifications__algorithm",
+    ):
+        eid = _event_id(occ.event, project_slug) if occ.event_id else ""
+        occ_urn = _occurrence_id(occ, project_slug)
+        if eid and occ.determination_score is not None:
+            yield {
+                "eventID": eid,
+                "occurrenceID": occ_urn,
+                "measurementID": f"{occ_urn}:classificationScore",
+                "measurementType": "classificationScore",
+                "measurementValue": f"{occ.determination_score:.6f}",
+                "measurementUnit": "proportion",
+                "measurementDeterminedBy": _classifier_name(occ),
+                "measurementRemarks": "ML classifier softmax score",
+            }
+        for det in occ.detections.all():
+            det_urn = f"urn:ami:detection:{project_slug}:{det.id}"
+            if det.detection_score is not None:
+                yield {
+                    "eventID": eid,
+                    "occurrenceID": occ_urn,
+                    "measurementID": f"{det_urn}:detectionScore",
+                    "measurementType": "detectionScore",
+                    "measurementValue": f"{det.detection_score:.6f}",
+                    "measurementUnit": "proportion",
+                    "measurementDeterminedBy": det.detection_algorithm.name if det.detection_algorithm else "",
+                    "measurementRemarks": "ML detector confidence score",
+                }
+            if det.bbox:
+                yield {
+                    "eventID": eid,
+                    "occurrenceID": occ_urn,
+                    "measurementID": f"{det_urn}:boundingBox",
+                    "measurementType": "boundingBox",
+                    "measurementValue": json.dumps(det.bbox),
+                    "measurementUnit": "pixels",
+                    "measurementDeterminedBy": det.detection_algorithm.name if det.detection_algorithm else "",
+                    "measurementRemarks": "Bounding box [x1, y1, x2, y2]",
+                }
+
+
+def _classifier_name(occurrence) -> str:
+    """Best-effort: name + version of the classifier that produced this determination."""
+    best = None
+    for det in occurrence.detections.all():
+        for cls in det.classifications.all():
+            if cls.taxon_id == occurrence.determination_id:
+                best = cls
+                break
+        if best:
+            break
+    if best and best.algorithm:
+        name = best.algorithm.name or ""
+        version = getattr(best.algorithm, "version", "") or ""
+        return f"{name} {version}".strip()
+    return ""
 
 
 def _project_license(events) -> str:

@@ -245,6 +245,26 @@ OCCURRENCE_FIELDS: list[DwCAField] = [
 ]
 
 
+MOF_FIELDS: list[DwCAField] = [
+    DwCAField(DWC + "eventID", "eventID", lambda r, slug: r["eventID"], required=True),
+    DwCAField(DWC + "occurrenceID", "occurrenceID", lambda r, slug: r.get("occurrenceID", "")),
+    DwCAField(DWC + "measurementID", "measurementID", lambda r, slug: r.get("measurementID", "")),
+    DwCAField(DWC + "measurementType", "measurementType", lambda r, slug: r["measurementType"], required=True),
+    DwCAField(DWC + "measurementValue", "measurementValue", lambda r, slug: r.get("measurementValue", "")),
+    DwCAField(DWC + "measurementUnit", "measurementUnit", lambda r, slug: r.get("measurementUnit", "")),
+    DwCAField(
+        DWC + "measurementDeterminedBy",
+        "measurementDeterminedBy",
+        lambda r, slug: r.get("measurementDeterminedBy", ""),
+    ),
+    DwCAField(
+        DWC + "measurementRemarks",
+        "measurementRemarks",
+        lambda r, slug: r.get("measurementRemarks", ""),
+    ),
+]
+
+
 MULTIMEDIA_FIELDS: list[DwCAField] = [
     DwCAField(DWC + "eventID", "eventID", lambda r, slug: r["eventID"], required=True),
     DwCAField(DWC + "occurrenceID", "occurrenceID", lambda r, slug: r.get("occurrenceID", "")),
