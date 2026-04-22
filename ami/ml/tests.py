@@ -1407,6 +1407,35 @@ class TestTaskStateManager(TestCase):
         progress = self.manager.update_state({"img1", "img2"}, "process")
         self.assertIsNone(progress)
 
+    def test_diagnose_missing_state_when_never_initialized(self):
+        """
+        Diagnostic string for the "never initialized" case: no keys are
+        present under ``job:{id}:*``. Output must still name the Redis host
+        and DB so cross-host DB drift is distinguishable from eviction and
+        truly-never-initialized state in one log line.
+        """
+        # initialize_job has NOT been called; nothing under job:123:*.
+        diagnosis = self.manager.diagnose_missing_state()
+        self.assertIn("redis=", diagnosis)
+        self.assertIn("/db", diagnosis)
+        self.assertIn("keys_for_job=<none>", diagnosis)
+
+    def test_diagnose_missing_state_lists_present_keys(self):
+        """
+        Diagnostic string for the partial-cleanup / eviction case: some keys
+        remain under ``job:{id}:*`` and their SCARDs should appear so the
+        operator can tell "total key evicted but pending sets still present"
+        from "nothing here, this DB never saw the job".
+        """
+        self.manager.initialize_job(self.image_ids)
+        # Drop the total key to simulate eviction while pending sets survive.
+        redis = self.manager._get_redis()
+        redis.delete(self.manager._total_key)
+
+        diagnosis = self.manager.diagnose_missing_state()
+        self.assertIn(f"job:{self.job_id}:pending_images:process=SCARD:", diagnosis)
+        self.assertNotIn(self.manager._total_key, diagnosis)
+
 
 class TestSaveResultsRefreshesDeploymentCounts(TestCase):
     """save_results must refresh Deployment cached counts, not just Event counts.
