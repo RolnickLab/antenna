@@ -1246,6 +1246,45 @@ class TestListEndpointHeartbeat(APITestCase):
 
         self.assertEqual(mock_delay.call_count, 1)
 
+    def test_list_with_pipeline_slugs_no_project_dispatches_heartbeat(self):
+        """Real ADC worker shape: ?ids_only=1&pipeline__slug__in=... with no project_id."""
+        from unittest.mock import patch
+
+        pipeline = Pipeline.objects.create(name="Heartbeat Pipeline", slug="heartbeat-pipeline")
+        self.service.pipelines.add(pipeline)
+
+        list_url = reverse_with_params(
+            "api:job-list",
+            params={"ids_only": True, "pipeline__slug__in": "heartbeat-pipeline"},
+        )
+        with patch("ami.jobs.views.update_async_services_seen_for_pipelines.delay") as mock_delay:
+            resp = self.client.get(list_url)
+
+        self.assertEqual(resp.status_code, 200)
+        mock_delay.assert_called_once_with(["heartbeat-pipeline"])
+
+    def test_task_updates_services_via_pipeline_slug(self):
+        """The pipeline-slug celery task marks matching async services live."""
+        import datetime
+
+        from ami.jobs.tasks import update_async_services_seen_for_pipelines
+
+        pipeline = Pipeline.objects.create(name="Slug Pipeline", slug="slug-pipeline")
+        self.service.pipelines.add(pipeline)
+        unrelated = ProcessingService.objects.create(name="Unrelated Async", endpoint_url=None)
+        unrelated_last_seen_before = unrelated.last_seen
+
+        before = datetime.datetime.now() - datetime.timedelta(seconds=1)
+        update_async_services_seen_for_pipelines(["slug-pipeline"])
+
+        self.service.refresh_from_db()
+        unrelated.refresh_from_db()
+
+        self.assertTrue(self.service.last_seen_live)
+        self.assertIsNotNone(self.service.last_seen)
+        self.assertGreaterEqual(self.service.last_seen, before)
+        self.assertEqual(unrelated.last_seen, unrelated_last_seen_before)
+
     def test_task_updates_all_project_async_services(self):
         """The celery task marks every async service on the project live."""
         import datetime

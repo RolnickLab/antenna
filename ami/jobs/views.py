@@ -29,6 +29,7 @@ from ami.jobs.serializers import (
 from ami.jobs.tasks import (
     HEARTBEAT_THROTTLE_SECONDS,
     process_nats_pipeline_result,
+    update_async_services_seen_for_pipelines,
     update_async_services_seen_for_project,
     update_pipeline_pull_services_seen,
 )
@@ -55,6 +56,26 @@ def _actor_log_context(request) -> tuple[str, str | None]:
     token_id = getattr(request.auth, "pk", None)
     token_fingerprint = f"{str(token_id)[:8]}…" if token_id is not None else None
     return user_desc, token_fingerprint
+
+
+def _mark_async_services_seen_for_pipelines(pipeline_slugs: tuple[str, ...]) -> None:
+    """
+    Heartbeat for idle worker polls that send ``pipeline__slug__in=...`` but no
+    ``project_id`` — the real ADC worker shape, where one worker may serve
+    pipelines across many projects and has no single project to nominate.
+
+    Redis throttle keyed on the sorted slug set so concurrent pollers for the
+    same pipelines share a single dispatch per window.
+    """
+    if not pipeline_slugs:
+        return
+    cache_key = "heartbeat:list:pipelines:" + ",".join(sorted(pipeline_slugs))
+    if not cache.add(cache_key, 1, timeout=HEARTBEAT_THROTTLE_SECONDS):
+        return
+    try:
+        update_async_services_seen_for_pipelines.delay(list(pipeline_slugs))
+    except (kombu.exceptions.KombuError, ConnectionError, OSError) as exc:
+        logger.warning(f"Failed to enqueue non-critical pipeline-slug heartbeat: {exc}")
 
 
 def _mark_async_services_seen_for_project(project_id: int) -> None:
@@ -323,13 +344,20 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         ]
     )
     def list(self, request, *args, **kwargs):
-        # Worker-polling call path: record heartbeat for async processing services
-        # on the polling project. Throttled via Redis so concurrent pollers don't
-        # churn the DB/broker.
+        # Worker-polling call path: record heartbeat for async processing services.
+        # The real ADC worker request carries ``pipeline__slug__in=...`` and no
+        # project_id, so prefer the pipeline-slug scope when those slugs are
+        # present; fall back to project scope for callers that pass ?project_id=.
+        # Throttled via Redis so concurrent pollers don't churn the DB/broker.
         if url_boolean_param(request, "ids_only", default=False):
-            project = self.get_active_project()
-            if project is not None:
-                _mark_async_services_seen_for_project(project.pk)
+            pipeline_slugs_raw = request.query_params.get("pipeline__slug__in")
+            if pipeline_slugs_raw:
+                slugs = tuple(s for s in (p.strip() for p in pipeline_slugs_raw.split(",")) if s)
+                _mark_async_services_seen_for_pipelines(slugs)
+            else:
+                project = self.get_active_project()
+                if project is not None:
+                    _mark_async_services_seen_for_project(project.pk)
         return super().list(request, *args, **kwargs)
 
     @extend_schema(

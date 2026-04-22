@@ -82,6 +82,34 @@ def update_pipeline_pull_services_seen(job_id: int) -> None:
     time_limit=15,
     ignore_result=True,
 )
+def update_async_services_seen_for_pipelines(pipeline_slugs: list[str]) -> None:
+    """
+    Heartbeat for idle worker polls on
+    ``GET /api/v2/jobs/?pipeline__slug__in=...&ids_only=1``.
+
+    The ADC worker sends pipeline slugs but no project_id (one worker may serve
+    pipelines across many projects), so scope the heartbeat by the pipelines it
+    asked about. Marks every async ProcessingService linked to any of those
+    pipelines as seen.
+    """
+    from ami.ml.models import ProcessingService  # avoid circular import
+
+    if not pipeline_slugs:
+        return
+
+    ProcessingService.objects.async_services().filter(
+        pipelines__slug__in=pipeline_slugs,
+    ).distinct().update(
+        last_seen=datetime.datetime.now(),
+        last_seen_live=True,
+    )
+
+
+@celery_app.task(
+    soft_time_limit=10,
+    time_limit=15,
+    ignore_result=True,
+)
 def update_async_services_seen_for_project(project_id: int) -> None:
     """
     Heartbeat for idle worker polls on ``GET /api/v2/jobs/?ids_only=1``.
