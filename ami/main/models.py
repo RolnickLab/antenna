@@ -2949,7 +2949,8 @@ class Occurrence(BaseModel):
         top_identification = self.best_identification
         if top_identification and top_identification.user:
             user = top_identification.user
-            return user.name or user.email or f"user:{user.pk}"
+            # Do NOT fall back to user.email — this value is published in DwC-A archives (PII / GDPR).
+            return user.name or getattr(user, "username", "") or f"user:{user.pk}"
 
         top_prediction = self.best_prediction
         if top_prediction and top_prediction.algorithm:
@@ -2963,12 +2964,15 @@ class Occurrence(BaseModel):
         return ""
 
     def get_identified_date(self) -> datetime.datetime | None:
+        # Prefer the identification/classification event time (set when the model
+        # or user actually produced the result) over created_at, which is the DB
+        # insert time and can lag by years for backfills and reprocessing jobs.
         top_identification = self.best_identification
         if top_identification:
-            return top_identification.created_at
+            return getattr(top_identification, "timestamp", None) or top_identification.created_at
         top_prediction = self.best_prediction
         if top_prediction:
-            return top_prediction.created_at
+            return getattr(top_prediction, "timestamp", None) or top_prediction.created_at
         return None
 
     def predictions(self):
