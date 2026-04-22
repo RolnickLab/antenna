@@ -10,9 +10,11 @@ import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 
-export const columns: (projectId: string) => TableColumn<Algorithm>[] = (
+export const columns = ({
+  projectId,
+}: {
   projectId: string
-) => [
+}): TableColumn<Algorithm>[] => [
   {
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
@@ -50,7 +52,7 @@ export const PipelineAlgorithms = ({ pipeline }: { pipeline: Pipeline }) => {
     <Table
       backgroundTheme={TableBackgroundTheme.White}
       items={pipeline.algorithms}
-      columns={columns(projectId as string)}
+      columns={columns({ projectId: projectId as string })}
     />
   )
 }

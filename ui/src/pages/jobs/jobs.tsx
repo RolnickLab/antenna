@@ -45,6 +45,7 @@ export const Jobs = () => {
       filters,
     })
   const canCreate = userPermissions?.includes(UserPermission.Create)
+  const tableColumns = columns({ projectId: projectId as string })
 
   return (
     <div className="flex flex-col gap-6 md:flex-row">
@@ -67,20 +68,16 @@ export const Jobs = () => {
           title={translate(STRING.NAV_ITEM_JOBS)}
           tooltip={translate(STRING.TOOLTIP_JOB)}
         >
-          <SortControl
-            columns={columns(projectId as string)}
-            setSort={setSort}
-            sort={sort}
-          />
+          <SortControl columns={tableColumns} setSort={setSort} sort={sort} />
           {canCreate ? <NewJobDialog /> : null}
           <ColumnSettings
-            columns={columns(projectId as string)}
+            columns={tableColumns}
             columnSettings={columnSettings}
             onColumnSettingsChange={setColumnSettings}
           />
         </PageHeader>
         <Table
-          columns={columns(projectId as string).filter(
+          columns={tableColumns.filter(
             (column) => column.id === 'actions' || !!columnSettings[column.id]
           )}
           error={error}
@@ -141,7 +138,6 @@ const JobDetailsDialog = ({ id }: { id: string }) => {
               type: _.capitalize(translate(STRING.ENTITY_TYPE_JOB)),
             })}
             isFetching={isFetching}
-            onDelete={closeDialog}
           />
         ) : null}
       </Dialog.Content>

@@ -14,8 +14,10 @@ import styles from './styles.module.scss'
 export const ProcessingServiceDetailsDialog = ({ id }: { id: string }) => {
   const navigate = useNavigate()
   const { projectId } = useParams()
-  const { processingService, isLoading, error } =
-    useProcessingServiceDetails(id)
+  const { processingService, isLoading, error } = useProcessingServiceDetails(
+    id,
+    projectId as string
+  )
 
   return (
     <Dialog.Root
@@ -67,22 +69,27 @@ const ProcessingServiceDetailsContent = ({
           label={translate(STRING.FIELD_LABEL_ID)}
           value={processingService.id}
         />
+      </FormRow>
+      <FormRow>
         <InputValue
           label={translate(STRING.FIELD_LABEL_NAME)}
           value={processingService.name}
         />
-      </FormRow>
-      <FormRow>
         <InputValue
           label={translate(STRING.FIELD_LABEL_DESCRIPTION)}
           value={processingService.description}
         />
+      </FormRow>
+      <FormRow>
         <InputValue
-          label={translate(STRING.FIELD_LABEL_LAST_CHECKED)}
-          value={processingService.lastChecked}
+          label={translate(STRING.FIELD_LABEL_ENDPOINT)}
+          value={processingService.endpointUrl}
+        />
+        <InputValue
+          label={translate(STRING.FIELD_LABEL_LAST_SEEN)}
+          value={processingService.lastSeen}
         />
       </FormRow>
-
       <FormRow>
         <InputValue
           label={translate(STRING.FIELD_LABEL_CREATED_AT)}

@@ -10,8 +10,8 @@
   background-color: $color-neutral-50;
   text-align: left;
 
-  &.active {
-    border-bottom-color: $color-neutral-400;
+  &.sticky {
+    width: 100%;
   }
 }
 

@@ -9,7 +9,7 @@ from rest_framework import serializers
 
 from ami.exports.base import BaseExporter
 from ami.exports.utils import get_data_in_batches
-from ami.main.models import Occurrence, get_media_url
+from ami.main.models import Occurrence, SourceImage, get_media_url
 from ami.ml.schemas import BoundingBox
 
 logger = logging.getLogger(__name__)
@@ -94,9 +94,24 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
     determination_score = serializers.FloatField(allow_null=True)
     verification_status = serializers.SerializerMethodField()
 
+    # Machine prediction fields
+    best_machine_prediction_name = serializers.CharField(allow_null=True, default=None)
+    best_machine_prediction_algorithm = serializers.CharField(allow_null=True, default=None)
+    best_machine_prediction_score = serializers.FloatField(allow_null=True, default=None)
+
+    # Verification fields
+    verified_by = serializers.SerializerMethodField()
+    participant_count = serializers.IntegerField(default=0)
+    agreed_with_algorithm = serializers.SerializerMethodField()
+    agreed_with_user = serializers.SerializerMethodField()
+    determination_matches_machine_prediction = serializers.SerializerMethodField()
+
+    # Detection fields
     best_detection_url = serializers.SerializerMethodField()
+    best_detection_bbox = serializers.SerializerMethodField()
     best_detection_width = serializers.SerializerMethodField()
     best_detection_height = serializers.SerializerMethodField()
+    best_detection_capture_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Occurrence
@@ -112,28 +127,59 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
             "determination_name",
             "determination_score",
             "verification_status",
+            "best_machine_prediction_name",
+            "best_machine_prediction_algorithm",
+            "best_machine_prediction_score",
+            "verified_by",
+            "participant_count",
+            "agreed_with_algorithm",
+            "agreed_with_user",
+            "determination_matches_machine_prediction",
             "detections_count",
             "first_appearance_timestamp",
             "last_appearance_timestamp",
             "duration",
             "best_detection_url",
+            "best_detection_bbox",
             "best_detection_width",
             "best_detection_height",
+            "best_detection_capture_url",
         ]
 
-    def get_verification_status(self, obj):
-        """
-        Returns 'Verified' if the occurrence has identifications, otherwise 'Not verified'.
-        """
-        return "Verified" if obj.identifications.exists() else "Not verified"
+    def get_verification_status(self, obj) -> bool:
+        """True if the occurrence has any non-withdrawn human identification."""
+        count = getattr(obj, "participant_count", None)
+        if count is not None:
+            return count > 0
+        return obj.identifications.filter(withdrawn=False).exists()
+
+    def get_verified_by(self, obj):
+        """Returns the display name of the user who made the best identification."""
+        return getattr(obj, "verified_by_name", None)
+
+    def get_agreed_with_algorithm(self, obj):
+        """Returns the algorithm name if the identifier explicitly agreed with an ML prediction."""
+        return getattr(obj, "agreed_with_algorithm_name", None)
+
+    def get_agreed_with_user(self, obj):
+        """Returns the email of the prior identifier the best identification explicitly agreed with."""
+        return getattr(obj, "agreed_with_user_email", None)
+
+    def get_determination_matches_machine_prediction(self, obj):
+        """Returns whether the determination taxon matches the best machine prediction taxon."""
+        prediction_taxon_id = getattr(obj, "best_machine_prediction_taxon_id", None)
+        if prediction_taxon_id is None or obj.determination_id is None:
+            return None
+        return obj.determination_id == prediction_taxon_id
 
     def get_best_detection_url(self, obj):
-        """
-        Returns the full URL to the cropped detection image.
-        Uses the annotated best_detection_path from the queryset.
-        """
+        """Returns the full URL to the cropped detection image."""
         path = getattr(obj, "best_detection_path", None)
         return get_media_url(path) if path else None
+
+    def get_best_detection_bbox(self, obj):
+        """Returns the raw bounding box coordinates [x1, y1, x2, y2]."""
+        return getattr(obj, "best_detection_bbox", None)
 
     def get_best_detection_width(self, obj):
         """Returns the width of the detection bounding box."""
@@ -144,6 +190,19 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
         """Returns the height of the detection bounding box."""
         bbox = BoundingBox.from_coords(getattr(obj, "best_detection_bbox", None), raise_on_error=False)
         return bbox.height if bbox else None
+
+    def get_best_detection_capture_url(self, obj):
+        """Returns the public URL to the source capture (original full-frame image).
+
+        Built from annotated `path` + `public_base_url` to avoid loading the
+        capture (SourceImage) row per occurrence; presigned URLs for private
+        buckets aren't supported here for the same reason.
+        """
+        path = getattr(obj, "best_detection_capture_path", None)
+        base_url = getattr(obj, "best_detection_capture_public_base_url", None)
+        if path and base_url:
+            return SourceImage.build_public_url(base_url, path)
+        return None
 
 
 class CSVExporter(BaseExporter):
@@ -166,6 +225,8 @@ class CSVExporter(BaseExporter):
             .with_detections_count()
             .with_identifications()
             .with_best_detection()  # type: ignore[union-attr]  Custom queryset method
+            .with_best_machine_prediction()
+            .with_verification_info()
         )
 
     def export(self):

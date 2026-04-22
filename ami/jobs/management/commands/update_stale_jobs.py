@@ -1,38 +1,37 @@
-from celery import states
-from celery.result import AsyncResult
 from django.core.management.base import BaseCommand
-from django.utils import timezone
 
-from ami.jobs.models import Job, JobState
+from ami.jobs.models import Job
+from ami.jobs.tasks import check_stale_jobs
 
 
 class Command(BaseCommand):
-    help = (
-        "Update the status of all jobs that are not in a final state " "and have not been updated in the last X hours."
-    )
+    help = "Revoke stale jobs that have not been updated within the cutoff period."
 
-    # Add argument for the number of hours to consider a job stale
     def add_arguments(self, parser):
         parser.add_argument(
-            "--hours",
+            "--minutes",
             type=int,
-            default=Job.FAILED_CUTOFF_HOURS,
-            help="Number of hours to consider a job stale",
+            default=Job.STALLED_JOBS_MAX_MINUTES,
+            help="Minutes since last update to consider a job stale (default: %(default)s)",
+        )
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Show what would be done without making changes",
         )
 
     def handle(self, *args, **options):
-        stale_jobs = Job.objects.filter(
-            status__in=JobState.running_states(),
-            updated_at__lt=timezone.now() - timezone.timedelta(hours=options["hours"]),
-        )
+        results = check_stale_jobs(minutes=options["minutes"], dry_run=options["dry_run"])
 
-        for job in stale_jobs:
-            task = AsyncResult(job.task_id) if job.task_id else None
-            if task:
-                job.update_status(task.state, save=False)
-                job.save()
-                self.stdout.write(self.style.SUCCESS(f"Updated status of job {job.pk} to {task.state}"))
+        if not results:
+            self.stdout.write("No stale jobs found.")
+            return
+
+        prefix = "[dry-run] " if options["dry_run"] else ""
+        for r in results:
+            if r["action"] == "updated":
+                self.stdout.write(
+                    self.style.SUCCESS(f"{prefix}Job {r['job_id']}: updated to {r['state']} (from Celery)")
+                )
             else:
-                self.stdout.write(self.style.WARNING(f"Job {job.pk} has no associated task, setting status to FAILED"))
-                job.update_status(states.FAILURE, save=False)
-                job.save()
+                self.stdout.write(self.style.WARNING(f"{prefix}Job {r['job_id']}: revoked (no known Celery state)"))

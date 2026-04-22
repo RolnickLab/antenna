@@ -1,7 +1,6 @@
 """Integration tests for async job resource cleanup (NATS and Redis)."""
 
 from asgiref.sync import async_to_sync
-from django.core.cache import cache
 from django.test import TestCase
 from nats.js.errors import NotFoundError
 
@@ -9,9 +8,9 @@ from ami.jobs.models import Job, JobDispatchMode, JobState, MLJob
 from ami.jobs.tasks import _update_job_progress, update_job_failure, update_job_status
 from ami.main.models import Project, ProjectFeatureFlags, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
+from ami.ml.orchestration.async_job_state import AsyncJobStateManager
 from ami.ml.orchestration.jobs import queue_images_to_nats
 from ami.ml.orchestration.nats_queue import TaskQueueManager
-from ami.ml.orchestration.task_state import TaskStateManager
 
 
 class TestCleanupAsyncJobResources(TestCase):
@@ -58,13 +57,10 @@ class TestCleanupAsyncJobResources(TestCase):
         Args:
             job_id: The job ID to check
         """
-        # Verify Redis keys exist
-        state_manager = TaskStateManager(job_id)
+        # Verify Redis state exists (get_progress returns non-None when total_key is set)
+        state_manager = AsyncJobStateManager(job_id)
         for stage in state_manager.STAGES:
-            pending_key = state_manager._get_pending_key(stage)
-            self.assertIsNotNone(cache.get(pending_key), f"Redis key {pending_key} should exist")
-        total_key = state_manager._total_key
-        self.assertIsNotNone(cache.get(total_key), f"Redis key {total_key} should exist")
+            self.assertIsNotNone(state_manager.get_progress(stage), f"Redis state for stage '{stage}' should exist")
 
         # Verify NATS stream and consumer exist
         async def check_nats_resources():
@@ -124,13 +120,10 @@ class TestCleanupAsyncJobResources(TestCase):
         Args:
             job_id: The job ID to check
         """
-        # Verify Redis keys are deleted
-        state_manager = TaskStateManager(job_id)
+        # Verify Redis state is deleted (get_progress returns None when total_key is gone)
+        state_manager = AsyncJobStateManager(job_id)
         for stage in state_manager.STAGES:
-            pending_key = state_manager._get_pending_key(stage)
-            self.assertIsNone(cache.get(pending_key), f"Redis key {pending_key} should be deleted")
-        total_key = state_manager._total_key
-        self.assertIsNone(cache.get(total_key), f"Redis key {total_key} should be deleted")
+            self.assertIsNone(state_manager.get_progress(stage), f"Redis state for stage '{stage}' should be deleted")
 
         # Verify NATS stream and consumer are deleted
         async def check_nats_resources():
@@ -164,20 +157,37 @@ class TestCleanupAsyncJobResources(TestCase):
         job = self._create_job_with_queued_images()
 
         # Simulate job completion: complete all stages (collect, process, then results)
-        _update_job_progress(job.pk, stage="collect", progress_percentage=1.0)
-        _update_job_progress(job.pk, stage="process", progress_percentage=1.0)
-        _update_job_progress(job.pk, stage="results", progress_percentage=1.0)
+        _update_job_progress(job.pk, stage="collect", progress_percentage=1.0, complete_state=JobState.SUCCESS)
+        _update_job_progress(job.pk, stage="process", progress_percentage=1.0, complete_state=JobState.SUCCESS)
+        _update_job_progress(job.pk, stage="results", progress_percentage=1.0, complete_state=JobState.SUCCESS)
 
         # Verify cleanup happened
         self._verify_resources_cleaned(job.pk)
 
     def test_cleanup_on_job_failure(self):
-        """Test that resources are cleaned up when job fails."""
+        """Test that resources are cleaned up when job fails after progress is complete.
+
+        The Bug C guard in update_job_failure defers FAILURE for ASYNC_API jobs that
+        are still in-flight (progress.is_complete() == False). To exercise the
+        terminal cleanup path via task_failure for an ASYNC_API job, we first drive
+        all stages to complete, then fire the failure signal.
+        """
         job = self._create_job_with_queued_images()
 
         # Set task_id so the failure handler can find the job
         job.task_id = "test-task-failure-123"
         job.save()
+
+        # Drive progress to complete so the Bug C guard in update_job_failure falls
+        # through to cleanup. We mutate the persisted JobProgress directly because
+        # calling _update_job_progress with complete_state=SUCCESS would itself
+        # trigger cleanup (via cleanup_async_job_if_needed inside the progress
+        # update path), defeating the test's intent.
+        for stage in job.progress.stages:
+            stage.progress = 1.0
+            stage.status = JobState.SUCCESS
+        job.save()
+        job.refresh_from_db()
 
         # Simulate job failure by calling the failure signal handler
         update_job_failure(

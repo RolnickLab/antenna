@@ -6,10 +6,26 @@ set -o nounset
 
 python manage.py migrate
 
-# Launch VS Code debug server if DEBUGGER environment variable is set to 1
-# Note that the --reload flag is not compatible with debugpy, so manually restart the server when code changes
+# Set USE_UVICORN=1 to use the original raw uvicorn dev server instead of gunicorn
+if [ "${USE_UVICORN:-0}" = "1" ]; then
+    if [ "${DEBUGGER:-0}" = "1" ]; then
+        exec python -Xfrozen_modules=off -m debugpy --listen 0.0.0.0:5678 -m uvicorn config.asgi:application --host 0.0.0.0
+    else
+        exec uvicorn config.asgi:application --host 0.0.0.0 --reload --reload-include '*.html'
+    fi
+fi
+
+# Gunicorn with UvicornWorker (production-parity mode, now the default)
+# WEB_CONCURRENCY controls worker count (default: 1 for dev with auto-reload)
+WORKERS=${WEB_CONCURRENCY:-1}
+
 if [ "${DEBUGGER:-0}" = "1" ]; then
-    exec python -Xfrozen_modules=off -m debugpy --listen 0.0.0.0:5678 -m uvicorn config.asgi:application --host 0.0.0.0
+    echo "Starting Gunicorn with debugpy (1 worker)..."
+    exec python -Xfrozen_modules=off -m debugpy --listen 0.0.0.0:5678 -m gunicorn config.asgi --bind 0.0.0.0:8000 --workers 1 -k uvicorn.workers.UvicornWorker
+elif [ "$WORKERS" -eq 1 ]; then
+    echo "Starting Gunicorn with 1 worker (auto-reload enabled)..."
+    exec gunicorn config.asgi --bind 0.0.0.0:8000 --workers 1 -k uvicorn.workers.UvicornWorker --reload
 else
-    exec uvicorn config.asgi:application --host 0.0.0.0 --reload --reload-include '*.html'
+    echo "Starting Gunicorn with $WORKERS workers..."
+    exec gunicorn config.asgi --bind 0.0.0.0:8000 --workers "$WORKERS" -k uvicorn.workers.UvicornWorker
 fi

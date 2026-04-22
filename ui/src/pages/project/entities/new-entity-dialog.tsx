@@ -16,14 +16,14 @@ export const NewEntityDialog = ({
   buttonSize = 'small',
   buttonVariant = 'outline',
   collection,
-  type,
   isCompact,
+  type,
 }: {
   buttonSize?: string
   buttonVariant?: string
   collection: string
-  type: string
   isCompact?: boolean
+  type: string
 }) => {
   const { projectId } = useParams()
   const [isOpen, setIsOpen] = useState(false)
@@ -64,10 +64,12 @@ export const NewEntityDialog = ({
             isLoading={isLoading}
             isSuccess={isSuccess}
             onSubmit={(data) => {
-              createEntity({
+              const fieldValues = {
                 ...data,
                 projectId: projectId as string,
-              })
+              }
+
+              createEntity(fieldValues)
             }}
           />
         </div>

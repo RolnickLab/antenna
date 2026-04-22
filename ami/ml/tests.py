@@ -1,3 +1,4 @@
+import concurrent.futures
 import datetime
 import pathlib
 import unittest
@@ -9,7 +10,9 @@ from rest_framework.test import APIRequestFactory, APITestCase
 from ami.base.serializers import reverse_with_params
 from ami.main.models import (
     Classification,
+    Deployment,
     Detection,
+    Event,
     Project,
     SourceImage,
     SourceImageCollection,
@@ -53,10 +56,11 @@ class TestProcessingServiceAPI(APITestCase):
         self.factory = APIRequestFactory()
 
     def _create_processing_service(self, name: str, endpoint_url: str):
-        processing_services_create_url = reverse_with_params("api:processingservice-list")
+        processing_services_create_url = reverse_with_params(
+            "api:processingservice-list", params={"project_id": self.project.pk}
+        )
         self.client.force_authenticate(user=self.user)
         processing_service_data = {
-            "project": self.project.pk,
             "name": name,
             "endpoint_url": endpoint_url,
         }
@@ -114,6 +118,162 @@ class TestProcessingServiceAPI(APITestCase):
         pipelines_queryset = processing_service.pipelines.all()
 
         self.assertEqual(pipelines_queryset.count(), len(response["pipelines"]))
+
+    def test_create_processing_service_without_endpoint_url(self):
+        """Test creating a ProcessingService without endpoint_url (pull mode)"""
+        processing_services_create_url = reverse_with_params(
+            "api:processingservice-list", params={"project_id": self.project.pk}
+        )
+        self.client.force_authenticate(user=self.user)
+        processing_service_data = {
+            "name": "Pull Mode Service",
+            "description": "Service without endpoint",
+        }
+        resp = self.client.post(processing_services_create_url, processing_service_data)
+        self.client.force_authenticate(user=None)
+
+        self.assertEqual(resp.status_code, 201)
+        data = resp.json()
+
+        # Check that endpoint_url is null
+        self.assertIsNone(data["instance"]["endpoint_url"])
+
+        # Check that status indicates service is not yet live (no heartbeat received)
+        self.assertFalse(data["status"]["request_successful"])
+        self.assertFalse(data["status"]["server_live"])
+        self.assertIsNone(data["status"]["endpoint_url"])
+
+    def test_get_status_with_null_endpoint_url(self):
+        """Test get_status method when endpoint_url is None"""
+        service = ProcessingService.objects.create(name="Pull Mode Service", endpoint_url=None)
+        service.projects.add(self.project)
+
+        status = service.get_status()
+
+        self.assertFalse(status.request_successful)
+        self.assertFalse(status.server_live)  # No heartbeat received yet = not live
+        self.assertIsNone(status.endpoint_url)
+        self.assertEqual(status.pipelines_online, [])
+
+    def test_get_pipeline_configs_with_null_endpoint_url(self):
+        """Test get_pipeline_configs method when endpoint_url is None"""
+        service = ProcessingService.objects.create(name="Pull Mode Service", endpoint_url=None)
+
+        configs = service.get_pipeline_configs()
+
+        self.assertEqual(configs, [])
+
+
+class TestProcessingServiceLastSeen(TestCase):
+    """Test the last_seen, last_seen_live, and last_seen_latency fields."""
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Last Seen Test Project")
+
+    def test_mark_seen_sets_fields(self):
+        """Test that mark_seen() sets last_seen and last_seen_live."""
+        service = ProcessingService.objects.create(name="Async Worker", endpoint_url=None)
+        service.projects.add(self.project)
+
+        self.assertIsNone(service.last_seen)
+        self.assertIsNone(service.last_seen_live)
+
+        service.mark_seen(live=True)
+        service.refresh_from_db()
+
+        self.assertIsNotNone(service.last_seen)
+        self.assertTrue(service.last_seen_live)
+
+    def test_mark_seen_offline(self):
+        """Test that mark_seen(live=False) sets last_seen_live to False."""
+        service = ProcessingService.objects.create(name="Async Worker Offline", endpoint_url=None)
+
+        service.mark_seen(live=False)
+        service.refresh_from_db()
+
+        self.assertIsNotNone(service.last_seen)
+        self.assertFalse(service.last_seen_live)
+
+    def test_get_status_updates_last_seen_for_sync_service(self):
+        """Test that get_status() updates last_seen fields for sync services (even if endpoint is unreachable)."""
+        service = ProcessingService.objects.create(name="Sync Service", endpoint_url="http://nonexistent-host:9999")
+        service.projects.add(self.project)
+
+        # get_status should update the fields even for unreachable endpoints
+        service.get_status(timeout=1)
+        service.refresh_from_db()
+
+        self.assertIsNotNone(service.last_seen)
+        self.assertFalse(service.last_seen_live)  # unreachable = not live
+        self.assertIsNotNone(service.last_seen_latency)
+
+    def test_model_has_last_seen_fields(self):
+        """Test that ProcessingService model has last_seen fields and not last_checked."""
+        service = ProcessingService.objects.create(name="Field Test Service", endpoint_url=None)
+        service.mark_seen(live=True)
+        service.refresh_from_db()
+
+        # Verify new fields exist
+        self.assertTrue(hasattr(service, "last_seen"))
+        self.assertTrue(hasattr(service, "last_seen_live"))
+        self.assertTrue(hasattr(service, "last_seen_latency"))
+
+        # Verify old fields don't exist
+        self.assertFalse(hasattr(service, "last_checked"))
+        self.assertFalse(hasattr(service, "last_checked_live"))
+        self.assertFalse(hasattr(service, "last_checked_latency"))
+
+
+class TestProjectPipelineRegistrationUpdatesLastSeen(APITestCase):
+    """Test that async pipeline registration updates last_seen on the processing service."""
+
+    def setUp(self):
+        from ami.users.roles import ProjectManager, create_roles_for_project
+
+        self.user = User.objects.create_user(email="lastseen@example.com")  # type: ignore
+        self.project = Project.objects.create(name="Last Seen Project", owner=self.user, create_defaults=False)
+        create_roles_for_project(self.project)
+        ProjectManager.assign_user(self.user, self.project)
+
+    def test_pipeline_registration_marks_service_as_seen(self):
+        """Test that POSTing to the pipeline registration endpoint marks the service as last_seen_live."""
+        url = f"/api/v2/projects/{self.project.pk}/pipelines/"
+        payload = {
+            "processing_service_name": "AsyncTestWorker",
+            "pipelines": [],
+        }
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(url, payload, format="json")
+        self.assertEqual(response.status_code, 201)
+
+        service = ProcessingService.objects.get(name="AsyncTestWorker")
+        self.assertIsNotNone(service.last_seen)
+        self.assertTrue(service.last_seen_live)
+
+    def test_repeated_registration_updates_last_seen(self):
+        """Test that re-registering updates the last_seen timestamp."""
+        url = f"/api/v2/projects/{self.project.pk}/pipelines/"
+        payload = {
+            "processing_service_name": "AsyncTestWorkerRepeat",
+            "pipelines": [],
+        }
+
+        self.client.force_authenticate(user=self.user)
+
+        # First registration
+        self.client.post(url, payload, format="json")
+        service = ProcessingService.objects.get(name="AsyncTestWorkerRepeat")
+        first_seen = service.last_seen
+
+        # Second registration
+        self.client.post(url, payload, format="json")
+        service.refresh_from_db()
+        second_seen = service.last_seen
+
+        self.assertIsNotNone(first_seen)
+        self.assertIsNotNone(second_seen)
+        self.assertGreaterEqual(second_seen, first_seen)
 
 
 class TestPipelineWithProcessingService(TestCase):
@@ -687,6 +847,181 @@ class TestPipeline(TestCase):
         final_config = self.pipeline.get_config(self.project.pk)
         self.assertEqual(final_config["test_param"], "project_value")
 
+    def test_image_with_null_detection(self):
+        """
+        Test saving results for a pipeline that returns null detections for some images.
+        """
+        image = self.test_images[0]
+        results = self.fake_pipeline_results([image], self.pipeline)
+
+        # Manually change the results for a single image to a list of empty detections
+        results.detections = []
+
+        save_results(results)
+
+        image.save()
+        self.assertEqual(image.get_detections_count(), 0)  # detections_count should exclude null detections
+        total_num_detections = image.detections.distinct().count()
+        self.assertEqual(total_num_detections, 1)
+
+        was_processed = image.get_was_processed()
+        self.assertEqual(was_processed, True)
+
+        # Also test filtering by algorithm
+        was_processed = image.get_was_processed(algorithm_key="random-detector")
+        self.assertEqual(was_processed, True)
+
+    def test_filter_processed_images_skips_null_only_image(self):
+        """
+        An image with only null detections (processed, nothing found) should be
+        skipped by filter_processed_images — it doesn't need reprocessing.
+        """
+        from ami.ml.models.pipeline import filter_processed_images
+
+        image = self.test_images[0]
+        detector = self.algorithms["random-detector"]
+
+        # Simulate a previous run that found nothing: create a null detection
+        Detection.objects.create(
+            source_image=image,
+            detection_algorithm=detector,
+            bbox=None,
+        )
+
+        result = list(filter_processed_images([image], self.pipeline))
+        self.assertEqual(result, [], "Image with only null detections should be skipped")
+
+    def test_filter_processed_images_yields_image_with_null_and_real_unclassified(self):
+        """
+        An image with BOTH a null detection AND a real detection lacking classifications
+        should NOT be skipped — the real detection still needs to be classified.
+        """
+        from ami.ml.models.pipeline import filter_processed_images
+
+        image = self.test_images[0]
+        detector = self.algorithms["random-detector"]
+
+        # Null detection from a prior empty run
+        Detection.objects.create(
+            source_image=image,
+            detection_algorithm=detector,
+            bbox=None,
+        )
+        # Real detection with no classification yet
+        Detection.objects.create(
+            source_image=image,
+            detection_algorithm=detector,
+            bbox=[0.1, 0.2, 0.3, 0.4],
+        )
+
+        result = list(filter_processed_images([image], self.pipeline))
+        self.assertEqual(result, [image], "Image with real unclassified detections should be yielded")
+
+    def test_filter_processed_images_skips_null_and_fully_classified(self):
+        """
+        An image with a null detection AND a real detection that is fully classified
+        by all pipeline algorithms should be skipped — it's fully processed.
+        """
+        from ami.ml.models.pipeline import filter_processed_images
+
+        image = self.test_images[0]
+        detector = self.algorithms["random-detector"]
+        binary_classifier = self.algorithms["random-binary-classifier"]
+        species_classifier = self.algorithms["random-species-classifier"]
+
+        # Null detection from a prior empty run
+        Detection.objects.create(
+            source_image=image,
+            detection_algorithm=detector,
+            bbox=None,
+        )
+        # Real detection with classifications from all pipeline algorithms
+        real_det = Detection.objects.create(
+            source_image=image,
+            detection_algorithm=detector,
+            bbox=[0.1, 0.2, 0.3, 0.4],
+        )
+        taxon = Taxon.objects.create(name="Test Species Filtered")
+        Classification.objects.create(
+            detection=real_det,
+            taxon=taxon,
+            algorithm=binary_classifier,
+            score=0.9,
+            timestamp=datetime.datetime.now(),
+        )
+        Classification.objects.create(
+            detection=real_det,
+            taxon=taxon,
+            algorithm=species_classifier,
+            score=0.8,
+            timestamp=datetime.datetime.now(),
+        )
+
+        result = list(filter_processed_images([image], self.pipeline))
+        self.assertEqual(result, [], "Fully classified image with null detection should be skipped")
+
+    def test_null_detections_are_algorithm_specific(self):
+        """
+        Null detections from different pipelines/algorithms should not be shared.
+        Each algorithm's null detection is tracked separately so that
+        get_was_processed(algorithm_key=...) returns the correct per-algorithm status.
+        """
+        from ami.ml.models.pipeline import save_results
+
+        image = self.test_images[0]
+
+        # Pipeline 1 processes image, finds nothing
+        results_1 = self.fake_pipeline_results([image], self.pipeline)
+        results_1.detections = []
+        save_results(results_1)
+
+        # Create a second pipeline with a DIFFERENT detector algorithm
+        detector_2, _ = Algorithm.objects.get_or_create(
+            key="constant-detector",
+            defaults={"name": "Constant Detector", "task_type": "detection"},
+        )
+        pipeline_2 = Pipeline.objects.create(name="Test Pipeline 2 Null Detect")
+        pipeline_2.algorithms.set([detector_2])
+
+        # Pipeline 2 processes the same image, also finds nothing
+        results_2 = self.fake_pipeline_results([image], pipeline_2)
+        results_2.detections = []
+        save_results(results_2)
+
+        # Both algorithms should independently mark the image as processed
+        detector_1_key = self.algorithms["random-detector"].key
+        self.assertTrue(image.get_was_processed(algorithm_key=detector_1_key))
+        self.assertTrue(
+            image.get_was_processed(algorithm_key="constant-detector"),
+            "Pipeline 2's null detection should be created separately",
+        )
+
+        # Each pipeline must have its own null detection in the DB
+        null_detections = image.detections.filter(bbox__isnull=True)
+        self.assertEqual(null_detections.count(), 2, "Each pipeline should have its own null detection")
+
+    def test_null_detection_deduplication_same_pipeline(self):
+        """
+        Running the same pipeline twice on the same image should not create
+        duplicate null detections — the second run reuses the existing one.
+        """
+        from ami.ml.models.pipeline import save_results
+
+        image = self.test_images[0]
+
+        # Run pipeline twice, both with no detections
+        results_1 = self.fake_pipeline_results([image], self.pipeline)
+        results_1.detections = []
+        save_results(results_1)
+
+        results_2 = self.fake_pipeline_results([image], self.pipeline)
+        results_2.detections = []
+        save_results(results_2)
+
+        # Should still be exactly one null detection
+        null_detections = image.detections.filter(bbox__isnull=True)
+        self.assertEqual(null_detections.count(), 1, "Same pipeline should not create duplicate null detections")
+
 
 class TestAlgorithmCategoryMaps(TestCase):
     def setUp(self):
@@ -864,22 +1199,23 @@ class TestTaskStateManager(TestCase):
         """Set up test fixtures."""
         from django.core.cache import cache
 
-        from ami.ml.orchestration.task_state import TaskStateManager
+        from ami.ml.orchestration.async_job_state import AsyncJobStateManager
 
         cache.clear()
         self.job_id = 123
-        self.manager = TaskStateManager(self.job_id)
+        self.manager = AsyncJobStateManager(self.job_id)
         self.image_ids = ["img1", "img2", "img3", "img4", "img5"]
 
     def _init_and_verify(self, image_ids):
         """Helper to initialize job and verify initial state."""
         self.manager.initialize_job(image_ids)
-        progress = self.manager._get_progress(set(), "process")
+        progress = self.manager.get_progress("process")
         assert progress is not None
         self.assertEqual(progress.total, len(image_ids))
         self.assertEqual(progress.remaining, len(image_ids))
         self.assertEqual(progress.processed, 0)
         self.assertEqual(progress.percentage, 0.0)
+        self.assertEqual(progress.failed, 0)
         return progress
 
     def test_initialize_job(self):
@@ -888,79 +1224,83 @@ class TestTaskStateManager(TestCase):
 
         # Verify both stages are initialized
         for stage in self.manager.STAGES:
-            progress = self.manager._get_progress(set(), stage)
+            progress = self.manager.get_progress(stage)
             assert progress is not None
             self.assertEqual(progress.total, len(self.image_ids))
+            self.assertEqual(progress.failed, 0)
 
     def test_progress_tracking(self):
         """Test progress updates correctly as images are processed."""
         self._init_and_verify(self.image_ids)
 
         # Process 2 images
-        progress = self.manager._get_progress({"img1", "img2"}, "process")
+        progress = self.manager.update_state({"img1", "img2"}, "process")
         assert progress is not None
         self.assertEqual(progress.remaining, 3)
         self.assertEqual(progress.processed, 2)
         self.assertEqual(progress.percentage, 0.4)
 
         # Process 2 more images
-        progress = self.manager._get_progress({"img3", "img4"}, "process")
+        progress = self.manager.update_state({"img3", "img4"}, "process")
         assert progress is not None
         self.assertEqual(progress.remaining, 1)
         self.assertEqual(progress.processed, 4)
         self.assertEqual(progress.percentage, 0.8)
 
         # Process last image
-        progress = self.manager._get_progress({"img5"}, "process")
+        progress = self.manager.update_state({"img5"}, "process")
         assert progress is not None
         self.assertEqual(progress.remaining, 0)
         self.assertEqual(progress.processed, 5)
         self.assertEqual(progress.percentage, 1.0)
 
-    def test_update_state_with_locking(self):
-        """Test update_state acquires lock, updates progress, and releases lock."""
-        from django.core.cache import cache
-
+    def test_update_state_concurrent(self):
+        """Test that concurrent workers update state correctly without data races."""
         self._init_and_verify(self.image_ids)
 
-        # First update should succeed
-        progress = self.manager.update_state({"img1", "img2"}, "process", "task1")
-        assert progress is not None
-        self.assertEqual(progress.processed, 2)
+        # Three workers process disjoint image sets truly concurrently
+        errors: list[BaseException] = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            futures = [
+                executor.submit(self.manager.update_state, {"img1", "img2"}, "process"),
+                executor.submit(self.manager.update_state, {"img3"}, "process"),
+                executor.submit(self.manager.update_state, {"img4", "img5"}, "process"),
+            ]
+            _errors = [f.exception() for f in concurrent.futures.as_completed(futures)]
+            errors = [e for e in _errors if e is not None]
 
-        # Simulate concurrent update by holding the lock
-        lock_key = f"job:{self.job_id}:process_results_lock"
-        cache.set(lock_key, "other_task", timeout=60)
+        self.assertEqual(errors, [], f"Concurrent workers raised exceptions: {errors}")
 
-        # Update should fail (lock held by another task)
-        progress = self.manager.update_state({"img3"}, "process", "task1")
-        self.assertIsNone(progress)
+        # Final state reflects all concurrent updates
+        final = self.manager.get_progress("process")
+        assert final is not None
+        self.assertEqual(final.processed, 5)
+        self.assertEqual(final.remaining, 0)
 
-        # Release the lock and retry
-        cache.delete(lock_key)
-        progress = self.manager.update_state({"img3"}, "process", "task1")
-        assert progress is not None
-        self.assertEqual(progress.processed, 3)
+        # SREM is idempotent: retrying already-processed images doesn't change counts
+        progress_retry = self.manager.update_state({"img1", "img2"}, "process")
+        assert progress_retry is not None
+        self.assertEqual(progress_retry.processed, 5)
 
     def test_stages_independent(self):
         """Test that different stages track progress independently."""
         self._init_and_verify(self.image_ids)
 
         # Update process stage
-        self.manager._get_progress({"img1", "img2"}, "process")
-        progress_process = self.manager._get_progress(set(), "process")
+        self.manager.update_state({"img1", "img2"}, "process")
+        progress_process = self.manager.get_progress("process")
         assert progress_process is not None
         self.assertEqual(progress_process.remaining, 3)
 
         # Results stage should still have all images pending
-        progress_results = self.manager._get_progress(set(), "results")
+        progress_results = self.manager.get_progress("results")
         assert progress_results is not None
         self.assertEqual(progress_results.remaining, 5)
 
     def test_empty_job(self):
         """Test handling of job with no images."""
         self.manager.initialize_job([])
-        progress = self.manager._get_progress(set(), "process")
+        progress = self.manager.get_progress("process")
         assert progress is not None
         self.assertEqual(progress.total, 0)
         self.assertEqual(progress.percentage, 1.0)  # Empty job is 100% complete
@@ -970,12 +1310,276 @@ class TestTaskStateManager(TestCase):
         self._init_and_verify(self.image_ids)
 
         # Verify keys exist
-        progress = self.manager._get_progress(set(), "process")
+        progress = self.manager.get_progress("process")
         self.assertIsNotNone(progress)
 
         # Cleanup
         self.manager.cleanup()
 
         # Verify keys are gone
-        progress = self.manager._get_progress(set(), "process")
+        progress = self.manager.get_progress("process")
         self.assertIsNone(progress)
+
+    def test_failed_image_tracking(self):
+        """Test basic failed image tracking with no double-counting on retries."""
+        self._init_and_verify(self.image_ids)
+
+        # Mark 2 images as failed in process stage
+        progress = self.manager.update_state({"img1", "img2"}, "process", failed_image_ids={"img1", "img2"})
+        assert progress is not None
+        self.assertEqual(progress.failed, 2)
+
+        # Retry same 2 images (fail again) - SADD is idempotent, no double-counting
+        progress = self.manager.update_state(set(), "process", failed_image_ids={"img1", "img2"})
+        assert progress is not None
+        self.assertEqual(progress.failed, 2)
+
+        # Fail a different image
+        progress = self.manager.update_state(set(), "process", failed_image_ids={"img3"})
+        assert progress is not None
+        self.assertEqual(progress.failed, 3)
+
+    def test_failed_and_processed_mixed(self):
+        """Test mixed successful and failed processing in same batch."""
+        self._init_and_verify(self.image_ids)
+
+        # Process 2 successfully, 2 fail, 1 remains pending
+        progress = self.manager.update_state(
+            {"img1", "img2", "img3", "img4"}, "process", failed_image_ids={"img3", "img4"}
+        )
+        assert progress is not None
+        self.assertEqual(progress.processed, 4)
+        self.assertEqual(progress.failed, 2)
+        self.assertEqual(progress.remaining, 1)
+        self.assertEqual(progress.percentage, 0.8)
+
+    def test_cleanup_removes_failed_set(self):
+        """Test that cleanup removes failed image set."""
+        self._init_and_verify(self.image_ids)
+
+        # Add failed images and verify they're tracked
+        progress = self.manager.update_state({"img1", "img2"}, "process", failed_image_ids={"img1", "img2"})
+        assert progress is not None
+        self.assertEqual(progress.failed, 2)
+
+        # Cleanup
+        self.manager.cleanup()
+
+        # Verify all state is gone (get_progress returns None when total_key is deleted)
+        progress = self.manager.get_progress("process")
+        self.assertIsNone(progress)
+
+    def test_update_state_raises_on_redis_error(self):
+        """
+        A transient Redis failure during update_state must propagate, not be
+        swallowed as None. The None return is reserved for the genuine
+        "state actually gone" case (see test below). Conflating the two is
+        the #1219 bug that escalated transient connection resets into fatal
+        job FAILUREs.
+        """
+        from unittest.mock import MagicMock, patch
+
+        from redis.exceptions import RedisError
+
+        self._init_and_verify(self.image_ids)
+
+        # Replace the pipeline context manager with one whose execute() raises.
+        # Everything upstream of execute() is safely called (srem/sadd/scard/get
+        # on a pipeline only queue commands; they don't hit the network until
+        # execute runs), so we only need to blow up at the execute boundary.
+        pipe = MagicMock()
+        pipe.execute.side_effect = RedisError("Connection reset by peer")
+        fake_redis = MagicMock()
+        fake_redis.pipeline.return_value.__enter__.return_value = pipe
+
+        with patch.object(self.manager, "_get_redis", return_value=fake_redis):
+            with self.assertRaises(RedisError):
+                self.manager.update_state({"img1", "img2"}, "process")
+
+    def test_update_state_returns_none_when_state_genuinely_missing(self):
+        """
+        When the job's total-images key is actually missing from Redis (job
+        was never initialized, cleaned up, or TTL expired), update_state
+        returns None. This is the only case that should trigger the
+        terminal "state missing" failure path in the caller.
+        """
+        # Do NOT call initialize_job — the total key doesn't exist.
+        progress = self.manager.update_state({"img1", "img2"}, "process")
+        self.assertIsNone(progress)
+
+
+class TestSaveResultsRefreshesDeploymentCounts(TestCase):
+    """save_results must refresh Deployment cached counts, not just Event counts.
+
+    Reproduces the "Station counts for occurrences and taxa are not always
+    getting updated" report: prior to the fix, save_results refreshed
+    update_calculated_fields_for_events but never the parent Deployment, so
+    deployment.occurrences_count / taxa_count stayed at the pre-job value
+    until something else (a manual deployment.save) ran.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Refresh Counts Project")
+        self.deployment = Deployment.objects.create(name="d1", project=self.project)
+        event_time = datetime.datetime(2026, 4, 16, 22, 0, 0)
+        self.event = Event.objects.create(
+            project=self.project,
+            deployment=self.deployment,
+            group_by="2026-04-16",
+            start=event_time,
+            end=event_time,
+        )
+        self.image = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            timestamp=event_time,
+            path="refresh_counts_test.jpg",
+        )
+        self.collection = SourceImageCollection.objects.create(project=self.project, name="c")
+        self.collection.images.add(self.image)
+
+        self.pipeline = Pipeline.objects.create(name="Refresh Counts Pipeline (Random)")
+        self.algorithms = {
+            key: get_or_create_algorithm_and_category_map(val) for key, val in ALGORITHM_CHOICES.items()
+        }
+        self.pipeline.algorithms.set(
+            [
+                self.algorithms["random-detector"],
+                self.algorithms["random-binary-classifier"],
+                self.algorithms["random-species-classifier"],
+            ]
+        )
+
+        self.deployment.update_calculated_fields(save=True)
+        self.deployment.refresh_from_db()
+        self.assertEqual(self.deployment.occurrences_count, 0)
+        self.assertEqual(self.deployment.taxa_count, 0)
+
+    def _fake_results(self):
+        detector = ALGORITHM_CHOICES["random-detector"]
+        binary_classifier = ALGORITHM_CHOICES["random-binary-classifier"]
+        species_classifier = ALGORITHM_CHOICES["random-species-classifier"]
+        assert binary_classifier.category_map and species_classifier.category_map
+
+        detection = DetectionResponse(
+            source_image_id=self.image.pk,
+            bbox=BoundingBox(x1=0.0, y1=0.0, x2=1.0, y2=1.0),
+            inference_time=0.1,
+            algorithm=AlgorithmReference(name=detector.name, key=detector.key),
+            timestamp=self.image.timestamp,
+            classifications=[
+                ClassificationResponse(
+                    classification=binary_classifier.category_map.labels[0],
+                    labels=binary_classifier.category_map.labels,
+                    scores=[0.95],
+                    algorithm=AlgorithmReference(name=binary_classifier.name, key=binary_classifier.key),
+                    timestamp=self.image.timestamp,
+                    terminal=False,
+                ),
+                ClassificationResponse(
+                    classification=species_classifier.category_map.labels[0],
+                    labels=species_classifier.category_map.labels,
+                    scores=[0.85],
+                    algorithm=AlgorithmReference(name=species_classifier.name, key=species_classifier.key),
+                    timestamp=self.image.timestamp,
+                    terminal=True,
+                ),
+            ],
+        )
+        return PipelineResultsResponse(
+            pipeline=self.pipeline.slug,
+            algorithms={
+                detector.key: detector,
+                binary_classifier.key: binary_classifier,
+                species_classifier.key: species_classifier,
+            },
+            total_time=0.01,
+            source_images=[SourceImageResponse(id=self.image.pk, url=self.image.path)],
+            detections=[detection],
+        )
+
+    def test_deployment_counts_refresh_after_save_results(self):
+        save_results(self._fake_results())
+
+        self.deployment.refresh_from_db()
+        self.assertGreater(
+            self.deployment.occurrences_count,
+            0,
+            "Deployment.occurrences_count should reflect occurrences created by save_results",
+        )
+        self.assertGreater(
+            self.deployment.taxa_count,
+            0,
+            "Deployment.taxa_count should reflect taxa from occurrences created by save_results",
+        )
+
+
+class TestAlgorithmViewSetProjectFilter(APITestCase):
+    """
+    The algorithm list endpoint is scoped to algorithms belonging to
+    pipelines enabled for the active project.
+    """
+
+    def setUp(self):
+        from ami.ml.models import ProjectPipelineConfig
+
+        self.user = User.objects.create_user(email="algos@example.com", is_staff=True)  # type: ignore
+        self.project = Project.objects.create(name="Algo Project A", create_defaults=False)
+        self.other_project = Project.objects.create(name="Algo Project B", create_defaults=False)
+
+        # Project A: one enabled pipeline, one disabled pipeline
+        self.algo_enabled = Algorithm.objects.create(name="Algo Enabled", version=1)
+        self.algo_disabled = Algorithm.objects.create(name="Algo Disabled", version=1)
+        # Project B: a different pipeline/algorithm
+        self.algo_other_project = Algorithm.objects.create(name="Algo Other Project", version=1)
+        # Unrelated algorithm not attached to any pipeline
+        self.algo_orphan = Algorithm.objects.create(name="Algo Orphan", version=1)
+
+        enabled_pipeline = Pipeline.objects.create(name="Enabled Pipeline")
+        enabled_pipeline.algorithms.add(self.algo_enabled)
+        ProjectPipelineConfig.objects.create(project=self.project, pipeline=enabled_pipeline, enabled=True)
+
+        disabled_pipeline = Pipeline.objects.create(name="Disabled Pipeline")
+        disabled_pipeline.algorithms.add(self.algo_disabled)
+        ProjectPipelineConfig.objects.create(project=self.project, pipeline=disabled_pipeline, enabled=False)
+
+        other_pipeline = Pipeline.objects.create(name="Other Project Pipeline")
+        other_pipeline.algorithms.add(self.algo_other_project)
+        ProjectPipelineConfig.objects.create(project=self.other_project, pipeline=other_pipeline, enabled=True)
+
+        self.client.force_authenticate(user=self.user)
+
+    def _list_algorithm_names(self, project_id=None):
+        params = {"project_id": project_id} if project_id is not None else {}
+        url = reverse_with_params("api:algorithm-list", params=params)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        return {row["name"] for row in response.json()["results"]}
+
+    def test_lists_only_enabled_pipeline_algorithms_for_project(self):
+        names = self._list_algorithm_names(project_id=self.project.pk)
+        self.assertEqual(names, {"Algo Enabled"})
+
+    def test_other_project_only_sees_its_own_algorithms(self):
+        names = self._list_algorithm_names(project_id=self.other_project.pk)
+        self.assertEqual(names, {"Algo Other Project"})
+
+    def test_unscoped_request_returns_all_algorithms(self):
+        """Without project_id, current behavior lists all algorithms (unchanged)."""
+        names = self._list_algorithm_names()
+        self.assertIn("Algo Enabled", names)
+        self.assertIn("Algo Disabled", names)
+        self.assertIn("Algo Other Project", names)
+        self.assertIn("Algo Orphan", names)
+
+    def test_detail_endpoint_unscoped_even_with_project_id(self):
+        """Detail stays unscoped so historical classification links still resolve."""
+        url = reverse_with_params(
+            "api:algorithm-detail",
+            kwargs={"pk": self.algo_disabled.pk},
+            params={"project_id": self.project.pk},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["name"], "Algo Disabled")

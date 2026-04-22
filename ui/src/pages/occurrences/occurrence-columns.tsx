@@ -1,6 +1,7 @@
 import { DeterminationScore } from 'components/determination-score'
 import { Occurrence } from 'data-services/models/occurrence'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
 import {
   CellTheme,
@@ -9,24 +10,20 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import { TaxonDetails } from 'nova-ui-kit'
-import { Agree } from 'pages/occurrence-details/agree/agree'
-import { IdQuickActions } from 'pages/occurrence-details/id-quick-actions/id-quick-actions'
-import { SuggestIdPopover } from 'pages/occurrence-details/suggest-id/suggest-id-popover'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
-import { UserPermission } from 'utils/user/types'
-import { useUserInfo } from 'utils/user/userInfoContext'
+import { OccurrenceActions } from './occurrence-actions'
 import styles from './occurrences.module.scss'
 
-export const columns: (
-  projectId: string,
-  showQuickActions?: boolean
-) => TableColumn<Occurrence>[] = (
-  projectId: string,
-  showQuickActions?: boolean
-) => [
+export const columns = ({
+  projectId,
+  showActions,
+}: {
+  projectId: string
+  showActions?: boolean
+}): TableColumn<Occurrence>[] => [
   {
     id: 'snapshots',
     name: translate(STRING.FIELD_LABEL_SNAPSHOTS),
@@ -60,18 +57,18 @@ export const columns: (
         id={item.id}
         item={item}
         projectId={projectId}
-        showQuickActions={showQuickActions}
+        showActions={showActions}
       />
     ),
   },
   {
     id: 'score',
     name: translate(STRING.FIELD_LABEL_SCORE),
+    tooltip: translate(STRING.TOOLTIP_SCORE),
     sortField: 'determination_score',
     renderCell: (item: Occurrence) => (
       <BasicTableCell>
         <DeterminationScore
-          confirmed={item.determinationVerified}
           score={item.determinationScore}
           scoreLabel={item.determinationScoreLabel}
           tooltip={
@@ -83,6 +80,7 @@ export const columns: (
                   score: `${item.determinationScore}`,
                 })
           }
+          verified={item.determinationVerified}
         />
       </BasicTableCell>
     ),
@@ -90,6 +88,7 @@ export const columns: (
   {
     id: 'deployment',
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
+    tooltip: translate(STRING.TOOLTIP_DEPLOYMENT),
     sortField: 'deployment',
     renderCell: (item: Occurrence) => {
       if (!item.deploymentId) {
@@ -114,6 +113,7 @@ export const columns: (
   {
     id: 'session',
     name: translate(STRING.FIELD_LABEL_SESSION),
+    tooltip: translate(STRING.TOOLTIP_SESSION),
     sortField: 'event',
     renderCell: (item: Occurrence) => {
       if (!item.sessionId) {
@@ -158,13 +158,13 @@ export const columns: (
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
-    renderCell: (item: Occurrence) => <BasicTableCell value={item.createdAt} />,
+    renderCell: (item: Occurrence) => <DateTableCell date={item.createdAt} />,
   },
   {
     id: 'updated-at',
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
-    renderCell: (item: Occurrence) => <BasicTableCell value={item.updatedAt} />,
+    renderCell: (item: Occurrence) => <DateTableCell date={item.updatedAt} />,
   },
 ]
 
@@ -172,14 +172,13 @@ const TaxonCell = ({
   id,
   item,
   projectId,
-  showQuickActions,
+  showActions,
 }: {
   id?: string
   item: Occurrence
   projectId: string
-  showQuickActions?: boolean
+  showActions?: boolean
 }) => {
-  const { userInfo } = useUserInfo()
   const detailsRoute = getAppRoute({
     to: APP_ROUTES.OCCURRENCE_DETAILS({
       projectId,
@@ -187,8 +186,6 @@ const TaxonCell = ({
     }),
     keepSearchParams: true,
   })
-  const canUpdate = item.userPermissions.includes(UserPermission.Update)
-  const agreed = userInfo ? item.userAgreed(userInfo.id) : false
 
   return (
     <div id={id} className={styles.taxonCell}>
@@ -197,27 +194,7 @@ const TaxonCell = ({
           <Link to={detailsRoute}>
             <TaxonDetails compact taxon={item.determinationTaxon} />
           </Link>
-          {showQuickActions && canUpdate && (
-            <div className={styles.taxonActions}>
-              <Agree
-                agreed={agreed}
-                agreeWith={{
-                  identificationId: item.determinationIdentificationId,
-                  predictionId: item.determinationPredictionId,
-                }}
-                applied
-                compact
-                occurrenceId={item.id}
-                taxonId={item.determinationTaxon.id}
-              />
-              <SuggestIdPopover occurrenceIds={[item.id]} />
-              <IdQuickActions
-                occurrenceIds={[item.id]}
-                occurrenceTaxa={[item.determinationTaxon]}
-                zIndex={1}
-              />
-            </div>
-          )}
+          <OccurrenceActions item={item} showActions={showActions} />
         </div>
       </BasicTableCell>
     </div>

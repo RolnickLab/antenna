@@ -26,11 +26,13 @@ export const BasicTooltip = ({
         <Tooltip.Trigger asChild={asChild} onClick={onTriggerClick}>
           {children}
         </Tooltip.Trigger>
-        <Tooltip.Content className="max-w-xs" side="bottom" align={align}>
-          <span className="block text-center whitespace-break-spaces">
-            {content}
-          </span>
-        </Tooltip.Content>
+        <Tooltip.Portal>
+          <Tooltip.Content className="max-w-xs" side="bottom" align={align}>
+            <span className="block text-center whitespace-break-spaces">
+              {content}
+            </span>
+          </Tooltip.Content>
+        </Tooltip.Portal>
       </Tooltip.Root>
     </Tooltip.Provider>
   )

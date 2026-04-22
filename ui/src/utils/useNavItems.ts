@@ -1,5 +1,4 @@
 import { useStatus } from 'data-services/hooks/useStatus'
-import { IconType } from 'design-system/components/icon/icon'
 import { useMemo } from 'react'
 import { matchPath, useLocation, useParams } from 'react-router-dom'
 import { APP_ROUTES } from './constants'
@@ -9,7 +8,6 @@ import { useUser } from './user/userContext'
 interface NavigationItem {
   id: string
   title: string
-  icon?: IconType
   count?: number
   path?: string
   matchPath: string
@@ -28,7 +26,6 @@ export const useNavItems = () => {
       {
         id: 'project',
         title: translate(STRING.NAV_ITEM_PROJECT),
-        icon: IconType.Overview,
         path: APP_ROUTES.PROJECT_DETAILS({ projectId: projectId as string }),
         matchPath: APP_ROUTES.PROJECT_DETAILS({ projectId: ':projectId' }),
       },
@@ -37,7 +34,6 @@ export const useNavItems = () => {
             {
               id: 'jobs',
               title: translate(STRING.NAV_ITEM_JOBS),
-              icon: IconType.BatchId,
               path: APP_ROUTES.JOBS({ projectId: projectId as string }),
               matchPath: APP_ROUTES.JOB_DETAILS({
                 projectId: ':projectId',
@@ -49,7 +45,6 @@ export const useNavItems = () => {
       {
         id: 'captures',
         title: translate(STRING.NAV_ITEM_CAPTURES),
-        icon: IconType.Images,
         count: status?.numCaptures,
         path: APP_ROUTES.CAPTURES({ projectId: projectId as string }),
         matchPath: APP_ROUTES.CAPTURES({ projectId: ':projectId' }),
@@ -57,7 +52,6 @@ export const useNavItems = () => {
       {
         id: 'deployments',
         title: translate(STRING.NAV_ITEM_DEPLOYMENTS),
-        icon: IconType.Deployments,
         count: status?.numDeployments,
         path: APP_ROUTES.DEPLOYMENTS({ projectId: projectId as string }),
         matchPath: APP_ROUTES.DEPLOYMENT_DETAILS({
@@ -68,7 +62,6 @@ export const useNavItems = () => {
       {
         id: 'sessions',
         title: translate(STRING.NAV_ITEM_SESSIONS),
-        icon: IconType.Sessions,
         count: status?.numSessions,
         path: APP_ROUTES.SESSIONS({ projectId: projectId as string }),
         matchPath: APP_ROUTES.SESSION_DETAILS({
@@ -79,7 +72,6 @@ export const useNavItems = () => {
       {
         id: 'occurrences',
         title: translate(STRING.NAV_ITEM_OCCURRENCES),
-        icon: IconType.Occurrences,
         count: status?.numOccurrences,
         path: APP_ROUTES.OCCURRENCES({ projectId: projectId as string }),
         matchPath: APP_ROUTES.OCCURRENCE_DETAILS({
@@ -90,7 +82,6 @@ export const useNavItems = () => {
       {
         id: 'taxa',
         title: translate(STRING.NAV_ITEM_TAXA),
-        icon: IconType.Species,
         count: status?.numSpecies,
         path: APP_ROUTES.TAXA({ projectId: projectId as string }),
         matchPath: APP_ROUTES.TAXON_DETAILS({

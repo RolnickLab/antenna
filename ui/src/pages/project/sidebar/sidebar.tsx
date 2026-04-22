@@ -13,14 +13,14 @@ import { useSidebarSections } from './useSidebarSections'
 
 export const Sidebar = ({ project }: { project: ProjectDetails }) => {
   const { sidebarSections, activeItem } = useSidebarSections(project)
-  const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
+  const { setMainBreadcrumb } = useContext(BreadcrumbContext)
 
   useEffect(() => {
     if (activeItem) {
-      setDetailBreadcrumb({ title: activeItem.title, path: activeItem.path })
+      setMainBreadcrumb({ title: activeItem.title, path: activeItem.path })
     }
     return () => {
-      setDetailBreadcrumb(undefined)
+      setMainBreadcrumb(undefined)
     }
   }, [activeItem])
 
@@ -131,7 +131,7 @@ export const DraftBadge = ({ project }: { project: ProjectDetails }) => (
             )}
             to={APP_ROUTES.GENERAL({ projectId: project.id })}
           >
-            <span>Configure</span>
+            <span>{translate(STRING.CONFIGURE)}</span>
             <ChevronRightIcon className="w-4 h-4" />
           </Link>
         ) : null}

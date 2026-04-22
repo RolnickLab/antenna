@@ -9,6 +9,8 @@ import { Member } from 'data-services/models/member'
 import { SaveButton } from 'design-system/components/button/save-button'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { InputContent } from 'design-system/components/input/input'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { SettingsIcon } from 'lucide-react'
 import { Button } from 'nova-ui-kit'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
@@ -31,11 +33,17 @@ export const ManageAccessDialog = ({ member }: { member: Member }) => {
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Dialog.Trigger asChild>
-        <Button size="small" variant="outline">
-          <span>{translate(STRING.MANAGE_ACCESS)}</span>
-        </Button>
-      </Dialog.Trigger>
+      <BasicTooltip asChild content={translate(STRING.MANAGE_ACCESS)}>
+        <Dialog.Trigger asChild>
+          <Button
+            aria-label={translate(STRING.MANAGE_ACCESS)}
+            size="icon"
+            variant="ghost"
+          >
+            <SettingsIcon className="w-4 h-4" />
+          </Button>
+        </Dialog.Trigger>
+      </BasicTooltip>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)} isCompact>
         {errorMessage && (
           <FormError

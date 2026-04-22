@@ -17,11 +17,11 @@ export const APP_ROUTES = {
   ALGORITHMS: (params: { projectId: string }) =>
     `/projects/${params.projectId}/algorithms`,
 
+  CAPTURE_SETS: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/capture-sets`,
+
   CAPTURES: (params: { projectId: string }) =>
     `/projects/${params.projectId}/captures`,
-
-  COLLECTIONS: (params: { projectId: string }) =>
-    `/projects/${params.projectId}/collections`,
 
   DEFAULT_FILTERS: (params: { projectId: string }) =>
     `/projects/${params.projectId}/default-filters`,
@@ -93,6 +93,19 @@ export const APP_ROUTES = {
 
   TAXA: (params: { projectId: string }) => `/projects/${params.projectId}/taxa`,
 
+  TAXA_LISTS: (params: { projectId: string }) =>
+    `/projects/${params.projectId}/taxa-lists`,
+
+  TAXA_LIST_DETAILS: (params: { projectId: string; taxaListId: string }) =>
+    `/projects/${params.projectId}/taxa-lists/${params.taxaListId}`,
+
+  TAXA_LIST_TAXON_DETAILS: (params: {
+    projectId: string
+    taxaListId: string
+    taxonId: string
+  }) =>
+    `/projects/${params.projectId}/taxa-lists/${params.taxaListId}/taxa/${params.taxonId}`,
+
   TAXON_DETAILS: (params: { projectId: string; taxonId: string }) =>
     `/projects/${params.projectId}/taxa/${params.taxonId}`,
 
@@ -103,7 +116,7 @@ export const API_MAX_UPLOAD_SIZE = 1024 * 1024 * 30 // 30MB
 
 export const LANDING_PAGE_URL = 'https://insectai.org/'
 
-export const LANDING_PAGE_WAITLIST_URL = 'https://insectai.org/waitlist'
+export const LANDING_PAGE_CONTACT_URL = 'https://insectai.org/contact'
 
 export const DOCS_URL =
   import.meta.env.VITE_DOCS_URL ?? 'https://rolnicklab.github.io/antenna-docs'
