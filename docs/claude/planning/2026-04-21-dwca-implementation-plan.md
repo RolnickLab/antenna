@@ -1914,10 +1914,10 @@ EOF
 
 Replace the archive-contents description in `docs/claude/dwca-format-reference.md` with:
 
-```markdown
+````markdown
 ## Archive contents
 
-```
+```text
 project_export.zip
 ├── meta.xml                   DwC-A text-archive descriptor
 ├── eml.xml                    EML 2.2.0 dataset metadata
@@ -1949,7 +1949,7 @@ project_export.zip
 | protocolDescriptions | eco:protocolDescriptions | constant pipeline description |
 | hasMaterialSamples | eco:hasMaterialSamples | constant `true` |
 | materialSampleTypes | eco:materialSampleTypes | constant `digital images` |
-```
+````
 
 - [ ] **Step 2: Commit**
 
