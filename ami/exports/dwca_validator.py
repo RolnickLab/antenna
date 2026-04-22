@@ -19,7 +19,10 @@ import csv
 import io
 import zipfile
 from dataclasses import dataclass, field
-from xml.etree import ElementTree as ET
+from xml.etree.ElementTree import Element as _XmlElement
+
+from defusedxml import ElementTree as ET
+from defusedxml.common import DefusedXmlException
 
 META_NS = "http://rs.tdwg.org/dwc/text/"
 _OCCURRENCE_ID_TERM = "http://rs.tdwg.org/dwc/terms/occurrenceID"
@@ -79,7 +82,7 @@ def validate_dwca_zip(zip_path: str, required_terms: set[str] | None = None) -> 
         meta_bytes = zf.read("meta.xml")
         try:
             meta_root = ET.fromstring(meta_bytes)
-        except ET.ParseError as exc:
+        except (ET.ParseError, DefusedXmlException) as exc:
             result.add_error(f"meta.xml does not parse: {exc}")
             return result
 
@@ -101,13 +104,13 @@ def validate_dwca_zip(zip_path: str, required_terms: set[str] | None = None) -> 
         if "eml.xml" in names:
             try:
                 ET.fromstring(zf.read("eml.xml"))
-            except ET.ParseError as exc:
+            except (ET.ParseError, DefusedXmlException) as exc:
                 result.add_error(f"eml.xml does not parse: {exc}")
 
     return result
 
 
-def _parse_meta(meta_root: ET.Element, result: ValidationResult) -> list[_TableSpec]:
+def _parse_meta(meta_root: _XmlElement, result: ValidationResult) -> list[_TableSpec]:
     tables: list[_TableSpec] = []
 
     # meta.xml uses the dwc/text namespace; handle both namespaced and
@@ -144,8 +147,10 @@ def _parse_meta(meta_root: ET.Element, result: ValidationResult) -> list[_TableS
             continue
         try:
             id_index = int(id_elems[0].get("index", ""))
+            if id_index < 0:
+                raise ValueError
         except ValueError:
-            result.add_error(f"meta.xml {role} ({location}) <{id_tag}> index is not an integer")
+            result.add_error(f"meta.xml {role} ({location}) <{id_tag}> index is not a non-negative integer")
             continue
 
         field_terms: dict[int, str] = {}
@@ -159,8 +164,12 @@ def _parse_meta(meta_root: ET.Element, result: ValidationResult) -> list[_TableS
                 continue
             try:
                 idx = int(idx_raw)
+                if idx < 0:
+                    raise ValueError
             except ValueError:
-                result.add_error(f"meta.xml {role} ({location}) <field> index is not an integer: {idx_raw}")
+                result.add_error(
+                    f"meta.xml {role} ({location}) <field> index is not a non-negative integer: {idx_raw}"
+                )
                 continue
             if idx in field_terms:
                 result.add_error(
@@ -235,7 +244,11 @@ def _read_tsv(zf: zipfile.ZipFile, filename: str, result: ValidationResult) -> l
     if filename not in zf.namelist():
         result.add_error(f"meta.xml references {filename} but it is missing from the archive")
         return None
-    raw = zf.read(filename).decode("utf-8")
+    try:
+        raw = zf.read(filename).decode("utf-8")
+    except UnicodeDecodeError as exc:
+        result.add_error(f"{filename}: file is not valid UTF-8: {exc}")
+        return None
     reader = csv.reader(io.StringIO(raw), delimiter="\t", quoting=csv.QUOTE_MINIMAL)
     return list(reader)
 

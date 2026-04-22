@@ -167,7 +167,6 @@ def _project_license(events) -> str:
     for e in events:
         if e.project and getattr(e.project, "license", ""):
             return e.project.license
-        break
     return ""
 
 
@@ -175,5 +174,4 @@ def _project_rights_holder(events) -> str:
     for e in events:
         if e.project and getattr(e.project, "rights_holder", ""):
             return e.project.rights_holder
-        break
     return ""

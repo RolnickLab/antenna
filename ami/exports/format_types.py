@@ -343,6 +343,10 @@ class DwCAExporter(BaseExporter):
             if not validation.ok:
                 for err in validation.errors:
                     logger.error(f"DwC-A validation error: {err}")
+                try:
+                    os.unlink(zip_path)
+                except OSError:
+                    pass
                 raise ValueError(
                     f"DwC-A archive failed structural validation ({len(validation.errors)} errors). "
                     f"First: {validation.errors[0]}"
