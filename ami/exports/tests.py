@@ -7,7 +7,7 @@ from xml.etree import ElementTree as ET
 
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
-from django.test import TestCase
+from django.test import TestCase, TransactionTestCase
 from rest_framework.test import APIClient
 
 from ami.exports.models import DataExport
@@ -306,6 +306,107 @@ class DataExportPermissionTest(TestCase):
             self.non_member.has_perm(Project.Permissions.CREATE_DATA_EXPORT, self.project),
             "Non-member should not have create_dataexport permission",
         )
+
+
+class DwCAExportHttpE2ETest(TransactionTestCase):
+    """End-to-end DwC-A export via the HTTP API.
+
+    Exercises the full path: POST /api/v2/exports/ -> permission check -> serializer
+    validation -> ExportViewSet.create -> Job.enqueue -> eager Celery task ->
+    DwCAExporter.export -> validator -> zip on storage -> DataExport.file_url set.
+
+    Uses TransactionTestCase so `transaction.on_commit` callbacks (used by
+    Job.enqueue to schedule the Celery task) actually fire.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        from django.test import override_settings
+
+        cls._eager_override = override_settings(
+            CELERY_TASK_ALWAYS_EAGER=True,
+            CELERY_TASK_EAGER_PROPAGATES=True,
+        )
+        cls._eager_override.enable()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._eager_override.disable()
+        super().tearDownClass()
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.user = self.project.owner
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        create_captures(deployment=self.deployment, num_nights=2, images_per_night=3, interval_minutes=1)
+        group_images_into_events(self.deployment)
+        create_taxa(self.project)
+        create_occurrences(num=6, deployment=self.deployment)
+
+        images = list(self.project.captures.all()[:4])
+        self.collection = SourceImageCollection.objects.create(
+            name="E2E DwC-A Collection",
+            project=self.project,
+            method="manual",
+            kwargs={"image_ids": [img.pk for img in images]},
+        )
+        self.collection.populate_sample()
+
+    def test_dwca_export_end_to_end_via_http(self):
+        """POST /api/v2/exports/ with format=dwca triggers the full pipeline."""
+        response = self.client.post(
+            "/api/v2/exports/",
+            data={
+                "project": self.project.pk,
+                "format": "dwca",
+                "filters": {"collection_id": self.collection.pk},
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, f"POST failed: {response.status_code} {response.content[:400]}")
+        export_id = response.data["id"]
+
+        data_export = DataExport.objects.get(pk=export_id)
+        self.assertTrue(data_export.file_url, "DataExport.file_url should be populated by eager Celery task")
+        self.assertTrue(data_export.file_url.endswith(".zip"))
+        self.assertIn("dwca_draft-2026-04", data_export.file_url, "Draft filename label should be present")
+        self.assertGreater(data_export.record_count, 0, "record_count should reflect exported occurrences")
+
+        file_path = data_export.file_url.replace("/media/", "")
+        self.assertTrue(default_storage.exists(file_path), f"Storage missing: {file_path}")
+
+        with default_storage.open(file_path, "rb") as f:
+            self.assertTrue(zipfile.is_zipfile(f))
+            f.seek(0)
+            with zipfile.ZipFile(f, "r") as zf:
+                names = set(zf.namelist())
+                self.assertIn("event.txt", names)
+                self.assertIn("occurrence.txt", names)
+                self.assertIn("multimedia.txt", names)
+                self.assertIn("measurementorfact.txt", names)
+                self.assertIn("meta.xml", names)
+                self.assertIn("eml.xml", names)
+                self.assertNotIn(
+                    "VALIDATION_ERRORS.txt",
+                    names,
+                    "Clean exports should not emit VALIDATION_ERRORS.txt",
+                )
+                eml = zf.read("eml.xml").decode("utf-8")
+                self.assertIn("DRAFT SCHEMA (April 2026)", eml, "EML should contain draft notice")
+                occ = zf.read("occurrence.txt").decode("utf-8")
+                occ_rows = list(csv.DictReader(StringIO(occ), delimiter="\t"))
+                self.assertGreater(len(occ_rows), 0)
+                for row in occ_rows:
+                    self.assertEqual(row["basisOfRecord"], "MachineObservation")
+
+                event_rows = list(csv.DictReader(StringIO(zf.read("event.txt").decode("utf-8")), delimiter="\t"))
+                self.assertGreater(len(event_rows), 0)
+                for row in event_rows:
+                    self.assertEqual(row["license"], "All rights reserved")
+
+        default_storage.delete(file_path)
 
 
 class DwCAExportTest(TestCase):
