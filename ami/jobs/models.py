@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import pydantic
 from celery import uuid
 from celery.result import AsyncResult
+from django.conf import settings
 from django.db import models, transaction
 from django.utils.text import slugify
 from django_pydantic_field import SchemaField
@@ -333,8 +334,20 @@ class JobLogHandler(logging.Handler):
         super().__init__(*args, **kwargs)
 
     def emit(self, record: logging.LogRecord):
-        # Log to the current app logger
+        # Log to the current app logger (container stdout).
         logger.log(record.levelno, self.format(record))
+
+        # Gated by ``JOB_LOG_PERSIST_ENABLED`` (default True). Persisting every
+        # log line to ``jobs_job.logs`` becomes a row-lock contention point
+        # under concurrent async_api load — each call triggers
+        # ``UPDATE jobs_job SET logs = ...`` on the shared job row, and inside
+        # ``ATOMIC_REQUESTS`` a single batched ``/result`` POST stacks N such
+        # UPDATEs in one tx, blocking every ML worker on the same row for the
+        # duration of the request. Deployments hitting that pattern can set the
+        # flag to False to short-circuit here until PR #1259 lands an
+        # append-only ``JobLog`` child table. See issue #1256.
+        if not getattr(settings, "JOB_LOG_PERSIST_ENABLED", True):
+            return
 
         # Write to the logs field on the job instance.
         # Refresh from DB first to reduce the window for concurrent overwrites — each

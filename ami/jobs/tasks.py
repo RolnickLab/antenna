@@ -7,13 +7,14 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from asgiref.sync import async_to_sync, sync_to_async
+from cachalot.api import cachalot_disabled
 from celery.signals import task_failure, task_postrun, task_prerun
 from django.db import transaction
 from redis.exceptions import RedisError
 
 from ami.main.checks.schemas import IntegrityCheckResult
 from ami.ml.orchestration.async_job_state import AsyncJobStateManager
-from ami.ml.orchestration.nats_queue import TaskQueueManager
+from ami.ml.orchestration.nats_queue import ConsumerState, TaskQueueManager
 from ami.ml.schemas import PipelineResultsError, PipelineResultsResponse
 from ami.tasks import default_soft_time_limit, default_time_limit
 from config import celery_app
@@ -33,6 +34,106 @@ FAILURE_THRESHOLD = 0.5
 # "0/N online recently". The 1-hour WARNING threshold remains the load-bearing
 # "nobody's listening" signal.
 WORKER_AVAILABILITY_ONLINE_CUTOFF = datetime.timedelta(minutes=5)
+
+# Minimum interval between heartbeat dispatches for a given (pipeline, project).
+# The view-level Redis cache gate uses this window to skip .delay() under
+# concurrent polling; the task itself does no throttling.
+HEARTBEAT_THROTTLE_SECONDS = 30
+
+
+@celery_app.task(
+    soft_time_limit=10,
+    time_limit=15,
+    ignore_result=True,
+    # No retries — a missed heartbeat is benign; retrying adds load for no gain.
+)
+def update_pipeline_pull_services_seen(job_id: int) -> None:
+    """
+    Fire-and-forget heartbeat task: record last_seen/last_seen_live for async
+    (pull-mode) processing services linked to a job's pipeline.
+
+    Throttling lives in the view (Redis cache gate over HEARTBEAT_THROTTLE_SECONDS),
+    so this task is dispatched at most once per (pipeline, project) per window
+    and can just write.
+
+    Scope: marks ALL async services on the pipeline within this project as live,
+    not just the specific service that made the request. Once application-token
+    auth is available (PR #1117), this should be scoped to the individual
+    calling service instead.
+    """
+    from ami.jobs.models import Job  # avoid circular import
+
+    try:
+        job = Job.objects.select_related("pipeline").get(pk=job_id)
+    except Job.DoesNotExist:
+        return
+
+    if not job.pipeline_id:
+        return
+
+    job.pipeline.processing_services.async_services().filter(projects=job.project_id).update(
+        last_seen=datetime.datetime.now(),
+        last_seen_live=True,
+    )
+
+
+@celery_app.task(
+    soft_time_limit=10,
+    time_limit=15,
+    ignore_result=True,
+)
+def update_async_services_seen_for_pipelines(pipeline_slugs: list[str]) -> None:
+    """
+    Heartbeat for idle worker polls on
+    ``GET /api/v2/jobs/?pipeline__slug__in=...&ids_only=1``.
+
+    The ADC worker sends pipeline slugs but no project_id (one worker may serve
+    pipelines across many projects), so scope the heartbeat by the pipelines it
+    asked about. Marks every async ProcessingService linked to any of those
+    pipelines as seen.
+
+    TODO: once #1194 (client-ID / application-token auth) lands, scope this
+    update to the specific calling ProcessingService rather than every service
+    matching the slugs. Currently one poller's heartbeat falsely marks its
+    peers live.
+    """
+    from ami.ml.models import ProcessingService  # avoid circular import
+
+    if not pipeline_slugs:
+        return
+
+    ProcessingService.objects.async_services().filter(
+        pipelines__slug__in=pipeline_slugs,
+    ).distinct().update(
+        last_seen=datetime.datetime.now(),
+        last_seen_live=True,
+    )
+
+
+@celery_app.task(
+    soft_time_limit=10,
+    time_limit=15,
+    ignore_result=True,
+)
+def update_async_services_seen_for_project(project_id: int) -> None:
+    """
+    Heartbeat for idle worker polls on ``GET /api/v2/jobs/?ids_only=1``.
+
+    Fallback path used only when the request carries ``?project_id=`` without
+    ``pipeline__slug__in`` — the ADC worker does not currently send this shape,
+    so in practice the pipeline-slug task above is the one that fires.
+
+    TODO: once #1194 (client-ID / application-token auth) lands, scope this
+    update to the specific calling ProcessingService rather than every async
+    service attached to the project. Currently one poller's heartbeat falsely
+    marks its peers live.
+    """
+    from ami.ml.models import ProcessingService  # avoid circular import
+
+    ProcessingService.objects.async_services().filter(projects=project_id).update(
+        last_seen=datetime.datetime.now(),
+        last_seen_live=True,
+    )
 
 
 @celery_app.task(bind=True, soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
@@ -117,6 +218,15 @@ def _log_worker_availability(job) -> None:
     soft_time_limit=300,  # 5 minutes
     time_limit=360,  # 6 minutes
 )
+# Disable cachalot cache invalidation for this task. Each call writes
+# Detection/Classification rows and UPDATEs jobs_job; under concurrent
+# async_api load, cachalot's post-write invalidation added ~2.5s/task
+# (measured on demo, issue #1256 Path 4). This is a pure write path —
+# nothing inside benefits from the query cache — so skipping invalidation
+# is strictly a throughput win. Celery task decorator stack order matters:
+# @celery_app.task wraps the cachalot-wrapped function, so Celery sees the
+# cachalot context manager enter/exit on every task execution.
+@cachalot_disabled()
 def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_subject: str) -> None:
     """
     Process a single pipeline result asynchronously.
@@ -448,8 +558,19 @@ def _update_job_progress(
 ) -> None:
     from ami.jobs.models import Job, JobState  # avoid circular import
 
+    # NOTE: Previously this used `select_for_update()` inside `transaction.atomic()`
+    # to serialize concurrent progress updates for the same job. Under concurrent
+    # async_api result processing that serialization became a bottleneck: every
+    # ML result task queued a contending exclusive lock on the `jobs_job` row,
+    # stacking behind gunicorn view threads also holding the row under
+    # ATOMIC_REQUESTS. The `max()` guard below still prevents progress regression
+    # between concurrent workers; the trade-off is that accumulated counts
+    # (detections/classifications/captures) can drift by one batch under race —
+    # cosmetic only, since the underlying `Detection`/`Classification` rows are
+    # written authoritatively by `save_results` before this function runs.
+    # See issue #1256 and PR #1261.
     with transaction.atomic():
-        job = Job.objects.select_for_update().get(pk=job_id)
+        job = Job.objects.get(pk=job_id)
 
         # For results stage, accumulate detections/classifications/captures counts
         if stage == "results":
@@ -516,7 +637,14 @@ def _update_job_progress(
             job.progress.summary.status = complete_state
             job.finished_at = datetime.datetime.now()  # Use naive datetime in local time
         job.logger.info(f"Updated job {job_id} progress in stage '{stage}' to {progress_percentage*100}%")
-        job.save()
+        # Narrow the write to the fields we actually mutated. Without this, a full
+        # save() would overwrite `logs` and any other field on the instance
+        # fetched at the top of this block — so a concurrent worker's append to
+        # `progress.errors` (via `_reconcile_lost_images`) or log line (via
+        # JobLogHandler) could be clobbered by a stale read-modify-write.
+        # `updated_at` is listed explicitly because Django skips `auto_now` bumps
+        # when `update_fields` is provided. See PR #1261 review feedback.
+        job.save(update_fields=["progress", "status", "finished_at", "updated_at"])
         try:
             _log_job_throughput(job, stage)
         except Exception as e:
@@ -531,6 +659,243 @@ def _update_job_progress(
         stages_summary = ", ".join(f"{s.key}={s.progress*100:.1f}% {s.status}" for s in job.progress.stages)
         job.logger.info(f"is_complete()=True after stage='{stage}' update; firing cleanup. Stages: {stages_summary}")
         cleanup_async_job_if_needed(job)
+
+
+def mark_lost_images_failed(minutes: int | None = None, dry_run: bool = False) -> list[dict]:
+    """Reconcile running async_api jobs that have been idle past the cutoff
+    while Redis still tracks images as pending.
+
+    **Decision signals** (all must hold):
+
+    1. :attr:`Job.updated_at` older than ``minutes`` — every successful result
+       save bumps ``updated_at``, so 10+ minutes of silence means no batch has
+       landed. ADC has stopped processing this job, for any reason.
+    2. Redis ``job:{id}:pending_images:{process,results}`` still has ids —
+       there is real work left to reconcile.
+    3. NATS consumer exists (``get_consumer_state`` returns not-None) — the
+       job is a live async_api job we own state for.
+
+    No NATS-counter-based guards. Empirically, JetStream keeps messages in
+    ``num_ack_pending`` even after ``max_deliver`` is hit and the messages are
+    dropped from delivery; those counters are not reliable signals of whether
+    the queue is still making progress. Time-based staleness + "Redis still
+    has work" are the signals that matter.
+
+    **Why this is safe:**
+
+    - Late NATS deliveries are idempotent: ``save_results`` dedupes on
+      ``(detection, source_image)``, SREM on already-removed ids is a no-op
+      with ``newly_removed == 0`` gating counter accumulation (see
+      ``processing-lifecycle.md`` §2), and ``_update_job_progress`` clamps
+      percentage with ``max()``. A late result arriving post-reconcile saves
+      its detections and its SREM/SADD is a no-op.
+    - Runs BEFORE :func:`check_stale_jobs` in :func:`jobs_health_check` so
+      a job the reconciler can unstick lands in its natural completion state
+      (SUCCESS or FAILURE via :data:`FAILURE_THRESHOLD`) rather than being
+      REVOKEd and losing legitimate successful work.
+
+    ``get_consumer_state`` is still called per candidate, but only so the
+    current ``num_redelivered`` can be logged in the diagnostic — operators
+    get a one-glance signal distinguishing "max_deliver exhausted" from
+    "never delivered" after the fact.
+
+    Returns a list of per-job result dicts (``job_id``, ``lost_count``,
+    ``action``) mirroring :func:`check_stale_jobs` for consistency in
+    operator logs.
+    """
+    from ami.jobs.models import Job, JobDispatchMode, JobState
+
+    if minutes is None:
+        minutes = Job.STALLED_JOBS_MAX_MINUTES
+
+    cutoff = datetime.datetime.now() - datetime.timedelta(minutes=minutes)
+    candidate_pks = list(
+        Job.objects.filter(
+            status__in=JobState.running_states(),
+            dispatch_mode=JobDispatchMode.ASYNC_API,
+            updated_at__lt=cutoff,
+        ).values_list("pk", flat=True)
+    )
+    if not candidate_pks:
+        return []
+
+    async def _fetch_states() -> dict[int, ConsumerState | None]:
+        states: dict[int, ConsumerState | None] = {}
+        async with TaskQueueManager() as manager:
+            for pk in candidate_pks:
+                try:
+                    states[pk] = await manager.get_consumer_state(pk)
+                except Exception:
+                    # get_consumer_state already swallows per-consumer errors
+                    # and returns None, but a truly unexpected failure (e.g.
+                    # connection reset mid-loop) should not blow up the whole
+                    # reconciler tick — mark this pk as "skip" and continue.
+                    logger.exception("mark_lost_images_failed: consumer_state failed for job %s", pk)
+                    states[pk] = None
+        return states
+
+    try:
+        consumer_states = async_to_sync(_fetch_states)()
+    except Exception:
+        logger.exception("mark_lost_images_failed: failed to open NATS connection")
+        return []
+
+    results: list[dict] = []
+    for pk in candidate_pks:
+        state = consumer_states.get(pk)
+        if state is None:
+            # Consumer missing: either cleanup already fired or we have no
+            # NATS-level record. Either way, reconciling without a consumer
+            # means we can't verify the state is ours — skip.
+            continue
+
+        state_manager = AsyncJobStateManager(pk)
+        lost_ids = state_manager.get_pending_image_ids()
+        if not lost_ids:
+            continue
+
+        if dry_run:
+            results.append({"job_id": pk, "lost_count": len(lost_ids), "action": "dry-run"})
+            continue
+
+        try:
+            action = _reconcile_lost_images(pk, lost_ids, state, cutoff)
+        except Exception:
+            logger.exception("mark_lost_images_failed: failed reconciling job %s", pk)
+            action = "error"
+
+        results.append({"job_id": pk, "lost_count": len(lost_ids), "action": action})
+
+    return results
+
+
+# Cap on how many image ids are written into ``progress.errors``. JSONB field on
+# Job, surfaced in the UI — a 200-image job's full id list would be multi-KB
+# of noise. The full set still goes to ``job.logger.warning`` (DB-backed
+# JobLog table), so it remains recoverable from the UI's logs panel.
+_PROGRESS_ERROR_ID_PREVIEW_LIMIT = 10
+
+
+def _reconcile_lost_images(
+    job_id: int,
+    lost_ids: set[str],
+    consumer_state: ConsumerState,
+    cutoff: datetime.datetime,
+) -> str:
+    """Mark *lost_ids* as failed in Redis and push progress to 100% in both stages.
+
+    Mirrors the SREM+SADD+progress-update sequence that
+    :func:`process_nats_pipeline_result` runs on every result, so the stage
+    transitions land in the same shape the rest of the pipeline expects. The
+    completion decision (SUCCESS vs FAILURE) reuses :data:`FAILURE_THRESHOLD`
+    so a job losing >50% of its images still falls through to FAILURE.
+
+    Returns one of:
+
+    - ``"marked_failed"``: reconciliation completed; counters updated.
+    - ``"raced"``: a late ``process_nats_pipeline_result`` bumped
+      ``updated_at`` (or the job left a running state) between candidate
+      selection and now; we defer to the natural completion path.
+    - ``"state_disappeared"``: Redis state vanished mid-reconcile (cleanup
+      fired or a different reconciler tick won the race); leave for
+      ``check_stale_jobs``.
+    """
+    from ami.jobs.models import Job, JobDispatchMode, JobState
+
+    # Re-validate inside ``select_for_update`` before any Redis SREM/SADD. The
+    # candidate list was computed up to a NATS round-trip ago; a late result
+    # arriving in that window would bump ``updated_at`` and disqualify the job.
+    # Without this check, we'd mark images as failed that just got their
+    # results — counter inflation (same id counted as both processed and failed).
+    try:
+        with transaction.atomic():
+            Job.objects.select_for_update().get(
+                pk=job_id,
+                status__in=JobState.running_states(),
+                dispatch_mode=JobDispatchMode.ASYNC_API,
+                updated_at__lt=cutoff,
+            )
+    except Job.DoesNotExist:
+        logger.info(
+            "mark_lost_images_failed: job %s no longer eligible (raced with late result)",
+            job_id,
+        )
+        return "raced"
+
+    state_manager = AsyncJobStateManager(job_id)
+
+    # Stage "process": SREM from pending_images:process and SADD to failed_images.
+    process_progress = state_manager.update_state(lost_ids, stage="process", failed_image_ids=lost_ids)
+    # Stage "results": SREM from pending_images:results. failed_image_ids
+    # already covered by the previous call (SADD is idempotent anyway).
+    results_progress = state_manager.update_state(lost_ids, stage="results")
+
+    if not process_progress or not results_progress:
+        logger.warning(
+            "mark_lost_images_failed: job %s state disappeared mid-reconcile; " "leaving it for check_stale_jobs",
+            job_id,
+        )
+        return "state_disappeared"
+
+    complete_state = JobState.SUCCESS
+    if process_progress.total > 0 and (process_progress.failed / process_progress.total) > FAILURE_THRESHOLD:
+        complete_state = JobState.FAILURE
+
+    _update_job_progress(
+        job_id,
+        "process",
+        process_progress.percentage,
+        complete_state=complete_state,
+        processed=process_progress.processed,
+        remaining=process_progress.remaining,
+        failed=process_progress.failed,
+    )
+    # Results-stage counters are accumulated inside _update_job_progress, so
+    # passing zeros here preserves whatever save_results already counted on
+    # the non-lost branch. We do NOT have detections/classifications for the
+    # lost images — by definition we never got their results.
+    _update_job_progress(
+        job_id,
+        "results",
+        results_progress.percentage,
+        complete_state=complete_state,
+        detections=0,
+        classifications=0,
+        captures=0,
+    )
+
+    sorted_ids = sorted(lost_ids)
+    preview_ids = sorted_ids[:_PROGRESS_ERROR_ID_PREVIEW_LIMIT]
+    extra = len(sorted_ids) - len(preview_ids)
+    ids_summary = f"{preview_ids} ... and {extra} more" if extra else str(preview_ids)
+
+    diagnostic = (
+        f"jobs_health_check: marked {len(lost_ids)} image(s) as failed "
+        f"(job idle past cutoff; NATS consumer "
+        f"num_pending={consumer_state.num_pending} "
+        f"num_ack_pending={consumer_state.num_ack_pending} "
+        f"num_redelivered={consumer_state.num_redelivered}). "
+        f"IDs: {ids_summary}"
+    )
+
+    # Append the (truncated) diagnostic to ``progress.errors`` so the reason is
+    # visible in the UI alongside the now-accurate ``failed`` count.
+    # ``select_for_update`` mirrors :func:`_fail_job` — the row may still be
+    # touched concurrently by a late ``process_nats_pipeline_result`` retry.
+    with transaction.atomic():
+        job = Job.objects.select_for_update().get(pk=job_id)
+        if diagnostic not in job.progress.errors:
+            job.progress.errors.append(diagnostic)
+            job.save(update_fields=["progress"])
+
+    # Per-job logger gets the full id list — JobLog rows are paginated and
+    # not embedded in the job detail payload, so the size is acceptable there.
+    if extra:
+        job.logger.warning("%s (full IDs: %s)", diagnostic, sorted_ids)
+    else:
+        job.logger.warning(diagnostic)
+
+    return "marked_failed"
 
 
 def check_stale_jobs(minutes: int | None = None, dry_run: bool = False) -> list[dict]:
@@ -665,9 +1030,30 @@ class JobsHealthCheckResult:
     Add a new field here when adding a sub-check to the umbrella.
     """
 
+    lost_images: IntegrityCheckResult
     stale_jobs: IntegrityCheckResult
     running_job_snapshots: IntegrityCheckResult
     zombie_streams: IntegrityCheckResult
+
+
+def _run_mark_lost_images_failed_check() -> IntegrityCheckResult:
+    """Mark NATS-lost pending images as failed so their jobs can finalize.
+
+    Runs BEFORE ``_run_stale_jobs_check`` in :func:`jobs_health_check` — a job
+    the reconciler can unstick should land in its natural completion state
+    rather than being REVOKED. Jobs the reconciler can't help (consumer
+    missing or no pending ids) fall through to ``check_stale_jobs`` unchanged.
+    """
+    results = mark_lost_images_failed()
+    fixed = sum(1 for r in results if r["action"] == "marked_failed")
+    unfixable = sum(1 for r in results if r["action"] == "error")
+    logger.info(
+        "lost_images check: %d candidate(s), %d marked failed, %d error(s)",
+        len(results),
+        fixed,
+        unfixable,
+    )
+    return IntegrityCheckResult(checked=len(results), fixed=fixed, unfixable=unfixable)
 
 
 def _run_stale_jobs_check() -> IntegrityCheckResult:
@@ -884,7 +1270,12 @@ def jobs_health_check() -> dict:
     :class:`JobsHealthCheckResult` so celery's default JSON backend can store
     it; add new sub-checks by extending that dataclass and calling them here.
     """
+    # Order matters: the ``lost_images`` reconciler runs BEFORE ``stale_jobs``
+    # so that jobs whose only remaining problem is NATS-dropped pending ids
+    # land in SUCCESS/FAILURE via _update_job_progress rather than REVOKE.
+    # Jobs the reconciler can't help still fall through to check_stale_jobs.
     result = JobsHealthCheckResult(
+        lost_images=_safe_run_sub_check("lost_images", _run_mark_lost_images_failed_check),
         stale_jobs=_safe_run_sub_check("stale_jobs", _run_stale_jobs_check),
         running_job_snapshots=_safe_run_sub_check("running_job_snapshots", _run_running_job_snapshot_check),
         zombie_streams=_safe_run_sub_check("zombie_streams", _run_zombie_streams_check),
