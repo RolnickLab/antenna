@@ -30,3 +30,8 @@ RABBITMQ_DEFAULT_PASS=rabbitpass
 # NATS
 # ------------------------------------------------------------------------------
 NATS_URL=nats://nats:4222
+
+# Enable idempotent bootstrap for CI so processing services can self-register.
+DJANGO_SUPERUSER_EMAIL=antenna@insectai.org
+DJANGO_SUPERUSER_PASSWORD=localadmin
+ENSURE_DEFAULT_PROJECT=1

@@ -291,3 +291,9 @@ class ProcessingServiceInfoResponse(pydantic.BaseModel):
     #    default=list,
     #    examples=[RANDOM_BINARY_CLASSIFIER],
     # )
+
+
+# v2 pull-mode schemas (PipelineProcessingTask, PipelineTaskResult,
+# ProcessingServiceClientInfo, AsyncPipelineRegistrationRequest, ...) live in
+# `processing_services/minimal/worker/schemas.py` since only the worker path
+# uses them. The v1 schemas above are shared by both push and pull.
