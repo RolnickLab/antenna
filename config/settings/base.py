@@ -576,6 +576,9 @@ DEFAULT_PIPELINES_ENABLED = env.list("DEFAULT_PIPELINES_ENABLED", default=None) 
 DEFAULT_INCLUDE_TAXA = env.list("DEFAULT_INCLUDE_TAXA", default=[])  # type: ignore[no-untyped-call]
 DEFAULT_EXCLUDE_TAXA = env.list("DEFAULT_EXCLUDE_TAXA", default=[])  # type: ignore[no-untyped-call]
 
+# Purpose: master switch for per-job logs in the database and UI.
+# Set to False to disable them as a contention escape hatch.
+#
 # When True, ``JobLogHandler.emit`` persists each log line to ``jobs_job.logs``
 # (JSONB column) so the per-job log feed in the UI stays populated. When False,
 # log lines go to the container stdout logger only — used as an escape hatch

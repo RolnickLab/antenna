@@ -60,12 +60,16 @@ def _actor_log_context(request) -> tuple[str, str | None]:
 
 def _mark_async_services_seen_for_pipelines(pipeline_slugs: tuple[str, ...]) -> None:
     """
-    Heartbeat for idle worker polls that send ``pipeline__slug__in=...`` but no
-    ``project_id`` — the real ADC worker shape, where one worker may serve
-    pipelines across many projects and has no single project to nominate.
+    Redis-throttled wrapper around the ``update_async_services_seen_for_pipelines``
+    celery task. The wrapper does no DB work itself — it gates dispatch so at
+    most one heartbeat is enqueued per sorted slug set per
+    ``HEARTBEAT_THROTTLE_SECONDS`` window (currently 30s), keeping the HTTP
+    request path cheap under concurrent polling.
 
-    Redis throttle keyed on the sorted slug set so concurrent pollers for the
-    same pipelines share a single dispatch per window.
+    Called from the ``?ids_only=1`` branch of ``JobViewSet.list()`` — the real
+    ADC worker shape, which sends ``pipeline__slug__in=<slugs>`` and no
+    ``project_id`` (one worker may serve pipelines across many projects and
+    has no single project to nominate).
     """
     if not pipeline_slugs:
         return
@@ -80,17 +84,18 @@ def _mark_async_services_seen_for_pipelines(pipeline_slugs: tuple[str, ...]) -> 
 
 def _mark_async_services_seen_for_project(project_id: int) -> None:
     """
-    Heartbeat for idle worker polls on ``GET /api/v2/jobs/?ids_only=1``.
+    Redis-throttled wrapper around ``update_async_services_seen_for_project``.
+    Same shape as ``_mark_async_services_seen_for_pipelines`` above — gates
+    celery dispatch to at most one per-project enqueue per
+    ``HEARTBEAT_THROTTLE_SECONDS`` window — but keyed by project id for
+    callers that send ``?project_id=`` without ``pipeline__slug__in``.
 
-    The pipeline-scoped heartbeat in ``_mark_pipeline_pull_services_seen`` only
-    fires when a worker hits /tasks/ or /result/ on an active job; workers idling
-    on the list endpoint between jobs had no heartbeat path at all, so their
-    ``last_seen`` would age out of ``PROCESSING_SERVICE_LAST_SEEN_MAX`` and the
-    UI would flip them to offline despite being actively online.
-
-    Scope: marks every async service attached to the polling project. The list
-    endpoint has no pipeline context to narrow by. Once application-token auth
-    lands (PR #1117), this should be scoped to the specific calling service.
+    The ADC worker does not currently use this shape, so this is a fallback.
+    Background on why idle-poll heartbeats exist at all: the other heartbeat
+    (``_mark_pipeline_pull_services_seen``) only fires from ``/tasks/`` and
+    ``/result/`` — i.e., from workers with active work — so a worker sitting
+    on ``GET /jobs/?ids_only=1`` between jobs would otherwise age past
+    ``PROCESSING_SERVICE_LAST_SEEN_MAX`` and flip to offline in the UI.
     """
     cache_key = f"heartbeat:list:project:{project_id}"
     if not cache.add(cache_key, 1, timeout=HEARTBEAT_THROTTLE_SECONDS):
@@ -302,6 +307,7 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             status=JobState.failed_states(),
             updated_at__lt=cutoff_datetime,
         )
+        # ⚠️ TEMPORARY HACK — remove by 2026-04-24.
         # Worker-polling call path (`ids_only=1`): randomize order so concurrent
         # pollers don't all converge on the same head-of-queue job. An
         # `updated_at`-based sort has a degenerate case at startup — freshly
@@ -310,18 +316,32 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         # ordering gives probabilistic disjoint assignment without writing a
         # poll-stamp column. Combined with `limit=1` below, each poll is an
         # independent "pick any unfinished job" draw.
+        #
+        # The whole `ids_only=1` branch (this ordering override, the paginator
+        # override in `paginator` below, the heartbeat dispatch in `list()`)
+        # exists because the ADC worker currently repurposes this list endpoint
+        # as a claim-next-job call. Correct shape is a dedicated `/next` action
+        # (tracked as #1265). Once `/next` ships
+        # and ADC is migrated, delete this `order_by("?")` override along with
+        # the paginator override and the list() heartbeat branch.
         if self.action == "list" and url_boolean_param(self.request, "ids_only", default=False):
             jobs = jobs.order_by("?")
         return jobs
 
     @property
     def paginator(self):
+        # ⚠️ TEMPORARY HACK — remove by 2026-04-24.
         # Treat `?ids_only=1` as a pop()-style handoff ("what job is next?")
         # rather than a list() dump: default to one job per response unless the
         # caller explicitly asks for a batch via ?limit=N or ?page_size=N.
         # Concurrent pollers drain a cached list serially and starve later jobs;
-        # forcing a re-poll per job lets the `updated_at` fairness sort rotate
+        # forcing a re-poll per job lets the random-shuffle fairness sort rotate
         # work across jobs every iteration. No ADC-side change required.
+        #
+        # This override exists only because `list(ids_only=True)` is being used
+        # as a claim-next-job call. Replace with a dedicated `/next` action
+        # (tracked as #1265); once ADC is migrated,
+        # drop this override so the list endpoint goes back to normal pagination.
         if not hasattr(self, "_paginator"):
             if (
                 self.action == "list"
@@ -344,11 +364,18 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         ]
     )
     def list(self, request, *args, **kwargs):
+        # ⚠️ TEMPORARY HACK — remove by 2026-04-24.
         # Worker-polling call path: record heartbeat for async processing services.
         # The real ADC worker request carries ``pipeline__slug__in=...`` and no
         # project_id, so prefer the pipeline-slug scope when those slugs are
         # present; fall back to project scope for callers that pass ?project_id=.
         # Throttled via Redis so concurrent pollers don't churn the DB/broker.
+        #
+        # This heartbeat branch lives on `list()` only because `list(ids_only=1)`
+        # is doubling as the worker's claim-next-job endpoint. Once a dedicated
+        # `/next` action ships (tracked as #1265)
+        # and ADC is migrated to it, move the heartbeat to that action and
+        # delete this branch — `list()` should go back to being a plain list.
         if url_boolean_param(request, "ids_only", default=False):
             pipeline_slugs_raw = request.query_params.get("pipeline__slug__in")
             if pipeline_slugs_raw:

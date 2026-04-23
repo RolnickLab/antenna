@@ -91,6 +91,11 @@ def update_async_services_seen_for_pipelines(pipeline_slugs: list[str]) -> None:
     pipelines across many projects), so scope the heartbeat by the pipelines it
     asked about. Marks every async ProcessingService linked to any of those
     pipelines as seen.
+
+    TODO: once #1194 (client-ID / application-token auth) lands, scope this
+    update to the specific calling ProcessingService rather than every service
+    matching the slugs. Currently one poller's heartbeat falsely marks its
+    peers live.
     """
     from ami.ml.models import ProcessingService  # avoid circular import
 
@@ -114,10 +119,14 @@ def update_async_services_seen_for_project(project_id: int) -> None:
     """
     Heartbeat for idle worker polls on ``GET /api/v2/jobs/?ids_only=1``.
 
-    Unlike ``update_pipeline_pull_services_seen`` — which is pipeline-scoped and
-    only fires when a worker hits /tasks/ or /result/ for an active job — this
-    marks every async processing service attached to the polling project as
-    seen. The list endpoint has no pipeline context, so scope is the project.
+    Fallback path used only when the request carries ``?project_id=`` without
+    ``pipeline__slug__in`` — the ADC worker does not currently send this shape,
+    so in practice the pipeline-slug task above is the one that fires.
+
+    TODO: once #1194 (client-ID / application-token auth) lands, scope this
+    update to the specific calling ProcessingService rather than every async
+    service attached to the project. Currently one poller's heartbeat falsely
+    marks its peers live.
     """
     from ami.ml.models import ProcessingService  # avoid circular import
 
@@ -629,11 +638,12 @@ def _update_job_progress(
             job.finished_at = datetime.datetime.now()  # Use naive datetime in local time
         job.logger.info(f"Updated job {job_id} progress in stage '{stage}' to {progress_percentage*100}%")
         # Narrow the write to the fields we actually mutated. Without this, a full
-        # save() would also overwrite `updated_at`, `logs`, and any other field on
-        # the instance fetched at the top of this block — so a concurrent worker's
-        # append to `progress.errors` (via `_reconcile_lost_images`) or log line
-        # (via JobLogHandler) could be clobbered by a stale read-modify-write.
-        # See PR #1261 review feedback.
+        # save() would overwrite `logs` and any other field on the instance
+        # fetched at the top of this block — so a concurrent worker's append to
+        # `progress.errors` (via `_reconcile_lost_images`) or log line (via
+        # JobLogHandler) could be clobbered by a stale read-modify-write.
+        # `updated_at` is listed explicitly because Django skips `auto_now` bumps
+        # when `update_fields` is provided. See PR #1261 review feedback.
         job.save(update_fields=["progress", "status", "finished_at", "updated_at"])
         try:
             _log_job_throughput(job, stage)
