@@ -7,7 +7,7 @@ from xml.etree import ElementTree as ET
 
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase
 from rest_framework.test import APIClient
 
 from ami.exports.models import DataExport
@@ -308,15 +308,17 @@ class DataExportPermissionTest(TestCase):
         )
 
 
-class DwCAExportHttpE2ETest(TransactionTestCase):
+class DwCAExportHttpE2ETest(TestCase):
     """End-to-end DwC-A export via the HTTP API.
 
     Exercises the full path: POST /api/v2/exports/ -> permission check -> serializer
     validation -> ExportViewSet.create -> Job.enqueue -> eager Celery task ->
     DwCAExporter.export -> validator -> zip on storage -> DataExport.file_url set.
 
-    Uses TransactionTestCase so `transaction.on_commit` callbacks (used by
-    Job.enqueue to schedule the Celery task) actually fire.
+    Uses captureOnCommitCallbacks(execute=True) so `transaction.on_commit`
+    callbacks (scheduled inside Job.enqueue to dispatch the Celery task) fire
+    at the end of the context manager without needing TransactionTestCase —
+    which would truncate tables and disrupt fixture state for later tests.
     """
 
     @classmethod
@@ -356,15 +358,16 @@ class DwCAExportHttpE2ETest(TransactionTestCase):
 
     def test_dwca_export_end_to_end_via_http(self):
         """POST /api/v2/exports/ with format=dwca triggers the full pipeline."""
-        response = self.client.post(
-            "/api/v2/exports/",
-            data={
-                "project": self.project.pk,
-                "format": "dwca",
-                "filters": {"collection_id": self.collection.pk},
-            },
-            format="json",
-        )
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                "/api/v2/exports/",
+                data={
+                    "project": self.project.pk,
+                    "format": "dwca",
+                    "filters": {"collection_id": self.collection.pk},
+                },
+                format="json",
+            )
         self.assertEqual(response.status_code, 201, f"POST failed: {response.status_code} {response.content[:400]}")
         export_id = response.data["id"]
 
