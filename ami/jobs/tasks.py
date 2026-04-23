@@ -7,6 +7,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from asgiref.sync import async_to_sync, sync_to_async
+from cachalot.api import cachalot_disabled
 from celery.signals import task_failure, task_postrun, task_prerun
 from django.db import transaction
 from redis.exceptions import RedisError
@@ -71,6 +72,65 @@ def update_pipeline_pull_services_seen(job_id: int) -> None:
         return
 
     job.pipeline.processing_services.async_services().filter(projects=job.project_id).update(
+        last_seen=datetime.datetime.now(),
+        last_seen_live=True,
+    )
+
+
+@celery_app.task(
+    soft_time_limit=10,
+    time_limit=15,
+    ignore_result=True,
+)
+def update_async_services_seen_for_pipelines(pipeline_slugs: list[str]) -> None:
+    """
+    Heartbeat for idle worker polls on
+    ``GET /api/v2/jobs/?pipeline__slug__in=...&ids_only=1``.
+
+    The ADC worker sends pipeline slugs but no project_id (one worker may serve
+    pipelines across many projects), so scope the heartbeat by the pipelines it
+    asked about. Marks every async ProcessingService linked to any of those
+    pipelines as seen.
+
+    TODO: once #1194 (client-ID / application-token auth) lands, scope this
+    update to the specific calling ProcessingService rather than every service
+    matching the slugs. Currently one poller's heartbeat falsely marks its
+    peers live.
+    """
+    from ami.ml.models import ProcessingService  # avoid circular import
+
+    if not pipeline_slugs:
+        return
+
+    ProcessingService.objects.async_services().filter(
+        pipelines__slug__in=pipeline_slugs,
+    ).distinct().update(
+        last_seen=datetime.datetime.now(),
+        last_seen_live=True,
+    )
+
+
+@celery_app.task(
+    soft_time_limit=10,
+    time_limit=15,
+    ignore_result=True,
+)
+def update_async_services_seen_for_project(project_id: int) -> None:
+    """
+    Heartbeat for idle worker polls on ``GET /api/v2/jobs/?ids_only=1``.
+
+    Fallback path used only when the request carries ``?project_id=`` without
+    ``pipeline__slug__in`` — the ADC worker does not currently send this shape,
+    so in practice the pipeline-slug task above is the one that fires.
+
+    TODO: once #1194 (client-ID / application-token auth) lands, scope this
+    update to the specific calling ProcessingService rather than every async
+    service attached to the project. Currently one poller's heartbeat falsely
+    marks its peers live.
+    """
+    from ami.ml.models import ProcessingService  # avoid circular import
+
+    ProcessingService.objects.async_services().filter(projects=project_id).update(
         last_seen=datetime.datetime.now(),
         last_seen_live=True,
     )
@@ -158,6 +218,15 @@ def _log_worker_availability(job) -> None:
     soft_time_limit=300,  # 5 minutes
     time_limit=360,  # 6 minutes
 )
+# Disable cachalot cache invalidation for this task. Each call writes
+# Detection/Classification rows and UPDATEs jobs_job; under concurrent
+# async_api load, cachalot's post-write invalidation added ~2.5s/task
+# (measured on demo, issue #1256 Path 4). This is a pure write path —
+# nothing inside benefits from the query cache — so skipping invalidation
+# is strictly a throughput win. Celery task decorator stack order matters:
+# @celery_app.task wraps the cachalot-wrapped function, so Celery sees the
+# cachalot context manager enter/exit on every task execution.
+@cachalot_disabled()
 def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_subject: str) -> None:
     """
     Process a single pipeline result asynchronously.
@@ -489,8 +558,19 @@ def _update_job_progress(
 ) -> None:
     from ami.jobs.models import Job, JobState  # avoid circular import
 
+    # NOTE: Previously this used `select_for_update()` inside `transaction.atomic()`
+    # to serialize concurrent progress updates for the same job. Under concurrent
+    # async_api result processing that serialization became a bottleneck: every
+    # ML result task queued a contending exclusive lock on the `jobs_job` row,
+    # stacking behind gunicorn view threads also holding the row under
+    # ATOMIC_REQUESTS. The `max()` guard below still prevents progress regression
+    # between concurrent workers; the trade-off is that accumulated counts
+    # (detections/classifications/captures) can drift by one batch under race —
+    # cosmetic only, since the underlying `Detection`/`Classification` rows are
+    # written authoritatively by `save_results` before this function runs.
+    # See issue #1256 and PR #1261.
     with transaction.atomic():
-        job = Job.objects.select_for_update().get(pk=job_id)
+        job = Job.objects.get(pk=job_id)
 
         # For results stage, accumulate detections/classifications/captures counts
         if stage == "results":
@@ -557,7 +637,14 @@ def _update_job_progress(
             job.progress.summary.status = complete_state
             job.finished_at = datetime.datetime.now()  # Use naive datetime in local time
         job.logger.info(f"Updated job {job_id} progress in stage '{stage}' to {progress_percentage*100}%")
-        job.save()
+        # Narrow the write to the fields we actually mutated. Without this, a full
+        # save() would overwrite `logs` and any other field on the instance
+        # fetched at the top of this block — so a concurrent worker's append to
+        # `progress.errors` (via `_reconcile_lost_images`) or log line (via
+        # JobLogHandler) could be clobbered by a stale read-modify-write.
+        # `updated_at` is listed explicitly because Django skips `auto_now` bumps
+        # when `update_fields` is provided. See PR #1261 review feedback.
+        job.save(update_fields=["progress", "status", "finished_at", "updated_at"])
         try:
             _log_job_throughput(job, stage)
         except Exception as e:
