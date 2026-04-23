@@ -650,6 +650,48 @@ class DwCAExportTest(TestCase):
         finally:
             default_storage.delete(file_path)
 
+    def test_dwca_export_refuses_over_hardcap(self):
+        """Export should refuse with a clear message when queryset exceeds DWCA_MAX_OCCURRENCES."""
+        from unittest.mock import patch
+
+        from ami.exports.format_types import DwCAExporter
+
+        data_export = DataExport.objects.create(
+            user=self.user,
+            project=self.project,
+            format="dwca",
+            job=None,
+        )
+        exporter = data_export.get_exporter()
+        with patch.object(DwCAExporter, "DWCA_MAX_OCCURRENCES", 1):
+            with self.assertRaisesRegex(ValueError, "hard cap"):
+                exporter.export()
+
+    def test_validation_failure_writes_errors_into_zip(self):
+        """_append_validation_report_to_zip should add a readable VALIDATION_ERRORS.txt."""
+        import tempfile
+
+        from ami.exports.dwca_validator import ValidationResult
+        from ami.exports.format_types import _append_validation_report_to_zip
+
+        tf = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+        tf.close()
+        with zipfile.ZipFile(tf.name, "w") as zf:
+            zf.writestr("meta.xml", "<archive/>")
+        result = ValidationResult()
+        result.add_error("meta.xml references event.txt but file is missing")
+        result.add_error("occurrence.txt:L4: duplicate core id: 'E1'")
+        result.add_warning("eml.xml is unusually small")
+
+        _append_validation_report_to_zip(tf.name, result)
+
+        with zipfile.ZipFile(tf.name, "r") as zf:
+            self.assertIn("VALIDATION_ERRORS.txt", zf.namelist())
+            body = zf.read("VALIDATION_ERRORS.txt").decode("utf-8")
+            self.assertIn("Errors (2)", body)
+            self.assertIn("duplicate core id", body)
+            self.assertIn("Warnings (1)", body)
+
     def test_validator_runs_on_produced_zip(self):
         """The exporter's own zip should pass its own validator cleanly."""
         import tempfile
