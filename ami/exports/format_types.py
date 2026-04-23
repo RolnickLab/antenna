@@ -250,10 +250,36 @@ class CSVExporter(BaseExporter):
         return temp_file.name  # Return the file path
 
 
+def _append_validation_report_to_zip(zip_path, validation) -> None:
+    """Append a human-readable VALIDATION_ERRORS.txt to a failed DwC-A archive.
+
+    The archive is left on disk so it can be persisted to storage for the user to
+    download and inspect. The exporter still raises ValueError afterwards so the
+    DataExport is marked failed.
+    """
+    import zipfile
+
+    lines = ["DwC-A archive failed structural validation.", ""]
+    lines.append(f"Errors ({len(validation.errors)}):")
+    lines.extend(f"  - {e}" for e in validation.errors)
+    if validation.warnings:
+        lines.append("")
+        lines.append(f"Warnings ({len(validation.warnings)}):")
+        lines.extend(f"  - {w}" for w in validation.warnings)
+    lines.append("")
+    body = "\n".join(lines).encode("utf-8")
+
+    with zipfile.ZipFile(zip_path, "a", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("VALIDATION_ERRORS.txt", body)
+
+
 class DwCAExporter(BaseExporter):
     """Handles Darwin Core Archive (DwC-A) export with Event Core and Occurrence Extension."""
 
     file_format = "zip"
+    filename_label = "dwca_draft-2026-04"
+
+    DWCA_MAX_OCCURRENCES = 100_000
 
     def get_queryset(self):
         """Return the occurrence queryset (used by BaseExporter for record count).
@@ -261,6 +287,10 @@ class DwCAExporter(BaseExporter):
         Applies the project's default filters (score threshold, include/exclude taxa).
         Low-confidence ML output is gated here to avoid publishing unreviewed
         classifications to downstream consumers (e.g. GBIF).
+
+        Prefetches cover every reader downstream (occurrence.txt, multimedia.txt,
+        measurementorfact.txt) so the queryset can be materialized to a list once
+        in `export()` and reused without extra DB passes.
         """
         return (
             Occurrence.objects.valid()  # type: ignore[union-attr]
@@ -271,7 +301,11 @@ class DwCAExporter(BaseExporter):
                 "event",
                 "deployment",
             )
-            .prefetch_related("detections__source_image")
+            .prefetch_related(
+                "detections__source_image",
+                "detections__detection_algorithm",
+                "detections__classifications__algorithm",
+            )
             .with_detections_count()
             .with_identifications()
         )
@@ -318,11 +352,22 @@ class DwCAExporter(BaseExporter):
         mof_path = _tmp_txt()
 
         try:
+            if self.total_records > self.DWCA_MAX_OCCURRENCES:
+                raise ValueError(
+                    f"DwC-A export refused: project has {self.total_records} occurrences, "
+                    f"hard cap is {self.DWCA_MAX_OCCURRENCES}. The current exporter materializes "
+                    f"the queryset in memory; streaming fan-out is planned as a follow-up."
+                )
+
             events_qs = self.get_events_queryset()
             events_list = list(events_qs)
             target_scope = derive_target_taxonomic_scope(self.project)
             for e in events_list:
                 e._target_taxonomic_scope = target_scope
+
+            # Materialize the occurrence queryset once with all prefetches in place
+            # so all three extension writers iterate the same in-memory list.
+            occurrences_list = list(self.queryset)
 
             event_count = write_tsv(event_path, EVENT_FIELDS, events_list, project_slug)
             logger.info(f"DwC-A: wrote {event_count} events")
@@ -330,7 +375,7 @@ class DwCAExporter(BaseExporter):
             occ_count = write_tsv(
                 occ_path,
                 OCCURRENCE_FIELDS,
-                self.queryset,
+                occurrences_list,
                 project_slug,
                 progress_callback=self.update_job_progress,
             )
@@ -339,7 +384,7 @@ class DwCAExporter(BaseExporter):
             mm_count = write_tsv(
                 multimedia_path,
                 MULTIMEDIA_FIELDS,
-                iter_multimedia_rows(events_list, self.queryset, project_slug),
+                iter_multimedia_rows(events_list, occurrences_list, project_slug),
                 project_slug,
             )
             logger.info(f"DwC-A: wrote {mm_count} multimedia rows")
@@ -347,7 +392,7 @@ class DwCAExporter(BaseExporter):
             mof_count = write_tsv(
                 mof_path,
                 MOF_FIELDS,
-                iter_mof_rows(self.queryset, project_slug),
+                iter_mof_rows(occurrences_list, project_slug),
                 project_slug,
             )
             logger.info(f"DwC-A: wrote {mof_count} measurementOrFact rows")
@@ -404,13 +449,17 @@ class DwCAExporter(BaseExporter):
             if not validation.ok:
                 for err in validation.errors:
                     logger.error(f"DwC-A validation error: {err}")
+                _append_validation_report_to_zip(zip_path, validation)
                 try:
-                    os.unlink(zip_path)
-                except OSError:
-                    pass
+                    file_url = self.data_export.save_export_file(zip_path)
+                    self.data_export.file_url = file_url
+                    self.data_export.save(update_fields=["file_url"])
+                except OSError as exc:
+                    logger.error(f"Could not persist failed DwC-A archive for inspection: {exc}")
                 raise ValueError(
                     f"DwC-A archive failed structural validation ({len(validation.errors)} errors). "
-                    f"First: {validation.errors[0]}"
+                    f"First: {validation.errors[0]}. "
+                    f"See VALIDATION_ERRORS.txt inside the archive for the full report."
                 )
 
             self.update_export_stats(file_temp_path=zip_path)

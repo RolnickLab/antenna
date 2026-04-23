@@ -53,6 +53,8 @@ def generate_eml_xml(project, events=None) -> str:
 
     _add_methods(dataset)
 
+    _add_draft_notice(dataset)
+
     contact = ET.SubElement(dataset, "contact")
     _add_text(contact, "organizationName", "Automated Monitoring of Insects (AMI)")
 
@@ -129,4 +131,16 @@ def _add_methods(dataset):
         "para",
         "Project default filters applied before export: score thresholds, include/exclude taxa "
         "lists, soft-delete exclusion. Only occurrences with at least one detection are included.",
+    )
+
+
+def _add_draft_notice(dataset):
+    additional = ET.SubElement(dataset, "additionalInfo")
+    _add_text(
+        additional,
+        "para",
+        "DRAFT SCHEMA (April 2026). This archive is a preview of the Darwin Core Archive format "
+        "being developed for AMI data. Schema details (terms, extensions, required fields) are "
+        "subject to change. Do not submit to GBIF or other biodiversity aggregators without first "
+        "confirming the current schema with the AMI team.",
     )
