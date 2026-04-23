@@ -9,6 +9,15 @@ logger.setLevel(logging.DEBUG)
 
 
 class BoundingBox(pydantic.BaseModel):
+    """Detection bounding box in source-image pixel coordinates.
+
+    Coordinates are absolute pixels relative to the source image origin
+    (top-left), with (x1, y1) the upper-left corner and (x2, y2) the
+    lower-right. Values are passed directly to PIL.Image.crop(), so
+    normalized [0, 1] floats are NOT supported — producers must convert
+    to pixel coordinates before populating this field.
+    """
+
     x1: float
     y1: float
     x2: float
