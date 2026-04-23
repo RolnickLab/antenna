@@ -2778,6 +2778,16 @@ class Detection(BaseModel):
             "frame_num",
             "timestamp",
         ]
+        indexes = [
+            # Supports /captures/ list ordering and joins from Occurrence to
+            # its detections by (occurrence_id, timestamp DESC). Django's FK
+            # index alone is on occurrence_id, which forces a sort on a large
+            # row set after the join.
+            models.Index(
+                fields=["occurrence", "-timestamp"],
+                name="detection_occurrence_ts_desc",
+            ),
+        ]
 
     def best_classification(self):
         # @TODO where is this used?
