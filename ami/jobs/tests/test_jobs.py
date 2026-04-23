@@ -8,7 +8,15 @@ from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
-from ami.jobs.models import Job, JobDispatchMode, JobProgress, JobState, MLJob, SourceImageCollectionPopulateJob
+from ami.jobs.models import (
+    Job,
+    JobDispatchMode,
+    JobLog,
+    JobProgress,
+    JobState,
+    MLJob,
+    SourceImageCollectionPopulateJob,
+)
 from ami.main.models import Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.ml.models.processing_service import ProcessingService
@@ -16,6 +24,10 @@ from ami.ml.orchestration.jobs import queue_images_to_nats
 from ami.users.models import User
 
 logger = logging.getLogger(__name__)
+
+
+def joined_job_log_messages(job: Job) -> str:
+    return "\n".join(JobLog.objects.filter(job=job).order_by("-created_at", "-pk").values_list("message", flat=True))
 
 
 class TestJobProgress(TestCase):
@@ -645,7 +657,7 @@ class TestJobView(APITestCase):
         self.assertEqual(resp.status_code, 200)
 
         job.refresh_from_db()
-        joined = "\n".join(job.logs.stdout)
+        joined = joined_job_log_messages(job)
         self.assertIn("Tasks fetched", joined)
         self.assertIn("requested=2", joined)
         self.assertIn("delivered=", joined)
@@ -666,7 +678,7 @@ class TestJobView(APITestCase):
         self.assertEqual(resp.json(), {"tasks": []})
 
         job.refresh_from_db()
-        joined = "\n".join(job.logs.stdout)
+        joined = joined_job_log_messages(job)
         self.assertIn("non-active job", joined)
         self.assertIn(f"status={JobState.SUCCESS}", joined)
 
@@ -705,7 +717,7 @@ class TestJobView(APITestCase):
         self.assertEqual(resp.status_code, 200)
 
         job.refresh_from_db()
-        joined = "\n".join(job.logs.stdout)
+        joined = joined_job_log_messages(job)
         self.assertIn("Queued pipeline result", joined)
         self.assertIn("mirrored-task-id", joined)
         self.assertIn("test.reply.logged", joined)
@@ -742,7 +754,7 @@ class TestJobView(APITestCase):
         self.assertEqual(resp.status_code, 200)
 
         job.refresh_from_db()
-        joined = "\n".join(job.logs.stdout)
+        joined = joined_job_log_messages(job)
         # Full token key must NOT appear anywhere in logs
         self.assertNotIn(token.key, joined)
         # Fingerprint (first 8 chars + ellipsis) MUST appear
@@ -769,7 +781,7 @@ class TestJobView(APITestCase):
 
         job.refresh_from_db()
         # No Tasks fetched line should appear in stdout for a zero-delivery poll
-        joined = "\n".join(job.logs.stdout)
+        joined = joined_job_log_messages(job)
         self.assertNotIn("Tasks fetched", joined)
 
     def test_tasks_fetch_nonzero_delivered_logs_to_stdout(self):
@@ -799,7 +811,7 @@ class TestJobView(APITestCase):
         self.assertEqual(len(resp.json()["tasks"]), 3)
 
         job.refresh_from_db()
-        joined = "\n".join(job.logs.stdout)
+        joined = joined_job_log_messages(job)
         self.assertIn("Tasks fetched", joined)
         self.assertIn("delivered=3", joined)
 
@@ -842,7 +854,7 @@ class TestJobThroughputLogging(TestCase):
         _log_job_throughput(self.job, "process")
 
         self.job.refresh_from_db()
-        joined = "\n".join(self.job.logs.stdout)
+        joined = joined_job_log_messages(self.job)
         self.assertIn("throughput", joined)
         self.assertIn("processed=10/100", joined)
         self.assertIn("rate=2.0 imgs/min", joined)
@@ -858,7 +870,7 @@ class TestJobThroughputLogging(TestCase):
         _log_job_throughput(self.job, "process")
 
         self.job.refresh_from_db()
-        joined = "\n".join(self.job.logs.stdout)
+        joined = joined_job_log_messages(self.job)
         self.assertNotIn("throughput", joined)
 
     def test_throughput_skipped_for_non_processing_stage(self):
@@ -873,7 +885,7 @@ class TestJobThroughputLogging(TestCase):
         _log_job_throughput(self.job, "delay")
 
         self.job.refresh_from_db()
-        joined = "\n".join(self.job.logs.stdout)
+        joined = joined_job_log_messages(self.job)
         self.assertNotIn("throughput", joined)
 
     def test_throughput_with_zero_processed_reports_unknown_eta(self):
@@ -888,10 +900,125 @@ class TestJobThroughputLogging(TestCase):
         _log_job_throughput(self.job, "process")
 
         self.job.refresh_from_db()
-        joined = "\n".join(self.job.logs.stdout)
+        joined = joined_job_log_messages(self.job)
         self.assertIn("processed=0/50", joined)
         self.assertIn("rate=0.0", joined)
         self.assertIn("ETA=unknown", joined)
+
+
+class TestJobLogPersistence(TestCase):
+    """Exercise the JobLog table / legacy-JSON fallback paths on JobLogHandler.emit."""
+
+    def setUp(self):
+        self.project = Project.objects.create(name="JobLog Test Project")
+        self.pipeline = Pipeline.objects.create(name="JobLog Pipeline", slug="joblog-pipeline")
+        self.pipeline.projects.add(self.project)
+        self.job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="JobLog emit test job",
+            pipeline=self.pipeline,
+        )
+
+    def test_emit_inserts_one_joblog_row_per_call(self):
+        self.job.logger.info("first")
+        self.job.logger.error("boom")
+
+        rows = list(JobLog.objects.filter(job=self.job).order_by("pk").values("level", "message"))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["level"], "INFO")
+        self.assertIn("first", rows[0]["message"])
+        self.assertEqual(rows[1]["level"], "ERROR")
+        self.assertIn("boom", rows[1]["message"])
+
+        # emit must not repopulate the legacy JSON column.
+        self.job.refresh_from_db(fields=["logs"])
+        self.assertEqual(self.job.logs.stdout, [])
+        self.assertEqual(self.job.logs.stderr, [])
+
+    def test_flag_disabled_short_circuits_emit(self):
+        from django.test import override_settings
+
+        with override_settings(JOB_LOG_PERSIST_ENABLED=False):
+            self.job.logger.info("suppressed")
+            self.job.logger.error("also suppressed")
+
+        self.assertFalse(JobLog.objects.filter(job=self.job).exists())
+        self.job.refresh_from_db(fields=["logs"])
+        self.assertEqual(self.job.logs.stdout, [])
+        self.assertEqual(self.job.logs.stderr, [])
+
+    def test_serialize_job_logs_reads_from_joblog_table(self):
+        from ami.jobs.serializers import serialize_job_logs
+
+        self.job.logger.info("hello world")
+        self.job.logger.error("something failed")
+
+        logs = serialize_job_logs(self.job)
+
+        self.assertEqual(len(logs["stdout"]), 2)
+        # Newest-first ordering.
+        self.assertIn("ERROR", logs["stdout"][0])
+        self.assertIn("something failed", logs["stdout"][0])
+        self.assertIn("INFO", logs["stdout"][1])
+        self.assertIn("hello world", logs["stdout"][1])
+        self.assertEqual(logs["stderr"], ["something failed"])
+
+    def test_serialize_job_logs_falls_back_to_legacy_json(self):
+        """A job with no JobLog rows but a populated ``logs`` JSON column (a
+        pre-migration job, or a job written under ``JOB_LOG_PERSIST_ENABLED=False``
+        after legacy data had been seeded) still renders through the serializer."""
+        from ami.jobs.models import JobLogs as JobLogsSchema
+        from ami.jobs.serializers import serialize_job_logs
+
+        self.job.logs = JobLogsSchema(stdout=["[2025-01-01 00:00:00] INFO legacy line"], stderr=["old error"])
+        self.job.save(update_fields=["logs"])
+        self.assertFalse(JobLog.objects.filter(job=self.job).exists())
+
+        logs = serialize_job_logs(self.job)
+
+        self.assertEqual(logs["stdout"], ["[2025-01-01 00:00:00] INFO legacy line"])
+        self.assertEqual(logs["stderr"], ["old error"])
+
+    def test_get_logs_list_action_skips_joblog_query(self):
+        """The ``get_logs`` method on JobListSerializer returns the legacy JSON
+        shape when the viewset action is ``list``. This avoids N+1 on joined
+        log rows and matches UI expectations (the list view does not render logs)."""
+        from unittest.mock import MagicMock
+
+        from ami.jobs.models import JobLogs as JobLogsSchema
+        from ami.jobs.serializers import JobListSerializer
+
+        self.job.logger.info("ignored in list view")
+        self.assertEqual(JobLog.objects.filter(job=self.job).count(), 1)
+
+        self.job.logs = JobLogsSchema(stdout=["legacy-only"], stderr=[])
+        self.job.save(update_fields=["logs"])
+
+        # Directly instantiate the serializer with a fake view context claiming
+        # the list action; confirms list responses do not hit JobLog rows.
+        fake_view = MagicMock()
+        fake_view.action = "list"
+        serializer = JobListSerializer(instance=self.job, context={"view": fake_view})
+        logs = serializer.get_logs(self.job)
+
+        self.assertEqual(logs["stdout"], ["legacy-only"])
+        self.assertEqual(logs["stderr"], [])
+
+    def test_get_logs_detail_action_reads_joblog_table(self):
+        from unittest.mock import MagicMock
+
+        from ami.jobs.serializers import JobListSerializer
+
+        self.job.logger.info("detail view reads me")
+
+        fake_view = MagicMock()
+        fake_view.action = "retrieve"
+        serializer = JobListSerializer(instance=self.job, context={"view": fake_view})
+        logs = serializer.get_logs(self.job)
+
+        self.assertEqual(len(logs["stdout"]), 1)
+        self.assertIn("detail view reads me", logs["stdout"][0])
 
 
 class TestJobDispatchModeFiltering(APITestCase):
