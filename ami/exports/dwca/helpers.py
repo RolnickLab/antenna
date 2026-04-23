@@ -7,6 +7,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_LICENSE = "All rights reserved"
+
 
 def _format_event_date(event) -> str:
     """Format event date as ISO date or date interval."""

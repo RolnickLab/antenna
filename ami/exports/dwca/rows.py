@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 
-from ami.exports.dwca.helpers import _format_datetime
+from ami.exports.dwca.helpers import DEFAULT_LICENSE, _format_datetime
 
 
 def _event_id(event, slug: str) -> str:
@@ -19,7 +19,7 @@ def _occurrence_id(occurrence, slug: str) -> str:
     return f"urn:ami:occurrence:{slug}:{occurrence.id}"
 
 
-def iter_multimedia_rows(events_qs, occurrences_qs, project_slug: str):
+def iter_multimedia_rows(events_qs, occurrences, project_slug: str):
     """Yield dicts for multimedia.txt rows.
 
     Two row types:
@@ -28,13 +28,17 @@ def iter_multimedia_rows(events_qs, occurrences_qs, project_slug: str):
       - Crop row: one per Detection whose occurrence is in filter set
         AND which has a usable crop URL. occurrenceID populated;
         references = source capture URL.
+
+    `occurrences` is an already-materialized sequence with detections and
+    source_image prefetched; no DB query is issued here beyond what `events_qs`
+    triggers.
     """
     events_list = list(events_qs)
     license_value = _project_license(events_list)
     rights_holder = _project_rights_holder(events_list)
 
     occurrences_by_event: dict[int, list] = {}
-    for occ in occurrences_qs.select_related("event").prefetch_related("detections__source_image"):
+    for occ in occurrences:
         if occ.event_id is None:
             continue
         occurrences_by_event.setdefault(occ.event_id, []).append(occ)
@@ -93,7 +97,7 @@ def iter_multimedia_rows(events_qs, occurrences_qs, project_slug: str):
                 }
 
 
-def iter_mof_rows(occurrences_qs, project_slug: str):
+def iter_mof_rows(occurrences, project_slug: str):
     """Yield dicts for measurementorfact.txt rows.
 
     Per occurrence:
@@ -102,11 +106,11 @@ def iter_mof_rows(occurrences_qs, project_slug: str):
     Per detection:
       - detectionScore (value = detection.detection_score, unit = proportion)
       - boundingBox (value = JSON [x1,y1,x2,y2], unit = pixels)
+
+    `occurrences` is an already-materialized sequence with determination/event
+    and detection prefetches; no DB query is issued.
     """
-    for occ in occurrences_qs.select_related("determination", "event").prefetch_related(
-        "detections__detection_algorithm",
-        "detections__classifications__algorithm",
-    ):
+    for occ in occurrences:
         eid = _event_id(occ.event, project_slug) if occ.event_id else ""
         occ_urn = _occurrence_id(occ, project_slug)
         if eid and occ.determination_score is not None:
@@ -167,7 +171,7 @@ def _project_license(events) -> str:
     for e in events:
         if e.project and getattr(e.project, "license", ""):
             return e.project.license
-    return ""
+    return DEFAULT_LICENSE
 
 
 def _project_rights_holder(events) -> str:

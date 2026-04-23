@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ami.exports.dwca.helpers import (
+    DEFAULT_LICENSE,
     _format_coord,
     _format_datetime,
     _format_duration,
@@ -107,7 +108,11 @@ EVENT_FIELDS: list[DwCAField] = [
     ),
     DwCAField(DWC + "geodeticDatum", "geodeticDatum", lambda e, slug: "WGS84"),
     DwCAField(DWC + "datasetName", "datasetName", lambda e, slug: e.project.name if e.project else ""),
-    DwCAField(DC + "license", "license", lambda e, slug: (e.project.license if e.project else "") or ""),
+    DwCAField(
+        DC + "license",
+        "license",
+        lambda e, slug: (e.project.license if e.project else "") or DEFAULT_LICENSE,
+    ),
     DwCAField(
         DC + "rightsHolder", "rightsHolder", lambda e, slug: (e.project.rights_holder if e.project else "") or ""
     ),
