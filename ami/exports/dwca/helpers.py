@@ -83,7 +83,7 @@ def get_specific_epithet(name: str) -> str:
 
 
 def _get_verification_status(occurrence) -> str:
-    """Return verification status based on whether identifications exist."""
+    """Return "verified" when a non-withdrawn human Identification exists, else "unverified"."""
     if hasattr(occurrence, "_prefetched_objects_cache") and "identifications" in occurrence._prefetched_objects_cache:
-        return "verified" if occurrence.identifications.all() else "unverified"
-    return "verified" if occurrence.identifications.exists() else "unverified"
+        return "verified" if any(not i.withdrawn for i in occurrence.identifications.all()) else "unverified"
+    return "verified" if occurrence.identifications.filter(withdrawn=False).exists() else "unverified"

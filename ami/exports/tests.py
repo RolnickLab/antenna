@@ -514,6 +514,34 @@ class DwCAExportTest(TestCase):
         self.assertEqual(get_specific_epithet(""), "")
         self.assertEqual(get_specific_epithet("Homo sapiens sapiens"), "sapiens")
 
+    def test_verification_status_ignores_withdrawn_identifications(self):
+        """identificationVerificationStatus should flip to 'verified' only for non-withdrawn human IDs."""
+        from ami.exports.dwca import _get_verification_status
+
+        occurrence = (
+            Occurrence.objects.valid()  # type: ignore[union-attr]
+            .filter(project=self.project, determination__isnull=False)
+            .first()
+        )
+        self.assertIsNotNone(occurrence)
+        occurrence.identifications.all().delete()
+        self.assertEqual(_get_verification_status(occurrence), "unverified")
+
+        Identification.objects.create(
+            user=self.user,
+            taxon=occurrence.determination,
+            occurrence=occurrence,
+            withdrawn=True,
+        )
+        self.assertEqual(_get_verification_status(occurrence), "unverified")
+
+        Identification.objects.create(
+            user=self.user,
+            taxon=occurrence.determination,
+            occurrence=occurrence,
+        )
+        self.assertEqual(_get_verification_status(occurrence), "verified")
+
     def test_eml_xml_valid(self):
         """eml.xml should be valid EML 2.2.0 with coverage, methods, and license."""
         with self._open_zip() as f:
