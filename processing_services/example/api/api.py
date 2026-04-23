@@ -11,6 +11,7 @@ from .pipelines import (
     ZeroShotHFClassifierPipeline,
     ZeroShotObjectDetectorPipeline,
     ZeroShotObjectDetectorWithConstantClassifierPipeline,
+    ZeroShotObjectDetectorWithGlobalMothClassifierPipeline,
     ZeroShotObjectDetectorWithRandomSpeciesClassifierPipeline,
 )
 from .schemas import (
@@ -41,6 +42,7 @@ pipelines: list[type[Pipeline]] = [
     ZeroShotObjectDetectorPipeline,
     ZeroShotObjectDetectorWithConstantClassifierPipeline,
     ZeroShotObjectDetectorWithRandomSpeciesClassifierPipeline,
+    ZeroShotObjectDetectorWithGlobalMothClassifierPipeline,
 ]
 pipeline_choices: dict[str, type[Pipeline]] = {pipeline.config.slug: pipeline for pipeline in pipelines}
 algorithm_choices: dict[str, AlgorithmConfigResponse] = {
