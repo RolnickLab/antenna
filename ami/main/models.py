@@ -1389,8 +1389,14 @@ def audit_event_lengths(deployment: Deployment):
         logger.error(f"Found {events_ending_before_start} event(s) with start > end in deployment {deployment}")
 
 
+DEFAULT_MAX_EVENT_DURATION = datetime.timedelta(hours=24)
+
+
 def group_images_into_events(
-    deployment: Deployment, max_time_gap=datetime.timedelta(minutes=120), delete_empty=True
+    deployment: Deployment,
+    max_time_gap=datetime.timedelta(minutes=120),
+    delete_empty=True,
+    max_event_duration: datetime.timedelta | None = DEFAULT_MAX_EVENT_DURATION,
 ) -> list[Event]:
     # Log a warning if multiple SourceImages have the same timestamp
     dupes = (
@@ -1417,9 +1423,11 @@ def group_images_into_events(
         .distinct()
     )
 
-    timestamp_groups = ami.utils.dates.group_datetimes_by_gap(image_timestamps, max_time_gap)
-    # @TODO this event grouping needs testing. Still getting events over 24 hours
-    # timestamp_groups = ami.utils.dates.group_datetimes_by_shifted_day(image_timestamps)
+    timestamp_groups = ami.utils.dates.group_datetimes_by_gap(
+        image_timestamps,
+        max_time_gap,
+        max_event_duration=max_event_duration,
+    )
 
     events = []
     for group in timestamp_groups:
