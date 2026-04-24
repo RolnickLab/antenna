@@ -266,7 +266,9 @@ class TestImageGrouping(TestCase):
             max_event_duration=datetime.timedelta(hours=24),
         )
 
-        assert len(events) >= 3, f"expected at least 3 daily events, got {len(events)}"
+        # 3 days × 24h / 10min = 432 captures; capped at 24h → exactly 3 events.
+        # `== 3` (not `>= 3`) guards against over-splitting regressions too.
+        assert len(events) == 3, f"expected exactly 3 daily events, got {len(events)}"
         for event in events:
             duration = event.end - event.start
             assert duration <= datetime.timedelta(hours=24), f"event {event.pk} spans {duration}, exceeds 24h cap"
@@ -304,7 +306,7 @@ class TestImageGrouping(TestCase):
         )
 
         all_events = Event.objects.filter(deployment=self.deployment)
-        assert all_events.count() >= 3
+        assert all_events.count() == 3, f"expected exactly 3 events after regroup, got {all_events.count()}"
 
         for event in all_events:
             duration = event.end - event.start
@@ -312,10 +314,20 @@ class TestImageGrouping(TestCase):
                 hours=24
             ), f"event {event.pk} spans {duration} after regroup; cached fields are stale"
 
+            # Per-event cached-count check: catches reused events whose captures_count
+            # was never refreshed after captures were reassigned away. A sum-only check
+            # can miss this when two events' errors offset each other.
+            actual_captures = SourceImage.objects.filter(event=event).count()
+            assert event.captures_count == actual_captures, (
+                f"event {event.pk} cached captures_count={event.captures_count} "
+                f"does not match actual related count={actual_captures}; cached counters are stale"
+            )
+
+        # Orphan check: every capture must belong to some event.
         total_assigned = sum(e.captures_count for e in all_events)
         assert total_assigned == total_captures, (
             f"captures_count across events ({total_assigned}) does not match total captures ({total_captures}); "
-            f"cached counters did not refresh after reassignment"
+            f"captures were orphaned during regroup"
         )
 
     def test_pruning_empty_events(self):
