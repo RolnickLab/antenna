@@ -1430,6 +1430,7 @@ def group_images_into_events(
     )
 
     events = []
+    touched_event_pks: set[int] = set()
     for group in timestamp_groups:
         if not len(group):
             continue
@@ -1453,6 +1454,18 @@ def group_images_into_events(
             defaults={"start": start_date, "end": end_date},
         )
         events.append(event)
+        touched_event_pks.add(event.pk)
+
+        # Track events currently holding these captures — they'll lose captures
+        # to the UPDATE below and need their cached fields refreshed at the end.
+        touched_event_pks.update(
+            SourceImage.objects.filter(deployment=deployment, timestamp__in=group)
+            .exclude(event__isnull=True)
+            .exclude(event=event)
+            .values_list("event_id", flat=True)
+            .distinct()
+        )
+
         SourceImage.objects.filter(deployment=deployment, timestamp__in=group).update(event=event)
         event.save()  # Update start and end times and other cached fields
         logger.info(
@@ -1463,6 +1476,14 @@ def group_images_into_events(
     logger.info(
         f"Done grouping {len(image_timestamps)} captures into {len(events)} events " f"for deployment {deployment}"
     )
+
+    # Refresh cached fields on every event touched by grouping. An event reused
+    # via matching group_by can lose captures to new events created by later
+    # iterations above, leaving its start/end/captures_count stale — e.g. a
+    # pre-existing multi-month event being re-grouped under a 24h cap.
+    # (#904 is expected to rework this reuse path more thoroughly.)
+    if touched_event_pks:
+        update_calculated_fields_for_events(pks=list(touched_event_pks))
 
     if delete_empty:
         logger.info("Deleting empty events for deployment")

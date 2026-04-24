@@ -236,26 +236,29 @@ class TestImageGrouping(TestCase):
         for event in events:
             assert event.captures.count() == images_per_night
 
-    def test_continuous_monitoring_capped_at_24_hours(self):
-        """
-        A deployment that captures images continuously (no gap > max_time_gap)
-        should still be broken into daily events by the max_event_duration cap,
-        not coalesced into one multi-day event.
-        """
+    def _populate_continuous_captures(self, days: int = 3, interval_minutes: int = 10):
+        """Create ``days`` of gap-free captures (no gap > ``interval_minutes``)."""
         import pathlib
         import uuid
 
         start = datetime.datetime(2023, 4, 24, 3, 22, 38)
-        # 3 days of images every 10 minutes — no gap ever exceeds max_time_gap
-        interval = datetime.timedelta(minutes=10)
-        total_span = datetime.timedelta(days=3)
-        count = int(total_span / interval)
+        interval = datetime.timedelta(minutes=interval_minutes)
+        count = int(datetime.timedelta(days=days) / interval)
         for i in range(count):
             SourceImage.objects.create(
                 deployment=self.deployment,
                 timestamp=start + i * interval,
                 path=pathlib.Path("test") / f"{uuid.uuid4().hex[:8]}_continuous_{i}.jpg",
             )
+        return count
+
+    def test_continuous_monitoring_capped_at_24_hours(self):
+        """
+        A deployment that captures images continuously (no gap > max_time_gap)
+        should still be broken into daily events by the max_event_duration cap,
+        not coalesced into one multi-day event.
+        """
+        self._populate_continuous_captures(days=3, interval_minutes=10)
 
         events = group_images_into_events(
             deployment=self.deployment,
@@ -267,6 +270,53 @@ class TestImageGrouping(TestCase):
         for event in events:
             duration = event.end - event.start
             assert duration <= datetime.timedelta(hours=24), f"event {event.pk} spans {duration}, exceeds 24h cap"
+
+    def test_regrouping_existing_long_event_refreshes_cached_fields(self):
+        """
+        Regression test for the regroup-existing-events path: a deployment
+        already grouped into a single multi-day event should, after re-running
+        grouping with the 24h cap, end up with no events exceeding 24h AND
+        every reused event's cached start/end/captures_count must reflect its
+        current captures (not its pre-regroup state).
+
+        This is narrower than #904's refactor on purpose: it asserts the
+        observable cap+refresh behavior without depending on the specific
+        group_by reuse mechanics that #904 is expected to remove.
+        """
+        total_captures = self._populate_continuous_captures(days=3, interval_minutes=10)
+
+        # First pass with the cap disabled → a single multi-day "mega-event".
+        events_uncapped = group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(hours=2),
+            max_event_duration=None,
+        )
+        assert len(events_uncapped) == 1
+        mega_event = events_uncapped[0]
+        assert (mega_event.end - mega_event.start) > datetime.timedelta(hours=24)
+
+        # Second pass with the cap → must split the mega-event and refresh
+        # cached fields on the reused event.
+        group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(hours=2),
+            max_event_duration=datetime.timedelta(hours=24),
+        )
+
+        all_events = Event.objects.filter(deployment=self.deployment)
+        assert all_events.count() >= 3
+
+        for event in all_events:
+            duration = event.end - event.start
+            assert duration <= datetime.timedelta(
+                hours=24
+            ), f"event {event.pk} spans {duration} after regroup; cached fields are stale"
+
+        total_assigned = sum(e.captures_count for e in all_events)
+        assert total_assigned == total_captures, (
+            f"captures_count across events ({total_assigned}) does not match total captures ({total_captures}); "
+            f"cached counters did not refresh after reassignment"
+        )
 
     def test_pruning_empty_events(self):
         from ami.main.models import delete_empty_events
