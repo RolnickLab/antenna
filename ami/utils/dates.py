@@ -112,9 +112,14 @@ def format_timedelta(duration: datetime.timedelta | None) -> str:
 def group_datetimes_by_gap(
     timestamps: list[datetime.datetime],
     max_time_gap=datetime.timedelta(minutes=120),
+    max_event_duration: datetime.timedelta | None = None,
 ) -> list[list[datetime.datetime]]:
     """
     Divide a list of timestamps into groups based on a maximum time gap.
+
+    When ``max_event_duration`` is set, a group is also split once it would
+    exceed that duration. This prevents continuous-monitoring deployments
+    (no quiet gap between nights) from producing a single multi-month group.
 
     >>> timestamps = [
     ...     datetime.datetime(2021, 1, 1, 0, 10, 0), # @TODO confirm the first gap is having an effect
@@ -145,6 +150,22 @@ def group_datetimes_by_gap(
     >>> result = group_datetimes_by_gap(timestamps, max_time_gap=datetime.timedelta(minutes=1))
     >>> len(result)
     10
+
+    Continuous-monitoring case: a long gap-free stream gets capped by
+    ``max_event_duration`` even when no gap exceeds ``max_time_gap``.
+
+    >>> continuous = [datetime.datetime(2021, 1, 1) + datetime.timedelta(minutes=5 * i) for i in range(24 * 12 * 3)]
+    >>> len(group_datetimes_by_gap(continuous, max_time_gap=datetime.timedelta(minutes=120)))
+    1
+    >>> groups = group_datetimes_by_gap(
+    ...     continuous,
+    ...     max_time_gap=datetime.timedelta(minutes=120),
+    ...     max_event_duration=datetime.timedelta(hours=24),
+    ... )
+    >>> len(groups)
+    3
+    >>> all((g[-1] - g[0]) <= datetime.timedelta(hours=24) for g in groups)
+    True
     """
     timestamps.sort()
     prev_timestamp: datetime.datetime | None = None
@@ -157,7 +178,12 @@ def group_datetimes_by_gap(
         else:
             delta = datetime.timedelta(0)
 
-        if delta >= max_time_gap:
+        split_by_gap = delta >= max_time_gap
+        split_by_duration = (
+            max_event_duration is not None and current_group and (timestamp - current_group[0]) > max_event_duration
+        )
+
+        if split_by_gap or split_by_duration:
             groups.append(current_group)
             current_group = []
 
