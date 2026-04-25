@@ -1477,6 +1477,33 @@ def group_images_into_events(
         f"Done grouping {len(image_timestamps)} captures into {len(events)} events " f"for deployment {deployment}"
     )
 
+    # Realign Occurrence.event_id with each occurrence's detections' current
+    # source_image.event_id. Occurrences are bound to an event once at creation
+    # time (Detection.associate_new_occurrence and Pipeline.save_results both
+    # read source_image.event), and are never re-derived afterward. Without
+    # this refresh, a deployment regrouped under the 24h cap keeps every
+    # occurrence pointing at its original (pre-cap) event regardless of when
+    # its detections actually fired — breaking every Occurrence.event-keyed
+    # query (the occur_det_proj_evt index, Event.occurrences related-name,
+    # event_ids= filters at models.py:4232–4477). Track the events currently
+    # held by occurrences in this deployment before and after the refresh so
+    # update_calculated_fields_for_events below picks up both losers and
+    # gainers of occurrences when it recomputes occurrences_count.
+    deployment_occurrences = Occurrence.objects.filter(deployment=deployment)
+    touched_event_pks.update(
+        deployment_occurrences.exclude(event__isnull=True).values_list("event_id", flat=True).distinct()
+    )
+    deployment_occurrences.update(
+        event_id=models.Subquery(
+            Detection.objects.filter(occurrence_id=models.OuterRef("pk"))
+            .order_by("source_image__timestamp")
+            .values("source_image__event_id")[:1]
+        )
+    )
+    touched_event_pks.update(
+        deployment_occurrences.exclude(event__isnull=True).values_list("event_id", flat=True).distinct()
+    )
+
     # Refresh cached fields on every event touched by grouping. An event reused
     # via matching group_by can lose captures to new events created by later
     # iterations above, leaving its start/end/captures_count stale — e.g. a
@@ -1494,9 +1521,14 @@ def group_images_into_events(
         logger.info(f"Setting image dimensions for event {event}")
         set_dimensions_for_collection(event)
 
-    logger.info("Updating relevant cached fields on deployment")
-    deployment.events_count = len(events)
-    deployment.save(update_calculated_fields=False, update_fields=["events_count"])
+    # Refresh deployment-level cached counts. The async regroup_events task
+    # never goes through Deployment.save's calculated-fields refresh, so
+    # without this call the deployment list (occurrences_count, taxa_count,
+    # etc.) keeps showing pre-regroup numbers until the next save touches it.
+    # The save inside update_calculated_fields uses update_calculated_fields=False
+    # so it doesn't re-enter the regroup path.
+    logger.info("Updating cached fields on deployment")
+    deployment.update_calculated_fields(save=True)
 
     audit_event_lengths(deployment)
 

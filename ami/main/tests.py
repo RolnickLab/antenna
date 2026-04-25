@@ -330,6 +330,103 @@ class TestImageGrouping(TestCase):
             f"captures were orphaned during regroup"
         )
 
+    def test_regrouping_realigns_occurrence_event_id(self):
+        """
+        Regression test for stale ``Occurrence.event_id`` after regroup.
+
+        Occurrences are bound to an event once at creation time (from
+        ``detection.source_image.event``). When the 24h cap runs against a
+        deployment that already has detections + occurrences attached to a
+        single mega-event, the source_images are reassigned but the
+        occurrences' event_ids stay stuck at the mega-event unless we
+        explicitly realign them. This test asserts the realignment plus the
+        downstream ``occurrences_count`` consistency on the daily events.
+        """
+        self._populate_continuous_captures(days=3, interval_minutes=10)
+        captures = list(SourceImage.objects.filter(deployment=self.deployment).order_by("timestamp"))
+        captures_per_day = len(captures) // 3
+
+        # First pass with the cap disabled → one mega-event holding everything.
+        group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(hours=2),
+            max_event_duration=None,
+        )
+        mega_event = Event.objects.get(deployment=self.deployment)
+
+        # One occurrence per day, attached to a capture from that day.
+        # Indices: 0 → day 0, captures_per_day → day 1, 2 * captures_per_day → day 2.
+        targets = [captures[0], captures[captures_per_day], captures[2 * captures_per_day]]
+        occurrences = []
+        for capture in targets:
+            detection = Detection.objects.create(
+                source_image=capture,
+                timestamp=capture.timestamp,
+                bbox=[0.1, 0.1, 0.2, 0.2],
+            )
+            occurrence = Occurrence.objects.create(
+                event=mega_event,
+                deployment=self.deployment,
+                project=self.project,
+            )
+            detection.occurrence = occurrence
+            detection.save()
+            occurrences.append(occurrence)
+
+        # Sanity: all three occurrences point at the mega-event before regroup.
+        for occurrence in occurrences:
+            occurrence.refresh_from_db()
+            assert occurrence.event_id == mega_event.pk
+
+        # Second pass: 24h cap → 3 daily events, each occurrence must follow
+        # its detection's source_image into the corresponding daily event.
+        group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(hours=2),
+            max_event_duration=datetime.timedelta(hours=24),
+        )
+
+        for occurrence in occurrences:
+            occurrence.refresh_from_db()
+            first_detection = (
+                Detection.objects.filter(occurrence=occurrence)
+                .select_related("source_image")
+                .order_by("source_image__timestamp")
+                .first()
+            )
+            assert first_detection is not None
+            expected_event_id = first_detection.source_image.event_id
+            assert occurrence.event_id == expected_event_id, (
+                f"occurrence {occurrence.pk}: stale event_id={occurrence.event_id} "
+                f"(expected {expected_event_id} from first detection's source_image)"
+            )
+
+        # Realignment must also have moved occurrences across events, not just
+        # left them all on the (reused) day-0 event. With detections on captures
+        # 0, captures_per_day, and 2*captures_per_day, the 24h cap should put
+        # at least one occurrence on a non-day-0 event.
+        non_day0_events = Event.objects.filter(deployment=self.deployment).exclude(
+            pk=Occurrence.objects.filter(pk=occurrences[0].pk).values("event_id")[:1]
+        )
+        assert Occurrence.objects.filter(event__in=non_day0_events).count() >= 1
+
+        # Each daily event's cached ``occurrences_count`` must match the live
+        # computation that ``update_calculated_fields`` itself uses (which
+        # applies the project's default filters). Catches the case where
+        # occurrences moved off an event but its cached counter wasn't
+        # refreshed because the event wasn't tracked as touched.
+        daily_events = Event.objects.filter(deployment=self.deployment)
+        assert daily_events.count() == 3
+        for event in daily_events:
+            expected = event.get_occurrences_count()
+            assert event.occurrences_count == expected, (
+                f"event {event.pk} cached occurrences_count={event.occurrences_count} "
+                f"!= live get_occurrences_count()={expected}; cached counter is stale"
+            )
+
+        # No occurrence should be left pointing at a deleted/missing event.
+        assert Occurrence.objects.filter(deployment=self.deployment, event__isnull=True).count() == 0
+
     def test_pruning_empty_events(self):
         from ami.main.models import delete_empty_events
 
