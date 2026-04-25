@@ -1485,7 +1485,7 @@ def group_images_into_events(
     # occurrence pointing at its original (pre-cap) event regardless of when
     # its detections actually fired — breaking every Occurrence.event-keyed
     # query (the occur_det_proj_evt index, Event.occurrences related-name,
-    # event_ids= filters at models.py:4232–4477). Track the events currently
+    # event_ids= filters at models.py:4232-4477). Track the events currently
     # held by occurrences in this deployment before and after the refresh so
     # update_calculated_fields_for_events below picks up both losers and
     # gainers of occurrences when it recomputes occurrences_count.

@@ -344,7 +344,6 @@ class TestImageGrouping(TestCase):
         """
         self._populate_continuous_captures(days=3, interval_minutes=10)
         captures = list(SourceImage.objects.filter(deployment=self.deployment).order_by("timestamp"))
-        captures_per_day = len(captures) // 3
 
         # First pass with the cap disabled → one mega-event holding everything.
         group_images_into_events(
@@ -354,9 +353,18 @@ class TestImageGrouping(TestCase):
         )
         mega_event = Event.objects.get(deployment=self.deployment)
 
-        # One occurrence per day, attached to a capture from that day.
-        # Indices: 0 → day 0, captures_per_day → day 1, 2 * captures_per_day → day 2.
-        targets = [captures[0], captures[captures_per_day], captures[2 * captures_per_day]]
+        # One occurrence per day, picked at mid-day offsets (12h / 36h / 60h)
+        # so each target sits well inside its event's window, far from the
+        # exact 24h boundary where the cap's strict ``>`` semantics matter.
+        # Index-based selection (e.g. ``captures[len // 3]``) lands at exactly
+        # 24h offset, where Event 2 starts at 24h+10min (one capture past),
+        # so two of the three targets would otherwise share an event.
+        start_ts = captures[0].timestamp
+        targets = [
+            next(c for c in captures if c.timestamp >= start_ts + datetime.timedelta(hours=12)),
+            next(c for c in captures if c.timestamp >= start_ts + datetime.timedelta(hours=36)),
+            next(c for c in captures if c.timestamp >= start_ts + datetime.timedelta(hours=60)),
+        ]
         occurrences = []
         for capture in targets:
             detection = Detection.objects.create(
@@ -401,14 +409,13 @@ class TestImageGrouping(TestCase):
                 f"(expected {expected_event_id} from first detection's source_image)"
             )
 
-        # Realignment must also have moved occurrences across events, not just
-        # left them all on the (reused) day-0 event. With detections on captures
-        # 0, captures_per_day, and 2*captures_per_day, the 24h cap should put
-        # at least one occurrence on a non-day-0 event.
-        non_day0_events = Event.objects.filter(deployment=self.deployment).exclude(
-            pk=Occurrence.objects.filter(pk=occurrences[0].pk).values("event_id")[:1]
-        )
-        assert Occurrence.objects.filter(event__in=non_day0_events).count() >= 1
+        # Realignment must move all three occurrences onto distinct daily
+        # events. With targets at mid-day offsets, the three occurrences land
+        # on three different events — one on each day.
+        distinct_event_ids = {occ.event_id for occ in occurrences}
+        assert (
+            len(distinct_event_ids) == 3
+        ), f"expected 3 distinct event_ids across occurrences, got {distinct_event_ids}"
 
         # Each daily event's cached ``occurrences_count`` must match the live
         # computation that ``update_calculated_fields`` itself uses (which
