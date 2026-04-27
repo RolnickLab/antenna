@@ -1496,7 +1496,7 @@ def group_images_into_events(
     deployment_occurrences.update(
         event_id=models.Subquery(
             Detection.objects.filter(occurrence_id=models.OuterRef("pk"))
-            .order_by("source_image__timestamp")
+            .order_by("source_image__timestamp", "source_image_id", "pk")
             .values("source_image__event_id")[:1]
         )
     )

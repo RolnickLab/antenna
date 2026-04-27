@@ -370,7 +370,7 @@ class TestImageGrouping(TestCase):
             detection = Detection.objects.create(
                 source_image=capture,
                 timestamp=capture.timestamp,
-                bbox=[0.1, 0.1, 0.2, 0.2],
+                bbox=[10, 10, 20, 20],
             )
             occurrence = Occurrence.objects.create(
                 event=mega_event,
