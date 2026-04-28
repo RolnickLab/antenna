@@ -12,7 +12,8 @@ class DataExportAdmin(admin.ModelAdmin):
 
     list_display = ("id", "user", "format", "status_display", "project", "created_at", "get_job")
     list_filter = ("format", "project")
-    search_fields = ("user__username", "format", "project__name")
+    search_fields = ("user__email", "user__name", "format", "project__name")
+    autocomplete_fields = ("user", "project")
     readonly_fields = ("status_display", "file_url_display", "filters_display", "created_at", "updated_at")
 
     fieldsets = (
