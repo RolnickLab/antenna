@@ -9,6 +9,8 @@ class Migration(migrations.Migration):
     operations = [
         migrations.RunSQL(
             sql="CREATE EXTENSION IF NOT EXISTS vector;",
-            reverse_sql="DROP EXTENSION IF EXISTS vector;",
+            # No-op on reverse: the extension may be shared with other features/databases,
+            # and dropping it can be restricted in some hosted environments.
+            reverse_sql=migrations.RunSQL.noop,
         ),
     ]

@@ -136,9 +136,17 @@ class ClassificationResponse(pydantic.BaseModel):
     features: list[float] | None = pydantic.Field(
         default=None,
         description=(
-            "Optional feature embedding vector from the model backbone, used for tracking and similarity search."
+            "Optional feature embedding vector from the model backbone, used for tracking and similarity search. "
+            "Must be exactly 2048 floats to match the Classification.features_2048 column."
         ),
     )
+
+    @pydantic.validator("features")
+    def _features_length(cls, v):
+        if v is not None and len(v) != 2048:
+            raise ValueError(f"features must be length 2048 to match Classification.features_2048, got {len(v)}")
+        return v
+
     inference_time: float | None = None
     algorithm: AlgorithmReference
     terminal: bool = True

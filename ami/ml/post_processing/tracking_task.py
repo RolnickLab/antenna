@@ -78,6 +78,7 @@ def get_most_common_algorithm_for_event(event: Event) -> Algorithm | None:
         Classification.objects.filter(
             detection__source_image__event=event,
             features_2048__isnull=False,
+            algorithm_id__isnull=False,
         )
         .values("algorithm_id")
         .annotate(count=Count("id"))
@@ -85,7 +86,7 @@ def get_most_common_algorithm_for_event(event: Event) -> Algorithm | None:
         .first()
     )
     if most_common:
-        return Algorithm.objects.get(id=most_common["algorithm_id"])
+        return Algorithm.objects.filter(id=most_common["algorithm_id"]).first()
     return None
 
 
@@ -121,7 +122,13 @@ def assign_occurrences_from_detection_chains(source_images: list[SourceImage], l
 
     for image in source_images:
         for det in image.detections.all():
-            if det.pk in visited or getattr(det, "previous_detection", None) is not None:
+            if det.pk in visited:
+                continue
+            try:
+                has_prior = det.previous_detection is not None
+            except Detection.DoesNotExist:
+                has_prior = False
+            if has_prior:
                 continue
 
             chain: list[Detection] = []
@@ -131,12 +138,15 @@ def assign_occurrences_from_detection_chains(source_images: list[SourceImage], l
                 visited.add(current.pk)
                 current = current.next_detection
 
-            if len(chain) <= 1:
-                continue
-
             old_occ_ids = {d.occurrence_id for d in chain if d.occurrence_id}
-            if len(old_occ_ids) == 1:
-                # All detections already share one occurrence; nothing to do.
+            all_assigned = all(d.occurrence_id is not None for d in chain)
+            # Skip rebuild only when the chain is already coherent: every detection
+            # is assigned and they all share the same occurrence. Otherwise, rebuild
+            # the occurrence so singletons + orphaned detections also get materialized.
+            # @TODO: detect when an existing occurrence is being SPLIT into multiple
+            # chains (each subchain still references the old occurrence). This pass
+            # currently leaves the merged occurrence in place. See PR #1272 follow-ups.
+            if len(old_occ_ids) == 1 and all_assigned:
                 continue
 
             for occ_id in old_occ_ids:
@@ -186,12 +196,16 @@ def pair_detections(
     diag = image_diagonal(image_width, image_height)
     candidates: list[tuple[Detection, Detection, float]] = []
 
+    # Cache feature lookups: one query per detection instead of O(m*n).
+    current_vectors = {det.pk: get_feature_vector(det, algorithm) for det in current_detections}
+    next_vectors = {nxt.pk: get_feature_vector(nxt, algorithm) for nxt in next_detections}
+
     for det in current_detections:
-        det_vec = get_feature_vector(det, algorithm)
+        det_vec = current_vectors[det.pk]
         if det_vec is None:
             continue
         for nxt in next_detections:
-            nxt_vec = get_feature_vector(nxt, algorithm)
+            nxt_vec = next_vectors[nxt.pk]
             if nxt_vec is None:
                 continue
             cost = total_cost(det_vec, nxt_vec, det.bbox, nxt.bbox, diag)
@@ -207,7 +221,10 @@ def pair_detections(
         if det.id in claimed_current or nxt.id in claimed_next:
             continue
         # Detach any existing inbound link to `nxt` before reassigning.
-        prior: Detection | None = getattr(nxt, "previous_detection", None)
+        try:
+            prior: Detection | None = nxt.previous_detection
+        except Detection.DoesNotExist:
+            prior = None
         if prior is not None:
             prior.next_detection = None
             prior.save()
@@ -300,10 +317,20 @@ class TrackingTask(BasePostProcessingTask):
         for idx, event in enumerate(events, start=1):
             self.logger.info(f"Tracking event {idx}/{total} (id={event.pk})")
 
-            algorithm = get_most_common_algorithm_for_event(event)
-            if algorithm is None:
-                self.logger.warning(f"No feature-extraction algorithm found for event {event.pk}; skipping.")
-                continue
+            if params.feature_extraction_algorithm_id is not None:
+                algorithm = Algorithm.objects.filter(pk=params.feature_extraction_algorithm_id).first()
+                if algorithm is None:
+                    self.logger.warning(
+                        f"Configured feature_extraction_algorithm_id="
+                        f"{params.feature_extraction_algorithm_id} not found; skipping event {event.pk}."
+                    )
+                    continue
+                self.logger.info(f"Using configured feature-extraction algorithm {algorithm.pk} for event {event.pk}.")
+            else:
+                algorithm = get_most_common_algorithm_for_event(event)
+                if algorithm is None:
+                    self.logger.warning(f"No feature-extraction algorithm found for event {event.pk}; skipping.")
+                    continue
 
             if (
                 params.skip_if_human_identifications
