@@ -34,9 +34,9 @@ class DataExportAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request: HttpRequest):
         """
-        Optimize queryset by selecting related project and job data.
+        Optimize queryset by selecting related user, project, and job data.
         """
-        return super().get_queryset(request).select_related("project", "job")
+        return super().get_queryset(request).select_related("user", "project", "job")
 
     @admin.display(description="Status")
     def status_display(self, obj):

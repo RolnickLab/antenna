@@ -78,6 +78,9 @@ class ProjectAdmin(GuardedModelAdmin):
     inlines = [ProjectPipelineConfigInline]
     autocomplete_fields = ("owner", "default_filters_include_taxa", "default_filters_exclude_taxa")
 
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        return super().get_queryset(request).select_related("owner")
+
     fieldsets = (
         (
             None,
