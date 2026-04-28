@@ -1,3 +1,4 @@
+import dataclasses
 from typing import Any
 
 from django.contrib import admin
@@ -668,10 +669,32 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
 
         self.message_user(request, f"Queued Small Size Filter for {queryset.count()} capture set(s). Jobs: {jobs}")
 
+    @admin.action(description="Run Occurrence Tracking post-processing task (async)")
+    def run_tracking(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
+        from ami.ml.post_processing.tracking_task import DEFAULT_TRACKING_PARAMS
+
+        jobs = []
+        for collection in queryset:
+            job = Job.objects.create(
+                name=f"Post-processing: Tracking on Capture Set {collection.pk}",
+                project=collection.project,
+                source_image_collection=collection,
+                job_type_key="post_processing",
+                params={
+                    "task": "tracking",
+                    "config": dataclasses.asdict(DEFAULT_TRACKING_PARAMS),
+                },
+            )
+            job.enqueue()
+            jobs.append(job.pk)
+
+        self.message_user(request, f"Queued Tracking for {queryset.count()} capture set(s). Jobs: {jobs}")
+
     actions = [
         populate_collection,
         populate_collection_async,
         run_small_size_filter,
+        run_tracking,
     ]
 
     # Hide images many-to-many field from form. This would list all source images in the database.

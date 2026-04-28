@@ -9,6 +9,7 @@ import urllib.parse
 from io import BytesIO
 from typing import Final, final  # noqa: F401
 
+import pgvector.django
 import PIL.Image
 import pydantic
 from django.apps import apps
@@ -2590,6 +2591,11 @@ class Classification(BaseModel):
         null=True,
         help_text="The probabilities the model, calibrated by the model maker, likely the softmax output",
     )
+    features_2048 = pgvector.django.VectorField(
+        dimensions=2048,
+        null=True,
+        help_text="Feature embedding from the model backbone",
+    )
     category_map = models.ForeignKey("ml.AlgorithmCategoryMap", on_delete=models.PROTECT, null=True)
 
     algorithm = models.ForeignKey(
@@ -2783,6 +2789,15 @@ class Detection(BaseModel):
     # )
 
     similarity_vector = models.JSONField(null=True, blank=True)
+
+    next_detection = models.OneToOneField(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="previous_detection",
+        help_text="The detection that follows this one in the tracking sequence.",
+    )
 
     # For type hints
     classifications: models.QuerySet["Classification"]

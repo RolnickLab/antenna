@@ -133,6 +133,12 @@ class ClassificationResponse(pydantic.BaseModel):
     )
     scores: list[float] = []
     logits: list[float] | None = None
+    features: list[float] | None = pydantic.Field(
+        default=None,
+        description=(
+            "Optional feature embedding vector from the model backbone, used for tracking and similarity search."
+        ),
+    )
     inference_time: float | None = None
     algorithm: AlgorithmReference
     terminal: bool = True
