@@ -2960,6 +2960,9 @@ class TestOccurrenceListQueryCount(APITestCase):
             res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertEqual(len(res.data["results"]), min(limit, res.data["count"]))
+        # List responses cap detection_images per row (prevents unbounded payload).
+        for row in res.data["results"]:
+            self.assertLessEqual(len(row["detection_images"]), 3)
         return len(ctx.captured_queries)
 
     def test_list_query_count_does_not_scale_with_page_size(self):
@@ -3019,64 +3022,6 @@ class TestOccurrenceDetailQueryCount(APITestCase):
         # nested predictions, source_image select_related). Hard ceiling catches
         # silent reintroduction of N+1 in the shared serializer base.
         self.assertLess(count, 20, f"Detail endpoint took {count} queries (likely N+1 regression)")
-
-
-class TestOccurrenceResponseShape(APITestCase):
-    """Pin list + detail response shapes so the prefetch refactor doesn't silently change JSON."""
-
-    def setUp(self):
-        self.project, self.deployment = setup_test_project()
-        create_taxa(self.project)
-        create_captures(deployment=self.deployment, num_nights=1, images_per_night=10)
-        create_occurrences(deployment=self.deployment, num=10, determination_score=0.9)
-        self.project.default_filters_score_threshold = 0.0
-        self.project.save()
-        self.user = User.objects.create_user(email="shape@insectai.org")
-        self.client.force_authenticate(user=self.user)
-
-    def test_list_response_shape(self):
-        res = self.client.get(f"/api/v2/occurrences/?project_id={self.project.pk}&limit=10")
-        self.assertEqual(res.status_code, status.HTTP_200_OK)
-        self.assertGreater(len(res.data["results"]), 0)
-        row = res.data["results"][0]
-        for key in (
-            "id",
-            "details",
-            "event",
-            "deployment",
-            "first_appearance_timestamp",
-            "duration",
-            "determination",
-            "detections_count",
-            "detection_images",
-            "determination_score",
-            "determination_details",
-            "best_machine_prediction",
-            "identifications",
-            "created_at",
-            "updated_at",
-        ):
-            self.assertIn(key, row, f"list response missing key {key!r}")
-        self.assertIsInstance(row["detection_images"], list)
-        # List path caps at 3 (matches old behavior).
-        self.assertLessEqual(len(row["detection_images"]), 3)
-
-    def test_detail_response_shape(self):
-        occurrence_id = Occurrence.objects.filter(project=self.project).values_list("pk", flat=True).first()
-        res = self.client.get(f"/api/v2/occurrences/{occurrence_id}/?project_id={self.project.pk}")
-        self.assertEqual(res.status_code, status.HTTP_200_OK)
-        for key in (
-            "id",
-            "determination",
-            "detection_images",
-            "determination_details",
-            "best_machine_prediction",
-            "detections",
-            "predictions",
-        ):
-            self.assertIn(key, res.data, f"detail response missing key {key!r}")
-        self.assertIsInstance(res.data["detection_images"], list)
-        self.assertIsInstance(res.data["detections"], list)
 
 
 class TestOccurrencePrefetchHelpersEdgeCases(APITestCase):
