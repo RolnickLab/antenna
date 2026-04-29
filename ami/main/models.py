@@ -60,6 +60,11 @@ _POST_TITLE_MAX_LENGTH: Final = 80
 # over non-terminal, then highest score, with pk as the deterministic tiebreaker.
 BEST_MACHINE_PREDICTION_ORDER: Final = ("-terminal", "-score", "-pk")
 
+# Ordering for "best identification" selection used by Occurrence.best_identification,
+# OccurrenceQuerySet.with_verification_info(), and best_identification_from_prefetch().
+# Most recent non-withdrawn identification wins, with pk as the deterministic tiebreaker.
+BEST_IDENTIFICATION_ORDER: Final = ("-created_at", "-pk")
+
 
 class TaxonRank(OrderedEnum):
     KINGDOM = "KINGDOM"
@@ -3023,7 +3028,7 @@ class OccurrenceQuerySet(BaseQuerySet):
         """
         best_identification_subquery = Identification.objects.filter(
             occurrence=OuterRef("pk"), withdrawn=False
-        ).order_by("-created_at")
+        ).order_by(*BEST_IDENTIFICATION_ORDER)
 
         return self.annotate(
             verified_by_name=models.Subquery(best_identification_subquery.values("user__name")[:1]),
@@ -3249,7 +3254,11 @@ class Occurrence(BaseModel):
 
         @TODO this could use a confidence level chosen manually by the users/experts.
         """
-        return Identification.objects.filter(occurrence=self, withdrawn=False).order_by("-created_at").first()
+        return (
+            Identification.objects.filter(occurrence=self, withdrawn=False)
+            .order_by(*BEST_IDENTIFICATION_ORDER)
+            .first()
+        )
 
     def get_determination_score(self) -> float | None:
         if not self.determination:

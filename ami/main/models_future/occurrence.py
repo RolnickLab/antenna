@@ -112,9 +112,9 @@ def best_prediction_from_prefetch(occurrence: Occurrence) -> Classification | No
 def best_identification_from_prefetch(occurrence: Occurrence) -> Identification | None:
     """Pick the most recent non-withdrawn identification from prefetched data.
 
-    Mirrors `Occurrence.best_identification` (`order_by("-created_at")`), with
-    a `pk` tiebreaker so equal timestamps produce a deterministic winner.
-    `created_at=None` is treated as lower than any real timestamp.
+    Mirrors `Occurrence.best_identification`, which uses
+    `BEST_IDENTIFICATION_ORDER = ("-created_at", "-pk")`. `created_at=None` is
+    treated as lower than any real timestamp.
     """
     best: Identification | None = None
     best_key: tuple[bool, object, int] | None = None
