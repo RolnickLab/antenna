@@ -1314,6 +1314,12 @@ class OccurrenceIdentificationSerializer(DefaultSerializer):
 
 
 class OccurrenceListSerializer(DefaultSerializer):
+    # Cap detection_images on list responses (cover gallery; usually 1, kept at 3
+    # for backward compatibility). Detail subclass overrides to None (unbounded).
+    # TODO: bound detail too once occurrence tracking lands — counts can reach
+    # thousands per occurrence and pagination is the right answer.
+    detection_images_limit: int | None = 3
+
     determination = CaptureTaxonSerializer(read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
@@ -1368,7 +1374,7 @@ class OccurrenceListSerializer(DefaultSerializer):
     def get_detection_images(self, obj: Occurrence) -> list[str]:
         from ami.main.models_future.occurrence import detection_image_urls_from_prefetch
 
-        return detection_image_urls_from_prefetch(obj)
+        return detection_image_urls_from_prefetch(obj, limit=self.detection_images_limit)
 
     def _best_identification(self, obj: Occurrence) -> Identification | None:
         from ami.main.models_future.occurrence import best_identification_from_prefetch
@@ -1435,6 +1441,9 @@ class OccurrenceListSerializer(DefaultSerializer):
 
 
 class OccurrenceSerializer(OccurrenceListSerializer):
+    # Detail returns all detection_images (TODO: bound when tracking enabled).
+    detection_images_limit: int | None = None
+
     determination = CaptureTaxonSerializer(read_only=True)
     detections = DetectionNestedSerializer(many=True, read_only=True)
     identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)

@@ -3021,6 +3021,130 @@ class TestOccurrenceDetailQueryCount(APITestCase):
         self.assertLess(count, 20, f"Detail endpoint took {count} queries (likely N+1 regression)")
 
 
+class TestOccurrenceResponseShape(APITestCase):
+    """Pin list + detail response shapes so the prefetch refactor doesn't silently change JSON."""
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=10)
+        create_occurrences(deployment=self.deployment, num=10, determination_score=0.9)
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+        self.user = User.objects.create_user(email="shape@insectai.org")
+        self.client.force_authenticate(user=self.user)
+
+    def test_list_response_shape(self):
+        res = self.client.get(f"/api/v2/occurrences/?project_id={self.project.pk}&limit=10")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertGreater(len(res.data["results"]), 0)
+        row = res.data["results"][0]
+        for key in (
+            "id",
+            "details",
+            "event",
+            "deployment",
+            "first_appearance_timestamp",
+            "duration",
+            "determination",
+            "detections_count",
+            "detection_images",
+            "determination_score",
+            "determination_details",
+            "best_machine_prediction",
+            "identifications",
+            "created_at",
+            "updated_at",
+        ):
+            self.assertIn(key, row, f"list response missing key {key!r}")
+        self.assertIsInstance(row["detection_images"], list)
+        # List path caps at 3 (matches old behavior).
+        self.assertLessEqual(len(row["detection_images"]), 3)
+
+    def test_detail_response_shape(self):
+        occurrence_id = Occurrence.objects.filter(project=self.project).values_list("pk", flat=True).first()
+        res = self.client.get(f"/api/v2/occurrences/{occurrence_id}/?project_id={self.project.pk}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        for key in (
+            "id",
+            "determination",
+            "detection_images",
+            "determination_details",
+            "best_machine_prediction",
+            "detections",
+            "predictions",
+        ):
+            self.assertIn(key, res.data, f"detail response missing key {key!r}")
+        self.assertIsInstance(res.data["detection_images"], list)
+        self.assertIsInstance(res.data["detections"], list)
+
+
+class TestOccurrencePrefetchHelpersEdgeCases(APITestCase):
+    """Helpers in `models_future/occurrence.py` must handle empty prefetch caches gracefully.
+
+    `.valid()` excludes zero-detection occurrences from the list endpoint, but
+    helpers can still be called on objects whose detections were deleted, or in
+    non-API contexts (admin, exports). Empty must return None / [] without 500.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=2)
+        create_occurrences(deployment=self.deployment, num=2, determination_score=0.9)
+
+    def _empty_occurrence(self) -> "Occurrence":
+        """An occurrence with prefetch caches populated but all relations empty."""
+        from ami.main.models_future.occurrence import prefetches_for_list_serializer
+
+        occurrence = (
+            Occurrence.objects.filter(project=self.project)
+            .prefetch_related(*prefetches_for_list_serializer(), "identifications")
+            .first()
+        )
+        assert occurrence is not None
+        # Wipe relations through DB to leave the prefetch cache empty.
+        occurrence.detections.all().delete()
+        occurrence.identifications.all().delete()
+        # Re-fetch with prefetches so the cache reflects the empty state.
+        return (
+            Occurrence.objects.filter(pk=occurrence.pk)
+            .prefetch_related(*prefetches_for_list_serializer(), "identifications")
+            .get()
+        )
+
+    def test_helpers_return_safe_defaults_on_empty(self):
+        from ami.main.models_future.occurrence import (
+            best_identification_from_prefetch,
+            best_prediction_from_prefetch,
+            detection_image_urls_from_prefetch,
+        )
+
+        occurrence = self._empty_occurrence()
+        self.assertIsNone(best_prediction_from_prefetch(occurrence))
+        self.assertIsNone(best_identification_from_prefetch(occurrence))
+        self.assertEqual(detection_image_urls_from_prefetch(occurrence), [])
+        self.assertEqual(detection_image_urls_from_prefetch(occurrence, limit=3), [])
+
+    def test_helpers_raise_when_prefetch_missing(self):
+        """Strict contract: missing prefetch must raise, not silently slow-path."""
+        from ami.main.models_future.occurrence import (
+            best_identification_from_prefetch,
+            best_prediction_from_prefetch,
+            detection_image_urls_from_prefetch,
+        )
+
+        # No prefetch applied
+        occurrence = Occurrence.objects.filter(project=self.project).first()
+        assert occurrence is not None
+        with self.assertRaises(RuntimeError):
+            best_prediction_from_prefetch(occurrence)
+        with self.assertRaises(RuntimeError):
+            best_identification_from_prefetch(occurrence)
+        with self.assertRaises(RuntimeError):
+            detection_image_urls_from_prefetch(occurrence)
+
+
 class TestProjectDefaultTaxaFilter(APITestCase):
     """
     Tests for project default taxa filtering (include/exclude lists).

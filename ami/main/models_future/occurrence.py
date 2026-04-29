@@ -54,18 +54,33 @@ def prefetches_for_detail_serializer() -> list[Prefetch]:
     return [prefetch_detections_for_detail()]
 
 
+def _require_prefetch(occurrence: Occurrence, *relations: str) -> None:
+    """Raise if any required relation is missing from the prefetch cache.
+
+    Strict contract: callers in serializer code must go through a viewset that
+    applied the corresponding prefetch. Silent slow-pathing (the serializer
+    triggering its own DB queries) is the N+1 we are fixing.
+    """
+    cache = getattr(occurrence, "_prefetched_objects_cache", {})
+    missing = [r for r in relations if r not in cache]
+    if missing:
+        raise RuntimeError(
+            f"Occurrence {occurrence.pk} is missing prefetched relations {missing!r}. "
+            "Apply OccurrenceQuerySet.with_list_prefetches() / with_detail_prefetches() / "
+            "with_identifications() in the viewset's get_queryset()."
+        )
+
+
 def best_prediction_from_prefetch(occurrence: Occurrence) -> Classification | None:
     """Pick the best machine prediction from a prefetched occurrence in Python.
 
     Mirrors `Occurrence.best_prediction`, which calls `Occurrence.predictions()`
     (per-algorithm max-score filtering) and then orders by `-terminal, -score`.
-    Replicating that grouping in Python keeps list and detail responses
-    consistent for occurrences whose top-scoring classification is non-terminal.
 
-    Requires `prefetch_detections_for_list()` (or equivalent) to have been
-    applied; walks `obj.detections.all()` -> `det.classifications.all()` from
-    the prefetch cache.
+    Strict: requires `detections` (and each detection's `classifications`) to be
+    prefetched. Raises if not.
     """
+    _require_prefetch(occurrence, "detections")
     classifications = [c for det in occurrence.detections.all() for c in det.classifications.all()]
     if not classifications:
         return None
@@ -100,7 +115,11 @@ def best_identification_from_prefetch(occurrence: Occurrence) -> Identification 
     Mirrors `Occurrence.best_identification`, which uses
     `BEST_IDENTIFICATION_ORDER = ("-created_at", "-pk")`. `created_at=None` is
     treated as lower than any real timestamp.
+
+    Strict: requires `identifications` to be prefetched (via
+    `OccurrenceQuerySet.with_identifications()`).
     """
+    _require_prefetch(occurrence, "identifications")
     best: Identification | None = None
     best_key: tuple[bool, object, int] | None = None
     for ident in occurrence.identifications.all():
@@ -116,8 +135,13 @@ def best_identification_from_prefetch(occurrence: Occurrence) -> Identification 
 def detection_image_urls_from_prefetch(occurrence: Occurrence, limit: int | None = None) -> list[str]:
     """Return media URLs for the prefetched detections (filtering out `path=None`).
 
-    Requires `prefetch_detections_for_list()` to have been applied.
+    Strict: requires `detections` to be prefetched. Pass `limit` to bound output —
+    list responses cap at a few cover images; detail responses currently return
+    all (TODO: bound when occurrence tracking lands; per-occurrence detection
+    counts can reach thousands).
     """
+    _require_prefetch(occurrence, "detections")
+
     from ami.main.models import get_media_url
 
     detections = [det for det in occurrence.detections.all() if det.path]
