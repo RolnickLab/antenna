@@ -1762,3 +1762,195 @@ class TestCancelCompletionRace(TransactionTestCase):
             JobState.REVOKED.value,
             f"late completion resurrected a REVOKED job to {self.job.status!r}",
         )
+
+
+class TestCheckStaleJobsReaperGuard(TransactionTestCase):
+    """Reaper guard for async_api jobs: the reaper consults Redis directly
+    (AsyncJobStateManager.all_tasks_processed) rather than
+    Job.progress.is_complete() to decide whether a Celery SUCCESS on a stale
+    job is trustworthy. This class verifies the Redis-direct path, the
+    absent-state fallback to progress.is_complete() with a WARNING log, and
+    that sync_api jobs are unaffected by the guard."""
+
+    def setUp(self):
+        cache.clear()
+        self.project = Project.objects.create(name="Reaper Guard Project")
+        self.pipeline = Pipeline.objects.create(name="Reaper Pipeline", slug="reaper-pipeline")
+        self.pipeline.projects.add(self.project)
+        self.collection = SourceImageCollection.objects.create(name="Reaper Coll", project=self.project)
+
+    def tearDown(self):
+        cache.clear()
+
+    def _stale_async_job(self, *, task_id: str = "reaper-task") -> Job:
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="reaper async job",
+            pipeline=self.pipeline,
+            source_image_collection=self.collection,
+            dispatch_mode=JobDispatchMode.ASYNC_API,
+        )
+        job.task_id = task_id
+        job.update_status(JobState.STARTED, save=True)
+        return job
+
+    def _mark_stale(self, job: Job) -> None:
+        """Push updated_at back past STALLED_JOBS_MAX_MINUTES via raw update so
+        Job.save() side-effects (auto_now) don't undo it. Call AFTER any helper
+        that touches the job model."""
+        Job.objects.filter(pk=job.pk).update(
+            updated_at=datetime.datetime.now() - datetime.timedelta(minutes=Job.STALLED_JOBS_MAX_MINUTES + 1)
+        )
+        job.refresh_from_db()
+
+    def _set_progress_clobbered(self, job: Job, total: int, processed: int) -> None:
+        """Mimic the incident's Job.progress shape: process stage at processed/total
+        with status STARTED, even though Redis was actually fully drained."""
+        progress = job.progress
+        collect = progress.get_stage("collect")
+        collect.progress = 1.0
+        collect.status = JobState.SUCCESS
+        progress.update_stage(
+            "process",
+            progress=processed / total,
+            status=JobState.STARTED,
+            processed=processed,
+            remaining=total - processed,
+            failed=0,
+        )
+        progress.update_stage(
+            "results",
+            progress=processed / total,
+            status=JobState.STARTED,
+            captures=processed,
+        )
+        job.save()
+
+    def _set_progress_complete(self, job: Job) -> None:
+        progress = job.progress
+        for key in ("collect", "process", "results"):
+            stage = progress.get_stage(key)
+            stage.progress = 1.0
+            stage.status = JobState.SUCCESS
+        job.save()
+
+    @patch("celery.result.AsyncResult")
+    def test_async_celery_success_redis_empty_progress_clobbered_lands_success(self, mock_async_result):
+        """The incident case. Pre-fix, this came back REVOKED because the reaper
+        consulted progress.is_complete() (False, due to clobber). Post-fix,
+        Redis says all_tasks_processed() → True, so SUCCESS is honored."""
+        from ami.jobs.tasks import check_stale_jobs
+
+        job = self._stale_async_job()
+        ids = [str(i) for i in range(10)]
+        manager = AsyncJobStateManager(job.pk)
+        manager.initialize_job(ids)
+        manager.update_state(set(ids), stage="process")
+        manager.update_state(set(ids), stage="results")
+        # Clobber: progress shows mid-flight even though Redis is drained.
+        self._set_progress_clobbered(job, total=10, processed=9)
+        self._mark_stale(job)
+
+        from celery import states as celery_states
+
+        mock_async_result.return_value.state = celery_states.SUCCESS
+
+        check_stale_jobs()
+
+        job.refresh_from_db()
+        self.assertEqual(
+            job.status,
+            JobState.SUCCESS.value,
+            f"clobbered progress should not block SUCCESS when Redis says drained; got {job.status}",
+        )
+
+    @patch("celery.result.AsyncResult")
+    def test_async_celery_success_redis_pending_lands_revoked(self, mock_async_result):
+        """Redis still has pending ids → genuine in-flight; reaper revokes."""
+        from ami.jobs.tasks import check_stale_jobs
+
+        job = self._stale_async_job()
+        ids = [str(i) for i in range(10)]
+        AsyncJobStateManager(job.pk).initialize_job(ids)
+        # No SREMs — pending sets still full.
+        self._mark_stale(job)
+
+        from celery import states as celery_states
+
+        mock_async_result.return_value.state = celery_states.SUCCESS
+
+        check_stale_jobs()
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.REVOKED.value)
+
+    @patch("celery.result.AsyncResult")
+    def test_async_celery_success_redis_absent_progress_complete_lands_success(self, mock_async_result):
+        """Redis state is gone (cleaned up / never initialized). Reaper falls
+        back to progress.is_complete(). Complete progress → SUCCESS + WARNING."""
+        from ami.jobs.tasks import check_stale_jobs
+
+        job = self._stale_async_job()
+        # Don't initialize Redis state.
+        self._set_progress_complete(job)
+        self._mark_stale(job)
+
+        from celery import states as celery_states
+
+        mock_async_result.return_value.state = celery_states.SUCCESS
+
+        with self.assertLogs("ami.jobs.tasks", level="WARNING") as cm:
+            check_stale_jobs()
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.SUCCESS.value)
+        self.assertTrue(any("Redis state absent" in m for m in cm.output))
+
+    @patch("celery.result.AsyncResult")
+    def test_async_celery_success_redis_absent_progress_incomplete_lands_revoked(self, mock_async_result):
+        """Redis absent + progress incomplete → REVOKED via fallback + WARNING."""
+        from ami.jobs.tasks import check_stale_jobs
+
+        job = self._stale_async_job()
+        # Don't initialize Redis. Default progress is fresh (not complete).
+        self._mark_stale(job)
+
+        from celery import states as celery_states
+
+        mock_async_result.return_value.state = celery_states.SUCCESS
+
+        with self.assertLogs("ami.jobs.tasks", level="WARNING") as cm:
+            check_stale_jobs()
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.REVOKED.value)
+        self.assertTrue(any("Redis state absent" in m for m in cm.output))
+
+    @patch("celery.result.AsyncResult")
+    def test_sync_api_celery_success_lands_success_without_redis_check(self, mock_async_result):
+        """sync_api jobs skip the Redis guard entirely — Celery's terminal
+        state is authoritative. No Redis state initialized; if the new path
+        leaked into sync_api this would REVOKE."""
+        from ami.jobs.tasks import check_stale_jobs
+
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="reaper sync job",
+            pipeline=self.pipeline,
+            source_image_collection=self.collection,
+            dispatch_mode=JobDispatchMode.SYNC_API,
+        )
+        job.task_id = "reaper-sync-task"
+        job.update_status(JobState.STARTED, save=True)
+        self._mark_stale(job)
+
+        from celery import states as celery_states
+
+        mock_async_result.return_value.state = celery_states.SUCCESS
+
+        check_stale_jobs()
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.SUCCESS.value)
