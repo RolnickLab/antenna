@@ -1318,6 +1318,7 @@ class OccurrenceListSerializer(DefaultSerializer):
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
+    detection_images = serializers.SerializerMethodField()
     determination_details = serializers.SerializerMethodField()
     best_machine_prediction = serializers.SerializerMethodField()
     identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
@@ -1364,27 +1365,59 @@ class OccurrenceListSerializer(DefaultSerializer):
             "updated_at",
         ]
 
+    def get_detection_images(self, obj: Occurrence) -> list[str]:
+        """Return media URLs for the occurrence's detection crops.
+
+        Reads from the `prefetched_detection_images` to_attr list populated by
+        `prefetch_detection_images()`; falls back to the model method for
+        callers that did not apply the prefetch (e.g. detail view).
+        """
+        from ami.main.models_future.occurrence import detection_image_urls_from_prefetch
+
+        if hasattr(obj, "prefetched_detection_images"):
+            return detection_image_urls_from_prefetch(obj)
+        return list(obj.detection_images())
+
+    def _best_identification(self, obj: Occurrence) -> Identification | None:
+        """Pick the best identification, preferring prefetched data when available."""
+        from ami.main.models_future.occurrence import best_identification_from_prefetch
+
+        # `with_identifications()` populates the relation cache; if it ran we
+        # can pick the best in Python without a fresh DB hit.
+        if "identifications" in getattr(obj, "_prefetched_objects_cache", {}):
+            return best_identification_from_prefetch(obj)
+        return obj.best_identification
+
+    def _best_prediction(self, obj: Occurrence):
+        """Pick the best machine prediction, preferring prefetched data when available."""
+        from ami.main.models_future.occurrence import best_prediction_from_prefetch
+
+        # `prefetch_classifications_for_best_prediction()` populates both the
+        # detections cache and the nested classifications cache.
+        prefetch_cache = getattr(obj, "_prefetched_objects_cache", {})
+        if "detections" in prefetch_cache:
+            return best_prediction_from_prefetch(obj)
+        return obj.best_prediction
+
     def get_determination_details(self, obj: Occurrence):
-        # @TODO convert this to query methods to avoid N+1 queries.
-        # Currently at 100+ queries per page of 10 occurrences.
-        # Add a reusable method to the OccurrenceQuerySet class and call it from the ViewSet.
-
         context = self.context
-
         # Add this occurrence to the context so that the nested serializers can access it
         # the `parent` attribute is not available since we are manually instantiating the serializers
         context["occurrence"] = obj
 
         taxon = TaxonNestedSerializer(obj.determination, context=context).data if obj.determination else None
-        if obj.best_identification:
-            identification = OccurrenceIdentificationSerializer(obj.best_identification, context=context).data
+
+        best_ident = self._best_identification(obj)
+        if best_ident:
+            identification = OccurrenceIdentificationSerializer(best_ident, context=context).data
         else:
             identification = None
 
-        if identification or not obj.best_prediction:
+        if identification:
             prediction = None
         else:
-            prediction = ClassificationNestedSerializer(obj.best_prediction, context=context).data
+            best_pred = self._best_prediction(obj)
+            prediction = ClassificationNestedSerializer(best_pred, context=context).data if best_pred else None
 
         return dict(
             taxon=taxon,
@@ -1402,7 +1435,7 @@ class OccurrenceListSerializer(DefaultSerializer):
         context = self.context
         context["occurrence"] = obj
 
-        prediction = obj.best_prediction
+        prediction = self._best_prediction(obj)
         if not prediction:
             return None
 

@@ -2932,6 +2932,15 @@ class OccurrenceQuerySet(BaseQuerySet):
             "identifications__user",
         )
 
+    def with_list_prefetches(self):
+        """Add prefetches the list serializer needs (detection paths, classifications).
+
+        See `ami.main.models_future.occurrence` for the prefetch definitions.
+        """
+        from ami.main.models_future.occurrence import prefetches_for_list_serializer
+
+        return self.prefetch_related(*prefetches_for_list_serializer())
+
     def with_best_detection(self):
         """
         Annotate the queryset with fields from the best detection.

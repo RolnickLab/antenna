@@ -2927,6 +2927,59 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         )
 
 
+class TestOccurrenceListQueryCount(APITestCase):
+    """Guard against N+1 regressions in OccurrenceViewSet.list (issue #1271).
+
+    The number of queries should be roughly constant regardless of page size:
+    a small handful of pagination/auth/permission queries plus a fixed set of
+    prefetches (occurrences, detections, classifications, identifications, etc.).
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=10)
+
+        # Use a low threshold so all occurrences are returned
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        self.user = User.objects.create_user(email="qcount@insectai.org", is_staff=False, is_superuser=False)
+        self.client.force_authenticate(user=self.user)
+
+    def _list_occurrences(self, limit: int) -> int:
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/v2/occurrences/?project_id={self.project.pk}&limit={limit}"
+        # Clear cachalot cache between runs so query counts reflect cold state
+        try:
+            caches["default"].clear()
+        except Exception:
+            pass
+
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res.data["results"]), min(limit, res.data["count"]))
+        return len(ctx.captured_queries)
+
+    def test_list_query_count_does_not_scale_with_page_size(self):
+        """Query count for a page of 25 should be very close to a page of 5."""
+        create_occurrences(deployment=self.deployment, num=25, determination_score=0.9)
+
+        small_count = self._list_occurrences(limit=5)
+        large_count = self._list_occurrences(limit=25)
+
+        # Allow a small constant overhead (e.g. cachalot bookkeeping) but
+        # nowhere near 5x scaling.
+        self.assertLessEqual(
+            large_count,
+            small_count + 5,
+            f"Query count grew with page size: {small_count} -> {large_count} (likely N+1 regression)",
+        )
+
+
 class TestProjectDefaultTaxaFilter(APITestCase):
     """
     Tests for project default taxa filtering (include/exclude lists).
