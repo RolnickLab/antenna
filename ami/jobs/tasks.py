@@ -146,7 +146,13 @@ def run_job(self, job_id: int) -> None:
         raise e
         # self.retry(exc=e, countdown=1, max_retries=1)
     else:
-        job.logger.info(f"Running job {job}")
+        # Log the Redis target at task start so cross-host DB-index drift surfaces
+        # in every job's log without needing to know where to look. The cluster
+        # convention is DB 0 = cache, DB 1 = Celery results (see
+        # config/settings/base.py); the Job state manager also uses the "default"
+        # connection, so every worker in the pool must agree on the DB number or
+        # initialize_job writes to one DB while update_state reads from another.
+        job.logger.info(f"Running job {job} on {_describe_redis_target()}")
         try:
             job.run()
         except Exception as e:
@@ -281,9 +287,17 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
     if not progress_info:
         # State keys genuinely missing (the total-images key returned None).
         # Ack so NATS stops redelivering and fail the job — there's no state
-        # left to reconcile against.
+        # left to reconcile against. The reason string is built from a live
+        # Redis snapshot (DB index, keys present under job:{id}:*) so the
+        # FAILURE log and the UI progress.errors entry name the actual cause
+        # instead of the previous hardcoded "likely cleaned up concurrently"
+        # guess — which conflated DB-index misconfig, eviction, and genuine
+        # concurrent cleanup into a single misleading string.
         _ack_task_via_nats(reply_subject, logger)
-        _fail_job(job_id, "Job state keys not found in Redis (likely cleaned up concurrently)")
+        _fail_job(
+            job_id,
+            f"Job state missing from Redis (stage=process): {state_manager.diagnose_missing_state()}",
+        )
         return
 
     try:
@@ -365,7 +379,10 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
             # first so NATS stops redelivering a message whose state is gone,
             # then fail the job. Mirrors the stage=process missing-state path.
             _ack_task_via_nats(reply_subject, job.logger)
-            _fail_job(job_id, "Job state keys not found in Redis (likely cleaned up concurrently)")
+            _fail_job(
+                job_id,
+                f"Job state missing from Redis (stage=results): {state_manager.diagnose_missing_state()}",
+            )
             return
 
         # update complete state based on latest progress info after saving results
@@ -414,6 +431,24 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         job.logger.error(error)
 
 
+def _describe_redis_target() -> str:
+    """Return a ``host:port/dbN`` string for the "default" Redis connection.
+
+    Logged at the start of every ``run_job`` so DB-index drift across hosts
+    (the class of misconfig that manifests as silent ``process_nats_pipeline_result``
+    FAILUREs on whichever worker happens to read state from the wrong DB) is
+    visible in each job's log without requiring a separate diagnostic.
+    """
+    try:
+        from django_redis import get_redis_connection
+
+        redis = get_redis_connection("default")
+        kwargs = getattr(redis.connection_pool, "connection_kwargs", {}) or {}
+        return f"redis={kwargs.get('host', '?')}:{kwargs.get('port', '?')}/db{kwargs.get('db', '?')}"
+    except Exception as e:
+        return f"redis=(unavailable: {e})"
+
+
 def _fail_job(job_id: int, reason: str) -> None:
     from ami.jobs.models import Job, JobState
     from ami.ml.orchestration.jobs import cleanup_async_job_resources
@@ -423,6 +458,15 @@ def _fail_job(job_id: int, reason: str) -> None:
             job = Job.objects.select_for_update().get(pk=job_id)
             if job.status in (JobState.CANCELING, *JobState.final_states()):
                 return
+            # Mirror the reason into progress.errors so the UI surfaces it
+            # alongside the FAILURE state. Previously the reason lived only in
+            # job.logger, which meant the UI showed errors=[] and operators had
+            # to dig into Celery worker logs to find out why a job died.
+            try:
+                job.progress.errors.append(reason)
+            except Exception:
+                # Don't let diagnostic-write failures mask the original FAILURE.
+                pass
             job.update_status(JobState.FAILURE, save=False)
             job.finished_at = datetime.datetime.now()
             job.save(update_fields=["status", "progress", "finished_at"])
