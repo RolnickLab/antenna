@@ -1366,42 +1366,19 @@ class OccurrenceListSerializer(DefaultSerializer):
         ]
 
     def get_detection_images(self, obj: Occurrence) -> list[str]:
-        """Return media URLs for the occurrence's detection crops.
-
-        Reads from the prefetched `detections` cache populated by
-        `prefetch_detections_for_list()`; falls back to the model method for
-        callers that did not apply the prefetch (e.g. signals/exports).
-        """
         from ami.main.models_future.occurrence import detection_image_urls_from_prefetch
 
-        if "detections" in getattr(obj, "_prefetched_objects_cache", {}):
-            return detection_image_urls_from_prefetch(obj)
-        return list(obj.detection_images())
+        return detection_image_urls_from_prefetch(obj)
 
     def _best_identification(self, obj: Occurrence) -> Identification | None:
-        """Pick the best identification, preferring prefetched data when available."""
         from ami.main.models_future.occurrence import best_identification_from_prefetch
 
-        # `with_identifications()` populates the relation cache; if it ran we
-        # can pick the best in Python without a fresh DB hit.
-        if "identifications" in getattr(obj, "_prefetched_objects_cache", {}):
-            return best_identification_from_prefetch(obj)
-        return obj.best_identification
+        return best_identification_from_prefetch(obj)
 
     def _best_prediction(self, obj: Occurrence):
-        """Pick the best machine prediction, preferring prefetched data when available.
+        from ami.main.models_future.occurrence import best_prediction_from_prefetch
 
-        The list path prefetches detections AND nested classifications via
-        `prefetch_detections_for_list()`. The detail path only prefetches
-        detections, so calling `best_prediction_from_prefetch()` there would
-        walk `det.classifications.all()` lazily and reintroduce an N+1.
-        Gate strictly on classifications also being prefetched.
-        """
-        from ami.main.models_future.occurrence import best_prediction_from_prefetch, has_prefetched_classifications
-
-        if has_prefetched_classifications(obj):
-            return best_prediction_from_prefetch(obj)
-        return obj.best_prediction
+        return best_prediction_from_prefetch(obj)
 
     def get_determination_details(self, obj: Occurrence):
         context = self.context

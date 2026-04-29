@@ -2978,6 +2978,49 @@ class TestOccurrenceListQueryCount(APITestCase):
         )
 
 
+class TestOccurrenceDetailQueryCount(APITestCase):
+    """Guard against N+1 regressions on the detail endpoint.
+
+    `OccurrenceSerializer` extends `OccurrenceListSerializer`, so any
+    cache-key gating in the shared base can silently regress the detail
+    path. This guard pins detail-endpoint query count.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=10)
+
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        self.user = User.objects.create_user(email="qcount-detail@insectai.org", is_staff=False, is_superuser=False)
+        self.client.force_authenticate(user=self.user)
+
+    def _detail_query_count(self, occurrence_id: int) -> int:
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/v2/occurrences/{occurrence_id}/?project_id={self.project.pk}"
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return len(ctx.captured_queries)
+
+    def test_detail_query_count_is_bounded(self):
+        """Detail endpoint query count must not scale with detections per occurrence."""
+        create_occurrences(deployment=self.deployment, num=5, determination_score=0.9)
+        occurrence_id = Occurrence.objects.filter(project=self.project).values_list("pk", flat=True).first()
+        self.assertIsNotNone(occurrence_id)
+
+        count = self._detail_query_count(occurrence_id)
+        # 7 list-path queries + a small allowance for detail-only (full detections,
+        # nested predictions, source_image select_related). Hard ceiling catches
+        # silent reintroduction of N+1 in the shared serializer base.
+        self.assertLess(count, 20, f"Detail endpoint took {count} queries (likely N+1 regression)")
+
+
 class TestProjectDefaultTaxaFilter(APITestCase):
     """
     Tests for project default taxa filtering (include/exclude lists).

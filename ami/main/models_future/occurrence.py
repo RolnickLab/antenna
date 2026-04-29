@@ -1,8 +1,9 @@
 """
-Reusable Prefetch factories for Occurrence list-view rendering.
+Reusable Prefetch factories for Occurrence list/detail rendering.
 
-Centralising these lets the queryset, serializer, and any future caller share
-a single source of truth for what data the list view needs eagerly loaded.
+The serializer trusts the prefetch contract — the viewset is the single place
+that wires it up. Don't gate serializer methods on `_prefetched_objects_cache`
+membership; require the prefetch.
 
 Tracking issue: https://github.com/RolnickLab/antenna/issues/1271
 """
@@ -17,56 +18,40 @@ if TYPE_CHECKING:
     from ami.main.models import Classification, Identification, Occurrence
 
 
-def prefetch_detections_for_list() -> Prefetch:
-    """Single detections prefetch covering image URL listing AND best-prediction selection.
-
-    One pass loads detections (ordered for stable image lists) plus their
-    classifications with `taxon`/`algorithm` joined. The serializer derives
-    image URLs by filtering `path is not None` in Python and picks the best
-    machine prediction from the same cache.
-
-    Replaces the previous pair (a `to_attr` filtered list for image paths
-    plus a separate `detections__classifications` prefetch) which loaded the
-    detections relation twice.
-    """
+def _detections_prefetch(*, ordering: tuple[str, ...], with_source_image: bool) -> Prefetch:
     from ami.main.models import Classification, Detection
 
-    return Prefetch(
-        "detections",
-        queryset=(
-            Detection.objects.prefetch_related(
-                Prefetch(
-                    "classifications",
-                    queryset=Classification.objects.select_related("taxon", "algorithm"),
-                )
-            ).order_by("frame_num", "timestamp")
-        ),
-    )
+    qs = Detection.objects.prefetch_related(
+        Prefetch(
+            "classifications",
+            queryset=Classification.objects.select_related("taxon", "algorithm"),
+        )
+    ).order_by(*ordering)
+    if with_source_image:
+        qs = qs.select_related("source_image")
+    return Prefetch("detections", queryset=qs)
+
+
+def prefetch_detections_for_list() -> Prefetch:
+    """Detections + nested classifications, ordered for stable list image galleries."""
+    return _detections_prefetch(ordering=("frame_num", "timestamp"), with_source_image=False)
+
+
+def prefetch_detections_for_detail() -> Prefetch:
+    """Detections + nested classifications + source_image, ordered most-recent-first.
+
+    Detail responses serialize each detection via `DetectionNestedSerializer`,
+    which dereferences `source_image` (as `capture`).
+    """
+    return _detections_prefetch(ordering=("-timestamp",), with_source_image=True)
 
 
 def prefetches_for_list_serializer() -> list[Prefetch]:
-    """All prefetches `OccurrenceListSerializer` needs to render without N+1.
-
-    Identifications are covered by `OccurrenceQuerySet.with_identifications()`
-    which is already applied in the list viewset; intentionally not duplicated
-    here.
-    """
     return [prefetch_detections_for_list()]
 
 
-def has_prefetched_classifications(occurrence: Occurrence) -> bool:
-    """Return True iff `detections` AND each detection's `classifications` are prefetched.
-
-    The list path prefetches both via `prefetch_detections_for_list()`. The
-    detail path prefetches only `detections` — calling
-    `best_prediction_from_prefetch()` there would walk `det.classifications.all()`
-    and reintroduce an N+1 (one query per detection).
-    """
-    cache = getattr(occurrence, "_prefetched_objects_cache", {})
-    detections = cache.get("detections")
-    if detections is None:
-        return False
-    return all("classifications" in getattr(det, "_prefetched_objects_cache", {}) for det in detections)
+def prefetches_for_detail_serializer() -> list[Prefetch]:
+    return [prefetch_detections_for_detail()]
 
 
 def best_prediction_from_prefetch(occurrence: Occurrence) -> Classification | None:
