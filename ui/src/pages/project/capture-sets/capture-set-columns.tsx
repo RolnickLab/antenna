@@ -1,3 +1,4 @@
+import { FormMessage } from 'components/form/layout/layout'
 import { API_ROUTES } from 'data-services/constants'
 import { CaptureSet } from 'data-services/models/capture-set'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
@@ -8,9 +9,9 @@ import {
   TableColumn,
   TextAlign,
 } from 'design-system/components/table/types'
+import { Toolbar } from 'design-system/components/toolbar'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { UpdateEntityDialog } from 'pages/project/entities/entity-details-dialog'
-import styles from 'pages/project/entities/styles.module.scss'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -18,9 +19,11 @@ import { STRING, translate } from 'utils/language'
 import { SERVER_SAMPLING_METHODS } from './constants'
 import { PopulateCaptureSet } from './populate-capture-set'
 
-export const columns: (projectId: string) => TableColumn<CaptureSet>[] = (
+export const columns = ({
+  projectId,
+}: {
   projectId: string
-) => [
+}): TableColumn<CaptureSet>[] => [
   {
     id: 'id',
     name: translate(STRING.FIELD_LABEL_ID),
@@ -46,54 +49,83 @@ export const columns: (projectId: string) => TableColumn<CaptureSet>[] = (
   {
     id: 'status',
     name: 'Latest job status',
+    tooltip: translate(STRING.TOOLTIP_LATEST_JOB_STATUS, {
+      type: translate(STRING.ENTITY_TYPE_CAPTURE_SET),
+    }),
     renderCell: (item: CaptureSet) => {
-      if (!item.currentJob) {
-        return <></>
+      if (item.currentJob) {
+        return (
+          <StatusTableCell
+            color={item.currentJob.status.color}
+            details={item.currentJob.type.label}
+            label={item.currentJob.status.label}
+          />
+        )
       }
 
-      return (
-        <StatusTableCell
-          color={item.currentJob.status.color}
-          details={item.currentJob.type.label}
-          label={item.currentJob.status.label}
-        />
-      )
+      if (item.canPopulate && item.numImages === 0) {
+        return (
+          <BasicTableCell>
+            <PopulateCaptureSet captureSet={item} />
+          </BasicTableCell>
+        )
+      }
+
+      return <></>
     },
   },
   {
     id: 'jobs',
     name: translate(STRING.FIELD_LABEL_JOBS),
+    tooltip: translate(STRING.TOOLTIP_JOB),
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: CaptureSet) => (
-      <Link
-        to={getAppRoute({
-          to: APP_ROUTES.JOBS({ projectId }),
-          filters: { source_image_collection: item.id },
-        })}
-      >
-        <BasicTableCell value={item.numJobs} theme={CellTheme.Bubble} />
-      </Link>
-    ),
+    renderCell: (item: CaptureSet) => {
+      return (
+        <Link
+          to={getAppRoute({
+            to: APP_ROUTES.JOBS({ projectId }),
+            filters: { source_image_collection: item.id },
+          })}
+        >
+          <BasicTableCell value={item.numJobs} theme={CellTheme.Bubble} />
+        </Link>
+      )
+    },
   },
   {
     id: 'captures',
     name: 'Captures',
+    tooltip: translate(STRING.TOOLTIP_CAPTURE),
     sortField: 'source_images_count',
     styles: {
       textAlign: TextAlign.Right,
     },
-    renderCell: (item: CaptureSet) => (
-      <Link
-        to={getAppRoute({
-          to: APP_ROUTES.CAPTURES({ projectId }),
-          filters: { collections: item.id },
-        })}
-      >
-        <BasicTableCell value={item.numImages} theme={CellTheme.Bubble} />
-      </Link>
-    ),
+    renderCell: (item: CaptureSet) => {
+      if (item.canPopulate && item.numImages === 0) {
+        return (
+          <BasicTableCell>
+            <FormMessage
+              message={translate(STRING.MESSAGE_CAPTURE_SET_EMPTY)}
+              theme="warning"
+              withIcon
+            />
+          </BasicTableCell>
+        )
+      }
+
+      return (
+        <Link
+          to={getAppRoute({
+            to: APP_ROUTES.CAPTURES({ projectId }),
+            filters: { collections: item.id },
+          })}
+        >
+          <BasicTableCell value={item.numImages} theme={CellTheme.Bubble} />
+        </Link>
+      )
+    },
   },
   {
     id: 'captures-with-detections',
@@ -118,6 +150,7 @@ export const columns: (projectId: string) => TableColumn<CaptureSet>[] = (
   {
     id: 'occurrences',
     name: translate(STRING.FIELD_LABEL_OCCURRENCES),
+    tooltip: translate(STRING.TOOLTIP_OCCURRENCE),
     sortField: 'occurrences_count',
     styles: {
       textAlign: TextAlign.Right,
@@ -157,13 +190,12 @@ export const columns: (projectId: string) => TableColumn<CaptureSet>[] = (
   {
     id: 'actions',
     name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
+    sticky: true,
     renderCell: (item: CaptureSet) => (
-      <div className={styles.entityActions}>
-        {item.canPopulate && <PopulateCaptureSet captureSet={item} />}
+      <Toolbar>
+        {item.canPopulate && (
+          <PopulateCaptureSet captureSet={item} compact variant="ghost" />
+        )}
         {item.canUpdate && SERVER_SAMPLING_METHODS.includes(item.method) && (
           <UpdateEntityDialog
             collection={API_ROUTES.CAPTURE_SETS}
@@ -178,7 +210,7 @@ export const columns: (projectId: string) => TableColumn<CaptureSet>[] = (
             type={translate(STRING.ENTITY_TYPE_CAPTURE_SET)}
           />
         )}
-      </div>
+      </Toolbar>
     ),
   },
 ]

@@ -1,4 +1,4 @@
-import { BookOpenIcon } from 'lucide-react'
+import { BookOpenIcon, ChevronRight } from 'lucide-react'
 import { buttonVariants } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import { BasicTooltip } from '../tooltip/basic-tooltip'
@@ -24,8 +24,14 @@ export const DocsLink = ({
       rel="noreferrer"
       target="_blank"
     >
-      <BookOpenIcon className="w-4 h-4" />
-      {isCompact ? null : <span>{translate(STRING.VIEW_DOCS)}</span>}
+      {isCompact ? (
+        <BookOpenIcon className="w-4 h-4" />
+      ) : (
+        <>
+          <span>{translate(STRING.VIEW_DOCS)}</span>
+          <ChevronRight className="w-4 h-4" />
+        </>
+      )}
     </a>
   </BasicTooltip>
 )

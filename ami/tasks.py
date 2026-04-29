@@ -77,12 +77,13 @@ def write_tasks(label_studio_config_id: int) -> int:
 def populate_collection(collection_id: int) -> None:
     from ami.main.models import SourceImageCollection
 
-    collection = SourceImageCollection.objects.get(id=collection_id)
-    if collection:
-        logger.info(f"Populating collection {collection}")
-        collection.populate_sample()
-    else:
-        logger.error(f"SourceImageCollection with id {collection_id} not found")
+    try:
+        collection = SourceImageCollection.objects.get(id=collection_id)
+    except SourceImageCollection.DoesNotExist:
+        logger.error(f"Capture set with id {collection_id} not found")
+        return
+    logger.info(f"Populating capture set {collection}")
+    collection.populate_sample()
 
 
 # Task to group images into events
@@ -90,13 +91,14 @@ def populate_collection(collection_id: int) -> None:
 def regroup_events(deployment_id: int) -> None:
     from ami.main.models import Deployment, group_images_into_events
 
-    deployment = Deployment.objects.get(id=deployment_id)
-    if deployment:
-        logger.info(f"Grouping captures for {deployment}")
-        events = group_images_into_events(deployment)
-        logger.info(f"{deployment } now has {len(events)} events")
-    else:
+    try:
+        deployment = Deployment.objects.get(id=deployment_id)
+    except Deployment.DoesNotExist:
         logger.error(f"Deployment with id {deployment_id} not found")
+        return
+    logger.info(f"Grouping captures for {deployment}")
+    events = group_images_into_events(deployment)
+    logger.info(f"{deployment} now has {len(events)} events")
 
 
 @celery_app.task(soft_time_limit=one_hour, time_limit=one_hour + 60)

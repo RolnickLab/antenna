@@ -262,6 +262,24 @@ class PipelineProcessingTask(pydantic.BaseModel):
     # config: PipelineRequestConfigParameters | dict | None = None
 
 
+class ProcessingServiceClientInfo(pydantic.BaseModel):
+    """Identity metadata sent by a processing service worker.
+
+    A single ProcessingService record in the database may have multiple
+    physical workers, pods, or machines running simultaneously. This model
+    lets the server distinguish between them for logging, debugging, and
+    eventually for per-worker health tracking.
+
+    Fields are intentionally left open for now. Processing services can
+    send any key-value pairs they find useful (e.g. hostname, pod_name,
+    software version). The schema will be tightened once real-world usage
+    patterns emerge.
+    """
+
+    class Config:
+        extra = "allow"
+
+
 class PipelineTaskResult(pydantic.BaseModel):
     """
     The result from processing a single PipelineProcessingTask.

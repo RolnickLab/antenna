@@ -131,7 +131,6 @@ export enum STRING {
   FIELD_LABEL_PROCESS,
   FIELD_LABEL_PROJECT,
   FIELD_LABEL_RECORDS_EXPORTED,
-  FIELD_LABEL_RESEARCH_SITE,
   FIELD_LABEL_RESOLUTION,
   FIELD_LABEL_RESULT,
   FIELD_LABEL_ROLE,
@@ -168,14 +167,21 @@ export enum STRING {
   /* MESSAGE */
   MESSAGE_CAPTURE_FILENAME,
   MESSAGE_CAPTURE_LIMIT,
+  MESSAGE_CAPTURE_SET_FORM_INTRO,
+  MESSAGE_CAPTURE_SET_COUNT,
+  MESSAGE_CAPTURE_SET_EMPTY,
+  MESSAGE_CAPTURE_SET_TIP,
   MESSAGE_CAPTURE_SYNC_HIDDEN,
   MESSAGE_CAPTURE_TOO_MANY,
   MESSAGE_CAPTURE_UPLOAD_HIDDEN,
   MESSAGE_CHANGE_PASSWORD,
   MESSAGE_COULD_NOT_SAVE,
   MESSAGE_DATA_SOURCE_NOT_CONFIGURED,
+  MESSAGE_DEFAULT_FILTERS,
+  MESSAGE_DEFAULT_PIPELINE,
   MESSAGE_DELETE_CONFIRM,
   MESSAGE_DRAFTS,
+  MESSAGE_EXPORT_TIP,
   MESSAGE_HAS_ACCOUNT,
   MESSAGE_IMAGE_FORMAT,
   MESSAGE_IMAGE_SIZE,
@@ -253,12 +259,14 @@ export enum STRING {
   TOOLTIP_DEPLOYMENT,
   TOOLTIP_DEVICE,
   TOOLTIP_JOB,
+  TOOLTIP_LATEST_JOB_STATUS,
   TOOLTIP_OCCURRENCE,
   TOOLTIP_PIPELINE,
   TOOLTIP_PROCESSING_SERVICE,
+  TOOLTIP_SCORE,
   TOOLTIP_SESSION,
   TOOLTIP_SITE,
-  TOOLTIP_STATUS,
+
   TOOLTIP_STORAGE,
 
   /* OTHER */
@@ -269,8 +277,11 @@ export enum STRING {
   APPLY_ID,
   BACK_TO_LOGIN,
   CLOSE,
+  CONFIGURE,
   CONNECTED,
   CONNECTING,
+  DEFAULT,
+  DETAILS,
   EXTERNAL_RESOURCES,
   FORGOT_PASSWORD_DETAILS,
   FORGOT_PASSWORD,
@@ -285,6 +296,7 @@ export enum STRING {
   MANAGE_ACCESS_FOR,
   NEW_ID,
   NOT_CONNECTED,
+  NOT_VERIFIED,
   OR,
   PIPELINES,
   RECENT,
@@ -294,10 +306,10 @@ export enum STRING {
   REMOVE_TAXA_LIST_TAXON,
   RESULTS_MEMBERS,
   RESULTS,
-  SELECT,
   SELECT_COLUMNS,
   SELECT_PLACEHOLDER,
   SELECT_TAXON_PLACEHOLDER,
+  SELECT,
   SET_PASSWORD_DETAILS,
   SET_PASSWORD,
   SETTINGS,
@@ -306,6 +318,7 @@ export enum STRING {
   SUMMARY,
   TABLE_COLUMNS,
   TERMINAL_CLASSIFICATION,
+  TIP,
   UNKNOWN_ERROR,
   UNKNOWN,
   UPDATING_DATA,
@@ -313,6 +326,8 @@ export enum STRING {
   USER_INFO,
   VALUE_NOT_AVAILABLE,
   VERIFIED_BY,
+  VERIFIED,
+  VIEW_IN_SESSION,
   YOU,
 }
 
@@ -399,7 +414,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_FINISHED_AT]: 'Finished at',
   [STRING.FIELD_LABEL_FIRST_DATE]: 'First date',
   [STRING.FIELD_LABEL_FORMAT]: 'Format',
-  [STRING.FIELD_LABEL_GENERAL]: 'General configuration',
+  [STRING.FIELD_LABEL_GENERAL]: 'General',
   [STRING.FIELD_LABEL_ICON]: 'Icon',
   [STRING.FIELD_LABEL_ID]: 'ID',
   [STRING.FIELD_LABEL_IMAGE]: 'Cover image',
@@ -427,7 +442,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_PROCESS]: 'Process',
   [STRING.FIELD_LABEL_PROJECT]: 'Project',
   [STRING.FIELD_LABEL_RECORDS_EXPORTED]: 'Records exported',
-  [STRING.FIELD_LABEL_RESEARCH_SITE]: 'Research site',
   [STRING.FIELD_LABEL_RESOLUTION]: 'Resolution',
   [STRING.FIELD_LABEL_RESULT]: 'Result',
   [STRING.FIELD_LABEL_ROLE]: 'Role',
@@ -488,6 +502,12 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'Image filename must contain a timestamp with year, month, day, hours, minutes and seconds (e.g. 20210101120000-snapshot.jpg).',
   [STRING.MESSAGE_CAPTURE_LIMIT]:
     'A maximum of {{numCaptures}} captures for each station can be uploaded through the web browser. Configure a data source to upload data in bulk.',
+  [STRING.MESSAGE_CAPTURE_SET_FORM_INTRO]:
+    'In this form, you will define the logic for your capture set. When the capture set is defined, it can be populated with captures from the table view.',
+  [STRING.MESSAGE_CAPTURE_SET_COUNT]: 'This will select {{total}} captures.',
+  [STRING.MESSAGE_CAPTURE_SET_EMPTY]: 'This capture set is empty.',
+  [STRING.MESSAGE_CAPTURE_SET_TIP]:
+    'To define a capture set for all captures, use method "Full" without setting filters.',
   [STRING.MESSAGE_CAPTURE_SYNC_HIDDEN]:
     'Station must be created before syncing captures.',
   [STRING.MESSAGE_CAPTURE_TOO_MANY]:
@@ -499,9 +519,15 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_COULD_NOT_SAVE]: 'Could not save',
   [STRING.MESSAGE_DATA_SOURCE_NOT_CONFIGURED]:
     'A data source must be configured and saved before syncing captures.',
+  [STRING.MESSAGE_DEFAULT_FILTERS]:
+    'Data is filtered by default based on global project configuration.',
+  [STRING.MESSAGE_DEFAULT_PIPELINE]:
+    'This is the default pipeline used for processing images in this project.',
   [STRING.MESSAGE_DELETE_CONFIRM]:
     'Are you sure you want to delete this {{type}}?',
   [STRING.MESSAGE_DRAFTS]: 'Drafts are private and limited to one user.',
+  [STRING.MESSAGE_EXPORT_TIP]:
+    'We support two export formats: one compact and easy to use, and one that includes all raw data. To include all data in the export, skip "Capture set".',
   [STRING.MESSAGE_HAS_ACCOUNT]: 'Already have an account?',
   [STRING.MESSAGE_IMAGE_FORMAT]: 'Valid formats are PNG, GIF and JPEG.',
   [STRING.MESSAGE_IMAGE_SIZE]:
@@ -595,19 +621,21 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TOOLTIP_DEVICE]:
     'A device type is the type of equipment or camera used for collecting captures. One or many deployments can be connected to a device type. Device type refers to the model version, category or description of a kind of hardware, not the serial number of an individual device.',
   [STRING.TOOLTIP_JOB]:
-    'A job is a request for data processing that specifies the data to process and the pipeline to use.',
+    'A job is a task that requires time to complete and runs in the background. Examples include processing captures, syncing captures, and generating exports.',
+  [STRING.TOOLTIP_LATEST_JOB_STATUS]:
+    'A job is a task that requires time to complete and runs in the background. This shows the status of the latest job for each {{type}}. Hover the status label for more details about the job type.',
   [STRING.TOOLTIP_OCCURRENCE]:
     'An occurrence refers to when an individual is detected in a sequence of one or more captures with no time interruption.',
   [STRING.TOOLTIP_PIPELINE]:
     'A pipeline is a set of algorithms used for processing. A pipeline is picked from a list of algorithm bundle options when a processing job is defined.',
   [STRING.TOOLTIP_PROCESSING_SERVICE]:
     'A processing service is a group of pipelines used for processing captures.',
+  [STRING.TOOLTIP_SCORE]:
+    'This is a model derived prediction score, not a real-world probability. Think of it as a relative metric that will vary based on model calibration and available training data.',
   [STRING.TOOLTIP_SESSION]:
     'A session is a fixed period of time of monitoring for one station. The period is typically one night.',
   [STRING.TOOLTIP_SITE]:
     'A site is a physical location where monitoring is taking place. One or many stations can be connected to a site.',
-  [STRING.TOOLTIP_STATUS]:
-    'A status is the processing stage of a job once submitted: Created > Pending > Started > Success. A Failed status means the job stopped before it had finished.',
   [STRING.TOOLTIP_STORAGE]:
     'A storage is a place where captures are kept, for example a S3 bucket. One or many stations can be connected to a storage.',
 
@@ -619,8 +647,11 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.APPLY_ID]: 'Apply ID',
   [STRING.BACK_TO_LOGIN]: 'Back to login',
   [STRING.CLOSE]: 'Close',
+  [STRING.CONFIGURE]: 'Configure',
   [STRING.CONNECTED]: 'Connected',
   [STRING.CONNECTING]: 'Connecting...',
+  [STRING.DEFAULT]: 'Default',
+  [STRING.DETAILS]: 'Details',
   [STRING.EXTERNAL_RESOURCES]: 'External resources',
   [STRING.FORGOT_PASSWORD_DETAILS]: `No worries, we'll send you reset instructions.`,
   [STRING.FORGOT_PASSWORD]: 'Forgot password?',
@@ -635,6 +666,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MANAGE_ACCESS_FOR]: 'Manage access for {{user}}.',
   [STRING.NEW_ID]: 'New ID',
   [STRING.NOT_CONNECTED]: 'Not connected',
+  [STRING.NOT_VERIFIED]: 'Not verified',
   [STRING.OR]: 'Or',
   [STRING.PIPELINES]: 'Pipelines',
   [STRING.RECENT]: 'Recent',
@@ -644,10 +676,10 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.REMOVE_TAXA_LIST_TAXON]: 'Remove taxon',
   [STRING.RESULTS_MEMBERS]: '{{total}} member(s)',
   [STRING.RESULTS]: '{{total}} result(s)',
-  [STRING.SELECT]: 'Select',
   [STRING.SELECT_COLUMNS]: 'Select columns',
   [STRING.SELECT_PLACEHOLDER]: 'Select a value',
   [STRING.SELECT_TAXON_PLACEHOLDER]: 'Select a taxon',
+  [STRING.SELECT]: 'Select',
   [STRING.SET_PASSWORD_DETAILS]: 'Please set a new password for your acccount.',
   [STRING.SET_PASSWORD]: 'Set password',
   [STRING.SETTINGS]: 'Settings',
@@ -656,6 +688,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SUMMARY]: 'Summary',
   [STRING.TABLE_COLUMNS]: 'Table columns',
   [STRING.TERMINAL_CLASSIFICATION]: 'Terminal classification',
+  [STRING.TIP]: 'Tip',
   [STRING.UNKNOWN_ERROR]: 'Unknown error',
   [STRING.UNKNOWN]: 'Unknown',
   [STRING.UPDATING_DATA]: 'Updating data',
@@ -663,6 +696,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.USER_INFO]: 'User info',
   [STRING.VALUE_NOT_AVAILABLE]: 'n/a',
   [STRING.VERIFIED_BY]: 'Verified by\n{{name}}',
+  [STRING.VERIFIED]: 'Verified',
+  [STRING.VIEW_IN_SESSION]: 'View in session',
   [STRING.YOU]: 'You',
 }
 

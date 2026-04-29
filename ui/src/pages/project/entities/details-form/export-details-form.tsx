@@ -2,16 +2,18 @@ import { FormController } from 'components/form/form-controller'
 import {
   FormActions,
   FormError,
+  FormMessage,
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
-import { API_ROUTES } from 'data-services/constants'
 import { Export, SERVER_EXPORT_TYPES } from 'data-services/models/export'
 import { SaveButton } from 'design-system/components/button/save-button'
 import { InputContent } from 'design-system/components/input/input'
-import { EntityPicker } from 'design-system/components/select/entity-picker'
+import { CaptureSetPicker } from 'design-system/components/select/capture-set-picker'
 import { Select } from 'nova-ui-kit'
 import { useForm } from 'react-hook-form'
+import { useParams } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
 import { DetailsFormProps, FormValues } from './types'
@@ -39,6 +41,7 @@ export const ExportDetailsForm = ({
   isSuccess,
   onSubmit,
 }: DetailsFormProps) => {
+  const { projectId } = useParams()
   const {
     control,
     handleSubmit,
@@ -71,6 +74,7 @@ export const ExportDetailsForm = ({
         />
       )}
       <FormSection>
+        <FormMessage message={translate(STRING.MESSAGE_EXPORT_TIP)} />
         <FormController
           name="type"
           control={control}
@@ -100,9 +104,18 @@ export const ExportDetailsForm = ({
                   : config[field.name].label
               }
               error={fieldState.error?.message}
+              tooltip={{
+                text: translate(STRING.TOOLTIP_CAPTURE_SET),
+                link: {
+                  text: translate(STRING.NAV_ITEM_CAPTURE_SETS),
+                  to: APP_ROUTES.CAPTURE_SETS({
+                    projectId: projectId as string,
+                  }),
+                },
+              }}
             >
-              <EntityPicker
-                collection={API_ROUTES.CAPTURE_SETS}
+              <CaptureSetPicker
+                clearable
                 onValueChange={field.onChange}
                 value={field.value}
               />

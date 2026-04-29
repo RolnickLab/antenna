@@ -10,7 +10,9 @@ from rest_framework.test import APIRequestFactory, APITestCase
 from ami.base.serializers import reverse_with_params
 from ami.main.models import (
     Classification,
+    Deployment,
     Detection,
+    Event,
     Project,
     SourceImage,
     SourceImageCollection,
@@ -1366,3 +1368,218 @@ class TestTaskStateManager(TestCase):
         # Verify all state is gone (get_progress returns None when total_key is deleted)
         progress = self.manager.get_progress("process")
         self.assertIsNone(progress)
+
+    def test_update_state_raises_on_redis_error(self):
+        """
+        A transient Redis failure during update_state must propagate, not be
+        swallowed as None. The None return is reserved for the genuine
+        "state actually gone" case (see test below). Conflating the two is
+        the #1219 bug that escalated transient connection resets into fatal
+        job FAILUREs.
+        """
+        from unittest.mock import MagicMock, patch
+
+        from redis.exceptions import RedisError
+
+        self._init_and_verify(self.image_ids)
+
+        # Replace the pipeline context manager with one whose execute() raises.
+        # Everything upstream of execute() is safely called (srem/sadd/scard/get
+        # on a pipeline only queue commands; they don't hit the network until
+        # execute runs), so we only need to blow up at the execute boundary.
+        pipe = MagicMock()
+        pipe.execute.side_effect = RedisError("Connection reset by peer")
+        fake_redis = MagicMock()
+        fake_redis.pipeline.return_value.__enter__.return_value = pipe
+
+        with patch.object(self.manager, "_get_redis", return_value=fake_redis):
+            with self.assertRaises(RedisError):
+                self.manager.update_state({"img1", "img2"}, "process")
+
+    def test_update_state_returns_none_when_state_genuinely_missing(self):
+        """
+        When the job's total-images key is actually missing from Redis (job
+        was never initialized, cleaned up, or TTL expired), update_state
+        returns None. This is the only case that should trigger the
+        terminal "state missing" failure path in the caller.
+        """
+        # Do NOT call initialize_job — the total key doesn't exist.
+        progress = self.manager.update_state({"img1", "img2"}, "process")
+        self.assertIsNone(progress)
+
+
+class TestSaveResultsRefreshesDeploymentCounts(TestCase):
+    """save_results must refresh Deployment cached counts, not just Event counts.
+
+    Reproduces the "Station counts for occurrences and taxa are not always
+    getting updated" report: prior to the fix, save_results refreshed
+    update_calculated_fields_for_events but never the parent Deployment, so
+    deployment.occurrences_count / taxa_count stayed at the pre-job value
+    until something else (a manual deployment.save) ran.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Refresh Counts Project")
+        self.deployment = Deployment.objects.create(name="d1", project=self.project)
+        event_time = datetime.datetime(2026, 4, 16, 22, 0, 0)
+        self.event = Event.objects.create(
+            project=self.project,
+            deployment=self.deployment,
+            group_by="2026-04-16",
+            start=event_time,
+            end=event_time,
+        )
+        self.image = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            timestamp=event_time,
+            path="refresh_counts_test.jpg",
+        )
+        self.collection = SourceImageCollection.objects.create(project=self.project, name="c")
+        self.collection.images.add(self.image)
+
+        self.pipeline = Pipeline.objects.create(name="Refresh Counts Pipeline (Random)")
+        self.algorithms = {
+            key: get_or_create_algorithm_and_category_map(val) for key, val in ALGORITHM_CHOICES.items()
+        }
+        self.pipeline.algorithms.set(
+            [
+                self.algorithms["random-detector"],
+                self.algorithms["random-binary-classifier"],
+                self.algorithms["random-species-classifier"],
+            ]
+        )
+
+        self.deployment.update_calculated_fields(save=True)
+        self.deployment.refresh_from_db()
+        self.assertEqual(self.deployment.occurrences_count, 0)
+        self.assertEqual(self.deployment.taxa_count, 0)
+
+    def _fake_results(self):
+        detector = ALGORITHM_CHOICES["random-detector"]
+        binary_classifier = ALGORITHM_CHOICES["random-binary-classifier"]
+        species_classifier = ALGORITHM_CHOICES["random-species-classifier"]
+        assert binary_classifier.category_map and species_classifier.category_map
+
+        detection = DetectionResponse(
+            source_image_id=self.image.pk,
+            bbox=BoundingBox(x1=0.0, y1=0.0, x2=1.0, y2=1.0),
+            inference_time=0.1,
+            algorithm=AlgorithmReference(name=detector.name, key=detector.key),
+            timestamp=self.image.timestamp,
+            classifications=[
+                ClassificationResponse(
+                    classification=binary_classifier.category_map.labels[0],
+                    labels=binary_classifier.category_map.labels,
+                    scores=[0.95],
+                    algorithm=AlgorithmReference(name=binary_classifier.name, key=binary_classifier.key),
+                    timestamp=self.image.timestamp,
+                    terminal=False,
+                ),
+                ClassificationResponse(
+                    classification=species_classifier.category_map.labels[0],
+                    labels=species_classifier.category_map.labels,
+                    scores=[0.85],
+                    algorithm=AlgorithmReference(name=species_classifier.name, key=species_classifier.key),
+                    timestamp=self.image.timestamp,
+                    terminal=True,
+                ),
+            ],
+        )
+        return PipelineResultsResponse(
+            pipeline=self.pipeline.slug,
+            algorithms={
+                detector.key: detector,
+                binary_classifier.key: binary_classifier,
+                species_classifier.key: species_classifier,
+            },
+            total_time=0.01,
+            source_images=[SourceImageResponse(id=self.image.pk, url=self.image.path)],
+            detections=[detection],
+        )
+
+    def test_deployment_counts_refresh_after_save_results(self):
+        save_results(self._fake_results())
+
+        self.deployment.refresh_from_db()
+        self.assertGreater(
+            self.deployment.occurrences_count,
+            0,
+            "Deployment.occurrences_count should reflect occurrences created by save_results",
+        )
+        self.assertGreater(
+            self.deployment.taxa_count,
+            0,
+            "Deployment.taxa_count should reflect taxa from occurrences created by save_results",
+        )
+
+
+class TestAlgorithmViewSetProjectFilter(APITestCase):
+    """
+    The algorithm list endpoint is scoped to algorithms belonging to
+    pipelines enabled for the active project.
+    """
+
+    def setUp(self):
+        from ami.ml.models import ProjectPipelineConfig
+
+        self.user = User.objects.create_user(email="algos@example.com", is_staff=True)  # type: ignore
+        self.project = Project.objects.create(name="Algo Project A", create_defaults=False)
+        self.other_project = Project.objects.create(name="Algo Project B", create_defaults=False)
+
+        # Project A: one enabled pipeline, one disabled pipeline
+        self.algo_enabled = Algorithm.objects.create(name="Algo Enabled", version=1)
+        self.algo_disabled = Algorithm.objects.create(name="Algo Disabled", version=1)
+        # Project B: a different pipeline/algorithm
+        self.algo_other_project = Algorithm.objects.create(name="Algo Other Project", version=1)
+        # Unrelated algorithm not attached to any pipeline
+        self.algo_orphan = Algorithm.objects.create(name="Algo Orphan", version=1)
+
+        enabled_pipeline = Pipeline.objects.create(name="Enabled Pipeline")
+        enabled_pipeline.algorithms.add(self.algo_enabled)
+        ProjectPipelineConfig.objects.create(project=self.project, pipeline=enabled_pipeline, enabled=True)
+
+        disabled_pipeline = Pipeline.objects.create(name="Disabled Pipeline")
+        disabled_pipeline.algorithms.add(self.algo_disabled)
+        ProjectPipelineConfig.objects.create(project=self.project, pipeline=disabled_pipeline, enabled=False)
+
+        other_pipeline = Pipeline.objects.create(name="Other Project Pipeline")
+        other_pipeline.algorithms.add(self.algo_other_project)
+        ProjectPipelineConfig.objects.create(project=self.other_project, pipeline=other_pipeline, enabled=True)
+
+        self.client.force_authenticate(user=self.user)
+
+    def _list_algorithm_names(self, project_id=None):
+        params = {"project_id": project_id} if project_id is not None else {}
+        url = reverse_with_params("api:algorithm-list", params=params)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        return {row["name"] for row in response.json()["results"]}
+
+    def test_lists_only_enabled_pipeline_algorithms_for_project(self):
+        names = self._list_algorithm_names(project_id=self.project.pk)
+        self.assertEqual(names, {"Algo Enabled"})
+
+    def test_other_project_only_sees_its_own_algorithms(self):
+        names = self._list_algorithm_names(project_id=self.other_project.pk)
+        self.assertEqual(names, {"Algo Other Project"})
+
+    def test_unscoped_request_returns_all_algorithms(self):
+        """Without project_id, current behavior lists all algorithms (unchanged)."""
+        names = self._list_algorithm_names()
+        self.assertIn("Algo Enabled", names)
+        self.assertIn("Algo Disabled", names)
+        self.assertIn("Algo Other Project", names)
+        self.assertIn("Algo Orphan", names)
+
+    def test_detail_endpoint_unscoped_even_with_project_id(self):
+        """Detail stays unscoped so historical classification links still resolve."""
+        url = reverse_with_params(
+            "api:algorithm-detail",
+            kwargs={"pk": self.algo_disabled.pk},
+            params={"project_id": self.project.pk},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["name"], "Algo Disabled")

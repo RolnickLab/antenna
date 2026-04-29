@@ -13,14 +13,14 @@ class CheckStaleJobsTest(TestCase):
     def setUp(self):
         self.project = Project.objects.create(name="Stale jobs test project")
 
-    def _create_job(self, status=JobState.STARTED, hours_ago=100, task_id=None):
+    def _create_job(self, status=JobState.STARTED, minutes_ago=120, task_id=None):
         job = Job.objects.create(
             project=self.project,
             name=f"Test job {status}",
             status=status,
         )
         Job.objects.filter(pk=job.pk).update(
-            updated_at=timezone.now() - timedelta(hours=hours_ago),
+            updated_at=timezone.now() - timedelta(minutes=minutes_ago),
         )
         if task_id is not None:
             Job.objects.filter(pk=job.pk).update(task_id=task_id)
@@ -114,8 +114,8 @@ class CheckStaleJobsTest(TestCase):
     @patch("ami.jobs.tasks.cleanup_async_job_if_needed")
     def test_skips_recent_and_final_state_jobs(self, mock_cleanup):
         """Recent jobs and jobs in final states are not touched."""
-        self._create_job(status=JobState.STARTED, hours_ago=1)  # recent
-        self._create_job(status=JobState.SUCCESS, hours_ago=200)  # final state
+        self._create_job(status=JobState.STARTED, minutes_ago=5)  # recent
+        self._create_job(status=JobState.SUCCESS, minutes_ago=300)  # final state
 
         results = check_stale_jobs()
 

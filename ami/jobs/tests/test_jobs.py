@@ -11,6 +11,7 @@ from ami.base.serializers import reverse_with_params
 from ami.jobs.models import Job, JobDispatchMode, JobProgress, JobState, MLJob, SourceImageCollectionPopulateJob
 from ami.main.models import Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
+from ami.ml.models.processing_service import ProcessingService
 from ami.ml.orchestration.jobs import queue_images_to_nats
 from ami.users.models import User
 
@@ -35,6 +36,26 @@ class TestJobProgress(TestCase):
         self.assertIsInstance(job.progress, JobProgress)
         self.assertEqual(job.progress.summary.progress, 0)
         self.assertEqual(job.progress.stages, [])
+
+    def test_save_does_not_inflate_failed_stage_progress(self):
+        """A stage marked FAILURE at partial progress must keep its measured value.
+
+        Regression for the premature ``cleanup_async_job_resources`` path: when a
+        worker writes ``status=FAILURE`` at partial progress (e.g. failed/total
+        crossed FAILURE_THRESHOLD on an early result), ``Job.update_progress``
+        used to coerce ``stage.progress = 1`` on the next save. That made
+        ``is_complete()`` return True and triggered cleanup while async results
+        were still in flight. Progress is a measurement; leave it alone.
+        """
+        job = Job.objects.create(project=self.project, name="Test job - partial failure")
+        job.progress.add_stage("results")
+        job.progress.update_stage("results", progress=0.3, status=JobState.FAILURE)
+        job.save()
+
+        results_stage = job.progress.get_stage("results")
+        self.assertEqual(results_stage.progress, 0.3)
+        self.assertEqual(results_stage.status, JobState.FAILURE)
+        self.assertFalse(job.progress.is_complete())
 
     def test_create_job_with_delay(self):
         job = Job.objects.create(
@@ -354,7 +375,11 @@ class TestJobView(APITestCase):
         self._create_job("Test job 3", start_now=False)
 
         self.client.force_authenticate(user=self.user)
-        jobs_list_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk, "ids_only": True})
+        # Pass an explicit limit to override the pop()-style default (see test_list_jobs_ids_only_pops_one below).
+        jobs_list_url = reverse_with_params(
+            "api:job-list",
+            params={"project_id": self.project.pk, "ids_only": True, "limit": 10},
+        )
         resp = self.client.get(jobs_list_url)
 
         self.assertEqual(resp.status_code, 200)
@@ -366,6 +391,21 @@ class TestJobView(APITestCase):
         self.assertTrue(all(isinstance(r["id"], int) for r in data["results"]))
         # Verify we don't get the full results structure
         self.assertNotIn("details", data["results"][0])
+
+    def test_list_jobs_ids_only_pops_one(self):
+        """`?ids_only=1` without an explicit limit returns one job (pop()-style handoff)."""
+        self._create_job("Test job 2", start_now=False)
+        self._create_job("Test job 3", start_now=False)
+
+        self.client.force_authenticate(user=self.user)
+        jobs_list_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk, "ids_only": True})
+        resp = self.client.get(jobs_list_url)
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["count"], 3)
+        self.assertEqual(len(data["results"]), 1)
+        self.assertIsInstance(data["results"][0]["id"], int)
 
     def test_list_jobs_with_incomplete_only(self):
         """Test the incomplete_only parameter filters jobs correctly."""
@@ -489,10 +529,8 @@ class TestJobView(APITestCase):
         queue_images_to_nats(job, images)
 
         self.client.force_authenticate(user=self.user)
-        tasks_url = reverse_with_params(
-            "api:job-tasks", args=[job.pk], params={"project_id": self.project.pk, "batch": value}
-        )
-        resp = self.client.get(tasks_url)
+        tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+        resp = self.client.post(tasks_url, {"batch_size": value}, format="json")
         self.assertEqual(resp.status_code, expected_status)
         return resp.json()
 
@@ -523,10 +561,8 @@ class TestJobView(APITestCase):
         )
 
         self.client.force_authenticate(user=self.user)
-        tasks_url = reverse_with_params(
-            "api:job-tasks", args=[job.pk], params={"project_id": self.project.pk, "batch": 1}
-        )
-        resp = self.client.get(tasks_url)
+        tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+        resp = self.client.post(tasks_url, {"batch_size": 1}, format="json")
 
         self.assertEqual(resp.status_code, 400)
         self.assertIn("pipeline", resp.json()[0].lower())
@@ -537,23 +573,23 @@ class TestJobView(APITestCase):
         job = self._create_ml_job("Job for results test", pipeline)
 
         self.client.force_authenticate(user=self.user)
-        result_url = reverse_with_params(
-            "api:job-result", args=[job.pk], params={"project_id": self.project.pk, "batch": 1}
-        )
+        result_url = reverse_with_params("api:job-result", args=[job.pk], params={"project_id": self.project.pk})
 
-        result_data = [
-            {
-                "reply_subject": "test.reply.1",
-                "result": {
-                    "pipeline": "test-pipeline",
-                    "algorithms": {},
-                    "total_time": 1.5,
-                    "source_images": [],
-                    "detections": [],
-                    "errors": None,
-                },
-            }
-        ]
+        result_data = {
+            "results": [
+                {
+                    "reply_subject": "test.reply.1",
+                    "result": {
+                        "pipeline": "test-pipeline",
+                        "algorithms": {},
+                        "total_time": 1.5,
+                        "source_images": [],
+                        "detections": [],
+                        "errors": None,
+                    },
+                }
+            ]
+        }
 
         resp = self.client.post(result_url, result_data, format="json")
 
@@ -572,16 +608,290 @@ class TestJobView(APITestCase):
         result_url = reverse_with_params("api:job-result", args=[job.pk], params={"project_id": self.project.pk})
 
         # Test with missing reply_subject
-        invalid_data = [{"result": {"pipeline": "test"}}]
+        invalid_data = {"results": [{"result": {"pipeline": "test"}}]}
         resp = self.client.post(result_url, invalid_data, format="json")
         self.assertEqual(resp.status_code, 400)
-        self.assertIn("reply_subject", resp.json()[0].lower())
 
         # Test with missing result
-        invalid_data = [{"reply_subject": "test.reply"}]
+        invalid_data = {"results": [{"reply_subject": "test.reply"}]}
         resp = self.client.post(result_url, invalid_data, format="json")
         self.assertEqual(resp.status_code, 400)
-        self.assertIn("result", resp.json()[0].lower())
+
+        # Test with bare list (no longer accepted)
+        bare_list = [{"reply_subject": "test.reply", "result": {"pipeline": "test"}}]
+        resp = self.client.post(result_url, bare_list, format="json")
+        self.assertEqual(resp.status_code, 400)
+
+    def test_tasks_endpoint_logs_fetch_to_job_logger(self):
+        """Successful task-fetch lands a 'Tasks fetched' line on the per-job logger."""
+        pipeline = self._create_pipeline()
+        job = self._create_ml_job("Job for fetch-logging test", pipeline)
+        job.dispatch_mode = JobDispatchMode.ASYNC_API
+        job.status = JobState.STARTED
+        job.save(update_fields=["dispatch_mode", "status"])
+        images = [
+            SourceImage.objects.create(
+                path=f"fetchlog_{i}.jpg",
+                public_base_url="http://example.com",
+                project=self.project,
+            )
+            for i in range(3)
+        ]
+        queue_images_to_nats(job, images)
+
+        self.client.force_authenticate(user=self.user)
+        tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+        resp = self.client.post(tasks_url, {"batch_size": 2}, format="json")
+        self.assertEqual(resp.status_code, 200)
+
+        job.refresh_from_db()
+        joined = "\n".join(job.logs.stdout)
+        self.assertIn("Tasks fetched", joined)
+        self.assertIn("requested=2", joined)
+        self.assertIn("delivered=", joined)
+        self.assertIn(self.user.email, joined)
+
+    def test_tasks_endpoint_logs_early_exit_for_terminal_job(self):
+        """Polling a terminal-status job produces an empty response and a 'non-active job' log line."""
+        pipeline = self._create_pipeline()
+        job = self._create_ml_job("Job for early-exit log test", pipeline)
+        job.dispatch_mode = JobDispatchMode.ASYNC_API
+        job.status = JobState.SUCCESS
+        job.save(update_fields=["dispatch_mode", "status"])
+
+        self.client.force_authenticate(user=self.user)
+        tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+        resp = self.client.post(tasks_url, {"batch_size": 5}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), {"tasks": []})
+
+        job.refresh_from_db()
+        joined = "\n".join(job.logs.stdout)
+        self.assertIn("non-active job", joined)
+        self.assertIn(f"status={JobState.SUCCESS}", joined)
+
+    def test_result_endpoint_mirrors_queued_log_to_job_logger(self):
+        """The result endpoint mirrors its 'Queued pipeline result' line to the per-job logger."""
+        from unittest.mock import MagicMock, patch
+
+        pipeline = self._create_pipeline()
+        job = self._create_ml_job("Job for result-logging test", pipeline)
+
+        self.client.force_authenticate(user=self.user)
+        result_url = reverse_with_params("api:job-result", args=[job.pk], params={"project_id": self.project.pk})
+
+        result_data = {
+            "results": [
+                {
+                    "reply_subject": "test.reply.logged",
+                    "result": {
+                        "pipeline": "test-pipeline",
+                        "algorithms": {},
+                        "total_time": 0.1,
+                        "source_images": [],
+                        "detections": [],
+                        "errors": None,
+                    },
+                }
+            ]
+        }
+
+        # Keep the Celery task from actually running; the log line is emitted
+        # by the view before delegating to Celery.
+        mock_async_result = MagicMock()
+        mock_async_result.id = "mirrored-task-id"
+        with patch("ami.jobs.views.process_nats_pipeline_result.delay", return_value=mock_async_result):
+            resp = self.client.post(result_url, result_data, format="json")
+        self.assertEqual(resp.status_code, 200)
+
+        job.refresh_from_db()
+        joined = "\n".join(job.logs.stdout)
+        self.assertIn("Queued pipeline result", joined)
+        self.assertIn("mirrored-task-id", joined)
+        self.assertIn("test.reply.logged", joined)
+        self.assertIn(self.user.email, joined)
+
+    def test_tasks_fetch_log_uses_token_fingerprint_not_full_token(self):
+        """
+        Fix 1: token written to per-job logs is truncated to 8 chars + ellipsis,
+        never the full 40-char DRF bearer secret.
+        """
+        from rest_framework.authtoken.models import Token
+
+        pipeline = self._create_pipeline()
+        job = self._create_ml_job("Job for token-fingerprint test", pipeline)
+        job.dispatch_mode = JobDispatchMode.ASYNC_API
+        job.status = JobState.STARTED
+        job.save(update_fields=["dispatch_mode", "status"])
+        images = [
+            SourceImage.objects.create(
+                path=f"tokentest_{i}.jpg",
+                public_base_url="http://example.com",
+                project=self.project,
+            )
+            for i in range(2)
+        ]
+        queue_images_to_nats(job, images)
+
+        token, _ = Token.objects.get_or_create(user=self.user)
+        # Authenticate with the actual token object so request.auth.pk is set
+        self.client.force_authenticate(user=self.user, token=token)
+
+        tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+        resp = self.client.post(tasks_url, {"batch_size": 2}, format="json")
+        self.assertEqual(resp.status_code, 200)
+
+        job.refresh_from_db()
+        joined = "\n".join(job.logs.stdout)
+        # Full token key must NOT appear anywhere in logs
+        self.assertNotIn(token.key, joined)
+        # Fingerprint (first 8 chars + ellipsis) MUST appear
+        expected_fingerprint = f"{token.key[:8]}…"
+        self.assertIn(expected_fingerprint, joined)
+
+    def test_tasks_fetch_zero_delivered_does_not_log_to_stdout(self):
+        """
+        Fix 2: when delivered==0, the log line is emitted at DEBUG and must not
+        land in job.logs.stdout (JobLogHandler only captures INFO and above).
+        """
+        pipeline = self._create_pipeline()
+        job = self._create_ml_job("Job for zero-delivered test", pipeline)
+        job.dispatch_mode = JobDispatchMode.ASYNC_API
+        job.status = JobState.STARTED
+        job.save(update_fields=["dispatch_mode", "status"])
+        # Do NOT queue any images — NATS will return 0 tasks.
+
+        self.client.force_authenticate(user=self.user)
+        tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+        resp = self.client.post(tasks_url, {"batch_size": 5}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()["tasks"]), 0)
+
+        job.refresh_from_db()
+        # No Tasks fetched line should appear in stdout for a zero-delivery poll
+        joined = "\n".join(job.logs.stdout)
+        self.assertNotIn("Tasks fetched", joined)
+
+    def test_tasks_fetch_nonzero_delivered_logs_to_stdout(self):
+        """
+        Fix 2: when delivered>0, the log line is emitted at INFO and lands in
+        job.logs.stdout with the correct delivered count.
+        """
+        pipeline = self._create_pipeline()
+        job = self._create_ml_job("Job for nonzero-delivered test", pipeline)
+        job.dispatch_mode = JobDispatchMode.ASYNC_API
+        job.status = JobState.STARTED
+        job.save(update_fields=["dispatch_mode", "status"])
+        images = [
+            SourceImage.objects.create(
+                path=f"nonzero_{i}.jpg",
+                public_base_url="http://example.com",
+                project=self.project,
+            )
+            for i in range(3)
+        ]
+        queue_images_to_nats(job, images)
+
+        self.client.force_authenticate(user=self.user)
+        tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+        resp = self.client.post(tasks_url, {"batch_size": 3}, format="json")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()["tasks"]), 3)
+
+        job.refresh_from_db()
+        joined = "\n".join(job.logs.stdout)
+        self.assertIn("Tasks fetched", joined)
+        self.assertIn("delivered=3", joined)
+
+
+class TestJobThroughputLogging(TestCase):
+    """Unit tests for _log_job_throughput (Task 3)."""
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Throughput Test Project")
+        self.pipeline = Pipeline.objects.create(name="Throughput Pipeline", slug="throughput-pipeline")
+        self.pipeline.projects.add(self.project)
+        self.job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Throughput job",
+            pipeline=self.pipeline,
+        )
+
+    def _seed_process_stage(self, processed: int, remaining: int) -> None:
+        self.job.progress.add_stage("process")
+        self.job.progress.update_stage(
+            "process",
+            progress=processed / max(1, processed + remaining),
+            status=JobState.STARTED,
+            processed=processed,
+            remaining=remaining,
+            failed=0,
+        )
+        self.job.save()
+
+    def test_throughput_line_is_well_formed(self):
+        import datetime
+
+        from ami.jobs.tasks import _log_job_throughput
+
+        self._seed_process_stage(processed=10, remaining=90)
+        self.job.started_at = datetime.datetime.now() - datetime.timedelta(minutes=5)
+        self.job.save(update_fields=["started_at"])
+
+        _log_job_throughput(self.job, "process")
+
+        self.job.refresh_from_db()
+        joined = "\n".join(self.job.logs.stdout)
+        self.assertIn("throughput", joined)
+        self.assertIn("processed=10/100", joined)
+        self.assertIn("rate=2.0 imgs/min", joined)
+        # ETA for 90 remaining at 2.0 imgs/min = 45 minutes
+        self.assertIn("ETA=45m", joined)
+
+    def test_throughput_skipped_when_started_at_is_none(self):
+        from ami.jobs.tasks import _log_job_throughput
+
+        self._seed_process_stage(processed=5, remaining=5)
+        self.assertIsNone(self.job.started_at)
+
+        _log_job_throughput(self.job, "process")
+
+        self.job.refresh_from_db()
+        joined = "\n".join(self.job.logs.stdout)
+        self.assertNotIn("throughput", joined)
+
+    def test_throughput_skipped_for_non_processing_stage(self):
+        import datetime
+
+        from ami.jobs.tasks import _log_job_throughput
+
+        self._seed_process_stage(processed=10, remaining=90)
+        self.job.started_at = datetime.datetime.now() - datetime.timedelta(minutes=5)
+        self.job.save(update_fields=["started_at"])
+
+        _log_job_throughput(self.job, "delay")
+
+        self.job.refresh_from_db()
+        joined = "\n".join(self.job.logs.stdout)
+        self.assertNotIn("throughput", joined)
+
+    def test_throughput_with_zero_processed_reports_unknown_eta(self):
+        import datetime
+
+        from ami.jobs.tasks import _log_job_throughput
+
+        self._seed_process_stage(processed=0, remaining=50)
+        self.job.started_at = datetime.datetime.now() - datetime.timedelta(minutes=5)
+        self.job.save(update_fields=["started_at"])
+
+        _log_job_throughput(self.job, "process")
+
+        self.job.refresh_from_db()
+        joined = "\n".join(self.job.logs.stdout)
+        self.assertIn("processed=0/50", joined)
+        self.assertIn("rate=0.0", joined)
+        self.assertIn("ETA=unknown", joined)
 
 
 class TestJobDispatchModeFiltering(APITestCase):
@@ -722,9 +1032,285 @@ class TestJobDispatchModeFiltering(APITestCase):
         )
 
         self.client.force_authenticate(user=self.user)
-        tasks_url = reverse_with_params(
-            "api:job-tasks", args=[sync_job.pk], params={"project_id": self.project.pk, "batch": 1}
-        )
-        resp = self.client.get(tasks_url)
+        tasks_url = reverse_with_params("api:job-tasks", args=[sync_job.pk], params={"project_id": self.project.pk})
+        resp = self.client.post(tasks_url, {"batch_size": 1}, format="json")
         self.assertEqual(resp.status_code, 400)
         self.assertIn("async_api", resp.json()[0].lower())
+
+
+class TestPipelineHeartbeatTask(APITestCase):
+    """
+    Unit tests for update_pipeline_pull_services_seen and the view-level
+    _mark_pipeline_pull_services_seen fire-and-forget dispatch.
+    """
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        # Cache-based gate in _mark_pipeline_pull_services_seen would otherwise
+        # carry over between tests and suppress the .delay() we want to assert.
+        cache.clear()
+
+        self.project = Project.objects.create(name="Heartbeat Test Project")
+        self.pipeline = Pipeline.objects.create(name="Heartbeat Pipeline", slug="heartbeat-pipeline")
+        self.pipeline.projects.add(self.project)
+        self.collection = SourceImageCollection.objects.create(name="HB Collection", project=self.project)
+        self.job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Heartbeat Test Job",
+            pipeline=self.pipeline,
+            source_image_collection=self.collection,
+            dispatch_mode=JobDispatchMode.ASYNC_API,
+        )
+        self.service = ProcessingService.objects.create(
+            name="Heartbeat Worker",
+            endpoint_url=None,  # None = pull-mode / async service
+        )
+        self.service.pipelines.add(self.pipeline)
+        self.service.projects.add(self.project)
+
+    def test_tasks_endpoint_dispatches_heartbeat_task(self):
+        """The /tasks endpoint calls update_pipeline_pull_services_seen.delay(), not the DB directly."""
+        from unittest.mock import patch
+
+        job = self.job
+        job.status = JobState.STARTED
+        job.save(update_fields=["status"])
+
+        images = [
+            SourceImage.objects.create(
+                path=f"hb_tasks_{i}.jpg",
+                public_base_url="http://example.com",
+                project=self.project,
+            )
+            for i in range(2)
+        ]
+        queue_images_to_nats(job, images)
+
+        user = User.objects.create_user(email="hbtest@example.com", is_superuser=True, is_active=True)
+        self.client.force_authenticate(user=user)
+
+        with patch("ami.jobs.views.update_pipeline_pull_services_seen.delay") as mock_delay:
+            tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+            resp = self.client.post(tasks_url, {"batch_size": 1}, format="json")
+
+        self.assertEqual(resp.status_code, 200)
+        mock_delay.assert_called_once_with(job.pk)
+
+    def test_result_endpoint_dispatches_heartbeat_task(self):
+        """The /result endpoint calls update_pipeline_pull_services_seen.delay(), not the DB directly."""
+        from unittest.mock import MagicMock, patch
+
+        user = User.objects.create_user(email="hbresult@example.com", is_superuser=True, is_active=True)
+        self.client.force_authenticate(user=user)
+
+        result_data = {
+            "results": [
+                {
+                    "reply_subject": "test.reply.hb",
+                    "result": {
+                        "pipeline": "heartbeat-pipeline",
+                        "algorithms": {},
+                        "total_time": 0.1,
+                        "source_images": [],
+                        "detections": [],
+                        "errors": None,
+                    },
+                }
+            ]
+        }
+
+        mock_async_result = MagicMock()
+        mock_async_result.id = "hb-task-id"
+        with (
+            patch("ami.jobs.views.process_nats_pipeline_result.delay", return_value=mock_async_result),
+            patch("ami.jobs.views.update_pipeline_pull_services_seen.delay") as mock_delay,
+        ):
+            result_url = reverse_with_params(
+                "api:job-result", args=[self.job.pk], params={"project_id": self.project.pk}
+            )
+            resp = self.client.post(result_url, result_data, format="json")
+
+        self.assertEqual(resp.status_code, 200)
+        mock_delay.assert_called_once_with(self.job.pk)
+
+    def test_tasks_endpoint_tolerates_heartbeat_dispatch_failure(self):
+        """Heartbeat enqueue errors should not fail the /tasks response."""
+        from unittest.mock import patch
+
+        from kombu.exceptions import OperationalError
+
+        job = self.job
+        job.status = JobState.STARTED
+        job.save(update_fields=["status"])
+
+        image = SourceImage.objects.create(
+            path="hb_tasks_broker.jpg",
+            public_base_url="http://example.com",
+            project=self.project,
+        )
+        queue_images_to_nats(job, [image])
+
+        user = User.objects.create_user(email="hbbroker@example.com", is_superuser=True, is_active=True)
+        self.client.force_authenticate(user=user)
+
+        with patch(
+            "ami.jobs.views.update_pipeline_pull_services_seen.delay",
+            side_effect=OperationalError("broker unavailable"),
+        ):
+            tasks_url = reverse_with_params("api:job-tasks", args=[job.pk], params={"project_id": self.project.pk})
+            resp = self.client.post(tasks_url, {"batch_size": 1}, format="json")
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()["tasks"]), 1)
+
+    def test_view_gate_suppresses_redundant_dispatches(self):
+        """Rapid repeated calls to _mark_pipeline_pull_services_seen should only enqueue once per window."""
+        from unittest.mock import patch
+
+        from ami.jobs.views import _mark_pipeline_pull_services_seen
+
+        with patch("ami.jobs.views.update_pipeline_pull_services_seen.delay") as mock_delay:
+            for _ in range(5):
+                _mark_pipeline_pull_services_seen(self.job)
+
+        self.assertEqual(mock_delay.call_count, 1)
+
+
+class TestListEndpointHeartbeat(APITestCase):
+    """
+    Unit tests for _mark_async_services_seen_for_project and the list endpoint's
+    heartbeat dispatch on ``?ids_only=1`` polls.
+    """
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+
+        self.project = Project.objects.create(name="List Heartbeat Project")
+        self.service = ProcessingService.objects.create(
+            name="List Heartbeat Worker",
+            endpoint_url=None,
+        )
+        self.service.projects.add(self.project)
+
+        self.user = User.objects.create_user(email="list-heartbeat@example.com", is_superuser=True, is_active=True)
+        self.client.force_authenticate(user=self.user)
+
+    def test_list_with_ids_only_dispatches_heartbeat(self):
+        from unittest.mock import patch
+
+        list_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk, "ids_only": True})
+        with patch("ami.jobs.views.update_async_services_seen_for_project.delay") as mock_delay:
+            resp = self.client.get(list_url)
+
+        self.assertEqual(resp.status_code, 200)
+        mock_delay.assert_called_once_with(self.project.pk)
+
+    def test_list_without_ids_only_does_not_dispatch_heartbeat(self):
+        from unittest.mock import patch
+
+        list_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk})
+        with patch("ami.jobs.views.update_async_services_seen_for_project.delay") as mock_delay:
+            resp = self.client.get(list_url)
+
+        self.assertEqual(resp.status_code, 200)
+        mock_delay.assert_not_called()
+
+    def test_list_heartbeat_tolerates_dispatch_failure(self):
+        """Broker unavailability on heartbeat enqueue must not break the list response."""
+        from unittest.mock import patch
+
+        from kombu.exceptions import OperationalError
+
+        list_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk, "ids_only": True})
+        with patch(
+            "ami.jobs.views.update_async_services_seen_for_project.delay",
+            side_effect=OperationalError("broker unavailable"),
+        ):
+            resp = self.client.get(list_url)
+
+        self.assertEqual(resp.status_code, 200)
+
+    def test_view_gate_suppresses_redundant_list_dispatches(self):
+        """Rapid repeated list polls should dispatch at most once per throttle window."""
+        from unittest.mock import patch
+
+        from ami.jobs.views import _mark_async_services_seen_for_project
+
+        with patch("ami.jobs.views.update_async_services_seen_for_project.delay") as mock_delay:
+            for _ in range(5):
+                _mark_async_services_seen_for_project(self.project.pk)
+
+        self.assertEqual(mock_delay.call_count, 1)
+
+    def test_list_with_pipeline_slugs_no_project_dispatches_heartbeat(self):
+        """Real ADC worker shape: ?ids_only=1&pipeline__slug__in=... with no project_id."""
+        from unittest.mock import patch
+
+        pipeline = Pipeline.objects.create(name="Heartbeat Pipeline", slug="heartbeat-pipeline")
+        self.service.pipelines.add(pipeline)
+
+        list_url = reverse_with_params(
+            "api:job-list",
+            params={"ids_only": True, "pipeline__slug__in": "heartbeat-pipeline"},
+        )
+        with patch("ami.jobs.views.update_async_services_seen_for_pipelines.delay") as mock_delay:
+            resp = self.client.get(list_url)
+
+        self.assertEqual(resp.status_code, 200)
+        mock_delay.assert_called_once_with(["heartbeat-pipeline"])
+
+    def test_task_updates_services_via_pipeline_slug(self):
+        """The pipeline-slug celery task marks matching async services live."""
+        import datetime
+
+        from ami.jobs.tasks import update_async_services_seen_for_pipelines
+
+        pipeline = Pipeline.objects.create(name="Slug Pipeline", slug="slug-pipeline")
+        self.service.pipelines.add(pipeline)
+        unrelated = ProcessingService.objects.create(name="Unrelated Async", endpoint_url=None)
+        unrelated_last_seen_before = unrelated.last_seen
+
+        before = datetime.datetime.now() - datetime.timedelta(seconds=1)
+        update_async_services_seen_for_pipelines(["slug-pipeline"])
+
+        self.service.refresh_from_db()
+        unrelated.refresh_from_db()
+
+        self.assertTrue(self.service.last_seen_live)
+        self.assertIsNotNone(self.service.last_seen)
+        self.assertGreaterEqual(self.service.last_seen, before)
+        self.assertEqual(unrelated.last_seen, unrelated_last_seen_before)
+
+    def test_task_updates_all_project_async_services(self):
+        """The celery task marks every async service on the project live."""
+        import datetime
+
+        from ami.jobs.tasks import update_async_services_seen_for_project
+
+        other_async = ProcessingService.objects.create(name="Other Async", endpoint_url=None)
+        other_async.projects.add(self.project)
+        sync_service = ProcessingService.objects.create(
+            name="Sync Service", endpoint_url="http://nonexistent-host:9999"
+        )
+        sync_service.projects.add(self.project)
+        sync_last_seen_before = ProcessingService.objects.get(pk=sync_service.pk).last_seen
+
+        before = datetime.datetime.now() - datetime.timedelta(seconds=1)
+        update_async_services_seen_for_project(self.project.pk)
+
+        self.service.refresh_from_db()
+        other_async.refresh_from_db()
+        sync_service.refresh_from_db()
+
+        self.assertTrue(self.service.last_seen_live)
+        self.assertIsNotNone(self.service.last_seen)
+        self.assertGreaterEqual(self.service.last_seen, before)
+        self.assertTrue(other_async.last_seen_live)
+        # Sync services (with endpoint URL) are not touched by this task — last_seen
+        # may be set by the creation-time get_status() ping, but should be unchanged
+        # after the task runs.
+        self.assertEqual(sync_service.last_seen, sync_last_seen_before)

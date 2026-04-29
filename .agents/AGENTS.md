@@ -105,6 +105,69 @@ rm docker-compose.override.yml
 docker compose restart django celeryworker
 ```
 
+### Testing worktree changes against main stack
+
+When working in a git worktree (e.g. `.claude/worktrees/<branch>/`), the worktree locks the branch so you can't simply check it out in the main project folder and run the stack against it. Two routes:
+
+#### Option A — Bind-mount worktree subdirs into main stack (preferred for code-only changes)
+
+Main `docker-compose.yml` mounts `.:/app:z`. You **cannot** override the `/app` mount itself (Docker keeps both, the broader one wins for path resolution), but you **can** mount a deeper path on top of it. Add to `/home/michael/Projects/AMI/antenna/docker-compose.override.yml` (note: that file is a symlink to `docker-compose.override-example.yml` by default — break the symlink first by `rm`-ing it, then write a real file copying the example contents):
+
+```yaml
+services:
+  django:
+    volumes:
+      - ./compose/local/django/start:/start  # keep existing entries from example
+      - /home/michael/Projects/AMI/antenna/.claude/worktrees/<branch>/ami:/app/ami:z
+  # add same mount to celeryworker if Celery code changed
+```
+
+Then `docker compose up -d django` (or `celeryworker`). Django autoreload picks up edits. No DB swap, no merge needed.
+
+**Cleanup when done:**
+```bash
+docker compose down            # or just restart the affected services
+rm docker-compose.override.yml
+ln -s docker-compose.override-example.yml docker-compose.override.yml  # restore symlink default
+docker compose up -d
+```
+
+**Caveats:**
+- Only the bind-mounted subdir is swapped. Migrations, settings, frontend, and anything outside `ami/` still come from the main project folder. If the worktree changes those, mount more subdirs or use Option B.
+- New Python dependencies (`requirements/*.txt` changes) need a rebuild; bind-mount alone won't help.
+- Don't forget to revert — committing the override file is harmless (it's gitignored) but a stale worktree path silently shadows main code on the next `up`.
+
+#### Option B — Duplicate stack from worktree (full isolation)
+
+```bash
+cd .claude/worktrees/<branch>
+docker compose -p antenna-<branch> up -d
+```
+
+`-p` sets a separate Compose project name, giving the worktree its own containers, network, and **fresh empty volumes** (separate Postgres data, MinIO buckets, RabbitMQ state).
+
+**What you must change to avoid collisions with the main stack:**
+- Host ports for every service that publishes one (django 8000, ui 4000, postgres 5432, rabbitmq 5672/15672, minio 9000/9001, flower 5555, redis 6379, nats 4222, ml_backend 2000, debugpy 5678/5679). Either stop the main stack first or override ports in a worktree-local `docker-compose.override.yml`.
+- `COMPOSE_PROJECT_NAME` env var if you don't want to pass `-p` every time.
+
+**Caveats:**
+- Empty DB → no projects, users, or images. Need to seed (`createsuperuser`, `create_demo_project`) before testing anything that depends on real data. Bad fit for admin/UI testing against existing fixtures.
+- Two Celery Beat schedulers running against separate brokers is fine, but two against the **same** RabbitMQ would double-fire periodic tasks — keep brokers separate.
+- Doubles RAM/disk usage (two Postgres, two RabbitMQ, two MinIO).
+- ML backend builds can be slow/fragile (Pillow pin); `--no-deps` or skipping `ml_backend` helps if you're not testing ML paths.
+
+**Cleanup:**
+```bash
+docker compose -p antenna-<branch> down -v   # -v also drops the duplicate volumes
+```
+
+#### When to pick which
+
+- Code-only change, need real data → **A**
+- Migration / settings / multi-subdir change → **A** with multiple mounts, or **B**
+- Want to test from a fresh DB or test concurrent stack interactions → **B**
+- Need to keep main stack running for another task simultaneously → **B** with port overrides
+
 ### Backend (Django)
 
 Run tests:
@@ -660,6 +723,44 @@ docker compose run --rm django python manage.py test_ml_job_e2e \
 ```
 
 For monitoring running jobs (Django ORM, REST API, NATS consumer state, Redis counters, worker logs, etc.), see `docs/claude/reference/monitoring-async-jobs.md`.
+
+### Chaos testing async_api jobs (Redis/NATS fault injection)
+
+For changes to the async result handler (`ami/jobs/tasks.py::process_nats_pipeline_result`, `ami/ml/orchestration/async_job_state.py`) or to error-handling around Redis/NATS, the unit tests in `ami/jobs/tests/test_tasks.py` and `ami/ml/tests.py` invoke the Celery task body directly and therefore **do not exercise `autoretry_for`, real Celery retry backoff, or the NATS redelivery boundary**. Use the procedure below to verify those under a live stack.
+
+**Prereqs**: Antenna stack up (`docker compose ps` → django/celeryworker/redis/nats/rabbitmq healthy), ADC worker running for the pipeline under test, and a fresh `SourceImageCollection` on project 18 (existing collections have already-processed detections that `pipeline.filter_processed_images()` will skip).
+
+**Fault injection utilities:**
+
+1. **`chaos_monkey` management command** (`ami/jobs/management/commands/chaos_monkey.py`) — wipes state at runtime:
+   ```bash
+   docker compose exec django python manage.py chaos_monkey flush redis   # FLUSHDB
+   docker compose exec django python manage.py chaos_monkey flush nats    # delete all JetStream streams
+   ```
+   `flush redis` simulates the "job state keys genuinely gone" scenario — `update_state()` returns `None` and the caller takes the terminal-fail path.
+
+2. **One-shot transient `RedisError` via sentinel file** — patch `AsyncJobStateManager.update_state` at the top of the method body to consume `/tmp/inject-redis-fault` and raise `RedisError(...)`. Arm with `docker compose exec celeryworker touch /tmp/inject-redis-fault`. The file auto-removes on first hit, so exactly one task invocation sees the fault; retries succeed. Revert the edit and restart celeryworker after the test. `redis-cli CLIENT KILL TYPE normal` does NOT work for this — django-redis's connection pool transparently reconnects and the raised error is absorbed before `update_state` sees it.
+
+3. **Python-level `redis-py` timeout fault** — set `socket_timeout` low in `CACHES['default']['OPTIONS']` and use `DEBUG SLEEP` on Redis. Heavier setup; only useful for timeout-specific tests.
+
+**Procedure for retry-behaviour validation** (e.g., #1231 and future PRs touching the retry path):
+
+1. Create a fresh 20–50 image collection and populate it (large enough that Process stage takes >10s — time to inject mid-flight).
+2. Arm fault injection (sentinel file for transient test; `chaos_monkey` is run inline for the genuine-loss test).
+3. Start a `Monitor` on celery worker logs filtering for your terminal signals:
+   ```bash
+   docker compose logs celeryworker --since 5s --follow 2>&1 | grep --line-buffered -E \
+     'Transient Redis error|Job state keys not found|process_nats_pipeline_result\[[^]]+\] retry|MaxRetriesExceeded|Changing status of job <JOB_ID>'
+   ```
+4. Kick off the job via `POST /api/v2/jobs/?start_now=true` (or `test_ml_job_e2e`) and poll until `progress.stages[process].progress >= 10%` before injecting the fault.
+5. Record the log evidence (retry warning + Celery `retry: Retry in Ns` line OR the `FAILURE` message with the accurate `_fail_job` text) and the terminal job status.
+6. Revert any code patches, restart affected services (`docker compose restart celeryworker`), confirm `git diff` is empty.
+
+**Gotchas:**
+- The first ~1 min after restarting celeryworker, the `check_processing_services_online` beat task monopolises `ForkPoolWorker-16` retrying unreachable services. Populate/job tasks pick up fine on other workers, but logs are noisy.
+- If Django has been up > ~1 day, RabbitMQ AMQP connections go stale (`ConnectionResetError: [Errno 104]` when enqueuing). `docker compose restart django` fixes it — do this before any chaos run.
+- Celery code is volume-mounted; edits to `ami/**` only take effect after `docker compose restart celeryworker`.
+- Fault-injection patches are disruptive — revert them **and** `git diff` to verify before committing anything.
 
 ### Running a Single Test
 

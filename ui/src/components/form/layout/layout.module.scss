@@ -58,18 +58,17 @@
 }
 
 .formError {
-  width: 100%;
-  @include paragraph-x-small();
   padding: 8px 32px;
-  background-color: $color-destructive-100;
-  color: $color-destructive-600;
-  box-sizing: border-box;
 
   &.inDialog {
     position: sticky;
     top: $dialog-header-height;
     z-index: 1;
   }
+}
+
+.intro {
+  font-weight: 600;
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {

@@ -602,8 +602,9 @@ def get_or_create_taxon_for_classification(
 
     :return: The Taxon object
     """
-    taxa_list, created = TaxaList.objects.get_or_create(
+    taxa_list, created = TaxaList.objects.get_or_create_for_project(
         name=f"Taxa returned by {algorithm.name}",
+        project=None,  # Algorithm taxa lists are global
     )
     if created:
         logger.info(f"Created new taxa list {taxa_list}")
@@ -993,6 +994,10 @@ def save_results(
 
     event_ids = [img.event_id for img in source_images]  # type: ignore
     update_calculated_fields_for_events(pks=event_ids)
+
+    deployment_ids = {img.deployment_id for img in source_images if img.deployment_id}
+    for deployment in Deployment.objects.filter(pk__in=deployment_ids):
+        deployment.update_calculated_fields(save=True)
 
     total_time = time.time() - start_time
     job_logger.info(f"Saved results from pipeline {pipeline} in {total_time:.2f} seconds")

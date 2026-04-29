@@ -4,6 +4,7 @@ import { BasicTableCell } from 'design-system/components/table/basic-table-cell/
 import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import { CellTheme, TableColumn } from 'design-system/components/table/types'
+import { Toolbar } from 'design-system/components/toolbar'
 import { CancelJob } from 'pages/job-details/job-actions/cancel-job'
 import { QueueJob } from 'pages/job-details/job-actions/queue-job'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
@@ -11,11 +12,12 @@ import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
-import styles from './jobs.module.scss'
 
-export const columns: (projectId: string) => TableColumn<Job>[] = (
+export const columns = ({
+  projectId,
+}: {
   projectId: string
-) => [
+}): TableColumn<Job>[] => [
   {
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
@@ -34,7 +36,6 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
   {
     id: 'status',
     name: translate(STRING.FIELD_LABEL_STATUS),
-    tooltip: translate(STRING.TOOLTIP_STATUS),
     sortField: 'status',
     renderCell: (item: Job) => (
       <StatusTableCell
@@ -53,6 +54,7 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     id: 'deployment',
     sortField: 'deployment',
     name: translate(STRING.FIELD_LABEL_DEPLOYMENT),
+    tooltip: translate(STRING.TOOLTIP_DEPLOYMENT),
     renderCell: (item: Job) =>
       item.deployment ? (
         <Link
@@ -74,11 +76,13 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     id: 'pipeline',
     sortField: 'pipeline',
     name: translate(STRING.FIELD_LABEL_PIPELINE),
+    tooltip: translate(STRING.TOOLTIP_PIPELINE),
     renderCell: (item: Job) => <BasicTableCell value={item.pipeline?.name} />,
   },
   {
     id: 'source-image',
     name: translate(STRING.FIELD_LABEL_CAPTURE),
+    tooltip: translate(STRING.TOOLTIP_CAPTURE),
     renderCell: (item: Job) =>
       item.sourceImage?.sessionId ? (
         <Link
@@ -105,6 +109,7 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
     id: 'source-image-collection',
     sortField: 'source_image_collection',
     name: translate(STRING.FIELD_LABEL_CAPTURE_SET),
+    tooltip: translate(STRING.TOOLTIP_CAPTURE_SET),
     renderCell: (item: Job) => (
       <BasicTableCell value={item.sourceImages?.name} />
     ),
@@ -136,14 +141,11 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
   {
     id: 'actions',
     name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
+    sticky: true,
     renderCell: (item: Job) => (
-      <div className={styles.jobActions}>
-        {item.canQueue && <QueueJob jobId={item.id} />}
-        {item.canCancel && <CancelJob jobId={item.id} />}
+      <Toolbar>
+        {item.canQueue && <QueueJob compact jobId={item.id} />}
+        {item.canCancel && <CancelJob compact jobId={item.id} />}
         {item.canDelete && (
           <DeleteEntityDialog
             collection={API_ROUTES.JOBS}
@@ -151,7 +153,7 @@ export const columns: (projectId: string) => TableColumn<Job>[] = (
             type={translate(STRING.ENTITY_TYPE_JOB)}
           />
         )}
-      </div>
+      </Toolbar>
     ),
   },
 ]

@@ -72,11 +72,14 @@ class ProjectAdmin(GuardedModelAdmin):
         form.instance.ensure_owner_membership()
 
     list_display = ("name", "owner", "priority", "active", "created_at", "updated_at")
-    list_filter = ("active", "owner")
+    list_filter = ("active",)
     search_fields = ("name", "owner__email")
 
     inlines = [ProjectPipelineConfigInline]
-    autocomplete_fields = ("default_filters_include_taxa", "default_filters_exclude_taxa")
+    autocomplete_fields = ("owner", "default_filters_include_taxa", "default_filters_exclude_taxa")
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        return super().get_queryset(request).select_related("owner")
 
     fieldsets = (
         (
@@ -638,14 +641,14 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
     def populate_collection(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
         for collection in queryset:
             collection.populate_sample()
-        self.message_user(request, f"Populated {queryset.count()} collection(s).")
+        self.message_user(request, f"Populated {queryset.count()} capture set(s).")
 
     @admin.action()
     def populate_collection_async(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
         queued_tasks = [tasks.populate_collection.apply_async([collection.pk]) for collection in queryset]
         self.message_user(
             request,
-            f"Populating {len(queued_tasks)} collection(s) background tasks: {queued_tasks}.",
+            f"Populating {len(queued_tasks)} capture set(s) background tasks: {queued_tasks}.",
         )
 
     @admin.action(description="Run Small Size Filter post-processing task (async)")
@@ -653,7 +656,7 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
         jobs = []
         for collection in queryset:
             job = Job.objects.create(
-                name=f"Post-processing: SmallSizeFilter on Collection {collection.pk}",
+                name=f"Post-processing: SmallSizeFilter on Capture Set {collection.pk}",
                 project=collection.project,
                 job_type_key="post_processing",
                 params={
@@ -666,7 +669,7 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
             job.enqueue()
             jobs.append(job.pk)
 
-        self.message_user(request, f"Queued Small Size Filter for {queryset.count()} collection(s). Jobs: {jobs}")
+        self.message_user(request, f"Queued Small Size Filter for {queryset.count()} capture set(s). Jobs: {jobs}")
 
     actions = [
         populate_collection,

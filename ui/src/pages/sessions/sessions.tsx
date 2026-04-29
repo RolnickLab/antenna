@@ -44,6 +44,7 @@ export const Sessions = () => {
     filters,
   })
   const { selectedView, setSelectedView } = useSelectedView('table')
+  const tableColumns = columns({ projectId: projectId as string })
 
   return (
     <>
@@ -77,13 +78,9 @@ export const Sessions = () => {
               value={selectedView}
               onValueChange={setSelectedView}
             />
-            <SortControl
-              columns={columns(projectId as string)}
-              setSort={setSort}
-              sort={sort}
-            />
+            <SortControl columns={tableColumns} setSort={setSort} sort={sort} />
             <ColumnSettings
-              columns={columns(projectId as string)}
+              columns={tableColumns}
               columnSettings={columnSettings}
               onColumnSettingsChange={setColumnSettings}
             />
@@ -93,7 +90,7 @@ export const Sessions = () => {
               error={error}
               items={sessions}
               isLoading={isLoading}
-              columns={columns(projectId as string).filter(
+              columns={tableColumns.filter(
                 (column) => !!columnSettings[column.id]
               )}
               sortable

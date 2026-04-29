@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import pydantic
 from celery import uuid
 from celery.result import AsyncResult
+from django.conf import settings
 from django.db import models, transaction
 from django.utils.text import slugify
 from django_pydantic_field import SchemaField
@@ -333,8 +334,20 @@ class JobLogHandler(logging.Handler):
         super().__init__(*args, **kwargs)
 
     def emit(self, record: logging.LogRecord):
-        # Log to the current app logger
+        # Log to the current app logger (container stdout).
         logger.log(record.levelno, self.format(record))
+
+        # Gated by ``JOB_LOG_PERSIST_ENABLED`` (default True). Persisting every
+        # log line to ``jobs_job.logs`` becomes a row-lock contention point
+        # under concurrent async_api load — each call triggers
+        # ``UPDATE jobs_job SET logs = ...`` on the shared job row, and inside
+        # ``ATOMIC_REQUESTS`` a single batched ``/result`` POST stacks N such
+        # UPDATEs in one tx, blocking every ML worker on the same row for the
+        # duration of the request. Deployments hitting that pattern can set the
+        # flag to False to short-circuit here until PR #1259 lands an
+        # append-only ``JobLog`` child table. See issue #1256.
+        if not getattr(settings, "JOB_LOG_PERSIST_ENABLED", True):
+            return
 
         # Write to the logs field on the job instance.
         # Refresh from DB first to reduce the window for concurrent overwrites — each
@@ -657,13 +670,13 @@ class DataStorageSyncJob(JobType):
 
 
 class SourceImageCollectionPopulateJob(JobType):
-    name = "Populate captures collection"
+    name = "Populate capture set"
     key = "populate_captures_collection"
 
     @classmethod
     def run(cls, job: "Job"):
         """
-        Run the populate source image collection job.
+        Run the populate capture set job.
 
         This is meant to be called by an async task, not directly.
         """
@@ -675,9 +688,9 @@ class SourceImageCollectionPopulateJob(JobType):
         job.save()
 
         if not job.source_image_collection:
-            raise ValueError("No source image collection provided")
+            raise ValueError("No capture set provided")
 
-        job.logger.info(f"Populating source image collection {job.source_image_collection}")
+        job.logger.info(f"Populating capture set {job.source_image_collection}")
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
@@ -690,11 +703,11 @@ class SourceImageCollectionPopulateJob(JobType):
         job.save()
 
         job.source_image_collection.populate_sample(job=job)
-        job.logger.info(f"Finished populating source image collection {job.source_image_collection}")
+        job.logger.info(f"Finished populating capture set {job.source_image_collection}")
         job.save()
 
         captures_added = job.source_image_collection.images.count()
-        job.logger.info(f"Added {captures_added} captures to source image collection {job.source_image_collection}")
+        job.logger.info(f"Added {captures_added} captures to capture set {job.source_image_collection}")
 
         job.progress.update_stage(
             cls.key,
@@ -816,8 +829,21 @@ def get_job_type_by_inferred_key(job: "Job") -> type[JobType] | None:
 class Job(BaseModel):
     """A job to be run by the scheduler"""
 
-    # Hide old failed jobs after 3 days
-    FAILED_CUTOFF_HOURS = 24 * 3
+    # UI/API: hide failed jobs older than this from listings (display filter only).
+    FAILED_JOBS_DISPLAY_MAX_HOURS = 24 * 3
+    # Reaper: revoke jobs in :meth:`JobState.running_states` whose ``updated_at``
+    # is older than this. A healthy async_api job bumps ``updated_at`` on every
+    # Redis SREM-driven progress save, so this is effectively "no progress for
+    # N minutes". 10 is conservative; raise if legitimate long-running jobs get
+    # reaped.
+    STALLED_JOBS_MAX_MINUTES = 10
+    # Zombie-stream reaper: age threshold above which a NATS stream for a job
+    # in a terminal state (or missing from Django) is considered safe to drop.
+    # Kept well above :attr:`STALLED_JOBS_MAX_MINUTES` so newly-dispatched jobs
+    # whose stream was created before ``transaction.on_commit`` saved the Job
+    # row do not get reaped. Tighten only if ``cleanup-on-cancel`` misses are
+    # still stranding consumer poll cycles after this safety net lands.
+    ZOMBIE_STREAMS_MAX_AGE_MINUTES = STALLED_JOBS_MAX_MINUTES * 6
 
     name = models.CharField(max_length=255)
     queue = models.CharField(max_length=255, default="default")
@@ -1037,14 +1063,21 @@ class Job(BaseModel):
         else:
             for stage in self.progress.stages:
                 if stage.progress > 0 and stage.status == JobState.CREATED:
-                    # Update any stages that have started but are still in the CREATED state
+                    # Promote stages that have started but are still in the CREATED state.
                     stage.status = JobState.STARTED
-                elif stage.status in JobState.final_states() and stage.progress < 1:
-                    # Update any stages that are complete but have a progress less than 1
-                    stage.progress = 1
                 elif stage.progress == 1 and stage.status not in JobState.final_states():
-                    # Update any stages that are complete but are still in the STARTED state
+                    # Promote stages that have measured-100% progress but are still STARTED.
                     stage.status = JobState.SUCCESS
+                # Note: do NOT coerce ``stage.progress = 1`` when status is in a
+                # final state but progress < 1. That branch used to fire when
+                # ``_update_job_progress`` wrote ``status=FAILURE`` at partial
+                # progress (e.g. failed/total temporarily crossed FAILURE_THRESHOLD
+                # early in an async_api job). The save-time coercion silently
+                # bumped progress to 100%, which made ``is_complete()`` return True
+                # and triggered premature ``cleanup_async_job_resources`` while
+                # NATS was still delivering results. Progress is a measurement;
+                # leave it alone. Stuck jobs are reaped by ``check_stale_jobs``
+                # via ``Job.STALLED_JOBS_MAX_MINUTES``.
             total_progress = sum([stage.progress for stage in self.progress.stages]) / len(self.progress.stages)
 
         self.progress.summary.progress = total_progress

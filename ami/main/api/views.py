@@ -483,6 +483,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     GET /captures/1/
     """
 
+    require_project_for_list = True  # Unfiltered list scans are too expensive on this table
     queryset = SourceImage.objects.all()
 
     serializer_class = SourceImageSerializer
@@ -681,7 +682,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="star")
     def star(self, _request, pk=None) -> Response:
         """
-        Add a source image to the project's starred images collection.
+        Add a capture to the project's starred images capture set.
         """
         source_image: SourceImage = self.get_object()
         if source_image and source_image.deployment and source_image.deployment.project:
@@ -694,7 +695,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="unstar")
     def unstar(self, _request, pk=None) -> Response:
         """
-        Remove a source image from the project's starred images collection.
+        Remove a capture from the project's starred images capture set.
         """
         source_image: SourceImage = self.get_object()
         if source_image and source_image.deployment and source_image.deployment.project:
@@ -707,7 +708,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
 
 class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     """
-    Endpoint for viewing collections or samples of source images.
+    Endpoint for viewing capture sets or samples of captures.
     """
 
     queryset = (
@@ -766,26 +767,26 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="populate")
     def populate(self, request, pk=None):
         """
-        Populate a collection with source images using the configured sampling method and arguments.
+        Populate a capture set with captures using the configured sampling method and arguments.
         """
         collection: SourceImageCollection = self.get_object()
 
         if collection:
             from ami.jobs.models import Job, SourceImageCollectionPopulateJob
 
-            assert collection.project, "Collection must be associated with a project"
+            assert collection.project, "Capture set must be associated with a project"
             job = Job.objects.create(
-                name=f"Populate captures for collection {collection.pk}",
+                name=f"Populate captures for capture set {collection.pk}",
                 project=collection.project,
                 source_image_collection=collection,
                 job_type_key=SourceImageCollectionPopulateJob.key,
             )
             job.enqueue()
-            msg = f"Populating captures for collection {collection.pk} in background."
+            msg = f"Populating captures for capture set {collection.pk} in background."
             logger.info(msg)
             return Response({"job_id": job.pk, "project_id": collection.project.pk})
         else:
-            raise api_exceptions.ValidationError(detail="Invalid collection requested")
+            raise api_exceptions.ValidationError(detail="Invalid capture set requested")
 
     def _get_source_image(self):
         """
@@ -812,7 +813,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="add")
     def add(self, request, pk=None):
         """
-        Add a source image to a collection.
+        Add a capture to a capture set.
         """
         collection: SourceImageCollection = self.get_object()
         source_image = self._get_source_image()
@@ -828,7 +829,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="remove")
     def remove(self, request, pk=None):
         """
-        Remove a source image from a collection.
+        Remove a capture from a capture set.
         """
         collection = self.get_object()
         source_image = self._get_source_image()
@@ -905,6 +906,7 @@ class DetectionViewSet(DefaultViewSet, ProjectMixin):
     API endpoint that allows detections to be viewed or edited.
     """
 
+    require_project_for_list = True  # Unfiltered list scans are too expensive on this table
     queryset = Detection.objects.exclude(NULL_DETECTIONS_FILTER).select_related("source_image", "detection_algorithm")
     serializer_class = DetectionSerializer
     filterset_fields = ["source_image", "detection_algorithm", "source_image__project"]
@@ -921,18 +923,9 @@ class DetectionViewSet(DefaultViewSet, ProjectMixin):
 
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
+        # Force project_id validation before pagination triggers a full-table COUNT.
+        self.get_active_project()
         return super().list(request, *args, **kwargs)
-
-    # def get_queryset(self):
-    #     """
-    #     Return a different queryset for list and detail views.
-    #     """
-
-    #     if self.action == "list":
-    #         return Detection.objects.select_related().all()
-    #     else:
-    #         return Detection.objects.select_related(
-    #             "detection_algorithm").all()
 
 
 class CustomTaxonFilter(filters.BaseFilterBackend):
@@ -991,7 +984,7 @@ class CustomOccurrenceDeterminationFilter(CustomTaxonFilter):
 
 class OccurrenceCollectionFilter(filters.BaseFilterBackend):
     """
-    Filter occurrences by the collection their detections source images belong to.
+    Filter occurrences by the capture set their detections' captures belong to.
     """
 
     query_params = ["collection_id", "collection"]  # @TODO remove "collection" param when UI is updated
@@ -1158,7 +1151,7 @@ class OccurrenceTaxaListFilter(filters.BaseFilterBackend):
 
 class TaxonCollectionFilter(filters.BaseFilterBackend):
     """
-    Filter taxa by the collection their occurrences belong to.
+    Filter taxa by the capture set their occurrences belong to.
     """
 
     query_param = "collection"
@@ -1177,6 +1170,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     API endpoint that allows occurrences to be viewed or edited.
     """
 
+    require_project_for_list = True  # Unfiltered list scans are too expensive on this table
     queryset = Occurrence.objects.all()
 
     serializer_class = OccurrenceSerializer
@@ -1260,7 +1254,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             ),
             OpenApiParameter(
                 name="collection_id",
-                description="Filter occurrences by the collection their detections' source images belong to.",
+                description="Filter occurrences by the capture set their detections' captures belong to.",
                 required=False,
                 type=OpenApiTypes.INT,
             ),
@@ -1501,7 +1495,11 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
                 qs = self.get_taxa_observed(qs, project, include_unobserved=include_unobserved)
             if self.action == "retrieve":
                 qs = self.get_taxa_observed(
-                    qs, project, include_unobserved=include_unobserved, apply_default_filters=False
+                    qs,
+                    project,
+                    include_unobserved=include_unobserved,
+                    apply_default_score_filter=True,
+                    apply_default_taxa_filter=False,
                 )
                 qs = qs.prefetch_related(
                     Prefetch(
@@ -1519,7 +1517,12 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         return qs
 
     def get_taxa_observed(
-        self, qs: QuerySet, project: Project, include_unobserved=False, apply_default_filters=True
+        self,
+        qs: QuerySet,
+        project: Project,
+        include_unobserved=False,
+        apply_default_score_filter=True,
+        apply_default_taxa_filter=True,
     ) -> QuerySet:
         """
         If a project is passed, only return taxa that have been observed.
@@ -1537,15 +1540,21 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         # Respects apply_defaults flag: build_occurrence_default_filters_q checks it internally
         from ami.main.models_future.filters import build_occurrence_default_filters_q
 
-        default_filters_q = build_occurrence_default_filters_q(project, self.request, occurrence_accessor="")
+        default_filters_q = build_occurrence_default_filters_q(
+            project,
+            self.request,
+            occurrence_accessor="",
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=apply_default_taxa_filter,
+        )
 
         # Combine base occurrence filters with default filters
         base_filter = models.Q(
             occurrence_filters,
             determination_id=models.OuterRef("id"),
         )
-        if apply_default_filters:
-            base_filter = base_filter & default_filters_q
+
+        base_filter = base_filter & default_filters_q
 
         # Count occurrences - uses composite index (determination_id, project_id, event_id, determination_score)
         occurrences_count_subquery = models.Subquery(
@@ -1754,6 +1763,7 @@ class ClassificationViewSet(DefaultViewSet, ProjectMixin):
     API endpoint for viewing and adding classification results from a model.
     """
 
+    require_project_for_list = True  # Unfiltered list scans are too expensive on this table
     queryset = Classification.objects.all().select_related("taxon", "algorithm")  # , "detection")
     serializer_class = ClassificationSerializer
     filterset_fields = [
@@ -1792,6 +1802,7 @@ class ClassificationViewSet(DefaultViewSet, ProjectMixin):
 
 class SummaryView(GenericAPIView, ProjectMixin):
     permission_classes = [IsActiveStaffOrReadOnly]
+    require_project = True  # Unfiltered summary aggregates are too expensive
 
     @extend_schema(parameters=[project_id_doc_param])
     def get(self, request):
@@ -1800,43 +1811,30 @@ class SummaryView(GenericAPIView, ProjectMixin):
         """
         user = request.user
         project = self.get_active_project()
-        if project:
-            data = {
-                "projects_count": Project.objects.visible_for_user(  # type: ignore
-                    user
-                ).count(),  # @TODO filter by current user, here and everywhere!
-                "deployments_count": Deployment.objects.visible_for_user(user)  # type: ignore
-                .filter(project=project)
-                .count(),
-                "events_count": Event.objects.visible_for_user(user)  # type: ignore
-                .filter(deployment__project=project, deployment__isnull=False)
-                .count(),
-                "captures_count": SourceImage.objects.visible_for_user(user)  # type: ignore
-                .filter(deployment__project=project)
-                .count(),
-                # "detections_count": Detection.objects.filter(occurrence__project=project).count(),
-                "occurrences_count": Occurrence.objects.visible_for_user(user)  # type: ignore
-                .apply_default_filters(project=project, request=self.request)  # type: ignore
-                .valid()
-                .filter(project=project)
-                .count(),  # type: ignore
-                "taxa_count": Occurrence.objects.visible_for_user(user)  # type: ignore
-                .apply_default_filters(project=project, request=self.request)  # type: ignore
-                .unique_taxa(project=project)
-                .count(),
-            }
-        else:
-            data = {
-                "projects_count": Project.objects.visible_for_user(user).count(),  # type: ignore
-                "deployments_count": Deployment.objects.visible_for_user(user).count(),  # type: ignore
-                "events_count": Event.objects.visible_for_user(user)  # type: ignore
-                .filter(deployment__isnull=False)
-                .count(),
-                "captures_count": SourceImage.objects.visible_for_user(user).count(),  # type: ignore
-                "occurrences_count": Occurrence.objects.valid().visible_for_user(user).count(),  # type: ignore
-                "taxa_count": Occurrence.objects.visible_for_user(user).unique_taxa().count(),  # type: ignore
-                "last_updated": timezone.now(),
-            }
+        data = {
+            "projects_count": Project.objects.visible_for_user(  # type: ignore
+                user
+            ).count(),  # @TODO filter by current user, here and everywhere!
+            "deployments_count": Deployment.objects.visible_for_user(user)  # type: ignore
+            .filter(project=project)
+            .count(),
+            "events_count": Event.objects.visible_for_user(user)  # type: ignore
+            .filter(deployment__project=project, deployment__isnull=False)
+            .count(),
+            "captures_count": SourceImage.objects.visible_for_user(user)  # type: ignore
+            .filter(deployment__project=project)
+            .count(),
+            # "detections_count": Detection.objects.filter(occurrence__project=project).count(),
+            "occurrences_count": Occurrence.objects.visible_for_user(user)  # type: ignore
+            .apply_default_filters(project=project, request=self.request)  # type: ignore
+            .valid()
+            .filter(project=project)
+            .count(),  # type: ignore
+            "taxa_count": Occurrence.objects.visible_for_user(user)  # type: ignore
+            .apply_default_filters(project=project, request=self.request)  # type: ignore
+            .unique_taxa(project=project)
+            .count(),
+        }
 
         aliases = {
             "num_sessions": data["events_count"],
