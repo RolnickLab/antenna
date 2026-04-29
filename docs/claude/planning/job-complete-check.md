@@ -1,4 +1,4 @@
-# Plan: reusable `Job.is_actually_complete()` (fix/job-complete-check)
+# Plan: reaper checks Redis directly via `all_tasks_processed()` (fix/job-complete-check)
 
 ## Why
 
@@ -8,268 +8,281 @@ JSONB had `process=99.98% STARTED processed=4509 remaining=1`. The
 `jobs_health_check` reaper at the 10-min cutoff:
 
 1. `mark_lost_images_failed` correctly skipped the job (Redis pending was
-   empty, so `lost_ids` was empty, which is the documented skip path).
-2. `check_stale_jobs` found Celery `state=SUCCESS` but the async_api guard at
-   `ami/jobs/tasks.py:968` consults `job.progress.is_complete()`, which
+   empty, so `lost_ids` was empty — the documented skip path).
+2. `check_stale_jobs` found Celery `state=SUCCESS` but the async_api guard
+   at `ami/jobs/tasks.py:968` consults `job.progress.is_complete()`, which
    returned False because of the clobbered `process` stage.
-3. Reaper REVOKEd the job. Result: 5058 detections / 8129 classifications
-   already saved to DB, but the Job row reads REVOKED.
+3. Reaper REVOKEd the job. 5058 detections / 8129 classifications already
+   saved to DB; Job row reads REVOKED.
 
 PR #1244's reconciler is the wrong tool for this symptom — there is nothing
-to reconcile in Redis. The bug is upstream: `_update_job_progress` writes
-the entire `progress` JSONB blob without a row lock (see PR #1261, which
-removed `select_for_update` to fix unrelated row-lock contention), and two
-concurrent workers can each read the same pre-state then commit
-last-writer-wins. The `max()` guard at `tasks.py:598` only protects
-percentage regression *based on what the writer read* — it does not
-serialize the readers, so a slower committer with a stale snapshot
+to reconcile in Redis. The bug is upstream: `_update_job_progress`
+(`tasks.py:556`) writes the entire `progress` JSONB blob without a row
+lock (PR #1261 dropped `select_for_update` to break unrelated row-lock
+contention), and two concurrent workers can each read the same pre-state
+then commit last-writer-wins. The `max()` guard at `tasks.py:598` only
+protects percentage regression *based on what each writer read* — it does
+not serialize the readers, so a slower committer with a stale snapshot
 clobbers a faster committer's blob.
 
-`Job.progress` cannot be the source of truth for state-machine decisions.
-This PR makes that explicit: introduce a reliable completion check backed
-by Redis (which uses atomic SREM/SADD and is not racy), with a DB-count
-fallback for jobs whose Redis state has been cleaned up. `Job.progress`
-stays as the cosmetic mirror for the UI.
+`Job.progress` cannot be the source of truth for state-machine decisions
+on async_api jobs. This PR makes that explicit at the one user-visible
+site: the reaper's async_api guard. Reaper consults Redis directly.
+`Job.progress` stays as the cosmetic mirror for the UI.
 
 Related context:
 
 - Lifecycle and bug taxonomy: `docs/claude/processing-lifecycle.md`
 - Last-writer-wins admission: `ami/jobs/tasks.py:563-571`
-- PR #1261 commit `50677444` removed `select_for_update` to fix contention.
+- PR #1261 commit `50677444` removed `select_for_update`.
 
-## Scope
+## Scope (narrow)
 
 In scope:
 
-- New `JobCompletionSnapshot` dataclass + `AsyncJobStateManager.summarize()`.
-- New `Job.is_actually_complete()` method with Tier 1 (Redis) → Tier 2
-  (DB count) → Tier 3 (`progress.is_complete()` for sync_api) fallback.
-- WARNING log whenever Tier 2 fires, so we can monitor frequency and
-  catch unexpected fallbacks.
-- Replace `progress.is_complete()` reads at the four state-machine call
-  sites that currently consult it.
-- Tests covering the 4-way matrix (dispatch_mode × Redis-present-or-not).
+- New `AsyncJobStateManager.all_tasks_processed() -> bool | None` —
+  one Redis pipeline call (SCARD × 2 + GET) returning a tri-state.
+- Replace the `not job.progress.is_complete()` read at `tasks.py:968`
+  (reaper async_api guard) with the new Redis-backed check.
+- WARNING log when Redis state is absent (`None` return), so we can
+  monitor how often this fires.
+- Tests for the 3-state matrix on `all_tasks_processed()` + a reaper
+  test mirroring the 2521 shape (Redis empty, progress JSONB stuck at
+  99.98% STARTED → reaper lands SUCCESS, not REVOKED).
 
-Out of scope:
+Out of scope (filed as follow-ups):
 
-- Race fix in `_update_job_progress` itself. That is a separate, larger
-  refactor (move counts to atomic Redis counters, or scope a row lock to
-  microseconds via raw `jsonb_set`). Filed as follow-up: see
-  `### Follow-ups` below.
-- UI changes. `Job.progress` stays as-is. The new method is backend-only.
-- Touching `mark_lost_images_failed`. The reconciler's behavior is
-  correct for its intended bug (NATS-lost messages); 2521 was a different
-  failure that this PR addresses upstream.
+- Race fix in `_update_job_progress` itself. Move counts to atomic
+  Redis HINCRBY, or scope a row lock to microseconds via raw `jsonb_set`.
+- Updating the other call sites that read `progress.is_complete()`
+  (`tasks.py:654`, `:1331`, `:1361`, `:159`, `:496`). They are not
+  affected by the clobber pattern under current operation — see
+  "Why only the reaper" below.
+- DB-count fallback for the `None` (Redis-gone) case. Today the
+  WARNING log + `progress.is_complete()` fallback is sufficient. If
+  the WARNING fires often enough to matter, follow-up adds a
+  `pipeline.filter_processed_images()`-based check.
+- Job-level method (`Job.processing_complete()`). Inline at the one
+  call site that needs it; if a future site needs the same logic,
+  extract then.
+- UI changes. `Job.progress` shape is unchanged.
+- `'CANCELLED' is not a valid JobState` crash in `tasks.py:1193`
+  (`zombie_streams._drain_all`). Separate bug surfaced during 2521
+  triage; legacy job row has a status not in the JobState enum.
+
+## Why only the reaper
+
+The clobber pattern in `_update_job_progress` exists at six call sites
+that read `progress.is_complete()`. Only one is user-visible:
+
+| Site | Race exposure | User-visible consequence |
+|---|---|---|
+| `tasks.py:968` reaper async_api guard | **Yes** — runs minutes after the racy writes have settled, sees the clobbered final state | **Yes — REVOKED instead of SUCCESS** |
+| `tasks.py:654` cleanup gate inside `_update_job_progress` | Same writer is itself the racer; `is_complete()=False` after clobber prevents early cleanup | No — cleanup fires later from terminal-state path |
+| `tasks.py:1331` `task_postrun` SUCCESS guard | None — fires at queue-completion, no NATS results yet, single writer | No |
+| `tasks.py:1361` `task_failure` ASYNC_API guard | None — same single-writer moment | No |
+| `tasks.py:159` `run_job` post-run log | None — log-gating only | No |
+| `tasks.py:496` `MLJob.run` zero-images path | None — runs before any concurrent writers | No |
+
+This PR fixes (1). The others either have a single writer at the moment
+they run, or their failure mode is internal and self-correcting. If
+monitoring later shows another site biting, expand then.
+
+## Why not put the check inside `progress.is_complete()`
+
+`JobProgress` is a Pydantic model — pure data. Adding Redis I/O behind
+its `is_complete()` method:
+
+- couples a serializable data shape to a side-effect-laden oracle
+- silently makes every API serialization, log dump, and read trip
+  Redis (caller doesn't see the I/O cost)
+- the Pydantic instance has no `job_id` reference, so the method
+  signature would have to grow an awkward `job_id=` argument
+- breaks `JobProgress` reuse outside the Job context
+
+Keep `JobProgress.is_complete()` as cosmetic Pydantic data check.
+Do the Redis call at the state-machine call site that needs it.
 
 ## Design
 
-### Tier 1 — Redis oracle
-
-`AsyncJobStateManager.summarize() -> JobCompletionSnapshot`. Single
-Redis pipeline round-trip:
+### Tier 1 — Redis oracle on `AsyncJobStateManager`
 
 ```python
-pipe.scard(self._get_pending_key("process"))
-pipe.scard(self._get_pending_key("results"))
-pipe.scard(self._failed_key)
-pipe.get(self._total_key)
-```
-
-```python
-@dataclass
-class JobCompletionSnapshot:
-    state_present: bool                 # total_raw is not None
-    total: int                          # 0 when state_present=False
-    pending_per_stage: dict[str, int]   # {"process": N, "results": M}
-    failed: int
-    is_complete: bool                   # state_present AND all pending == 0
-
-    # Convenience for callers:
-    @property
-    def all_acked(self) -> bool:
-        return self.state_present and all(v == 0 for v in self.pending_per_stage.values())
-```
-
-`is_complete` is True only when state_present AND every stage's pending
-set is empty. A job whose Redis state is gone returns
-`state_present=False`, regardless of stage state — caller decides what to
-do via Tier 2 fallback.
-
-`RedisError` is swallowed inside `summarize()` and returns
-`state_present=False`. We do NOT propagate Redis transients up to the
-reaper — a Redis blip should not flip a job to REVOKED.
-
-### Tier 2 — DB Detection-row count
-
-When Redis state is gone, query DB to determine whether all queued images
-have detections from the job's pipeline algorithms:
-
-```python
-def _is_complete_via_db(self) -> bool:
-    """Slow but durable. Only runs when Redis state is missing
-    (post-cleanup, post-TTL, or post-restart). Logs a WARNING so
-    we know how often we fall through to this path.
+# ami/ml/orchestration/async_job_state.py
+def all_tasks_processed(self) -> bool | None:
     """
-    queued_ids = self._collected_image_ids()  # see below
-    if not queued_ids:
-        return True  # zero-images job is trivially complete
-    unprocessed = self.pipeline.filter_processed_images(
-        SourceImage.objects.filter(pk__in=queued_ids)
-    ).only("pk")
-    is_complete = not unprocessed.exists()
-    self.logger.warning(
-        "job %s: Redis state gone, fell back to DB detection-count check; "
-        "queued=%d, unprocessed=%d, is_complete=%s",
-        self.pk, len(queued_ids), unprocessed.count(), is_complete,
-    )
-    return is_complete
+    Truth signal for whether all NATS-tracked tasks have been processed
+    out of both pending sets (process + results stages).
+
+    Returns:
+        True  — both pending sets are empty AND total > 0 (all tasks SREM'd)
+        False — at least one pending set has members (real work outstanding)
+        None  — Redis state absent (cleaned up, TTL expired, never initialized)
+                Caller decides what to do; do not assume completeness.
+
+    Scope: Redis tracks the per-image SREM lifecycle for the `process`
+    and `results` stages only. It does NOT know about the `collect` stage
+    or any future post-results stages. Callers that need "is the entire
+    Job complete across ALL stages" must combine this with their own
+    knowledge of stage layout.
+
+    RedisError (transient connection issues) is logged and returned as
+    None — a Redis blip should NOT flip a job to REVOKED on its own.
+    """
+    try:
+        redis = self._get_redis()
+        with redis.pipeline() as pipe:
+            for stage in self.STAGES:
+                pipe.scard(self._get_pending_key(stage))
+            pipe.get(self._total_key)
+            results = pipe.execute()
+    except RedisError as e:
+        logger.warning(
+            f"Redis error reading all_tasks_processed for job {self.job_id}: {e}"
+        )
+        return None
+
+    *pending_counts, total_raw = results
+    if total_raw is None:
+        return None
+    total = int(total_raw)
+    if total == 0:
+        # Zero-images job: trivially "processed" — no NATS work to do.
+        return True
+    return all(count == 0 for count in pending_counts)
 ```
 
-`self._collected_image_ids()`: derive from `Job.source_image_collection`,
-`Job.source_image_single`, or `Job.deployment` exactly the way
-`MLJob.run`/`pipeline.collect_images` does. Or, if the cost of
-re-resolving is too high, persist the queued id list at dispatch time.
-The `summarize()` payload includes `total` from Redis but Tier 2 needs
-the full id set, so we cannot rely on Redis alone here.
+One Redis pipeline round-trip. SCARD is O(1) per key. Negligible at scale.
 
-For the first PR cut, derive on the fly via `pipeline.collect_images()`
-to avoid a schema change. If profiling shows this is slow at 5k+ images,
-follow-up adds a `Job.queued_image_ids` jsonb column or similar.
-
-### Tier 3 — sync_api fallback
-
-`progress.is_complete()` for non-async_api jobs. Unchanged. Sync mode
-does not use Redis at all, and its writes are serialized by the single
-Celery task driving each stage.
-
-### `Job.is_actually_complete()`
+### Reaper guard replacement
 
 ```python
-def is_actually_complete(self) -> bool:
-    """Source-of-truth completion check. Use everywhere instead of
-    self.progress.is_complete() for state-machine decisions.
-    self.progress.is_complete() remains valid for cosmetic/UI reads.
-    """
-    if self.dispatch_mode == JobDispatchMode.ASYNC_API:
-        snap = AsyncJobStateManager(self.pk).summarize()
-        if snap.state_present:
-            return snap.is_complete
-        return self._is_complete_via_db()
-    return self.progress.is_complete()
+# ami/jobs/tasks.py:968 — replacement
+is_terminal = celery_state in states.READY_STATES
+is_async_api = job.dispatch_mode == JobDispatchMode.ASYNC_API
+if is_async_api and celery_state in {states.SUCCESS, states.FAILURE}:
+    processed = AsyncJobStateManager(job.pk).all_tasks_processed()
+    if processed is False:
+        # NATS tasks still pending in Redis. mark_lost_images_failed runs
+        # before this and would have reconciled if it could; if we land
+        # here with pending > 0, the reconciler couldn't help (consumer
+        # gone, etc.) and REVOKE is the correct outcome.
+        is_terminal = False
+    elif processed is None:
+        # Redis state gone — rare. Fall back to the racy progress oracle
+        # but log so we know how often this path fires. If it fires
+        # often, follow up with a DB-count fallback.
+        logger.warning(
+            "Reaper for job %s: Redis state absent, falling back to "
+            "progress.is_complete()",
+            job.pk,
+        )
+        if not job.progress.is_complete():
+            is_terminal = False
+    # processed is True -> trust Celery's terminal state, leave is_terminal as-is
 ```
 
-Method on the Job model, not a free function — lets call sites read like
-`if not job.is_actually_complete(): ...` matching the existing
-`progress.is_complete()` pattern.
+Sync_api jobs hit none of this branch — they fall through `is_terminal =
+celery_state in READY_STATES` exactly as today.
 
-### Call sites to update
+### Behavior change matrix
 
-| File:line | Current call | Replacement |
+| Scenario | Today | After this PR |
 |---|---|---|
-| `ami/jobs/tasks.py:968` (reaper async_api guard) | `not job.progress.is_complete()` | `not job.is_actually_complete()` |
-| `ami/jobs/tasks.py:654` (`_update_job_progress` cleanup gate) | `if job.progress.is_complete():` | `if job.is_actually_complete():` |
-| `ami/jobs/tasks.py:1331` (`task_postrun` SUCCESS guard) | `not job.progress.is_complete()` | `not job.is_actually_complete()` |
-| `ami/jobs/tasks.py:1361` (`task_failure` ASYNC_API guard) | `not job.progress.is_complete()` | `not job.is_actually_complete()` |
-| `ami/jobs/models.py:496` (zero-images path in `MLJob.run`) | `if job.progress.is_complete():` | leave as-is — runs before Redis is initialized |
-| `ami/jobs/models.py:159` (`run_job` post-task log) | `not job.progress.is_complete()` | leave as-is — log gating only, not state-machine |
-
-The four state-machine sites (rows 1-4) are the ones that decide SUCCESS
-vs REVOKED vs deferred-cleanup. They all currently misread the clobbered
-`progress.is_complete()`. The two leave-as-is rows are pre-Redis
-initialization or log-only — the replacement would be no-op or wrong.
+| async_api job done; Redis empty; `progress` clobbered (2521 shape) | REVOKED | **SUCCESS** |
+| async_api job mid-flight; Celery SUCCESS but Redis pending > 0 | REVOKED (was already, but for the wrong reason) | REVOKED (same outcome, correct reason: NATS tasks pending) |
+| async_api job done; Redis pending == 0; `progress` accurate | SUCCESS | SUCCESS (no change) |
+| async_api job done; Redis state cleaned up early | varies — depends on `progress` | falls back to `progress.is_complete()` with WARNING log |
+| sync_api job at reaper | unchanged | unchanged |
 
 ### Tests
 
-`ami/jobs/tests/test_async_job_state.py` (new file or extend existing):
+Extend `ami/ml/tests.py` (or `ami/jobs/tests/test_async_job_state.py`):
 
-- `summarize()` against fresh init (state_present=True, all pending=total)
-- `summarize()` mid-flight (some pending, some processed)
-- `summarize()` complete (state_present=True, all pending=0, is_complete=True)
-- `summarize()` cleaned up (state_present=False, is_complete=False)
-- `summarize()` Redis transient (RedisError → state_present=False)
+- `all_tasks_processed()` after fresh `initialize_job([...])` → False
+  (all images still in pending sets)
+- After SREM-ing every id from both stages → True
+- After SREM-ing some → False
+- With `total=0` (zero-images path) → True
+- With Redis state never initialized → None
+- With Redis state cleaned up via `cleanup()` → None
+- Simulated `RedisError` on the pipeline → None + WARNING logged
 
-`ami/jobs/tests/test_job_completion.py` (new):
+Extend `ami/jobs/tests/test_tasks.py` — `TestCheckStaleJobs`:
 
-- `Job.is_actually_complete()` — async_api + Redis present + all pending=0 → True
-- async_api + Redis present + pending>0 → False (mid-flight defer)
-- async_api + Redis gone + DB shows all detections present → True
-- async_api + Redis gone + DB shows missing detections → False (logs WARNING)
-- sync_api → falls through to `progress.is_complete()`, unchanged
-- async_api with 2521 shape (Redis empty, progress JSONB stuck at 99.98%) → True
-
-`ami/jobs/tests/test_tasks.py` extension:
-
-- Reaper reaches the async_api guard with stale `progress` (process=99.98%
-  STARTED) but Redis empty → lands SUCCESS, not REVOKED. Mirrors 2521.
+- async_api job, Celery SUCCESS, Redis pending empty, `progress`
+  hand-set to `process=99.98% STARTED processed=4509 remaining=1`
+  (mirroring 2521) → reaper lands SUCCESS, not REVOKED. Asserts
+  `is_terminal=True` path was taken.
+- async_api job, Celery SUCCESS, Redis pending > 0 → REVOKED (no regression
+  for genuine partial-completion).
+- async_api job, Redis state absent, `progress.is_complete()=True`,
+  Celery SUCCESS → SUCCESS via the fallback path. Assert WARNING log
+  emitted.
+- async_api job, Redis state absent, `progress.is_complete()=False`,
+  Celery SUCCESS → REVOKED via the fallback path. Assert WARNING log emitted.
+- sync_api job at reaper → behavior unchanged (existing tests cover).
 
 ### Logging
 
-Tier 2 fires a WARNING with `job_id, queued_count, unprocessed_count,
-is_complete`. This is the signal we use to monitor:
+`logger.warning(...)` once per stale-async_api job per tick when Redis
+state is absent. Format includes `job.pk` so we can grep.
 
-- How often do we fall through to DB? (Should be rare. High rate ==
-  Redis cleanup is firing too aggressively, separate bug.)
-- When we fall through, do we usually find complete or incomplete?
-  (Mostly complete == Redis TTL expiring on long-finished jobs. Mostly
-  incomplete == genuine partial-completion that the reaper will REVOKE,
-  which is the correct outcome.)
+Monitoring expectation post-deploy:
 
-Tier 1 is silent in the happy path; only ERRORS log on RedisError.
+- Drop in REVOKED async_api jobs whose final `Job.progress` snapshot has
+  `process>=99% STARTED` (the clobber signature).
+- Low-rate WARNING lines from the Redis-gone fallback. High rate ==
+  Redis cleanup is firing too aggressively, separate bug to chase.
 
 ## Acceptance criteria
 
-- All four state-machine call sites use `Job.is_actually_complete()`.
-- Existing test suite `ami.jobs` stays green.
-- New tests for the 6+ matrix cases pass.
-- E2E run on a real ADC against a 50+ image collection lands SUCCESS.
-- Manual chaos test: dispatch real job, manually clobber `Job.progress`
-  to mimic 2521 shape via Django shell, wait 11 min, verify reaper lands
-  SUCCESS not REVOKED. Verify Redis pending was empty at decision time.
-- Tier 2 WARNING log appears when expected and only when expected.
+- `all_tasks_processed()` exists with the three-state semantics.
+- Reaper at `tasks.py:968` uses it; sync_api branch unchanged.
+- Existing `ami.jobs` test suite stays green.
+- New tests for the 3-state matrix + reaper-eats-2521-shape case pass.
+- Manual chaos: dispatch real async_api job, wait until completion, then
+  via Django shell hand-clobber `Job.progress` to mimic 2521. Wait 11
+  min. Confirm reaper lands SUCCESS, not REVOKED. Confirm Redis was
+  clean at decision time.
 
 ## Rollout
 
-Single PR. No feature flag. The new method strictly fixes a
-known-broken path; no breaking change. Deploy + monitor reaper logs for:
-
-- Drop in REVOKEd async_api jobs that have `progress=~100%` in their final
-  Job row state.
-- Any unexpected uptick in `fell back to DB detection-count check`
-  WARNING lines.
+Single PR. No feature flag. The change is strictly additive at the call
+site (one site replaced; no API or schema change). Deploy + monitor.
 
 ## Risks
 
-- **DB fallback is slow on big jobs**: bounded — only fires after Redis
-  cleanup, on a stale job at the reaper tick. Worst case one slow query
-  per stale job per 15-min beat.
-- **`pipeline.collect_images` re-resolves the queued list**: if the
-  Collection has changed since dispatch (rare for completed jobs but
-  possible), the recomputed id list may not match the originally queued
-  list. Acceptable for v1 — the WARNING log will show the count and we
-  can iterate.
-- **Race window between Redis SREM and `summarize()`**: a result that
-  lands during the reaper's `summarize()` call could leave Redis briefly
-  in an inconsistent intermediate state. SCARD is atomic per-key, so the
-  worst case is the snapshot misses a just-completed image and reports
-  pending=1 → reaper waits another tick → next tick sees 0 → SUCCESS.
-  Bounded.
+- **Race window between Redis SREM and `all_tasks_processed()`**: a
+  result that lands during the reaper's call could leave Redis briefly
+  in an intermediate state. SCARD is atomic per-key; worst case is the
+  snapshot misses a just-completed image and reports pending=1 → reaper
+  defers → next tick sees pending=0 → SUCCESS. Bounded.
+- **Redis-gone fallback rate**: if WARNING fires frequently in
+  production, we punted too early on Tier 2 (DB count). Mitigation:
+  add `pipeline.filter_processed_images()`-based fallback in a
+  follow-up PR. Bounded — only fires when Redis state is absent AND the
+  job is past the reaper cutoff.
+- **Sync_api jobs unaffected**: dispatch_mode gate ensures non-async
+  jobs hit the existing path. Verified by inspection + sync_api reaper
+  tests.
 
 ## Follow-ups (separate PRs)
 
-1. **Make `_update_job_progress` writes atomic.** Either re-introduce a
-   tightly-scoped `select_for_update`, or move counts (`detections`,
-   `classifications`, `captures`) to Redis HINCRBY counters and have a
-   separate sync task mirror them into `Job.progress` periodically. The
-   cosmetic counter drift admitted at `tasks.py:563-571` becomes invisible
-   under (1), and the failure mode in this PR's plan goes away even
-   without `is_actually_complete()`.
-2. **Persist `queued_image_ids` on the Job row at dispatch time.**
-   Replaces the on-the-fly `pipeline.collect_images` call in Tier 2.
-3. **Fix `'CANCELLED' is not a valid JobState`** in
-   `ami/jobs/tasks.py:1193` (`_drain_all`). Separate bug surfaced during
-   2521 investigation — `zombie_streams` check is throwing every tick on
-   a legacy job row whose `status='CANCELLED'` is not in the JobState
-   enum (only `CANCELING` / `REVOKED` are valid).
+1. **Make `_update_job_progress` writes atomic.** Either tightly-scoped
+   `select_for_update`, or move counts (`detections`, `classifications`,
+   `captures`) to Redis HINCRBY counters with a separate sync task
+   mirroring them into `Job.progress`. The cosmetic counter drift
+   admitted at `tasks.py:563-571` becomes invisible, and the failure
+   mode this PR addresses goes away even without the new method.
+2. **DB-count fallback for the Redis-gone case** if monitoring shows
+   the WARNING firing often. `pipeline.filter_processed_images()`
+   against the Job's queued image set.
+3. **Persist `queued_image_ids` on the Job row at dispatch** to make
+   (2) cheaper.
+4. **Fix `'CANCELLED' is not a valid JobState`** in `tasks.py:1193`.
+5. **Expand `all_tasks_processed()` usage** to the other 5 sites if
+   monitoring shows a clobber-driven failure at any of them.
 
 ## Diagnostic evidence (job 2521)
 
@@ -282,23 +295,23 @@ Captured from prod via `ami-devops` on 2026-04-29:
 - NATS at cleanup: `delivered=4510 ack_floor=4510 num_pending=0
   num_ack_pending=0 num_redelivered=0`
 - Redis: all keys deleted at cleanup; pre-cleanup unknown but worker_ml
-  log shows no `Stage 'X' progress lifted to 100% by max() guard` warning
-  (the diagnostic hook for this race), suggesting both writers had stale
-  reads.
-- Worker log: `Updated job 2521 progress in stage 'process' to 100.0%` at
-  11:45:45.510, then a later `99.97782%` write to results, then silence
-  for 14.5 min until reaper at 12:00:00.117.
+  log shows no `Stage 'X' progress lifted to 100% by max() guard`
+  warning (the diagnostic hook for this race), suggesting both writers
+  had stale reads.
+- Worker log: `Updated job 2521 progress in stage 'process' to 100.0%`
+  at 11:45:45.510, then a later `99.97782%` write to results, then
+  silence for 14.5 min until reaper at 12:00:00.117.
 - Reaper line: `Reaping stalled job: no progress for 14.2 min ... stages:
   collect=100.0% SUCCESS, process=100.0% STARTED, results=100.0% SUCCESS`
-  — note the reaper's in-memory snapshot read shows 100% at the moment of
-  REVOKE. The persisted blob at that moment was 99.98%. The
+  — note the reaper's in-memory snapshot read shows 100% at the moment
+  of REVOKE. The persisted blob at that moment was 99.98%. The
   `progress.is_complete()` call inside the guard re-read the persisted
-  blob (or evaluated against the 100%-but-STARTED status, which fails the
-  `final_states` check in `models.py:268`). Either way: guard fired,
-  REVOKED.
+  blob (or evaluated against the 100%-but-STARTED status, which fails
+  the `final_states` check in `models.py:268`). Either way: guard
+  fired, REVOKED.
 
 This is the second case (status STARTED with progress=100% on the same
-stage) — it confirms the race is on the `status` field write, not just
+stage) — confirms the race is on the `status` field write, not just
 the percentage. Both writers had stale snapshots; the slower one
 overwrote the SUCCESS-status with STARTED.
 
