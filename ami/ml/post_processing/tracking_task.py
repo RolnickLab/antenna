@@ -5,6 +5,7 @@ import typing
 from collections.abc import Iterable
 
 import numpy as np
+from django.db import transaction
 from django.db.models import Count
 
 from ami.main.models import Classification, Detection, Event, Occurrence, SourceImage
@@ -17,9 +18,17 @@ if typing.TYPE_CHECKING:
 
 @dataclasses.dataclass
 class TrackingParams:
+    # cost_threshold: max sum of (1-cosine) + (1-IoU) + (1-box_ratio) + (distance/diag).
+    # WARNING: calibrated against synthetic features in tests. Real backbone embeddings
+    # have very different statistical properties (sparsity, norm distribution); tune
+    # per-dataset before relying on the default.
     cost_threshold: float = 0.2
     skip_if_human_identifications: bool = True
     require_completely_processed_session: bool = False
+    # v1 only operates on fresh data: every detection has its own auto-created
+    # occurrence (1:1) and no chain links exist yet. Re-tracking previously-tracked
+    # data is a v2 concern (see PR #1272 for incremental/append-prepend plan).
+    require_fresh_event: bool = True
     feature_extraction_algorithm_id: int | None = None
 
 
@@ -73,21 +82,51 @@ def total_cost(f1, f2, bb1, bb2, diag) -> float:
     )
 
 
-def get_most_common_algorithm_for_event(event: Event) -> Algorithm | None:
-    most_common = (
+def get_unique_feature_algorithm_for_event(event: Event) -> tuple[Algorithm | None, list[Algorithm]]:
+    """
+    Return ``(unique_algorithm, all_candidates)``.
+
+    If exactly one feature-extraction algorithm produced ``features_2048`` for this
+    event, returns that algorithm and a single-element list. Otherwise returns
+    ``(None, candidates)`` so the caller can either skip with a warning or require
+    the operator to pass an explicit ``feature_extraction_algorithm_id``.
+    """
+    algo_ids = (
         Classification.objects.filter(
             detection__source_image__event=event,
             features_2048__isnull=False,
             algorithm_id__isnull=False,
         )
-        .values("algorithm_id")
-        .annotate(count=Count("id"))
-        .order_by("-count")
-        .first()
+        .values_list("algorithm_id", flat=True)
+        .distinct()
     )
-    if most_common:
-        return Algorithm.objects.filter(id=most_common["algorithm_id"]).first()
-    return None
+    candidates = list(Algorithm.objects.filter(pk__in=list(algo_ids)))
+    if len(candidates) == 1:
+        return candidates[0], candidates
+    return None, candidates
+
+
+def event_is_fresh(event: Event) -> tuple[bool, str]:
+    """
+    Fresh = every detection in the event has an occurrence AND every occurrence
+    in the event has exactly one detection. v1 tracking only operates on fresh
+    data (the state after pipeline processing creates 1:1 detection/occurrence
+    auto-mappings, before any chain consolidation).
+    """
+    orphan_detections = Detection.objects.filter(
+        source_image__event=event,
+        occurrence__isnull=True,
+    ).count()
+    if orphan_detections:
+        return False, f"{orphan_detections} detection(s) without an occurrence"
+
+    multi_detection_occurrences = (
+        Occurrence.objects.filter(event=event).annotate(_n=Count("detections")).filter(_n__gt=1).count()
+    )
+    if multi_detection_occurrences:
+        return False, f"{multi_detection_occurrences} occurrence(s) already span >1 detection"
+
+    return True, ""
 
 
 def event_fully_processed(event: Event, logger: logging.Logger, algorithm: Algorithm) -> bool:
@@ -116,8 +155,21 @@ def get_feature_vector(detection: Detection, algorithm: Algorithm):
 
 
 def assign_occurrences_from_detection_chains(source_images: list[SourceImage], logger: logging.Logger) -> None:
+    """
+    Walk chains via ``Detection.next_detection`` and consolidate each chain into
+    a single occurrence using a merge-into-first strategy:
+
+    - Pick the first existing occurrence in the chain as the keeper.
+    - Reassign every other detection in the chain to the keeper.
+    - Delete now-empty sibling occurrences.
+    - If no detection in the chain has an occurrence yet, create one.
+
+    Designed for fresh-event input (1:1 detection/occurrence). v2 incremental tracking
+    can reuse this primitive for prepend/append: keeper survives, new detections fold in.
+    """
     visited: set[int] = set()
     created = 0
+    merged = 0
     existing = Occurrence.objects.filter(detections__source_image__in=source_images).distinct().count()
 
     for image in source_images:
@@ -140,41 +192,51 @@ def assign_occurrences_from_detection_chains(source_images: list[SourceImage], l
 
             old_occ_ids = {d.occurrence_id for d in chain if d.occurrence_id}
             all_assigned = all(d.occurrence_id is not None for d in chain)
-            # Skip rebuild only when the chain is already coherent: every detection
-            # is assigned and they all share the same occurrence. Otherwise, rebuild
-            # the occurrence so singletons + orphaned detections also get materialized.
-            # @TODO: detect when an existing occurrence is being SPLIT into multiple
-            # chains (each subchain still references the old occurrence). This pass
-            # currently leaves the merged occurrence in place. See PR #1272 follow-ups.
+
+            # Coherent: every detection assigned and all share one occurrence. Nothing to do.
             if len(old_occ_ids) == 1 and all_assigned:
                 continue
 
-            for occ_id in old_occ_ids:
-                # @TODO consider soft-delete or detach instead of hard-delete.
+            # Pick keeper: first existing occurrence in chain order.
+            keeper: Occurrence | None = None
+            for d in chain:
+                if d.occurrence_id:
+                    keeper = d.occurrence
+                    break
+
+            if keeper is None:
+                keeper = Occurrence.objects.create(
+                    event=chain[0].source_image.event,
+                    deployment=chain[0].source_image.deployment,
+                    project=chain[0].source_image.project,
+                )
+                created += 1
+
+            # Reassign chain detections to keeper.
+            for d in chain:
+                if d.occurrence_id != keeper.pk:
+                    d.occurrence = keeper
+                    d.save()
+
+            # Delete now-empty sibling occurrences. v1's fresh-event invariant guarantees
+            # these have no Identifications attached (nothing has been ratified yet), so
+            # CASCADE on Identification.occurrence is harmless. v2 must instead reassign
+            # Identification.occurrence to the keeper before deleting.
+            for occ_id in old_occ_ids - {keeper.pk}:
                 try:
                     Occurrence.objects.filter(id=occ_id).delete()
+                    merged += 1
                 except Exception as e:
                     logger.error(f"Failed to delete occurrence {occ_id}: {e}")
 
-            occurrence = Occurrence.objects.create(
-                event=chain[0].source_image.event,
-                deployment=chain[0].source_image.deployment,
-                project=chain[0].source_image.project,
-            )
-            created += 1
-
-            for d in chain:
-                d.occurrence = occurrence
-                d.save()
-
-            occurrence.save()
+            keeper.save()
 
     new_count = Occurrence.objects.filter(detections__source_image__in=source_images).distinct().count()
     removed = existing - new_count
     if removed > 0:
-        logger.info(f"Reduced existing occurrences by {removed}.")
+        logger.info(f"Merged {merged} sibling occurrences into chain keepers (net -{removed}).")
     logger.info(
-        f"Assigned {created} new occurrences across {len(source_images)} images. "
+        f"Materialized {created} new occurrences across {len(source_images)} images. "
         f"Occurrences before: {existing}, after: {new_count}. Detections processed: {len(visited)}."
     )
 
@@ -212,7 +274,8 @@ def pair_detections(
             if cost < cost_threshold:
                 candidates.append((det, nxt, cost))
 
-    candidates.sort(key=lambda x: x[2])
+    # Secondary keys (det.pk, nxt.pk) keep tied costs deterministic across runs.
+    candidates.sort(key=lambda x: (x[2], x[0].pk, x[1].pk))
 
     claimed_current: set[int] = set()
     claimed_next: set[int] = set()
@@ -249,27 +312,43 @@ def assign_occurrences_by_tracking_images(
         return
 
     transitions = len(source_images) - 1
-    for i in range(transitions):
-        cur = source_images[i]
-        nxt = source_images[i + 1]
+    skipped_transitions = 0
+    # Per-event atomic boundary: a crash mid-event rolls back chain links + occurrence
+    # consolidation for THIS event only, leaving other events in the job intact.
+    with transaction.atomic():
+        for i in range(transitions):
+            cur = source_images[i]
+            nxt = source_images[i + 1]
 
-        if not cur.width or not cur.height:
-            logger.warning(f"Image {cur.pk} has no dimensions; aborting tracking for event {event.pk}")
-            return
+            if not cur.width or not cur.height:
+                logger.warning(
+                    f"Image {cur.pk} has no dimensions; skipping transition {i + 1}/{transitions} "
+                    f"for event {event.pk}."
+                )
+                skipped_transitions += 1
+                if progress_cb:
+                    progress_cb((i + 1) / transitions)
+                continue
 
-        pair_detections(
-            list(cur.detections.all()),
-            list(nxt.detections.all()),
-            image_width=cur.width,
-            image_height=cur.height,
-            cost_threshold=params.cost_threshold,
-            algorithm=algorithm,
-            logger=logger,
-        )
-        if progress_cb:
-            progress_cb((i + 1) / transitions)
+            pair_detections(
+                list(cur.detections.all()),
+                list(nxt.detections.all()),
+                image_width=cur.width,
+                image_height=cur.height,
+                cost_threshold=params.cost_threshold,
+                algorithm=algorithm,
+                logger=logger,
+            )
+            if progress_cb:
+                progress_cb((i + 1) / transitions)
 
-    assign_occurrences_from_detection_chains(source_images, logger)
+        if skipped_transitions:
+            logger.info(
+                f"Event {event.pk}: skipped {skipped_transitions}/{transitions} transitions "
+                "due to missing image dimensions."
+            )
+
+        assign_occurrences_from_detection_chains(source_images, logger)
 
 
 class TrackingTask(BasePostProcessingTask):
@@ -317,6 +396,16 @@ class TrackingTask(BasePostProcessingTask):
         for idx, event in enumerate(events, start=1):
             self.logger.info(f"Tracking event {idx}/{total} (id={event.pk})")
 
+            if params.require_fresh_event:
+                fresh, reason = event_is_fresh(event)
+                if not fresh:
+                    self.logger.info(
+                        f"Skipping event {event.pk}: not fresh ({reason}). "
+                        "v1 only handles 1:1 detection/occurrence input. "
+                        "Re-tracking previously-tracked data lands in v2 (incremental)."
+                    )
+                    continue
+
             if params.feature_extraction_algorithm_id is not None:
                 algorithm = Algorithm.objects.filter(pk=params.feature_extraction_algorithm_id).first()
                 if algorithm is None:
@@ -327,9 +416,20 @@ class TrackingTask(BasePostProcessingTask):
                     continue
                 self.logger.info(f"Using configured feature-extraction algorithm {algorithm.pk} for event {event.pk}.")
             else:
-                algorithm = get_most_common_algorithm_for_event(event)
+                algorithm, candidates = get_unique_feature_algorithm_for_event(event)
                 if algorithm is None:
-                    self.logger.warning(f"No feature-extraction algorithm found for event {event.pk}; skipping.")
+                    if candidates:
+                        candidate_names = [f"#{a.pk} {a.name}" for a in candidates]
+                        self.logger.warning(
+                            f"Event {event.pk}: detections classified by {len(candidates)} different "
+                            f"feature-extraction algorithms ({candidate_names}). Pass "
+                            "feature_extraction_algorithm_id in the job config to disambiguate. Skipping."
+                        )
+                    else:
+                        self.logger.warning(
+                            f"Event {event.pk}: no detections with feature embeddings. "
+                            "Run the processing pipeline first. Skipping."
+                        )
                     continue
 
             if (

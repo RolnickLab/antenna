@@ -65,12 +65,14 @@ class TestTracking(TestCase):
         return algorithm
 
     def test_tracking_reproduces_occurrence_groups(self):
-        # Wipe existing chain links and occurrences so tracking has to rebuild them.
-        for det in Detection.objects.filter(source_image__event=self.event):
-            det.occurrence = None
-            det.next_detection = None
-            det.save()
-        Occurrence.objects.filter(event=self.event).delete()
+        # v1 fresh-data scenario: pipeline already created 1:1 detection/occurrence.
+        # Wipe only chain links so tracking has to rebuild them; occurrences stay so
+        # event_is_fresh() passes and tracking runs.
+        Detection.objects.filter(source_image__event=self.event).update(next_detection=None)
+
+        # Sanity-check the fresh invariant before running.
+        orphans = Detection.objects.filter(source_image__event=self.event, occurrence__isnull=True).count()
+        self.assertEqual(orphans, 0, "Test setup expects every detection to have an occurrence")
 
         assign_occurrences_by_tracking_images(
             event=self.event,
