@@ -2952,11 +2952,9 @@ class TestOccurrenceListQueryCount(APITestCase):
         from django.test.utils import CaptureQueriesContext
 
         url = f"/api/v2/occurrences/?project_id={self.project.pk}&limit={limit}"
-        # Clear cachalot cache between runs so query counts reflect cold state
-        try:
-            caches["default"].clear()
-        except Exception:
-            pass
+        # Clear cachalot cache between runs so query counts reflect cold state.
+        # Failures must propagate — a warm cache hides query-scaling regressions.
+        caches["default"].clear()
 
         with CaptureQueriesContext(connection) as ctx:
             res = self.client.get(url)

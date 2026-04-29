@@ -1368,13 +1368,13 @@ class OccurrenceListSerializer(DefaultSerializer):
     def get_detection_images(self, obj: Occurrence) -> list[str]:
         """Return media URLs for the occurrence's detection crops.
 
-        Reads from the `prefetched_detection_images` to_attr list populated by
-        `prefetch_detection_images()`; falls back to the model method for
-        callers that did not apply the prefetch (e.g. detail view).
+        Reads from the prefetched `detections` cache populated by
+        `prefetch_detections_for_list()`; falls back to the model method for
+        callers that did not apply the prefetch (e.g. signals/exports).
         """
         from ami.main.models_future.occurrence import detection_image_urls_from_prefetch
 
-        if hasattr(obj, "prefetched_detection_images"):
+        if "detections" in getattr(obj, "_prefetched_objects_cache", {}):
             return detection_image_urls_from_prefetch(obj)
         return list(obj.detection_images())
 
@@ -1389,13 +1389,17 @@ class OccurrenceListSerializer(DefaultSerializer):
         return obj.best_identification
 
     def _best_prediction(self, obj: Occurrence):
-        """Pick the best machine prediction, preferring prefetched data when available."""
-        from ami.main.models_future.occurrence import best_prediction_from_prefetch
+        """Pick the best machine prediction, preferring prefetched data when available.
 
-        # `prefetch_classifications_for_best_prediction()` populates both the
-        # detections cache and the nested classifications cache.
-        prefetch_cache = getattr(obj, "_prefetched_objects_cache", {})
-        if "detections" in prefetch_cache:
+        The list path prefetches detections AND nested classifications via
+        `prefetch_detections_for_list()`. The detail path only prefetches
+        detections, so calling `best_prediction_from_prefetch()` there would
+        walk `det.classifications.all()` lazily and reintroduce an N+1.
+        Gate strictly on classifications also being prefetched.
+        """
+        from ami.main.models_future.occurrence import best_prediction_from_prefetch, has_prefetched_classifications
+
+        if has_prefetched_classifications(obj):
             return best_prediction_from_prefetch(obj)
         return obj.best_prediction
 
