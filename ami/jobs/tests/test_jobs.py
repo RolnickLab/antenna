@@ -404,6 +404,17 @@ class TestJobView(APITestCase):
         # Verify we don't get the full results structure
         self.assertNotIn("details", data["results"][0])
 
+    def test_list_jobs_with_invalid_cutoff_hours_returns_400(self):
+        """``?cutoff_hours=abc`` must 400, not 500. Locks in the
+        ``SingleParamSerializer`` validation pattern in ``get_queryset``."""
+        self.client.force_authenticate(user=self.user)
+        url = reverse_with_params(
+            "api:job-list",
+            params={"project_id": self.project.pk, "cutoff_hours": "abc"},
+        )
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 400)
+
     def test_list_jobs_ids_only_pops_one(self):
         """`?ids_only=1` without an explicit limit returns one job (pop()-style handoff)."""
         self._create_job("Test job 2", start_now=False)
@@ -1020,26 +1031,27 @@ class TestJobLogPersistence(TestCase):
         self.assertEqual(len(logs["stdout"]), 1)
         self.assertIn("detail view reads me", logs["stdout"][0])
 
-    def _make_serializer_with_query(self, query_params: dict[str, str]):
+    def _make_detail_serializer(self, logs_limit: int | None = None):
+        # Mirror what JobViewSet.get_serializer_context produces for a
+        # detail (retrieve) action: ``logs_limit`` is the validated int (or
+        # None when the param was not passed).
         from unittest.mock import MagicMock
 
         from ami.jobs.serializers import JobListSerializer
 
         fake_view = MagicMock()
         fake_view.action = "retrieve"
-        fake_request = MagicMock()
-        fake_request.query_params = query_params
         return JobListSerializer(
             instance=self.job,
-            context={"view": fake_view, "request": fake_request},
+            context={"view": fake_view, "logs_limit": logs_limit},
         )
 
-    def test_logs_limit_query_param_caps_response_size(self):
+    def test_logs_limit_caps_response_size(self):
         for i in range(5):
             self.job.logger.info(f"line {i}")
         self.assertEqual(JobLog.objects.filter(job=self.job).count(), 5)
 
-        serializer = self._make_serializer_with_query({"logs_limit": "2"})
+        serializer = self._make_detail_serializer(logs_limit=2)
         logs = serializer.get_logs(self.job)
 
         self.assertEqual(len(logs["stdout"]), 2)
@@ -1052,37 +1064,59 @@ class TestJobLogPersistence(TestCase):
 
         self.job.logger.info("only one")
 
-        serializer = self._make_serializer_with_query({})
+        serializer = self._make_detail_serializer(logs_limit=None)
         logs = serializer.get_logs(self.job)
 
         # Default kicks in (no truncation; 1 < 1000).
         self.assertEqual(len(logs["stdout"]), 1)
         self.assertGreaterEqual(JOB_LOGS_DEFAULT_LIMIT, 1)
 
-    def test_logs_limit_invalid_value_raises_validation_error(self):
-        from django.core.exceptions import ValidationError
 
-        self.job.logger.info("only one")
+class TestJobLogsLimitHTTPValidation(APITestCase):
+    """``?logs_limit=`` validation runs at the view boundary, so a bad value
+    must produce HTTP 400 (not 500). Validated via the actual API path rather
+    than calling the serializer directly."""
 
-        serializer = self._make_serializer_with_query({"logs_limit": "abc"})
-        with self.assertRaises(ValidationError):
-            serializer.get_logs(self.job)
+    def setUp(self):
+        self.project = Project.objects.create(name="logs_limit HTTP test")
+        self.job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="logs_limit HTTP test job",
+        )
+        self.user = User.objects.create_user(  # type: ignore
+            email="logs-limit-validator@insectai.org",
+            is_staff=True,
+            is_active=True,
+            is_superuser=True,
+        )
+        self.client.force_authenticate(user=self.user)
 
-    def test_logs_limit_zero_raises_validation_error(self):
-        from django.core.exceptions import ValidationError
+    def _detail_url(self, **params) -> str:
+        return reverse_with_params("api:job-detail", args=[self.job.pk], params=params)
 
-        serializer = self._make_serializer_with_query({"logs_limit": "0"})
-        with self.assertRaises(ValidationError):
-            serializer.get_logs(self.job)
+    def test_valid_integer_returns_200(self):
+        # Sanity: a well-formed ``?logs_limit=`` does not 400 on its own.
+        resp = self.client.get(self._detail_url(project_id=self.project.pk, logs_limit=5))
+        self.assertEqual(resp.status_code, 200)
 
-    def test_logs_limit_above_max_raises_validation_error(self):
-        from django.core.exceptions import ValidationError
+    def test_non_integer_returns_400(self):
+        resp = self.client.get(self._detail_url(project_id=self.project.pk, logs_limit="abc"))
+        self.assertEqual(resp.status_code, 400)
 
+    def test_zero_returns_400(self):
+        resp = self.client.get(self._detail_url(project_id=self.project.pk, logs_limit=0))
+        self.assertEqual(resp.status_code, 400)
+
+    def test_negative_returns_400(self):
+        resp = self.client.get(self._detail_url(project_id=self.project.pk, logs_limit=-5))
+        self.assertEqual(resp.status_code, 400)
+
+    def test_above_max_returns_400(self):
         from ami.jobs.models import JOB_LOGS_MAX_LIMIT
 
-        serializer = self._make_serializer_with_query({"logs_limit": str(JOB_LOGS_MAX_LIMIT + 1)})
-        with self.assertRaises(ValidationError):
-            serializer.get_logs(self.job)
+        resp = self.client.get(self._detail_url(project_id=self.project.pk, logs_limit=JOB_LOGS_MAX_LIMIT + 1))
+        self.assertEqual(resp.status_code, 400)
 
 
 class TestJobDispatchModeFiltering(APITestCase):
