@@ -96,7 +96,7 @@ Processing services that operate in pull-mode (fetching tasks from Antenna via `
 
 Workers should read `config` from each task and apply it to their processing. If `config` is absent or null, fall back to worker-level defaults (e.g. environment variables).
 
-When returning results, populate `PipelineResultsResponse.config` with the config that was actually used, so Antenna can record it for auditing.
+When returning results, populate `PipelineResultsResponse.config` with the config that was actually used. Antenna logs a warning if the echoed config drifts from the pipeline's current configuration in the database (e.g. `ProjectPipelineConfig` was edited mid-job, or the worker is running stale config). Persisted audit trails are a future addition.
 
 ## Demo
 
