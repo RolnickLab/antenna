@@ -1,0 +1,45 @@
+{% extends "admin/base_site.html" %}
+
+{% load i18n admin_urls %}
+
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+    › <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+    › <a href="{% url opts|admin_urlname:'changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+    › {{ title }}
+  </div>
+{% endblock breadcrumbs %}
+{% block content %}
+  <form method="post">
+    {% csrf_token %}
+    <p>
+      You are about to run Occurrence Tracking on <strong>{{ scope_label }}</strong>.
+    </p>
+    {% if scope_summary %}<p>{{ scope_summary }}</p>{% endif %}
+    {% if form.non_field_errors %}
+      <ul class="errorlist">
+        {% for err in form.non_field_errors %}<li>{{ err }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+    <fieldset class="module aligned">
+      <h2>Tracking parameters</h2>
+      {% for field in form %}
+        <div class="form-row">
+          {{ field.errors }}
+          {{ field.label_tag }}
+          {{ field }}
+          {% if field.help_text %}<div class="help">{{ field.help_text|safe }}</div>{% endif %}
+        </div>
+      {% endfor %}
+    </fieldset>
+    {% for obj in queryset %}<input type="hidden" name="{{ action_checkbox_name }}" value="{{ obj.pk }}" />{% endfor %}
+    <input type="hidden" name="action" value="{{ action_name }}" />
+    <input type="hidden" name="confirm" value="yes" />
+    <div class="submit-row">
+      <input type="submit" value="Queue tracking job(s)" class="default" />
+      <a href="{% url opts|admin_urlname:'changelist' %}"
+         class="button cancel-link">Cancel</a>
+    </div>
+  </form>
+{% endblock content %}

@@ -688,7 +688,7 @@ def create_classification(
 
     if existing_classification:
         # @TODO remove this after all existing classifications have been updated (added 2024-12-20)
-        NEW_FIELDS = ["logits", "scores", "terminal", "category_map"]
+        NEW_FIELDS = ["logits", "scores", "terminal", "category_map", "features_2048"]
         logger.debug(
             "Duplicate classification found: "
             f"{existing_classification.taxon} from {existing_classification.algorithm}, "
@@ -705,6 +705,9 @@ def create_classification(
                 if field == "category_map":
                     # Use the foreign key from the classification algorithm
                     setattr(existing_classification, field, classification_algo.category_map)
+                elif field == "features_2048":
+                    # The pipeline response carries this as `features`; the DB column is `features_2048`.
+                    setattr(existing_classification, field, classification_resp.features)
                 else:
                     # Get the value from the classification response
                     setattr(existing_classification, field, getattr(classification_resp, field))
@@ -722,6 +725,7 @@ def create_classification(
             timestamp=classification_resp.timestamp or now(),
             logits=classification_resp.logits,
             scores=classification_resp.scores,
+            features_2048=classification_resp.features,
             terminal=classification_resp.terminal,
             category_map=classification_algo.category_map,
         )

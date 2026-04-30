@@ -4329,3 +4329,68 @@ class TestCachedCountsDefaultFilters(APITestCase):
                 f"SourceImage {image.pk} cache stale after raising threshold: "
                 f"cache={image.detections_count}, fresh={image.get_detections_count()}",
             )
+
+
+class TestOccurrenceDeterminationScoreRefresh(TestCase):
+    """Regression test for `update_occurrence_determination`.
+
+    Tracking can fold a new detection into an existing occurrence whose top
+    species classification scores higher than the keeper's. The taxon stays the
+    same across the chain, but the keeper's `determination_score` should
+    refresh to reflect the strongest evidence available — not stay pinned to
+    the score from the first detection.
+    """
+
+    def setUp(self) -> None:
+        from ami.ml.models import Algorithm
+
+        self.project, self.deployment = setup_test_project()
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=2)
+        create_taxa(project=self.project)
+        self.taxon = Taxon.objects.filter(projects=self.project).first()
+        self.algorithm = Algorithm.objects.create(name="Test Species Classifier", version=1)
+
+    def _make_detection_with_classification(self, source_image: SourceImage, score: float) -> Detection:
+        occurrence = Occurrence.objects.create(
+            project=self.project,
+            event=source_image.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+            determination_score=score,
+        )
+        detection = Detection.objects.create(
+            source_image=source_image,
+            occurrence=occurrence,
+            timestamp=source_image.timestamp,
+        )
+        Classification.objects.create(
+            detection=detection,
+            taxon=self.taxon,
+            algorithm=self.algorithm,
+            score=score,
+            terminal=True,
+            timestamp=source_image.timestamp,
+        )
+        return detection
+
+    def test_score_refreshes_when_taxon_unchanged(self) -> None:
+        """When best_prediction has the same taxon but a higher score, the
+        keeper's determination_score must update on save()."""
+        captures = list(self.deployment.captures.order_by("timestamp")[:2])
+        keeper_det = self._make_detection_with_classification(captures[0], score=0.20)
+        absorbed_det = self._make_detection_with_classification(captures[1], score=0.55)
+        keeper = keeper_det.occurrence
+        absorbed = absorbed_det.occurrence
+        assert keeper is not None and absorbed is not None
+
+        # Simulate tracking merge: reassign absorbed detection to keeper.
+        absorbed_det.occurrence = keeper
+        absorbed_det.save()
+        Occurrence.objects.filter(pk=absorbed.pk).delete()
+
+        # Keeper.save() should pick up the higher score from the merged-in detection.
+        keeper.save()
+        keeper.refresh_from_db()
+
+        self.assertEqual(keeper.determination, self.taxon)
+        self.assertAlmostEqual(keeper.determination_score, 0.55, places=4)
