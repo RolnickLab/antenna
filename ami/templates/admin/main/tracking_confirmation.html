@@ -13,7 +13,6 @@
 {% block content %}
   <form method="post">
     {% csrf_token %}
-    <h1>{{ title }}</h1>
     <p>
       You are about to run Occurrence Tracking on <strong>{{ scope_label }}</strong>.
     </p>

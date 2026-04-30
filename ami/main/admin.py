@@ -246,8 +246,108 @@ class EventAdmin(admin.ModelAdmin[Event]):
         update_calculated_fields_for_events(qs=queryset)
         self.message_user(request, f"Updated {queryset.count()} events.")
 
+    @admin.action(description="Run Occurrence Tracking on selected events")
+    def run_tracking_on_events(self, request: HttpRequest, queryset: QuerySet[Event]):
+        from collections import defaultdict
+
+        from django.contrib import messages
+        from django.template.response import TemplateResponse
+
+        from ami.ml.post_processing.admin_forms import TrackingActionForm
+
+        # Superuser-only: queues background jobs and exposes tunables that change
+        # determination scoring across an event. Project admins can request a run
+        # via a superuser; widening the gate is a separate decision.
+        if not request.user.is_superuser:
+            self.message_user(request, "Only superusers can trigger tracking jobs.", level=messages.ERROR)
+            return None
+
+        if request.POST.get("confirm"):
+            form = TrackingActionForm(request.POST, events=queryset)
+            if not form.is_valid():
+                # Re-render with errors.
+                return TemplateResponse(
+                    request,
+                    "admin/main/tracking_confirmation.html",
+                    {
+                        **self.admin_site.each_context(request),
+                        "title": "Run Occurrence Tracking",
+                        "queryset": queryset,
+                        "scope_label": f"{queryset.count()} event(s)",
+                        "scope_summary": (
+                            "One Job is enqueued per project. Each Job processes all "
+                            "selected events from that project and is visible on the "
+                            "Jobs admin page where you can watch its log stream."
+                        ),
+                        "form": form,
+                        "action_name": "run_tracking_on_events",
+                        "action_checkbox_name": admin.helpers.ACTION_CHECKBOX_NAME,
+                        "opts": self.model._meta,
+                    },
+                )
+
+            config = form.to_config()
+            by_project: dict[int, list[int]] = defaultdict(list)
+            null_project_event_ids: list[int] = []
+            for ev in queryset.values("pk", "project_id"):
+                if ev["project_id"] is None:
+                    null_project_event_ids.append(ev["pk"])
+                    continue
+                by_project[ev["project_id"]].append(ev["pk"])
+
+            if null_project_event_ids:
+                self.message_user(
+                    request,
+                    f"Skipped {len(null_project_event_ids)} event(s) without a project: "
+                    f"{null_project_event_ids}. Fix Event.project before tracking those.",
+                    level=messages.WARNING,
+                )
+
+            jobs = []
+            for project_id, event_ids in by_project.items():
+                job = Job.objects.create(
+                    name=f"Post-processing: Tracking on {len(event_ids)} event(s)",
+                    project_id=project_id,
+                    job_type_key="post_processing",
+                    params={
+                        "task": "tracking",
+                        "config": {**config, "event_ids": event_ids},
+                    },
+                )
+                job.enqueue()
+                jobs.append(job.pk)
+
+            self.message_user(
+                request,
+                f"Queued Tracking for {sum(len(v) for v in by_project.values())} event(s) "
+                f"across {len(by_project)} project(s). Jobs: {jobs}",
+            )
+            return None
+
+        # GET / first POST without confirm — render the intermediate page.
+        form = TrackingActionForm(events=queryset)
+        return TemplateResponse(
+            request,
+            "admin/main/tracking_confirmation.html",
+            {
+                **self.admin_site.each_context(request),
+                "title": "Run Occurrence Tracking",
+                "queryset": queryset,
+                "scope_label": f"{queryset.count()} event(s)",
+                "scope_summary": (
+                    "One Job is enqueued per project. Each Job processes all "
+                    "selected events from that project and is visible on the "
+                    "Jobs admin page where you can watch its log stream."
+                ),
+                "form": form,
+                "action_name": "run_tracking_on_events",
+                "action_checkbox_name": admin.helpers.ACTION_CHECKBOX_NAME,
+                "opts": self.model._meta,
+            },
+        )
+
     list_filter = ("deployment", "project", "start")
-    actions = [update_calculated_fields]
+    actions = [update_calculated_fields, run_tracking_on_events]
 
 
 @admin.register(SourceImage)
