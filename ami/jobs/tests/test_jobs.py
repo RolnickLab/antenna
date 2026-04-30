@@ -1539,3 +1539,77 @@ class TestListEndpointHeartbeat(APITestCase):
         # may be set by the creation-time get_status() ping, but should be unchanged
         # after the task runs.
         self.assertEqual(sync_service.last_seen, sync_last_seen_before)
+
+
+class TestJobDeletePermission(APITestCase):
+    """
+    Job records are kept in the DB for audit/traceability. Only superusers may
+    delete jobs via the API. Project-scoped roles (MLDataManager, ProjectManager)
+    must not have ``delete_job`` regardless of role-permission inheritance, and
+    the destroy endpoint must reject their requests.
+    """
+
+    def setUp(self):
+        from ami.users.roles import MLDataManager, ProjectManager, create_roles_for_project
+
+        self.project = Project.objects.create(name="Job Delete Permission Test Project")
+        create_roles_for_project(self.project)
+
+        self.job = Job.objects.create(
+            job_type_key=SourceImageCollectionPopulateJob.key,
+            project=self.project,
+            name="Job slated for delete attempts",
+            delay=0,
+        )
+
+        self.superuser = User.objects.create_user(
+            email="super-jobdel@insectai.org",
+            is_staff=True,
+            is_active=True,
+            is_superuser=True,
+        )
+        self.ml_manager = User.objects.create_user(
+            email="mlmanager-jobdel@insectai.org",
+            is_active=True,
+        )
+        MLDataManager.assign_user(self.ml_manager, self.project)
+
+        self.project_manager = User.objects.create_user(
+            email="pm-jobdel@insectai.org",
+            is_active=True,
+        )
+        ProjectManager.assign_user(self.project_manager, self.project)
+
+        self.delete_url = reverse_with_params(
+            "api:job-detail",
+            args=[self.job.pk],
+            params={"project_id": self.project.pk},
+        )
+
+    def test_ml_data_manager_role_does_not_have_delete_job(self):
+        from ami.users.roles import MLDataManager
+
+        self.assertNotIn("delete_job", MLDataManager.permissions)
+
+    def test_project_manager_role_does_not_have_delete_job(self):
+        from ami.users.roles import ProjectManager
+
+        self.assertNotIn("delete_job", ProjectManager.permissions)
+
+    def test_ml_data_manager_cannot_delete_job(self):
+        self.client.force_authenticate(user=self.ml_manager)
+        resp = self.client.delete(self.delete_url)
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(Job.objects.filter(pk=self.job.pk).exists())
+
+    def test_project_manager_cannot_delete_job(self):
+        self.client.force_authenticate(user=self.project_manager)
+        resp = self.client.delete(self.delete_url)
+        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(Job.objects.filter(pk=self.job.pk).exists())
+
+    def test_superuser_can_delete_job(self):
+        self.client.force_authenticate(user=self.superuser)
+        resp = self.client.delete(self.delete_url)
+        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Job.objects.filter(pk=self.job.pk).exists())
