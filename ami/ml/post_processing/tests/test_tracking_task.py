@@ -5,9 +5,14 @@ import numpy as np
 from django.test import TestCase
 from django.utils import timezone
 
+from ami.jobs.models import Job
 from ami.main.models import Classification, Detection, Occurrence
 from ami.ml.models import Algorithm
-from ami.ml.post_processing.tracking_task import DEFAULT_TRACKING_PARAMS, assign_occurrences_by_tracking_images
+from ami.ml.post_processing.tracking_task import (
+    DEFAULT_TRACKING_PARAMS,
+    TrackingTask,
+    assign_occurrences_by_tracking_images,
+)
 from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 
 logger = logging.getLogger(__name__)
@@ -99,3 +104,40 @@ class TestTracking(TestCase):
                 gt_values,
                 f"Reconstructed group {new_set} does not match any ground-truth group",
             )
+
+
+class TestTrackingTaskResolveEvents(TestCase):
+    """Scope-resolution unit tests for ``TrackingTask._resolve_events``."""
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=2, interval_minutes=1)
+        self.event = self.project.events.first()
+        assert self.event is not None
+
+    def test_resolve_events_from_event_ids(self):
+        task = TrackingTask(logger=logger, event_ids=[self.event.pk])
+        events = task._resolve_events()
+        self.assertEqual([e.pk for e in events], [self.event.pk])
+
+    def test_resolve_events_raises_when_no_event_ids(self):
+        task = TrackingTask(logger=logger)
+        with self.assertRaises(ValueError):
+            task._resolve_events()
+
+    def test_resolve_events_drops_cross_project_ids(self):
+        # Make a foreign event in a different project; the job project should win.
+        other_project, other_deployment = setup_test_project(reuse=False)
+        create_captures(deployment=other_deployment, num_nights=1, images_per_night=2, interval_minutes=1)
+        foreign_event = other_project.events.first()
+        assert foreign_event is not None
+
+        job = Job.objects.create(
+            name="Tracking scope test",
+            project=self.project,
+            job_type_key="post_processing",
+            params={"task": "tracking", "config": {"event_ids": [self.event.pk, foreign_event.pk]}},
+        )
+        task = TrackingTask(job=job, event_ids=[self.event.pk, foreign_event.pk])
+        events = task._resolve_events()
+        self.assertEqual([e.pk for e in events], [self.event.pk])
