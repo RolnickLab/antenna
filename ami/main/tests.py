@@ -1585,7 +1585,7 @@ class TestRolePermissions(APITestCase):
                 "job": {
                     "create": True,
                     "update": True,
-                    "delete": True,
+                    "delete": False,
                     "run_single_image": True,
                     "run": True,
                 },
