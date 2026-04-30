@@ -527,7 +527,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'Are you sure you want to delete this {{type}}?',
   [STRING.MESSAGE_DRAFTS]: 'Drafts are private and limited to one user.',
   [STRING.MESSAGE_EXPORT_TIP]:
-    'We support two export formats: one compact and easy to use, and one that includes all raw data. To include all data in the export, skip "Capture set".',
+    'We support three export formats: simple CSV, API JSON (includes all raw data), and COCO JSON. COCO JSON follows the simple CSV occurrence fields with additional image metadata. To include all data in the export, skip "Capture set".',
   [STRING.MESSAGE_HAS_ACCOUNT]: 'Already have an account?',
   [STRING.MESSAGE_IMAGE_FORMAT]: 'Valid formats are PNG, GIF and JPEG.',
   [STRING.MESSAGE_IMAGE_SIZE]:

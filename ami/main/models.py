@@ -2942,6 +2942,9 @@ class OccurrenceQuerySet(BaseQuerySet):
         - best_detection_bbox: The bounding box of the detection as a list [x1, y1, x2, y2]
         - best_detection_capture_path: The path of the source capture image
         - best_detection_capture_public_base_url: The public base URL of the source capture image
+        - best_detection_source_image_id: Primary key of the SourceImage for that capture
+        - best_detection_capture_timestamp: Timestamp from SourceImage (capture time)
+        - best_detection_capture_width / best_detection_capture_height: Dimensions from SourceImage
         """
         # Subquery to get the path of the best detection
         # Use id as secondary sort to ensure deterministic results
@@ -2971,11 +2974,36 @@ class OccurrenceQuerySet(BaseQuerySet):
             .values("source_image__public_base_url")[:1]
         )
 
+        best_detection_source_image_id_subquery = (
+            Detection.objects.filter(occurrence=OuterRef("pk"))
+            .order_by("-classifications__score", "id")
+            .values("source_image_id")[:1]
+        )
+        best_detection_capture_timestamp_subquery = (
+            Detection.objects.filter(occurrence=OuterRef("pk"))
+            .order_by("-classifications__score", "id")
+            .values("source_image__timestamp")[:1]
+        )
+        best_detection_capture_width_subquery = (
+            Detection.objects.filter(occurrence=OuterRef("pk"))
+            .order_by("-classifications__score", "id")
+            .values("source_image__width")[:1]
+        )
+        best_detection_capture_height_subquery = (
+            Detection.objects.filter(occurrence=OuterRef("pk"))
+            .order_by("-classifications__score", "id")
+            .values("source_image__height")[:1]
+        )
+
         return self.annotate(
             best_detection_path=models.Subquery(best_detection_path_subquery),
             best_detection_bbox=models.Subquery(best_detection_bbox_subquery),
             best_detection_capture_path=models.Subquery(best_detection_capture_path_subquery),
             best_detection_capture_public_base_url=models.Subquery(best_detection_capture_public_base_url_subquery),
+            best_detection_source_image_id=models.Subquery(best_detection_source_image_id_subquery),
+            best_detection_capture_timestamp=models.Subquery(best_detection_capture_timestamp_subquery),
+            best_detection_capture_width=models.Subquery(best_detection_capture_width_subquery),
+            best_detection_capture_height=models.Subquery(best_detection_capture_height_subquery),
         )
 
     def with_best_machine_prediction(self):

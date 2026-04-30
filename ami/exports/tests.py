@@ -4,7 +4,7 @@ import logging
 
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from ami.exports.models import DataExport
@@ -206,6 +206,70 @@ class DataExportTest(TestCase):
                 f"No detection dimensions found in {len(rows)} exported rows. "
                 "At least one occurrence should have detection width and height.",
             )
+
+        # Clean up the exported file after the test
+        default_storage.delete(file_path)
+
+    @override_settings(EXTERNAL_BASE_URL="https://antenna.example.org")
+    def test_coco_json_export_structure(self):
+        """COCO export is a single JSON object with images, annotations, categories; ids are consistent."""
+        # Create a DataExport instance
+        data_export = DataExport.objects.create(
+            user=self.user,
+            project=self.project,
+            format="occurrences_coco_json",
+            filters={"collection_id": self.collection.pk},
+            job=None,
+        )
+
+        # Run export and get the file URL
+        file_url = data_export.run_export()
+
+        # Ensure the file is generated
+        self.assertIsNotNone(file_url)
+        file_path = file_url.replace("/media/", "")
+        self.assertTrue(default_storage.exists(file_path))
+
+        # Read and validate the exported data
+        with default_storage.open(file_path, "r") as f:
+            payload = json.load(f)
+
+        # Ensure necessary COCO fields are present
+        self.assertIn("info", payload)
+        self.assertIn("images", payload)
+        self.assertIn("annotations", payload)
+        self.assertIn("categories", payload)
+
+        # Ensure the info field points to the project summary page
+        # TODO: Change this to not be harcoded?
+        self.assertEqual(
+            payload["info"]["url"],
+            f"https://antenna.example.org/projects/{self.project.pk}/summary",
+        )
+
+        # Ensure the images field contains the correct number of images
+        image_ids = {img["id"] for img in payload["images"]}
+        category_ids = {c["id"] for c in payload["categories"]}
+        assert len(image_ids) > 0, "No images found in the export"
+        assert len(category_ids) > 0, "No categories found in the export"
+        assert len(payload["annotations"]) > 0, "No annotations found in the export"
+
+        for ann in payload["annotations"]:
+            self.assertIn(ann["image_id"], image_ids)
+            self.assertIn(ann["category_id"], category_ids)
+            x, y, w, h = ann["bbox"]
+            self.assertGreater(w, 0)
+            self.assertGreater(h, 0)
+
+        # Number of annotations should equal the number of occurrences in
+        # the collection, but excluding occurrences without a determination
+        occurrences_with_determination = (
+            Occurrence.objects.valid()
+            .filter(detections__source_image__collections=self.collection, determination__isnull=False)
+            .distinct()
+            .count()
+        )
+        self.assertEqual(len(payload["annotations"]), occurrences_with_determination)
 
         # Clean up the exported file after the test
         default_storage.delete(file_path)
