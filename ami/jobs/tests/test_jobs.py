@@ -567,6 +567,57 @@ class TestJobView(APITestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertIn("pipeline", resp.json()[0].lower())
 
+    def test_queue_images_to_nats_embeds_pipeline_config(self):
+        """Tasks queued to NATS carry the pipeline config (including project overrides)."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from ami.ml.models import ProjectPipelineConfig
+        from ami.ml.schemas import PipelineRequestConfigParameters
+
+        pipeline = self._create_pipeline()
+        pipeline.default_config = PipelineRequestConfigParameters({"example_param": "default"})
+        pipeline.save()
+        # _create_pipeline already called pipeline.projects.add(self.project) which
+        # created a ProjectPipelineConfig row; update it rather than creating a duplicate.
+        ProjectPipelineConfig.objects.filter(project=self.project, pipeline=pipeline).update(
+            config={"example_param": "project_override"}
+        )
+
+        job = self._create_ml_job("Config propagation test", pipeline)
+        job.dispatch_mode = JobDispatchMode.ASYNC_API
+        job.status = JobState.STARTED
+        job.save(update_fields=["dispatch_mode", "status"])
+
+        image = SourceImage.objects.create(
+            path="config_test.jpg",
+            public_base_url="http://example.com",
+            project=self.project,
+        )
+
+        published_tasks = []
+
+        mock_manager = AsyncMock()
+        mock_manager.log_async = AsyncMock()
+
+        async def capture_publish(job_id, data):
+            published_tasks.append(data)
+            return True
+
+        mock_manager.publish_task = capture_publish
+
+        mock_ctx = MagicMock()
+        mock_ctx.__aenter__ = AsyncMock(return_value=mock_manager)
+        mock_ctx.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("ami.ml.orchestration.jobs.TaskQueueManager", return_value=mock_ctx):
+            with patch("ami.ml.orchestration.jobs.AsyncJobStateManager"):
+                queue_images_to_nats(job, [image])
+
+        self.assertEqual(len(published_tasks), 1)
+        task = published_tasks[0]
+        self.assertIsNotNone(task.config)
+        self.assertEqual(task.config.get("example_param"), "project_override")
+
     def test_result_endpoint_stub(self):
         """Test the result endpoint accepts results (stubbed implementation)."""
         pipeline = self._create_pipeline()

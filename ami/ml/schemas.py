@@ -239,6 +239,7 @@ class PipelineResultsResponse(pydantic.BaseModel):
     source_images: list[SourceImageResponse]
     detections: list[DetectionResponse]
     errors: list | str | None = None
+    config: PipelineRequestConfigParameters | dict | None = None
 
 
 class PipelineResultsError(pydantic.BaseModel):
@@ -257,9 +258,8 @@ class PipelineProcessingTask(pydantic.BaseModel):
     image_id: str
     image_url: str
     reply_subject: str | None = None  # The NATS subject to send the result to
-    # TODO: Do we need these?
+    config: PipelineRequestConfigParameters | dict | None = None
     # detections: list[DetectionRequest] | None = None
-    # config: PipelineRequestConfigParameters | dict | None = None
 
 
 class ProcessingServiceClientInfo(pydantic.BaseModel):
