@@ -1409,6 +1409,60 @@ class TestTaskStateManager(TestCase):
         progress = self.manager.update_state({"img1", "img2"}, "process")
         self.assertIsNone(progress)
 
+    def test_all_tasks_processed_fresh_init_returns_false(self):
+        """Just-initialized job has all images pending in both stages."""
+        self._init_and_verify(self.image_ids)
+        self.assertFalse(self.manager.all_tasks_processed())
+
+    def test_all_tasks_processed_after_drain_returns_true(self):
+        """SREM-ing every id from both stages → True."""
+        self._init_and_verify(self.image_ids)
+        self.manager.update_state(set(self.image_ids), "process")
+        self.manager.update_state(set(self.image_ids), "results")
+        self.assertTrue(self.manager.all_tasks_processed())
+
+    def test_all_tasks_processed_partial_stage_returns_false(self):
+        """Process drained but results still pending → False."""
+        self._init_and_verify(self.image_ids)
+        self.manager.update_state(set(self.image_ids), "process")
+        # results stage untouched
+        self.assertFalse(self.manager.all_tasks_processed())
+
+    def test_all_tasks_processed_zero_total_returns_true(self):
+        """A zero-images job is trivially complete."""
+        self.manager.initialize_job([])
+        self.assertTrue(self.manager.all_tasks_processed())
+
+    def test_all_tasks_processed_never_initialized_returns_none(self):
+        """No init → total key absent → None (caller falls back)."""
+        # Do NOT call initialize_job
+        self.assertIsNone(self.manager.all_tasks_processed())
+
+    def test_all_tasks_processed_after_cleanup_returns_none(self):
+        """After cleanup() the total key is gone → None."""
+        self._init_and_verify(self.image_ids)
+        self.manager.cleanup()
+        self.assertIsNone(self.manager.all_tasks_processed())
+
+    def test_all_tasks_processed_returns_none_on_redis_error(self):
+        """Transient RedisError → WARNING + None (caller falls back)."""
+        from unittest.mock import MagicMock, patch
+
+        from redis.exceptions import RedisError
+
+        self._init_and_verify(self.image_ids)
+
+        pipe = MagicMock()
+        pipe.execute.side_effect = RedisError("Connection reset by peer")
+        fake_redis = MagicMock()
+        fake_redis.pipeline.return_value.__enter__.return_value = pipe
+
+        with patch.object(self.manager, "_get_redis", return_value=fake_redis):
+            with self.assertLogs("ami.ml.orchestration.async_job_state", level="WARNING") as cm:
+                result = self.manager.all_tasks_processed()
+        self.assertIsNone(result)
+        self.assertTrue(any("Redis error reading all_tasks_processed" in m for m in cm.output))
+
 
 class TestSaveResultsRefreshesDeploymentCounts(TestCase):
     """save_results must refresh Deployment cached counts, not just Event counts.
