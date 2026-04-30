@@ -1613,3 +1613,34 @@ class TestJobDeletePermission(APITestCase):
         resp = self.client.delete(self.delete_url)
         self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(Job.objects.filter(pk=self.job.pk).exists())
+
+    def _retrieve_user_permissions(self, user) -> list:
+        """
+        Fetch the job detail as ``user`` and return the ``user_permissions`` array
+        from the serialized response. The frontend reads this exact array to
+        decide whether the row's hover-trash icon renders (``canDelete`` in
+        ``ui/src/data-services/models/job.ts``).
+        """
+        self.client.force_authenticate(user=user)
+        retrieve_url = reverse_with_params(
+            "api:job-detail",
+            args=[self.job.pk],
+            params={"project_id": self.project.pk},
+        )
+        resp = self.client.get(retrieve_url)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        body = resp.json()
+        self.assertIn("user_permissions", body)
+        return body["user_permissions"]
+
+    def test_user_permissions_excludes_delete_for_ml_data_manager(self):
+        perms = self._retrieve_user_permissions(self.ml_manager)
+        self.assertNotIn("delete", perms)
+
+    def test_user_permissions_excludes_delete_for_project_manager(self):
+        perms = self._retrieve_user_permissions(self.project_manager)
+        self.assertNotIn("delete", perms)
+
+    def test_user_permissions_includes_delete_for_superuser(self):
+        perms = self._retrieve_user_permissions(self.superuser)
+        self.assertIn("delete", perms)
