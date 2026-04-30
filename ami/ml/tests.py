@@ -279,9 +279,9 @@ class TestProjectPipelineRegistrationUpdatesLastSeen(APITestCase):
 class TestPipelineWithProcessingService(TestCase):
     def test_run_pipeline_with_errors_from_processing_service(self):
         """
-        Run a real pipeline and verify that if an error occurs for one image, the error is logged in job.logs.stderr.
+        Run a real pipeline and verify that if an error occurs for one image, the error is logged to JobLog.
         """
-        from ami.jobs.models import Job
+        from ami.jobs.models import Job, JobLog
 
         # Setup test project, images, and job
         project, deployment = setup_test_project()
@@ -305,11 +305,13 @@ class TestPipelineWithProcessingService(TestCase):
             pass  # Expected if the backend raises
 
         job.refresh_from_db()
-        stderr_logs = job.logs.stderr
+        stderr_logs = list(
+            JobLog.objects.filter(job=job, level__in=["ERROR", "CRITICAL"]).values_list("message", flat=True)
+        )
         # Check that an error message mentioning the failed image is present
         assert any(
             "Failed to process" in log for log in stderr_logs
-        ), f"Expected error message in job.logs.stderr, got: {stderr_logs}"
+        ), f"Expected error message in job logs, got: {stderr_logs}"
 
     def setUp(self):
         self.project, self.deployment = setup_test_project()
