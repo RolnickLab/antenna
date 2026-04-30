@@ -847,6 +847,35 @@ class TestPipeline(TestCase):
         final_config = self.pipeline.get_config(self.project.pk)
         self.assertEqual(final_config["test_param"], "project_value")
 
+    def test_get_config_does_not_mutate_default_config(self):
+        """
+        get_config(project_id=...) must return a copy. Previously it returned
+        self.default_config directly and called .update() on it, leaking the
+        project override into the in-memory model attribute and into any
+        subsequent get_config() call.
+        """
+        from ami.ml.models import ProjectPipelineConfig
+        from ami.ml.schemas import PipelineRequestConfigParameters
+
+        self.pipeline.default_config = PipelineRequestConfigParameters({"test_param": "default_value"})
+        self.pipeline.save()
+        ProjectPipelineConfig.objects.create(
+            project=self.project,
+            pipeline=self.pipeline,
+            config={"test_param": "project_value"},
+        )
+
+        # Resolve project-scoped config first; this used to mutate default_config
+        project_config = self.pipeline.get_config(self.project.pk)
+        self.assertEqual(project_config["test_param"], "project_value")
+
+        # default_config on the model must be untouched
+        self.assertEqual(self.pipeline.default_config["test_param"], "default_value")
+
+        # A subsequent default-only call must still return the unmodified default
+        default_config = self.pipeline.get_config()
+        self.assertEqual(default_config["test_param"], "default_value")
+
     def test_image_with_null_detection(self):
         """
         Test saving results for a pipeline that returns null detections for some images.
