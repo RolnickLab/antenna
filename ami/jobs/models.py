@@ -350,6 +350,10 @@ class JobLog(BaseModel):
 JOB_LOG_LEVELS_STDERR = {"ERROR", "CRITICAL"}
 JOB_LOG_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 JOB_LOGS_DEFAULT_LIMIT = 1000
+# Hard ceiling on a single read response. Keeps payload size bounded even when
+# a caller passes ``?logs_limit=...``. Real pagination ships separately with a
+# dedicated ``/jobs/logs/`` endpoint.
+JOB_LOGS_MAX_LIMIT = 5000
 
 
 def _legacy_logs_shape(job: "Job") -> dict[str, list[str]]:

@@ -1,3 +1,4 @@
+from django.forms import IntegerField
 from django_pydantic_field.rest_framework import SchemaField
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -14,7 +15,15 @@ from ami.ml.models import Pipeline
 from ami.ml.schemas import PipelineProcessingTask, PipelineTaskResult, ProcessingServiceClientInfo
 from ami.ml.serializers import PipelineNestedSerializer
 
-from .models import Job, JobProgress, MLJob, _legacy_logs_shape, serialize_job_logs
+from .models import (
+    JOB_LOGS_DEFAULT_LIMIT,
+    JOB_LOGS_MAX_LIMIT,
+    Job,
+    JobProgress,
+    MLJob,
+    _legacy_logs_shape,
+    serialize_job_logs,
+)
 from .schemas import QueuedTaskAcknowledgment
 
 
@@ -166,7 +175,17 @@ class JobListSerializer(DefaultSerializer):
         view = self.context.get("view")
         if getattr(view, "action", None) == "list":
             return _legacy_logs_shape(obj)
-        return serialize_job_logs(obj)
+        request = self.context.get("request")
+        raw_limit = request.query_params.get("logs_limit") if request is not None else None
+        # Same validation pattern as ``cutoff_hours`` in JobViewSet.get_queryset:
+        # django.forms.IntegerField raises ValidationError on a bad value, which
+        # DRF surfaces as a 400 via its default exception handler. ``clean(None)``
+        # returns ``None`` so the default kicks in.
+        limit = (
+            IntegerField(required=False, min_value=1, max_value=JOB_LOGS_MAX_LIMIT).clean(raw_limit)
+            or JOB_LOGS_DEFAULT_LIMIT
+        )
+        return serialize_job_logs(obj, limit=limit)
 
 
 class JobSerializer(JobListSerializer):

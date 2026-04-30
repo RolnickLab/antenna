@@ -10,7 +10,7 @@ from django.db.models.query import QuerySet
 from django.forms import IntegerField
 from django.utils import timezone
 from django_filters import rest_framework as filters
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.filters import BaseFilterBackend
@@ -19,7 +19,7 @@ from rest_framework.response import Response
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import ObjectPermission
 from ami.base.views import ProjectMixin
-from ami.jobs.schemas import ids_only_param, incomplete_only_param
+from ami.jobs.schemas import ids_only_param, incomplete_only_param, logs_limit_param
 from ami.jobs.serializers import (
     MLJobResultsRequestSerializer,
     MLJobResultsResponseSerializer,
@@ -178,6 +178,9 @@ class IncompleteJobFilter(BaseFilterBackend):
         return queryset
 
 
+@extend_schema_view(
+    retrieve=extend_schema(parameters=[logs_limit_param]),
+)
 class JobViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows jobs to be viewed or edited.

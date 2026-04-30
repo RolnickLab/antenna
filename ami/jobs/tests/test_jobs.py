@@ -1020,6 +1020,70 @@ class TestJobLogPersistence(TestCase):
         self.assertEqual(len(logs["stdout"]), 1)
         self.assertIn("detail view reads me", logs["stdout"][0])
 
+    def _make_serializer_with_query(self, query_params: dict[str, str]):
+        from unittest.mock import MagicMock
+
+        from ami.jobs.serializers import JobListSerializer
+
+        fake_view = MagicMock()
+        fake_view.action = "retrieve"
+        fake_request = MagicMock()
+        fake_request.query_params = query_params
+        return JobListSerializer(
+            instance=self.job,
+            context={"view": fake_view, "request": fake_request},
+        )
+
+    def test_logs_limit_query_param_caps_response_size(self):
+        for i in range(5):
+            self.job.logger.info(f"line {i}")
+        self.assertEqual(JobLog.objects.filter(job=self.job).count(), 5)
+
+        serializer = self._make_serializer_with_query({"logs_limit": "2"})
+        logs = serializer.get_logs(self.job)
+
+        self.assertEqual(len(logs["stdout"]), 2)
+        # Newest-first.
+        self.assertIn("line 4", logs["stdout"][0])
+        self.assertIn("line 3", logs["stdout"][1])
+
+    def test_logs_limit_default_when_unset(self):
+        from ami.jobs.models import JOB_LOGS_DEFAULT_LIMIT
+
+        self.job.logger.info("only one")
+
+        serializer = self._make_serializer_with_query({})
+        logs = serializer.get_logs(self.job)
+
+        # Default kicks in (no truncation; 1 < 1000).
+        self.assertEqual(len(logs["stdout"]), 1)
+        self.assertGreaterEqual(JOB_LOGS_DEFAULT_LIMIT, 1)
+
+    def test_logs_limit_invalid_value_raises_validation_error(self):
+        from django.core.exceptions import ValidationError
+
+        self.job.logger.info("only one")
+
+        serializer = self._make_serializer_with_query({"logs_limit": "abc"})
+        with self.assertRaises(ValidationError):
+            serializer.get_logs(self.job)
+
+    def test_logs_limit_zero_raises_validation_error(self):
+        from django.core.exceptions import ValidationError
+
+        serializer = self._make_serializer_with_query({"logs_limit": "0"})
+        with self.assertRaises(ValidationError):
+            serializer.get_logs(self.job)
+
+    def test_logs_limit_above_max_raises_validation_error(self):
+        from django.core.exceptions import ValidationError
+
+        from ami.jobs.models import JOB_LOGS_MAX_LIMIT
+
+        serializer = self._make_serializer_with_query({"logs_limit": str(JOB_LOGS_MAX_LIMIT + 1)})
+        with self.assertRaises(ValidationError):
+            serializer.get_logs(self.job)
+
 
 class TestJobDispatchModeFiltering(APITestCase):
     """Test job filtering by dispatch_mode."""
