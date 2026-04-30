@@ -363,7 +363,7 @@ class TrackingTask(BasePostProcessingTask):
 
     # Scope keys live outside TrackingParams (which is reserved for algorithm tunables).
     # Mirrors the pattern: scope = where to run; params = how to run.
-    _SCOPE_CONFIG_KEYS = frozenset({"source_image_collection_id", "event_ids"})
+    _SCOPE_CONFIG_KEYS = frozenset({"event_ids"})
 
     def _params(self) -> TrackingParams:
         config_keys = {f.name for f in dataclasses.fields(TrackingParams)}
@@ -373,56 +373,35 @@ class TrackingTask(BasePostProcessingTask):
             self.logger.warning(f"Ignoring unknown tracking config keys: {sorted(unknown)}")
         return dataclasses.replace(DEFAULT_TRACKING_PARAMS, **overrides)
 
-    def _resolve_collection(self):
-        from ami.main.models import SourceImageCollection
-
-        if self.job and self.job.source_image_collection:
-            return self.job.source_image_collection
-
-        collection_id = self.config.get("source_image_collection_id")
-        if not collection_id:
-            return None
-        return SourceImageCollection.objects.get(pk=collection_id)
-
     def _resolve_events(self) -> list[Event]:
         """
-        Returns events to track, resolved from (in priority order):
-        1. ``config["event_ids"]`` — explicit list, used by EventAdmin trigger.
-        2. ``job.source_image_collection`` or ``config["source_image_collection_id"]``
-           — collection path, expanded to events containing any of its captures.
+        Returns events to track from ``config["event_ids"]``.
 
-        When ``event_ids`` and a collection are both present, ``event_ids`` wins.
+        Both admin entry-points (EventAdmin, SourceImageCollectionAdmin) compute the
+        event id list at action time and pass it through ``config``. The task only
+        understands events; collections are flattened to event ids by the trigger.
 
         If a job is attached, every resolved event must belong to ``job.project``;
-        cross-project IDs are dropped with a warning. This guards against an admin
-        trigger that smuggles event IDs from a project the operator can't see.
+        cross-project IDs are dropped with a warning. This guards against a trigger
+        that smuggles event IDs from a project the operator can't see.
         """
         event_ids = self.config.get("event_ids")
-        if event_ids:
-            qs = Event.objects.filter(pk__in=event_ids)
-            if self.job and self.job.project_id:
-                cross_project = list(qs.exclude(project_id=self.job.project_id).values_list("pk", flat=True))
-                if cross_project:
-                    self.logger.warning(
-                        f"Dropping {len(cross_project)} event(s) outside job project "
-                        f"{self.job.project_id}: {cross_project}"
-                    )
-                    qs = qs.filter(project_id=self.job.project_id)
-            events = list(qs.order_by("created_at").distinct())
-            missing = set(event_ids) - {e.pk for e in events}
-            if missing:
-                self.logger.warning(f"Tracking requested {sorted(missing)} but those events were not found.")
-            return events
-
-        collection = self._resolve_collection()
-        if collection:
-            return list(Event.objects.filter(captures__collections=collection).order_by("created_at").distinct())
-
-        raise ValueError(
-            "Tracking task requires either `event_ids` or a source image collection. "
-            "Pass `event_ids` in config, set `source_image_collection_id`, or attach a "
-            "collection to the job."
-        )
+        if not event_ids:
+            raise ValueError("Tracking task requires `event_ids` in config.")
+        qs = Event.objects.filter(pk__in=event_ids)
+        if self.job and self.job.project_id:
+            cross_project = list(qs.exclude(project_id=self.job.project_id).values_list("pk", flat=True))
+            if cross_project:
+                self.logger.warning(
+                    f"Dropping {len(cross_project)} event(s) outside job project "
+                    f"{self.job.project_id}: {cross_project}"
+                )
+                qs = qs.filter(project_id=self.job.project_id)
+        events = list(qs.order_by("created_at").distinct())
+        missing = set(event_ids) - {e.pk for e in events}
+        if missing:
+            self.logger.warning(f"Tracking requested {sorted(missing)} but those events were not found.")
+        return events
 
     def run(self) -> None:
         params = self._params()
@@ -430,12 +409,12 @@ class TrackingTask(BasePostProcessingTask):
 
         events = self._resolve_events()
         total = len(events)
-        scope_label = (
-            f"collection {self.job.source_image_collection.pk}"
+        collection_ref = (
+            f" (job collection #{self.job.source_image_collection.pk})"
             if self.job and self.job.source_image_collection
-            else (f"explicit event_ids ({total})" if self.config.get("event_ids") else "config-resolved scope")
+            else ""
         )
-        self.logger.info(f"Tracking: {total} events from {scope_label}")
+        self.logger.info(f"Tracking: {total} events{collection_ref}")
 
         for idx, event in enumerate(events, start=1):
             self.logger.info(f"Tracking event {idx}/{total} (id={event.pk})")

@@ -1,4 +1,3 @@
-import dataclasses
 from typing import Any
 
 from django.contrib import admin
@@ -769,26 +768,103 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
 
         self.message_user(request, f"Queued Small Size Filter for {queryset.count()} capture set(s). Jobs: {jobs}")
 
-    @admin.action(description="Run Occurrence Tracking post-processing task (async)")
-    def run_tracking(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
-        from ami.ml.post_processing.tracking_task import DEFAULT_TRACKING_PARAMS
+    @admin.action(description="Run Occurrence Tracking on selected capture sets")
+    def run_tracking(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]):
+        from django.contrib import messages
+        from django.template.response import TemplateResponse
 
-        jobs = []
-        for collection in queryset:
-            job = Job.objects.create(
-                name=f"Post-processing: Tracking on Capture Set {collection.pk}",
-                project=collection.project,
-                source_image_collection=collection,
-                job_type_key="post_processing",
-                params={
-                    "task": "tracking",
-                    "config": dataclasses.asdict(DEFAULT_TRACKING_PARAMS),
-                },
-            )
-            job.enqueue()
-            jobs.append(job.pk)
+        from ami.main.models import Event
+        from ami.ml.post_processing.admin_forms import TrackingActionForm
 
-        self.message_user(request, f"Queued Tracking for {queryset.count()} capture set(s). Jobs: {jobs}")
+        # Superuser-only: queues background jobs and exposes tunables that change
+        # determination scoring across an event. Mirrors EventAdmin.run_tracking_on_events.
+        if not request.user.is_superuser:
+            self.message_user(request, "Only superusers can trigger tracking jobs.", level=messages.ERROR)
+            return None
+
+        # Aggregate Event queryset across all selected collections; the form uses this
+        # to scope the feature-extraction-algorithm dropdown.
+        events_qs = Event.objects.filter(captures__collections__in=queryset).distinct()
+
+        if request.POST.get("confirm"):
+            form = TrackingActionForm(request.POST, events=events_qs)
+            if not form.is_valid():
+                return TemplateResponse(
+                    request,
+                    "admin/main/tracking_confirmation.html",
+                    {
+                        **self.admin_site.each_context(request),
+                        "title": "Run Occurrence Tracking",
+                        "queryset": queryset,
+                        "scope_label": f"{queryset.count()} capture set(s)",
+                        "scope_summary": (
+                            "One Job is enqueued per capture set. Each Job tracks every "
+                            "event whose images belong to the set and is visible on the "
+                            "Jobs admin page where you can watch its log stream."
+                        ),
+                        "form": form,
+                        "action_name": "run_tracking",
+                        "action_checkbox_name": admin.helpers.ACTION_CHECKBOX_NAME,
+                        "opts": self.model._meta,
+                    },
+                )
+
+            config = form.to_config()
+            jobs = []
+            empty_collections: list[int] = []
+            for collection in queryset:
+                event_ids = list(
+                    Event.objects.filter(captures__collections=collection)
+                    .values_list("pk", flat=True)
+                    .distinct()
+                    .order_by("pk")
+                )
+                if not event_ids:
+                    empty_collections.append(collection.pk)
+                    continue
+                job = Job.objects.create(
+                    name=f"Post-processing: Tracking on Capture Set {collection.pk}",
+                    project=collection.project,
+                    source_image_collection=collection,
+                    job_type_key="post_processing",
+                    params={
+                        "task": "tracking",
+                        "config": {**config, "event_ids": event_ids},
+                    },
+                )
+                job.enqueue()
+                jobs.append(job.pk)
+
+            if empty_collections:
+                self.message_user(
+                    request,
+                    f"Skipped {len(empty_collections)} capture set(s) with no events: {empty_collections}.",
+                    level=messages.WARNING,
+                )
+            self.message_user(request, f"Queued Tracking for {len(jobs)} capture set(s). Jobs: {jobs}")
+            return None
+
+        # GET / first POST without confirm — render the intermediate page.
+        form = TrackingActionForm(events=events_qs)
+        return TemplateResponse(
+            request,
+            "admin/main/tracking_confirmation.html",
+            {
+                **self.admin_site.each_context(request),
+                "title": "Run Occurrence Tracking",
+                "queryset": queryset,
+                "scope_label": f"{queryset.count()} capture set(s)",
+                "scope_summary": (
+                    "One Job is enqueued per capture set. Each Job tracks every "
+                    "event whose images belong to the set and is visible on the "
+                    "Jobs admin page where you can watch its log stream."
+                ),
+                "form": form,
+                "action_name": "run_tracking",
+                "action_checkbox_name": admin.helpers.ACTION_CHECKBOX_NAME,
+                "opts": self.model._meta,
+            },
+        )
 
     actions = [
         populate_collection,
