@@ -60,6 +60,16 @@ def _require_prefetch(occurrence: Occurrence, *relations: str) -> None:
     Strict contract: callers in serializer code must go through a viewset that
     applied the corresponding prefetch. Silent slow-pathing (the serializer
     triggering its own DB queries) is the N+1 we are fixing.
+
+    Caveat: only top-level relations are checked. Nested prefetch (e.g.
+    `detections__classifications`) is still required but not enforced here —
+    if a caller prefetches `detections` without nested `classifications`,
+    `best_prediction_from_prefetch` will silently re-introduce per-detection
+    queries. The list/detail prefetch factories pair them correctly; new
+    callers should use those factories rather than building Prefetch objects
+    by hand. Tighter enforcement is deferred to the django-zen-queries pass
+    (issue #1271 follow-up), which catches all per-row queries at the view
+    boundary regardless of depth.
     """
     cache = getattr(occurrence, "_prefetched_objects_cache", {})
     missing = [r for r in relations if r not in cache]

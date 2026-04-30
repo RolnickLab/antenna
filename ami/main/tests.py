@@ -2960,9 +2960,9 @@ class TestOccurrenceListQueryCount(APITestCase):
             res = self.client.get(url)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertEqual(len(res.data["results"]), min(limit, res.data["count"]))
-        # List responses cap detection_images per row (prevents unbounded payload).
+        # List responses cap detection_images per row (1 cover image; prevents unbounded payload).
         for row in res.data["results"]:
-            self.assertLessEqual(len(row["detection_images"]), 3)
+            self.assertLessEqual(len(row["detection_images"]), 1)
         return len(ctx.captured_queries)
 
     def test_list_query_count_does_not_scale_with_page_size(self):

@@ -1314,11 +1314,11 @@ class OccurrenceIdentificationSerializer(DefaultSerializer):
 
 
 class OccurrenceListSerializer(DefaultSerializer):
-    # Cap detection_images on list responses (cover gallery; usually 1, kept at 3
-    # for backward compatibility). Detail subclass overrides to None (unbounded).
+    # List responses render a single cover image per occurrence card; cap at 1
+    # to keep payload tight. Detail subclass overrides to None (unbounded).
     # TODO: bound detail too once occurrence tracking lands — counts can reach
     # thousands per occurrence and pagination is the right answer.
-    detection_images_limit: int | None = 3
+    detection_images_limit: int | None = 1
 
     determination = CaptureTaxonSerializer(read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
