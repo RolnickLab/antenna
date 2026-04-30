@@ -285,6 +285,23 @@ class Project(ProjectSettingsMixin, BaseModel):
     active = models.BooleanField(default=True)
     priority = models.IntegerField(default=1)
 
+    license = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=(
+            "Data license for published occurrence records. "
+            "Use an SPDX identifier (e.g. 'CC-BY-4.0', 'CC0-1.0') or a license URL. "
+            "Required by GBIF for DwC-A publication."
+        ),
+    )
+    rights_holder = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Name of the organization or individual owning rights to the data.",
+    )
+
     # Backreferences for type hinting
     captures: models.QuerySet["SourceImage"]
     deployments: models.QuerySet["Deployment"]
@@ -3251,6 +3268,39 @@ class Occurrence(BaseModel):
             return self.best_prediction.score
         else:
             return None
+
+    def get_identified_by(self) -> str:
+        # Museum-style: the most recent authoritative identifier owns the record.
+        # A human identification (if present) supersedes any ML prediction,
+        # mirroring update_occurrence_determination.
+        top_identification = self.best_identification
+        if top_identification and top_identification.user:
+            user = top_identification.user
+            # Do NOT fall back to user.email — this value is published in DwC-A archives (PII / GDPR).
+            return user.name or getattr(user, "username", "") or f"user:{user.pk}"
+
+        top_prediction = self.best_prediction
+        if top_prediction and top_prediction.algorithm:
+            algo = top_prediction.algorithm
+            if algo.version_name:
+                return f"{algo.name} {algo.version_name}"
+            if algo.version:
+                return f"{algo.name} v{algo.version}"
+            return algo.name
+
+        return ""
+
+    def get_identified_date(self) -> datetime.datetime | None:
+        # Prefer the identification/classification event time (set when the model
+        # or user actually produced the result) over created_at, which is the DB
+        # insert time and can lag by years for backfills and reprocessing jobs.
+        top_identification = self.best_identification
+        if top_identification:
+            return getattr(top_identification, "timestamp", None) or top_identification.created_at
+        top_prediction = self.best_prediction
+        if top_prediction:
+            return getattr(top_prediction, "timestamp", None) or top_prediction.created_at
+        return None
 
     def predictions(self):
         # Retrieve the classification with the max score for each algorithm.

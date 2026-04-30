@@ -72,8 +72,10 @@ class DataExport(BaseModel):
         registry = ExportRegistry.get_exporter(self.format)
         assert registry, f"Export format '{self.format}' not found in registry"
         extension = registry.file_format
-        project_slug = slugify(self.project.name)  # Convert project name to a slug
-        return f"{project_slug}_export-{self.pk}.{extension}"
+        project_slug = slugify(self.project.name)
+        label = getattr(registry, "filename_label", "")
+        stem = f"{project_slug}_{label}_export-{self.pk}" if label else f"{project_slug}_export-{self.pk}"
+        return f"{stem}.{extension}"
 
     def save_export_file(self, file_temp_path):
         """
