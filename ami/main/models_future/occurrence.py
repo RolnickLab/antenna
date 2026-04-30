@@ -87,32 +87,40 @@ def best_prediction_from_prefetch(occurrence: Occurrence) -> Classification | No
     Mirrors `Occurrence.best_prediction`, which calls `Occurrence.predictions()`
     (per-algorithm max-score filtering) and then orders by `-terminal, -score`.
 
+    Null-score handling: classifications with `score=None` are skipped, which
+    matches the SQL behavior of `score__in=Subquery(...)` — `Max(score)` over
+    only-NULL rows returns NULL, and `score IN (NULL)` never matches in SQL.
+
+    Subtle SQL/Python difference (intentional): `Occurrence.predictions()` uses
+    `score__in=Subquery(per-algo maxes)`. If algo_A's max is 0.9 and algo_B has
+    a non-max classification at 0.9, the SQL form includes both; this Python
+    form keeps only per-algorithm maxima (algo_A's 0.9, not algo_B's). The
+    Python form is the stricter interpretation of the docstring intent
+    ("max score for each algorithm").
+
     Strict: requires `detections` (and each detection's `classifications`) to be
     prefetched. Raises if not.
     """
     _require_prefetch(occurrence, "detections")
-    classifications = [c for det in occurrence.detections.all() for c in det.classifications.all()]
+    classifications = [
+        c for det in occurrence.detections.all() for c in det.classifications.all() if c.score is not None
+    ]
     if not classifications:
         return None
 
     max_score_per_algo: dict[object, float] = {}
     for c in classifications:
-        score = c.score if c.score is not None else float("-inf")
         existing = max_score_per_algo.get(c.algorithm_id)
-        if existing is None or score > existing:
-            max_score_per_algo[c.algorithm_id] = score
+        if existing is None or c.score > existing:
+            max_score_per_algo[c.algorithm_id] = c.score
 
-    candidates = [
-        c
-        for c in classifications
-        if (c.score if c.score is not None else float("-inf")) == max_score_per_algo[c.algorithm_id]
-    ]
+    candidates = [c for c in classifications if c.score == max_score_per_algo[c.algorithm_id]]
     if not candidates:
         return None
     candidates.sort(
         key=lambda c: (
             0 if getattr(c, "terminal", False) else 1,
-            -(c.score or 0.0),
+            -c.score,
             -c.pk,
         )
     )

@@ -3023,6 +3023,52 @@ class TestOccurrenceDetailQueryCount(APITestCase):
         # silent reintroduction of N+1 in the shared serializer base.
         self.assertLess(count, 20, f"Detail endpoint took {count} queries (likely N+1 regression)")
 
+    def test_detail_query_count_does_not_scale_with_detections(self):
+        """Detail with many detections per occurrence must not multiply queries.
+
+        `create_occurrences` produces 1 detection/classification per occurrence.
+        Inflate one occurrence to N detections × N classifications and confirm
+        query count stays in the same envelope as the single-detection case
+        (i.e. bounded by the ceiling above, not detection_count).
+        """
+        import datetime
+
+        from ami.main.models import Classification, Detection
+
+        create_occurrences(deployment=self.deployment, num=3, determination_score=0.9)
+        occurrence = Occurrence.objects.filter(project=self.project).first()
+        self.assertIsNotNone(occurrence)
+
+        seed_detection = occurrence.detections.first()
+        self.assertIsNotNone(seed_detection)
+        seed_classification = seed_detection.classifications.first()
+        self.assertIsNotNone(seed_classification)
+        source_image = seed_detection.source_image
+
+        for i in range(8):
+            det = Detection.objects.create(
+                source_image=source_image,
+                occurrence=occurrence,
+                timestamp=source_image.timestamp,
+                bbox=[0.1, 0.1, 0.2, 0.2],
+                path=f"detections/inflated_{i}.jpg",
+            )
+            for j in range(3):
+                Classification.objects.create(
+                    detection=det,
+                    taxon=seed_classification.taxon,
+                    algorithm=seed_classification.algorithm,
+                    score=0.8 + (j * 0.01),
+                    timestamp=datetime.datetime.now(),
+                )
+
+        count = self._detail_query_count(occurrence.pk)
+        self.assertLess(
+            count,
+            20,
+            f"Detail with 9 detections × 4 classifications took {count} queries — N+1 regression",
+        )
+
 
 class TestOccurrencePrefetchHelpersEdgeCases(APITestCase):
     """Helpers in `models_future/occurrence.py` must handle empty prefetch caches gracefully.
