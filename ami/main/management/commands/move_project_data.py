@@ -871,6 +871,42 @@ class Command(BaseCommand):
         for model_name, count in target_final.items():
             self.log(f"    {model_name:20s} {count:>10,}")
 
+        # Operator notes — surface non-obvious post-move state
+        self.log(f"\n{'─' * 60}")
+        self.log("  OPERATOR NOTES")
+        self.log(f"{'─' * 60}")
+        self.log(
+            "  - Cache: django-cachalot and any UI cache may show stale counts briefly after commit. "
+            "Refresh / wait for TTL to verify."
+        )
+        if not fire_post_save:
+            self.log(
+                "  - Signals: bulk .update() did not fire post_save on Event/SourceImage/Occurrence/Job. "
+                "No listeners exist on these models today; pass --fire-post-save next time if downstream "
+                "listeners are added (search index, audit log)."
+            )
+        else:
+            self.log("  - Signals: post_save fired on each moved Deployment (regroup_async queued).")
+        export_residue_final = (
+            Job.objects.filter(project_id=target_id)
+            .filter(deployment_id__in=deployment_ids)
+            .exclude(data_export__isnull=True)
+            .exclude(data_export__project_id=target_id)
+            .count()
+        )
+        if export_residue_final:
+            self.log(
+                f"  - DataExport residue: {export_residue_final} moved Job(s) reference a DataExport on "
+                f"another project. These are historical export artifacts and were intentionally left in place."
+            )
+        else:
+            self.log("  - DataExport: no residue (no moved Jobs reference exports on other projects).")
+        self.log(
+            "  - Source project still owns: cloned shared resources (S3/Device/Site originals), TaxaLists "
+            "(M2M; multi-project by design), and any taxa/filter taxa M2M entries — these were copied "
+            "to target, not moved."
+        )
+
         self.log(f"\n{'=' * 60}")
         self.log("  MOVE COMPLETE", style=self.style.SUCCESS)
         self.log(f"{'=' * 60}")
