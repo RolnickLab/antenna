@@ -82,6 +82,33 @@ def collect_project_counts(project_id: int) -> dict:
     }
 
 
+def clone_or_reassign(obj, deployment_ids, source_project_id, target_project_id, fk_field, label, log):
+    """Clone obj if shared with non-moved deployments, else reassign to target.
+
+    Returns (action, old_pk, new_pk). action in ('cloned', 'reassigned', 'skipped').
+    Skips silently when obj.project_id is NULL (global) or owned by another project.
+    """
+    if obj.project_id is None:
+        log(f"  [{label}] {obj.pk}: skipped (project=NULL, global)")
+        return ("skipped", obj.pk, obj.pk)
+    if obj.project_id != source_project_id:
+        log(f"  [{label}] {obj.pk}: skipped (owned by project {obj.project_id})")
+        return ("skipped", obj.pk, obj.pk)
+    other_deps = Deployment.objects.filter(**{fk_field: obj.pk}).exclude(pk__in=deployment_ids)
+    if other_deps.exists():
+        old_pk = obj.pk
+        obj.pk = None
+        obj.project_id = target_project_id
+        obj.save()
+        log(f"  [{label}] Cloned {old_pk} -> {obj.pk}")
+        return ("cloned", old_pk, obj.pk)
+    old_pk = obj.pk
+    obj.project_id = target_project_id
+    obj.save()
+    log(f"  [{label}] Reassigned {obj.pk}")
+    return ("reassigned", old_pk, obj.pk)
+
+
 def link_processing_services_raw(source_project_id: int, target_project_id: int) -> int:
     """Link ProcessingServices via raw SQL to avoid ORM column mismatch issues."""
     with connection.cursor() as cursor:
@@ -416,72 +443,46 @@ class Command(BaseCommand):
         self.log(f"{'─' * 60}")
 
         with transaction.atomic():
-            # 0. Create target project inside transaction
+            # Create target project inside transaction
             if create_project_name:
                 target_project = Project.objects.create(
                     name=create_project_name, owner=source_project.owner, create_defaults=True
                 )
                 for membership in source_project.project_memberships.all():
                     target_project.members.add(membership.user)
-                self.log(f"  [1/12] Created project '{target_project.name}' (id={target_project.pk})")
+                self.log(f"  [create-target] Created project '{target_project.name}' (id={target_project.pk})")
                 target_pre = collect_project_counts(target_project.pk)
             else:
-                self.log(f"  [1/12] Using existing project '{target_project.name}' (id={target_project.pk})")
+                self.log(f"  [create-target] Using existing project '{target_project.name}' (id={target_project.pk})")
 
             target_id = target_project.pk
 
-            # 1. Clone or reassign S3StorageSources
-            s3_clone_map = {}
+            # Clone or reassign shared resources
+            s3_clone_map: dict[int, int] = {}
             for s3_id, s3 in s3_sources.items():
-                if s3.project_id == source_project_id:
-                    other_deps = Deployment.objects.filter(data_source_id=s3_id).exclude(pk__in=deployment_ids)
-                    if other_deps.exists():
-                        old_pk = s3.pk
-                        s3.pk = None
-                        s3.project_id = target_id
-                        s3.save()
-                        s3_clone_map[old_pk] = s3.pk
-                        self.log(f"  [2/12] Cloned S3StorageSource {old_pk} → {s3.pk}")
-                    else:
-                        s3.project_id = target_id
-                        s3.save()
-                        self.log(f"  [2/12] Reassigned S3StorageSource {s3_id}")
+                action, old_pk, new_pk = clone_or_reassign(
+                    s3, deployment_ids, source_project_id, target_id, "data_source_id", "clone-s3", self.log
+                )
+                if action == "cloned" and old_pk is not None and new_pk is not None:
+                    s3_clone_map[old_pk] = new_pk
 
-            # 2. Clone or reassign Devices
-            device_clone_map = {}
+            device_clone_map: dict[int, int] = {}
             for dev_id, dev in devices.items():
-                if dev.project_id == source_project_id:
-                    other_deps = Deployment.objects.filter(device_id=dev_id).exclude(pk__in=deployment_ids)
-                    if other_deps.exists():
-                        old_pk = dev.pk
-                        dev.pk = None
-                        dev.project_id = target_id
-                        dev.save()
-                        device_clone_map[old_pk] = dev.pk
-                        self.log(f"  [3/12] Cloned Device '{dev.name}' {old_pk} → {dev.pk}")
-                    else:
-                        dev.project_id = target_id
-                        dev.save()
-                        self.log(f"  [3/12] Reassigned Device '{dev.name}' {dev_id}")
+                action, old_pk, new_pk = clone_or_reassign(
+                    dev, deployment_ids, source_project_id, target_id, "device_id", "clone-device", self.log
+                )
+                if action == "cloned" and old_pk is not None and new_pk is not None:
+                    device_clone_map[old_pk] = new_pk
 
-            # 3. Clone or reassign Sites
-            site_clone_map = {}
+            site_clone_map: dict[int, int] = {}
             for site_id, site in sites.items():
-                if site.project_id == source_project_id:
-                    other_deps = Deployment.objects.filter(research_site_id=site_id).exclude(pk__in=deployment_ids)
-                    if other_deps.exists():
-                        old_pk = site.pk
-                        site.pk = None
-                        site.project_id = target_id
-                        site.save()
-                        site_clone_map[old_pk] = site.pk
-                        self.log(f"  [4/12] Cloned Site '{site.name}' {old_pk} → {site.pk}")
-                    else:
-                        site.project_id = target_id
-                        site.save()
-                        self.log(f"  [4/12] Reassigned Site '{site.name}' {site_id}")
+                action, old_pk, new_pk = clone_or_reassign(
+                    site, deployment_ids, source_project_id, target_id, "research_site_id", "clone-site", self.log
+                )
+                if action == "cloned" and old_pk is not None and new_pk is not None:
+                    site_clone_map[old_pk] = new_pk
 
-            # 4. Update Deployments
+            # Update Deployments
             for dep in deployments:
                 old_project = dep.project_id
                 dep.project_id = target_id
@@ -492,27 +493,24 @@ class Command(BaseCommand):
                 if dep.research_site_id in site_clone_map:
                     dep.research_site_id = site_clone_map[dep.research_site_id]
                 dep.save(update_calculated_fields=False, regroup_async=False)
-                self.log(
-                    f"  [5/12] Moved Deployment '{dep.name}' (id={dep.pk}) " f"project {old_project} → {target_id}"
-                )
+                self.log(f"  [move-deployment] '{dep.name}' (id={dep.pk}) project {old_project} -> {target_id}")
 
-            # 5. Bulk update Events
+            # Bulk update related tables (.update() bypasses post_save — no listeners on these models today;
+            # see _emit_post_save flag for opt-in trigger of Deployment post_save)
             event_count = Event.objects.filter(deployment_id__in=deployment_ids).update(project_id=target_id)
-            self.log(f"  [6/12] Updated {event_count:,} Events")
+            self.log(f"  [move-events] Updated {event_count:,} Events")
 
-            # 6. Bulk update SourceImages
             img_count = SourceImage.objects.filter(deployment_id__in=deployment_ids).update(project_id=target_id)
-            self.log(f"  [7/12] Updated {img_count:,} SourceImages")
+            self.log(f"  [move-images] Updated {img_count:,} SourceImages")
 
-            # 7. Bulk update Occurrences
             occ_count = Occurrence.objects.filter(deployment_id__in=deployment_ids).update(project_id=target_id)
-            self.log(f"  [8/12] Updated {occ_count:,} Occurrences")
+            self.log(f"  [move-occurrences] Updated {occ_count:,} Occurrences")
 
-            # 8. Bulk update Jobs
             job_count = Job.objects.filter(deployment_id__in=deployment_ids).update(project_id=target_id)
-            self.log(f"  [9/12] Updated {job_count:,} Jobs")
+            self.log(f"  [move-jobs] Updated {job_count:,} Jobs")
 
-            # 9. Handle collections
+            # Handle collections
+            collection_clone_map: dict[int, int] = {}
             for coll, target_count, other_count in mixed_collections:
                 moved_images = coll.images.filter(deployment_id__in=deployment_ids)
                 moved_image_ids = list(moved_images.values_list("pk", flat=True))
@@ -526,20 +524,24 @@ class Command(BaseCommand):
                         kwargs=coll.kwargs or {},
                     )
                     new_coll.images.set(moved_image_ids)
+                    collection_clone_map[coll.pk] = new_coll.pk
                     self.log(
-                        f"  [10/12] Split collection '{coll.name}': "
-                        f"cloned {len(moved_image_ids):,} images → target collection id={new_coll.pk}"
+                        f"  [handle-collections] Split '{coll.name}': "
+                        f"cloned {len(moved_image_ids):,} images -> target collection id={new_coll.pk}"
                     )
 
                 coll.images.remove(*moved_image_ids)
-                self.log(f"  [10/12] Removed {len(moved_image_ids):,} images from source collection '{coll.name}'")
+                self.log(
+                    f"  [handle-collections] Removed {len(moved_image_ids):,} images "
+                    f"from source collection '{coll.name}'"
+                )
 
             for coll in exclusive_collections:
                 coll.project_id = target_id
                 coll.save()
-                self.log(f"  [10/12] Reassigned collection '{coll.name}' (id={coll.pk})")
+                self.log(f"  [handle-collections] Reassigned collection '{coll.name}' (id={coll.pk})")
 
-            # 10. Clone pipeline configs
+            # Clone pipeline configs
             if clone_pipelines:
                 existing_pipelines = set(
                     ProjectPipelineConfig.objects.filter(project_id=target_id).values_list("pipeline_id", flat=True)
@@ -555,20 +557,20 @@ class Command(BaseCommand):
                         )
                         cloned_count += 1
                 total = ProjectPipelineConfig.objects.filter(project_id=target_id).count()
-                self.log(f"  [11/12] Pipeline configs: cloned {cloned_count}, target now has {total}")
+                self.log(f"  [clone-pipeline-config] Cloned {cloned_count}, target now has {total}")
 
-            # 11. Link ProcessingServices (raw SQL to avoid ORM column mismatch)
+            # Link ProcessingServices (raw SQL to avoid ORM column mismatch)
             linked = link_processing_services_raw(source_project_id, target_id)
-            self.log(f"  [11/12] Linked {linked} ProcessingService(s) to target project")
+            self.log(f"  [link-services] Linked {linked} ProcessingService(s) to target project")
 
-            # 12. Link taxa to target project
+            # Link taxa to target project
             if taxa_ids:
                 target_project.taxa.add(*taxa_ids)
-                self.log(f"  [12/12] Linked {len(taxa_ids):,} taxa to target project")
+                self.log(f"  [link-taxa] Linked {len(taxa_ids):,} taxa to target project")
             else:
-                self.log("  [12/12] No taxa to link (no occurrences with determinations)")
+                self.log("  [link-taxa] No taxa to link (no occurrences with determinations)")
 
-            # 13. Add identifier users to target project, preserving roles
+            # Add identifier users to target project, preserving roles
             if identifier_role_map:
                 from ami.users.models import User
 
@@ -580,35 +582,35 @@ class Command(BaseCommand):
                         target_project.members.add(user)
                         role_cls.assign_user(user, target_project)
                         added_count += 1
-                        self.log(f"  [13/16] Added user id={uid}" f" as {role_cls.display_name}")
+                        self.log(f"  [add-identifiers] Added user id={uid} as {role_cls.display_name}")
                 if added_count == 0:
-                    self.log("  [13/16] All identifiers already members")
+                    self.log("  [add-identifiers] All identifiers already members")
                 else:
-                    self.log(f"  [13/16] Added {added_count} identifier(s)")
+                    self.log(f"  [add-identifiers] Added {added_count} identifier(s)")
             else:
-                self.log("  [13/16] No identifier users to add")
+                self.log("  [add-identifiers] No identifier users to add")
 
-            # 14. Link TaxaLists to target project
+            # Link TaxaLists to target project
             source_taxa_lists = TaxaList.objects.filter(projects=source_project)
             if source_taxa_lists.exists():
                 for tl in source_taxa_lists:
                     tl.projects.add(target_project)
-                self.log(f"  [14/16] Linked {source_taxa_lists.count()}" f" TaxaList(s) to target project")
+                self.log(f"  [link-taxalists] Linked {source_taxa_lists.count()} TaxaList(s) to target project")
             else:
-                self.log("  [14/16] No TaxaLists to link")
+                self.log("  [link-taxalists] No TaxaLists to link")
 
-            # 15. Copy default filter config to target project
+            # Copy default filter config to target project
             if include_taxa or exclude_taxa:
                 for t in source_project.default_filters_include_taxa.all():
                     target_project.default_filters_include_taxa.add(t)
                 for t in source_project.default_filters_exclude_taxa.all():
                     target_project.default_filters_exclude_taxa.add(t)
-                self.log("  [15/16] Copied default filter taxa config")
+                self.log("  [copy-defaults] Copied default filter taxa config")
             target_project.default_filters_score_threshold = source_project.default_filters_score_threshold
             if source_project.default_processing_pipeline:
                 target_project.default_processing_pipeline = source_project.default_processing_pipeline
             target_project.save()
-            self.log(f"  [16/16] Score threshold:" f" {target_project.default_filters_score_threshold}")
+            self.log(f"  [copy-defaults] Score threshold: {target_project.default_filters_score_threshold}")
 
             # --- Validation (inside transaction — rolls back on failure) ---
             self.log(f"\n{'─' * 60}")
