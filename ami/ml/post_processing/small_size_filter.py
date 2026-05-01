@@ -1,3 +1,4 @@
+import pydantic
 from django.utils import timezone
 
 from ami.main.models import Classification, Detection, Occurrence, SourceImageCollection, Taxon, TaxonRank
@@ -5,14 +6,29 @@ from ami.ml.post_processing.base import BasePostProcessingTask
 from ami.ml.schemas import BoundingBox
 
 
+class SmallSizeFilterConfig(pydantic.BaseModel):
+    source_image_collection_id: int
+    size_threshold: float = 0.0008
+
+    @pydantic.validator("size_threshold")
+    def _threshold_in_unit_interval(cls, v: float) -> float:
+        if not (0.0 < v < 1.0):
+            raise ValueError("size_threshold must be in (0, 1) exclusive")
+        return v
+
+    class Config:
+        extra = "forbid"
+
+
 class SmallSizeFilterTask(BasePostProcessingTask):
     key = "small_size_filter"
     name = "Small size filter"
+    config_schema = SmallSizeFilterConfig
 
     def run(self) -> None:
-        # Could we use a pydantic model for config validation if it's just for this task?
-        threshold = self.config.get("size_threshold", 0.0008)
-        collection_id = self.config.get("source_image_collection_id")
+        config: SmallSizeFilterConfig = self.config  # type: ignore[assignment]
+        threshold = config.size_threshold
+        collection_id = config.source_image_collection_id
 
         # Get or create the "Not identifiable" taxon
         not_identifiable_taxon, _ = Taxon.objects.get_or_create(
@@ -23,11 +39,6 @@ class SmallSizeFilterTask(BasePostProcessingTask):
             },
         )
         self.logger.info(f"=== Starting {self.name} ===")
-
-        if not collection_id:
-            msg = "Missing required config param: source_image_collection_id"
-            self.logger.error(msg)
-            raise ValueError(msg)
 
         try:
             collection = SourceImageCollection.objects.get(pk=collection_id)
