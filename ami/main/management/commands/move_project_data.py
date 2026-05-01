@@ -541,6 +541,49 @@ class Command(BaseCommand):
                 coll.save()
                 self.log(f"  [handle-collections] Reassigned collection '{coll.name}' (id={coll.pk})")
 
+            # Remap moved Jobs whose source_image_collection points to a split source collection.
+            # Exclusive collections were reassigned in place (same PK), so no remap needed.
+            if collection_clone_map:
+                remapped_total = 0
+                for old_pk, new_pk in collection_clone_map.items():
+                    n = Job.objects.filter(deployment_id__in=deployment_ids, source_image_collection_id=old_pk).update(
+                        source_image_collection_id=new_pk
+                    )
+                    if n:
+                        self.log(
+                            f"  [remap-jobs-to-collections] {n} moved Job(s): "
+                            f"source_image_collection {old_pk} -> {new_pk}"
+                        )
+                        remapped_total += n
+                if not remapped_total:
+                    self.log("  [remap-jobs-to-collections] No moved Jobs referenced split collections")
+            elif mixed_collections and not clone_collections:
+                # No-clone path: null out moved Jobs that reference mixed source collections.
+                # Job loses its rerun target but no longer cross-links to source project.
+                mixed_pks = [c.pk for c, _, _ in mixed_collections]
+                nulled = Job.objects.filter(
+                    deployment_id__in=deployment_ids, source_image_collection_id__in=mixed_pks
+                ).update(source_image_collection_id=None)
+                if nulled:
+                    self.log(
+                        f"  [remap-jobs-to-collections] WARN nulled source_image_collection on "
+                        f"{nulled} moved Job(s) (mixed source collections were not cloned)"
+                    )
+
+            # DataExport residue: moved Jobs may still own a DataExport whose project_id is source.
+            # DataExport is a historical artifact (S3-backed); leave it on source and surface count.
+            export_residue = (
+                Job.objects.filter(deployment_id__in=deployment_ids)
+                .exclude(data_export__isnull=True)
+                .exclude(data_export__project_id=target_id)
+                .count()
+            )
+            if export_residue:
+                self.log(
+                    f"  [data-export-residue] {export_residue} moved Job(s) reference DataExport on "
+                    f"another project (historical artifacts; not migrated)"
+                )
+
             # Clone pipeline configs
             if clone_pipelines:
                 existing_pipelines = set(
@@ -724,6 +767,21 @@ class Command(BaseCommand):
                     errors.append(f"Source collection '{coll.name}' still has {leaked} moved images")
             if not any("collection" in e for e in errors):
                 self.log("  OK: No moved images in source collections")
+
+            # Job cross-link integrity: moved Jobs must not reference a SourceImageCollection on another project
+            cross_linked_jobs = (
+                Job.objects.filter(deployment_id__in=deployment_ids)
+                .exclude(source_image_collection__isnull=True)
+                .exclude(source_image_collection__project_id=target_id)
+                .count()
+            )
+            if cross_linked_jobs:
+                errors.append(
+                    f"{cross_linked_jobs} moved Job(s) reference a source_image_collection on another project"
+                )
+                self.log(f"  FAIL: {cross_linked_jobs} moved Jobs cross-link to non-target collection")
+            else:
+                self.log("  OK: No moved Jobs cross-link to non-target collections")
 
             # Conservation: source + target = original totals
             source_post = collect_project_counts(source_project_id)

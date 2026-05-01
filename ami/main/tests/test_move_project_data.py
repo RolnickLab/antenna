@@ -555,6 +555,62 @@ class TestCollectionHandling(MoveProjectDataSetupMixin, TestCase):
         # No collection created in target
         self.assertFalse(SourceImageCollection.objects.filter(project=self.target_project, name="Mixed Coll").exists())
 
+    def test_mixed_collection_split_remaps_jobs(self):
+        """Jobs whose source_image_collection is a mixed collection get remapped to the cloned target collection."""
+        coll = SourceImageCollection.objects.create(name="Mixed Coll", project=self.source_project)
+        coll.images.set(list(self.images) + list(self.images_b))
+
+        # Job on a deployment that will move, referencing the mixed collection
+        moving_job = Job.objects.create(
+            name="Job on moving deployment",
+            project=self.source_project,
+            deployment=self.deployment,
+            source_image_collection=coll,
+        )
+        # Job on a deployment that stays — should NOT be remapped
+        staying_job = Job.objects.create(
+            name="Job on staying deployment",
+            project=self.source_project,
+            deployment=self.dep_b,
+            source_image_collection=coll,
+        )
+
+        _run_command(*self._base_args(), "--target-project", str(self.target_project.pk), "--execute")
+
+        target_coll = SourceImageCollection.objects.get(project=self.target_project, name="Mixed Coll")
+
+        moving_job.refresh_from_db()
+        self.assertEqual(moving_job.source_image_collection_id, target_coll.pk)
+        self.assertEqual(moving_job.project_id, self.target_project.pk)
+
+        staying_job.refresh_from_db()
+        self.assertEqual(staying_job.source_image_collection_id, coll.pk)
+        self.assertEqual(staying_job.project_id, self.source_project.pk)
+
+    def test_no_clone_collections_nulls_moved_job_collection(self):
+        """With --no-clone-collections, moved Jobs have source_image_collection nulled to avoid cross-link."""
+        coll = SourceImageCollection.objects.create(name="Mixed Coll", project=self.source_project)
+        coll.images.set(list(self.images) + list(self.images_b))
+
+        moving_job = Job.objects.create(
+            name="Job on moving deployment",
+            project=self.source_project,
+            deployment=self.deployment,
+            source_image_collection=coll,
+        )
+
+        _run_command(
+            *self._base_args(),
+            "--target-project",
+            str(self.target_project.pk),
+            "--no-clone-collections",
+            "--execute",
+        )
+
+        moving_job.refresh_from_db()
+        self.assertIsNone(moving_job.source_image_collection_id)
+        self.assertEqual(moving_job.project_id, self.target_project.pk)
+
 
 class TestPipelineConfigCloning(MoveProjectDataSetupMixin, TestCase):
     """Test pipeline config clone logic."""
