@@ -3086,11 +3086,11 @@ class TestOccurrencePrefetchHelpersEdgeCases(APITestCase):
 
     def _empty_occurrence(self) -> "Occurrence":
         """An occurrence with prefetch caches populated but all relations empty."""
-        from ami.main.models_future.occurrence import prefetches_for_list_serializer
+        from ami.main.models_future.occurrence import prefetch_detections_for_list
 
         occurrence = (
             Occurrence.objects.filter(project=self.project)
-            .prefetch_related(*prefetches_for_list_serializer(), "identifications")
+            .prefetch_related(prefetch_detections_for_list(), "identifications")
             .first()
         )
         assert occurrence is not None
@@ -3100,7 +3100,7 @@ class TestOccurrencePrefetchHelpersEdgeCases(APITestCase):
         # Re-fetch with prefetches so the cache reflects the empty state.
         return (
             Occurrence.objects.filter(pk=occurrence.pk)
-            .prefetch_related(*prefetches_for_list_serializer(), "identifications")
+            .prefetch_related(prefetch_detections_for_list(), "identifications")
             .get()
         )
 

@@ -46,30 +46,13 @@ def prefetch_detections_for_detail() -> Prefetch:
     return _detections_prefetch(ordering=("-timestamp",), with_source_image=True)
 
 
-def prefetches_for_list_serializer() -> list[Prefetch]:
-    return [prefetch_detections_for_list()]
-
-
-def prefetches_for_detail_serializer() -> list[Prefetch]:
-    return [prefetch_detections_for_detail()]
-
-
 def _require_prefetch(occurrence: Occurrence, *relations: str) -> None:
-    """Raise if any required relation is missing from the prefetch cache.
+    """Raise if any required top-level relation is missing from the prefetch cache.
 
-    Strict contract: callers in serializer code must go through a viewset that
-    applied the corresponding prefetch. Silent slow-pathing (the serializer
-    triggering its own DB queries) is the N+1 we are fixing.
-
-    Caveat: only top-level relations are checked. Nested prefetch (e.g.
-    `detections__classifications`) is still required but not enforced here —
-    if a caller prefetches `detections` without nested `classifications`,
-    `best_prediction_from_prefetch` will silently re-introduce per-detection
-    queries. The list/detail prefetch factories pair them correctly; new
-    callers should use those factories rather than building Prefetch objects
-    by hand. Tighter enforcement is deferred to the django-zen-queries pass
-    (issue #1271 follow-up), which catches all per-row queries at the view
-    boundary regardless of depth.
+    Only checks top-level relations; nested prefetch (e.g. `detections__classifications`)
+    is required by callers but not enforced here. Use the list/detail factories above
+    to keep the pairing correct. Tighter depth-checking is deferred to django-zen-queries
+    (#1271 follow-up).
     """
     cache = getattr(occurrence, "_prefetched_objects_cache", {})
     missing = [r for r in relations if r not in cache]
@@ -84,22 +67,10 @@ def _require_prefetch(occurrence: Occurrence, *relations: str) -> None:
 def best_prediction_from_prefetch(occurrence: Occurrence) -> Classification | None:
     """Pick the best machine prediction from a prefetched occurrence in Python.
 
-    Mirrors `Occurrence.best_prediction`, which calls `Occurrence.predictions()`
-    (per-algorithm max-score filtering) and then orders by `-terminal, -score`.
+    Mirrors `Occurrence.best_prediction` (per-algorithm max-score, then `-terminal, -score`).
+    Skips `score=None` to match SQL semantics of `score__in=Subquery(...)`.
 
-    Null-score handling: classifications with `score=None` are skipped, which
-    matches the SQL behavior of `score__in=Subquery(...)` — `Max(score)` over
-    only-NULL rows returns NULL, and `score IN (NULL)` never matches in SQL.
-
-    Subtle SQL/Python difference (intentional): `Occurrence.predictions()` uses
-    `score__in=Subquery(per-algo maxes)`. If algo_A's max is 0.9 and algo_B has
-    a non-max classification at 0.9, the SQL form includes both; this Python
-    form keeps only per-algorithm maxima (algo_A's 0.9, not algo_B's). The
-    Python form is the stricter interpretation of the docstring intent
-    ("max score for each algorithm").
-
-    Strict: requires `detections` (and each detection's `classifications`) to be
-    prefetched. Raises if not.
+    Strict: requires `detections` (and each detection's `classifications`) prefetched.
     """
     _require_prefetch(occurrence, "detections")
     classifications = [
@@ -115,8 +86,6 @@ def best_prediction_from_prefetch(occurrence: Occurrence) -> Classification | No
             max_score_per_algo[c.algorithm_id] = c.score
 
     candidates = [c for c in classifications if c.score == max_score_per_algo[c.algorithm_id]]
-    if not candidates:
-        return None
     candidates.sort(
         key=lambda c: (
             0 if getattr(c, "terminal", False) else 1,
@@ -130,12 +99,9 @@ def best_prediction_from_prefetch(occurrence: Occurrence) -> Classification | No
 def best_identification_from_prefetch(occurrence: Occurrence) -> Identification | None:
     """Pick the most recent non-withdrawn identification from prefetched data.
 
-    Mirrors `Occurrence.best_identification`, which uses
-    `BEST_IDENTIFICATION_ORDER = ("-created_at", "-pk")`. `created_at=None` is
-    treated as lower than any real timestamp.
+    Mirrors `Occurrence.best_identification` (BEST_IDENTIFICATION_ORDER = -created_at, -pk).
 
-    Strict: requires `identifications` to be prefetched (via
-    `OccurrenceQuerySet.with_identifications()`).
+    Strict: requires `identifications` prefetched (via `OccurrenceQuerySet.with_identifications()`).
     """
     _require_prefetch(occurrence, "identifications")
     best: Identification | None = None
@@ -153,10 +119,7 @@ def best_identification_from_prefetch(occurrence: Occurrence) -> Identification 
 def detection_image_urls_from_prefetch(occurrence: Occurrence, limit: int | None = None) -> list[str]:
     """Return media URLs for the prefetched detections (filtering out `path=None`).
 
-    Strict: requires `detections` to be prefetched. Pass `limit` to bound output —
-    list responses cap at a few cover images; detail responses currently return
-    all (TODO: bound when occurrence tracking lands; per-occurrence detection
-    counts can reach thousands).
+    Strict: requires `detections` prefetched. Pass `limit` to bound output.
     """
     _require_prefetch(occurrence, "detections")
 
