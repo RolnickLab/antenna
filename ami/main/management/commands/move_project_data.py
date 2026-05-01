@@ -157,6 +157,17 @@ class Command(BaseCommand):
             default=False,
             help="Actually execute the move (default is dry run)",
         )
+        parser.add_argument(
+            "--fire-post-save",
+            action="store_true",
+            default=False,
+            help=(
+                "After commit, call full Deployment.save() (regroup_async=True) on each moved deployment "
+                "to fire post_save signals. Off by default — bulk .update() bypasses post_save and the script "
+                "compensates only for cached counts. Enable when downstream listeners (search index, audit) "
+                "must fire. Will also queue Celery event regrouping."
+            ),
+        )
 
     def log(self, msg, style=None):
         """Write to stdout and logger."""
@@ -172,6 +183,7 @@ class Command(BaseCommand):
         execute = options["execute"]
         clone_pipelines = not options["no_clone_pipelines"]
         clone_collections = not options["no_clone_collections"]
+        fire_post_save = options["fire_post_save"]
 
         mode = "EXECUTE" if execute else "DRY RUN"
         self.log(f"\n{'=' * 60}")
@@ -820,8 +832,13 @@ class Command(BaseCommand):
         self.log(f"{'─' * 60}")
 
         for dep in Deployment.objects.filter(pk__in=deployment_ids):
-            dep.update_calculated_fields(save=True)
-            self.log(f"  Deployment '{dep.name}' (id={dep.pk}): cached fields updated")
+            if fire_post_save:
+                # Full save fires post_save and queues regroup_async (Celery event regrouping)
+                dep.save()
+                self.log(f"  Deployment '{dep.name}' (id={dep.pk}): full save (post_save fired, regroup queued)")
+            else:
+                dep.update_calculated_fields(save=True)
+                self.log(f"  Deployment '{dep.name}' (id={dep.pk}): cached fields updated")
 
         from ami.main.models import update_calculated_fields_for_events
 
