@@ -1314,10 +1314,14 @@ class OccurrenceIdentificationSerializer(DefaultSerializer):
 
 
 class OccurrenceListSerializer(DefaultSerializer):
+    # List cards render one cover image; detail subclass raises this to 100.
+    detection_images_limit: int | None = 1
+
     determination = CaptureTaxonSerializer(read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
+    detection_images = serializers.SerializerMethodField()
     determination_details = serializers.SerializerMethodField()
     best_machine_prediction = serializers.SerializerMethodField()
     identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
@@ -1364,27 +1368,32 @@ class OccurrenceListSerializer(DefaultSerializer):
             "updated_at",
         ]
 
+    def get_detection_images(self, obj: Occurrence) -> list[str]:
+        from ami.main.models_future.occurrence import detection_image_urls_from_prefetch
+
+        return detection_image_urls_from_prefetch(obj, limit=self.detection_images_limit)
+
     def get_determination_details(self, obj: Occurrence):
-        # @TODO convert this to query methods to avoid N+1 queries.
-        # Currently at 100+ queries per page of 10 occurrences.
-        # Add a reusable method to the OccurrenceQuerySet class and call it from the ViewSet.
+        from ami.main.models_future.occurrence import best_identification_from_prefetch, best_prediction_from_prefetch
 
         context = self.context
-
         # Add this occurrence to the context so that the nested serializers can access it
         # the `parent` attribute is not available since we are manually instantiating the serializers
         context["occurrence"] = obj
 
         taxon = TaxonNestedSerializer(obj.determination, context=context).data if obj.determination else None
-        if obj.best_identification:
-            identification = OccurrenceIdentificationSerializer(obj.best_identification, context=context).data
+
+        best_ident = best_identification_from_prefetch(obj)
+        if best_ident:
+            identification = OccurrenceIdentificationSerializer(best_ident, context=context).data
         else:
             identification = None
 
-        if identification or not obj.best_prediction:
+        if identification:
             prediction = None
         else:
-            prediction = ClassificationNestedSerializer(obj.best_prediction, context=context).data
+            best_pred = best_prediction_from_prefetch(obj)
+            prediction = ClassificationNestedSerializer(best_pred, context=context).data if best_pred else None
 
         return dict(
             taxon=taxon,
@@ -1399,10 +1408,12 @@ class OccurrenceListSerializer(DefaultSerializer):
         Populated regardless of human verification status, so clients can always show
         the ML result alongside a human-set determination.
         """
+        from ami.main.models_future.occurrence import best_prediction_from_prefetch
+
         context = self.context
         context["occurrence"] = obj
 
-        prediction = obj.best_prediction
+        prediction = best_prediction_from_prefetch(obj)
         if not prediction:
             return None
 
@@ -1421,6 +1432,8 @@ class OccurrenceListSerializer(DefaultSerializer):
 
 
 class OccurrenceSerializer(OccurrenceListSerializer):
+    detection_images_limit: int | None = 100
+
     determination = CaptureTaxonSerializer(read_only=True)
     detections = DetectionNestedSerializer(many=True, read_only=True)
     identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
