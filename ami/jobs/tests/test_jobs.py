@@ -959,6 +959,45 @@ class TestJobLogPersistence(TestCase):
         self.assertEqual(self.job.logs.stdout, [])
         self.assertEqual(self.job.logs.stderr, [])
 
+    def test_emit_failure_does_not_poison_outer_transaction(self):
+        """A failed JobLog INSERT (e.g. schema drift, FK violation) must not
+        break the surrounding atomic block. Without the savepoint in emit(),
+        the failed INSERT poisons the parent transaction and every subsequent
+        query raises TransactionManagementError, which surfaces as HTTP 500
+        in the cancel/run views (both wrapped in ATOMIC_REQUESTS).
+
+        The failure must occur at the DB layer (not the Python layer) to
+        reproduce the bug — mocking the manager method bypasses the DB and
+        leaves the transaction clean even without the fix."""
+        from unittest.mock import patch
+
+        from django.db import connection, transaction
+
+        def insert_with_null_level(*args, **kwargs):
+            # Real INSERT that violates the NOT NULL constraint on `level`,
+            # triggering an immediate IntegrityError at the DB layer just like
+            # a schema-drift failure would. (FK violations are deferred in
+            # Django's TestCase via ``SET CONSTRAINTS ALL DEFERRED``, so they
+            # don't reproduce the bug — the row is accepted until teardown.)
+            # The except in emit() swallows the error; without the savepoint
+            # the parent transaction is left poisoned.
+            with connection.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO jobs_joblog (job_id, level, message, created_at, updated_at, context) "
+                    "VALUES (%s, NULL, %s, NOW(), NOW(), '{}'::jsonb)",
+                    (self.job.pk, "null-level-violation"),
+                )
+
+        with transaction.atomic():
+            with patch.object(JobLog.objects, "create", side_effect=insert_with_null_level):
+                # emit() catches and logs; must not propagate.
+                self.job.logger.info("trigger failing insert")
+
+            # Outer transaction must still be usable.
+            Project.objects.create(name="post-failure write")
+
+        self.assertTrue(Project.objects.filter(name="post-failure write").exists())
+
     def test_serialize_job_logs_reads_from_joblog_table(self):
         from ami.jobs.serializers import serialize_job_logs
 
