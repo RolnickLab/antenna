@@ -86,6 +86,8 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
     job.logger.info(f"Queuing {len(images)} images to NATS stream for job '{job.pk}'")
 
     # Prepare all messages outside of async context to avoid Django ORM issues
+    pipeline_config = job.pipeline.get_config(project_id=job.project.pk) if job.pipeline else None
+
     tasks: list[tuple[int, PipelineProcessingTask]] = []
     image_ids = []
     skipped_count = 0
@@ -101,6 +103,7 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
             id=image_id,
             image_id=image_id,
             image_url=image_url,
+            config=pipeline_config,
         )
         tasks.append((image.pk, task))
 

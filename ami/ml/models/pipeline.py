@@ -1114,7 +1114,7 @@ class Pipeline(BaseModel):
         This will be the same as pipeline.default_config, but if a project ID is provided,
         the project's pipeline config will be used to override the default config.
         """
-        config = self.default_config
+        config = PipelineRequestConfigParameters(self.default_config or {})
         if project_id:
             try:
                 project_pipeline_config = self.project_pipeline_configs.get(project_id=project_id)

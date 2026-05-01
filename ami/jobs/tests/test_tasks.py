@@ -513,6 +513,74 @@ class TestProcessNatsPipelineResultError(TransactionTestCase):
         # Assert: Task was acknowledged despite missing job
         mock_manager.acknowledge_task.assert_called_once_with(reply_subject)
 
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_pipeline_config_drift_logs_warning(self, mock_manager_class):
+        """
+        When a worker echoes a pipeline config that doesn't match what Antenna
+        would resolve today (e.g. ProjectPipelineConfig was edited mid-job, or
+        the worker is stale), process_nats_pipeline_result must log a warning.
+        Drift is logged but not enforced.
+        """
+        from ami.ml.schemas import PipelineRequestConfigParameters
+
+        self._setup_mock_nats(mock_manager_class)
+
+        self.pipeline.default_config = PipelineRequestConfigParameters({"example_config_param": 5})
+        self.pipeline.save()
+
+        # Worker echoes a config that doesn't match the current default
+        success_data = PipelineResultsResponse(
+            pipeline="test-pipeline",
+            algorithms={},
+            total_time=1.0,
+            source_images=[SourceImageResponse(id=str(self.images[0].pk), url="http://example.com/test_image_0.jpg")],
+            detections=[],
+            errors=None,
+            config={"example_config_param": 99},
+        ).dict()
+
+        with self.assertLogs(level="WARNING") as cm:
+            process_nats_pipeline_result.apply(
+                kwargs={"job_id": self.job.pk, "result_data": success_data, "reply_subject": "reply.drift"}
+            )
+
+        self.assertTrue(
+            any("Pipeline config drift" in msg for msg in cm.output),
+            f"Expected drift warning in logs, got: {cm.output}",
+        )
+
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_pipeline_config_match_does_not_warn(self, mock_manager_class):
+        """When echoed config matches current pipeline config, no drift warning is logged."""
+        from ami.ml.schemas import PipelineRequestConfigParameters
+
+        self._setup_mock_nats(mock_manager_class)
+
+        self.pipeline.default_config = PipelineRequestConfigParameters({"example_config_param": 5})
+        self.pipeline.save()
+
+        success_data = PipelineResultsResponse(
+            pipeline="test-pipeline",
+            algorithms={},
+            total_time=1.0,
+            source_images=[SourceImageResponse(id=str(self.images[0].pk), url="http://example.com/test_image_0.jpg")],
+            detections=[],
+            errors=None,
+            config={"example_config_param": 5},
+        ).dict()
+
+        # assertLogs requires at least one log; capture INFO so the test doesn't
+        # spuriously fail when no WARNING is emitted (the assertion below).
+        with self.assertLogs(level="INFO") as cm:
+            process_nats_pipeline_result.apply(
+                kwargs={"job_id": self.job.pk, "result_data": success_data, "reply_subject": "reply.match"}
+            )
+
+        self.assertFalse(
+            any("Pipeline config drift" in msg for msg in cm.output),
+            f"Did not expect drift warning for matching config, got: {cm.output}",
+        )
+
 
 class TestTaskFailureGuard(TransactionTestCase):
     """
