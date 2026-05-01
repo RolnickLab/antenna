@@ -497,6 +497,7 @@ class MLJob(JobType):
             status=JobState.STARTED,
             progress=0,
         )
+        job.save()
 
         images: list[SourceImage] = list(
             # @TODO return generator plus image count
