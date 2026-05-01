@@ -650,10 +650,12 @@ class Command(BaseCommand):
                     target_project.default_filters_exclude_taxa.add(t)
                 self.log("  [copy-defaults] Copied default filter taxa config")
             target_project.default_filters_score_threshold = source_project.default_filters_score_threshold
+            target_project.session_time_gap_seconds = source_project.session_time_gap_seconds
             if source_project.default_processing_pipeline:
                 target_project.default_processing_pipeline = source_project.default_processing_pipeline
             target_project.save()
             self.log(f"  [copy-defaults] Score threshold: {target_project.default_filters_score_threshold}")
+            self.log(f"  [copy-defaults] Session time gap (s): {target_project.session_time_gap_seconds}")
 
             # --- Validation (inside transaction — rolls back on failure) ---
             self.log(f"\n{'─' * 60}")
