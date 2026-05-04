@@ -7,7 +7,7 @@ import { Button, Input } from 'nova-ui-kit'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
-import { useRecentIdentifications } from '../reject-id/useRecentOptions'
+import { useRecentIdentifications } from '../id-quick-actions/useRecentOptions'
 
 interface SuggestIdProps {
   occurrenceIds: string[]
@@ -35,7 +35,9 @@ export const SuggestId = ({ occurrenceIds, onCancel }: SuggestIdProps) => {
             {translate(STRING.FIELD_LABEL_TAXON)}
           </span>
           <TaxonSelect
-            triggerLabel={taxon ? taxon.name : 'Select a taxon'}
+            triggerLabel={
+              taxon ? taxon.name : translate(STRING.SELECT_TAXON_PLACEHOLDER)
+            }
             taxon={taxon}
             onTaxonChange={setTaxon}
           />

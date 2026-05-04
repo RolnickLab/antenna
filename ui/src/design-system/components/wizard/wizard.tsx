@@ -1,7 +1,7 @@
 import * as Accordion from '@radix-ui/react-accordion'
 import classNames from 'classnames'
+import { ChevronDownIcon } from 'lucide-react'
 import { ReactNode, forwardRef } from 'react'
-import { Icon, IconType } from '../icon/icon'
 import styles from './wizard.module.scss'
 
 const Root = ({
@@ -64,7 +64,7 @@ const Trigger = forwardRef<
       {title}
       {showToggle && (
         <div className={styles.toggle}>
-          <Icon type={IconType.ToggleDown} />
+          <ChevronDownIcon className="w-4 h-4" />
         </div>
       )}
     </Accordion.Trigger>

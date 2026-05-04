@@ -1,4 +1,4 @@
-# **Code of conduct**
+# Code of conduct
 
 Hi Friends!
 
@@ -10,11 +10,11 @@ Antenna is a highly collaborative community and aspires to be a safe and welcomi
 
 These guidelines coexist harmoniously with our [Terms of service](/terms-of-service) and are not intended to replace them in any way.
 
-1. ## **Scope**
+1. ## Scope
 
 These guidelines do not address behavior beyond Antenna.
 
-2. ## **What we expect from you - _The Do’s_**
+2. ## What we expect from you - _The Do’s_
 
 - Be empathetic, polite and kind toward other people.
 - Be respectful of people’s projects and contributions.
@@ -24,7 +24,7 @@ These guidelines do not address behavior beyond Antenna.
 - Accept responsibility and apologise to those affected by our mistakes, and learn from the experience.
 - Focus on what is best not just for us as individuals, but for the overall community.
 
-3. ## **Behaviors that are not welcome - _The Don’ts_**
+3. ## Behaviors that are not welcome - _The Don’ts_
 
 - The use of sexualized language or imagery, and sexual attention or advances of any kind.
 - Trolling, insulting or making derogatory comments, and personal or political attacks.
@@ -34,7 +34,7 @@ These guidelines do not address behavior beyond Antenna.
 - Publishing others' private information, such as a physical or email address, without their explicit permission.
   Other conduct which could reasonably be considered inappropriate in a professional setting.
 
-4. ## **Conflict Resolution & Reporting**
+4. ## Conflict Resolution & Reporting
 
 Healthy debate is always welcomed & encouraged. However, it is never acceptable to be disrespectful or to engage in behavior that violates Antenna’s community guidelines.
 
@@ -46,6 +46,6 @@ We will use our discretion in determining when and how to follow up on reported 
 
 Also, keep in mind that moderators may, at their sole discretion & without warning, remove content that we deem harmful to Antenna’s community or data quality, including but not limited to : intentionally false content, content created by sockpuppet accounts, hate speech, pornography, etc.
 
-5. ## **Attribution**
+5. ## Attribution
 
 This Code of Conduct is inspired from the [Contributor Covenant](https://www.contributor-covenant.org/), [version 2.1](https://www.contributor-covenant.org/version/2/1/code_of_conduct.html).

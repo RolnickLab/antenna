@@ -1,12 +1,9 @@
 import { CaptureDetails } from 'data-services/models/capture-details'
 import { TimelineTick } from 'data-services/models/timeline-tick'
-import {
-  IconButton,
-  IconButtonShape,
-  IconButtonTheme,
-} from 'design-system/components/icon-button/icon-button'
-import { IconType } from 'design-system/components/icon/icon'
+import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { useEffect, useState } from 'react'
+import { STRING, translate } from 'utils/language'
 import { findClosestCaptureId } from '../utils'
 import styles from './capture-navigation.module.scss'
 
@@ -90,25 +87,29 @@ export const CaptureNavigation = ({
 
   return (
     <div className={styles.wrapper}>
-      <IconButton
-        icon={IconType.ToggleLeft}
-        shape={IconButtonShape.RoundLarge}
-        theme={IconButtonTheme.Neutral}
+      <Button
+        aria-label={translate(STRING.PREVIOUS)}
+        className="!bg-neutral-700 text-neutral-200"
         disabled={!activeCapture?.prevCaptureId}
         onClick={goToPrev}
-      />
+        size="icon"
+      >
+        <ChevronLeftIcon className="w-4 h-4" />
+      </Button>
       {totalCaptures && (
         <span>
           {currentIndex?.toLocaleString()} / {totalCaptures.toLocaleString()}
         </span>
       )}
-      <IconButton
-        icon={IconType.ToggleRight}
-        shape={IconButtonShape.RoundLarge}
-        theme={IconButtonTheme.Neutral}
+      <Button
+        aria-label={translate(STRING.NEXT)}
+        className="!bg-neutral-700 text-neutral-200"
         disabled={!activeCapture?.nextCaptureId}
         onClick={goToNext}
-      />
+        size="icon"
+      >
+        <ChevronRightIcon className="w-4 h-4" />
+      </Button>
     </div>
   )
 }

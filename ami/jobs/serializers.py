@@ -1,4 +1,5 @@
 from django_pydantic_field.rest_framework import SchemaField
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from ami.exports.models import DataExport
@@ -10,9 +11,11 @@ from ami.main.api.serializers import (
 )
 from ami.main.models import Deployment, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
+from ami.ml.schemas import PipelineProcessingTask, PipelineTaskResult, ProcessingServiceClientInfo
 from ami.ml.serializers import PipelineNestedSerializer
 
-from .models import Job, JobLogs, JobProgress, MLJob
+from .models import JOB_LOGS_DEFAULT_LIMIT, Job, JobProgress, MLJob, _legacy_logs_shape, serialize_job_logs
+from .schemas import QueuedTaskAcknowledgment
 
 
 class JobProjectNestedSerializer(DefaultSerializer):
@@ -47,7 +50,7 @@ class JobListSerializer(DefaultSerializer):
     source_image_single = SourceImageNestedSerializer(read_only=True)
     data_export = DataExportNestedSerializer(read_only=True)
     progress = SchemaField(schema=JobProgress, read_only=True)
-    logs = SchemaField(schema=JobLogs, read_only=True)
+    logs = serializers.SerializerMethodField()
     job_type = JobTypeSerializer(read_only=True)
     # All jobs created from the Jobs UI are ML jobs (datasync, etc. are created for the user)
     # @TODO Remove this when the UI is updated pass a job type. This should be a required field.
@@ -79,7 +82,7 @@ class JobListSerializer(DefaultSerializer):
         source="source_image_single",
     )
     source_image_collection_id = serializers.PrimaryKeyRelatedField(
-        label="Source Image Collection",
+        label="Capture Set",
         write_only=True,
         required=False,
         allow_null=True,
@@ -127,6 +130,7 @@ class JobListSerializer(DefaultSerializer):
             "job_type",
             "job_type_key",
             "data_export",
+            "dispatch_mode",
             # "duration",
             # "duration_label",
             # "progress_label",
@@ -141,7 +145,32 @@ class JobListSerializer(DefaultSerializer):
             "started_at",
             "finished_at",
             "duration",
+            "dispatch_mode",
         ]
+
+    @extend_schema_field(
+        {
+            "type": "object",
+            "properties": {
+                "stdout": {"type": "array", "items": {"type": "string"}, "title": "All messages"},
+                "stderr": {"type": "array", "items": {"type": "string"}, "title": "Error messages"},
+            },
+            "required": ["stdout", "stderr"],
+        }
+    )
+    def get_logs(self, obj: Job) -> dict[str, list[str]]:
+        # List responses skip the JobLog query to avoid N+1 — the UI only renders
+        # logs on the detail page, so returning the (typically empty for new jobs)
+        # legacy JSON shape is acceptable. Detail responses go to the joined table
+        # and fall back to the legacy shape for pre-migration jobs.
+        view = self.context.get("view")
+        if getattr(view, "action", None) == "list":
+            return _legacy_logs_shape(obj)
+        # ``JobViewSet.get_serializer_context`` validates ``?logs_limit=`` and
+        # puts the cleaned int (or ``None`` when unset) on context, so a bad
+        # value already 400'd before we got here.
+        limit = self.context.get("logs_limit") or JOB_LOGS_DEFAULT_LIMIT
+        return serialize_job_logs(obj, limit=limit)
 
 
 class JobSerializer(JobListSerializer):
@@ -151,3 +180,63 @@ class JobSerializer(JobListSerializer):
         fields = JobListSerializer.Meta.fields + [
             "result",
         ]
+
+
+class MinimalJobSerializer(DefaultSerializer):
+    """Minimal serializer returning only essential job fields."""
+
+    pipeline_slug = serializers.CharField(source="pipeline.slug", read_only=True, allow_null=True)
+
+    class Meta:
+        model = Job
+        fields = ["id", "pipeline_slug"]
+
+
+class MLJobTasksRequestSerializer(serializers.Serializer):
+    """POST /jobs/{id}/tasks/ — request body sent by a processing service to fetch work.
+
+    The processing service polls this endpoint to get tasks (images) to process.
+    Each task is a PipelineProcessingTask with an image URL and a NATS reply subject.
+    """
+
+    batch_size = serializers.IntegerField(min_value=1, required=True)
+    client_info = SchemaField(schema=ProcessingServiceClientInfo, required=False, default=None)
+
+
+class MLJobTasksResponseSerializer(serializers.Serializer):
+    """POST /jobs/{id}/tasks/ — response body returned to the processing service.
+
+    Contains a list of tasks (PipelineProcessingTask dicts) for the worker to process.
+    Each task includes an image URL, task ID, and reply_subject for result correlation.
+    Returns an empty list when no tasks are available or the job is not active.
+    """
+
+    tasks = SchemaField(schema=list[PipelineProcessingTask], default=[])
+
+
+class MLJobResultsRequestSerializer(serializers.Serializer):
+    """POST /jobs/{id}/result/ — request body sent by a processing service to deliver results.
+
+    "Request" here refers to the HTTP request to Antenna, not a request for work.
+    The processing service has finished processing tasks and is posting its results
+    (successes or errors) back. Each PipelineTaskResult contains a reply_subject
+    (correlating back to the original task) and a result payload that is either a
+    PipelineResultsResponse (success) or PipelineResultsError (failure).
+    """
+
+    results = SchemaField(schema=list[PipelineTaskResult])
+    client_info = SchemaField(schema=ProcessingServiceClientInfo, required=False, default=None)
+
+
+class MLJobResultsResponseSerializer(serializers.Serializer):
+    """POST /jobs/{id}/result/ — acknowledgment returned to the processing service.
+
+    Confirms receipt and indicates how many results were queued for background
+    processing via Celery. Individual task entries include their Celery task_id
+    for traceability.
+    """
+
+    status = serializers.CharField()
+    job_id = serializers.IntegerField()
+    results_queued = serializers.IntegerField()
+    tasks = SchemaField(schema=list[QueuedTaskAcknowledgment], default=[])

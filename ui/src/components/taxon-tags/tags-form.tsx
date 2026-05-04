@@ -30,7 +30,12 @@ export const TagsForm = ({ species }: { species: Species }) => {
       }}
     >
       <Popover.Trigger asChild>
-        <Button size="icon" variant="ghost" disabled={tags.length === 0}>
+        <Button
+          aria-label={translate(STRING.EDIT)}
+          size="icon"
+          variant="ghost"
+          disabled={tags.length === 0}
+        >
           <PenIcon className="w-4 h-4" />
         </Button>
       </Popover.Trigger>

@@ -14,18 +14,14 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  overflow: hidden;
 }
 
 .jobControls {
-  display: grid;
-  grid-template-columns: 1fr auto;
+  display: flex;
+  flex-wrap: wrap;
   gap: 16px;
   margin-top: 4px;
-}
-
-.pipelinesPickerContainer {
-  max-width: 100%;
-  overflow: auto;
 }
 
 .label {
@@ -53,15 +49,6 @@
 }
 
 @media only screen and (max-width: $small-screen-breakpoint) {
-  .jobControls {
-    grid-template-columns: 1fr auto;
-    gap: 16px;
-  }
-
-  .pipelinesPickerContainer {
-    grid-column: span 2;
-  }
-
   .infoWrapper {
     display: none;
   }

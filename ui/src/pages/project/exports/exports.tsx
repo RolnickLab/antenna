@@ -1,3 +1,4 @@
+import { EmptyState } from 'components/empty-state/empty-state'
 import { API_ROUTES } from 'data-services/constants'
 import { useExports } from 'data-services/hooks/exports/useExports'
 import { PageHeader } from 'design-system/components/page-header/page-header'
@@ -8,6 +9,7 @@ import { ExportDetailsDialog } from 'pages/export-details/export-details-dialog'
 import { NewEntityDialog } from 'pages/project/entities/new-entity-dialog'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { DOCS_LINKS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { UserPermission } from 'utils/user/types'
@@ -44,12 +46,11 @@ export const Exports = () => {
   return (
     <>
       <PageHeader
-        title={translate(STRING.NAV_ITEM_EXPORTS)}
-        subTitle={translate(STRING.RESULTS, {
-          total,
-        })}
-        isLoading={isLoading}
+        docsLink={DOCS_LINKS.EXPORTING_DATA}
         isFetching={isFetching}
+        isLoading={isLoading}
+        subTitle={translate(STRING.RESULTS, { total })}
+        title={translate(STRING.NAV_ITEM_EXPORTS)}
       >
         {canCreate && (
           <NewEntityDialog
@@ -59,15 +60,27 @@ export const Exports = () => {
           />
         )}
       </PageHeader>
-      <Table
-        columns={columns(projectId as string)}
-        error={error}
-        isLoading={isLoading}
-        items={exports}
-        onSortSettingsChange={setSort}
-        sortable
-        sortSettings={sort}
-      />
+      {exports && exports.length === 0 && canCreate ? (
+        <EmptyState>
+          <NewEntityDialog
+            buttonSize="default"
+            buttonVariant="success"
+            collection={API_ROUTES.EXPORTS}
+            isCompact
+            type="export"
+          />
+        </EmptyState>
+      ) : (
+        <Table
+          columns={columns({ projectId: projectId as string })}
+          error={error}
+          isLoading={isLoading}
+          items={exports}
+          onSortSettingsChange={setSort}
+          sortable
+          sortSettings={sort}
+        />
+      )}
       {exports?.length ? (
         <PaginationBar
           compact

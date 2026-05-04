@@ -3,15 +3,15 @@ import { IdentificationScore } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 
 export const DeterminationScore = ({
-  confirmed,
   score,
   scoreLabel,
   tooltip,
+  verified,
 }: {
-  confirmed?: boolean
   score?: number
   scoreLabel?: string
   tooltip?: string
+  verified?: boolean
 }) => {
   if (score === undefined || scoreLabel === undefined) {
     return <span>{translate(STRING.VALUE_NOT_AVAILABLE)}</span>
@@ -20,8 +20,8 @@ export const DeterminationScore = ({
   return (
     <BasicTooltip content={tooltip}>
       <div className="flex items-center gap-3">
-        <IdentificationScore confirmed={confirmed} confidenceScore={score} />
-        <span>{scoreLabel}</span>
+        <IdentificationScore confirmed={verified} confidenceScore={score} />
+        <span>{verified ? translate(STRING.VERIFIED) : scoreLabel}</span>
       </div>
     </BasicTooltip>
   )

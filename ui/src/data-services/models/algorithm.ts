@@ -1,31 +1,15 @@
-import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { snakeCaseToSentenceCase } from 'utils/snakeCaseToSentenceCase'
+import { Entity } from './entity'
 
 export type ServerAlgorithm = any // TODO: Update this type
 
-export class Algorithm {
+export class Algorithm extends Entity {
   protected readonly _algorithm: ServerAlgorithm
 
   public constructor(algorithm: ServerAlgorithm) {
+    super(algorithm)
+
     this._algorithm = algorithm
-  }
-
-  get createdAt(): string {
-    return getFormatedDateTimeString({
-      date: new Date(this._algorithm.created_at),
-    })
-  }
-
-  get description(): string | undefined {
-    return this._algorithm.description
-  }
-
-  get id(): string {
-    return `${this._algorithm.id}`
-  }
-
-  get name(): string {
-    return this._algorithm.name
   }
 
   get key(): string {
@@ -38,16 +22,6 @@ export class Algorithm {
 
   get uri(): string {
     return this._algorithm.uri
-  }
-
-  get updatedAt(): string | undefined {
-    if (!this._algorithm.updated_at) {
-      return undefined
-    }
-
-    return getFormatedDateTimeString({
-      date: new Date(this._algorithm.updated_at),
-    })
   }
 
   get taskType(): string {

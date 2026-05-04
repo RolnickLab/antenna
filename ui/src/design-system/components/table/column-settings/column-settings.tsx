@@ -1,7 +1,7 @@
 import { Checkbox } from 'design-system/components/checkbox/checkbox'
-import * as Popover from 'design-system/components/popover/popover'
-import { ChevronDownIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { Columns3CogIcon } from 'lucide-react'
+import { Button, Popover } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import styles from './column-settings.module.scss'
 
@@ -17,19 +17,23 @@ export const ColumnSettings = ({
   onColumnSettingsChange,
 }: ColumnSettingsProps) => (
   <Popover.Root>
-    <Popover.Trigger>
-      <Button variant="outline" size="small">
-        <span>{translate(STRING.COLUMNS)}</span>
-        <ChevronDownIcon className="w-4 h-4" />
-      </Button>
-    </Popover.Trigger>
-    <Popover.Content
-      ariaCloselabel={translate(STRING.CLOSE)}
-      align="end"
-      side="bottom"
-    >
-      <div className={styles.wrapper}>
-        <span className={styles.description}>{translate(STRING.COLUMNS)}</span>
+    <BasicTooltip asChild content={translate(STRING.TABLE_COLUMNS)}>
+      <Popover.Trigger asChild>
+        <Button
+          aria-label={translate(STRING.TABLE_COLUMNS)}
+          className="shrink-0"
+          size="icon"
+          variant="outline"
+        >
+          <Columns3CogIcon className="w-4 h-4" />
+        </Button>
+      </Popover.Trigger>
+    </BasicTooltip>
+    <Popover.Content className={styles.wrapper} align="end" side="bottom">
+      <div>
+        <span className={styles.description}>
+          {translate(STRING.TABLE_COLUMNS)}
+        </span>
         <div className={styles.settings}>
           {columns.map((column) =>
             column.name.length ? (

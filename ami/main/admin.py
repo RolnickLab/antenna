@@ -10,6 +10,7 @@ from guardian.admin import GuardedModelAdmin
 
 import ami.utils
 from ami import tasks
+from ami.jobs.models import Job
 from ami.main.models import group_images_into_events, update_calculated_fields_for_events
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.ml.tasks import remove_duplicate_classifications
@@ -73,12 +74,14 @@ class ProjectAdmin(GuardedModelAdmin):
         form.instance.ensure_owner_membership()
 
     list_display = ("name", "owner", "priority", "active", "created_at", "updated_at")
-    list_filter = ("active", "owner")
-    search_fields = ("name", "owner__email", "members__email")
-    filter_horizontal = ("members",)
+    list_filter = ("active",)
+    search_fields = ("name", "owner__email")
 
     inlines = [ProjectPipelineConfigInline]
-    autocomplete_fields = ("default_filters_include_taxa", "default_filters_exclude_taxa")
+    autocomplete_fields = ("owner", "default_filters_include_taxa", "default_filters_exclude_taxa")
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        return super().get_queryset(request).select_related("owner")
 
     fieldsets = (
         (
@@ -89,6 +92,7 @@ class ProjectAdmin(GuardedModelAdmin):
                     "description",
                     "priority",
                     "active",
+                    "draft",
                     "feature_flags",
                 )
             },
@@ -108,7 +112,7 @@ class ProjectAdmin(GuardedModelAdmin):
         (
             "Ownership & Access",
             {
-                "fields": ("owner", "members"),
+                "fields": ("owner",),
                 "classes": ("wide",),
             },
         ),
@@ -288,6 +292,7 @@ class SourceImageAdmin(AdminBase):
         "checksum",
         "checksum_algorithm",
         "created_at",
+        "get_was_processed",
     )
 
     list_filter = (
@@ -301,7 +306,12 @@ class SourceImageAdmin(AdminBase):
     search_fields = ("id", "path", "event__start__date")
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
-        return super().get_queryset(request).select_related("event", "deployment", "deployment__data_source")
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("event", "deployment", "deployment__data_source")
+            .with_was_processed()  # avoids N+1 from get_was_processed in list_display
+        )
 
 
 class ClassificationInline(admin.TabularInline):
@@ -586,10 +596,30 @@ class SiteAdmin(admin.ModelAdmin[Site]):
 class S3StorageSourceAdmin(admin.ModelAdmin[S3StorageSource]):
     """Admin panel example for ``S3StorageSource`` model."""
 
-    list_display = ("name", "bucket", "prefix", "size", "total_files", "last_checked")
+    list_display = (
+        "name",
+        "uri",
+        "size",
+        "total_files",
+        "is_private",
+        "last_checked",
+        "project",
+        "updated_at",
+    )
 
     def size(self, obj) -> str:
         return filesizeformat(obj.total_size)
+
+    @admin.display(description="S3 URI", ordering="bucket")
+    def uri(self, obj) -> str:
+        return obj.uri()
+
+    @admin.display(boolean=True)
+    def is_private(self, obj) -> bool:
+        """
+        If a public base URL is set, the source is considered public.
+        """
+        return not bool(obj.public_base_url)
 
     @admin.action()
     def calculate_size_async(self, request: HttpRequest, queryset: QuerySet[S3StorageSource]) -> None:
@@ -606,6 +636,8 @@ class S3StorageSourceAdmin(admin.ModelAdmin[S3StorageSource]):
             source.count_files()
         self.message_user(request, f"File count calculated for {queryset.count()} source(s).")
 
+    list_filter = ("project", "bucket")
+
     actions = [calculate_size_async, count_files]
 
 
@@ -614,6 +646,7 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
     """Admin panel example for ``SourceImageCollection`` model."""
 
     list_display = ("name", "image_count", "method", "kwargs", "created_at", "updated_at")
+    list_filter = ("project",)
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         return super().get_queryset(request).annotate(image_count=models.Count("images"))
@@ -629,17 +662,41 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
     def populate_collection(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
         for collection in queryset:
             collection.populate_sample()
-        self.message_user(request, f"Populated {queryset.count()} collection(s).")
+        self.message_user(request, f"Populated {queryset.count()} capture set(s).")
 
     @admin.action()
     def populate_collection_async(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
         queued_tasks = [tasks.populate_collection.apply_async([collection.pk]) for collection in queryset]
         self.message_user(
             request,
-            f"Populating {len(queued_tasks)} collection(s) background tasks: {queued_tasks}.",
+            f"Populating {len(queued_tasks)} capture set(s) background tasks: {queued_tasks}.",
         )
 
-    actions = [populate_collection, populate_collection_async]
+    @admin.action(description="Run Small Size Filter post-processing task (async)")
+    def run_small_size_filter(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
+        jobs = []
+        for collection in queryset:
+            job = Job.objects.create(
+                name=f"Post-processing: SmallSizeFilter on Capture Set {collection.pk}",
+                project=collection.project,
+                job_type_key="post_processing",
+                params={
+                    "task": "small_size_filter",
+                    "config": {
+                        "source_image_collection_id": collection.pk,
+                    },
+                },
+            )
+            job.enqueue()
+            jobs.append(job.pk)
+
+        self.message_user(request, f"Queued Small Size Filter for {queryset.count()} capture set(s). Jobs: {jobs}")
+
+    actions = [
+        populate_collection,
+        populate_collection_async,
+        run_small_size_filter,
+    ]
 
     # Hide images many-to-many field from form. This would list all source images in the database.
     exclude = ("images",)

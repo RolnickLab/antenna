@@ -1,3 +1,4 @@
+import { DefaultFiltersControl } from 'components/filtering/default-filter-control'
 import { FilterControl } from 'components/filtering/filter-control'
 import { FilterSection } from 'components/filtering/filter-section'
 import { someActive } from 'components/filtering/utils'
@@ -7,38 +8,38 @@ import { useTaxaLists } from 'data-services/hooks/taxa-lists/useTaxaLists'
 import { Occurrence } from 'data-services/models/occurrence'
 import { BulkActionBar } from 'design-system/components/bulk-action-bar/bulk-action-bar'
 import * as Dialog from 'design-system/components/dialog/dialog'
-import { IconType } from 'design-system/components/icon/icon'
 import { PageFooter } from 'design-system/components/page-footer/page-footer'
 import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
+import { SortControl } from 'design-system/components/sort-control'
 import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
 import { Table } from 'design-system/components/table/table/table'
 import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
+import { DownloadIcon, Grid2X2Icon, TableIcon } from 'lucide-react'
+import { buttonVariants } from 'nova-ui-kit'
 import {
   OccurrenceDetails,
   TABS,
 } from 'pages/occurrence-details/occurrence-details'
 import { useContext, useEffect, useState } from 'react'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
-import { APP_ROUTES } from 'utils/constants'
+import { APP_ROUTES, DOCS_LINKS } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'
 import { useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
 import { useUser } from 'utils/user/userContext'
-import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
-import { OccurrenceActions } from './occurrence-actions'
 import { columns } from './occurrence-columns'
 import { OccurrenceGallery } from './occurrence-gallery'
 import { OccurrenceNavigation } from './occurrence-navigation'
+import { OccurrencesActions } from './occurrences-actions'
 
 export const Occurrences = () => {
   const { user } = useUser()
-  const { userPreferences } = useUserPreferences()
   const { projectId, id } = useParams()
   const { columnSettings, setColumnSettings } = useColumnSettings(
     'occurrences',
@@ -59,9 +60,7 @@ export const Occurrences = () => {
     order: 'desc',
   })
   const { pagination, setPage } = usePagination()
-  const { activeFilters, filters } = useFilters({
-    classification_threshold: `${userPreferences.scoreThreshold}`,
-  })
+  const { activeFilters, filters } = useFilters()
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
     projectId,
     pagination,
@@ -74,6 +73,10 @@ export const Occurrences = () => {
   )
   const { selectedView, setSelectedView } = useSelectedView('table')
   const { taxaLists = [] } = useTaxaLists({ projectId: projectId as string })
+  const tableColumns = columns({
+    projectId: projectId as string,
+    showActions: selectedItems.length === 0,
+  })
 
   useEffect(() => {
     document.getElementById('app')?.scrollTo({ top: 0 })
@@ -94,15 +97,16 @@ export const Occurrences = () => {
           <FilterSection defaultOpen>
             <FilterControl field="detections__source_image" readonly />
             <FilterControl field="event" readonly />
-            <FilterControl field="date_start" />
-            <FilterControl field="date_end" />
             <FilterControl field="taxon" />
             {taxaLists.length > 0 && (
-              <FilterControl data={taxaLists} field="taxa_list_id" />
+              <>
+                <FilterControl data={taxaLists} field="taxa_list_id" />
+                <FilterControl data={taxaLists} field="not_taxa_list_id" />
+              </>
             )}
-            <FilterControl clearable={false} field="classification_threshold" />
             <FilterControl field="verified" />
             {user.loggedIn && <FilterControl field="verified_by_me" />}
+            <DefaultFiltersControl field="apply_defaults" />
           </FilterSection>
           <FilterSection
             title="More filters"
@@ -111,6 +115,8 @@ export const Occurrences = () => {
               activeFilters
             )}
           >
+            <FilterControl field="date_start" />
+            <FilterControl field="date_end" />
             <FilterControl field="collection" />
             <FilterControl field="deployment" />
             <FilterControl field="algorithm" />
@@ -119,11 +125,10 @@ export const Occurrences = () => {
         </div>
         <div className="w-full overflow-hidden">
           <PageHeader
+            docsLink={DOCS_LINKS.VALIDATING_DATA}
             isFetching={isFetching}
             isLoading={isLoading}
-            subTitle={translate(STRING.RESULTS, {
-              total,
-            })}
+            subTitle={translate(STRING.RESULTS, { total })}
             title={translate(STRING.NAV_ITEM_OCCURRENCES)}
             tooltip={translate(STRING.TOOLTIP_OCCURRENCE)}
           >
@@ -132,29 +137,36 @@ export const Occurrences = () => {
                 {
                   value: 'table',
                   label: translate(STRING.TAB_ITEM_TABLE),
-                  icon: IconType.TableView,
+                  Icon: TableIcon,
                 },
                 {
                   value: 'gallery',
                   label: translate(STRING.TAB_ITEM_GALLERY),
-                  icon: IconType.GalleryView,
+                  Icon: Grid2X2Icon,
                 },
               ]}
               value={selectedView}
               onValueChange={setSelectedView}
             />
+            <Link
+              className={buttonVariants({ size: 'small', variant: 'outline' })}
+              to={APP_ROUTES.EXPORTS({ projectId: projectId as string })}
+            >
+              <DownloadIcon className="w-4 h-4" />
+              <span>Export </span>
+            </Link>
+            <SortControl columns={tableColumns} setSort={setSort} sort={sort} />
             <ColumnSettings
-              columns={columns(projectId as string)}
+              columns={tableColumns}
               columnSettings={columnSettings}
               onColumnSettingsChange={setColumnSettings}
             />
           </PageHeader>
           {selectedView === 'table' && (
             <Table
-              columns={columns(
-                projectId as string,
-                selectedItems.length === 0
-              ).filter((column) => !!columnSettings[column.id])}
+              columns={tableColumns.filter(
+                (column) => !!columnSettings[column.id]
+              )}
               error={error}
               isLoading={!id && isLoading}
               items={occurrences}
@@ -170,7 +182,10 @@ export const Occurrences = () => {
             <OccurrenceGallery
               error={error}
               isLoading={!id && isLoading}
-              occurrences={occurrences}
+              items={occurrences}
+              onSelectedItemsChange={setSelectedItems}
+              selectable={user.loggedIn}
+              selectedItems={selectedItems}
             />
           )}
         </div>
@@ -188,7 +203,7 @@ export const Occurrences = () => {
             )}
             onClear={() => setSelectedItems([])}
           >
-            <OccurrenceActions
+            <OccurrencesActions
               occurrences={occurrences?.filter((occurrence) =>
                 selectedItems.includes(occurrence.id)
               )}
@@ -259,8 +274,8 @@ const OccurrenceDetailsDialog = ({
     >
       <Dialog.Content
         ariaCloselabel={translate(STRING.CLOSE)}
-        isLoading={isLoading}
         error={error}
+        isLoading={isLoading}
       >
         {occurrence ? (
           <OccurrenceDetails

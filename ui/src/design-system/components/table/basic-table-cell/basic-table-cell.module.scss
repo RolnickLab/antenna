@@ -8,6 +8,7 @@
     display: block;
     @include paragraph-medium();
     color: $color-neutral-700;
+    word-break: break-word;
   }
 
   .details {

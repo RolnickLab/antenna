@@ -37,8 +37,13 @@ export const UpdateEntityDialog = ({
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Dialog.Trigger>
-        <Button className="shrink-0" size="icon" variant="ghost">
+      <Dialog.Trigger asChild>
+        <Button
+          aria-label={translate(STRING.EDIT)}
+          className="shrink-0"
+          size="icon"
+          variant="ghost"
+        >
           <PenIcon className="w-4 h-4" />
         </Button>
       </Dialog.Trigger>

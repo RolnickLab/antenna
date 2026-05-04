@@ -3,7 +3,9 @@ import { PageFooter } from 'design-system/components/page-footer/page-footer'
 import { PageHeader } from 'design-system/components/page-header/page-header'
 import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
 import * as Tabs from 'design-system/components/tabs/tabs'
+import { Button } from 'nova-ui-kit'
 import { NewProjectDialog } from 'pages/project-details/new-project-dialog'
+import { DOCS_LINKS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { usePagination } from 'utils/usePagination'
 import { UserPermission } from 'utils/user/types'
@@ -38,10 +40,11 @@ export const Projects = () => {
   return (
     <>
       <PageHeader
-        title={translate(STRING.NAV_ITEM_PROJECTS)}
-        subTitle={translate(STRING.RESULTS, { total: total ?? 0 })}
-        isLoading={isLoading}
+        docsLink={DOCS_LINKS.PROJECT_CREATION}
         isFetching={isFetching}
+        isLoading={isLoading}
+        subTitle={translate(STRING.RESULTS, { total: total ?? 0 })}
+        title={translate(STRING.NAV_ITEM_PROJECTS)}
       >
         {user.loggedIn ? (
           <Tabs.Root
@@ -65,7 +68,31 @@ export const Projects = () => {
         ) : null}
         {canCreate ? <NewProjectDialog /> : null}
       </PageHeader>
-      <ProjectGallery error={error} isLoading={isLoading} projects={projects} />
+      {projects && projects.length === 0 && canCreate ? (
+        <div className="flex flex-col items-center pt-32">
+          <h1 className="mb-8 heading-large">Get started</h1>
+          <p className="text-center body-large mb-16">
+            To start use Antenna, create your first project or view the public
+            ones.
+          </p>
+          <div className="flex flex-col items-center gap-8">
+            <NewProjectDialog buttonSize="default" buttonVariant="success" />
+            <p className="body-base">or</p>
+            <Button
+              variant="outline"
+              onClick={() => setSelectedTab(TABS.ALL_PROJECTS)}
+            >
+              <span>View public projects</span>
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <ProjectGallery
+          error={error}
+          isLoading={isLoading}
+          projects={projects}
+        />
+      )}
       <PageFooter>
         {projects?.length ? (
           <PaginationBar

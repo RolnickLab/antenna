@@ -196,6 +196,7 @@ const TaxaSelect = ({
             }}
           />
           <Button
+            aria-label={translate(STRING.CLEAR)}
             className="shrink-0 text-muted-foreground"
             onClick={() => onTaxaChange(taxa.filter((t) => t.id !== taxon.id))}
             size="icon"

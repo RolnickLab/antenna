@@ -8,16 +8,48 @@ import requests
 from django.conf import settings
 from django.db import models
 
-from ami.base.models import BaseModel
-from ami.main.models import Project
+from ami.base.models import BaseQuerySet
+from ami.main.models import BaseModel, Project
 from ami.ml.models.pipeline import Pipeline, get_or_create_algorithm_and_category_map
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
-from ami.ml.schemas import PipelineRegistrationResponse, ProcessingServiceInfoResponse, ProcessingServiceStatusResponse
+from ami.ml.schemas import (
+    PipelineConfigResponse,
+    PipelineRegistrationResponse,
+    ProcessingServiceInfoResponse,
+    ProcessingServiceStatusResponse,
+)
+from ami.utils.requests import create_session
 
 logger = logging.getLogger(__name__)
 
+# Max age of last_seen before a pull-mode (no-endpoint) service is considered offline.
+# Pull-mode workers poll every ~5s, so 60s gives 12x buffer for transient failures.
+PROCESSING_SERVICE_LAST_SEEN_MAX = datetime.timedelta(seconds=60)
 
-class ProcessingServiceManager(models.Manager):
+
+class ProcessingServiceQuerySet(BaseQuerySet):
+    def async_services(self) -> "ProcessingServiceQuerySet":
+        """
+        Filter to pull-mode (async) processing services — those with no endpoint URL.
+
+        These correspond to jobs with dispatch_mode=ASYNC_API. Instead of Antenna calling
+        out to them, they poll Antenna for tasks and push results back. Their liveness is
+        tracked via heartbeats from mark_seen() rather than active health checks.
+        """
+        return self.filter(endpoint_url__isnull=True)
+
+    def sync_services(self) -> "ProcessingServiceQuerySet":
+        """
+        Filter to push-mode (sync) processing services — those with a configured endpoint URL.
+
+        These correspond to jobs with dispatch_mode=SYNC_API. Antenna actively calls their
+        /readyz and /process endpoints. Their liveness is tracked by the periodic
+        check_processing_services_online Celery task.
+        """
+        return self.filter(endpoint_url__isnull=False)
+
+
+class ProcessingServiceManager(models.Manager.from_queryset(ProcessingServiceQuerySet)):
     """Custom manager for ProcessingService to handle specific queries."""
 
     def create(self, **kwargs) -> "ProcessingService":
@@ -33,16 +65,26 @@ class ProcessingService(BaseModel):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     projects = models.ManyToManyField("main.Project", related_name="processing_services", blank=True)
-    endpoint_url = models.CharField(max_length=1024)
+    endpoint_url = models.CharField(max_length=1024, null=True, blank=True)
     pipelines = models.ManyToManyField("ml.Pipeline", related_name="processing_services", blank=True)
-    last_checked = models.DateTimeField(null=True)
-    last_checked_live = models.BooleanField(null=True)
-    last_checked_latency = models.FloatField(null=True)
+    last_seen = models.DateTimeField(null=True)
+    last_seen_live = models.BooleanField(null=True)
+    last_seen_latency = models.FloatField(null=True)
 
     objects = ProcessingServiceManager()
 
+    @property
+    def is_async(self) -> bool:
+        """
+        True if this is a pull-mode (async) service with no endpoint URL, corresponding to
+        jobs with dispatch_mode=ASYNC_API. False for push-mode services with a configured
+        endpoint, corresponding to jobs with dispatch_mode=SYNC_API.
+        """
+        return not self.endpoint_url
+
     def __str__(self):
-        return f'#{self.pk} "{self.name}" at {self.endpoint_url}'
+        endpoint_display = self.endpoint_url or "async"
+        return f'#{self.pk} "{self.name}" ({endpoint_display})'
 
     class Meta:
         verbose_name = "Processing Service"
@@ -52,11 +94,12 @@ class ProcessingService(BaseModel):
         self,
         enable_only: list[str] | None = None,
         projects: models.QuerySet[Project] | None = None,
+        pipeline_configs: list[PipelineConfigResponse] | None = None,
     ) -> PipelineRegistrationResponse:
         """
         Register pipeline choices in Antenna using the pipeline configurations from the processing service API.
         """
-        pipeline_configs = self.get_pipeline_configs()
+        pipeline_configs = pipeline_configs or self.get_pipeline_configs()
 
         pipelines_to_add = pipeline_configs  # all of them
         pipelines = []
@@ -131,45 +174,100 @@ class ProcessingService(BaseModel):
             algorithms_created=algorithms_created,
         )
 
-    def get_status(self, timeout=6):
+    def mark_seen(self, live: bool = True) -> None:
+        """
+        Record that we heard from this processing service.
+        Used by async/pull-mode services that don't have an endpoint to check.
+        """
+        self.last_seen = datetime.datetime.now()
+        self.last_seen_live = live
+        self.save(update_fields=["last_seen", "last_seen_live"])
+
+    def get_status(self, timeout=90) -> ProcessingServiceStatusResponse:
         """
         Check the status of the processing service.
-        This is a simple health check that pings the /readyz endpoint of the service.
+
+        This check has two behaviors depending on the version of the processing service:
+
+        If the service is a v2/pull-mode/async service with no endpoint URL, this will derive the status
+        from the last_seen heartbeat timestamp. If the last_seen timestamp is recent (within 60s),
+        the service is considered live. No requests are made by this method.
+
+        If the service is a v1/push-mode/interactive service with an endpoint URL, this method will ping the
+        /readyz endpoint to check if it's live.
+
+        Uses urllib3 Retry with exponential backoff to handle cold starts and transient failures.
+        The timeout is set to 90s per attempt to accommodate serverless cold starts, especially for
+        services that need to load multiple models into memory. With automatic retries, transient
+        connection errors are handled gracefully.
+
+        Args:
+            timeout: Request timeout in seconds per attempt (default: 90s for serverless cold starts). Only applies \
+                     to services with an endpoint URL.
         """
+        # If no endpoint URL is configured, the derive status from last registration heartbeat
+        if not self.endpoint_url:
+            is_live = bool(
+                self.last_seen
+                and self.last_seen_live
+                and (datetime.datetime.now() - self.last_seen) < PROCESSING_SERVICE_LAST_SEEN_MAX
+            )
+            if not is_live and self.last_seen_live:
+                # Heartbeat has expired — mark stale
+                self.last_seen_live = False
+                self.save(update_fields=["last_seen_live"])
+            pipeline_names = list(self.pipelines.values_list("name", flat=True)) if is_live else []
+            return ProcessingServiceStatusResponse(
+                timestamp=self.last_seen or datetime.datetime.now(),
+                request_successful=is_live,
+                server_live=is_live,
+                pipelines_online=pipeline_names,
+                pipeline_configs=[],
+                endpoint_url=None,
+                latency=0.0,
+            )
+
         ready_check_url = urljoin(self.endpoint_url, "readyz")
         start_time = time.time()
         error = None
         pipeline_configs = []
         pipelines_online = []
         timestamp = datetime.datetime.now()
-        self.last_checked = timestamp
+        self.last_seen = timestamp
         resp = None
 
+        # Create session with retry logic for connection errors and timeouts
+        session = create_session(
+            retries=3,
+            backoff_factor=2,  # 0s, 2s, 4s delays between retries
+            status_forcelist=(500, 502, 503, 504),
+        )
+
         try:
-            resp = requests.get(ready_check_url, timeout=timeout)
+            resp = session.get(ready_check_url, timeout=timeout)
             resp.raise_for_status()
-            self.last_checked_live = True
-            latency = time.time() - start_time
+            self.last_seen_live = True
         except requests.exceptions.RequestException as e:
             error = f"Error connecting to {ready_check_url}: {e}"
             logger.error(error)
-            self.last_checked_live = False
+            self.last_seen_live = False
         finally:
             latency = time.time() - start_time
-            self.last_checked_latency = latency
+            self.last_seen_latency = latency
             self.save(
                 update_fields=[
-                    "last_checked",
-                    "last_checked_live",
-                    "last_checked_latency",
+                    "last_seen",
+                    "last_seen_live",
+                    "last_seen_latency",
                 ]
             )
 
-        if self.last_checked_live:
+        if self.last_seen_live:
             # The specific pipeline statuses are not required for the status response
             # but the intention is to show which ones are loaded into memory and ready to use.
             # @TODO: this may be overkill, but it is displayed in the UI now.
             try:
+                assert resp is not None
                 pipelines_online: list[str] = resp.json().get("status", [])
             except (ValueError, KeyError) as e:
                 error = f"Error parsing pipeline statuses from {ready_check_url}: {e}"
@@ -178,7 +276,7 @@ class ProcessingService(BaseModel):
         response = ProcessingServiceStatusResponse(
             timestamp=timestamp,
             request_successful=resp.ok if resp else False,
-            server_live=self.last_checked_live,
+            server_live=self.last_seen_live,
             pipelines_online=pipelines_online,
             pipeline_configs=pipeline_configs,
             endpoint_url=self.endpoint_url,
@@ -193,6 +291,9 @@ class ProcessingService(BaseModel):
         Get the pipeline configurations from the processing service.
         This can be a long response as it includes the full category map for each algorithm.
         """
+        if not self.endpoint_url:
+            return []
+
         info_url = urljoin(self.endpoint_url, "info")
         resp = requests.get(info_url, timeout=timeout)
         resp.raise_for_status()

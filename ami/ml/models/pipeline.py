@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ami.ml.models import ProcessingService, ProjectPipelineConfig
     from ami.jobs.models import Job
+    from ami.ml.models import ProcessingService, ProjectPipelineConfig
 
 import collections
 import dataclasses
@@ -20,9 +20,10 @@ from django.utils.text import slugify
 from django.utils.timezone import now
 from django_pydantic_field import SchemaField
 
-from ami.base.models import BaseModel
+from ami.base.models import BaseModel, BaseQuerySet
 from ami.base.schemas import ConfigurableStage, default_stages
 from ami.main.models import (
+    NULL_DETECTIONS_FILTER,
     Classification,
     Deployment,
     Detection,
@@ -36,6 +37,7 @@ from ami.main.models import (
     update_calculated_fields_for_events,
     update_occurrence_determination,
 )
+from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
@@ -50,7 +52,7 @@ from ami.ml.schemas import (
     SourceImageResponse,
 )
 from ami.ml.tasks import celery_app, create_detection_images
-from ami.utils.requests import create_session
+from ami.utils.requests import create_session, extract_error_message_from_response
 
 logger = logging.getLogger(__name__)
 
@@ -62,14 +64,25 @@ def filter_processed_images(
 ) -> typing.Iterable[SourceImage]:
     """
     Return only images that need to be processed by a given pipeline.
-    An image needs processing if:
-    1. It has no detections from the pipeline's detection algorithm
-    or
-    2. It has detections but they don't have classifications from all the pipeline's classification algorithms
+
+    Each image is checked against its existing detections from this pipeline's algorithms:
+
+    YIELD (needs processing):
+    1. No existing detections at all — image has never been processed by this pipeline
+    2. Has real detections without classifications — detector ran but classifier didn't
+    3. Has real detections with classifications, but not from all pipeline classifiers —
+       e.g. a new classifier was added to the pipeline since last run
+
+    SKIP (already processed):
+    4. Only null detections exist (bbox=None) — pipeline ran but found nothing
+    5. Real detections exist and are fully classified by all pipeline classifiers
+
+    Null detections are sentinels that mark an image as "processed, nothing found."
+    They are excluded from classification checks so they don't trigger reprocessing.
     """
     pipeline_algorithms = pipeline.algorithms.all()
 
-    detection_type_keys = Algorithm.detection_algorithm_task_types
+    detection_type_keys = Algorithm.detection_task_types
     detection_algorithms = pipeline_algorithms.filter(task_type__in=detection_type_keys)
     if not detection_algorithms.exists():
         task_logger.warning(f"Pipeline {pipeline} has no detection algorithms saved. Will reprocess all images.")
@@ -83,8 +96,12 @@ def filter_processed_images(
             task_logger.debug(f"Image {image} needs processing: has no existing detections from pipeline's detector")
             # If there are no existing detections from this pipeline, send the image
             yield image
-        elif existing_detections.filter(classifications__isnull=True).exists():
-            # Check if there are detections with no classifications
+        elif not existing_detections.exclude(NULL_DETECTIONS_FILTER).exists():  # type: ignore
+            # All detections for this image are null (processed but nothing found) — skip
+            task_logger.debug(f"Image {image} has only null detections from pipeline {pipeline}, skipping!")
+            continue
+        elif existing_detections.exclude(NULL_DETECTIONS_FILTER).filter(classifications__isnull=True).exists():
+            # Check if any real detections (non-null) have no classifications
             task_logger.debug(
                 f"Image {image} needs processing: has existing detections with no classifications "
                 "from pipeline {pipeline}"
@@ -120,7 +137,7 @@ def collect_images(
     deployment: Deployment | None = None,
     job_id: int | None = None,
     pipeline: Pipeline | None = None,
-    skip_processed: bool = True,
+    reprocess_all_images: bool = False,
 ) -> typing.Iterable[SourceImage]:
     """
     Collect images from a collection, a list of images or a deployment.
@@ -145,7 +162,7 @@ def collect_images(
         raise ValueError("Must specify a collection, deployment or a list of images")
 
     total_images = len(images)
-    if pipeline and skip_processed:
+    if pipeline and not reprocess_all_images:
         msg = f"Filtering images that have already been processed by pipeline {pipeline}"
         task_logger.info(msg)
         images = list(filter_processed_images(images, pipeline, task_logger=task_logger))
@@ -165,6 +182,7 @@ def process_images(
     images: typing.Iterable[SourceImage],
     job_id: int | None = None,
     project_id: int | None = None,
+    reprocess_all_images: bool = False,
 ) -> PipelineResultsResponse:
     """
     Process images using ML pipeline API.
@@ -188,7 +206,11 @@ def process_images(
     task_logger.info(f"Using pipeline config: {pipeline_config}")
 
     prefiltered_images = list(images)
-    images = list(filter_processed_images(images=prefiltered_images, pipeline=pipeline, task_logger=task_logger))
+    if reprocess_all_images:
+        images = prefiltered_images
+    else:
+        images = list(filter_processed_images(images=prefiltered_images, pipeline=pipeline, task_logger=task_logger))
+
     if len(images) < len(prefiltered_images):
         # Log how many images were filtered out because they have already been processed
         task_logger.info(f"Ignoring {len(prefiltered_images) - len(images)} images that have already been processed")
@@ -207,7 +229,7 @@ def process_images(
     source_image_requests: list[SourceImageRequest] = []
     detection_requests: list[DetectionRequest] = []
 
-    reprocess_existing_detections = False
+    reprocess_existing_detections = reprocess_all_images
     # Check if feature flag is enabled to reprocess existing detections
     if project and project.feature_flags.reprocess_existing_detections:
         # Check if the user wants to reprocess existing detections or ignore them
@@ -241,10 +263,10 @@ def process_images(
     session = create_session()
     resp = session.post(endpoint_url, json=request_data.dict())
     if not resp.ok:
-        try:
-            msg = resp.json()["detail"]
-        except (ValueError, KeyError):
-            msg = str(resp.content)
+        summary = request_data.summary()
+        error_msg = extract_error_message_from_response(resp)
+        msg = f"Failed to process {summary}: {error_msg}"
+
         if job:
             job.logger.error(msg)
         else:
@@ -314,37 +336,11 @@ def get_or_create_algorithm_and_category_map(
     :param algorithm_configs: A dictionary of algorithms from the processing services' "/info" endpoint
     :param logger: A logger instance from the parent function
 
-    :return: A dictionary of algorithms used in the pipeline, keyed by the algorithm key
+    :return: A dictionary of algorithms registered in the pipeline, keyed by the algorithm key
 
     @TODO this should be called when registering a pipeline, not when saving results.
     But currently we don't have a way to register pipelines.
     """
-    category_map = None
-    category_map_data = algorithm_config.category_map
-    if category_map_data:
-        labels_hash = AlgorithmCategoryMap.make_labels_hash(category_map_data.labels)
-        category_map, _created = AlgorithmCategoryMap.objects.get_or_create(
-            # @TODO this is creating a new category map every time
-            # Will create a new category map if the labels are different
-            labels_hash=labels_hash,
-            version=category_map_data.version,
-            defaults={
-                "data": category_map_data.data,
-                "labels": category_map_data.labels,
-                "description": category_map_data.description,
-                "uri": category_map_data.uri,
-            },
-        )
-        if _created:
-            logger.info(f"Registered new category map {category_map}")
-        else:
-            logger.info(f"Assigned existing category map {category_map}")
-    else:
-        logger.warning(
-            f"No category map found for algorithm {algorithm_config.key} in response."
-            " Will attempt to create one from the classification results."
-        )
-
     algo, _created = Algorithm.objects.get_or_create(
         key=algorithm_config.key,
         version=algorithm_config.version,
@@ -353,34 +349,59 @@ def get_or_create_algorithm_and_category_map(
             "task_type": algorithm_config.task_type,
             "version_name": algorithm_config.version_name,
             "uri": algorithm_config.uri,
-            "category_map": category_map or None,
+            "category_map": None,
         },
     )
+    if _created:
+        logger.info(f"Registered new algorithm {algo}")
+    else:
+        logger.info(f"Using existing algorithm {algo}")
+
+    algo_fields_updated = []
+    new_category_map = None
+    category_map_data = algorithm_config.category_map
+
+    if not algo.has_valid_category_map():
+        if category_map_data:
+            # New algorithms will not have a category map yet, and older ones may not either
+            # The category map data should be in the algorithm config from the /info endpoint
+            new_category_map = AlgorithmCategoryMap.objects.create(
+                version=category_map_data.version,
+                data=category_map_data.data,
+                labels=category_map_data.labels,
+                description=category_map_data.description,
+                uri=category_map_data.uri,
+            )
+            algo.category_map = new_category_map
+            algo_fields_updated.append("category_map")
+            logger.info(f"Registered new category map {new_category_map} for algorithm {algo}")
+        else:
+            if algorithm_config.task_type in Algorithm.classification_task_types:
+                msg = (
+                    f"No valid category map found for algorithm '{algorithm_config.key}' with "
+                    f"task type '{algorithm_config.task_type}' or in the pipeline /info response. "
+                    "Update the processing service to include a category map for all classification algorithms "
+                    "then re-register the pipelines."
+                )
+                raise PipelineNotConfigured(msg)
+            else:
+                logger.debug(f"No category map found, but not required for task type {algorithm_config.task_type}")
 
     # Update fields that may have changed in the processing service, with a warning
+    # These are fields that we have added to the API since the algorithm was first created
     fields_to_update = {
         "task_type": algorithm_config.task_type,
         "uri": algorithm_config.uri,
-        "category_map": category_map,
     }
-    fields_updated = []
     for field in fields_to_update:
         new_value = fields_to_update[field]
         if getattr(algo, field) != new_value:
             logger.warning(f"Field '{field}' changed for algorithm {algo} from {getattr(algo, field)} to {new_value}")
             setattr(algo, field, new_value)
-            fields_updated.append(field)
-    algo.save(update_fields=fields_updated)
+            algo_fields_updated.append(field)
 
-    if not algo.category_map or len(algo.category_map.data) == 0:
-        # Update existing algorithm that is missing a category map
-        algo.category_map = category_map
-        algo.save()
-
-    if _created:
-        logger.info(f"Registered new algorithm {algo}")
-    else:
-        logger.info(f"Assigned algorithm {algo}")
+    if algo_fields_updated:
+        algo.save(update_fields=algo_fields_updated)
 
     return algo
 
@@ -388,7 +409,7 @@ def get_or_create_algorithm_and_category_map(
 def get_or_create_detection(
     source_image: SourceImage,
     detection_resp: DetectionResponse,
-    algorithms_used: dict[str, Algorithm],
+    algorithms_known: dict[str, Algorithm],
     save: bool = True,
     logger: logging.Logger = logger,
 ) -> tuple[Detection, bool]:
@@ -396,27 +417,55 @@ def get_or_create_detection(
     Create a Detection object from a DetectionResponse, or update an existing one.
 
     :param detection_resp: A DetectionResponse object
-    :param algorithms_used: A dictionary of algorithms used in the pipeline, keyed by the algorithm key
-    :param created_objects: A list to store created objects
-
+    :param algorithms_known: A dictionary of algorithms registered in the pipeline, keyed by the algorithm key
     :return: A tuple of the Detection object and a boolean indicating whether it was created
+
+    For real detections (bbox is not None), the lookup is algorithm-agnostic — the same
+    bounding box on the same image is the same physical detection regardless of which algorithm
+    found it; duplicates are avoided this way.
+
+    For null detections (bbox=None), the lookup is algorithm-specific — null is a sentinel value
+    (not a physical detection), so each algorithm gets its own null detection. This ensures
+    get_was_processed(algorithm_key=...) returns correct per-algorithm processed status.
     """
-    serialized_bbox = list(detection_resp.bbox.dict().values())
+    if detection_resp.bbox is not None:
+        serialized_bbox = list(detection_resp.bbox.dict().values())
+    else:
+        serialized_bbox = None
     detection_repr = f"Detection {detection_resp.source_image_id} {serialized_bbox}"
 
     assert str(detection_resp.source_image_id) == str(
         source_image.pk
     ), f"Detection belongs to a different source image: {detection_repr}"
 
-    existing_detection = Detection.objects.filter(
-        source_image=source_image,
-        bbox=serialized_bbox,
-    ).first()
+    if serialized_bbox is None:
+        # Null detection: algorithm-specific lookup so different pipelines don't share sentinels.
+        # Use bbox__isnull=True because JSONField filter(bbox=None) matches JSON null literal,
+        # not SQL NULL which is what Detection(bbox=None) stores.
+        assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
+        try:
+            detection_algo = algorithms_known[detection_resp.algorithm.key]
+        except KeyError as err:
+            raise PipelineNotConfigured(
+                f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
+                "The processing service must declare it in the /info endpoint. "
+                f"Known algorithms: {list(algorithms_known.keys())}"
+            ) from err
+        existing_detection = Detection.objects.filter(
+            source_image=source_image,
+            bbox__isnull=True,
+            detection_algorithm=detection_algo,
+        ).first()
+    else:
+        # Real detection: algorithm-agnostic — same bbox = same physical detection
+        existing_detection = Detection.objects.filter(
+            source_image=source_image,
+            bbox=serialized_bbox,
+        ).first()
 
     # A detection may have a pre-existing crop image URL or not.
     # If not, a new one will be created in a periodic background task.
     if detection_resp.crop_image_url and detection_resp.crop_image_url.strip("/"):
-        # Ensure that the crop image URL is not empty or only a slash. None is fine.
         crop_url = detection_resp.crop_image_url
     else:
         crop_url = None
@@ -429,15 +478,17 @@ def get_or_create_detection(
         detection = existing_detection
 
     else:
-        assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
-        try:
-            detection_algo = algorithms_used[detection_resp.algorithm.key]
-        except KeyError:
-            raise ValueError(
-                f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
-                "The processing service must declare it in the /info endpoint. "
-                f"Known algorithms: {list(algorithms_used.keys())}"
-            )
+        # Resolve algorithm for creation (null detections already resolved above)
+        if serialized_bbox is not None:
+            assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
+            try:
+                detection_algo = algorithms_known[detection_resp.algorithm.key]
+            except KeyError as err:
+                raise PipelineNotConfigured(
+                    f"Detection algorithm {detection_resp.algorithm.key} is not a known algorithm. "
+                    "The processing service must declare it in the /info endpoint. "
+                    f"Known algorithms: {list(algorithms_known.keys())}"
+                ) from err
 
         new_detection = Detection(
             source_image=source_image,
@@ -461,7 +512,7 @@ def get_or_create_detection(
 
 def create_detections(
     detections: list[DetectionResponse],
-    algorithms_used: dict[str, Algorithm],
+    algorithms_known: dict[str, Algorithm],
     logger: logging.Logger = logger,
 ) -> list[Detection]:
     """
@@ -469,7 +520,7 @@ def create_detections(
     Using bulk create.
 
     :param detections: A list of DetectionResponse objects
-    :param algorithms_used: A dictionary of algorithms used in the pipeline, keyed by the algorithm key
+    :param algorithms_known: A dictionary of algorithms registered in the pipeline, keyed by the algorithm key
     :param created_objects: A list to store created objects
 
     :return: A list of Detection objects
@@ -480,6 +531,7 @@ def create_detections(
 
     existing_detections: list[Detection] = []
     new_detections: list[Detection] = []
+
     for detection_resp in detections:
         source_image = source_image_map.get(detection_resp.source_image_id)
         if not source_image:
@@ -489,7 +541,7 @@ def create_detections(
         detection, created = get_or_create_detection(
             source_image=source_image,
             detection_resp=detection_resp,
-            algorithms_used=algorithms_used,
+            algorithms_known=algorithms_known,
             save=False,
             logger=logger,
         )
@@ -550,8 +602,9 @@ def get_or_create_taxon_for_classification(
 
     :return: The Taxon object
     """
-    taxa_list, created = TaxaList.objects.get_or_create(
+    taxa_list, created = TaxaList.objects.get_or_create_for_project(
         name=f"Taxa returned by {algorithm.name}",
+        project=None,  # Algorithm taxa lists are global
     )
     if created:
         logger.info(f"Created new taxa list {taxa_list}")
@@ -581,7 +634,7 @@ def get_or_create_taxon_for_classification(
 def create_classification(
     detection: Detection,
     classification_resp: ClassificationResponse,
-    algorithms_used: dict[str, Algorithm],
+    algorithms_known: dict[str, Algorithm],
     save: bool = True,
     logger: logging.Logger = logger,
 ) -> tuple[Classification, bool]:
@@ -590,7 +643,7 @@ def create_classification(
 
     :param detection: A Detection object
     :param classification: A ClassificationResponse object
-    :param algorithms_used: A dictionary of algorithms used in the pipeline, keyed by the algorithm key
+    :param algorithms_known: A dictionary of algorithms registered in the pipeline, keyed by the algorithm key
     :param created_objects: A list to store created objects
 
     :return: A tuple of the Classification object and a boolean indicating whether it was created
@@ -601,12 +654,12 @@ def create_classification(
     logger.debug(f"Processing classification {classification_resp}")
 
     try:
-        classification_algo = algorithms_used[classification_resp.algorithm.key]
+        classification_algo = algorithms_known[classification_resp.algorithm.key]
     except KeyError:
-        raise ValueError(
+        raise PipelineNotConfigured(
             f"Classification algorithm {classification_resp.algorithm.key} is not a known algorithm. "
             "The processing service must declare it in the /info endpoint. "
-            f"Known algorithms: {list(algorithms_used.keys())}"
+            f"Known algorithms: {list(algorithms_known.keys())}"
         )
 
     if not classification_algo.category_map:
@@ -686,7 +739,7 @@ def create_classification(
 def create_classifications(
     detections: list[Detection],
     detection_responses: list[DetectionResponse],
-    algorithms_used: dict[str, Algorithm],
+    algorithms_known: dict[str, Algorithm],
     logger: logging.Logger = logger,
     save: bool = True,
 ) -> list[Classification]:
@@ -696,7 +749,7 @@ def create_classifications(
 
     :param detection: A Detection object
     :param classifications: A list of ClassificationResponse objects
-    :param algorithms_used: A dictionary of algorithms used in the pipeline, keyed by the algorithm key
+    :param algorithms_known: A dictionary of algorithms registered in the pipeline, keyed by the algorithm key
 
     :return: A list of Classification objects
 
@@ -710,7 +763,7 @@ def create_classifications(
             classification, created = create_classification(
                 detection=detection,
                 classification_resp=classification_resp,
-                algorithms_used=algorithms_used,
+                algorithms_known=algorithms_known,
                 save=False,
                 logger=logger,
             )
@@ -805,6 +858,37 @@ class PipelineSaveResults:
     total_time: float
 
 
+def create_null_detections_for_undetected_images(
+    results: PipelineResultsResponse,
+    detection_algorithm: Algorithm,
+    logger: logging.Logger = logger,
+) -> list[DetectionResponse]:
+    """
+    Create null DetectionResponse objects (empty bbox) for images that have no detections.
+
+    :param results: The PipelineResultsResponse from the processing service
+    :param algorithms_known: Dictionary of algorithms keyed by algorithm key
+
+    :return: List of DetectionResponse objects with null bbox
+    """
+    source_images_with_detections = {detection.source_image_id for detection in results.detections}
+    null_detections_to_add = []
+    detection_algorithm_reference = AlgorithmReference(name=detection_algorithm.name, key=detection_algorithm.key)
+
+    for source_img in results.source_images:
+        if source_img.id not in source_images_with_detections:
+            null_detections_to_add.append(
+                DetectionResponse(
+                    source_image_id=source_img.id,
+                    bbox=None,
+                    algorithm=detection_algorithm_reference,
+                    timestamp=now(),
+                )
+            )
+
+    return null_detections_to_add
+
+
 @celery_app.task(soft_time_limit=60 * 4, time_limit=60 * 5)
 def save_results(
     results: PipelineResultsResponse | None = None,
@@ -826,7 +910,6 @@ def save_results(
     pipeline, _created = Pipeline.objects.get_or_create(slug=results.pipeline, defaults={"name": results.pipeline})
     if _created:
         logger.warning(f"Pipeline choice returned by the Processing Service was not recognized! {pipeline}")
-    algorithms_used = set()
 
     job_logger = logger
     start_time = time.time()
@@ -852,30 +935,42 @@ def save_results(
             f"The pipeline returned by the ML backend was not recognized, created a placeholder: {pipeline}"
         )
 
-    # Algorithms and category maps should be created in advance when registering the pipeline & processing service
-    # however they are also currently available in each pipeline results response as well.
-    # @TODO review if we should only use the algorithms from the pre-registered pipeline config instead of the results
-    algorithms_used = {
-        algo_key: get_or_create_algorithm_and_category_map(algo_config, logger=job_logger)
-        for algo_key, algo_config in results.algorithms.items()
-    }
-    # Add all algorithms initially reported in the pipeline response to the pipeline
-    for algo in algorithms_used.values():
-        pipeline.algorithms.add(algo)
+    algorithms_known: dict[str, Algorithm] = {algo.key: algo for algo in pipeline.algorithms.all()}
+    try:
+        detection_algorithm = pipeline.algorithms.get(task_type__in=Algorithm.detection_task_types)
+    except Algorithm.DoesNotExist:
+        raise ValueError("Pipeline does not have a detection algorithm")
+    except Algorithm.MultipleObjectsReturned:
+        raise NotImplementedError("Multiple detection algorithms per pipeline are not supported")
 
-    algos_reported = [f"    {algo.task_type}: {algo_key} ({algo})\n" for algo_key, algo in algorithms_used.items()]
-    job_logger.info(f"Algorithms reported in pipeline response: \n{''.join(algos_reported)}")
+    job_logger.info(f"Algorithms registered for pipeline: \n{', '.join(algorithms_known.keys())}")
+
+    if results.algorithms:
+        logger.warning(
+            "Algorithms were returned by the processing service in the results, these will be ignored and "
+            "they should be removed to increase performance. "
+            "Algorithms and category maps must be registered before processing, using /info endpoint."
+        )
+
+    # Ensure all images have detections
+    # if not, add a NULL detection (empty bbox) to the results
+    null_detections = create_null_detections_for_undetected_images(
+        results=results,
+        detection_algorithm=detection_algorithm,
+        logger=job_logger,
+    )
+    results.detections = results.detections + null_detections
 
     detections = create_detections(
         detections=results.detections,
-        algorithms_used=algorithms_used,
+        algorithms_known=algorithms_known,
         logger=job_logger,
     )
 
     classifications = create_classifications(
         detections=detections,
         detection_responses=results.detections,
-        algorithms_used=algorithms_used,
+        algorithms_known=algorithms_known,
         logger=job_logger,
     )
 
@@ -900,23 +995,9 @@ def save_results(
     event_ids = [img.event_id for img in source_images]  # type: ignore
     update_calculated_fields_for_events(pks=event_ids)
 
-    registered_algos = pipeline.algorithms.all()
-    # Add any algorithms that were reported in a detection response that were not reported in the pipeline response
-    # This is important for tracking what objects were processed by which algorithms
-    # to avoid reprocessing, and for tracking provenance.
-    for algo in algorithms_used.values():
-        if algo not in registered_algos:
-            pipeline.algorithms.add(algo)
-            job_logger.debug(f"Added algorithm {algo} to pipeline {pipeline}")
-
-    # Warn if the algorithms used in the pipeline response are not the same as the ones registered in the pipeline
-    if len(algorithms_used) != len(registered_algos):
-        job_logger.warning(
-            f"Pipeline {pipeline} has {len(registered_algos)} algorithms registered, but {len(algorithms_used)} "
-            "algorithms were used in the results response. "
-            "\n*** Update the registered pipeline to match the algorithms used in the results *** \n"
-            "otherwise images will always be reprocessed in future runs."
-        )
+    deployment_ids = {img.deployment_id for img in source_images if img.deployment_id}
+    for deployment in Deployment.objects.filter(pk__in=deployment_ids):
+        deployment.update_calculated_fields(save=True)
 
     total_time = time.time() - start_time
     job_logger.info(f"Saved results from pipeline {pipeline} in {total_time:.2f} seconds")
@@ -925,6 +1006,11 @@ def save_results(
         """
         By default, return None because celery tasks need special handling to return objects.
         """
+        # Collect only algorithms that were actually used in detections or classifications
+        detection_algos = {det.detection_algorithm for det in detections if det.detection_algorithm}
+        classification_algos = {clss.algorithm for clss in classifications if clss.algorithm}
+        algorithms_used: dict[str, Algorithm] = {algo.key: algo for algo in detection_algos | classification_algos}
+
         return PipelineSaveResults(
             pipeline=pipeline,
             source_images=source_images,
@@ -939,7 +1025,7 @@ class PipelineStage(ConfigurableStage):
     """A configurable stage of a pipeline."""
 
 
-class PipelineQuerySet(models.QuerySet):
+class PipelineQuerySet(BaseQuerySet):
     """Custom QuerySet for Pipeline model."""
 
     def enabled(self, project: Project) -> PipelineQuerySet:
@@ -962,7 +1048,7 @@ class PipelineQuerySet(models.QuerySet):
         """
         return self.filter(
             processing_services__projects=project,
-            processing_services__last_checked_live=True,
+            processing_services__last_seen_live=True,
         ).distinct()
 
 
@@ -982,7 +1068,7 @@ class Pipeline(BaseModel):
     description = models.TextField(blank=True)
     version = models.IntegerField(default=1)
     version_name = models.CharField(max_length=255, blank=True)
-    # @TODO the algorithms attribute is not currently used. Review for removal.
+    # @TODO add support for ordered algorithms in the pipeline, for know the order is only in the stages config
     algorithms = models.ManyToManyField("ml.Algorithm", related_name="pipelines")
     stages: list[PipelineStage] = SchemaField(
         default=default_stages,
@@ -1047,7 +1133,7 @@ class Pipeline(BaseModel):
         source_images: list[SourceImage] | None = None,
         deployment: Deployment | None = None,
         job_id: int | None = None,
-        skip_processed: bool = True,
+        reprocess_all_images: bool = False,
     ) -> typing.Iterable[SourceImage]:
         return collect_images(
             collection=collection,
@@ -1055,13 +1141,13 @@ class Pipeline(BaseModel):
             deployment=deployment,
             job_id=job_id,
             pipeline=self,
-            skip_processed=skip_processed,
+            reprocess_all_images=reprocess_all_images,
         )
 
     def choose_processing_service_for_pipeline(
         self, job_id: int | None, pipeline_name: str, project_id: int
     ) -> ProcessingService:
-        # @TODO use the cached `last_checked_latency` and a max age to avoid checking every time
+        # @TODO use the cached `last_seen_latency` and a max age to avoid checking every time
 
         job = None
         task_logger = logger
@@ -1078,39 +1164,45 @@ class Pipeline(BaseModel):
             f"{[processing_service.name for processing_service in processing_services]}"
         )
 
-        # check the status of all processing services
-        timeout = 5 * 60.0  # 5 minutes
-        lowest_latency = timeout
-        processing_services_online = False
+        # check the status of all processing services and pick the one with the lowest latency
+        lowest_latency = float("inf")
+        processing_service_lowest_latency = None
 
         for processing_service in processing_services:
-            status_response = processing_service.get_status()  # @TODO pass timeout to get_status()
-            if status_response.server_live:
-                processing_services_online = True
-                if status_response.latency < lowest_latency:
-                    lowest_latency = status_response.latency
-                    # pick the processing service that has lowest latency
+            if processing_service.last_seen_live:
+                if processing_service.last_seen_latency and processing_service.last_seen_latency < lowest_latency:
+                    lowest_latency = processing_service.last_seen_latency
+                    processing_service_lowest_latency = processing_service
+                elif processing_service_lowest_latency is None:
+                    # Online but no latency data (e.g. async/pull-mode service) — use as fallback
                     processing_service_lowest_latency = processing_service
 
-        # if all offline then throw error
-        if not processing_services_online:
+        if processing_service_lowest_latency is None:
             msg = f'No processing services are online for the pipeline "{pipeline_name}".'
             task_logger.error(msg)
-
             raise Exception(msg)
-        else:
+
+        if lowest_latency < float("inf"):
             task_logger.info(
                 f"Using processing service with latency {round(lowest_latency, 4)}: "
                 f"{processing_service_lowest_latency}"
             )
+        else:
+            task_logger.info(f"Using processing service (no latency data): {processing_service_lowest_latency}")
 
-            return processing_service_lowest_latency
+        return processing_service_lowest_latency
 
-    def process_images(self, images: typing.Iterable[SourceImage], project_id: int, job_id: int | None = None):
+    def process_images(
+        self,
+        images: typing.Iterable[SourceImage],
+        project_id: int,
+        job_id: int | None = None,
+        reprocess_all_images: bool = False,
+    ) -> PipelineResultsResponse:
         processing_service = self.choose_processing_service_for_pipeline(job_id, self.name, project_id)
 
         if not processing_service.endpoint_url:
-            raise ValueError(
+            raise PipelineNotConfigured(
                 f"No endpoint URL configured for this pipeline's processing service ({processing_service})"
             )
 
@@ -1120,6 +1212,7 @@ class Pipeline(BaseModel):
             images=images,
             job_id=job_id,
             project_id=project_id,
+            reprocess_all_images=reprocess_all_images,
         )
 
     def save_results(self, results: PipelineResultsResponse, job_id: int | None = None):

@@ -1,12 +1,14 @@
 import { FormRow, FormSection } from 'components/form/layout/layout'
 import { DeploymentDetails } from 'data-services/models/deployment-details'
-import { Button } from 'design-system/components/button/button'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { ImageCarousel } from 'design-system/components/image-carousel/image-carousel'
 import { InputContent, InputValue } from 'design-system/components/input/input'
 import { MultiMarkerMap } from 'design-system/map/multi-marker-map/multi-marker-map'
 import { MarkerPosition } from 'design-system/map/types'
+import { Button } from 'nova-ui-kit'
 import { useMemo } from 'react'
+import { useParams } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import styles from './styles.module.scss'
 
@@ -19,6 +21,7 @@ export const DeploymentDetailsInfo = ({
   title: string
   onEditClick: () => void
 }) => {
+  const { projectId } = useParams()
   const markers = useMemo(
     () => [
       {
@@ -33,12 +36,20 @@ export const DeploymentDetailsInfo = ({
       <Dialog.Header title={title}>
         <div className={styles.buttonWrapper}>
           {deployment.canUpdate ? (
-            <Button label={translate(STRING.EDIT)} onClick={onEditClick} />
+            <Button onClick={onEditClick} size="small" variant="outline">
+              <span>{translate(STRING.EDIT)}</span>
+            </Button>
           ) : null}
         </div>
       </Dialog.Header>
       <div className={styles.content}>
         <FormSection title={translate(STRING.FIELD_LABEL_GENERAL)}>
+          <FormRow>
+            <InputValue
+              label={translate(STRING.FIELD_LABEL_ID)}
+              value={deployment.id}
+            />
+          </FormRow>
           <FormRow>
             <InputValue
               label={translate(STRING.FIELD_LABEL_NAME)}
@@ -53,10 +64,24 @@ export const DeploymentDetailsInfo = ({
             <InputValue
               label={translate(STRING.FIELD_LABEL_SITE)}
               value={deployment.site?.name}
+              tooltip={{
+                text: translate(STRING.TOOLTIP_SITE),
+                link: {
+                  text: translate(STRING.NAV_ITEM_SITES),
+                  to: APP_ROUTES.SITES({ projectId: projectId as string }),
+                },
+              }}
             />
             <InputValue
               label={translate(STRING.FIELD_LABEL_DEVICE)}
               value={deployment.device?.name}
+              tooltip={{
+                text: translate(STRING.TOOLTIP_DEVICE),
+                link: {
+                  text: translate(STRING.NAV_ITEM_DEVICES),
+                  to: APP_ROUTES.DEVICES({ projectId: projectId as string }),
+                },
+              }}
             />
           </FormRow>
           {deployment.image && (
@@ -80,7 +105,7 @@ export const DeploymentDetailsInfo = ({
           </FormRow>
         </FormSection>
 
-        <FormSection title={translate(STRING.FIELD_LABEL_SOURCE_IMAGES)}>
+        <FormSection title={translate(STRING.FIELD_LABEL_CAPTURES)}>
           <FormRow>
             <InputValue
               label={translate(STRING.FIELD_LABEL_DATA_SOURCE)}

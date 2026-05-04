@@ -8,12 +8,15 @@ const convertToServerFieldValues = (fieldValues: any) => ({
   settings: {
     session_time_gap_seconds: fieldValues.sessionTimeGapSeconds,
     default_filters_score_threshold: fieldValues.scoreThreshold,
-    default_filters_include_taxa_ids: fieldValues.includeTaxa.map(
-      (taxon: any) => taxon.id
-    ),
-    default_filters_exclude_taxa_ids: fieldValues.excludeTaxa.map(
-      (taxon: any) => taxon.id
-    ),
+    default_filters_include_taxa_ids: fieldValues.includeTaxa
+      ? fieldValues.includeTaxa.map((taxon: any) => taxon.id)
+      : undefined,
+    default_filters_exclude_taxa_ids: fieldValues.excludeTaxa
+      ? fieldValues.excludeTaxa.map((taxon: any) => taxon.id)
+      : undefined,
+    default_processing_pipeline_id: fieldValues.defaultProcessingPipeline
+      ? fieldValues.defaultProcessingPipeline.id
+      : undefined,
   },
 })
 

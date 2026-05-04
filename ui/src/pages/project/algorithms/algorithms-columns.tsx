@@ -1,13 +1,16 @@
 import { Algorithm } from 'data-services/models/algorithm'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
+import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import { CellTheme, TableColumn } from 'design-system/components/table/types'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 
-export const columns: (projectId: string) => TableColumn<Algorithm>[] = (
+export const columns = ({
+  projectId,
+}: {
   projectId: string
-) => [
+}): TableColumn<Algorithm>[] => [
   {
     id: 'id',
     name: translate(STRING.FIELD_LABEL_ID),
@@ -27,13 +30,23 @@ export const columns: (projectId: string) => TableColumn<Algorithm>[] = (
     ),
   },
   {
+    id: 'description',
+    name: translate(STRING.FIELD_LABEL_DESCRIPTION),
+    renderCell: (item: Algorithm) => (
+      <BasicTableCell
+        style={{ width: '320px', whiteSpace: 'normal' }}
+        value={item.description}
+      />
+    ),
+  },
+  {
     id: 'task-type',
     name: 'Task type',
     sortField: 'task_type',
     renderCell: (item: Algorithm) => <BasicTableCell value={item.taskType} />,
   },
   {
-    id: 'category_count',
+    id: 'category-count',
     name: translate(STRING.FIELD_LABEL_CATEGORY_COUNT),
     sortField: 'category_count',
     renderCell: (item: Algorithm) => (
@@ -44,12 +57,12 @@ export const columns: (projectId: string) => TableColumn<Algorithm>[] = (
     id: 'created-at',
     name: translate(STRING.FIELD_LABEL_CREATED_AT),
     sortField: 'created_at',
-    renderCell: (item: Algorithm) => <BasicTableCell value={item.createdAt} />,
+    renderCell: (item: Algorithm) => <DateTableCell date={item.createdAt} />,
   },
   {
     id: 'updated-at',
     name: translate(STRING.FIELD_LABEL_UPDATED_AT),
     sortField: 'updated_at',
-    renderCell: (item: Algorithm) => <BasicTableCell value={item.updatedAt} />,
+    renderCell: (item: Algorithm) => <DateTableCell date={item.updatedAt} />,
   },
 ]

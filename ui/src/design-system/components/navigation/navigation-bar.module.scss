@@ -84,6 +84,18 @@
   transition: left 400ms ease, width 200ms ease;
 }
 
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 400ms ease;
+  color: $color-primary-1-600;
+
+  &.active {
+    color: $color-success-700;
+  }
+}
+
 @media only screen and (max-width: $small-screen-breakpoint) {
   .topContent {
     margin-bottom: 0;

@@ -1,5 +1,5 @@
-import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { UserPermission } from 'utils/user/types'
+import { Entity } from './entity'
 import { Pipeline } from './pipeline'
 
 export const SERVER_JOB_STATUS_CODES = [
@@ -36,10 +36,12 @@ export enum JobStatusType {
   Neutral,
 }
 
-export class Job {
+export class Job extends Entity {
   protected readonly _job: ServerJob
 
   public constructor(job: ServerJob) {
+    super(job)
+
     this._job = job
   }
 
@@ -66,44 +68,30 @@ export class Job {
       this._job.user_permissions.includes(UserPermission.Run) &&
       this.status.code !== 'CREATED' &&
       this.status.code !== 'STARTED' &&
-      this.status.code !== 'PENDING'
+      this.status.code !== 'PENDING' &&
+      this.status.code !== 'CANCELING' &&
+      this.status.code !== 'RETRY'
     )
-  }
-
-  get createdAt(): string | undefined {
-    if (!this._job.created_at) {
-      return
-    }
-
-    return getFormatedDateTimeString({ date: new Date(this._job.created_at) })
   }
 
   get export(): { id: string; format: string } | undefined {
     return this._job.data_export
   }
 
-  get finishedAt(): string | undefined {
+  get finishedAt(): Date | undefined {
     if (!this._job.finished_at) {
       return
     }
 
-    return getFormatedDateTimeString({ date: new Date(this._job.finished_at) })
+    return new Date(this._job.finished_at)
   }
 
-  get id(): string {
-    return `${this._job.id}`
-  }
-
-  get startedAt(): string | undefined {
+  get startedAt(): Date | undefined {
     if (!this._job.started_at) {
       return
     }
 
-    return getFormatedDateTimeString({ date: new Date(this._job.started_at) })
-  }
-
-  get name(): string {
-    return this._job.name
+    return new Date(this._job.started_at)
   }
 
   get pipeline(): Pipeline | undefined {
@@ -167,14 +155,6 @@ export class Job {
     return Job.getStatusInfo(
       this._job.status ?? this._job.progress.summary.status
     )
-  }
-
-  get updatedAt(): string | undefined {
-    if (!this._job.updated_at) {
-      return
-    }
-
-    return getFormatedDateTimeString({ date: new Date(this._job.updated_at) })
   }
 
   static getJobTypeInfo(key: ServerJobType) {

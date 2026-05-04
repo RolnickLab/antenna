@@ -1,42 +1,45 @@
+import { DefaultFiltersTooltip } from 'components/filtering/default-filter-control'
 import { LicenseInfo } from 'components/license-info/license-info'
 import { useCaptureDetails } from 'data-services/hooks/captures/useCaptureDetails'
+import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { useSessionTimeline } from 'data-services/hooks/sessions/useSessionTimeline'
 import { SessionDetails } from 'data-services/models/session-details'
 import {
   Checkbox,
   CheckboxTheme,
 } from 'design-system/components/checkbox/checkbox'
-import { useEffect, useMemo, useState } from 'react'
-import { STRING, translate } from 'utils/language'
-import { useUserPreferences } from 'utils/userPreferences/userPreferencesContext'
+import { useEffect, useState } from 'react'
 import { ActivityPlot } from './activity-plot/lazy-activity-plot'
 import { CaptureDetails } from './capture-details/capture-details'
 import { CaptureNavigation } from './capture-navigation/capture-navigation'
 import { Frame } from './frame/frame'
 import styles from './playback.module.scss'
 import { SessionCapturesSlider } from './session-captures-slider/session-captures-slider'
-import { ThresholdSlider } from './threshold-slider/threshold-slider'
 import { useActiveCaptureId } from './useActiveCapture'
 
-export const Playback = ({ session }: { session: SessionDetails }) => {
-  const {
-    userPreferences: { scoreThreshold },
-  } = useUserPreferences()
+export const Playback = ({
+  session,
+  projectId,
+}: {
+  session: SessionDetails
+  projectId?: string
+}) => {
+  const { project } = useProjectDetails(projectId as string, true)
   const { timeline = [] } = useSessionTimeline(session.id)
   const [poll, setPoll] = useState(false)
   const [showDetections, setShowDetections] = useState(true)
-  const [showDetectionsBelowThreshold, setShowDetectionsBelowThreshold] =
-    useState(false)
+  const [defaultFilters, setDefaultFilters] = useState(true)
   const [snapToDetections, setSnapToDetections] = useState(
     session.numDetections ? true : false
   )
   const { activeCaptureId, setActiveCaptureId } = useActiveCaptureId(
     session.firstCapture?.id
   )
-  const { capture: activeCapture } = useCaptureDetails(
-    activeCaptureId as string,
-    poll
-  )
+  const { capture: activeCapture } = useCaptureDetails({
+    id: activeCaptureId as string,
+    poll,
+    projectId: projectId as string,
+  })
 
   useEffect(() => {
     // If the active capture has a job in progress, we want to poll the endpoint so we can show job updates
@@ -47,19 +50,7 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
     }
   }, [activeCapture])
 
-  const detections = useMemo(() => {
-    if (!activeCapture?.detections) {
-      return []
-    }
-
-    if (showDetectionsBelowThreshold) {
-      return activeCapture.detections
-    }
-
-    return activeCapture.detections.filter(
-      (detection) => detection.score >= scoreThreshold
-    )
-  }, [activeCapture, scoreThreshold, showDetectionsBelowThreshold])
+  const detections = activeCapture?.detections ?? []
 
   if (!session.firstCapture) {
     return null
@@ -75,32 +66,34 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
               <CaptureDetails
                 capture={activeCapture}
                 captureId={activeCaptureId}
+                defaultFilters={defaultFilters}
               />
             </div>
           )}
           <div className={styles.sidebarSection}>
             <span className={styles.title}>View settings</span>
-            <div>
-              <span className={styles.label}>
-                {translate(STRING.FIELD_LABEL_SCORE_THRESHOLD)}
-              </span>
-              <ThresholdSlider />
-            </div>
-            <span className={styles.label}>Preferences</span>
-            <Checkbox
-              id="show-detections-below-threshold"
-              label="Show detections below threshold"
-              checked={showDetectionsBelowThreshold}
-              onCheckedChange={setShowDetectionsBelowThreshold}
-              theme={CheckboxTheme.Neutral}
-            />
             <Checkbox
               id="show-detections"
-              label="Show detection frames"
+              label="Show detections"
               checked={showDetections}
               onCheckedChange={setShowDetections}
               theme={CheckboxTheme.Neutral}
             />
+            <div className="flex items-center gap-1">
+              <Checkbox
+                id="default-filters"
+                label="Default filters"
+                checked={defaultFilters}
+                onCheckedChange={setDefaultFilters}
+                theme={CheckboxTheme.Neutral}
+              />
+              {project ? (
+                <DefaultFiltersTooltip
+                  className="text-neutral-200 hover:bg-transparent"
+                  project={project}
+                />
+              ) : null}
+            </div>
             <Checkbox
               id="snap-to-detections"
               label="Snap to images with detections"
@@ -113,11 +106,12 @@ export const Playback = ({ session }: { session: SessionDetails }) => {
         </div>
       </div>
       <Frame
+        defaultFilters={defaultFilters}
+        detections={detections}
+        height={activeCapture?.height ?? session.firstCapture.height}
+        showDetections={showDetections}
         src={activeCapture?.src}
         width={activeCapture?.width ?? session.firstCapture.width}
-        height={activeCapture?.height ?? session.firstCapture.height}
-        detections={detections}
-        showDetections={showDetections}
       />
       <div className={styles.bottomBar}>
         <div className={styles.captureNavigationWrapper}>

@@ -1,5 +1,4 @@
 import classNames from 'classnames'
-import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
 import styles from './status-bullet.module.scss'
 
 export enum StatusBulletTheme {
@@ -9,15 +8,17 @@ export enum StatusBulletTheme {
 }
 
 interface StatusBulletProps {
-  icon?: IconType
-  value?: number
+  Icon?: React.ComponentType<{
+    className?: string
+  }>
   theme?: StatusBulletTheme
+  value?: number
 }
 
 export const StatusBullet = ({
-  icon,
   theme = StatusBulletTheme.Default,
   value,
+  Icon,
 }: StatusBulletProps) => (
   <div
     className={classNames(styles.status, {
@@ -25,7 +26,7 @@ export const StatusBullet = ({
       [styles.neutral]: theme === StatusBulletTheme.Neutral,
     })}
   >
-    {icon ? <Icon type={icon} theme={IconTheme.Light} /> : null}
+    {Icon ? <Icon className="w-4 h-4 text-success-foreground" /> : null}
     {value ? <span>{value}</span> : null}
   </div>
 )

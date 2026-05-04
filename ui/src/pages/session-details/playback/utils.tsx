@@ -54,10 +54,17 @@ export const dateToValue = ({
   date: Date
   startDate: Date
   endDate: Date
-}) =>
-  ((date.getTime() - startDate.getTime()) /
-    (endDate.getTime() - startDate.getTime())) *
-  100
+}) => {
+  if (endDate.getTime() === startDate.getTime()) {
+    return 50
+  }
+
+  return (
+    ((date.getTime() - startDate.getTime()) /
+      (endDate.getTime() - startDate.getTime())) *
+    100
+  )
+}
 
 export const valueToDate = ({
   value,

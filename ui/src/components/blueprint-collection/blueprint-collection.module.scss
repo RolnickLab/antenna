@@ -36,15 +36,10 @@
   align-items: center;
   max-width: 100%;
 
-  .blueprintImage {
-    position: relative;
-    margin-bottom: 8px;
-
-    img {
-      max-width: 100%;
-      height: inherit;
-      vertical-align: middle;
-    }
+  img {
+    max-width: 100%;
+    height: inherit;
+    vertical-align: middle;
   }
 
   .blueprintInfo {

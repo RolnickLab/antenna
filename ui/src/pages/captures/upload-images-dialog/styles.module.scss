@@ -1,0 +1,21 @@
+@import 'src/design-system/variables/variables.scss';
+
+.content {
+  width: 720px;
+  max-width: 100%;
+  box-sizing: border-box;
+
+  &.compact {
+    width: 320px;
+  }
+}
+
+.section {
+  margin: 32px 0;
+}
+
+@media only screen and (max-width: $small-screen-breakpoint) {
+  .section {
+    margin: 16px 0;
+  }
+}

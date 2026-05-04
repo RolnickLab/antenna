@@ -1,5 +1,6 @@
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { Algorithm, ServerAlgorithm } from './algorithm'
+import { Entity } from './entity'
 import { ProcessingService } from './processing-service'
 
 export type ServerPipeline = any // TODO: Update this type
@@ -12,11 +13,13 @@ export enum PipelineEnabledType {
   Enabled,
   Disabled,
 }
-export class Pipeline {
+export class Pipeline extends Entity {
   protected readonly _pipeline: ServerPipeline
   protected readonly _algorithms: Algorithm[] = []
 
   public constructor(pipeline: ServerPipeline) {
+    super(pipeline)
+
     this._pipeline = pipeline
 
     if (pipeline.algorithms) {
@@ -30,26 +33,8 @@ export class Pipeline {
     return this._algorithms
   }
 
-  get createdAt(): string {
-    return getFormatedDateTimeString({
-      date: new Date(this._pipeline.created_at),
-    })
-  }
-
-  get description(): string {
-    return this._pipeline.description
-  }
-
-  get id(): string {
-    return `${this._pipeline.id}`
-  }
-
   get slug(): string {
     return `${this._pipeline.slug}`
-  }
-
-  get name(): string {
-    return this._pipeline.name
   }
 
   get stages(): {
@@ -85,16 +70,6 @@ export class Pipeline {
       : `${this._pipeline.version}`
   }
 
-  get updatedAt(): string | undefined {
-    if (!this._pipeline.updated_at) {
-      return undefined
-    }
-
-    return getFormatedDateTimeString({
-      date: new Date(this._pipeline.updated_at),
-    })
-  }
-
   get currentProcessingService(): {
     online: boolean
     service?: ProcessingService
@@ -103,7 +78,7 @@ export class Pipeline {
       (service: any) => new ProcessingService(service)
     )
     for (const processingService of processingServices) {
-      if (processingService.lastCheckedLive) {
+      if (processingService.lastSeenLive || processingService.isAsync) {
         return { online: true, service: processingService }
       }
     }
@@ -115,7 +90,7 @@ export class Pipeline {
     const processingServices = this._pipeline.processing_services
     let total_online = 0
     for (const processingService of processingServices) {
-      if (processingService.last_checked_live) {
+      if (processingService.last_seen_live) {
         total_online += 1
       }
     }
@@ -123,22 +98,23 @@ export class Pipeline {
     return total_online + '/' + processingServices.length
   }
 
-  get processingServicesOnlineLastChecked(): string | undefined {
+  get processingServicesOnlineLastSeen(): string | undefined {
     const processingServices = this._pipeline.processing_services
 
     if (!processingServices.length) {
       return undefined
     }
 
-    const last_checked_times = []
-    for (const processingService of processingServices) {
-      last_checked_times.push(
-        new Date(processingService.last_checked).getTime()
-      )
+    const last_seen_times = processingServices
+      .filter((s: any) => s.last_seen != null)
+      .map((s: any) => new Date(s.last_seen).getTime())
+
+    if (!last_seen_times.length) {
+      return undefined
     }
 
     return getFormatedDateTimeString({
-      date: new Date(Math.max(...last_checked_times)),
+      date: new Date(Math.max(...last_seen_times)),
     })
   }
 

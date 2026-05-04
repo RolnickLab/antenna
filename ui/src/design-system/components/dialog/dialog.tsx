@@ -1,8 +1,8 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import classNames from 'classnames'
 import { ErrorState } from 'components/error-state/error-state'
+import { XIcon } from 'lucide-react'
 import { ReactNode } from 'react'
-import { Icon, IconType } from '../icon/icon'
 import { LoadingSpinner } from '../loading-spinner/loading-spinner'
 import styles from './dialog.module.scss'
 
@@ -20,13 +20,12 @@ const Root = ({
   </Dialog.Root>
 )
 
-const Trigger = ({ children }: { children: ReactNode }) => (
-  <Dialog.Trigger asChild>{children}</Dialog.Trigger>
-)
+const Trigger = Dialog.Trigger
 
 const Content = ({
   ariaCloselabel,
   children,
+  className,
   isCompact,
   isLoading,
   error,
@@ -35,6 +34,7 @@ const Content = ({
   ariaCloselabel: string
   children: ReactNode
   isCompact?: boolean
+  className?: string
   isLoading?: boolean
   error?: any
   onOpenAutoFocus?: (event: Event) => void
@@ -48,10 +48,14 @@ const Content = ({
       ) : null}
     </Dialog.Overlay>
     <Dialog.Content
-      className={classNames(styles.dialog, {
-        [styles.compact]: isCompact || error,
-        [styles.loading]: isLoading,
-      })}
+      className={classNames(
+        styles.dialog,
+        {
+          [styles.compact]: isCompact || error,
+          [styles.loading]: isLoading,
+        },
+        className
+      )}
       tabIndex={-1}
       onOpenAutoFocus={onOpenAutoFocus}
     >
@@ -65,20 +69,26 @@ const Content = ({
         )}
       </div>
       <Dialog.Close className={styles.dialogClose} aria-label={ariaCloselabel}>
-        <Icon type={IconType.Close} size={12} />
+        <XIcon className="w-4 h-4" />
       </Dialog.Close>
     </Dialog.Content>
   </Dialog.Portal>
 )
 
 const Header = ({
-  title,
   children,
+  title,
+  withActions,
 }: {
-  title: string
   children?: ReactNode
+  title: string
+  withActions?: boolean
 }) => (
-  <div className={styles.dialogHeader}>
+  <div
+    className={classNames(styles.dialogHeader, {
+      [styles.withActions]: withActions,
+    })}
+  >
     <Dialog.Title className={styles.dialogTitle}>{title}</Dialog.Title>
     {children}
   </div>

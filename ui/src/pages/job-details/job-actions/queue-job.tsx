@@ -1,27 +1,49 @@
 import { useQueueJob } from 'data-services/hooks/jobs/useQueueJob'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
-import { IconType } from 'design-system/components/icon/icon'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { CheckIcon, Loader2Icon, PlayIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 
-export const QueueJob = ({ jobId }: { jobId: string }) => {
+export const QueueJob = ({
+  compact,
+  jobId,
+}: {
+  compact?: boolean
+  jobId: string
+}) => {
   const { queueJob, isLoading, isSuccess } = useQueueJob()
 
-  if (isSuccess) {
-    return (
+  return compact ? (
+    <BasicTooltip content={translate(STRING.START)}>
       <Button
-        label={translate(STRING.START)}
-        icon={IconType.RadixCheck}
-        theme={ButtonTheme.Success}
-      />
-    )
-  }
-
-  return (
+        aria-label={translate(STRING.START)}
+        disabled={isLoading || isSuccess}
+        onClick={() => queueJob(jobId)}
+        size="icon"
+        variant="ghost"
+      >
+        {isSuccess ? (
+          <CheckIcon className="w-4 h-4" />
+        ) : isLoading ? (
+          <Loader2Icon className="w-4 h-4 animate-spin" />
+        ) : (
+          <PlayIcon className="w-4 h-4" />
+        )}
+      </Button>
+    </BasicTooltip>
+  ) : (
     <Button
-      label={translate(STRING.START)}
-      loading={isLoading}
-      theme={ButtonTheme.Success}
+      disabled={isLoading || isSuccess}
       onClick={() => queueJob(jobId)}
-    />
+      size="small"
+      variant="ghost"
+    >
+      <span>{translate(STRING.START)}</span>
+      {isSuccess ? (
+        <CheckIcon className="w-4 h-4" />
+      ) : isLoading ? (
+        <Loader2Icon className="w-4 h-4 animate-spin" />
+      ) : null}
+    </Button>
   )
 }

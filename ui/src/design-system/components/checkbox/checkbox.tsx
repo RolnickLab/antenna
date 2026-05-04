@@ -1,6 +1,6 @@
 import * as _Checkbox from '@radix-ui/react-checkbox'
 import classNames from 'classnames'
-import { Icon, IconTheme, IconType } from 'design-system/components/icon/icon'
+import { CheckIcon, MinusIcon } from 'lucide-react'
 import styles from './checkbox.module.scss'
 
 export enum CheckboxTheme {
@@ -38,11 +38,9 @@ export const Checkbox = ({
       onCheckedChange={onCheckedChange}
     >
       <_Checkbox.Indicator className={styles.checkboxIndicator}>
-        {checked === true && (
-          <Icon type={IconType.RadixCheck} theme={IconTheme.Light} />
-        )}
+        {checked === true && <CheckIcon className="w-4 h-4 text-background" />}
         {checked === 'indeterminate' && (
-          <Icon type={IconType.RadixMinus} theme={IconTheme.Light} />
+          <MinusIcon className="w-4 h-4 text-background" />
         )}
       </_Checkbox.Indicator>
     </_Checkbox.Root>

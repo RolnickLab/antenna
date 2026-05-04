@@ -10,13 +10,15 @@ import {
   DeploymentDetails,
   DeploymentFieldValues,
 } from 'data-services/models/deployment-details'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
 import { ImageUpload } from 'design-system/components/image-upload/image-upload'
 import { InputContent } from 'design-system/components/input/input'
+import { EntityPicker } from 'design-system/components/select/entity-picker'
 import _ from 'lodash'
-import { EntitiesPicker } from 'pages/project/entities/entities-picker'
+import { Button } from 'nova-ui-kit'
 import { useContext } from 'react'
 import { useForm } from 'react-hook-form'
+import { useParams } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { FormContext } from 'utils/formContext/formContext'
 import { isEmpty } from 'utils/isEmpty/isEmpty'
 import { STRING, translate } from 'utils/language'
@@ -41,6 +43,7 @@ export const SectionGeneral = ({
   deployment: DeploymentDetails
   onNext: () => void
 }) => {
+  const { projectId } = useParams()
   const { formSectionRef, formState, setFormSectionValues } =
     useContext(FormContext)
 
@@ -76,8 +79,15 @@ export const SectionGeneral = ({
                 description={config[field.name].description}
                 label={config[field.name].label}
                 error={fieldState.error?.message}
+                tooltip={{
+                  text: translate(STRING.TOOLTIP_SITE),
+                  link: {
+                    text: translate(STRING.NAV_ITEM_SITES),
+                    to: APP_ROUTES.SITES({ projectId: projectId as string }),
+                  },
+                }}
               >
-                <EntitiesPicker
+                <EntityPicker
                   collection={API_ROUTES.SITES}
                   value={field.value}
                   onValueChange={field.onChange}
@@ -94,8 +104,15 @@ export const SectionGeneral = ({
                 description={config[field.name].description}
                 label={config[field.name].label}
                 error={fieldState.error?.message}
+                tooltip={{
+                  text: translate(STRING.TOOLTIP_DEVICE),
+                  link: {
+                    text: translate(STRING.NAV_ITEM_DEVICES),
+                    to: APP_ROUTES.DEVICES({ projectId: projectId as string }),
+                  },
+                }}
               >
-                <EntitiesPicker
+                <EntityPicker
                   collection={API_ROUTES.DEVICES}
                   value={field.value}
                   onValueChange={field.onChange}
@@ -127,11 +144,9 @@ export const SectionGeneral = ({
         </FormRow>
       </FormSection>
       <FormActions>
-        <Button
-          label={translate(STRING.NEXT)}
-          onClick={onNext}
-          theme={ButtonTheme.Success}
-        />
+        <Button onClick={onNext} size="small" type="button" variant="success">
+          <span>{translate(STRING.NEXT)}</span>
+        </Button>
       </FormActions>
     </form>
   )

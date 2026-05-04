@@ -2,7 +2,8 @@ import classNames from 'classnames'
 import { FormField } from 'components/form/form-field'
 import { FormConfig } from 'components/form/types'
 import { useResetPassword } from 'data-services/hooks/auth/useResetPassword'
-import { Button, ButtonTheme } from 'design-system/components/button/button'
+import { Loader2Icon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, useLocation } from 'react-router-dom'
@@ -68,12 +69,12 @@ export const ResetPassword = () => {
               config={config}
               control={control}
             />
-            <Button
-              label={translate(STRING.SEND_INSTRUCTIONS)}
-              type="submit"
-              theme={ButtonTheme.Success}
-              loading={isLoading}
-            />
+            <Button type="submit" variant="success">
+              <span>{translate(STRING.SEND_INSTRUCTIONS)}</span>
+              {isLoading ? (
+                <Loader2Icon className="w-4 h-4 animate-spin" />
+              ) : null}
+            </Button>
           </>
         )}
         {email && (

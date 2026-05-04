@@ -1,11 +1,12 @@
 import classNames from 'classnames'
 import { useStarCapture } from 'data-services/hooks/captures/useStarCapture'
 import { usePipelines } from 'data-services/hooks/pipelines/usePipelines'
+import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { CaptureDetails as Capture } from 'data-services/models/capture-details'
 import { Job } from 'data-services/models/job'
 import { ProcessingService } from 'data-services/models/processing-service'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
-import { ExternalLinkIcon, HeartIcon, Loader2Icon } from 'lucide-react'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { ExternalLinkIcon, Loader2Icon, StarIcon } from 'lucide-react'
 import { Button, buttonVariants, Select } from 'nova-ui-kit'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
@@ -20,9 +21,11 @@ import { ProcessNow } from './capture-job/process-now'
 export const CaptureDetails = ({
   capture,
   captureId,
+  defaultFilters,
 }: {
   capture?: Capture
   captureId: string
+  defaultFilters: boolean
 }) => {
   const { user } = useUser()
   const { projectId } = useParams()
@@ -111,13 +114,20 @@ export const CaptureDetails = ({
                 to: APP_ROUTES.OCCURRENCES({
                   projectId: projectId as string,
                 }),
-                filters: {
-                  detections__source_image: capture.id,
-                },
+                filters: defaultFilters
+                  ? {
+                      detections__source_image: capture.id,
+                    }
+                  : {
+                      detections__source_image: capture.id,
+                      apply_defaults: 'false',
+                    },
               })}
             >
               <span className={classNames(styles.value, styles.bubble)}>
-                {capture.numOccurrences}
+                {defaultFilters
+                  ? capture.numOccurrences
+                  : capture.numDetections}
               </span>
             </Link>
           </div>
@@ -158,8 +168,11 @@ const StarButton = ({
     : translate(STRING.MESSAGE_PERMISSIONS_MISSING)
 
   return (
-    <Tooltip content={tooltipContent}>
+    <BasicTooltip asChild content={tooltipContent}>
       <Button
+        aria-label={
+          isStarred ? translate(STRING.STARRED) : translate(STRING.STAR)
+        }
         className="rounded-md !bg-neutral-700 text-neutral-200"
         disabled={!canStar}
         size="icon"
@@ -168,18 +181,22 @@ const StarButton = ({
         {isLoading || captureFetching ? (
           <Loader2Icon className="w-4 h-4 animate-spin" />
         ) : (
-          <HeartIcon
+          <StarIcon
             className="w-4 h-4 transition-colors"
             fill={isStarred ? 'currentColor' : 'transparent'}
           />
         )}
       </Button>
-    </Tooltip>
+    </BasicTooltip>
   )
 }
 
 const JobControls = ({ capture }: { capture?: Capture }) => {
-  const [selectedPipelineId, setSelectedPipelineId] = useState<string>()
+  const { projectId } = useParams()
+  const { project } = useProjectDetails(projectId as string, true)
+  const [selectedPipelineId, setSelectedPipelineId] = useState(
+    project?.settings.defaultProcessingPipeline?.id
+  )
 
   return (
     <div className={styles.jobControls}>
@@ -215,14 +232,21 @@ const PipelinesPicker = ({
   onValueChange: (value?: string) => void
 }) => {
   const { projectId } = useParams()
-  const { pipelines = [] } = usePipelines({
+  const { pipelines = [], isLoading } = usePipelines({
     projectId: projectId as string,
   })
 
   return (
-    <Select.Root value={value ?? ''} onValueChange={onValueChange}>
-      <Select.Trigger className="h-8 !bg-neutral-700 border-none text-neutral-200 body-small focus:ring-0 focus:ring-offset-0">
-        <Select.Value placeholder="Select a pipeline" />
+    <Select.Root
+      disabled={pipelines.length === 0}
+      onValueChange={onValueChange}
+      value={value ?? ''}
+    >
+      <Select.Trigger
+        className="w-auto max-w-full h-8 grow !bg-neutral-700 border-none text-neutral-200 body-small focus:ring-0 focus:ring-offset-0"
+        loading={isLoading}
+      >
+        <Select.Value className="truncate" placeholder="Select a pipeline" />
       </Select.Trigger>
       <Select.Content>
         {pipelines.map((p) => (

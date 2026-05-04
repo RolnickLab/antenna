@@ -3,7 +3,7 @@ import { EmptyState } from 'components/empty-state/empty-state'
 import { ErrorState } from 'components/error-state/error-state'
 import { Checkbox } from 'design-system/components/checkbox/checkbox'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { useRef } from 'react'
 import { BasicTableCell } from '../basic-table-cell/basic-table-cell'
 import { TableHeader } from '../table-header/table-header'
@@ -107,10 +107,10 @@ export const Table = <T extends { id: string }>({
               <TableHeader
                 key={column.id}
                 column={column}
+                onSortClick={() => onSortClick(column)}
                 sortable={sortable}
                 sortSettings={sortSettings}
                 visuallyHidden={column.visuallyHidden}
-                onSortClick={() => onSortClick(column)}
               />
             ))}
             <th
@@ -140,7 +140,10 @@ export const Table = <T extends { id: string }>({
                 </td>
               )}
               {columns.map((column, columnIndex) => (
-                <td key={column.id}>
+                <td
+                  key={column.id}
+                  className={classNames({ [styles.sticky]: column.sticky })}
+                >
                   {column.renderCell(item, rowIndex, columnIndex)}
                 </td>
               ))}
@@ -187,7 +190,10 @@ const MultiSelectCheckbox = <T extends { id: string }>({
   })()
 
   return (
-    <Tooltip content={checked === true ? 'Deselect all' : 'Select all'}>
+    <BasicTooltip
+      asChild
+      content={checked === true ? 'Deselect all' : 'Select all'}
+    >
       <div>
         <Checkbox
           checked={checked}
@@ -200,6 +206,6 @@ const MultiSelectCheckbox = <T extends { id: string }>({
           }}
         />
       </div>
-    </Tooltip>
+    </BasicTooltip>
   )
 }

@@ -38,14 +38,16 @@
   outline: 2px solid $color-success-500;
   border-radius: 2px;
 
-
-
   &.warning {
     outline-color: $color-warning-500;
   }
 
   &.alert {
     outline-color: $color-destructive-500;
+  }
+
+  &.filtered {
+    outline: 2px solid $color-neutral-300;
   }
 
   &.active {
