@@ -1404,10 +1404,15 @@ DEFAULT_MAX_EVENT_DURATION = datetime.timedelta(hours=24)
 
 def group_images_into_events(
     deployment: Deployment,
-    max_time_gap=datetime.timedelta(minutes=120),
+    max_time_gap: datetime.timedelta | None = None,
     delete_empty=True,
     max_event_duration: datetime.timedelta | None = DEFAULT_MAX_EVENT_DURATION,
 ) -> list[Event]:
+    if max_time_gap is None:
+        if deployment.project_id:
+            max_time_gap = datetime.timedelta(seconds=deployment.project.session_time_gap_seconds)
+        else:
+            max_time_gap = datetime.timedelta(minutes=120)
     # Log a warning if multiple SourceImages have the same timestamp
     dupes = (
         SourceImage.objects.filter(deployment=deployment)
