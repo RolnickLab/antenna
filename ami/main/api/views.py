@@ -359,6 +359,30 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         else:
             raise api_exceptions.ValidationError(detail="Deployment must have a data source to sync captures from")
 
+    @action(detail=True, methods=["post"], name="regroup-sessions", url_path="regroup-sessions")
+    def regroup_sessions(self, _request, pk=None) -> Response:
+        """
+        Queue a background task to regroup the deployment's source images into sessions.
+
+        Uses the project's ``session_time_gap_seconds`` setting to determine
+        the maximum gap between consecutive images before a new session is started.
+
+        (Sessions are stored as ``Event`` records internally.)
+        """
+        from ami.tasks import regroup_events as regroup_events_task
+
+        deployment: Deployment = self.get_object()
+        async_result = regroup_events_task.delay(deployment.pk)
+        logger.info(f"Queued regroup_sessions for deployment {deployment.pk} (task {async_result.id})")
+        return Response(
+            {
+                "task_id": async_result.id,
+                "deployment_id": deployment.pk,
+                "project_id": deployment.project_id,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
