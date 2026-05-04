@@ -1510,14 +1510,23 @@ def group_images_into_events(
         event = None
         if use_existing:
             # Look for overlap or proximity against the snapshot of existing events.
+            # Skip candidates whose extension would exceed max_event_duration —
+            # otherwise a continuous-monitoring stream would coalesce daily groups
+            # into one multi-day event (cf. #1268).
             for existing_event in existing_events:
                 if existing_event.end is None:
                     continue
-                if ami.utils.dates.time_ranges_overlap_or_close(
+                if not ami.utils.dates.time_ranges_overlap_or_close(
                     group_start, group_end, existing_event.start, existing_event.end, max_time_gap
                 ):
-                    event = existing_event
-                    break
+                    continue
+                if max_event_duration is not None:
+                    proposed_start = min(existing_event.start, group_start)
+                    proposed_end = max(existing_event.end, group_end)
+                    if (proposed_end - proposed_start) > max_event_duration:
+                        continue
+                event = existing_event
+                break
         else:
             # Look for exact match (only used during full re-grouping).
             event = Event.objects.filter(

@@ -309,11 +309,14 @@ class TestImageGrouping(TestCase):
         assert (mega_event.end - mega_event.start) > datetime.timedelta(hours=24)
 
         # Second pass with the cap → must split the mega-event and refresh
-        # cached fields on the reused event.
+        # cached fields on the reused event. ``use_existing=False`` because
+        # we are explicitly re-grouping captures that already have an event;
+        # the default ``use_existing=True`` only touches event-less captures.
         group_images_into_events(
             deployment=self.deployment,
             max_time_gap=datetime.timedelta(hours=2),
             max_event_duration=datetime.timedelta(hours=24),
+            use_existing=False,
         )
 
         all_events = Event.objects.filter(deployment=self.deployment)
@@ -399,10 +402,13 @@ class TestImageGrouping(TestCase):
 
         # Second pass: 24h cap → 3 daily events, each occurrence must follow
         # its detection's source_image into the corresponding daily event.
+        # ``use_existing=False`` because we are explicitly re-grouping captures
+        # that already have an event.
         group_images_into_events(
             deployment=self.deployment,
             max_time_gap=datetime.timedelta(hours=2),
             max_event_duration=datetime.timedelta(hours=24),
+            use_existing=False,
         )
 
         for occurrence in occurrences:
