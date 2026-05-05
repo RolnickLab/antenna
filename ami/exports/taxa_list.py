@@ -81,6 +81,14 @@ class TaxonAccumulator:
     time_sum_shifted: int = 0
     time_count: int = 0
 
+    # Per-occurrence duration in seconds (last_appearance - first_appearance).
+    # Will be more meaningful once detection tracking is wired up; today many
+    # occurrences are single-detection and end up with duration 0 / blank.
+    duration_min_seconds: float | None = None
+    duration_max_seconds: float | None = None
+    duration_sum_seconds: float = 0.0
+    duration_count: int = 0
+
     def add(
         self,
         score: float | None,
@@ -117,6 +125,20 @@ class TaxonAccumulator:
         if widening is not None:
             self.first_dt_max = widening if self.first_dt_max is None else max(self.first_dt_max, widening)
 
+        # Per-occurrence duration. Skipped when either bound is missing OR
+        # when there's only one detection (first == last), which would always
+        # be 0 and clutter the aggregations.
+        if first_dt is not None and last_dt is not None and last_dt > first_dt:
+            seconds = (last_dt - first_dt).total_seconds()
+            self.duration_min_seconds = (
+                seconds if self.duration_min_seconds is None else min(self.duration_min_seconds, seconds)
+            )
+            self.duration_max_seconds = (
+                seconds if self.duration_max_seconds is None else max(self.duration_max_seconds, seconds)
+            )
+            self.duration_sum_seconds += seconds
+            self.duration_count += 1
+
     @property
     def avg_score(self) -> float | None:
         if self.score_count == 0:
@@ -142,6 +164,12 @@ class TaxonAccumulator:
         if self.time_count == 0:
             return None
         return noon_unshift(self.time_sum_shifted / self.time_count)
+
+    @property
+    def duration_avg_seconds(self) -> float | None:
+        if self.duration_count == 0:
+            return None
+        return self.duration_sum_seconds / self.duration_count
 
 
 def hierarchy_columns_from_parents_json(taxon: Taxon) -> dict[str, str]:
@@ -209,6 +237,9 @@ COLUMN_ORDER: list[str] = [
     "min_time_of_night",
     "max_time_of_night",
     "avg_time_of_night",
+    "min_duration_seconds",
+    "max_duration_seconds",
+    "avg_duration_seconds",
     "gbif_taxon_key",
     "gbif_url",
     "inat_taxon_id",
@@ -233,6 +264,13 @@ def _format_date(value: datetime.datetime | datetime.date | None) -> str:
     return value.isoformat()
 
 
+def _format_seconds(value: float | None) -> str:
+    """Render duration seconds. Empty for None; otherwise rounded to int."""
+    if value is None:
+        return ""
+    return str(int(round(value)))
+
+
 def row_for_taxon(taxon: Taxon, accum: TaxonAccumulator) -> dict[str, str]:
     """Build a single CSV row dict for a taxon + its accumulator."""
     hierarchy = hierarchy_columns_from_parents_json(taxon)
@@ -253,6 +291,9 @@ def row_for_taxon(taxon: Taxon, accum: TaxonAccumulator) -> dict[str, str]:
         "min_time_of_night": seconds_to_clock_str(accum.time_min_clock),
         "max_time_of_night": seconds_to_clock_str(accum.time_max_clock),
         "avg_time_of_night": seconds_to_clock_str(accum.time_avg_clock),
+        "min_duration_seconds": _format_seconds(accum.duration_min_seconds),
+        "max_duration_seconds": _format_seconds(accum.duration_max_seconds),
+        "avg_duration_seconds": _format_seconds(accum.duration_avg_seconds),
         "gbif_taxon_key": str(taxon.gbif_taxon_key) if taxon.gbif_taxon_key else "",
         "gbif_url": gbif_url(taxon.gbif_taxon_key),
         "inat_taxon_id": str(taxon.inat_taxon_id) if taxon.inat_taxon_id else "",
