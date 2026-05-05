@@ -1,6 +1,7 @@
 import csv
 import json
 import logging
+import os
 import tempfile
 
 from django.core.serializers.json import DjangoJSONEncoder
@@ -328,6 +329,16 @@ class TaxaListCSVExporter(BaseExporter):
         """
         return Taxon.objects.none()
 
+    def update_export_stats(self, file_temp_path=None):
+        """Override base behaviour: report the number of CSV rows we actually
+        wrote (one per unique taxon), not the occurrence count from the source
+        queryset.
+        """
+        self.data_export.record_count = self._rows_written
+        if file_temp_path and os.path.exists(file_temp_path):
+            self.data_export.file_size = os.path.getsize(file_temp_path)
+        self.data_export.save()
+
     def export(self):
         """Stream filtered occurrences once, aggregate per-taxon, write CSV."""
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode="w", newline="", encoding="utf-8")
@@ -379,5 +390,6 @@ class TaxaListCSVExporter(BaseExporter):
                 records_exported += 1
                 self.update_job_progress(records_exported)
 
+        self._rows_written = records_exported
         self.update_export_stats(file_temp_path=temp_file.name)
         return temp_file.name
