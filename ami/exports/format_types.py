@@ -285,6 +285,7 @@ class TaxaListCSVExporter(BaseExporter):
 
     def __init__(self, data_export):
         super().__init__(data_export)
+        self._rows_written = 0
         # The base class's `total_records` counts occurrences, but each output
         # row is one taxon. Reset progress denominators so the percentage
         # tracks the file we're actually writing.
