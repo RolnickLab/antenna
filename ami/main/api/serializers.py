@@ -702,7 +702,7 @@ class TaxaListTaxonSerializer(TaxonNoParentNestedSerializer):
 
 class CaptureTaxonSerializer(DefaultSerializer):
     parent = TaxonNoParentNestedSerializer(read_only=True)
-    parents = TaxonParentSerializer(many=True, read_only=True)
+    parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
 
     def get_permissions(self, instance, instance_data):
         instance_data["user_permissions"] = []

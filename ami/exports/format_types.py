@@ -11,7 +11,7 @@ from rest_framework import serializers
 
 from ami.exports.base import BaseExporter
 from ami.exports.utils import get_data_in_batches
-from ami.main.models import Occurrence, SourceImage, get_media_url
+from ami.main.models import Occurrence, SourceImage, Taxon, get_media_url
 from ami.ml.schemas import BoundingBox
 
 logger = logging.getLogger(__name__)
@@ -236,6 +236,7 @@ class OccurrenceCocoTabularSerializer(OccurrenceTabularSerializer):
     capture_path = serializers.SerializerMethodField()
     capture_width = serializers.SerializerMethodField()
     capture_height = serializers.SerializerMethodField()
+    best_machine_prediction_taxon_id = serializers.IntegerField(allow_null=True, default=None)
 
     class Meta(OccurrenceTabularSerializer.Meta):
         fields = OccurrenceTabularSerializer.Meta.fields + [
@@ -244,6 +245,7 @@ class OccurrenceCocoTabularSerializer(OccurrenceTabularSerializer):
             "capture_path",
             "capture_width",
             "capture_height",
+            "best_machine_prediction_taxon_id",
         ]
 
     def get_source_image_id(self, obj):
@@ -281,6 +283,7 @@ def build_coco_dict_from_occurrence_rows(rows: list[dict], project) -> dict:
     categories_by_id: dict[int, dict] = {}
     images_by_id: dict[int, dict] = {}
     annotations: list[dict] = []
+    category_taxon_ids: set[int] = set()
 
     for row in rows:
         determination_id = row.get("determination_id")
@@ -305,6 +308,7 @@ def build_coco_dict_from_occurrence_rows(rows: list[dict], project) -> dict:
                 "id": int(determination_id),
                 "name": det_name,
             }
+            category_taxon_ids.add(int(determination_id))
         else:
             assert (
                 categories_by_id[int(determination_id)]["name"] == det_name
@@ -335,14 +339,62 @@ def build_coco_dict_from_occurrence_rows(rows: list[dict], project) -> dict:
             "iscrowd": 0,  # TODO: Could we use this field to indiate crowd of insects?
             "determination_score": row.get("determination_score"),
             "verification_status": row.get("verification_status"),
-            "best_machine_prediction_name": row.get("best_machine_prediction_name"),
+            "determination_matches_machine_prediction": row.get("determination_matches_machine_prediction"),
             "best_machine_prediction_algorithm": row.get("best_machine_prediction_algorithm"),
             "best_machine_prediction_score": row.get("best_machine_prediction_score"),
-            "determination_matches_machine_prediction": row.get("determination_matches_machine_prediction"),
+            "best_machine_prediction_taxon_id": row.get("best_machine_prediction_taxon_id"),
             "best_detection_width": row.get("best_detection_width"),
             "best_detection_height": row.get("best_detection_height"),
         }
+        prediction_taxon_id = row.get("best_machine_prediction_taxon_id")
+        if prediction_taxon_id is not None:
+            try:
+                category_taxon_ids.add(int(prediction_taxon_id))
+            except (TypeError, ValueError):
+                logger.warning(f"Invalid best_machine_prediction_taxon_id for row: {row}")
         annotations.append(ann)
+
+    def _serialize_parents_json(parents_json):
+        if not isinstance(parents_json, list):
+            return []
+        serialized = []
+        for parent in parents_json:
+            if isinstance(parent, dict):
+                parent_id = parent.get("id")
+                parent_name = parent.get("name")
+                rank = parent.get("rank")
+            else:
+                # SchemaField(list[TaxonParent]) may return Pydantic objects rather than dicts.
+                parent_id = getattr(parent, "id", None)
+                parent_name = getattr(parent, "name", None)
+                rank = getattr(parent, "rank", None)
+
+            if parent_id is None and parent_name is None and rank is None:
+                continue
+
+            rank_value = rank.value if hasattr(rank, "value") else rank
+            serialized.append(
+                {
+                    "id": parent_id,
+                    "name": parent_name,
+                    "rank": str(rank_value) if rank_value is not None else None,
+                }
+            )
+        return serialized
+
+    if category_taxon_ids:
+        taxa = Taxon.objects.filter(id__in=category_taxon_ids).values(
+            "id", "name", "rank", "parent_id", "parents_json"
+        )
+        for taxon in taxa:
+            taxon_id = int(taxon["id"])
+            categories_by_id[taxon_id] = {
+                "id": taxon_id,
+                "name": taxon.get("name") or categories_by_id.get(taxon_id, {}).get("name", ""),
+                "rank": taxon.get("rank"),
+                "parent_id": taxon.get("parent_id"),
+                "parents": _serialize_parents_json(taxon.get("parents_json")),
+            }
 
     base = getattr(settings, "EXTERNAL_BASE_URL", "") or ""
     info_url = ""
