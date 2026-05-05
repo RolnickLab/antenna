@@ -58,9 +58,30 @@ def seconds_to_clock_str(seconds: int | float | None) -> str:
     return f"{h:02d}:{m:02d}:{sec:02d}"
 
 
+def _median_int(values: list[int]) -> int | None:
+    """Median of an integer list, rounded toward 0 for even-length lists.
+    Returns None for empty input.
+    """
+    if not values:
+        return None
+    s = sorted(values)
+    n = len(s)
+    mid = n // 2
+    if n % 2 == 1:
+        return s[mid]
+    return (s[mid - 1] + s[mid]) // 2
+
+
 @dataclasses.dataclass
 class TaxonAccumulator:
-    """Streaming per-taxon aggregator. Memory: O(1) per taxon."""
+    """Per-taxon aggregator. Stores one entry per occurrence for the
+    `first_appearance_timestamp`-derived "session" stats so we can compute
+    medians; running stats elsewhere stay O(1).
+
+    "Session" here means the monitoring session (typically one night) the
+    occurrence was observed in. We use `first_appearance_timestamp` as the
+    canonical anchor for that session's day-of-year, time-of-night, and month.
+    """
 
     direct_occurrences_count: int = 0
 
@@ -69,17 +90,14 @@ class TaxonAccumulator:
     score_sum: float = 0.0
     score_count: int = 0  # occurrences with a non-null score
 
-    first_dt_min: datetime.datetime | None = None
-    first_dt_max: datetime.datetime | None = None
-    first_dt_epoch_sum: float = 0.0
-    first_dt_count: int = 0  # occurrences with a non-null first_appearance_timestamp
-
-    # Time-of-night aggregations are stored in noon-anchored seconds (see
-    # noon_shift) so they survive midnight wraparound.
-    time_min_shifted: int | None = None
-    time_max_shifted: int | None = None
-    time_sum_shifted: int = 0
-    time_count: int = 0
+    # Per-occurrence session anchors derived from first_appearance_timestamp.
+    # We keep all values to compute medians; min/max/mean are derived from the
+    # same lists rather than maintaining parallel running stats.
+    session_doys: list[int] = dataclasses.field(default_factory=list)  # 1..366
+    session_months: list[int] = dataclasses.field(default_factory=list)  # 1..12
+    # Times of night are stored noon-anchored so midnight-spanning windows
+    # work for min/max/median.
+    session_times_shifted: list[int] = dataclasses.field(default_factory=list)
 
     # Per-occurrence duration in seconds (last_appearance - first_appearance).
     # Will be more meaningful once detection tracking is wired up; today many
@@ -103,27 +121,10 @@ class TaxonAccumulator:
             self.score_sum += score
             self.score_count += 1
 
-        # We use the OCCURRENCE's first_appearance_timestamp as the canonical
-        # "when this taxon was seen on this occasion" anchor for date and
-        # time-of-night stats. The last_dt is used only to widen the date
-        # range so the displayed [first_date, last_date] window covers all
-        # appearances.
         if first_dt is not None:
-            self.first_dt_min = first_dt if self.first_dt_min is None else min(self.first_dt_min, first_dt)
-            epoch = first_dt.timestamp()
-            self.first_dt_epoch_sum += epoch
-            self.first_dt_count += 1
-
-            shifted = noon_shift(time_to_seconds(first_dt.time()))
-            self.time_min_shifted = shifted if self.time_min_shifted is None else min(self.time_min_shifted, shifted)
-            self.time_max_shifted = shifted if self.time_max_shifted is None else max(self.time_max_shifted, shifted)
-            self.time_sum_shifted += shifted
-            self.time_count += 1
-
-        # Widen the [min, max] datetime window with last_dt as well.
-        widening = last_dt or first_dt
-        if widening is not None:
-            self.first_dt_max = widening if self.first_dt_max is None else max(self.first_dt_max, widening)
+            self.session_doys.append(first_dt.timetuple().tm_yday)
+            self.session_months.append(first_dt.month)
+            self.session_times_shifted.append(noon_shift(time_to_seconds(first_dt.time())))
 
         # Per-occurrence duration. Skipped when either bound is missing OR
         # when there's only one detection (first == last), which would always
@@ -145,25 +146,49 @@ class TaxonAccumulator:
             return None
         return self.score_sum / self.score_count
 
+    # Session-day stats — day of year, 1..366. Min/max are calendar bounds;
+    # median is the day-of-year of the typical observation.
     @property
-    def avg_first_dt(self) -> datetime.datetime | None:
-        if self.first_dt_count == 0:
+    def session_day_min(self) -> int | None:
+        return min(self.session_doys) if self.session_doys else None
+
+    @property
+    def session_day_max(self) -> int | None:
+        return max(self.session_doys) if self.session_doys else None
+
+    @property
+    def session_day_median(self) -> int | None:
+        return _median_int(self.session_doys)
+
+    # Session-time stats — clock seconds-since-midnight, midnight-spanning.
+    @property
+    def session_time_min(self) -> int | None:
+        return None if not self.session_times_shifted else noon_unshift(min(self.session_times_shifted))
+
+    @property
+    def session_time_max(self) -> int | None:
+        return None if not self.session_times_shifted else noon_unshift(max(self.session_times_shifted))
+
+    @property
+    def session_time_median(self) -> int | None:
+        med = _median_int(self.session_times_shifted)
+        return None if med is None else noon_unshift(med)
+
+    # Session-month stats — calendar month, 1..12. Mean is informative for
+    # phenology bucketing (e.g. "mostly mid-July").
+    @property
+    def session_month_min(self) -> int | None:
+        return min(self.session_months) if self.session_months else None
+
+    @property
+    def session_month_max(self) -> int | None:
+        return max(self.session_months) if self.session_months else None
+
+    @property
+    def session_month_mean(self) -> float | None:
+        if not self.session_months:
             return None
-        return datetime.datetime.fromtimestamp(self.first_dt_epoch_sum / self.first_dt_count)
-
-    @property
-    def time_min_clock(self) -> int | None:
-        return None if self.time_min_shifted is None else noon_unshift(self.time_min_shifted)
-
-    @property
-    def time_max_clock(self) -> int | None:
-        return None if self.time_max_shifted is None else noon_unshift(self.time_max_shifted)
-
-    @property
-    def time_avg_clock(self) -> int | None:
-        if self.time_count == 0:
-            return None
-        return noon_unshift(self.time_sum_shifted / self.time_count)
+        return sum(self.session_months) / len(self.session_months)
 
     @property
     def duration_avg_seconds(self) -> float | None:
@@ -231,12 +256,15 @@ COLUMN_ORDER: list[str] = [
     "min_score",
     "max_score",
     "avg_score",
-    "first_occurrence_date",
-    "last_occurrence_date",
-    "avg_occurrence_date",
-    "min_time_of_night",
-    "max_time_of_night",
-    "avg_time_of_night",
+    "session_day_min",
+    "session_day_max",
+    "session_day_median",
+    "session_time_min",
+    "session_time_max",
+    "session_time_median",
+    "session_month_min",
+    "session_month_max",
+    "session_month_mean",
     "min_duration_seconds",
     "max_duration_seconds",
     "avg_duration_seconds",
@@ -256,19 +284,19 @@ def _format_score(value: float | None) -> str:
     return "" if value is None else f"{value:.4f}"
 
 
-def _format_date(value: datetime.datetime | datetime.date | None) -> str:
-    if value is None:
-        return ""
-    if isinstance(value, datetime.datetime):
-        value = value.date()
-    return value.isoformat()
-
-
 def _format_seconds(value: float | None) -> str:
     """Render duration seconds. Empty for None; otherwise rounded to int."""
     if value is None:
         return ""
     return str(int(round(value)))
+
+
+def _format_int(value: int | None) -> str:
+    return "" if value is None else str(value)
+
+
+def _format_float_1dp(value: float | None) -> str:
+    return "" if value is None else f"{value:.1f}"
 
 
 def row_for_taxon(taxon: Taxon, accum: TaxonAccumulator) -> dict[str, str]:
@@ -285,12 +313,15 @@ def row_for_taxon(taxon: Taxon, accum: TaxonAccumulator) -> dict[str, str]:
         "min_score": _format_score(accum.score_min),
         "max_score": _format_score(accum.score_max),
         "avg_score": _format_score(accum.avg_score),
-        "first_occurrence_date": _format_date(accum.first_dt_min),
-        "last_occurrence_date": _format_date(accum.first_dt_max),
-        "avg_occurrence_date": _format_date(accum.avg_first_dt),
-        "min_time_of_night": seconds_to_clock_str(accum.time_min_clock),
-        "max_time_of_night": seconds_to_clock_str(accum.time_max_clock),
-        "avg_time_of_night": seconds_to_clock_str(accum.time_avg_clock),
+        "session_day_min": _format_int(accum.session_day_min),
+        "session_day_max": _format_int(accum.session_day_max),
+        "session_day_median": _format_int(accum.session_day_median),
+        "session_time_min": seconds_to_clock_str(accum.session_time_min),
+        "session_time_max": seconds_to_clock_str(accum.session_time_max),
+        "session_time_median": seconds_to_clock_str(accum.session_time_median),
+        "session_month_min": _format_int(accum.session_month_min),
+        "session_month_max": _format_int(accum.session_month_max),
+        "session_month_mean": _format_float_1dp(accum.session_month_mean),
         "min_duration_seconds": _format_seconds(accum.duration_min_seconds),
         "max_duration_seconds": _format_seconds(accum.duration_max_seconds),
         "avg_duration_seconds": _format_seconds(accum.duration_avg_seconds),

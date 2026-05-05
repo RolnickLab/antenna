@@ -408,14 +408,14 @@ class TaxaListExportTest(TestCase):
         row = next(r for r in rows if r["name"] == self.taxon_with_ids.name)
         # In noon-anchored space, 22:00 is the start of the night (10h after
         # noon) and 02:00 is the end (14h after noon).
-        self.assertEqual(row["min_time_of_night"], "22:00:00")
-        self.assertEqual(row["max_time_of_night"], "02:00:00")
-        h, m, s = row["avg_time_of_night"].split(":")
-        avg_seconds = int(h) * 3600 + int(m) * 60 + int(s)
-        # Avg should land at the midnight midpoint; accept ±60s for rounding.
+        self.assertEqual(row["session_time_min"], "22:00:00")
+        self.assertEqual(row["session_time_max"], "02:00:00")
+        h, m, s = row["session_time_median"].split(":")
+        median_seconds = int(h) * 3600 + int(m) * 60 + int(s)
+        # Median of two values lands at the midnight midpoint; accept ±60s.
         self.assertTrue(
-            avg_seconds <= 60 or avg_seconds >= 86340,
-            f"avg_time_of_night {row['avg_time_of_night']} should be near 00:00",
+            median_seconds <= 60 or median_seconds >= 86340,
+            f"session_time_median {row['session_time_median']} should be near 00:00",
         )
 
 
