@@ -181,6 +181,7 @@ class ProjectManager(Role):
             Project.Permissions.UPDATE_DEPLOYMENT,
             Project.Permissions.DELETE_DEPLOYMENT,
             Project.Permissions.SYNC_DEPLOYMENT,
+            Project.Permissions.REGROUP_SESSIONS_DEPLOYMENT,
             Project.Permissions.CREATE_SITE,
             Project.Permissions.UPDATE_SITE,
             Project.Permissions.DELETE_SITE,

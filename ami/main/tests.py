@@ -531,6 +531,60 @@ class TestImageGrouping(TestCase):
         count_4h = Event.objects.filter(deployment=self.deployment).count()
         assert count_4h == 1, f"expected 1 Event at project setting 14400s, got {count_4h}"
 
+    def test_invalid_session_time_gap_falls_back_to_default(self):
+        """
+        Non-positive (0 or negative) ``session_time_gap_seconds`` would
+        otherwise split every timestamp into its own Event. Guard by falling
+        back to the historical 120-minute default and logging a warning.
+        """
+        self._create_burst(datetime.datetime(2023, 8, 5, 22, 0), n=6, interval_minutes=5)
+        self._create_burst(datetime.datetime(2023, 8, 6, 1, 0), n=6, interval_minutes=5)
+
+        for bad_value in (0, -1, -7200):
+            Event.objects.filter(deployment=self.deployment).delete()
+            self.project.session_time_gap_seconds = bad_value
+            self.project.save()
+            self.deployment.refresh_from_db()
+            group_images_into_events(deployment=self.deployment)
+            count = Event.objects.filter(deployment=self.deployment).count()
+            # Default 120-min gap on this cross-midnight pattern → 2 Events,
+            # NOT 12 (which is what bad_value=0 would produce without the guard).
+            assert count == 2, f"expected 2 Events at gap={bad_value} (default fallback), got {count}"
+
+    def test_regroup_events_task_is_idempotent_under_concurrent_calls(self):
+        """
+        ``ami.tasks.regroup_events`` uses a per-deployment cache lock so
+        concurrent enqueues collapse to a single run. The second call should
+        skip without touching the DB.
+        """
+        from unittest.mock import patch
+
+        from django.core.cache import cache
+
+        from ami.tasks import regroup_events
+
+        # Make sure no stale lock from a prior test leaks in.
+        cache.delete(f"regroup_events:lock:deployment:{self.deployment.pk}")
+
+        self._create_burst(datetime.datetime(2023, 8, 5, 22, 0), n=6, interval_minutes=5)
+
+        with patch("ami.main.models.group_images_into_events") as mock_group:
+            # Pre-take the lock to simulate an in-flight run.
+            cache.add(f"regroup_events:lock:deployment:{self.deployment.pk}", 1, timeout=60)
+            try:
+                regroup_events(self.deployment.pk)
+            finally:
+                cache.delete(f"regroup_events:lock:deployment:{self.deployment.pk}")
+            assert mock_group.call_count == 0, "Locked run should skip group_images_into_events"
+
+        # Without the pre-taken lock, the next call should run normally and release the lock.
+        with patch("ami.main.models.group_images_into_events", return_value=[]) as mock_group:
+            regroup_events(self.deployment.pk)
+            assert mock_group.call_count == 1, "Unlocked run should invoke group_images_into_events"
+        assert (
+            cache.get(f"regroup_events:lock:deployment:{self.deployment.pk}") is None
+        ), "Lock should be released after the task body completes"
+
     def test_pruning_empty_events(self):
         from ami.main.models import delete_empty_events
 

@@ -1,6 +1,7 @@
 import logging
 
 from django.apps import apps
+from django.core.cache import cache
 from django.db import models
 
 from config import celery_app
@@ -12,6 +13,11 @@ one_day = one_hour * 24
 two_days = one_hour * 24 * 2
 default_time_limit = two_days + one_hour
 default_soft_time_limit = two_days
+
+# Lock TTL for regroup_events. Matches the task's soft_time_limit so a stuck
+# task cannot wedge the lock indefinitely; under normal load regroup completes
+# in seconds-to-minutes, well below this ceiling.
+REGROUP_EVENTS_LOCK_TTL = one_hour
 
 
 # @TODO use shared_task decorator instead of celery_app?
@@ -91,14 +97,26 @@ def populate_collection(collection_id: int) -> None:
 def regroup_events(deployment_id: int) -> None:
     from ami.main.models import Deployment, group_images_into_events
 
-    try:
-        deployment = Deployment.objects.get(id=deployment_id)
-    except Deployment.DoesNotExist:
-        logger.error(f"Deployment with id {deployment_id} not found")
+    # Per-deployment idempotency lock. Concurrent enqueues (e.g. user double-
+    # clicks the regroup button, sync_captures auto-regroup races with manual
+    # admin trigger) collapse to a single run. The cache.add() is atomic
+    # SETNX-style: only the first caller takes the lock; later callers exit
+    # early without touching the DB.
+    lock_key = f"regroup_events:lock:deployment:{deployment_id}"
+    if not cache.add(lock_key, 1, timeout=REGROUP_EVENTS_LOCK_TTL):
+        logger.info(f"regroup_events skipped for deployment {deployment_id}: another run is in progress.")
         return
-    logger.info(f"Grouping captures for {deployment}")
-    events = group_images_into_events(deployment)
-    logger.info(f"{deployment} now has {len(events)} events")
+    try:
+        try:
+            deployment = Deployment.objects.get(id=deployment_id)
+        except Deployment.DoesNotExist:
+            logger.error(f"Deployment with id {deployment_id} not found")
+            return
+        logger.info(f"Grouping captures for {deployment}")
+        events = group_images_into_events(deployment)
+        logger.info(f"{deployment} now has {len(events)} events")
+    finally:
+        cache.delete(lock_key)
 
 
 @celery_app.task(soft_time_limit=one_hour, time_limit=one_hour + 60)

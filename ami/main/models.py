@@ -429,6 +429,7 @@ class Project(ProjectSettingsMixin, BaseModel):
         DELETE_DEPLOYMENT = "delete_deployment"
         UPDATE_DEPLOYMENT = "update_deployment"
         SYNC_DEPLOYMENT = "sync_deployment"
+        REGROUP_SESSIONS_DEPLOYMENT = "regroup_sessions_deployment"
 
         # Collection permissions
         CREATE_COLLECTION = "create_sourceimagecollection"
@@ -509,6 +510,7 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("delete_deployment", "Can delete a deployment"),
             ("update_deployment", "Can update a deployment"),
             ("sync_deployment", "Can sync images to a deployment"),
+            ("regroup_sessions_deployment", "Can regroup deployment captures into sessions"),
             # Collection permissions
             ("create_sourceimagecollection", "Can create a collection"),
             ("update_sourceimagecollection", "Can update a collection"),
@@ -1409,10 +1411,19 @@ def group_images_into_events(
     max_event_duration: datetime.timedelta | None = DEFAULT_MAX_EVENT_DURATION,
 ) -> list[Event]:
     if max_time_gap is None:
+        default_gap = datetime.timedelta(minutes=120)
         if deployment.project_id:
-            max_time_gap = datetime.timedelta(seconds=deployment.project.session_time_gap_seconds)
+            gap_seconds = deployment.project.session_time_gap_seconds
+            if gap_seconds is None or gap_seconds <= 0:
+                logger.warning(
+                    f"Project {deployment.project_id} has invalid session_time_gap_seconds "
+                    f"({gap_seconds!r}); falling back to default {default_gap}"
+                )
+                max_time_gap = default_gap
+            else:
+                max_time_gap = datetime.timedelta(seconds=gap_seconds)
         else:
-            max_time_gap = datetime.timedelta(minutes=120)
+            max_time_gap = default_gap
     # Log a warning if multiple SourceImages have the same timestamp
     dupes = (
         SourceImage.objects.filter(deployment=deployment)
