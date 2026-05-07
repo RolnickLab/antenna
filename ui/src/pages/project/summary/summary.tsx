@@ -1,4 +1,6 @@
+import classNames from 'classnames'
 import { ErrorState } from 'components/error-state/error-state'
+import { useTopIdentifiers } from 'data-services/hooks/identifications/useTopIdentifiers'
 import { useProjectCharts } from 'data-services/hooks/projects/useProjectCharts'
 import { useStatus } from 'data-services/hooks/useStatus'
 import { ProjectDetails } from 'data-services/models/project-details'
@@ -7,11 +9,14 @@ import { LoadingSpinner } from 'design-system/components/loading-spinner/loading
 import { PlotGrid } from 'design-system/components/plot-grid/plot-grid'
 import { Plot } from 'design-system/components/plot/lazy-plot'
 import * as Tabs from 'design-system/components/tabs/tabs'
+import { buttonVariants } from 'nova-ui-kit'
 import { UploadImagesDialog } from 'pages/captures/upload-images-dialog/upload-images-dialog'
 import { useState } from 'react'
-import { useOutletContext } from 'react-router-dom'
+import { Link, useOutletContext } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { UserPermission } from 'utils/user/types'
 import { DeploymentsMap } from './deployments-map'
+import { ListItem } from './list-item'
 
 export const Summary = () => {
   const { project } = useOutletContext<{
@@ -23,7 +28,7 @@ export const Summary = () => {
   const showUpload = status && status.numCaptures === 0 && canUpload
 
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-12">
       {showUpload || isOpen ? (
         <div className="flex flex-col items-center pt-32">
           <h1 className="mb-8 heading-large">Welcome!</h1>
@@ -41,14 +46,59 @@ export const Summary = () => {
       ) : (
         <>
           <DeploymentsMap deployments={project.deployments} />
-          <ProjectCharts projectId={project.id} />
+          <div>
+            <h2 className="mb-4 heading-small">Overview</h2>
+            <div className="grid grid-cols-3 gap-8">
+              <div>
+                <h3 className="mb-4 body-large font-medium">
+                  Most identifications
+                </h3>
+                <MostIdentifications projectId={project.id} />
+              </div>
+            </div>
+          </div>
+          <div>
+            <h2 className="mb-4 heading-small">Charts</h2>
+            <Charts projectId={project.id} />
+          </div>
         </>
       )}
     </div>
   )
 }
 
-const ProjectCharts = ({ projectId }: { projectId: string }) => {
+const MostIdentifications = ({ projectId }: { projectId: string }) => {
+  const { data } = useTopIdentifiers(projectId)
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="bg-background">
+        {data?.top_identifiers?.map((user) => (
+          <ListItem
+            key={user.id}
+            item={{
+              image: { src: user.image, variant: 'user' },
+              text: user.email,
+              title: user.name,
+            }}
+            count={user.identification_count}
+          />
+        ))}
+      </div>
+      <Link
+        to={`${APP_ROUTES.OCCURRENCES({ projectId })}?verified=-true`}
+        className={classNames(
+          buttonVariants({ size: 'small', variant: 'success' }),
+          'self-end'
+        )}
+      >
+        <span>View all</span>
+      </Link>
+    </div>
+  )
+}
+
+const Charts = ({ projectId }: { projectId: string }) => {
   const { projectCharts, isLoading, error } = useProjectCharts(projectId)
 
   if (isLoading) {
