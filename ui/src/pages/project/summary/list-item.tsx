@@ -4,7 +4,7 @@ export const ListItem = ({
   count,
   item,
 }: {
-  count?: number
+  count?: number | string
   item: {
     image: { src?: string; variant?: 'default' | 'user' }
     text: string
@@ -17,20 +17,24 @@ export const ListItem = ({
     ) : (
       <Image image={item.image.src} />
     )}
-    <div className="flex flex-col">
+    <div className="flex flex-col overflow-hidden">
       <div className="flex items-center gap-4">
-        {item.title ? <span className="font-medium">{item.title}</span> : null}
+        {item.title ? (
+          <span className="truncate font-medium">{item.title}</span>
+        ) : null}
       </div>
-      <span>{item.text}</span>
+      <span className="truncate">{item.text}</span>
     </div>
     {count !== undefined ? (
-      <span className="grow text-right">{count.toLocaleString()}</span>
+      <span className="body-small grow text-right">
+        {count.toLocaleString()}
+      </span>
     ) : null}
   </div>
 )
 
 const Image = ({ image }: { image?: string }) => (
-  <div className="flex items-center justify-center w-12 h-12 border border-border rounded-md text-muted-foreground overflow-hidden">
+  <div className="shrink-0 flex items-center justify-center w-12 h-12 border border-border rounded-md text-muted-foreground overflow-hidden">
     {image ? (
       <img className="object-cover" alt="" src={image} />
     ) : (
@@ -40,7 +44,7 @@ const Image = ({ image }: { image?: string }) => (
 )
 
 const UserImage = ({ image }: { image?: string }) => (
-  <div className="flex items-center justify-center w-12 h-12 border border-border rounded-full text-muted-foreground overflow-hidden">
+  <div className="shrink-0 flex items-center justify-center w-12 h-12 border border-border rounded-full text-muted-foreground overflow-hidden">
     {image ? (
       <img className="object-cover" alt="" src={image} />
     ) : (

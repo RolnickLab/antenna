@@ -1,6 +1,7 @@
 import classNames from 'classnames'
 import { ErrorState } from 'components/error-state/error-state'
 import { useTopIdentifiers } from 'data-services/hooks/identifications/useTopIdentifiers'
+import { useLatestOccurrences } from 'data-services/hooks/occurrences/useLatestOccurrences'
 import { useProjectCharts } from 'data-services/hooks/projects/useProjectCharts'
 import { useTopSpecies } from 'data-services/hooks/species/useTopSpecies'
 import { useStatus } from 'data-services/hooks/useStatus'
@@ -52,6 +53,12 @@ export const Summary = () => {
             <div className="grid grid-cols-3 gap-8">
               <div>
                 <h3 className="mb-4 body-large font-medium">
+                  Latest occurrences
+                </h3>
+                <LatestOccurrences projectId={project.id} />
+              </div>
+              <div>
+                <h3 className="mb-4 body-large font-medium">
                   Most identifications
                 </h3>
                 <MostIdentifications projectId={project.id} />
@@ -70,6 +77,38 @@ export const Summary = () => {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+const LatestOccurrences = ({ projectId }: { projectId: string }) => {
+  const { occurrences } = useLatestOccurrences(projectId)
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="bg-background">
+        {occurrences?.map((occurrence) => (
+          <ListItem
+            key={occurrence.id}
+            item={{
+              image: { src: occurrence.images[0]?.src },
+              text: occurrence.determinationTaxon.name,
+            }}
+            count={occurrence.dateLabel}
+          />
+        ))}
+      </div>
+      <Link
+        to={`${APP_ROUTES.OCCURRENCES({
+          projectId,
+        })}?ordering=first_appearance_timestamp`}
+        className={classNames(
+          buttonVariants({ size: 'small', variant: 'outline' }),
+          'self-end'
+        )}
+      >
+        <span>View all</span>
+      </Link>
     </div>
   )
 }
@@ -95,7 +134,7 @@ const MostIdentifications = ({ projectId }: { projectId: string }) => {
       <Link
         to={`${APP_ROUTES.OCCURRENCES({ projectId })}?verified=-true`}
         className={classNames(
-          buttonVariants({ size: 'small', variant: 'success' }),
+          buttonVariants({ size: 'small', variant: 'outline' }),
           'self-end'
         )}
       >
@@ -126,7 +165,7 @@ const MostObservedTaxa = ({ projectId }: { projectId: string }) => {
       <Link
         to={`${APP_ROUTES.TAXA({ projectId })}?ordering=-occurrences_count`}
         className={classNames(
-          buttonVariants({ size: 'small', variant: 'success' }),
+          buttonVariants({ size: 'small', variant: 'outline' }),
           'self-end'
         )}
       >
