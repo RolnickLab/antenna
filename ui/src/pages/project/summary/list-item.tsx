@@ -11,7 +11,7 @@ export const ListItem = ({
     title?: string
   }
 }) => (
-  <div className="flex items-center gap-4 p-2 pr-4 border-border border-b last:border-none">
+  <div className="flex items-center gap-4 p-2 pr-4">
     {item.image.variant === 'user' ? (
       <UserImage image={item.image.src} />
     ) : (

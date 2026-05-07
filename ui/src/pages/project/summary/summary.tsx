@@ -105,14 +105,22 @@ const LatestOccurrences = ({ projectId }: { projectId: string }) => {
     <div className="flex flex-col gap-4">
       <div className="bg-background">
         {occurrences.map((occurrence) => (
-          <ListItem
+          <Link
             key={occurrence.id}
-            item={{
-              image: { src: occurrence.images[0]?.src },
-              text: occurrence.determinationTaxon.name,
-            }}
-            count={occurrence.dateLabel}
-          />
+            className="w-full border-border border-b last:border-none"
+            to={`${APP_ROUTES.OCCURRENCE_DETAILS({
+              projectId,
+              occurrenceId: occurrence.id,
+            })}?ordering=first_appearance_timestamp`}
+          >
+            <ListItem
+              count={occurrence.dateLabel}
+              item={{
+                image: { src: occurrence.images[0]?.src },
+                text: occurrence.determinationTaxon.name,
+              }}
+            />
+          </Link>
         ))}
       </div>
       <Link
@@ -153,15 +161,19 @@ const MostIdentifications = ({ projectId }: { projectId: string }) => {
     <div className="flex flex-col gap-4">
       <div className="bg-background">
         {data.top_identifiers?.map((user) => (
-          <ListItem
+          <div
             key={user.id}
-            item={{
-              image: { src: user.image, variant: 'user' },
-              text: user.email,
-              title: user.name,
-            }}
-            count={user.identification_count}
-          />
+            className="border-border border-b last:border-none"
+          >
+            <ListItem
+              item={{
+                image: { src: user.image, variant: 'user' },
+                text: user.email,
+                title: user.name,
+              }}
+              count={user.identification_count}
+            />
+          </div>
         ))}
       </div>
       <Link
@@ -200,15 +212,24 @@ const MostObservedTaxa = ({ projectId }: { projectId: string }) => {
     <div className="flex flex-col gap-4">
       <div className="bg-background">
         {species.map((species) => (
-          <ListItem
+          <Link
             key={species.id}
-            item={{
-              image: { src: species.coverImageUrl ?? undefined },
+            className="w-full border-border border-b last:border-none"
+            to={`${APP_ROUTES.TAXON_DETAILS({
+              projectId,
+              taxonId: species.id,
+            })}?ordering=-occurrences_count`}
+          >
+            <ListItem
+              key={species.id}
+              item={{
+                image: { src: species.coverImageUrl ?? undefined },
 
-              text: species.name,
-            }}
-            count={species.numOccurrences}
-          />
+                text: species.name,
+              }}
+              count={species.numOccurrences}
+            />
+          </Link>
         ))}
       </div>
       <Link
