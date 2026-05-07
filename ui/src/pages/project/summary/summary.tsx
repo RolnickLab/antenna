@@ -50,30 +50,30 @@ export const Summary = () => {
         <>
           <DeploymentsMap deployments={project.deployments} />
           <div>
-            <h2 className="mb-4 heading-small">Overview</h2>
+            <h2 className="mb-4 heading-small">{translate(STRING.OVERVIEW)}</h2>
             <div className="grid gap-8 xl:grid-cols-3">
               <div>
                 <h3 className="mb-4 body-large font-medium">
-                  Latest occurrences
+                  {translate(STRING.LATEST_OCCURRENCES)}
                 </h3>
                 <LatestOccurrences projectId={project.id} />
               </div>
               <div>
                 <h3 className="mb-4 body-large font-medium">
-                  Most identifications
+                  {translate(STRING.MOST_IDENTIFICATIONS)}
                 </h3>
                 <MostIdentifications projectId={project.id} />
               </div>
               <div>
                 <h3 className="mb-4 body-large font-medium">
-                  Most observed taxa
+                  {translate(STRING.MOST_OBSERVED_TAXA)}
                 </h3>
                 <MostObservedTaxa projectId={project.id} />
               </div>
             </div>
           </div>
           <div>
-            <h2 className="mb-4 heading-small">Charts</h2>
+            <h2 className="mb-4 heading-small">{translate(STRING.CHARTS)}</h2>
             <Charts projectId={project.id} />
           </div>
         </>
@@ -124,7 +124,7 @@ const LatestOccurrences = ({ projectId }: { projectId: string }) => {
           'self-end'
         )}
       >
-        <span>View all</span>
+        <span>{translate(STRING.VIEW_ALL)}</span>
       </Link>
     </div>
   )
@@ -171,7 +171,7 @@ const MostIdentifications = ({ projectId }: { projectId: string }) => {
           'self-end'
         )}
       >
-        <span>View all</span>
+        <span>{translate(STRING.VIEW_ALL)}</span>
       </Link>
     </div>
   )
@@ -218,7 +218,7 @@ const MostObservedTaxa = ({ projectId }: { projectId: string }) => {
           'self-end'
         )}
       >
-        <span>View all</span>
+        <span>{translate(STRING.VIEW_ALL)}</span>
       </Link>
     </div>
   )

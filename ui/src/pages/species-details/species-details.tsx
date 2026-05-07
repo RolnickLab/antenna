@@ -133,7 +133,7 @@ export const SpeciesDetails = ({
                 {hasChildren ? (
                   <InfoBlockField label="Child taxa">
                     <InfoBlockFieldValue
-                      value="View all"
+                      value={translate(STRING.VIEW_ALL)}
                       to={getAppRoute({
                         to: APP_ROUTES.TAXA({
                           projectId: projectId as string,
@@ -148,7 +148,7 @@ export const SpeciesDetails = ({
                     value={`Direct: ${species.numOccurrences ?? 0}`}
                   />
                   <InfoBlockFieldValue
-                    value="View all"
+                    value={translate(STRING.VIEW_ALL)}
                     to={getAppRoute({
                       to: APP_ROUTES.OCCURRENCES({
                         projectId: projectId as string,
