@@ -111,7 +111,7 @@ const LatestOccurrences = ({ projectId }: { projectId: string }) => {
             to={`${APP_ROUTES.OCCURRENCE_DETAILS({
               projectId,
               occurrenceId: occurrence.id,
-            })}?ordering=first_appearance_timestamp`}
+            })}?ordering=-first_appearance_timestamp`}
           >
             <ListItem
               count={occurrence.dateLabel}
@@ -126,7 +126,7 @@ const LatestOccurrences = ({ projectId }: { projectId: string }) => {
       <Link
         to={`${APP_ROUTES.OCCURRENCES({
           projectId,
-        })}?ordering=first_appearance_timestamp`}
+        })}?ordering=-first_appearance_timestamp`}
         className={classNames(
           buttonVariants({ size: 'small', variant: 'outline' }),
           'self-end'
@@ -177,7 +177,7 @@ const MostIdentifications = ({ projectId }: { projectId: string }) => {
         ))}
       </div>
       <Link
-        to={`${APP_ROUTES.OCCURRENCES({ projectId })}?verified=-true`}
+        to={`${APP_ROUTES.OCCURRENCES({ projectId })}?verified=true`}
         className={classNames(
           buttonVariants({ size: 'small', variant: 'outline' }),
           'self-end'

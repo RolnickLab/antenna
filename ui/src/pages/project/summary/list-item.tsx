@@ -35,20 +35,12 @@ export const ListItem = ({
 
 const Image = ({ image }: { image?: string }) => (
   <div className="shrink-0 flex items-center justify-center w-12 h-12 border border-border rounded-md text-muted-foreground overflow-hidden">
-    {image ? (
-      <img className="object-cover" alt="" src={image} />
-    ) : (
-      <ImageIcon className="w-4 h-4" />
-    )}
+    {image ? <img alt="" src={image} /> : <ImageIcon className="w-4 h-4" />}
   </div>
 )
 
 const UserImage = ({ image }: { image?: string }) => (
   <div className="shrink-0 flex items-center justify-center w-12 h-12 border border-border rounded-full text-muted-foreground overflow-hidden">
-    {image ? (
-      <img className="object-cover" alt="" src={image} />
-    ) : (
-      <UserIcon className="w-4 h-4" />
-    )}
+    {image ? <img alt="" src={image} /> : <UserIcon className="w-4 h-4" />}
   </div>
 )
