@@ -2,6 +2,7 @@ import classNames from 'classnames'
 import { ErrorState } from 'components/error-state/error-state'
 import { useTopIdentifiers } from 'data-services/hooks/identifications/useTopIdentifiers'
 import { useProjectCharts } from 'data-services/hooks/projects/useProjectCharts'
+import { useTopSpecies } from 'data-services/hooks/species/useTopSpecies'
 import { useStatus } from 'data-services/hooks/useStatus'
 import { ProjectDetails } from 'data-services/models/project-details'
 import { Box } from 'design-system/components/box/box'
@@ -55,6 +56,12 @@ export const Summary = () => {
                 </h3>
                 <MostIdentifications projectId={project.id} />
               </div>
+              <div>
+                <h3 className="mb-4 body-large font-medium">
+                  Most observed taxa
+                </h3>
+                <MostObservedTaxa projectId={project.id} />
+              </div>
             </div>
           </div>
           <div>
@@ -87,6 +94,37 @@ const MostIdentifications = ({ projectId }: { projectId: string }) => {
       </div>
       <Link
         to={`${APP_ROUTES.OCCURRENCES({ projectId })}?verified=-true`}
+        className={classNames(
+          buttonVariants({ size: 'small', variant: 'success' }),
+          'self-end'
+        )}
+      >
+        <span>View all</span>
+      </Link>
+    </div>
+  )
+}
+
+const MostObservedTaxa = ({ projectId }: { projectId: string }) => {
+  const { species } = useTopSpecies(projectId)
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="bg-background">
+        {species?.map((species) => (
+          <ListItem
+            key={species.id}
+            item={{
+              image: { src: species.coverImageUrl ?? undefined },
+
+              text: species.name,
+            }}
+            count={species.numOccurrences}
+          />
+        ))}
+      </div>
+      <Link
+        to={`${APP_ROUTES.TAXA({ projectId })}?ordering=-occurrences_count`}
         className={classNames(
           buttonVariants({ size: 'small', variant: 'success' }),
           'self-end'
