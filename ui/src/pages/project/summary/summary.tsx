@@ -31,7 +31,7 @@ export const Summary = () => {
   const showUpload = status && status.numCaptures === 0 && canUpload
 
   return (
-    <div className="grid gap-12">
+    <div className="grid gap-8 md:gap-12">
       {showUpload || isOpen ? (
         <div className="flex flex-col items-center pt-32">
           <h1 className="mb-8 heading-large">Welcome!</h1>
@@ -51,7 +51,7 @@ export const Summary = () => {
           <DeploymentsMap deployments={project.deployments} />
           <div>
             <h2 className="mb-4 heading-small">Overview</h2>
-            <div className="grid grid-cols-3 gap-8">
+            <div className="grid gap-8 xl:grid-cols-3">
               <div>
                 <h3 className="mb-4 body-large font-medium">
                   Latest occurrences
