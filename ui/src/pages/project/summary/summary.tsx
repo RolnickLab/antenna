@@ -16,6 +16,7 @@ import { UploadImagesDialog } from 'pages/captures/upload-images-dialog/upload-i
 import { useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
+import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
 import { DeploymentsMap } from './deployments-map'
 import { ListItem } from './list-item'
@@ -82,12 +83,28 @@ export const Summary = () => {
 }
 
 const LatestOccurrences = ({ projectId }: { projectId: string }) => {
-  const { occurrences } = useLatestOccurrences(projectId)
+  const { occurrences, isLoading, error } = useLatestOccurrences(projectId)
+
+  if (isLoading) {
+    return <LoadingSpinner />
+  }
+
+  if (error) {
+    return <ErrorState compact error={error} />
+  }
+
+  if (!occurrences?.length) {
+    return (
+      <p className="text-small text-muted-foreground">
+        {translate(STRING.MESSAGE_NO_RESULTS_TO_SHOW)}
+      </p>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-4">
       <div className="bg-background">
-        {occurrences?.map((occurrence) => (
+        {occurrences.map((occurrence) => (
           <ListItem
             key={occurrence.id}
             item={{
@@ -114,12 +131,28 @@ const LatestOccurrences = ({ projectId }: { projectId: string }) => {
 }
 
 const MostIdentifications = ({ projectId }: { projectId: string }) => {
-  const { data } = useTopIdentifiers(projectId)
+  const { data, isLoading, error } = useTopIdentifiers(projectId)
+
+  if (isLoading) {
+    return <LoadingSpinner />
+  }
+
+  if (error) {
+    return <ErrorState compact error={error} />
+  }
+
+  if (!data?.top_identifiers.length) {
+    return (
+      <p className="text-small text-muted-foreground">
+        {translate(STRING.MESSAGE_NO_RESULTS_TO_SHOW)}
+      </p>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-4">
       <div className="bg-background">
-        {data?.top_identifiers?.map((user) => (
+        {data.top_identifiers?.map((user) => (
           <ListItem
             key={user.id}
             item={{
@@ -145,12 +178,28 @@ const MostIdentifications = ({ projectId }: { projectId: string }) => {
 }
 
 const MostObservedTaxa = ({ projectId }: { projectId: string }) => {
-  const { species } = useTopSpecies(projectId)
+  const { species, isLoading, error } = useTopSpecies(projectId)
+
+  if (isLoading) {
+    return <LoadingSpinner />
+  }
+
+  if (error) {
+    return <ErrorState compact error={error} />
+  }
+
+  if (!species?.length) {
+    return (
+      <p className="text-small text-muted-foreground">
+        {translate(STRING.MESSAGE_NO_RESULTS_TO_SHOW)}
+      </p>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-4">
       <div className="bg-background">
-        {species?.map((species) => (
+        {species.map((species) => (
           <ListItem
             key={species.id}
             item={{
@@ -179,19 +228,19 @@ const Charts = ({ projectId }: { projectId: string }) => {
   const { projectCharts, isLoading, error } = useProjectCharts(projectId)
 
   if (isLoading) {
-    return (
-      <div className="min-h-[320px] flex items-center justify-center">
-        <LoadingSpinner />
-      </div>
-    )
+    return <LoadingSpinner />
   }
 
   if (error) {
-    return <ErrorState error={error} />
+    return <ErrorState compact error={error} />
   }
 
   if (!projectCharts?.length) {
-    return null
+    return (
+      <p className="text-small text-muted-foreground">
+        {translate(STRING.MESSAGE_NO_RESULTS_TO_SHOW)}
+      </p>
+    )
   }
 
   return (
