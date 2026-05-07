@@ -1704,3 +1704,15 @@ class StorageSourceSerializer(DefaultSerializer):
             "total_size",
             "last_checked",
         ]
+
+
+class UserIdentificationCountSerializer(serializers.Serializer):
+    """
+    Serializer for user identification counts.
+    """
+
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    email = serializers.CharField()
+    image = serializers.CharField(required=False, allow_null=True)
+    identification_count = serializers.IntegerField()

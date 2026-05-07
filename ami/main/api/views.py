@@ -5,7 +5,7 @@ from statistics import mode
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.db import models
-from django.db.models import Prefetch, Q
+from django.db.models import Count, Prefetch, Q
 from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
@@ -90,6 +90,7 @@ from .serializers import (
     TaxonListSerializer,
     TaxonSearchResultSerializer,
     TaxonSerializer,
+    UserIdentificationCountSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -1849,6 +1850,59 @@ class SummaryView(GenericAPIView, ProjectMixin):
         data.update(aliases)
 
         return Response(data)
+
+
+class UserIdentificationCountsView(GenericAPIView, ProjectMixin):
+    """
+    API endpoint that returns identification counts for top 5 users.
+    Optionally restricted to a specific project via project_id query parameter.
+    """
+
+    permission_classes = [IsActiveStaffOrReadOnly]
+    serializer_class = UserIdentificationCountSerializer
+
+    @extend_schema(parameters=[project_id_doc_param])
+    def get(self, request):
+        """
+        Return top 5 users by identification count, optionally filtered by project.
+        """
+        project = self.get_active_project()
+
+        # Start with user queryset
+        user_queryset = User.objects.all()
+
+        # Filter by project if provided, then annotate with count
+        if project:
+            user_queryset = (
+                user_queryset.filter(identifications__occurrence__project=project)
+                .annotate(identification_count=Count("identifications", distinct=True))
+                .distinct()
+            )
+        else:
+            user_queryset = user_queryset.annotate(identification_count=Count("identifications"))
+
+        # Get top 5 users, ordered by identification count (descending)
+        top_identifiers = user_queryset.filter(identification_count__gt=0).order_by("-identification_count")[:5]
+
+        # Prepare serialized data
+        data = []
+        for user in top_identifiers:
+            data.append(
+                {
+                    "id": user.id,
+                    "name": user.name if user.name else None,
+                    "email": user.email,
+                    "image": user.image.url if user.image else None,
+                    "identification_count": user.identification_count,
+                }
+            )
+
+        return Response(
+            {
+                "project_id": project.id if project else None,
+                "top_identifiers": data,
+            }
+        )
 
 
 _STORAGE_CONNECTION_STATUS = [

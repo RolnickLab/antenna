@@ -78,6 +78,9 @@ urlpatterns = [
     path("status/summary/", views.SummaryView.as_view(), name="status-summary"),
     path("status/storage/", views.StorageStatus.as_view(), name="status-storage"),
     path(
+        "users/identifications/top/", views.UserIdentificationCountsView.as_view(), name="user-identification-counts"
+    ),
+    path(
         "users/roles/",
         RolesAPIView.as_view(),
         name="user-roles",
