@@ -1227,12 +1227,10 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
         qs = qs.apply_default_filters(project, self.request)  # type: ignore
-        if self.action != "list":
-            qs = qs.prefetch_related(
-                Prefetch(
-                    "detections", queryset=Detection.objects.order_by("-timestamp").select_related("source_image")
-                )
-            )
+        if self.action == "list":
+            qs = qs.with_list_prefetches()  # type: ignore
+        else:
+            qs = qs.with_detail_prefetches()  # type: ignore
 
         return qs
 
