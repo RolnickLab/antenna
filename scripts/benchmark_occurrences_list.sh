@@ -38,7 +38,7 @@ echo "Benchmark: ${BASE_URL} project=${PROJECT_ID} count=${COUNT} concurrency=${
 
 START=$(date +%s.%N)
 seq 1 "${TOTAL}" | xargs -n1 -P"${CONCURRENCY}" -I{} bash -c "
-  offset=\$(( RANDOM % ${MAX_OFFSET} ))
+  offset=\$(( ${MAX_OFFSET} > 0 ? RANDOM % ${MAX_OFFSET} : 0 ))
   curl -s -o /dev/null -w '%{http_code} %{time_total}\n' \
     '${BASE_URL}/api/v2/occurrences/?project_id=${PROJECT_ID}&limit=${LIMIT}&offset='\${offset}
 " > "${OUT}"

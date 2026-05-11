@@ -3050,7 +3050,7 @@ class TestOccurrenceDetailQueryCount(APITestCase):
                 source_image=source_image,
                 occurrence=occurrence,
                 timestamp=source_image.timestamp,
-                bbox=[0.1, 0.1, 0.2, 0.2],
+                bbox=[10, 10, 20, 20],
                 path=f"detections/inflated_{i}.jpg",
             )
             for j in range(3):
