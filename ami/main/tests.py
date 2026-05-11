@@ -3136,6 +3136,117 @@ class TestOccurrencePrefetchHelpersEdgeCases(APITestCase):
             detection_image_urls_from_prefetch(occurrence)
 
 
+@override_settings(CACHALOT_ENABLED=False)
+class TestSourceImageListQueryCount(APITestCase):
+    """Audit SourceImageViewSet.list for N+1 (follow-up to PR #1274).
+
+    Cachalot disabled so we measure cold query count, not warm cache.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=25)
+        create_occurrences(deployment=self.deployment, num=25, determination_score=0.9)
+
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        self.user = User.objects.create_user(
+            email="qcount-sourceimage@insectai.org", is_staff=False, is_superuser=False
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def _list_query_count(self, limit: int, with_detections: bool) -> int:
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = (
+            f"/api/v2/captures/?project_id={self.project.pk}&limit={limit}"
+            f"&with_detections={'true' if with_detections else 'false'}"
+        )
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return len(ctx.captured_queries)
+
+    def test_list_query_count_does_not_scale_without_detections(self):
+        small = self._list_query_count(limit=5, with_detections=False)
+        large = self._list_query_count(limit=25, with_detections=False)
+        print(f"\n[AUDIT] SourceImage list (no detections): limit=5 -> {small}q, limit=25 -> {large}q")
+        self.assertLessEqual(large, small + 5, f"SourceImage list scaling: {small} -> {large} (likely N+1)")
+
+    def test_list_query_count_does_not_scale_with_detections(self):
+        small = self._list_query_count(limit=5, with_detections=True)
+        large = self._list_query_count(limit=25, with_detections=True)
+        print(f"\n[AUDIT] SourceImage list (with_detections=true): limit=5 -> {small}q, limit=25 -> {large}q")
+        self.assertLessEqual(
+            large, small + 5, f"SourceImage list scaling with detections: {small} -> {large} (likely N+1)"
+        )
+
+    def test_list_query_with_counts_and_detections(self):
+        """Realistic UI call: with_counts=true & with_detections=true at limit=25."""
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url_base = f"/api/v2/captures/?project_id={self.project.pk}&with_detections=true&with_counts=true"
+        # Two warmups: first request does session/auth bootstrap, second equalises pool state.
+        self.client.get(url_base + "&limit=1")
+        self.client.get(url_base + "&limit=1")
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx_small:
+            self.client.get(url_base + "&limit=5")
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx_large:
+            self.client.get(url_base + "&limit=25")
+        small, large = len(ctx_small.captured_queries), len(ctx_large.captured_queries)
+        print(
+            f"\n[AUDIT] SourceImage list (with_detections+with_counts): " f"limit=5 -> {small}q, limit=25 -> {large}q"
+        )
+        self.assertLessEqual(large, small + 5, f"SourceImage list scaling: {small} -> {large} (likely N+1)")
+
+
+@override_settings(CACHALOT_ENABLED=False)
+class TestTaxonListQueryCount(APITestCase):
+    """Audit TaxonViewSet.list for N+1 (follow-up to PR #1274, task #9/#15).
+
+    Cachalot disabled so we measure cold query count, not warm cache.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=25)
+        # Spread occurrences across many taxa so the taxon list has 25+ rows.
+        taxa = list(Taxon.objects.filter(projects=self.project))
+        for taxon in taxa[:25]:
+            create_occurrences(deployment=self.deployment, num=2, taxon=taxon, determination_score=0.9)
+
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        self.user = User.objects.create_user(email="qcount-taxon@insectai.org", is_staff=False, is_superuser=False)
+        self.client.force_authenticate(user=self.user)
+
+    def _list_query_count(self, limit: int) -> int:
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/v2/taxa/?project_id={self.project.pk}&limit={limit}"
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return len(ctx.captured_queries)
+
+    def test_list_query_count_does_not_scale_with_page_size(self):
+        small = self._list_query_count(limit=5)
+        large = self._list_query_count(limit=25)
+        print(f"\n[AUDIT] Taxon list: limit=5 -> {small}q, limit=25 -> {large}q")
+        self.assertLessEqual(large, small + 5, f"Taxon list scaling: {small} -> {large} (likely N+1)")
+
+
 class TestProjectDefaultTaxaFilter(APITestCase):
     """
     Tests for project default taxa filtering (include/exclude lists).
