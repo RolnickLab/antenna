@@ -999,6 +999,11 @@ def save_results(
     for deployment in Deployment.objects.filter(pk__in=deployment_ids):
         deployment.update_calculated_fields(save=True)
 
+    # bulk_create above skips Detection signals; refresh affected collections explicitly.
+    source_image_ids = [img.pk for img in source_images]
+    for collection in SourceImageCollection.objects.filter(images__id__in=source_image_ids).distinct():
+        collection.update_calculated_fields(save=True)
+
     total_time = time.time() - start_time
     job_logger.info(f"Saved results from pipeline {pipeline} in {total_time:.2f} seconds")
 

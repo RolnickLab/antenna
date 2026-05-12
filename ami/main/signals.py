@@ -2,11 +2,11 @@ import logging
 
 from django.contrib.auth.models import Group
 from django.db import transaction
-from django.db.models.signals import m2m_changed, post_save, pre_delete, pre_save
+from django.db.models.signals import m2m_changed, post_delete, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from guardian.shortcuts import assign_perm
 
-from ami.main.models import Project
+from ami.main.models import Detection, Project, SourceImageCollection
 from ami.main.tasks import refresh_project_cached_counts
 from ami.users.roles import BasicMember, ProjectManager, create_roles_for_project
 
@@ -197,3 +197,29 @@ def exclude_taxa_updated(sender, instance: Project, action, **kwargs):
     if action in ["post_add", "post_remove", "post_clear"]:
         logger.info(f"Exclude taxa updated for project {instance.pk} (action={action})")
         refresh_cached_counts_for_project(instance)
+
+
+# ============================================================================
+# SourceImageCollection Denormalized Counts
+# ============================================================================
+
+
+@receiver(m2m_changed, sender=SourceImageCollection.images.through)
+def update_collection_counts_on_m2m(sender, instance, action, **kwargs):
+    """Recompute denormalized counts when images are added to or removed from a collection."""
+    if action in ("post_add", "post_remove", "post_clear"):
+        instance.update_calculated_fields(save=True)
+
+
+@receiver(post_save, sender=Detection)
+@receiver(post_delete, sender=Detection)
+def update_collection_counts_on_detection_change(sender, instance, **kwargs):
+    """Keep processed / with-detections counts fresh on per-row Detection writes.
+
+    `bulk_create` skips signals, so ML pipelines must call `update_calculated_fields`
+    explicitly after their batch writes (see `ami.ml.models.pipeline.save_results`).
+    """
+    if not instance.source_image_id:
+        return
+    for collection in SourceImageCollection.objects.filter(images__id=instance.source_image_id).distinct():
+        collection.update_calculated_fields(save=True)

@@ -4093,32 +4093,6 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
 
 
 class SourceImageCollectionQuerySet(BaseQuerySet):
-    def with_source_images_count(self):
-        return self.annotate(
-            source_images_count=models.Count(
-                "images",
-                distinct=True,
-            )
-        )
-
-    def with_source_images_with_detections_count(self):
-        return self.annotate(
-            source_images_with_detections_count=models.Count(
-                "images",
-                filter=(~models.Q(images__detections__bbox__isnull=True) & ~models.Q(images__detections__bbox=[])),
-                distinct=True,
-            )
-        )
-
-    def with_source_images_processed_count(self):
-        return self.annotate(
-            source_images_processed_count=models.Count(
-                "images",
-                filter=models.Q(images__detections__isnull=False),
-                distinct=True,
-            )
-        )
-
     def with_source_images_processed_by_algorithm_count(self, algorithm_id: int):
         return self.annotate(
             source_images_processed_by_algorithm_count=models.Count(
@@ -4205,6 +4179,12 @@ class SourceImageCollection(BaseModel):
         default=dict,
     )
 
+    # Denormalized counts. Kept in sync via m2m_changed and pipeline-completion
+    # hooks. Reads are O(1).
+    source_images_count = models.IntegerField(default=0)
+    source_images_with_detections_count = models.IntegerField(default=0)
+    source_images_processed_count = models.IntegerField(default=0)
+
     objects = SourceImageCollectionManager()
 
     jobs: models.QuerySet["Job"]
@@ -4219,19 +4199,6 @@ class SourceImageCollection(BaseModel):
     def dataset_type(self):
         return self.infer_dataset_type()
 
-    def source_images_count(self) -> int | None:
-        # This should always be pre-populated using queryset annotations
-        # return self.images.count()
-        return None
-
-    def source_images_with_detections_count(self) -> int | None:
-        # This should always be pre-populated using queryset annotations
-        return None
-
-    def source_images_processed_count(self) -> int | None:
-        # This should always be pre-populated using queryset annotations
-        return None
-
     def occurrences_count(self) -> int | None:
         # This should always be pre-populated using queryset annotations
         return None
@@ -4239,6 +4206,29 @@ class SourceImageCollection(BaseModel):
     def taxa_count(self) -> int | None:
         # This should always be pre-populated using queryset annotations
         return None
+
+    def get_source_image_counts(self) -> dict[str, int]:
+        """Compute the 3 source-image counts in a single query. No writes — testable."""
+        valid_det = Detection.objects.filter(source_image=models.OuterRef("pk")).exclude(NULL_DETECTIONS_FILTER)
+        any_det = Detection.objects.filter(source_image=models.OuterRef("pk"))
+        counts = self.images.annotate(
+            _has_any_det=Exists(any_det),
+            _has_valid_det=Exists(valid_det),
+        ).aggregate(
+            source_images_count=models.Count("id"),
+            source_images_processed_count=models.Count("id", filter=models.Q(_has_any_det=True)),
+            source_images_with_detections_count=models.Count("id", filter=models.Q(_has_valid_det=True)),
+        )
+        return counts
+
+    def update_calculated_fields(self, save: bool = False) -> None:
+        """Recompute the 3 denormalized source-image count columns."""
+        counts = self.get_source_image_counts()
+        self.source_images_count = counts["source_images_count"]
+        self.source_images_processed_count = counts["source_images_processed_count"]
+        self.source_images_with_detections_count = counts["source_images_with_detections_count"]
+        if save:
+            SourceImageCollection.objects.filter(pk=self.pk).update(**counts)
 
     def get_queryset(
         self,
