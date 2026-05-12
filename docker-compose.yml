@@ -177,9 +177,9 @@ services:
 
   ml_backend:
     build:
-      context: ./processing_services/minimal
+      context: ./processing_services/example
     volumes:
-      - ./processing_services/minimal/:/app
+      - ./processing_services/example/:/app
     ports:
       - "2005:2000"
     networks:
