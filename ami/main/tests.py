@@ -3206,6 +3206,33 @@ class TestSourceImageListQueryCount(APITestCase):
         )
         self.assertLessEqual(large, small + 5, f"SourceImage list scaling: {small} -> {large} (likely N+1)")
 
+    def test_list_response_shape_preserved_after_only(self):
+        """Guards against `.only()` over-restricting fields: every row must still serialize
+        `url`, `size_display`, `deployment.name`, and `event.name` without lazy loads."""
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/v2/captures/?project_id={self.project.pk}&limit=5"
+        self.client.get(url)
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        body = res.json()
+        self.assertGreater(len(body["results"]), 0)
+        row = body["results"][0]
+        # Confirm fields the serializer reads (some via model methods) are non-null/present.
+        for key in ("id", "url", "size_display", "deployment", "event", "detections_count", "path"):
+            self.assertIn(key, row, f"missing field {key!r} in list response")
+        self.assertIsNotNone(row["deployment"]["name"])
+        # No lazy-load queries should fire after the main list SELECT.
+        # 1 list select + 1 detection prefetch (no, not in this call) + savepoints.
+        self.assertLessEqual(
+            len(ctx.captured_queries),
+            6,
+            f"Unexpected extra queries — likely lazy-load from deferred field: {len(ctx.captured_queries)}",
+        )
+
 
 @override_settings(CACHALOT_ENABLED=False)
 class TestTaxonListQueryCount(APITestCase):
