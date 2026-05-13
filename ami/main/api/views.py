@@ -1854,53 +1854,36 @@ class SummaryView(GenericAPIView, ProjectMixin):
 
 class UserIdentificationCountsView(GenericAPIView, ProjectMixin):
     """
-    API endpoint that returns identification counts for top 5 users.
-    Optionally restricted to a specific project via project_id query parameter.
+    API endpoint that returns identification counts for the top 5 users in a project.
     """
 
     permission_classes = [IsActiveStaffOrReadOnly]
     serializer_class = UserIdentificationCountSerializer
+    require_project = True
 
     @extend_schema(parameters=[project_id_doc_param])
     def get(self, request):
-        """
-        Return top 5 users by identification count, optionally filtered by project.
-        """
         project = self.get_active_project()
+        assert project is not None  # require_project=True guarantees this
 
-        # Start with user queryset
-        user_queryset = User.objects.all()
-
-        # Filter by project if provided, then annotate with count
-        if project:
-            user_queryset = (
-                user_queryset.filter(identifications__occurrence__project=project)
-                .annotate(identification_count=Count("identifications", distinct=True))
-                .distinct()
+        queryset = (
+            User.objects.filter(identifications__occurrence__project=project)
+            .annotate(
+                identification_count=Count(
+                    "identifications",
+                    filter=Q(identifications__occurrence__project=project),
+                    distinct=True,
+                )
             )
-        else:
-            user_queryset = user_queryset.annotate(identification_count=Count("identifications"))
-
-        # Get top 5 users, ordered by identification count (descending)
-        top_identifiers = user_queryset.filter(identification_count__gt=0).order_by("-identification_count")[:5]
-
-        # Prepare serialized data
-        data = []
-        for user in top_identifiers:
-            data.append(
-                {
-                    "id": user.id,
-                    "name": user.name if user.name else None,
-                    "email": user.email,
-                    "image": user.image.url if user.image else None,
-                    "identification_count": user.identification_count,
-                }
-            )
+            .filter(identification_count__gt=0)
+            .order_by("-identification_count")[:5]
+        )
+        serializer = self.get_serializer(queryset, many=True)
 
         return Response(
             {
-                "project_id": project.id if project else None,
-                "top_identifiers": data,
+                "project_id": project.id,
+                "top_identifiers": serializer.data,
             }
         )
 

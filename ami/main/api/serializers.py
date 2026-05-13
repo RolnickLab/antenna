@@ -1706,13 +1706,21 @@ class StorageSourceSerializer(DefaultSerializer):
         ]
 
 
-class UserIdentificationCountSerializer(serializers.Serializer):
+class UserIdentificationCountSerializer(DefaultSerializer):
     """
     Serializer for user identification counts.
+
+    Mirrors the public fields of UserNestedSerializer (no email) and adds
+    the annotated identification_count.
     """
 
-    id = serializers.IntegerField()
-    name = serializers.CharField()
-    email = serializers.CharField()
-    image = serializers.CharField(required=False, allow_null=True)
-    identification_count = serializers.IntegerField()
+    identification_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "name",
+            "image",
+            "identification_count",
+        ]

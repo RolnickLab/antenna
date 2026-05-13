@@ -168,7 +168,6 @@ const MostIdentifications = ({ projectId }: { projectId: string }) => {
             <ListItem
               item={{
                 image: { src: user.image, variant: 'user' },
-                text: user.email,
                 title: user.name,
               }}
               count={user.identification_count}
