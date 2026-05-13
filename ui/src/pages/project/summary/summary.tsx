@@ -82,9 +82,19 @@ export const Summary = () => {
   )
 }
 
-const LatestOccurrences = ({ projectId }: { projectId: string }) => {
-  const { occurrences, isLoading, error } = useLatestOccurrences(projectId)
-
+const SummaryColumn = ({
+  isLoading,
+  error,
+  isEmpty,
+  viewAllHref,
+  children,
+}: {
+  isLoading: boolean
+  error: unknown
+  isEmpty: boolean
+  viewAllHref: string
+  children: React.ReactNode
+}) => {
   if (isLoading) {
     return <LoadingSpinner />
   }
@@ -93,7 +103,7 @@ const LatestOccurrences = ({ projectId }: { projectId: string }) => {
     return <ErrorState compact error={error} />
   }
 
-  if (!occurrences?.length) {
+  if (isEmpty) {
     return (
       <p className="text-small text-muted-foreground">
         {translate(STRING.MESSAGE_NO_RESULTS_TO_SHOW)}
@@ -103,30 +113,9 @@ const LatestOccurrences = ({ projectId }: { projectId: string }) => {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="bg-background">
-        {occurrences.map((occurrence) => (
-          <Link
-            key={occurrence.id}
-            className="w-full border-border border-b last:border-none"
-            to={`${APP_ROUTES.OCCURRENCE_DETAILS({
-              projectId,
-              occurrenceId: occurrence.id,
-            })}?ordering=-first_appearance_timestamp`}
-          >
-            <ListItem
-              count={occurrence.dateLabel}
-              item={{
-                image: { src: occurrence.images[0]?.src },
-                text: occurrence.determinationTaxon.name,
-              }}
-            />
-          </Link>
-        ))}
-      </div>
+      <div className="bg-background">{children}</div>
       <Link
-        to={`${APP_ROUTES.OCCURRENCES({
-          projectId,
-        })}?ordering=-first_appearance_timestamp`}
+        to={viewAllHref}
         className={classNames(
           buttonVariants({ size: 'small', variant: 'outline' }),
           'self-end'
@@ -135,112 +124,97 @@ const LatestOccurrences = ({ projectId }: { projectId: string }) => {
         <span>{translate(STRING.VIEW_ALL)}</span>
       </Link>
     </div>
+  )
+}
+
+const LatestOccurrences = ({ projectId }: { projectId: string }) => {
+  const { occurrences, isLoading, error } = useLatestOccurrences(projectId)
+
+  return (
+    <SummaryColumn
+      isLoading={isLoading}
+      error={error}
+      isEmpty={!occurrences?.length}
+      viewAllHref={`${APP_ROUTES.OCCURRENCES({
+        projectId,
+      })}?ordering=-first_appearance_timestamp`}
+    >
+      {occurrences?.map((occurrence) => (
+        <Link
+          key={occurrence.id}
+          className="w-full border-border border-b last:border-none"
+          to={APP_ROUTES.OCCURRENCE_DETAILS({
+            projectId,
+            occurrenceId: occurrence.id,
+          })}
+        >
+          <ListItem
+            count={occurrence.dateLabel}
+            item={{
+              image: { src: occurrence.images[0]?.src },
+              text: occurrence.determinationTaxon.name,
+            }}
+          />
+        </Link>
+      ))}
+    </SummaryColumn>
   )
 }
 
 const MostIdentifications = ({ projectId }: { projectId: string }) => {
   const { data, isLoading, error } = useTopIdentifiers(projectId)
 
-  if (isLoading) {
-    return <LoadingSpinner />
-  }
-
-  if (error) {
-    return <ErrorState compact error={error} />
-  }
-
-  if (!data?.top_identifiers.length) {
-    return (
-      <p className="text-small text-muted-foreground">
-        {translate(STRING.MESSAGE_NO_RESULTS_TO_SHOW)}
-      </p>
-    )
-  }
-
   return (
-    <div className="flex flex-col gap-4">
-      <div className="bg-background">
-        {data.top_identifiers?.map((user) => (
-          <div
-            key={user.id}
-            className="border-border border-b last:border-none"
-          >
-            <ListItem
-              item={{
-                image: { src: user.image, variant: 'user' },
-                title: user.name,
-              }}
-              count={user.identification_count}
-            />
-          </div>
-        ))}
-      </div>
-      <Link
-        to={`${APP_ROUTES.OCCURRENCES({ projectId })}?verified=true`}
-        className={classNames(
-          buttonVariants({ size: 'small', variant: 'outline' }),
-          'self-end'
-        )}
-      >
-        <span>{translate(STRING.VIEW_ALL)}</span>
-      </Link>
-    </div>
+    <SummaryColumn
+      isLoading={isLoading}
+      error={error}
+      isEmpty={!data?.top_identifiers.length}
+      viewAllHref={`${APP_ROUTES.OCCURRENCES({ projectId })}?verified=true`}
+    >
+      {data?.top_identifiers.map((user) => (
+        <div key={user.id} className="border-border border-b last:border-none">
+          <ListItem
+            item={{
+              image: { src: user.image, variant: 'user' },
+              title: user.name,
+            }}
+            count={user.identification_count}
+          />
+        </div>
+      ))}
+    </SummaryColumn>
   )
 }
 
 const MostObservedTaxa = ({ projectId }: { projectId: string }) => {
   const { species, isLoading, error } = useTopSpecies(projectId)
 
-  if (isLoading) {
-    return <LoadingSpinner />
-  }
-
-  if (error) {
-    return <ErrorState compact error={error} />
-  }
-
-  if (!species?.length) {
-    return (
-      <p className="text-small text-muted-foreground">
-        {translate(STRING.MESSAGE_NO_RESULTS_TO_SHOW)}
-      </p>
-    )
-  }
-
   return (
-    <div className="flex flex-col gap-4">
-      <div className="bg-background">
-        {species.map((species) => (
-          <Link
-            key={species.id}
-            className="w-full border-border border-b last:border-none"
-            to={`${APP_ROUTES.TAXON_DETAILS({
-              projectId,
-              taxonId: species.id,
-            })}?ordering=-occurrences_count`}
-          >
-            <ListItem
-              key={species.id}
-              item={{
-                image: { src: species.coverImageUrl ?? undefined },
-
-                text: species.name,
-              }}
-              count={species.numOccurrences}
-            />
-          </Link>
-        ))}
-      </div>
-      <Link
-        to={`${APP_ROUTES.TAXA({ projectId })}?ordering=-occurrences_count`}
-        className={classNames(
-          buttonVariants({ size: 'small', variant: 'outline' }),
-          'self-end'
-        )}
-      >
-        <span>{translate(STRING.VIEW_ALL)}</span>
-      </Link>
-    </div>
+    <SummaryColumn
+      isLoading={isLoading}
+      error={error}
+      isEmpty={!species?.length}
+      viewAllHref={`${APP_ROUTES.TAXA({ projectId })}?ordering=-occurrences_count`}
+    >
+      {species?.map((species) => (
+        <Link
+          key={species.id}
+          className="w-full border-border border-b last:border-none"
+          to={APP_ROUTES.TAXON_DETAILS({
+            projectId,
+            taxonId: species.id,
+          })}
+        >
+          <ListItem
+            item={{
+              image: { src: species.coverImageUrl ?? undefined },
+              text: species.name,
+            }}
+            count={species.numOccurrences}
+          />
+        </Link>
+      ))}
+    </SummaryColumn>
   )
 }
 
