@@ -1866,6 +1866,10 @@ class UserIdentificationCountsView(GenericAPIView, ProjectMixin):
         project = self.get_active_project()
         assert project is not None  # require_project=True guarantees this
 
+        # Draft projects must not leak identifier names/photos to non-members.
+        if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
+            raise NotFound("Project not found.")
+
         queryset = (
             User.objects.filter(identifications__occurrence__project=project)
             .annotate(
