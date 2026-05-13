@@ -472,76 +472,6 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
 
-# Fields read solely by `SourceImage.public_url()` (exposed as the `url` serializer field).
-# `public_url()` falls back to building a presigned S3 URL from the deployment's data_source
-# credentials when `SourceImage.public_base_url` is blank — that fallback is what forces the
-# `data_source__*` chain to be preloaded.
-#
-# TEMPORARY. This whole group will be removed once we stop serving images directly from
-# their source buckets and instead serve them through our image-resizing/CDN layer. At that
-# point `url` becomes a static derivation from `id`/`path` and the data_source credentials
-# no longer need to fan out into every list response.
-#
-# Until then, every column here is load-bearing for the list endpoint — dropping any one of
-# them triggers a deferred-field SELECT per row during serialization.
-SOURCE_IMAGE_PUBLIC_URL_DEPENDENCIES = (
-    "path",
-    "public_base_url",
-    "deployment__data_source_id",
-    "deployment__data_source__id",
-    "deployment__data_source__bucket",
-    "deployment__data_source__region",
-    "deployment__data_source__prefix",
-    "deployment__data_source__access_key",
-    "deployment__data_source__secret_key",
-    "deployment__data_source__endpoint_url",
-    "deployment__data_source__public_base_url",
-)
-
-# Columns preloaded for the SourceImage list response. Must include every column read by
-# `SourceImageListSerializer` *and* every column touched by model methods on the serialized
-# fields, so DRF serialization never triggers a deferred-field lazy load.
-#
-# How to keep this in sync when adding a serializer field or a model method:
-#   1. Add the DB columns the new field/method reads (use `<rel>__<col>` for FK chains).
-#   2. Run TestSourceImageListQueryCount — the response-shape test fails loudly if a
-#      lazy load fires during serialization, and the scaling tests fail if a missing
-#      column causes per-row queries.
-#
-# Notes on what is and is NOT here:
-#   - `detections_count` is a cached DB column on SourceImage and IS preloaded.
-#   - `occurrences_count` and `taxa_count` are NOT columns on SourceImage — they exist
-#     only when `with_counts=true` adds them as annotations. Listing them here would
-#     raise FieldDoesNotExist.
-#   - The `deployment__data_source__*` chain is grouped into
-#     `SOURCE_IMAGE_PUBLIC_URL_DEPENDENCIES` above — see that constant for why it exists
-#     and when it goes away.
-SOURCE_IMAGE_LIST_ONLY_FIELDS = (
-    # Core fields read by the serializer (id, timestamps, dimensions, cached counts, FKs).
-    "id",
-    "timestamp",
-    "width",
-    "height",
-    "size",
-    "detections_count",
-    "project_id",
-    "deployment_id",
-    # Nested DeploymentNestedSerializer ({id, name, details}) and permission walk.
-    "deployment__id",
-    "deployment__name",
-    "deployment__project_id",
-    # Nested EventNestedSerializer ({id, name, details, date_label}) — name/date_label
-    # read `start` and `end`.
-    "event_id",
-    "event__id",
-    "event__start",
-    "event__end",
-    "event__deployment_id",
-    # See constant above. TEMPORARY — drops when image serving moves behind the CDN.
-    *SOURCE_IMAGE_PUBLIC_URL_DEPENDENCIES,
-)
-
-
 class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows captures from monitoring sessions to be viewed or edited.
@@ -552,6 +482,59 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     Standard detail endpoint:
     GET /captures/1/
     """
+
+    # Columns preloaded by `.only()` for the list response. We whitelist (`only`) instead of
+    # blacklist (`defer`) because the serializer surface is the stable contract, while
+    # SourceImage gains wide/heavy columns over time that we don't want pulled into every
+    # list row. See https://docs.djangoproject.com/en/4.2/ref/models/querysets/#only
+    #
+    # When adding a serializer field, add the DB columns it reads to the matching group below
+    # (use `<rel>__<col>` for FK chains) and run TestSourceImageListQueryCount.
+
+    # Core columns read by SourceImageListSerializer (id, dimensions, cached counts, FKs).
+    _CORE_FIELDS = (
+        "id",
+        "timestamp",
+        "width",
+        "height",
+        "size",
+        "detections_count",
+        "project_id",
+        "deployment_id",
+    )
+
+    # Columns read by the nested DeploymentNestedSerializer and the permission walk.
+    _DEPLOYMENT_FIELDS = (
+        "deployment__id",
+        "deployment__name",
+        "deployment__project_id",
+    )
+
+    # Columns read by the nested EventNestedSerializer ({id, name, details, date_label}).
+    _EVENT_FIELDS = (
+        "event_id",
+        "event__id",
+        "event__start",
+        "event__end",
+        "event__deployment_id",
+    )
+
+    # TEMPORARY — columns `SourceImage.public_url()` reads when `public_base_url` is blank
+    # and we have to build a presigned S3 URL from the deployment's data_source credentials.
+    # Goes away once image serving moves behind the image-resizing/CDN layer.
+    _PUBLIC_URL_FIELDS = (
+        "path",
+        "public_base_url",
+        "deployment__data_source_id",
+        "deployment__data_source__id",
+        "deployment__data_source__bucket",
+        "deployment__data_source__region",
+        "deployment__data_source__prefix",
+        "deployment__data_source__access_key",
+        "deployment__data_source__secret_key",
+        "deployment__data_source__endpoint_url",
+        "deployment__data_source__public_base_url",
+    )
 
     require_project_for_list = True  # Unfiltered list scans are too expensive on this table
     queryset = SourceImage.objects.all()
@@ -613,9 +596,12 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         ).order_by("timestamp")
 
         if self.action == "list":
-            # Trim row width to the fields SourceImageListSerializer + model methods read.
-            # See SOURCE_IMAGE_LIST_ONLY_FIELDS comment for maintenance rules.
-            queryset = queryset.only(*SOURCE_IMAGE_LIST_ONLY_FIELDS)
+            queryset = queryset.only(
+                *self._CORE_FIELDS,
+                *self._DEPLOYMENT_FIELDS,
+                *self._EVENT_FIELDS,
+                *self._PUBLIC_URL_FIELDS,
+            )
             # It's cumbersome to override the default list view, so customize the queryset here
             queryset = self.filter_by_has_detections(queryset)
 
