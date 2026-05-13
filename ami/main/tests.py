@@ -3206,9 +3206,10 @@ class TestSourceImageListQueryCount(APITestCase):
         )
         self.assertLessEqual(large, small + 5, f"SourceImage list scaling: {small} -> {large} (likely N+1)")
 
-    def test_list_response_shape_preserved_after_only(self):
-        """Guards against `.only()` over-restricting fields: every row must still serialize
-        `url`, `size_display`, `deployment.name`, and `event.name` without lazy loads."""
+    def test_list_response_shape_has_no_lazy_loads(self):
+        """Every row must serialize `url`, `size_display`, `deployment.name`, and
+        `event.name` without lazy loads — `select_related("deployment__data_source")`
+        is the contract that prevents per-row queries from `SourceImage.public_url()`."""
         from django.core.cache import caches
         from django.test.utils import CaptureQueriesContext
 

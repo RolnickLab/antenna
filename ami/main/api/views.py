@@ -483,59 +483,6 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     GET /captures/1/
     """
 
-    # Columns preloaded by `.only()` for the list response. We whitelist (`only`) instead of
-    # blacklist (`defer`) because the serializer surface is the stable contract, while
-    # SourceImage gains wide/heavy columns over time that we don't want pulled into every
-    # list row. See https://docs.djangoproject.com/en/4.2/ref/models/querysets/#only
-    #
-    # When adding a serializer field, add the DB columns it reads to the matching group below
-    # (use `<rel>__<col>` for FK chains) and run TestSourceImageListQueryCount.
-
-    # Core columns read by SourceImageListSerializer (id, dimensions, cached counts, FKs).
-    _CORE_FIELDS = (
-        "id",
-        "timestamp",
-        "width",
-        "height",
-        "size",
-        "detections_count",
-        "project_id",
-        "deployment_id",
-    )
-
-    # Columns read by the nested DeploymentNestedSerializer and the permission walk.
-    _DEPLOYMENT_FIELDS = (
-        "deployment__id",
-        "deployment__name",
-        "deployment__project_id",
-    )
-
-    # Columns read by the nested EventNestedSerializer ({id, name, details, date_label}).
-    _EVENT_FIELDS = (
-        "event_id",
-        "event__id",
-        "event__start",
-        "event__end",
-        "event__deployment_id",
-    )
-
-    # TEMPORARY — columns `SourceImage.public_url()` reads when `public_base_url` is blank
-    # and we have to build a presigned S3 URL from the deployment's data_source credentials.
-    # Goes away once image serving moves behind the image-resizing/CDN layer.
-    _PUBLIC_URL_FIELDS = (
-        "path",
-        "public_base_url",
-        "deployment__data_source_id",
-        "deployment__data_source__id",
-        "deployment__data_source__bucket",
-        "deployment__data_source__region",
-        "deployment__data_source__prefix",
-        "deployment__data_source__access_key",
-        "deployment__data_source__secret_key",
-        "deployment__data_source__endpoint_url",
-        "deployment__data_source__public_base_url",
-    )
-
     require_project_for_list = True  # Unfiltered list scans are too expensive on this table
     queryset = SourceImage.objects.all()
 
@@ -596,12 +543,6 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         ).order_by("timestamp")
 
         if self.action == "list":
-            queryset = queryset.only(
-                *self._CORE_FIELDS,
-                *self._DEPLOYMENT_FIELDS,
-                *self._EVENT_FIELDS,
-                *self._PUBLIC_URL_FIELDS,
-            )
             # It's cumbersome to override the default list view, so customize the queryset here
             queryset = self.filter_by_has_detections(queryset)
 
