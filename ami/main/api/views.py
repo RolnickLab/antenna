@@ -1870,11 +1870,14 @@ class UserIdentificationCountsView(GenericAPIView, ProjectMixin):
         if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
             raise NotFound("Project not found.")
 
+        # Count distinct occurrences a user has identified in this project, not
+        # raw Identification rows: a user who revises their own ID on the same
+        # occurrence should not have their leaderboard number inflated.
         queryset = (
             User.objects.filter(identifications__occurrence__project=project)
             .annotate(
                 identification_count=Count(
-                    "identifications",
+                    "identifications__occurrence",
                     filter=Q(identifications__occurrence__project=project),
                     distinct=True,
                 )
