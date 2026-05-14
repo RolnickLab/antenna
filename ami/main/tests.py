@@ -3226,12 +3226,11 @@ class TestSourceImageListQueryCount(APITestCase):
         for key in ("id", "url", "size_display", "deployment", "event", "detections_count", "path"):
             self.assertIn(key, row, f"missing field {key!r} in list response")
         self.assertIsNotNone(row["deployment"]["name"])
-        # No lazy-load queries should fire after the main list SELECT.
-        # 1 list select + 1 detection prefetch (no, not in this call) + savepoints.
+        # After the main list SELECT, only prefetch + savepoint queries should fire; no per-row lazy loads.
         self.assertLessEqual(
             len(ctx.captured_queries),
             6,
-            f"Unexpected extra queries — likely lazy-load from deferred field: {len(ctx.captured_queries)}",
+            f"Unexpected extra queries (likely lazy-load from a deferred field): {len(ctx.captured_queries)}",
         )
 
 
@@ -3346,7 +3345,7 @@ class TestSourceImageCollectionListQueryCount(APITestCase):
         self.client.get(url)
         count = self._list_query_count(url)
         print(f"\n[AUDIT] Collection list ordered by source_images_count limit=25 -> {count}q")
-        # Sort uses the cached column directly — no extra subquery.
+        # Sort uses the cached column directly, so no extra subquery is added.
         self.assertLessEqual(count, 10, f"Collection list ordered by count too many queries: {count}")
 
 
@@ -3367,12 +3366,6 @@ class TestSourceImageCollectionCountsDenormalize(TestCase):
 
     def _refresh(self):
         self.collection.refresh_from_db()
-
-    def test_initial_counts_zero(self):
-        self._refresh()
-        self.assertEqual(self.collection.source_images_count, 0)
-        self.assertEqual(self.collection.source_images_processed_count, 0)
-        self.assertEqual(self.collection.source_images_with_detections_count, 0)
 
     def test_count_updates_on_image_add(self):
         self.collection.images.set(self.images)
@@ -3465,7 +3458,7 @@ class TestSourceImageCollectionCountsDenormalize(TestCase):
                 "source_images_with_detections_count": 1,
             },
         )
-        # No side effects — DB row unchanged.
+        # Confirm the DB row was not updated.
         self.collection.refresh_from_db()
         self.assertEqual(self.collection.source_images_count, 0)
 

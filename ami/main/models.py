@@ -4208,7 +4208,7 @@ class SourceImageCollection(BaseModel):
         return None
 
     def get_source_image_counts(self) -> dict[str, int]:
-        """Compute the 3 source-image counts in a single query. No writes — testable."""
+        """Return the 3 source-image counts as a dict. Single aggregate query; does not write to the DB."""
         valid_det = Detection.objects.filter(source_image=models.OuterRef("pk")).exclude(NULL_DETECTIONS_FILTER)
         any_det = Detection.objects.filter(source_image=models.OuterRef("pk"))
         counts = self.images.annotate(
