@@ -1,5 +1,5 @@
 """
-Reusable Prefetch factories for Occurrence list/detail rendering.
+Reusable Prefetch factories and aggregate queries for Occurrence rendering.
 
 The serializer trusts the prefetch contract — the viewset is the single place
 that wires it up. Don't gate serializer methods on `_prefetched_objects_cache`
@@ -12,7 +12,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from django.db.models import Prefetch
+from django.db.models import Count, Prefetch, Q, QuerySet
+
+from ami.main.models import Project, User
 
 if TYPE_CHECKING:
     from ami.main.models import Classification, Identification, Occurrence
@@ -129,3 +131,27 @@ def detection_image_urls_from_prefetch(occurrence: Occurrence, limit: int | None
     if limit is not None:
         detections = detections[:limit]
     return [get_media_url(det.path) for det in detections]
+
+
+def top_identifiers_for_project(project: Project) -> QuerySet[User]:
+    """Project users ranked by distinct occurrences they identified.
+
+    Counts distinct occurrences, not raw Identification rows: a user revising
+    their own ID on the same occurrence is one occurrence-identification, not two.
+
+    Always filters `identification_count >= 1` so anonymous / empty calls never
+    leak the full project user list. **Non-configurable** — callers (paginator,
+    list slicing) get to choose how many rows to return, but never which rows.
+    """
+    return (
+        User.objects.filter(identifications__occurrence__project=project)
+        .annotate(
+            identification_count=Count(
+                "identifications__occurrence",
+                filter=Q(identifications__occurrence__project=project),
+                distinct=True,
+            )
+        )
+        .filter(identification_count__gt=0)
+        .order_by("-identification_count")
+    )

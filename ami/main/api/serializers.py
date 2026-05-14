@@ -1717,3 +1717,35 @@ class StorageSourceSerializer(DefaultSerializer):
             "total_size",
             "last_checked",
         ]
+
+
+class UserIdentificationCountSerializer(DefaultSerializer):
+    """One row of the top-identifiers leaderboard.
+
+    Mirrors UserNestedSerializer's public fields (no email) and adds the
+    annotated `identification_count`.
+    """
+
+    identification_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "name",
+            "image",
+            "identification_count",
+        ]
+
+
+class TopIdentifiersResponseSerializer(serializers.Serializer):
+    """Scalar response for /occurrences/stats/top-identifiers/.
+
+    Wraps the leaderboard in a project-scoped envelope so the kind owns its
+    response shape (vs. the generic DRF paginator envelope). Future stats
+    kinds declare their own response serializer the same way — see
+    docs/claude/reference/api-stats-pattern.md.
+    """
+
+    project_id = serializers.IntegerField()
+    top_identifiers = UserIdentificationCountSerializer(many=True)

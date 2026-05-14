@@ -30,8 +30,9 @@ from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
-from ami.main.api.schemas import project_id_doc_param
+from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
+from ami.main.models_future.occurrence import top_identifiers_for_project
 from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
@@ -90,6 +91,7 @@ from .serializers import (
     TaxonListSerializer,
     TaxonSearchResultSerializer,
     TaxonSerializer,
+    TopIdentifiersResponseSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -1261,6 +1263,62 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+
+class OccurrenceStatsViewSet(viewsets.GenericViewSet, ProjectMixin):
+    """Aggregate stats over Occurrences. Each @action == one stats kind.
+
+    Response shape per kind is declared via a DRF serializer + `@extend_schema`
+    so drf-spectacular autodocs it. Most kinds will be small scalar dicts;
+    when a kind genuinely needs `?limit / ?offset / ?ordering` rails (a paginated
+    leaderboard of thousands of entities), opt into `viewsets.GenericViewSet`'s
+    paginator + filter_backends on a per-action basis. See
+    docs/claude/reference/api-stats-pattern.md and
+    docs/claude/planning/stats-list-pattern.md.
+
+    Conventions for every action:
+
+    - URL: `/<entity>/stats/<kind>/?project_id=X[&...]`
+    - Resolve project on the first line; we use the inline 2-line pattern below
+      so visibility (draft → 404) is gated explicitly. `ProjectMixin` only
+      enforces project presence (`require_project=True` → 400/404 on missing
+      or unknown id), not draft visibility.
+    - Query params (beyond `project_id`) go through
+      `SingleParamSerializer[T].clean(...)` for strict 400 validation —
+      no silent clamps.
+    """
+
+    permission_classes = [IsActiveStaffOrReadOnly]
+    require_project = True
+
+    @extend_schema(
+        parameters=[project_id_doc_param, limit_doc_param],
+        responses=TopIdentifiersResponseSerializer,
+    )
+    @action(detail=False, methods=["get"], url_path="top-identifiers")
+    def top_identifiers(self, request):
+        """Users ranked by distinct occurrences they identified.
+
+        `top_identifiers_for_project` bakes in `identification_count >= 1` —
+        non-configurable, so an empty / anonymous call can't leak the full
+        project user list.
+        """
+        project = self.get_active_project()
+        assert project is not None  # require_project=True guarantees this
+        if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
+            raise NotFound("Project not found.")
+
+        limit = SingleParamSerializer[int].clean(
+            param_name="limit",
+            field=serializers.IntegerField(required=False, min_value=1, max_value=50, default=5),
+            data=request.query_params,
+        )
+        top_users = list(top_identifiers_for_project(project)[:limit])
+        serializer = TopIdentifiersResponseSerializer(
+            {"project_id": project.pk, "top_identifiers": top_users},
+            context={"request": request},
+        )
+        return Response(serializer.data)
 
 
 class TaxonTaxaListFilter(filters.BaseFilterBackend):

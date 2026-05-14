@@ -4677,3 +4677,87 @@ class TestCachedCountsDefaultFilters(APITestCase):
                 f"SourceImage {image.pk} cache stale after raising threshold: "
                 f"cache={image.detections_count}, fresh={image.get_detections_count()}",
             )
+
+
+class TestOccurrenceStatsViewSet(APITestCase):
+    """Covers /api/v2/occurrences/stats/top-identifiers/.
+
+    See docs/claude/reference/api-stats-pattern.md for the broader convention.
+    """
+
+    top_url = "/api/v2/occurrences/stats/top-identifiers/"
+
+    def setUp(self) -> None:
+        project, deployment = setup_test_project()
+        create_taxa(project=project)
+        create_captures(deployment=deployment)
+        create_occurrences(deployment=deployment, num=4)
+        self.project = project
+        self.deployment = deployment
+        self.taxon = Taxon.objects.filter(projects=project).first()
+        self.alice = User.objects.create_user(email="alice@insectai.org")  # type: ignore
+        self.bob = User.objects.create_user(email="bob@insectai.org")  # type: ignore
+        self.carol = User.objects.create_user(email="carol@insectai.org")  # type: ignore
+        return super().setUp()
+
+    def _id(self, user: User, occurrence: Occurrence) -> Identification:
+        return Identification.objects.create(user=user, taxon=self.taxon, occurrence=occurrence)
+
+    def test_returns_ranked_list_in_envelope(self):
+        """Happy path: envelope shape + ranking + distinct-occurrence count + limit slice."""
+        occurrences = list(Occurrence.objects.filter(project=self.project))
+        # alice IDs 3 distinct occurrences (one of them twice — counts as 1)
+        for occ in occurrences[:3]:
+            self._id(self.alice, occ)
+        self._id(self.alice, occurrences[0])  # revised ID, same occurrence
+        # bob IDs 2, carol IDs 1
+        for occ in occurrences[:2]:
+            self._id(self.bob, occ)
+        self._id(self.carol, occurrences[0])
+
+        response = self.client.get(f"{self.top_url}?project_id={self.project.pk}&limit=2")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        # Scalar envelope, NOT DRF paginator's `{count, next, previous, results}`.
+        self.assertEqual(set(body.keys()), {"project_id", "top_identifiers"})
+        self.assertEqual(body["project_id"], self.project.pk)
+        # limit=2 caps to top 2 by identification_count; alice's revised ID counts as 1 occurrence.
+        counts = [(row["id"], row["identification_count"]) for row in body["top_identifiers"]]
+        self.assertEqual(counts, [(self.alice.pk, 3), (self.bob.pk, 2)])
+
+    def test_excludes_users_with_zero_count(self):
+        """`identification_count >= 1` is non-configurable so anon calls can't leak the project user list."""
+        # carol has no identifications in this project
+        self._id(self.alice, Occurrence.objects.filter(project=self.project).first())
+        self._id(self.bob, Occurrence.objects.filter(project=self.project).first())
+
+        response = self.client.get(f"{self.top_url}?project_id={self.project.pk}")
+        ids = [r["id"] for r in response.json()["top_identifiers"]]
+        self.assertEqual(set(ids), {self.alice.pk, self.bob.pk})
+
+    def test_no_project_id_returns_400(self):
+        response = self.client.get(self.top_url)
+        self.assertEqual(response.status_code, 400)
+
+    def test_invalid_limit_returns_400(self):
+        """Strict validation via SingleParamSerializer — no silent clamps."""
+        response = self.client.get(f"{self.top_url}?project_id={self.project.pk}&limit=999")
+        self.assertEqual(response.status_code, 400)
+
+    def test_draft_project_404_for_anon(self):
+        self.project.draft = True
+        self.project.save()
+        response = self.client.get(f"{self.top_url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 404)
+
+    def test_registration_order_preserves_occurrence_retrieve(self):
+        """`r"occurrences/stats"` MUST register before `r"occurrences"`.
+
+        If swapped, OccurrenceViewSet.retrieve's `^occurrences/(?P<pk>[^/.]+)/$`
+        captures `/occurrences/stats/` first and 404s on `pk="stats"`.
+        """
+        occurrence = Occurrence.objects.filter(project=self.project).first()
+        stats_response = self.client.get(f"{self.top_url}?project_id={self.project.pk}")
+        retrieve_response = self.client.get(f"/api/v2/occurrences/{occurrence.pk}/?project_id={self.project.pk}")
+        self.assertEqual(stats_response.status_code, 200, "stats URL must resolve")
+        self.assertEqual(retrieve_response.status_code, 200, "occurrence retrieve must still work")
