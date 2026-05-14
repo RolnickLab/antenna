@@ -539,6 +539,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         queryset = queryset.select_related(
             "event",
             "deployment",
+            "deployment__data_source",
         ).order_by("timestamp")
 
         if self.action == "list":
