@@ -155,6 +155,7 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
     serializer_class = ProjectSerializer
     pagination_class = ProjectPagination
     permission_classes = [ObjectPermission]
+    ordering_fields = ["name", "created_at", "updated_at"]
 
     def get_queryset(self):
         qs: ProjectQuerySet = super().get_queryset()  # type: ignore

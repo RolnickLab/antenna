@@ -22,6 +22,7 @@ export const TABS = {
 }
 
 const SORT_FIELDS = [
+  { id: 'name', name: translate(STRING.FIELD_LABEL_NAME) },
   { id: 'created_at', name: translate(STRING.FIELD_LABEL_CREATED_AT) },
   { id: 'updated_at', name: translate(STRING.FIELD_LABEL_UPDATED_AT) },
 ]
