@@ -5,7 +5,7 @@ from statistics import mode
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.db import models
-from django.db.models import Count, Prefetch, Q
+from django.db.models import Prefetch, Q
 from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
@@ -32,6 +32,7 @@ from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.serializers import TagSerializer
+from ami.main.models_future.occurrence import top_identifiers_for_project
 from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
@@ -1870,21 +1871,7 @@ class UserIdentificationCountsView(GenericAPIView, ProjectMixin):
         if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
             raise NotFound("Project not found.")
 
-        # Count distinct occurrences a user has identified in this project, not
-        # raw Identification rows: a user who revises their own ID on the same
-        # occurrence should not have their leaderboard number inflated.
-        queryset = (
-            User.objects.filter(identifications__occurrence__project=project)
-            .annotate(
-                identification_count=Count(
-                    "identifications__occurrence",
-                    filter=Q(identifications__occurrence__project=project),
-                    distinct=True,
-                )
-            )
-            .filter(identification_count__gt=0)
-            .order_by("-identification_count")[:5]
-        )
+        queryset = top_identifiers_for_project(project, limit=5)
         serializer = self.get_serializer(queryset, many=True)
 
         return Response(
