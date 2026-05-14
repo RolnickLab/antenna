@@ -42,7 +42,7 @@ export const SortControl = ({ columns, setSort, sort }: SortControlProps) => {
               buttonVariants({ size: 'small', variant: 'outline' }),
               'w-auto'
             )}
-            hideIcon
+            hideIcon={!!sort}
           >
             <span>{column ? column.name : translate(STRING.SORT_BY)}</span>
             {sort ? (
