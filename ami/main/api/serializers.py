@@ -1751,3 +1751,21 @@ class TopIdentifiersResponseSerializer(serializers.Serializer):
 
     project_id = serializers.IntegerField()
     top_identifiers = UserIdentificationCountSerializer(many=True)
+
+
+class HumanModelAgreementSerializer(serializers.Serializer):
+    """Verified / agreement rates over the filtered Occurrence set.
+
+    `agreed_exact_count` is a subset of `agreed_under_order_count` by
+    construction — an exact match implies an LCA at SPECIES, which is
+    deeper than ORDER. `*_pct` percentages are 0.0..1.0 (not 0..100).
+    """
+
+    project_id = serializers.IntegerField()
+    total_occurrences = serializers.IntegerField()
+    verified_count = serializers.IntegerField()
+    verified_pct = serializers.FloatField(help_text="verified_count / total_occurrences")
+    agreed_exact_count = serializers.IntegerField()
+    agreed_exact_pct = serializers.FloatField(help_text="agreed_exact_count / verified_count")
+    agreed_under_order_count = serializers.IntegerField()
+    agreed_under_order_pct = serializers.FloatField(help_text="agreed_under_order_count / verified_count")
