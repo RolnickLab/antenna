@@ -210,6 +210,8 @@ class TestProjectSetup(TestCase):
                     f"Pipeline {config.pipeline.name} should not be enabled for project {project_two.name}.",
                 )
 class TestImageThumbnailViews(TestCase):
+    base_url = "http://testserver/api/v2/captures/thumbnails/"
+    
     def setUp(self) -> None:
         self.project, self.deployment = setup_test_project()
 
@@ -266,6 +268,22 @@ class TestImageThumbnailViews(TestCase):
         self.assertEqual(response.status_code, 301)
         self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
 
+    def test_captures_response_includes_thumbnail_urls(self):
+        response = self.client.get(f"/api/v2/captures/{self.first_capture.pk}/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        rec = response.json()
+        self.assertIn("thumbnails", rec)
+        self.assertURLEqual(rec["thumbnails"]["small"], f"{self.base_url}{self.first_capture.pk}/?label=small")
+        self.assertURLEqual(rec["thumbnails"]["medium"], f"{self.base_url}{self.first_capture.pk}/?label=medium")
+
+    def test_captures_list_response_includes_thumbnail_urls(self):
+        response = self.client.get(f"/api/v2/captures/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        capture_json = response.json()["results"][0]
+        self.assertIn("thumbnails", capture_json)
+        self.assertURLEqual(capture_json["thumbnails"]["small"], f"{self.base_url}{self.first_capture.pk}/?label=small")
+        self.assertURLEqual(capture_json["thumbnails"]["medium"], f"{self.base_url}{self.first_capture.pk}/?label=medium")
+        
 
 class TestImageGrouping(TestCase):
     def setUp(self) -> None:

@@ -1,5 +1,6 @@
 import datetime
 
+from django.conf import settings
 from django.db.models import QuerySet
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
@@ -1097,7 +1098,19 @@ class SourceImageListSerializer(DefaultSerializer):
     event = EventNestedSerializer(read_only=True)
     project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), required=False)
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
+    thumbnails = serializers.SerializerMethodField()
 
+    def get_thumbnails(self, obj: SourceImage) -> dict | None:
+        return {
+            label: reverse_with_params(
+                "sourceimagethumbnail-detail",
+                args=(obj.pk,),
+                request=self.context.get("request"),
+                params={"label": label},
+            )
+            for label in settings.THUMBNAILS["SIZES"]
+        }
+    
     class Meta:
         model = SourceImage
         fields = [
@@ -1107,7 +1120,6 @@ class SourceImageListSerializer(DefaultSerializer):
             "event",
             "url",
             "path",
-            # "thumbnail",
             "timestamp",
             "width",
             "height",
@@ -1118,6 +1130,7 @@ class SourceImageListSerializer(DefaultSerializer):
             "taxa_count",
             "detections",
             "project",
+            "thumbnails"
         ]
 
 
