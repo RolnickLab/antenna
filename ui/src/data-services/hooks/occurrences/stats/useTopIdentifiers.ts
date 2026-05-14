@@ -9,10 +9,8 @@ interface TopIdentifier {
 }
 
 interface Response {
-  count: number
-  next: string | null
-  previous: string | null
-  results: TopIdentifier[]
+  project_id: number
+  top_identifiers: TopIdentifier[]
 }
 
 export const useTopIdentifiers = (projectId?: string, limit = 5) => {

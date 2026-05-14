@@ -1720,11 +1720,10 @@ class StorageSourceSerializer(DefaultSerializer):
 
 
 class UserIdentificationCountSerializer(DefaultSerializer):
-    """
-    Serializer for user identification counts.
+    """One row of the top-identifiers leaderboard.
 
-    Mirrors the public fields of UserNestedSerializer (no email) and adds
-    the annotated identification_count.
+    Mirrors UserNestedSerializer's public fields (no email) and adds the
+    annotated `identification_count`.
     """
 
     identification_count = serializers.IntegerField(read_only=True)
@@ -1739,13 +1738,14 @@ class UserIdentificationCountSerializer(DefaultSerializer):
         ]
 
 
-class IdentificationsSummarySerializer(serializers.Serializer):
-    """Scalar response for /occurrences/stats/identifications-summary/.
+class TopIdentifiersResponseSerializer(serializers.Serializer):
+    """Scalar response for /occurrences/stats/top-identifiers/.
 
-    Demonstrates pattern 2 (non-list-shaped stats) — the response is a
-    fixed-shape dict with declared field types so drf-spectacular autodocs it.
+    Wraps the leaderboard in a project-scoped envelope so the kind owns its
+    response shape (vs. the generic DRF paginator envelope). Future stats
+    kinds declare their own response serializer the same way — see
+    docs/claude/reference/api-stats-pattern.md.
     """
 
-    total_identifications = serializers.IntegerField()
-    distinct_identifiers = serializers.IntegerField()
-    distinct_identified_occurrences = serializers.IntegerField()
+    project_id = serializers.IntegerField()
+    top_identifiers = UserIdentificationCountSerializer(many=True)

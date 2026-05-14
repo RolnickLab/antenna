@@ -4680,16 +4680,12 @@ class TestCachedCountsDefaultFilters(APITestCase):
 
 
 class TestOccurrenceStatsViewSet(APITestCase):
-    """Covers /api/v2/occurrences/stats/* — both response shapes.
-
-    - `top_identifiers` → pattern 1 (list, paginated, ordering)
-    - `identifications_summary` → pattern 2 (scalar, serializer-declared shape)
+    """Covers /api/v2/occurrences/stats/top-identifiers/.
 
     See docs/claude/reference/api-stats-pattern.md for the broader convention.
     """
 
     top_url = "/api/v2/occurrences/stats/top-identifiers/"
-    summary_url = "/api/v2/occurrences/stats/identifications-summary/"
 
     def setUp(self) -> None:
         project, deployment = setup_test_project()
@@ -4707,143 +4703,61 @@ class TestOccurrenceStatsViewSet(APITestCase):
     def _id(self, user: User, occurrence: Occurrence) -> Identification:
         return Identification.objects.create(user=user, taxon=self.taxon, occurrence=occurrence)
 
-    # -------- pattern 1: top_identifiers (list-shaped, paginated) --------
-
-    def test_top_identifiers_returns_ranked_paginated_list(self):
+    def test_returns_ranked_list_in_envelope(self):
+        """Happy path: envelope shape + ranking + distinct-occurrence count + limit slice."""
         occurrences = list(Occurrence.objects.filter(project=self.project))
-        # alice IDs 3 distinct occurrences, bob 2, carol 1
+        # alice IDs 3 distinct occurrences (one of them twice — counts as 1)
         for occ in occurrences[:3]:
             self._id(self.alice, occ)
+        self._id(self.alice, occurrences[0])  # revised ID, same occurrence
+        # bob IDs 2, carol IDs 1
         for occ in occurrences[:2]:
             self._id(self.bob, occ)
         self._id(self.carol, occurrences[0])
 
-        response = self.client.get(f"{self.top_url}?project_id={self.project.pk}")
-        self.assertEqual(response.status_code, 200)
-        body = response.json()
-        # Standard DRF paginator envelope — no `project_id` / `top_identifiers` wrapper.
-        self.assertEqual(set(body.keys()), {"count", "next", "previous", "results"})
-        self.assertEqual(body["count"], 3)
-        counts = [(row["id"], row["identification_count"]) for row in body["results"]]
-        self.assertEqual(counts, [(self.alice.pk, 3), (self.bob.pk, 2), (self.carol.pk, 1)])
-
-    def test_top_identifiers_default_limit_is_five(self):
-        """Without `?limit=`, StatsPagination defaults to 5 rows."""
-        # Make 6 distinct identifiers each with 1 ID
-        users = [User.objects.create_user(email=f"u{i}@insectai.org") for i in range(6)]  # type: ignore
-        occurrences = list(Occurrence.objects.filter(project=self.project))
-        for u, occ in zip(users, occurrences):
-            self._id(u, occ)
-        # Reuse occurrence 0 for users 4 & 5 since we only have 4 occurrences
-        self._id(users[4], occurrences[0])
-        self._id(users[5], occurrences[1])
-
-        response = self.client.get(f"{self.top_url}?project_id={self.project.pk}")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.json()["results"]), 5)
-
-    def test_top_identifiers_limit_param_caps_results(self):
-        occurrences = list(Occurrence.objects.filter(project=self.project))
-        self._id(self.alice, occurrences[0])
-        self._id(self.bob, occurrences[1])
-        self._id(self.carol, occurrences[2])
-
         response = self.client.get(f"{self.top_url}?project_id={self.project.pk}&limit=2")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.json()["results"]), 2)
-        self.assertEqual(response.json()["count"], 3)  # total still 3
+        body = response.json()
+        # Scalar envelope, NOT DRF paginator's `{count, next, previous, results}`.
+        self.assertEqual(set(body.keys()), {"project_id", "top_identifiers"})
+        self.assertEqual(body["project_id"], self.project.pk)
+        # limit=2 caps to top 2 by identification_count; alice's revised ID counts as 1 occurrence.
+        counts = [(row["id"], row["identification_count"]) for row in body["top_identifiers"]]
+        self.assertEqual(counts, [(self.alice.pk, 3), (self.bob.pk, 2)])
 
-    def test_top_identifiers_ordering_param_overrides_default(self):
-        """`?ordering=identification_count` (ascending) flips the rank."""
-        occurrences = list(Occurrence.objects.filter(project=self.project))
-        for occ in occurrences[:3]:
-            self._id(self.alice, occ)
-        self._id(self.carol, occurrences[0])
-
-        response = self.client.get(f"{self.top_url}?project_id={self.project.pk}&ordering=identification_count")
-        self.assertEqual(response.status_code, 200)
-        results = response.json()["results"]
-        # Ascending: carol (1) before alice (3)
-        self.assertEqual([r["id"] for r in results], [self.carol.pk, self.alice.pk])
-
-    def test_top_identifiers_excludes_users_with_zero_count(self):
-        """`identification_count >= 1` is non-configurable.
-
-        Anonymous / empty calls must never leak the full project user list.
-        """
+    def test_excludes_users_with_zero_count(self):
+        """`identification_count >= 1` is non-configurable so anon calls can't leak the project user list."""
         # carol has no identifications in this project
         self._id(self.alice, Occurrence.objects.filter(project=self.project).first())
         self._id(self.bob, Occurrence.objects.filter(project=self.project).first())
 
         response = self.client.get(f"{self.top_url}?project_id={self.project.pk}")
-        self.assertEqual(response.status_code, 200)
-        ids = [r["id"] for r in response.json()["results"]]
-        self.assertIn(self.alice.pk, ids)
-        self.assertIn(self.bob.pk, ids)
-        self.assertNotIn(self.carol.pk, ids)
+        ids = [r["id"] for r in response.json()["top_identifiers"]]
+        self.assertEqual(set(ids), {self.alice.pk, self.bob.pk})
 
-    def test_top_identifiers_no_project_id_returns_400(self):
+    def test_no_project_id_returns_400(self):
         response = self.client.get(self.top_url)
         self.assertEqual(response.status_code, 400)
 
-    def test_top_identifiers_draft_project_404_for_anon(self):
-        self.project.draft = True
-        self.project.save()
-        response = self.client.get(f"{self.top_url}?project_id={self.project.pk}")
-        self.assertEqual(response.status_code, 404)
-
-    def test_top_identifiers_counts_distinct_occurrences_not_id_rows(self):
-        occurrence = Occurrence.objects.filter(project=self.project).first()
-        # Same user, same occurrence, two Identification rows (revised ID).
-        # Leaderboard counts this as 1 distinct occurrence, not 2.
-        self._id(self.alice, occurrence)
-        self._id(self.alice, occurrence)
-
-        response = self.client.get(f"{self.top_url}?project_id={self.project.pk}")
-        alice_row = next(r for r in response.json()["results"] if r["id"] == self.alice.pk)
-        self.assertEqual(alice_row["identification_count"], 1)
-
-    # -------- pattern 2: identifications_summary (scalar) --------
-
-    def test_summary_returns_scalar_dict(self):
-        occurrences = list(Occurrence.objects.filter(project=self.project))
-        self._id(self.alice, occurrences[0])  # alice → occ 0
-        self._id(self.alice, occurrences[1])  # alice → occ 1
-        self._id(self.bob, occurrences[0])  # bob → occ 0 (same occ as alice)
-
-        response = self.client.get(f"{self.summary_url}?project_id={self.project.pk}")
-        self.assertEqual(response.status_code, 200)
-        body = response.json()
-        self.assertEqual(body["total_identifications"], 3)  # 3 Identification rows
-        self.assertEqual(body["distinct_identifiers"], 2)  # alice + bob
-        self.assertEqual(body["distinct_identified_occurrences"], 2)  # occ 0 + occ 1
-
-    def test_summary_no_project_id_returns_400(self):
-        response = self.client.get(self.summary_url)
+    def test_invalid_limit_returns_400(self):
+        """Strict validation via SingleParamSerializer — no silent clamps."""
+        response = self.client.get(f"{self.top_url}?project_id={self.project.pk}&limit=999")
         self.assertEqual(response.status_code, 400)
 
-    def test_summary_draft_project_404_for_anon(self):
+    def test_draft_project_404_for_anon(self):
         self.project.draft = True
         self.project.save()
-        response = self.client.get(f"{self.summary_url}?project_id={self.project.pk}")
+        response = self.client.get(f"{self.top_url}?project_id={self.project.pk}")
         self.assertEqual(response.status_code, 404)
-
-    # -------- shared / regression --------
 
     def test_registration_order_preserves_occurrence_retrieve(self):
         """`r"occurrences/stats"` MUST register before `r"occurrences"`.
 
         If swapped, OccurrenceViewSet.retrieve's `^occurrences/(?P<pk>[^/.]+)/$`
-        captures `/occurrences/stats/` first and 404s on `pk="stats"`. This
-        regression test asserts both stats subroutes still resolve AND that
-        retrieving a real occurrence works.
+        captures `/occurrences/stats/` first and 404s on `pk="stats"`.
         """
         occurrence = Occurrence.objects.filter(project=self.project).first()
-        for url in (self.top_url, self.summary_url):
-            self.assertEqual(
-                self.client.get(f"{url}?project_id={self.project.pk}").status_code,
-                200,
-                f"{url} must resolve",
-            )
+        stats_response = self.client.get(f"{self.top_url}?project_id={self.project.pk}")
         retrieve_response = self.client.get(f"/api/v2/occurrences/{occurrence.pk}/?project_id={self.project.pk}")
+        self.assertEqual(stats_response.status_code, 200, "stats URL must resolve")
         self.assertEqual(retrieve_response.status_code, 200, "occurrence retrieve must still work")

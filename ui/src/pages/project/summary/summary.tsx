@@ -168,10 +168,10 @@ const MostIdentifications = ({ projectId }: { projectId: string }) => {
     <SummaryColumn
       isLoading={isLoading}
       error={error}
-      isEmpty={!data?.results.length}
+      isEmpty={!data?.top_identifiers.length}
       viewAllHref={`${APP_ROUTES.OCCURRENCES({ projectId })}?verified=true`}
     >
-      {data?.results.map((user) => (
+      {data?.top_identifiers.map((user) => (
         <div key={user.id} className="border-border border-b last:border-none">
           <ListItem
             item={{
