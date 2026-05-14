@@ -18,13 +18,15 @@ export const ListItem = ({
       <Image image={item.image.src} />
     )}
     <div className="flex flex-col overflow-hidden">
-      {item.title ? (
-        <span className="truncate font-medium">{item.title}</span>
+      {item.title ? <span className="truncate">{item.title}</span> : null}
+      {item.text ? (
+        <span className="truncate body-small text-muted-foreground">
+          {item.text}
+        </span>
       ) : null}
-      {item.text ? <span className="truncate">{item.text}</span> : null}
     </div>
     {count !== undefined ? (
-      <span className="body-small grow text-right">
+      <span className="grow body-small text-muted-foreground text-right">
         {count.toLocaleString()}
       </span>
     ) : null}

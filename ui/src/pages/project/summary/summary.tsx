@@ -105,7 +105,7 @@ const SummaryColumn = ({
 
   if (isEmpty) {
     return (
-      <p className="text-small text-muted-foreground">
+      <p className="body-small text-muted-foreground">
         {translate(STRING.MESSAGE_NO_RESULTS_TO_SHOW)}
       </p>
     )
@@ -149,10 +149,10 @@ const LatestOccurrences = ({ projectId }: { projectId: string }) => {
           })}
         >
           <ListItem
-            count={occurrence.dateLabel}
             item={{
               image: { src: occurrence.images[0]?.src },
-              text: occurrence.determinationTaxon.name,
+              text: occurrence.dateLabel,
+              title: occurrence.determinationTaxon.name,
             }}
           />
         </Link>
@@ -210,7 +210,7 @@ const MostObservedTaxa = ({ projectId }: { projectId: string }) => {
           <ListItem
             item={{
               image: { src: species.coverImageUrl ?? undefined },
-              text: species.name,
+              title: species.name,
             }}
             count={species.numOccurrences}
           />
@@ -233,7 +233,7 @@ const Charts = ({ projectId }: { projectId: string }) => {
 
   if (!projectCharts?.length) {
     return (
-      <p className="text-small text-muted-foreground">
+      <p className="body-small text-muted-foreground">
         {translate(STRING.MESSAGE_NO_RESULTS_TO_SHOW)}
       </p>
     )
