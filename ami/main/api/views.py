@@ -762,7 +762,7 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
                     file_size = len(contents)
 
                     # Write to storage
-                    thumbnail_key = f"{self._prefix}{obj.id}/{label}.jpg"
+                    thumbnail_key = f"{self._prefix}capture_{obj.id}/{label}.jpg"
                     thumbnail_path = default_storage.save(thumbnail_key, buffer)
 
                     # Save to DB
