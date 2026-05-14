@@ -32,7 +32,7 @@ from rest_framework.request import Request
 import ami.tasks
 import ami.utils
 from ami.base.fields import DateStringField
-from ami.base.models import BaseModel, BaseQuerySet
+from ami.base.models import BaseModel, BaseQuerySet, CachedCountField
 from ami.main import charts
 from ami.main.models_future.filters import (
     build_occurrence_default_filters_q,
@@ -754,11 +754,11 @@ class Deployment(BaseModel):
     # data_source_last_check_notes = models.TextField(max_length=255, blank=True, null=True)
 
     # Pre-calculated values
-    events_count = models.IntegerField(blank=True, null=True)
-    occurrences_count = models.IntegerField(blank=True, null=True)
-    captures_count = models.IntegerField(blank=True, null=True)
-    detections_count = models.IntegerField(blank=True, null=True)
-    taxa_count = models.IntegerField(blank=True, null=True)
+    events_count = CachedCountField(blank=True, null=True)
+    occurrences_count = CachedCountField(blank=True, null=True)
+    captures_count = CachedCountField(blank=True, null=True)
+    detections_count = CachedCountField(blank=True, null=True)
+    taxa_count = CachedCountField(blank=True, null=True)
     first_capture_timestamp = models.DateTimeField(blank=True, null=True)
     last_capture_timestamp = models.DateTimeField(blank=True, null=True)
 
@@ -1155,9 +1155,9 @@ class Event(BaseModel):
     occurrences: models.QuerySet["Occurrence"]
 
     # Pre-calculated values
-    captures_count = models.IntegerField(blank=True, null=True)
-    detections_count = models.IntegerField(blank=True, null=True)
-    occurrences_count = models.IntegerField(blank=True, null=True)
+    captures_count = CachedCountField(blank=True, null=True)
+    detections_count = CachedCountField(blank=True, null=True)
+    occurrences_count = CachedCountField(blank=True, null=True)
     calculated_fields_updated_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
@@ -1942,7 +1942,7 @@ class SourceImage(BaseModel):
     test_image = models.BooleanField(default=False)
 
     # Precaclulated values
-    detections_count = models.IntegerField(null=True, blank=True)
+    detections_count = CachedCountField(null=True, blank=True)
 
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="captures")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="captures")
@@ -4181,9 +4181,9 @@ class SourceImageCollection(BaseModel):
 
     # Denormalized counts. Kept in sync via m2m_changed and pipeline-completion
     # hooks. Reads are O(1).
-    source_images_count = models.IntegerField(default=0)
-    source_images_with_detections_count = models.IntegerField(default=0)
-    source_images_processed_count = models.IntegerField(default=0)
+    source_images_count = CachedCountField(default=0)
+    source_images_with_detections_count = CachedCountField(default=0)
+    source_images_processed_count = CachedCountField(default=0)
 
     objects = SourceImageCollectionManager()
 

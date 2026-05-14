@@ -7,6 +7,18 @@ import ami.tasks
 from ami.users.models import User
 
 
+class CachedCountField(models.IntegerField):
+    """Denormalized count of related rows.
+
+    Marker subclass so cached aggregate columns can be discovered via
+    ``Model._meta.get_fields()`` (e.g. for refresh tasks, admin display, or
+    list-endpoint defer()). Values may be stale or null between
+    ``update_calculated_fields`` calls — readers should not assume freshness.
+    """
+
+    description = "Cached count of related rows"
+
+
 def has_one_to_many_project_relation(model: type[models.Model]) -> bool:
     """
     Returns True if the model has any ForeignKey or OneToOneField relationship to Project.
