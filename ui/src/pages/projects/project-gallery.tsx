@@ -34,7 +34,6 @@ export const ProjectGallery = ({
   return (
     <Gallery
       error={error}
-      cardSize={CardSize.Large}
       isLoading={isLoading}
       items={items}
       renderItem={(item) => (
@@ -49,7 +48,6 @@ export const ProjectGallery = ({
           />
         </Link>
       )}
-      style={{ gridTemplateColumns: '1fr 1fr 1fr' }}
     />
   )
 }
