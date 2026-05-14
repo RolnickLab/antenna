@@ -2927,6 +2927,354 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         )
 
 
+class TestOccurrenceListQueryCount(APITestCase):
+    """Guard against N+1 regressions in OccurrenceViewSet.list (issue #1271).
+
+    The number of queries should be roughly constant regardless of page size:
+    a small handful of pagination/auth/permission queries plus a fixed set of
+    prefetches (occurrences, detections, classifications, identifications, etc.).
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=10)
+
+        # Use a low threshold so all occurrences are returned
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        self.user = User.objects.create_user(email="qcount@insectai.org", is_staff=False, is_superuser=False)
+        self.client.force_authenticate(user=self.user)
+
+    def _list_occurrences(self, limit: int) -> int:
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/v2/occurrences/?project_id={self.project.pk}&limit={limit}"
+        # Clear cachalot cache between runs so query counts reflect cold state.
+        # Failures must propagate — a warm cache hides query-scaling regressions.
+        caches["default"].clear()
+
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res.data["results"]), min(limit, res.data["count"]))
+        # List responses cap detection_images per row (1 cover image; prevents unbounded payload).
+        for row in res.data["results"]:
+            self.assertLessEqual(len(row["detection_images"]), 1)
+        return len(ctx.captured_queries)
+
+    def test_list_query_count_does_not_scale_with_page_size(self):
+        """Query count for a page of 25 should be very close to a page of 5."""
+        create_occurrences(deployment=self.deployment, num=25, determination_score=0.9)
+
+        small_count = self._list_occurrences(limit=5)
+        large_count = self._list_occurrences(limit=25)
+
+        # Allow a small constant overhead (e.g. cachalot bookkeeping) but
+        # nowhere near 5x scaling.
+        self.assertLessEqual(
+            large_count,
+            small_count + 5,
+            f"Query count grew with page size: {small_count} -> {large_count} (likely N+1 regression)",
+        )
+
+
+class TestOccurrenceDetailQueryCount(APITestCase):
+    """Guard against N+1 regressions on the detail endpoint.
+
+    `OccurrenceSerializer` extends `OccurrenceListSerializer`, so any
+    cache-key gating in the shared base can silently regress the detail
+    path. This guard pins detail-endpoint query count.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=10)
+
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        self.user = User.objects.create_user(email="qcount-detail@insectai.org", is_staff=False, is_superuser=False)
+        self.client.force_authenticate(user=self.user)
+
+    def _detail_query_count(self, occurrence_id: int) -> int:
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/v2/occurrences/{occurrence_id}/?project_id={self.project.pk}"
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return len(ctx.captured_queries)
+
+    def test_detail_query_count_is_bounded(self):
+        """Detail endpoint query count must not scale with detections per occurrence."""
+        create_occurrences(deployment=self.deployment, num=5, determination_score=0.9)
+        occurrence_id = Occurrence.objects.filter(project=self.project).values_list("pk", flat=True).first()
+        self.assertIsNotNone(occurrence_id)
+
+        count = self._detail_query_count(occurrence_id)
+        # 7 list-path queries + a small allowance for detail-only (full detections,
+        # nested predictions, source_image select_related). Hard ceiling catches
+        # silent reintroduction of N+1 in the shared serializer base.
+        self.assertLess(count, 20, f"Detail endpoint took {count} queries (likely N+1 regression)")
+
+    def test_detail_query_count_does_not_scale_with_detections(self):
+        """Detail with many detections per occurrence must not multiply queries.
+
+        `create_occurrences` produces 1 detection/classification per occurrence.
+        Inflate one occurrence to N detections × N classifications and confirm
+        query count stays in the same envelope as the single-detection case
+        (i.e. bounded by the ceiling above, not detection_count).
+        """
+        import datetime
+
+        from ami.main.models import Classification, Detection
+
+        create_occurrences(deployment=self.deployment, num=3, determination_score=0.9)
+        occurrence = Occurrence.objects.filter(project=self.project).first()
+        self.assertIsNotNone(occurrence)
+
+        seed_detection = occurrence.detections.first()
+        self.assertIsNotNone(seed_detection)
+        seed_classification = seed_detection.classifications.first()
+        self.assertIsNotNone(seed_classification)
+        source_image = seed_detection.source_image
+
+        for i in range(8):
+            det = Detection.objects.create(
+                source_image=source_image,
+                occurrence=occurrence,
+                timestamp=source_image.timestamp,
+                bbox=[10, 10, 20, 20],
+                path=f"detections/inflated_{i}.jpg",
+            )
+            for j in range(3):
+                Classification.objects.create(
+                    detection=det,
+                    taxon=seed_classification.taxon,
+                    algorithm=seed_classification.algorithm,
+                    score=0.8 + (j * 0.01),
+                    timestamp=datetime.datetime.now(),
+                )
+
+        count = self._detail_query_count(occurrence.pk)
+        self.assertLess(
+            count,
+            20,
+            f"Detail with 9 detections × 4 classifications took {count} queries — N+1 regression",
+        )
+
+
+class TestOccurrencePrefetchHelpersEdgeCases(APITestCase):
+    """Helpers in `models_future/occurrence.py` must handle empty prefetch caches gracefully.
+
+    `.valid()` excludes zero-detection occurrences from the list endpoint, but
+    helpers can still be called on objects whose detections were deleted, or in
+    non-API contexts (admin, exports). Empty must return None / [] without 500.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=2)
+        create_occurrences(deployment=self.deployment, num=2, determination_score=0.9)
+
+    def _empty_occurrence(self) -> "Occurrence":
+        """An occurrence with prefetch caches populated but all relations empty."""
+        from ami.main.models_future.occurrence import prefetch_detections_for_list
+
+        occurrence = (
+            Occurrence.objects.filter(project=self.project)
+            .prefetch_related(prefetch_detections_for_list(), "identifications")
+            .first()
+        )
+        assert occurrence is not None
+        # Wipe relations through DB to leave the prefetch cache empty.
+        occurrence.detections.all().delete()
+        occurrence.identifications.all().delete()
+        # Re-fetch with prefetches so the cache reflects the empty state.
+        return (
+            Occurrence.objects.filter(pk=occurrence.pk)
+            .prefetch_related(prefetch_detections_for_list(), "identifications")
+            .get()
+        )
+
+    def test_helpers_return_safe_defaults_on_empty(self):
+        from ami.main.models_future.occurrence import (
+            best_identification_from_prefetch,
+            best_prediction_from_prefetch,
+            detection_image_urls_from_prefetch,
+        )
+
+        occurrence = self._empty_occurrence()
+        self.assertIsNone(best_prediction_from_prefetch(occurrence))
+        self.assertIsNone(best_identification_from_prefetch(occurrence))
+        self.assertEqual(detection_image_urls_from_prefetch(occurrence), [])
+        self.assertEqual(detection_image_urls_from_prefetch(occurrence, limit=3), [])
+
+    def test_helpers_raise_when_prefetch_missing(self):
+        """Strict contract: missing prefetch must raise, not silently slow-path."""
+        from ami.main.models_future.occurrence import (
+            best_identification_from_prefetch,
+            best_prediction_from_prefetch,
+            detection_image_urls_from_prefetch,
+        )
+
+        # No prefetch applied
+        occurrence = Occurrence.objects.filter(project=self.project).first()
+        assert occurrence is not None
+        with self.assertRaises(RuntimeError):
+            best_prediction_from_prefetch(occurrence)
+        with self.assertRaises(RuntimeError):
+            best_identification_from_prefetch(occurrence)
+        with self.assertRaises(RuntimeError):
+            detection_image_urls_from_prefetch(occurrence)
+
+
+@override_settings(CACHALOT_ENABLED=False)
+class TestSourceImageListQueryCount(APITestCase):
+    """Audit SourceImageViewSet.list for N+1 (follow-up to PR #1274).
+
+    Cachalot disabled so we measure cold query count, not warm cache.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=25)
+        create_occurrences(deployment=self.deployment, num=25, determination_score=0.9)
+
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        self.user = User.objects.create_user(
+            email="qcount-sourceimage@insectai.org", is_staff=False, is_superuser=False
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def _list_query_count(self, limit: int, with_detections: bool) -> int:
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = (
+            f"/api/v2/captures/?project_id={self.project.pk}&limit={limit}"
+            f"&with_detections={'true' if with_detections else 'false'}"
+        )
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return len(ctx.captured_queries)
+
+    def test_list_query_count_does_not_scale_without_detections(self):
+        small = self._list_query_count(limit=5, with_detections=False)
+        large = self._list_query_count(limit=25, with_detections=False)
+        print(f"\n[AUDIT] SourceImage list (no detections): limit=5 -> {small}q, limit=25 -> {large}q")
+        self.assertLessEqual(large, small + 5, f"SourceImage list scaling: {small} -> {large} (likely N+1)")
+
+    def test_list_query_count_does_not_scale_with_detections(self):
+        small = self._list_query_count(limit=5, with_detections=True)
+        large = self._list_query_count(limit=25, with_detections=True)
+        print(f"\n[AUDIT] SourceImage list (with_detections=true): limit=5 -> {small}q, limit=25 -> {large}q")
+        self.assertLessEqual(
+            large, small + 5, f"SourceImage list scaling with detections: {small} -> {large} (likely N+1)"
+        )
+
+    def test_list_query_with_counts_and_detections(self):
+        """Realistic UI call: with_counts=true & with_detections=true at limit=25."""
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url_base = f"/api/v2/captures/?project_id={self.project.pk}&with_detections=true&with_counts=true"
+        # Two warmups: first request does session/auth bootstrap, second equalises pool state.
+        self.client.get(url_base + "&limit=1")
+        self.client.get(url_base + "&limit=1")
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx_small:
+            self.client.get(url_base + "&limit=5")
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx_large:
+            self.client.get(url_base + "&limit=25")
+        small, large = len(ctx_small.captured_queries), len(ctx_large.captured_queries)
+        print(
+            f"\n[AUDIT] SourceImage list (with_detections+with_counts): " f"limit=5 -> {small}q, limit=25 -> {large}q"
+        )
+        self.assertLessEqual(large, small + 5, f"SourceImage list scaling: {small} -> {large} (likely N+1)")
+
+    def test_list_response_shape_has_no_lazy_loads(self):
+        """Every row must serialize `url`, `size_display`, `deployment.name`, and
+        `event.name` without lazy loads — `select_related("deployment__data_source")`
+        is the contract that prevents per-row queries from `SourceImage.public_url()`."""
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/v2/captures/?project_id={self.project.pk}&limit=5"
+        self.client.get(url)
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        body = res.json()
+        self.assertGreater(len(body["results"]), 0)
+        row = body["results"][0]
+        # Confirm fields the serializer reads (some via model methods) are non-null/present.
+        for key in ("id", "url", "size_display", "deployment", "event", "detections_count", "path"):
+            self.assertIn(key, row, f"missing field {key!r} in list response")
+        self.assertIsNotNone(row["deployment"]["name"])
+        # No lazy-load queries should fire after the main list SELECT.
+        # 1 list select + 1 detection prefetch (no, not in this call) + savepoints.
+        self.assertLessEqual(
+            len(ctx.captured_queries),
+            6,
+            f"Unexpected extra queries — likely lazy-load from deferred field: {len(ctx.captured_queries)}",
+        )
+
+
+@override_settings(CACHALOT_ENABLED=False)
+class TestTaxonListQueryCount(APITestCase):
+    """Audit TaxonViewSet.list for N+1 (follow-up to PR #1274, task #9/#15).
+
+    Cachalot disabled so we measure cold query count, not warm cache.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=25)
+        # Spread occurrences across many taxa so the taxon list has 25+ rows.
+        taxa = list(Taxon.objects.filter(projects=self.project))
+        for taxon in taxa[:25]:
+            create_occurrences(deployment=self.deployment, num=2, taxon=taxon, determination_score=0.9)
+
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        self.user = User.objects.create_user(email="qcount-taxon@insectai.org", is_staff=False, is_superuser=False)
+        self.client.force_authenticate(user=self.user)
+
+    def _list_query_count(self, limit: int) -> int:
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/v2/taxa/?project_id={self.project.pk}&limit={limit}"
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return len(ctx.captured_queries)
+
+    def test_list_query_count_does_not_scale_with_page_size(self):
+        small = self._list_query_count(limit=5)
+        large = self._list_query_count(limit=25)
+        print(f"\n[AUDIT] Taxon list: limit=5 -> {small}q, limit=25 -> {large}q")
+        self.assertLessEqual(large, small + 5, f"Taxon list scaling: {small} -> {large} (likely N+1)")
+
+
 class TestProjectDefaultTaxaFilter(APITestCase):
     """
     Tests for project default taxa filtering (include/exclude lists).
