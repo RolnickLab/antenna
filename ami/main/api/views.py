@@ -1892,35 +1892,6 @@ class SummaryView(GenericAPIView, ProjectMixin):
         return Response(data)
 
 
-class UserIdentificationCountsView(GenericAPIView, ProjectMixin):
-    """
-    API endpoint that returns identification counts for the top 5 users in a project.
-    """
-
-    permission_classes = [IsActiveStaffOrReadOnly]
-    serializer_class = UserIdentificationCountSerializer
-    require_project = True
-
-    @extend_schema(parameters=[project_id_doc_param])
-    def get(self, request):
-        project = self.get_active_project()
-        assert project is not None  # require_project=True guarantees this
-
-        # Draft projects must not leak identifier names/photos to non-members.
-        if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
-            raise NotFound("Project not found.")
-
-        queryset = top_identifiers_for_project(project, limit=5)
-        serializer = self.get_serializer(queryset, many=True)
-
-        return Response(
-            {
-                "project_id": project.id,
-                "top_identifiers": serializer.data,
-            }
-        )
-
-
 _STORAGE_CONNECTION_STATUS = [
     # These come from the ConnetionStatus react component
     # @TODO use ENUM

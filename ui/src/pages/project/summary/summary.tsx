@@ -1,6 +1,6 @@
 import classNames from 'classnames'
 import { ErrorState } from 'components/error-state/error-state'
-import { useTopIdentifiers } from 'data-services/hooks/identifications/useTopIdentifiers'
+import { useTopIdentifiers } from 'data-services/hooks/occurrences/stats/useTopIdentifiers'
 import { useLatestOccurrences } from 'data-services/hooks/occurrences/useLatestOccurrences'
 import { useProjectCharts } from 'data-services/hooks/projects/useProjectCharts'
 import { useTopSpecies } from 'data-services/hooks/species/useTopSpecies'

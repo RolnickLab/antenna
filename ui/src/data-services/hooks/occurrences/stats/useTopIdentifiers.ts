@@ -1,5 +1,5 @@
 import { API_ROUTES, API_URL } from 'data-services/constants'
-import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
+import { useAuthorizedQuery } from '../../auth/useAuthorizedQuery'
 
 interface Response {
   project_id?: number
@@ -12,10 +12,10 @@ interface Response {
 }
 
 export const useTopIdentifiers = (projectId?: string) => {
-  const url = `${API_URL}/${API_ROUTES.USERS}/${API_ROUTES.IDENTIFICATIONS}/top/`
+  const url = `${API_URL}/${API_ROUTES.OCCURRENCES}/stats/top-identifiers/`
 
   const { data, isLoading, isFetching, error } = useAuthorizedQuery<Response>({
-    queryKey: [API_ROUTES.IDENTIFICATIONS, 'top', projectId],
+    queryKey: [API_ROUTES.OCCURRENCES, 'stats', 'top-identifiers', projectId],
     url: projectId ? `${url}?project_id=${projectId}` : url,
   })
 
