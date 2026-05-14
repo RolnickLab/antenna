@@ -21,7 +21,7 @@ class Migration(migrations.Migration):
                 ("width", models.IntegerField(blank=True, null=True)),
                 ("height", models.IntegerField(blank=True, null=True)),
                 ("size", models.BigIntegerField(blank=True, null=True)),
-                ("last_modified", models.DateTimeField(blank=True, null=True)),
+                ("last_modified", models.DateTimeField(blank=True, null=True, auto_now_add=True)),
                 (
                     "source_image",
                     models.ForeignKey(

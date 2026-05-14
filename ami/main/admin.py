@@ -302,11 +302,7 @@ class SourceImageThumbnailAdmin(AdminBase):
     list_filter = ("source_image__deployment__project", "source_image__deployment__data_source", "label")
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
-        return (
-            super()
-            .get_queryset(request)
-            .select_related("source_image", "source_image__deployment", "deployment__data_source")
-        )
+        return super().get_queryset(request).select_related("source_image", "source_image__deployment")
 
 
 class ClassificationInline(admin.TabularInline):

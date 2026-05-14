@@ -2396,7 +2396,7 @@ class SourceImageThumbnail(BaseModel):
     width = models.IntegerField(null=True, blank=True)
     height = models.IntegerField(null=True, blank=True)
     size = models.BigIntegerField(null=True, blank=True)
-    last_modified = models.DateTimeField(null=True, blank=True)
+    last_modified = models.DateTimeField(null=True, blank=True, auto_now_add=True)
 
     source_image = models.ForeignKey(SourceImage, on_delete=models.SET_NULL, null=True, related_name="thumbnails")
 

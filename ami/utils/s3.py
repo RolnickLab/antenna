@@ -661,6 +661,7 @@ def get_presigned_url(config: S3Config, key: str, expires_in: int = 60 * 60 * 24
         logger.debug(f"Got cached presigned URL for: {cache_key}")
     return str(url)
 
+
 # Methods to resize all images under a prefix
 def resize_images(config: S3Config, prefix: str, width: int, height: int):
     bucket = get_bucket(config)

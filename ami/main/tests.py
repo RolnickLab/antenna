@@ -1,3 +1,4 @@
+import copy
 import datetime
 import logging
 import typing
@@ -217,6 +218,10 @@ class TestProjectSetup(TestCase):
                 )
 
 
+NEW_THUMBNAIL_SETTINGS = copy.deepcopy(settings.THUMBNAILS)
+NEW_THUMBNAIL_SETTINGS["SIZES"]["small"]["width"] = 300
+
+
 class TestImageThumbnailViews(TestCase):
     base_url = "http://testserver/api/v2/captures/thumbnails/"
 
@@ -226,13 +231,7 @@ class TestImageThumbnailViews(TestCase):
         self.captures = create_captures_from_files(deployment=self.deployment)
         self.first_capture = self.captures[0][0]
 
-        self.original_thumb_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
-
         return super().setUp()
-
-    def tearDown(self):
-        # Restore default thumbnail settings
-        settings.THUMBNAILS["SIZES"]["small"]["width"] = self.original_thumb_width
 
     def test_thumbnail_no_list(self):
         response = self.client.get(f"/api/v2/captures/thumbnails/")
@@ -261,17 +260,32 @@ class TestImageThumbnailViews(TestCase):
     def test_thumbnail_exists(self):
         response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
         self.assertEqual(response.status_code, 301)
-
+        t_id = self.first_capture.thumbnails.first().pk
         response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
         self.assertEqual(self.first_capture.thumbnails.count(), 1)
+        self.assertEqual(self.first_capture.thumbnails.first().pk, t_id)
         thumb = self.first_capture.thumbnails.get(label="small")
         self.assertEqual(response.status_code, 301)
         self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
 
-    def test_thumbnail_settings_change_regenerates(self):
+    def test_thumbnail_exists_newer_modified_source(self):
         response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
         self.assertEqual(response.status_code, 301)
-        settings.THUMBNAILS["SIZES"]["small"]["width"] = 300
+        thumb = self.first_capture.thumbnails.first()
+        self.first_capture.last_modified = datetime.datetime.now()
+        self.first_capture.save()
+        self.assertTrue(self.first_capture.last_modified > thumb.last_modified)
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(self.first_capture.thumbnails.count(), 1)
+        self.assertNotEqual(self.first_capture.thumbnails.first().pk, thumb.pk)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(response.status_code, 301)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    @override_settings(THUMBNAILS=NEW_THUMBNAIL_SETTINGS)
+    def test_thumbnail_settings_change_regenerates(self):
+        # A pre-existing different size thumb
+        self.first_capture.thumbnails.create(path="thumbs/test", label="small", width=240, height=180, size=0)
         response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
         self.assertEqual(self.first_capture.thumbnails.count(), 1)
         thumb = self.first_capture.thumbnails.get(label="small")

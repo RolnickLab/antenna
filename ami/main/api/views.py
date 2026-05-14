@@ -720,25 +720,25 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
 
     permission_classes = [ObjectPermission]
 
-    _sizes = settings.THUMBNAILS["SIZES"]
-    _prefix = settings.THUMBNAILS["STORAGE_PREFIX"]
-
     def list(self, request):
         raise api_exceptions.NotFound(detail=f"No collection of thumbnails")
 
     def retrieve(self, request, pk=None):
-        label = self.request.query_params.get("label", next(iter(self._sizes)))
-        size = self._sizes.get(label, None)
+        _sizes = settings.THUMBNAILS["SIZES"]
+        _prefix = settings.THUMBNAILS["STORAGE_PREFIX"]
+
+        label = self.request.query_params.get("label", next(iter(_sizes)))
+        size = _sizes.get(label, None)
         if size is None:
             raise api_exceptions.ValidationError(
-                detail=f"Invalid thumbnail size label provided: {label} not in {', '.join(self._sizes.keys())}"
+                detail=f"Invalid thumbnail size label provided: {label} not in {', '.join(_sizes.keys())}"
             )
         obj: SourceImage = self.get_object()
         try:
             thumb = obj.thumbnails.get(**size)
         except SourceImageThumbnail.DoesNotExist:
             thumb = None
-        if not thumb or not default_storage.exists(thumb.path):
+        if not thumb or thumb.last_modified < obj.last_modified or not default_storage.exists(thumb.path):
             if obj.path and obj.deployment and obj.deployment.data_source:
                 config = obj.deployment.data_source.config
                 # Get the file
@@ -754,7 +754,7 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
                     height = size.get("height", None)
                     if not height:
                         height = int(orig_height * (width / float(orig_width)))
-                        new_size = (width, height)
+                    new_size = (width, height)
                     img.thumbnail(new_size)
 
                     buffer = io.BytesIO()
@@ -763,13 +763,16 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
                     file_size = len(contents)
 
                     # Write to storage
-                    thumbnail_key = f"{self._prefix}capture_{obj.id}/{label}.jpg"
+                    buffer.seek(0)
+                    thumbnail_key = f"{_prefix}capture_{obj.id}/{label}.jpg"
                     thumbnail_path = default_storage.save(thumbnail_key, buffer)
 
                     # Save to DB
                     width, height = img.size
                     # Remove prior thumbnails for this size
-                    obj.thumbnails.filter(label=label).delete()
+                    for t in obj.thumbnails.filter(label=label):
+                        default_storage.delete(t.path)
+                        t.delete()
                     thumb = obj.thumbnails.create(
                         path=thumbnail_path, label=label, width=width, height=height, size=file_size
                     )
