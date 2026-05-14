@@ -226,7 +226,13 @@ class TestImageThumbnailViews(TestCase):
         self.captures = create_captures_from_files(deployment=self.deployment)
         self.first_capture = self.captures[0][0]
 
+        self.original_thumb_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
+
         return super().setUp()
+
+    def tearDown(self):
+        # Restore default thumbnail settings
+        settings.THUMBNAILS["SIZES"]["small"]["width"] = self.original_thumb_width
 
     def test_thumbnail_no_list(self):
         response = self.client.get(f"/api/v2/captures/thumbnails/")
