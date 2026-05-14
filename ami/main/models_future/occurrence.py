@@ -14,10 +14,34 @@ from typing import TYPE_CHECKING
 
 from django.db.models import Count, Prefetch, Q, QuerySet
 
-from ami.main.models import Project, User
+from ami.main.models import Project, TaxonRank, User
 
 if TYPE_CHECKING:
     from ami.main.models import Classification, Identification, Occurrence
+
+TaxonTuple = tuple[int, str, list[dict]]
+
+
+def lca_rank_between(a: TaxonTuple, b: TaxonTuple) -> TaxonRank | None:
+    """Most-specific shared ancestor rank between two taxa.
+
+    Inputs are ``(taxon_id, rank_str, parents_json)`` triples where
+    ``parents_json`` is ordered root → immediate parent (Taxon.parents_json layout).
+
+    The taxon itself counts as part of its own ancestor chain — passing the
+    same taxon twice returns that taxon's rank. Returns ``None`` when the two
+    chains share no ancestor (e.g. one has an empty parents_json and the other
+    doesn't include it).
+    """
+    chain_a = [(p["id"], TaxonRank(p["rank"])) for p in a[2]] + [(a[0], TaxonRank(a[1]))]
+    chain_b_ids = {p["id"] for p in b[2]} | {b[0]}
+
+    deepest: TaxonRank | None = None
+    for tid, rank in chain_a:
+        if tid in chain_b_ids:
+            if deepest is None or rank > deepest:
+                deepest = rank
+    return deepest
 
 
 def _detections_prefetch(*, ordering: tuple[str, ...], with_source_image: bool) -> Prefetch:

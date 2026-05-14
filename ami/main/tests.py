@@ -4679,6 +4679,99 @@ class TestCachedCountsDefaultFilters(APITestCase):
             )
 
 
+class TestLcaRankBetween(TestCase):
+    """Pure-Python LCA over (taxon_id, rank, parents_json) tuples.
+
+    Inputs encode each taxon as ``(id, rank_str, [{"id": int, "rank": str}, ...])``
+    where the parents list is ordered root → immediate-parent (matches
+    Taxon.parents_json layout).
+    """
+
+    GENUS_NOCTUA = (
+        101,
+        "GENUS",
+        [
+            {"id": 1, "rank": "KINGDOM"},
+            {"id": 4, "rank": "ORDER"},
+            {"id": 30, "rank": "FAMILY"},
+        ],
+    )
+    SPECIES_NOCTUA_PRONUBA = (
+        201,
+        "SPECIES",
+        [
+            {"id": 1, "rank": "KINGDOM"},
+            {"id": 4, "rank": "ORDER"},
+            {"id": 30, "rank": "FAMILY"},
+            {"id": 101, "rank": "GENUS"},
+        ],
+    )
+    SPECIES_NOCTUA_FIMBRIATA = (
+        202,
+        "SPECIES",
+        [
+            {"id": 1, "rank": "KINGDOM"},
+            {"id": 4, "rank": "ORDER"},
+            {"id": 30, "rank": "FAMILY"},
+            {"id": 101, "rank": "GENUS"},
+        ],
+    )
+    SPECIES_DIFFERENT_FAMILY = (
+        301,
+        "SPECIES",
+        [
+            {"id": 1, "rank": "KINGDOM"},
+            {"id": 4, "rank": "ORDER"},
+            {"id": 99, "rank": "FAMILY"},
+        ],
+    )
+    SPECIES_DIFFERENT_ORDER = (
+        401,
+        "SPECIES",
+        [
+            {"id": 1, "rank": "KINGDOM"},
+            {"id": 5, "rank": "ORDER"},
+        ],
+    )
+
+    def test_identical_taxa_lca_is_self_rank(self):
+        from ami.main.models_future.occurrence import lca_rank_between
+
+        rank = lca_rank_between(self.SPECIES_NOCTUA_PRONUBA, self.SPECIES_NOCTUA_PRONUBA)
+        self.assertEqual(rank, TaxonRank.SPECIES)
+
+    def test_sister_species_share_genus(self):
+        from ami.main.models_future.occurrence import lca_rank_between
+
+        rank = lca_rank_between(self.SPECIES_NOCTUA_PRONUBA, self.SPECIES_NOCTUA_FIMBRIATA)
+        self.assertEqual(rank, TaxonRank.GENUS)
+
+    def test_genus_vs_species_in_same_genus(self):
+        from ami.main.models_future.occurrence import lca_rank_between
+
+        rank = lca_rank_between(self.GENUS_NOCTUA, self.SPECIES_NOCTUA_PRONUBA)
+        self.assertEqual(rank, TaxonRank.GENUS)
+
+    def test_different_family_same_order(self):
+        from ami.main.models_future.occurrence import lca_rank_between
+
+        rank = lca_rank_between(self.SPECIES_NOCTUA_PRONUBA, self.SPECIES_DIFFERENT_FAMILY)
+        self.assertEqual(rank, TaxonRank.ORDER)
+
+    def test_different_order_same_kingdom(self):
+        from ami.main.models_future.occurrence import lca_rank_between
+
+        rank = lca_rank_between(self.SPECIES_NOCTUA_PRONUBA, self.SPECIES_DIFFERENT_ORDER)
+        self.assertEqual(rank, TaxonRank.KINGDOM)
+
+    def test_no_shared_ancestor_returns_none(self):
+        from ami.main.models_future.occurrence import lca_rank_between
+
+        rootless = (501, "SPECIES", [])
+        rank = lca_rank_between(rootless, self.SPECIES_NOCTUA_PRONUBA)
+        self.assertIsNone(rank)
+
+
 class TestOccurrenceStatsViewSet(APITestCase):
     """Covers /api/v2/occurrences/stats/top-identifiers/.
 
