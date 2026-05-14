@@ -215,9 +215,13 @@ the stats are computed *over* (not the entity returned in the response).
 
 Naming examples that fit the convention:
 
-- `GET /occurrences/stats/top-identifiers/` — done
+- `GET /occurrences/stats/top-identifiers/` — done (this PR)
 - `GET /occurrences/stats/by-algorithm/` — counts per detection algorithm
-- `GET /occurrences/stats/timeline/` — Plotly-shaped time series
+- `GET /occurrences/stats/identifications-by-species/` — per-taxon identification counts
+- `GET /occurrences/stats/human-model-agreement/` — model agreement / verification rate
+- `GET /occurrences/stats/timeline/` — Plotly-shaped time series for the occurrences page
+- `GET /deployments/stats/processed-images/` — processed images per station
+- `GET /deployments/stats/by-status/` — capture counts per processing state
 - `GET /taxa/stats/most-observed/` — top species by occurrence count
 - `GET /jobs/stats/by-status/` — counts per JobState
 
