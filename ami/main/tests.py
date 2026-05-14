@@ -4922,6 +4922,72 @@ class TestOccurrenceStatsViewSet(APITestCase):
         self.assertEqual(stats_response.status_code, 200, "stats URL must resolve")
         self.assertEqual(retrieve_response.status_code, 200, "occurrence retrieve must still work")
 
+    # ----- /occurrences/stats/human-model-agreement/ -----
+
+    agreement_url = "/api/v2/occurrences/stats/human-model-agreement/"
+
+    def test_agreement_no_project_id_returns_400(self):
+        response = self.client.get(self.agreement_url)
+        self.assertEqual(response.status_code, 400)
+
+    def test_agreement_draft_project_404_for_anon(self):
+        self.project.draft = True
+        self.project.save()
+        response = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 404)
+
+    def test_agreement_empty_returns_zero_pcts(self):
+        response = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["project_id"], self.project.pk)
+        self.assertEqual(body["total_occurrences"], 4)
+        self.assertEqual(body["verified_count"], 0)
+        self.assertEqual(body["verified_pct"], 0.0)
+        self.assertEqual(body["agreed_exact_pct"], 0.0)
+        self.assertEqual(body["agreed_under_order_pct"], 0.0)
+
+    def test_agreement_happy_path(self):
+        """One verified occurrence; user agrees with the machine prediction → exact match.
+
+        The fixture creates a single classification per occurrence via
+        `create_occurrences()`, which uses a random taxon. We identify the
+        first occurrence with that same taxon to force an exact match.
+        """
+        occurrence = Occurrence.objects.filter(project=self.project).order_by("pk").first()
+        # The machine prediction is whatever `create_occurrences()` picked — match it.
+        machine_taxon = occurrence.detections.first().classifications.first().taxon
+        Taxon.objects.update_all_parents()
+        Identification.objects.create(user=self.alice, occurrence=occurrence, taxon=machine_taxon)
+
+        response = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["total_occurrences"], 4)
+        self.assertEqual(body["verified_count"], 1)
+        self.assertEqual(body["agreed_exact_count"], 1)
+        self.assertEqual(body["agreed_under_order_count"], 1)
+
+    def test_agreement_filter_passthrough(self):
+        """`?deployment=` should narrow the set."""
+        other_deployment = Deployment.objects.create(name="other", project=self.project)
+        response = self.client.get(
+            f"{self.agreement_url}?project_id={self.project.pk}&deployment={other_deployment.pk}"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["total_occurrences"], 0)
+
+    def test_agreement_apply_defaults_false_bypasses_score_threshold(self):
+        """A score threshold filters out occurrences; apply_defaults=false restores them."""
+        self.project.default_filters_score_threshold = 0.99
+        self.project.save()
+        gated = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}").json()
+        bypassed = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}&apply_defaults=false").json()
+        self.assertGreaterEqual(bypassed["total_occurrences"], gated["total_occurrences"])
+        # Sanity: with threshold=0.99 and fixture's score=0.9, gated should be 0.
+        self.assertEqual(gated["total_occurrences"], 0)
+        self.assertEqual(bypassed["total_occurrences"], 4)
+
 
 class TestTaxaVerification(APITestCase):
     """Per-taxon verification + human/model agreement annotations and the verified filter (#1316)."""

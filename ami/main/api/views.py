@@ -1332,7 +1332,7 @@ class OccurrenceStatsViewSet(viewsets.GenericViewSet, ProjectMixin):
     # Filter machinery for actions that opt into `self.filter_queryset(...)`.
     # `top_identifiers` doesn't call it, so its behavior is unchanged.
     queryset = Occurrence.objects.none()
-    filter_backends = list(OCCURRENCE_FILTER_BACKENDS)
+    filter_backends = [DjangoFilterBackend, *OCCURRENCE_FILTER_BACKENDS]
     filterset_fields = list(OCCURRENCE_FILTERSET_FIELDS)
 
     @extend_schema(
