@@ -738,10 +738,15 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
             )
         obj: SourceImage = self.get_object()
         try:
-            thumb = obj.thumbnails.get(**size)
+            thumb = obj.thumbnails.get(label=label)
         except SourceImageThumbnail.DoesNotExist:
             thumb = None
-        if not thumb or thumb.last_modified < obj.last_modified or not default_storage.exists(thumb.path):
+        if (
+            not thumb
+            or thumb.width != size["width"]
+            or thumb.last_modified < obj.last_modified
+            or not default_storage.exists(thumb.path)
+        ):
             if obj.path and obj.deployment and obj.deployment.data_source:
                 config = obj.deployment.data_source.config
                 # Get the file
