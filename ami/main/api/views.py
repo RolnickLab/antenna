@@ -30,7 +30,7 @@ from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
-from ami.main.api.schemas import project_id_doc_param
+from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.occurrence import top_identifiers_for_project
 from ami.utils.requests import get_default_classification_threshold
@@ -91,6 +91,7 @@ from .serializers import (
     TaxonListSerializer,
     TaxonSearchResultSerializer,
     TaxonSerializer,
+    TopIdentifiersResponseSerializer,
     UserIdentificationCountSerializer,
 )
 
@@ -1264,6 +1265,44 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+
+class OccurrenceStatsViewSet(viewsets.ViewSet, ProjectMixin):
+    """Aggregate stats over Occurrences. Each @action == one stats kind.
+
+    Convention (see docs/claude/reference/api-stats-pattern.md):
+    - URL: /<entity>/stats/<kind>/?project_id=X[&limit=N&...]
+    - Every action MUST call `self.get_active_project()` — `require_project=True`
+      only enforces through that call path, NOT automatically per request.
+    - Every action MUST declare its response via @extend_schema(responses=...)
+      with a serializer. No raw Response({...}) shapes.
+    - Query params validated via SingleParamSerializer (ami/base/serializers.py).
+    """
+
+    permission_classes = [IsActiveStaffOrReadOnly]
+    require_project = True
+
+    @extend_schema(
+        parameters=[project_id_doc_param, limit_doc_param],
+        responses=TopIdentifiersResponseSerializer,
+    )
+    @action(detail=False, methods=["get"], url_path="top-identifiers")
+    def top_identifiers(self, request):
+        project = self.get_active_project()
+        assert project is not None  # require_project=True guarantees this
+
+        # Draft projects must not leak identifier names/photos to non-members.
+        if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
+            raise NotFound("Project not found.")
+
+        limit = SingleParamSerializer[int].clean(
+            param_name="limit",
+            field=serializers.IntegerField(required=False, min_value=1, max_value=50, default=5),
+            data=request.query_params,
+        )
+        queryset = top_identifiers_for_project(project, limit=limit)
+        user_serializer = UserIdentificationCountSerializer(queryset, many=True, context={"request": request})
+        return Response({"project_id": project.id, "top_identifiers": user_serializer.data})
 
 
 class TaxonTaxaListFilter(filters.BaseFilterBackend):

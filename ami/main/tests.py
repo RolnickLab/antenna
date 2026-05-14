@@ -4329,3 +4329,104 @@ class TestCachedCountsDefaultFilters(APITestCase):
                 f"SourceImage {image.pk} cache stale after raising threshold: "
                 f"cache={image.detections_count}, fresh={image.get_detections_count()}",
             )
+
+
+class TestOccurrenceStatsTopIdentifiers(APITestCase):
+    """Covers /api/v2/occurrences/stats/top-identifiers/.
+
+    See docs/claude/reference/api-stats-pattern.md for the broader convention.
+    """
+
+    endpoint = "/api/v2/occurrences/stats/top-identifiers/"
+
+    def setUp(self) -> None:
+        project, deployment = setup_test_project()
+        create_taxa(project=project)
+        create_captures(deployment=deployment)
+        create_occurrences(deployment=deployment, num=4)
+        self.project = project
+        self.deployment = deployment
+        self.taxon = Taxon.objects.filter(projects=project).first()
+        self.alice = User.objects.create_user(email="alice@insectai.org")  # type: ignore
+        self.bob = User.objects.create_user(email="bob@insectai.org")  # type: ignore
+        self.carol = User.objects.create_user(email="carol@insectai.org")  # type: ignore
+        return super().setUp()
+
+    def _id(self, user: User, occurrence: Occurrence) -> Identification:
+        return Identification.objects.create(user=user, taxon=self.taxon, occurrence=occurrence)
+
+    def test_happy_path_returns_ranked_list(self):
+        occurrences = list(Occurrence.objects.filter(project=self.project))
+        # alice IDs 3 distinct occurrences, bob 2, carol 1
+        for occ in occurrences[:3]:
+            self._id(self.alice, occ)
+        for occ in occurrences[:2]:
+            self._id(self.bob, occ)
+        self._id(self.carol, occurrences[0])
+
+        response = self.client.get(f"{self.endpoint}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["project_id"], self.project.pk)
+        counts = [(row["id"], row["identification_count"]) for row in body["top_identifiers"]]
+        self.assertEqual(
+            counts,
+            [(self.alice.pk, 3), (self.bob.pk, 2), (self.carol.pk, 1)],
+        )
+
+    def test_limit_caps_results(self):
+        occurrences = list(Occurrence.objects.filter(project=self.project))
+        self._id(self.alice, occurrences[0])
+        self._id(self.bob, occurrences[1])
+        self._id(self.carol, occurrences[2])
+
+        response = self.client.get(f"{self.endpoint}?project_id={self.project.pk}&limit=2")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()["top_identifiers"]), 2)
+
+    def test_limit_below_min_returns_400(self):
+        response = self.client.get(f"{self.endpoint}?project_id={self.project.pk}&limit=0")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("limit", response.json())
+
+    def test_limit_above_max_returns_400(self):
+        response = self.client.get(f"{self.endpoint}?project_id={self.project.pk}&limit=51")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("limit", response.json())
+
+    def test_no_project_id_returns_400(self):
+        response = self.client.get(self.endpoint)
+        self.assertEqual(response.status_code, 400)
+
+    def test_draft_project_404_for_anon(self):
+        self.project.draft = True
+        self.project.save()
+        response = self.client.get(f"{self.endpoint}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 404)
+
+    def test_counts_distinct_occurrences_not_identification_rows(self):
+        occurrence = Occurrence.objects.filter(project=self.project).first()
+        # Same user, same occurrence, two Identification rows (e.g. revised ID).
+        # Leaderboard should count this as 1 distinct occurrence, not 2.
+        self._id(self.alice, occurrence)
+        self._id(self.alice, occurrence)
+
+        response = self.client.get(f"{self.endpoint}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        rows = response.json()["top_identifiers"]
+        alice_row = next(r for r in rows if r["id"] == self.alice.pk)
+        self.assertEqual(alice_row["identification_count"], 1)
+
+    def test_registration_order_preserves_occurrence_retrieve(self):
+        """`r"occurrences/stats"` MUST register before `r"occurrences"`.
+
+        If swapped, OccurrenceViewSet.retrieve's `^occurrences/(?P<pk>[^/.]+)/$`
+        captures `/occurrences/stats/` first and 404s on `pk="stats"`. This
+        regression test asserts the stats subtree still resolves AND that
+        retrieving a real occurrence works.
+        """
+        occurrence = Occurrence.objects.filter(project=self.project).first()
+        stats_response = self.client.get(f"{self.endpoint}?project_id={self.project.pk}")
+        self.assertEqual(stats_response.status_code, 200, "stats subtree must resolve")
+        retrieve_response = self.client.get(f"/api/v2/occurrences/{occurrence.pk}/?project_id={self.project.pk}")
+        self.assertEqual(retrieve_response.status_code, 200, "occurrence retrieve must still work")

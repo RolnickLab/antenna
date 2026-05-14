@@ -1724,3 +1724,15 @@ class UserIdentificationCountSerializer(DefaultSerializer):
             "image",
             "identification_count",
         ]
+
+
+class TopIdentifiersResponseSerializer(serializers.Serializer):
+    """Envelope for /occurrences/stats/top-identifiers/.
+
+    Declares the response shape so drf-spectacular can autodoc it. Kept
+    identical to the legacy /users/identifications/top/ envelope to avoid
+    frontend churn during the migration.
+    """
+
+    project_id = serializers.IntegerField()
+    top_identifiers = UserIdentificationCountSerializer(many=True)
