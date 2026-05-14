@@ -1,13 +1,13 @@
 import logging
 
 from django.contrib.auth.models import Group
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models.signals import m2m_changed, post_delete, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from guardian.shortcuts import assign_perm
 
 from ami.main.models import Detection, Project, SourceImageCollection
-from ami.main.tasks import refresh_project_cached_counts
+from ami.main.tasks import refresh_collection_cached_counts, refresh_project_cached_counts
 from ami.users.roles import BasicMember, ProjectManager, create_roles_for_project
 
 from .models import User
@@ -202,24 +202,67 @@ def exclude_taxa_updated(sender, instance: Project, action, **kwargs):
 # ============================================================================
 # SourceImageCollection Denormalized Counts
 # ============================================================================
+#
+# Detection writes can fan out to many collections (one SourceImage may belong
+# to multiple collections). We coalesce per-transaction so that, e.g., a 10k-row
+# pipeline save fires the recompute task at most once per affected collection
+# instead of once per detection. The dedup set lives on ``connection`` (thread-
+# local in Django's default setup) and is drained by an ``on_commit`` hook.
+# Bulk write paths that bypass signals (``bulk_create``, ``bulk_update``, raw
+# SQL) still drift the cached counts; the ``reconcile_cached_counts_task`` in
+# ``ami.main.tasks`` is the safety net for those.
+
+_PENDING_SOURCE_IMAGE_IDS_ATTR = "_pending_collection_count_refresh_source_image_ids"
+
+
+def _flush_pending_collection_refreshes() -> None:
+    """Drain the per-connection dedup set and dispatch one task per collection."""
+    source_image_ids: set[int] = getattr(connection, _PENDING_SOURCE_IMAGE_IDS_ATTR, set())
+    try:
+        delattr(connection, _PENDING_SOURCE_IMAGE_IDS_ATTR)
+    except AttributeError:
+        pass
+    if not source_image_ids:
+        return
+    collection_ids = (
+        SourceImageCollection.objects.filter(images__id__in=source_image_ids).values_list("pk", flat=True).distinct()
+    )
+    for cid in collection_ids:
+        refresh_collection_cached_counts.delay(cid)
+
+
+def _schedule_collection_refresh_for_source_image(source_image_id: int) -> None:
+    pending = getattr(connection, _PENDING_SOURCE_IMAGE_IDS_ATTR, None)
+    is_new = pending is None
+    if is_new:
+        pending = set()
+        setattr(connection, _PENDING_SOURCE_IMAGE_IDS_ATTR, pending)
+    pending.add(source_image_id)
+    if is_new:
+        # Outside an atomic block, ``on_commit`` fires synchronously at
+        # registration time — so the ``add`` above must precede it or the
+        # flush sees an empty set.
+        transaction.on_commit(_flush_pending_collection_refreshes)
 
 
 @receiver(m2m_changed, sender=SourceImageCollection.images.through)
 def update_collection_counts_on_m2m(sender, instance, action, **kwargs):
     """Recompute denormalized counts when images are added to or removed from a collection."""
     if action in ("post_add", "post_remove", "post_clear"):
-        instance.update_calculated_fields(save=True)
+        collection_pk = instance.pk
+        transaction.on_commit(lambda: refresh_collection_cached_counts.delay(collection_pk))
 
 
 @receiver(post_save, sender=Detection)
 @receiver(post_delete, sender=Detection)
 def update_collection_counts_on_detection_change(sender, instance, **kwargs):
-    """Keep processed / with-detections counts fresh on per-row Detection writes.
+    """Schedule a collection-counts refresh for every collection containing the affected SourceImage.
 
-    `bulk_create` skips signals, so ML pipelines must call `update_calculated_fields`
-    explicitly after their batch writes (see `ami.ml.models.pipeline.save_results`).
+    The dedup + on_commit indirection means even tight per-row Detection write
+    loops fan out to at most one task per affected collection. ``bulk_create``
+    / ``bulk_update`` skip signals entirely — those rely on the periodic
+    reconciliation task to repair drift.
     """
     if not instance.source_image_id:
         return
-    for collection in SourceImageCollection.objects.filter(images__id=instance.source_image_id).distinct():
-        collection.update_calculated_fields(save=True)
+    _schedule_collection_refresh_for_source_image(instance.source_image_id)

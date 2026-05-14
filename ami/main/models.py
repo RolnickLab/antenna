@@ -4222,7 +4222,17 @@ class SourceImageCollection(BaseModel):
         return counts
 
     def update_calculated_fields(self, save: bool = False) -> None:
-        """Recompute the 3 denormalized source-image count columns."""
+        """Recompute the 3 denormalized source-image count columns.
+
+        Persists via ``.filter(pk=).update(**counts)`` rather than ``.save()``
+        — cached-count refreshes shouldn't bump ``updated_at`` (semantically the
+        entity hasn't been modified) and shouldn't re-fire ``post_save``, which
+        on this model would re-enter ``m2m_changed`` if the handler later does
+        anything with ``self.images``. Deployment / Event / SourceImage take a
+        different path (``self.save(update_calculated_fields=False)``) because
+        their ``update_calculated_fields`` also writes non-cached fields that
+        downstream save-handlers expect to see updated.
+        """
         counts = self.get_source_image_counts()
         self.source_images_count = counts["source_images_count"]
         self.source_images_processed_count = counts["source_images_processed_count"]

@@ -6,7 +6,7 @@ from io import BytesIO
 from django.contrib.auth.models import AnonymousUser
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection, models
-from django.test import TestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings
 from guardian.shortcuts import assign_perm, get_perms, remove_perm
 from PIL import Image
 from rest_framework import status
@@ -3349,8 +3349,15 @@ class TestSourceImageCollectionListQueryCount(APITestCase):
         self.assertLessEqual(count, 10, f"Collection list ordered by count too many queries: {count}")
 
 
-class TestSourceImageCollectionCountsDenormalize(TestCase):
-    """Verify denormalized count columns stay in sync via signals and bulk hooks."""
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
+class TestSourceImageCollectionCountsDenormalize(TransactionTestCase):
+    """Verify denormalized count columns stay in sync via signals and bulk hooks.
+
+    Uses ``TransactionTestCase`` + eager Celery so ``transaction.on_commit``
+    callbacks (registered by the signal handlers) actually fire inside the
+    test body and the dispatched ``refresh_collection_cached_counts`` task
+    runs inline.
+    """
 
     def setUp(self):
         self.project, self.deployment = setup_test_project()
@@ -3383,7 +3390,7 @@ class TestSourceImageCollectionCountsDenormalize(TestCase):
         Detection.objects.create(
             source_image=self.images[0],
             timestamp=self.images[0].timestamp,
-            bbox=[0.1, 0.1, 0.2, 0.2],
+            bbox=[10, 10, 20, 20],
             path="detections/d1.jpg",
         )
         self._refresh()
@@ -3395,7 +3402,7 @@ class TestSourceImageCollectionCountsDenormalize(TestCase):
         det = Detection.objects.create(
             source_image=self.images[0],
             timestamp=self.images[0].timestamp,
-            bbox=[0.1, 0.1, 0.2, 0.2],
+            bbox=[10, 10, 20, 20],
             path="detections/d1.jpg",
         )
         det.delete()
@@ -3421,7 +3428,7 @@ class TestSourceImageCollectionCountsDenormalize(TestCase):
         Detection.objects.create(
             source_image=self.images[0],
             timestamp=self.images[0].timestamp,
-            bbox=[0.1, 0.1, 0.2, 0.2],
+            bbox=[10, 10, 20, 20],
             path="detections/d1.jpg",
         )
         SourceImageCollection.objects.filter(pk=self.collection.pk).update(
@@ -3440,7 +3447,7 @@ class TestSourceImageCollectionCountsDenormalize(TestCase):
         Detection.objects.create(
             source_image=self.images[0],
             timestamp=self.images[0].timestamp,
-            bbox=[0.1, 0.1, 0.2, 0.2],
+            bbox=[10, 10, 20, 20],
             path="detections/d1.jpg",
         )
         SourceImageCollection.objects.filter(pk=self.collection.pk).update(
@@ -3461,6 +3468,86 @@ class TestSourceImageCollectionCountsDenormalize(TestCase):
         # Confirm the DB row was not updated.
         self.collection.refresh_from_db()
         self.assertEqual(self.collection.source_images_count, 0)
+
+
+class TestCachedCountsIntegrityCheck(TestCase):
+    """Verify the generic drift-detection check for ``CachedCountField`` columns.
+
+    The check is the safety net for bulk write paths that skip signals
+    (``bulk_create``, ``bulk_update``, raw SQL, ML post-processors).
+    """
+
+    def setUp(self):
+        # reuse=False isolates this test from collections created on the shared
+        # test project by other test classes — we want exact-count assertions.
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=3)
+        # create_captures auto-creates a "Test Source Image Collection" with
+        # stale counts (signals defer to on_commit which doesn't fire in
+        # TestCase). Remove it so the project has exactly one collection.
+        SourceImageCollection.objects.filter(project=self.project).delete()
+        self.images = list(SourceImage.objects.filter(deployment=self.deployment))
+        self.collection = SourceImageCollection.objects.create(
+            name="drift-test",
+            project=self.project,
+            method="manual",
+            kwargs={"image_ids": [img.pk for img in self.images]},
+        )
+        self.collection.images.set(self.images)
+        # Force the cached counts on this fresh collection to a known-correct state.
+        self.collection.update_calculated_fields(save=True)
+
+    def test_discover_finds_models_with_cached_count_fields(self):
+        from ami.main.checks.cached_counts import discover_cached_count_fields
+
+        discovered = discover_cached_count_fields()
+        model_names = {m.__name__ for m in discovered}
+        # Every model with at least one CachedCountField column should appear.
+        for expected in ("Deployment", "Event", "SourceImage", "SourceImageCollection"):
+            self.assertIn(expected, model_names, f"discover missed {expected}")
+        self.assertIn("source_images_count", discovered[SourceImageCollection])
+
+    def test_find_stale_yields_drift(self):
+        from ami.main.checks.cached_counts import find_stale_cached_counts
+
+        # Drift in via raw UPDATE — same shape as bulk_update or signal-skipping writes.
+        SourceImageCollection.objects.filter(pk=self.collection.pk).update(
+            source_images_count=999, source_images_processed_count=999, source_images_with_detections_count=999
+        )
+        drift = list(find_stale_cached_counts(SourceImageCollection, project_id=self.project.pk))
+        self.assertEqual(len(drift), 1)
+        instance, stored, computed = drift[0]
+        self.assertEqual(instance.pk, self.collection.pk)
+        self.assertEqual(stored["source_images_count"], 999)
+        self.assertEqual(computed["source_images_count"], len(self.images))
+
+    def test_reconcile_dry_run_reports_without_writing(self):
+        from ami.main.checks.cached_counts import reconcile_cached_counts
+
+        SourceImageCollection.objects.filter(pk=self.collection.pk).update(source_images_count=999)
+        result = reconcile_cached_counts(model=SourceImageCollection, project_id=self.project.pk, dry_run=True)
+        self.assertEqual(result.checked, 1)
+        self.assertEqual(result.fixed, 0)
+        self.collection.refresh_from_db()
+        self.assertEqual(self.collection.source_images_count, 999, "dry_run must not write")
+
+    def test_reconcile_no_dry_run_repairs(self):
+        from ami.main.checks.cached_counts import reconcile_cached_counts
+
+        SourceImageCollection.objects.filter(pk=self.collection.pk).update(source_images_count=999)
+        result = reconcile_cached_counts(model=SourceImageCollection, project_id=self.project.pk, dry_run=False)
+        self.assertEqual(result.checked, 1)
+        self.assertEqual(result.fixed, 1)
+        self.collection.refresh_from_db()
+        self.assertEqual(self.collection.source_images_count, len(self.images))
+
+    def test_reconcile_no_drift_returns_zero_checked(self):
+        from ami.main.checks.cached_counts import reconcile_cached_counts
+
+        result = reconcile_cached_counts(model=SourceImageCollection, project_id=self.project.pk, dry_run=False)
+        self.assertEqual(result.checked, 0)
+        self.assertEqual(result.fixed, 0)
 
 
 class TestProjectDefaultTaxaFilter(APITestCase):

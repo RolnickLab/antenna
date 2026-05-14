@@ -11,9 +11,13 @@ class CachedCountField(models.IntegerField):
     """Denormalized count of related rows.
 
     Marker subclass so cached aggregate columns can be discovered via
-    ``Model._meta.get_fields()`` (e.g. for refresh tasks, admin display, or
-    list-endpoint defer()). Values may be stale or null between
-    ``update_calculated_fields`` calls — readers should not assume freshness.
+    ``Model._meta.get_fields()`` (see ``ami.main.checks.cached_counts``
+    for the periodic drift-reconciliation check). Column type is unchanged
+    from ``IntegerField`` — the AlterField migrations that introduce this
+    subclass are no-op SQL. Mixing ``CachedCountField`` and plain
+    ``IntegerField`` on the same model is fine, but a future contributor
+    adding a non-cached IntegerField next to a cached one will see an
+    AlterField in their migration; that's expected, not a bug.
     """
 
     description = "Cached count of related rows"
