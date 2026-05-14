@@ -4772,6 +4772,73 @@ class TestLcaRankBetween(TestCase):
         self.assertIsNone(rank)
 
 
+class TestHumanModelAgreementForProject(APITestCase):
+    """Aggregation function over a filtered Occurrence queryset.
+
+    Covers the four bucket transitions: unverified, verified+exact-agreed,
+    verified+under-order-agreed, verified+disagreed-above-order.
+    """
+
+    def setUp(self) -> None:
+        project, deployment = setup_test_project()
+        create_taxa(project=project)
+        create_captures(deployment=deployment)
+        # Add a sibling family + species under the same ORDER so we can exercise
+        # the "different family, same order → under-order" bucket.
+        lepidoptera = Taxon.objects.get(name="Lepidoptera", projects=project)
+        pieridae = Taxon.objects.create(name="Pieridae", parent=lepidoptera, rank=TaxonRank.FAMILY.name)
+        pieridae.projects.add(project)
+        pieris = Taxon.objects.create(name="Pieris brassicae", parent=pieridae, rank=TaxonRank.SPECIES.name)
+        pieris.projects.add(project)
+        # Use Vanessa atalanta as the baseline machine prediction so all
+        # occurrences start with a known classification.
+        self.vanessa_atalanta = Taxon.objects.get(name="Vanessa atalanta", projects=project)
+        create_occurrences(deployment=deployment, num=4, taxon=self.vanessa_atalanta)
+        # Populate parents_json on every taxon — fixtures don't do this.
+        Taxon.objects.update_all_parents()
+        self.project = project
+        self.deployment = deployment
+        self.vanessa_cardui = Taxon.objects.get(name="Vanessa cardui", projects=project)
+        self.pieris_brassicae = pieris
+        self.user = User.objects.create_user(email="ider@insectai.org")  # type: ignore
+
+    def _identify(self, occurrence: Occurrence, taxon: Taxon) -> Identification:
+        return Identification.objects.create(user=self.user, occurrence=occurrence, taxon=taxon)
+
+    def test_empty_project_returns_zeros_not_nans(self):
+        from ami.main.models_future.occurrence import human_model_agreement_for_project
+
+        empty_project = Project.objects.create(name="empty")
+        result = human_model_agreement_for_project(Occurrence.objects.filter(project=empty_project))
+        self.assertEqual(result["total_occurrences"], 0)
+        self.assertEqual(result["verified_count"], 0)
+        self.assertEqual(result["verified_pct"], 0.0)
+        self.assertEqual(result["agreed_exact_pct"], 0.0)
+        self.assertEqual(result["agreed_under_order_pct"], 0.0)
+
+    def test_buckets_canonical_cases(self):
+        from ami.main.models_future.occurrence import human_model_agreement_for_project
+
+        occurrences = list(Occurrence.objects.filter(project=self.project).order_by("pk"))
+        self.assertEqual(len(occurrences), 4)
+        # 0: verified, machine == user (exact agreement at SPECIES)
+        self._identify(occurrences[0], self.vanessa_atalanta)
+        # 1: verified, sister species (under-order at GENUS)
+        self._identify(occurrences[1], self.vanessa_cardui)
+        # 2: verified, different family same order (under-order at ORDER)
+        self._identify(occurrences[2], self.pieris_brassicae)
+        # 3: unverified
+
+        result = human_model_agreement_for_project(Occurrence.objects.filter(project=self.project))
+        self.assertEqual(result["total_occurrences"], 4)
+        self.assertEqual(result["verified_count"], 3)
+        self.assertEqual(result["agreed_exact_count"], 1)
+        self.assertEqual(result["agreed_under_order_count"], 3)
+        self.assertAlmostEqual(result["verified_pct"], 0.75)
+        self.assertAlmostEqual(result["agreed_exact_pct"], 1 / 3, places=3)
+        self.assertAlmostEqual(result["agreed_under_order_pct"], 1.0)
+
+
 class TestOccurrenceStatsViewSet(APITestCase):
     """Covers /api/v2/occurrences/stats/top-identifiers/.
 
