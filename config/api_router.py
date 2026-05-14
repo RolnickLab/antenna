@@ -38,9 +38,7 @@ router.register(r"captures/collections", views.SourceImageCollectionViewSet)
 router.register(r"captures/upload", views.SourceImageUploadViewSet)
 router.register(r"captures", views.SourceImageViewSet)
 router.register(r"detections", views.DetectionViewSet)
-# NB: r"occurrences/stats" MUST register BEFORE r"occurrences". DRF's DefaultRouter
-# preserves registration order; OccurrenceViewSet.retrieve's `^occurrences/(?P<pk>[^/.]+)/$`
-# would otherwise capture `/occurrences/stats/` first and 404 on `pk="stats"`.
+# Register before r"occurrences" — see docs/claude/reference/api-stats-pattern.md (guarded by regression test).
 router.register(r"occurrences/stats", views.OccurrenceStatsViewSet, basename="occurrence-stats")
 router.register(r"occurrences", views.OccurrenceViewSet)
 router.register(r"taxa/lists", views.TaxaListViewSet)
