@@ -1739,13 +1739,13 @@ class UserIdentificationCountSerializer(DefaultSerializer):
         ]
 
 
-class TopIdentifiersResponseSerializer(serializers.Serializer):
-    """Envelope for /occurrences/stats/top-identifiers/.
+class IdentificationsSummarySerializer(serializers.Serializer):
+    """Scalar response for /occurrences/stats/identifications-summary/.
 
-    Declares the response shape so drf-spectacular can autodoc it. Kept
-    identical to the legacy /users/identifications/top/ envelope to avoid
-    frontend churn during the migration.
+    Demonstrates pattern 2 (non-list-shaped stats) — the response is a
+    fixed-shape dict with declared field types so drf-spectacular autodocs it.
     """
 
-    project_id = serializers.IntegerField()
-    top_identifiers = UserIdentificationCountSerializer(many=True)
+    total_identifications = serializers.IntegerField()
+    distinct_identifiers = serializers.IntegerField()
+    distinct_identified_occurrences = serializers.IntegerField()

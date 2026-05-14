@@ -168,10 +168,10 @@ const MostIdentifications = ({ projectId }: { projectId: string }) => {
     <SummaryColumn
       isLoading={isLoading}
       error={error}
-      isEmpty={!data?.top_identifiers.length}
+      isEmpty={!data?.results.length}
       viewAllHref={`${APP_ROUTES.OCCURRENCES({ projectId })}?verified=true`}
     >
-      {data?.top_identifiers.map((user) => (
+      {data?.results.map((user) => (
         <div key={user.id} className="border-border border-b last:border-none">
           <ListItem
             item={{
@@ -194,7 +194,9 @@ const MostObservedTaxa = ({ projectId }: { projectId: string }) => {
       isLoading={isLoading}
       error={error}
       isEmpty={!species?.length}
-      viewAllHref={`${APP_ROUTES.TAXA({ projectId })}?ordering=-occurrences_count`}
+      viewAllHref={`${APP_ROUTES.TAXA({
+        projectId,
+      })}?ordering=-occurrences_count`}
     >
       {species?.map((species) => (
         <Link

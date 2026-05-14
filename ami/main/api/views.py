@@ -20,6 +20,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.filters import SearchFilter
 from rest_framework.generics import GenericAPIView
+from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -30,7 +31,7 @@ from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
-from ami.main.api.schemas import limit_doc_param, project_id_doc_param
+from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.occurrence import top_identifiers_for_project
 from ami.utils.requests import get_default_classification_threshold
@@ -72,6 +73,7 @@ from .serializers import (
     EventSerializer,
     EventTimelineSerializer,
     IdentificationSerializer,
+    IdentificationsSummarySerializer,
     OccurrenceListSerializer,
     OccurrenceSerializer,
     PageListSerializer,
@@ -91,7 +93,6 @@ from .serializers import (
     TaxonListSerializer,
     TaxonSearchResultSerializer,
     TaxonSerializer,
-    TopIdentifiersResponseSerializer,
     UserIdentificationCountSerializer,
 )
 
@@ -1266,42 +1267,97 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         return super().list(request, *args, **kwargs)
 
 
-class OccurrenceStatsViewSet(viewsets.ViewSet, ProjectMixin):
+class StatsPagination(LimitOffsetPagination):
+    """Default 5, max 50 — sane defaults for stats list-kinds."""
+
+    default_limit = 5
+    max_limit = 50
+
+
+class OccurrenceStatsViewSet(viewsets.GenericViewSet, ProjectMixin):
     """Aggregate stats over Occurrences. Each @action == one stats kind.
 
-    Convention (see docs/claude/reference/api-stats-pattern.md):
-    - URL: /<entity>/stats/<kind>/?project_id=X[&limit=N&...]
-    - Every action MUST call `self.get_active_project()` — `require_project=True`
-      only enforces through that call path, NOT automatically per request.
-    - Every action MUST declare its response via @extend_schema(responses=...)
-      with a serializer. No raw Response({...}) shapes.
-    - Query params validated via SingleParamSerializer (ami/base/serializers.py).
+    Two response shapes coexist on this viewset by design — see
+    docs/claude/reference/api-stats-pattern.md.
+
+    1. **List-shaped kinds** (rows of entities with annotations) ride the
+       standard list-endpoint rails: build the queryset, call
+       `self.paginate_queryset()` + `self.get_paginated_response()`. Response
+       is DRF's `{count, next, previous, results: [...]}`. Free: `?limit=N`
+       and `?offset=M` from the paginator, `?ordering=-field` from
+       `NullsLastOrderingFilter`. Example: `top_identifiers`.
+
+    2. **Scalar / chart-shaped kinds** (single dict, time series, Plotly
+       JSON, etc.) build the structure, serialize with a kind-specific
+       `Serializer` + `@extend_schema(responses=...)`, return
+       `Response(serializer.data)`. No paginator. Example:
+       `identifications_summary`.
+
+    Conventions for every action regardless of shape:
+
+    - URL: `/<entity>/stats/<kind>/?project_id=X[&...]`
+    - MUST call `self.get_active_project()` first — `require_project=True`
+      only enforces through that call path, not automatically per request.
+    - MUST declare response via `@extend_schema(responses=...)` so
+      drf-spectacular autodocs the shape.
+    - Query params beyond paginator/ordering go through
+      `SingleParamSerializer[T].clean(...)` for strict 400 validation.
     """
 
+    queryset = User.objects.none()  # hint for LimitOffsetPaginationWithPermissions._get_current_model
     permission_classes = [IsActiveStaffOrReadOnly]
+    pagination_class = StatsPagination
+    filter_backends = [NullsLastOrderingFilter]
+    ordering_fields = ["identification_count"]
     require_project = True
 
+    def _gate_project(self, request):
+        """Resolve + visibility-check the active project; 404 anonymous on drafts."""
+        project = self.get_active_project()
+        assert project is not None  # require_project=True guarantees this
+        if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
+            raise NotFound("Project not found.")
+        return project
+
     @extend_schema(
-        parameters=[project_id_doc_param, limit_doc_param],
-        responses=TopIdentifiersResponseSerializer,
+        parameters=[project_id_doc_param],
+        responses=UserIdentificationCountSerializer(many=True),
     )
     @action(detail=False, methods=["get"], url_path="top-identifiers")
     def top_identifiers(self, request):
-        project = self.get_active_project()
-        assert project is not None  # require_project=True guarantees this
+        """Pattern 1 — list-shaped. Users ranked by distinct occurrences they identified.
 
-        # Draft projects must not leak identifier names/photos to non-members.
-        if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
-            raise NotFound("Project not found.")
+        Always filters `identification_count >= 1` (in `top_identifiers_for_project`)
+        so an empty / anonymous call never leaks the full user list. Non-configurable.
+        """
+        project = self._gate_project(request)
+        queryset = top_identifiers_for_project(project)
+        queryset = self.filter_queryset(queryset)
+        page = self.paginate_queryset(queryset)
+        serializer = UserIdentificationCountSerializer(page, many=True, context={"request": request})
+        return self.get_paginated_response(serializer.data)
 
-        limit = SingleParamSerializer[int].clean(
-            param_name="limit",
-            field=serializers.IntegerField(required=False, min_value=1, max_value=50, default=5),
-            data=request.query_params,
-        )
-        queryset = top_identifiers_for_project(project, limit=limit)
-        user_serializer = UserIdentificationCountSerializer(queryset, many=True, context={"request": request})
-        return Response({"project_id": project.id, "top_identifiers": user_serializer.data})
+    @extend_schema(
+        parameters=[project_id_doc_param],
+        responses=IdentificationsSummarySerializer,
+    )
+    @action(detail=False, methods=["get"], url_path="identifications-summary")
+    def identifications_summary(self, request):
+        """Pattern 2 — scalar kind. Placeholder demonstrating the non-list shape.
+
+        A real consumer might want verification rate, model-agreement rate,
+        or per-week activity. Kept minimal here: three counts, one DB hit
+        each, serializer-declared response shape.
+        """
+        project = self._gate_project(request)
+        ids = Identification.objects.filter(occurrence__project=project, withdrawn=False)
+        data = {
+            "total_identifications": ids.count(),
+            "distinct_identifiers": ids.values("user_id").exclude(user__isnull=True).distinct().count(),
+            "distinct_identified_occurrences": ids.values("occurrence_id").distinct().count(),
+        }
+        serializer = IdentificationsSummarySerializer(data)
+        return Response(serializer.data)
 
 
 class TaxonTaxaListFilter(filters.BaseFilterBackend):

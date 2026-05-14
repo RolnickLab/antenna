@@ -133,11 +133,15 @@ def detection_image_urls_from_prefetch(occurrence: Occurrence, limit: int | None
     return [get_media_url(det.path) for det in detections]
 
 
-def top_identifiers_for_project(project: Project, limit: int = 5) -> QuerySet[User]:
-    """Users ranked by distinct occurrences they identified in this project.
+def top_identifiers_for_project(project: Project) -> QuerySet[User]:
+    """Project users ranked by distinct occurrences they identified.
 
     Counts distinct occurrences, not raw Identification rows: a user revising
     their own ID on the same occurrence is one occurrence-identification, not two.
+
+    Always filters `identification_count >= 1` so anonymous / empty calls never
+    leak the full project user list. **Non-configurable** — callers (paginator,
+    list slicing) get to choose how many rows to return, but never which rows.
     """
     return (
         User.objects.filter(identifications__occurrence__project=project)
@@ -149,5 +153,5 @@ def top_identifiers_for_project(project: Project, limit: int = 5) -> QuerySet[Us
             )
         )
         .filter(identification_count__gt=0)
-        .order_by("-identification_count")[:limit]
+        .order_by("-identification_count")
     )
