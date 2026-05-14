@@ -22,20 +22,20 @@ export const NewProjectDialog = ({
   const { createProject, isLoading, isSuccess, error } = useCreateProject()
   const [isOpen, setIsOpen] = useState(false)
 
-  const label = translate(STRING.ENTITY_CREATE, {
-    type: translate(STRING.ENTITY_TYPE_PROJECT),
-  })
-
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
       <Dialog.Trigger asChild>
         <Button size={buttonSize} variant={buttonVariant}>
           <PlusIcon className="w-4 h-4" />
-          <span>{label}</span>
+          <span>{translate(STRING.CREATE_NEW)}</span>
         </Button>
       </Dialog.Trigger>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)} isCompact>
-        <Dialog.Header title={label} />
+        <Dialog.Header
+          title={translate(STRING.ENTITY_CREATE, {
+            type: translate(STRING.ENTITY_TYPE_PROJECT),
+          })}
+        />
         <NewProjectForm
           error={error}
           isLoading={isLoading}

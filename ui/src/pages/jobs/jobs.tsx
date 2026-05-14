@@ -68,8 +68,8 @@ export const Jobs = () => {
           title={translate(STRING.NAV_ITEM_JOBS)}
           tooltip={translate(STRING.TOOLTIP_JOB)}
         >
-          <SortControl columns={tableColumns} setSort={setSort} sort={sort} />
           {canCreate ? <NewJobDialog /> : null}
+          <SortControl columns={tableColumns} setSort={setSort} sort={sort} />
           <ColumnSettings
             columns={tableColumns}
             columnSettings={columnSettings}
