@@ -39,6 +39,8 @@ router.register(r"captures/collections", views.SourceImageCollectionViewSet)
 router.register(r"captures/upload", views.SourceImageUploadViewSet)
 router.register(r"captures", views.SourceImageViewSet)
 router.register(r"detections", views.DetectionViewSet)
+# Register before r"occurrences" — see docs/claude/reference/api-stats-pattern.md (guarded by regression test).
+router.register(r"occurrences/stats", views.OccurrenceStatsViewSet, basename="occurrence-stats")
 router.register(r"occurrences", views.OccurrenceViewSet)
 router.register(r"taxa/lists", views.TaxaListViewSet)
 # NESTED: /taxa/lists/{taxalist_id}/taxa/
