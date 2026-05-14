@@ -1,18 +1,18 @@
 import datetime
-import logging
 import io
+import logging
 from statistics import mode
 
+from django.conf import settings
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
-from django.conf import settings
+from django.core.files.storage import default_storage
 from django.db import models
 from django.db.models import Prefetch, Q
 from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
 from django.shortcuts import get_object_or_404, redirect
-from django.core.files.storage import default_storage
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
@@ -27,6 +27,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+import ami.utils.s3
 from ami.base.filters import NullsLastOrderingFilter, ThresholdFilter
 from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
@@ -37,7 +38,6 @@ from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
-import ami.utils.s3
 
 from ..models import (
     NULL_DETECTIONS_FILTER,
@@ -54,8 +54,8 @@ from ..models import (
     S3StorageSource,
     Site,
     SourceImage,
-    SourceImageThumbnail,
     SourceImageCollection,
+    SourceImageThumbnail,
     SourceImageUpload,
     Tag,
     TaxaList,
@@ -727,11 +727,12 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
         raise api_exceptions.NotFound(detail=f"No collection of thumbnails")
 
     def retrieve(self, request, pk=None):
-        label = self.request.query_params.get("label",
-                                              next(iter(self._sizes)))
+        label = self.request.query_params.get("label", next(iter(self._sizes)))
         size = self._sizes.get(label, None)
         if size is None:
-            raise api_exceptions.ValidationError(detail=f"Invalid thumbnail size label provided: {label} not in {', '.join(self._sizes.keys())}")
+            raise api_exceptions.ValidationError(
+                detail=f"Invalid thumbnail size label provided: {label} not in {', '.join(self._sizes.keys())}"
+            )
         obj: SourceImage = self.get_object()
         try:
             thumb = obj.thumbnails.get(**size)
@@ -749,8 +750,8 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
                 else:
                     # Make the thumbnail
                     orig_width, orig_height = img.size
-                    width=size["width"]
-                    height=size.get("height", None)
+                    width = size["width"]
+                    height = size.get("height", None)
                     if not height:
                         height = int(orig_height * (width / float(orig_width)))
                         new_size = (width, height)
@@ -770,20 +771,12 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
                     # Remove prior thumbnails for this size
                     obj.thumbnails.filter(label=label).delete()
                     thumb = obj.thumbnails.create(
-                        path=thumbnail_path,
-                        label=label,
-                        width=width,
-                        height=height,
-                        size=file_size
+                        path=thumbnail_path, label=label, width=width, height=height, size=file_size
                     )
             else:
                 raise api_exceptions.NotFound(detail=f"SourceImage with id {obj.id} media config not found")
 
-        return redirect(
-            default_storage.url(thumb.path),
-            permanent=True
-        )
-
+        return redirect(default_storage.url(thumb.path), permanent=True)
 
 
 class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):

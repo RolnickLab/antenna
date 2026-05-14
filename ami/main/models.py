@@ -2216,6 +2216,7 @@ class SourceImage(BaseModel):
             models.Index(fields=["timestamp"]),
         ]
 
+
 def update_detection_counts(
     qs: models.QuerySet[SourceImage] | None = None,
     null_only=False,
@@ -2384,7 +2385,6 @@ def sample_captures_by_nth(
     for event in events:
         qs = qs.filter(event=event).order_by("timestamp")
         yield from qs[::nth]
-
 
 
 @final

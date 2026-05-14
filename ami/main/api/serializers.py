@@ -1110,7 +1110,7 @@ class SourceImageListSerializer(DefaultSerializer):
             )
             for label in settings.THUMBNAILS["SIZES"]
         }
-    
+
     class Meta:
         model = SourceImage
         fields = [
@@ -1130,7 +1130,7 @@ class SourceImageListSerializer(DefaultSerializer):
             "taxa_count",
             "detections",
             "project",
-            "thumbnails"
+            "thumbnails",
         ]
 
 
@@ -1163,6 +1163,7 @@ class SourceImageSerializer(SourceImageListSerializer):
             "event_current_capture_index",
             "event_total_captures",
         ]
+
 
 class SourceImageUploadSerializer(DefaultSerializer):
     image = serializers.ImageField(allow_empty_file=False, use_url=True)

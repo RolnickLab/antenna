@@ -39,7 +39,13 @@ from ami.main.models import (
 from ami.ml.models.pipeline import Pipeline
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
-from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project, create_captures_from_files
+from ami.tests.fixtures.main import (
+    create_captures,
+    create_captures_from_files,
+    create_occurrences,
+    create_taxa,
+    setup_test_project,
+)
 from ami.tests.fixtures.storage import populate_bucket
 from ami.users.models import User
 from ami.users.roles import BasicMember, Identifier, MLDataManager, ProjectManager, create_roles_for_project
@@ -209,25 +215,24 @@ class TestProjectSetup(TestCase):
                     config.enabled,
                     f"Pipeline {config.pipeline.name} should not be enabled for project {project_two.name}.",
                 )
+
+
 class TestImageThumbnailViews(TestCase):
     base_url = "http://testserver/api/v2/captures/thumbnails/"
-    
+
     def setUp(self) -> None:
         self.project, self.deployment = setup_test_project()
 
-        self.captures = create_captures_from_files(
-            deployment=self.deployment
-        )
+        self.captures = create_captures_from_files(deployment=self.deployment)
         self.first_capture = self.captures[0][0]
-        
+
         return super().setUp()
 
     def test_thumbnail_no_list(self):
         response = self.client.get(f"/api/v2/captures/thumbnails/")
         self.assertEqual(response.status_code, 404)
-     
+
     def test_thumbnail_new(self):
-        
         response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
         self.assertEqual(response.status_code, 301)
         thumb = self.first_capture.thumbnails.get(label="small")
@@ -246,7 +251,7 @@ class TestImageThumbnailViews(TestCase):
     def test_thumbnail_new_with_invalid_size(self):
         response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/?label=typo")
         self.assertEqual(response.status_code, 400)
-        
+
     def test_thumbnail_exists(self):
         response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
         self.assertEqual(response.status_code, 301)
@@ -281,9 +286,13 @@ class TestImageThumbnailViews(TestCase):
         self.assertEqual(response.status_code, 200)
         capture_json = response.json()["results"][0]
         self.assertIn("thumbnails", capture_json)
-        self.assertURLEqual(capture_json["thumbnails"]["small"], f"{self.base_url}{self.first_capture.pk}/?label=small")
-        self.assertURLEqual(capture_json["thumbnails"]["medium"], f"{self.base_url}{self.first_capture.pk}/?label=medium")
-        
+        self.assertURLEqual(
+            capture_json["thumbnails"]["small"], f"{self.base_url}{self.first_capture.pk}/?label=small"
+        )
+        self.assertURLEqual(
+            capture_json["thumbnails"]["medium"], f"{self.base_url}{self.first_capture.pk}/?label=medium"
+        )
+
 
 class TestImageGrouping(TestCase):
     def setUp(self) -> None:
