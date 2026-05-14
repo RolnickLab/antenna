@@ -590,14 +590,4 @@ JOB_LOG_PERSIST_ENABLED = env.bool("JOB_LOG_PERSIST_ENABLED", default=True)  # t
 
 
 # Sizes for Source Image Thumbnails
-THUMBNAILS = {
-    "STORAGE_PREFIX": "thumbnails/",
-    "SIZES": {
-        "small": {
-            "width": 240
-        },
-        "medium": {
-            "width": 1024
-        }
-    }
-}
+THUMBNAILS = {"STORAGE_PREFIX": "thumbnails/", "SIZES": {"small": {"width": 240}, "medium": {"width": 1024}}}
