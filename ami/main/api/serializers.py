@@ -1151,7 +1151,6 @@ class SourceImageSerializer(SourceImageListSerializer):
             "event_total_captures",
         ]
 
-
 class SourceImageUploadSerializer(DefaultSerializer):
     image = serializers.ImageField(allow_empty_file=False, use_url=True)
     created_at = serializers.DateTimeField(read_only=True)

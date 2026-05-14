@@ -1,15 +1,18 @@
 import datetime
 import logging
+import io
 from statistics import mode
 
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
+from django.conf import settings
 from django.db import models
 from django.db.models import Prefetch, Q
 from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, redirect
+from django.core.files.storage import default_storage
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
@@ -34,6 +37,7 @@ from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
+import ami.utils.s3
 
 from ..models import (
     NULL_DETECTIONS_FILTER,
@@ -50,6 +54,7 @@ from ..models import (
     S3StorageSource,
     Site,
     SourceImage,
+    SourceImageThumbnail,
     SourceImageCollection,
     SourceImageUpload,
     Tag,
@@ -704,6 +709,81 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             return Response({"collection": collection.pk, "total_images": collection.images.count()})
         else:
             raise api_exceptions.ValidationError(detail="Source image must be associated with a project")
+
+
+class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
+    """
+    Endpoint for capture thumbnails
+    """
+
+    queryset = SourceImage.objects.all()
+
+    permission_classes = [ObjectPermission]
+
+    _sizes = settings.THUMBNAILS["SIZES"]
+    _prefix = settings.THUMBNAILS["STORAGE_PREFIX"]
+
+    def list(self, request):
+        raise api_exceptions.NotFound(detail=f"No collection of thumbnails")
+
+    def retrieve(self, request, pk=None):
+        label = self.request.query_params.get("label",
+                                              next(iter(self._sizes)))
+        size = self._sizes.get(label, None)
+        if size is None:
+            raise api_exceptions.ValidationError(detail=f"Invalid thumbnail size label provided: {label} not in {', '.join(self._sizes.keys())}")
+        obj: SourceImage = self.get_object()
+        try:
+            thumb = obj.thumbnails.get(**size)
+        except SourceImageThumbnail.DoesNotExist:
+            thumb = None
+        if not thumb or not default_storage.exists(thumb.path):
+            if obj.path and obj.deployment and obj.deployment.data_source:
+                config = obj.deployment.data_source.config
+                # Get the file
+                try:
+                    img = ami.utils.s3.read_image(config=config, key=obj.path)
+                except ami.utils.s3.botocore.exceptions.ClientError as e:
+                    logger.error(f"Could not read image for {obj.path}: {e}")
+                    raise api_exceptions.NotFound(detail=f"SourceImage with id {obj.id} media not found")
+                else:
+                    # Make the thumbnail
+                    orig_width, orig_height = img.size
+                    width=size["width"]
+                    height=size.get("height", None)
+                    if not height:
+                        height = int(orig_height * (width / float(orig_width)))
+                        new_size = (width, height)
+                    img.thumbnail(new_size)
+
+                    buffer = io.BytesIO()
+                    img.save(buffer, format="JPEG")
+                    contents = buffer.getvalue()
+                    file_size = len(contents)
+
+                    # Write to storage
+                    thumbnail_key = f"{self._prefix}{obj.id}/{label}.jpg"
+                    thumbnail_path = default_storage.save(thumbnail_key, buffer)
+
+                    # Save to DB
+                    width, height = img.size
+                    # Remove prior thumbnails for this size
+                    obj.thumbnails.filter(label=label).delete()
+                    thumb = obj.thumbnails.create(
+                        path=thumbnail_path,
+                        label=label,
+                        width=width,
+                        height=height,
+                        size=file_size
+                    )
+            else:
+                raise api_exceptions.NotFound(detail=f"SourceImage with id {obj.id} media config not found")
+
+        return redirect(
+            default_storage.url(thumb.path),
+            permanent=True
+        )
+
 
 
 class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):

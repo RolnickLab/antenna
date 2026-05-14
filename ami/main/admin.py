@@ -26,6 +26,7 @@ from .models import (
     S3StorageSource,
     Site,
     SourceImage,
+    SourceImageThumbnail,
     SourceImageCollection,
     Tag,
     TaxaList,
@@ -292,7 +293,32 @@ class SourceImageAdmin(AdminBase):
             .with_was_processed()  # avoids N+1 from get_was_processed in list_display
         )
 
+@admin.register(SourceImageThumbnail)
+class SourceImageThumbnailAdmin(AdminBase):
+    """Admin panel for ``SourceImageThumbnail`` model."""
 
+    list_display = (
+        "source_image",
+        "path",
+        "label",
+        "width",
+        "height",
+        "size"
+    )
+    list_filter = (
+        "source_image__deployment__project",
+        "source_image__deployment__data_source",
+        "label"
+    )
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("source_image", "source_image__deployment", "deployment__data_source")
+        )
+
+    
 class ClassificationInline(admin.TabularInline):
     model = Classification
     extra = 0

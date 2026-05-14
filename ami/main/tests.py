@@ -3,6 +3,7 @@ import logging
 import typing
 from io import BytesIO
 
+from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection, models
@@ -38,7 +39,7 @@ from ami.main.models import (
 from ami.ml.models.pipeline import Pipeline
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
-from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
+from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project, create_captures_from_files
 from ami.tests.fixtures.storage import populate_bucket
 from ami.users.models import User
 from ami.users.roles import BasicMember, Identifier, MLDataManager, ProjectManager, create_roles_for_project
@@ -208,6 +209,62 @@ class TestProjectSetup(TestCase):
                     config.enabled,
                     f"Pipeline {config.pipeline.name} should not be enabled for project {project_two.name}.",
                 )
+class TestImageThumbnailViews(TestCase):
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project()
+
+        self.captures = create_captures_from_files(
+            deployment=self.deployment
+        )
+        self.first_capture = self.captures[0][0]
+        
+        return super().setUp()
+
+    def test_thumbnail_no_list(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/")
+        self.assertEqual(response.status_code, 404)
+     
+    def test_thumbnail_new(self):
+        
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 301)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(thumb.width, 240)
+        self.assertEqual(thumb.height, 180)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_new_with_size(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/?label=medium")
+        self.assertEqual(response.status_code, 301)
+        thumb = self.first_capture.thumbnails.get(label="medium")
+        self.assertEqual(thumb.width, 1024)
+        self.assertEqual(thumb.height, 768)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_new_with_invalid_size(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/?label=typo")
+        self.assertEqual(response.status_code, 400)
+        
+    def test_thumbnail_exists(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 301)
+
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(self.first_capture.thumbnails.count(), 1)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(response.status_code, 301)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_settings_change_regenerates(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 301)
+        settings.THUMBNAILS["SIZES"]["small"]["width"] = 300
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(self.first_capture.thumbnails.count(), 1)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(thumb.width, 300)
+        self.assertEqual(response.status_code, 301)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
 
 
 class TestImageGrouping(TestCase):

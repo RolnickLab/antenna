@@ -2216,7 +2216,6 @@ class SourceImage(BaseModel):
             models.Index(fields=["timestamp"]),
         ]
 
-
 def update_detection_counts(
     qs: models.QuerySet[SourceImage] | None = None,
     null_only=False,
@@ -2385,6 +2384,21 @@ def sample_captures_by_nth(
     for event in events:
         qs = qs.filter(event=event).order_by("timestamp")
         yield from qs[::nth]
+
+
+
+@final
+class SourceImageThumbnail(BaseModel):
+    """A thumbnail cache of a SourceImage"""
+
+    path = models.CharField(max_length=255, blank=True)
+    label = models.CharField(max_length=255, blank=True, null=True)
+    width = models.IntegerField(null=True, blank=True)
+    height = models.IntegerField(null=True, blank=True)
+    size = models.BigIntegerField(null=True, blank=True)
+    last_modified = models.DateTimeField(null=True, blank=True)
+
+    source_image = models.ForeignKey(SourceImage, on_delete=models.SET_NULL, null=True, related_name="thumbnails")
 
 
 # @final
