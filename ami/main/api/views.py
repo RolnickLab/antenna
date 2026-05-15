@@ -31,7 +31,7 @@ from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
-from ami.main.models_future.occurrence import human_model_agreement_for_project, top_identifiers_for_project
+from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
 from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
@@ -70,8 +70,8 @@ from .serializers import (
     EventListSerializer,
     EventSerializer,
     EventTimelineSerializer,
-    HumanModelAgreementSerializer,
     IdentificationSerializer,
+    ModelAgreementSerializer,
     OccurrenceListSerializer,
     OccurrenceSerializer,
     PageListSerializer,
@@ -1366,10 +1366,10 @@ class OccurrenceStatsViewSet(viewsets.GenericViewSet, ProjectMixin):
 
     @extend_schema(
         parameters=[project_id_doc_param],
-        responses=HumanModelAgreementSerializer,
+        responses=ModelAgreementSerializer,
     )
-    @action(detail=False, methods=["get"], url_path="human-model-agreement")
-    def human_model_agreement(self, request):
+    @action(detail=False, methods=["get"], url_path="model-agreement")
+    def model_agreement(self, request):
         """Verified / human↔model agreement rates over the filtered occurrence set.
 
         Accepts every query param the `/occurrences/` list endpoint accepts.
@@ -1383,9 +1383,9 @@ class OccurrenceStatsViewSet(viewsets.GenericViewSet, ProjectMixin):
 
         base_qs = Occurrence.objects.filter(project=project).valid().apply_default_filters(project, request)
         filtered_qs = self.filter_queryset(base_qs)
-        payload = human_model_agreement_for_project(filtered_qs)
+        payload = model_agreement_for_project(filtered_qs)
         payload["project_id"] = project.pk
-        return Response(HumanModelAgreementSerializer(payload, context={"request": request}).data)
+        return Response(ModelAgreementSerializer(payload, context={"request": request}).data)
 
 
 class TaxonTaxaListFilter(filters.BaseFilterBackend):

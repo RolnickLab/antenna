@@ -1,11 +1,13 @@
 import { API_ROUTES, API_URL } from 'data-services/constants'
 import { useAuthorizedQuery } from '../../auth/useAuthorizedQuery'
 
-interface Response {
+interface ModelAgreementResponse {
   project_id: number
   total_occurrences: number
   verified_count: number
   verified_pct: number
+  verified_with_prediction_count: number
+  no_prediction_count: number
   agreed_exact_count: number
   agreed_exact_pct: number
   agreed_under_order_count: number
@@ -15,11 +17,11 @@ interface Response {
 // Accepts an arbitrary filter map so the occurrence list page's filter state
 // can be threaded through unchanged (deployment, event, taxon, score
 // thresholds, apply_defaults, etc).
-export const useHumanModelAgreement = (
+export const useModelAgreement = (
   projectId?: string,
   filters?: Record<string, string | number | boolean | undefined>
 ) => {
-  const url = `${API_URL}/${API_ROUTES.OCCURRENCES}/stats/human-model-agreement/`
+  const url = `${API_URL}/${API_ROUTES.OCCURRENCES}/stats/model-agreement/`
 
   const params = new URLSearchParams()
   if (projectId) params.set('project_id', projectId)
@@ -31,16 +33,17 @@ export const useHumanModelAgreement = (
     })
   }
 
-  const { data, isLoading, isFetching, error } = useAuthorizedQuery<Response>({
-    queryKey: [
-      API_ROUTES.OCCURRENCES,
-      'stats',
-      'human-model-agreement',
-      projectId,
-      filters,
-    ],
-    url: `${url}?${params.toString()}`,
-  })
+  const { data, isLoading, isFetching, error } =
+    useAuthorizedQuery<ModelAgreementResponse>({
+      queryKey: [
+        API_ROUTES.OCCURRENCES,
+        'stats',
+        'model-agreement',
+        projectId,
+        filters,
+      ],
+      url: `${url}?${params.toString()}`,
+    })
 
   return {
     data,

@@ -4771,8 +4771,36 @@ class TestLcaRankBetween(TestCase):
         rank = lca_rank_between(rootless, self.SPECIES_NOCTUA_PRONUBA)
         self.assertIsNone(rank)
 
+    def test_unknown_rank_excluded_from_lca(self):
+        """TaxonRank.UNKNOWN sorts after SPECIES in OrderedEnum definition order,
+        so without explicit exclusion `UNKNOWN >= ORDER` would be True and a
+        shared UNKNOWN ancestor would wrongly count as under-order agreement.
+        """
+        from ami.main.models_future.occurrence import lca_rank_between
 
-class TestHumanModelAgreementForProject(APITestCase):
+        # Both chains share a KINGDOM ancestor and an UNKNOWN ancestor; the LCA
+        # at a real taxonomic rank is KINGDOM, not UNKNOWN.
+        unknown_a = (
+            701,
+            "SPECIES",
+            [
+                {"id": 1, "rank": "KINGDOM"},
+                {"id": 999, "rank": "UNKNOWN"},
+            ],
+        )
+        unknown_b = (
+            702,
+            "SPECIES",
+            [
+                {"id": 1, "rank": "KINGDOM"},
+                {"id": 999, "rank": "UNKNOWN"},
+            ],
+        )
+        rank = lca_rank_between(unknown_a, unknown_b)
+        self.assertEqual(rank, TaxonRank.KINGDOM)
+
+
+class TestModelAgreementForProject(APITestCase):
     """Aggregation function over a filtered Occurrence queryset.
 
     Covers the four bucket transitions: unverified, verified+exact-agreed,
@@ -4806,10 +4834,10 @@ class TestHumanModelAgreementForProject(APITestCase):
         return Identification.objects.create(user=self.user, occurrence=occurrence, taxon=taxon)
 
     def test_empty_project_returns_zeros_not_nans(self):
-        from ami.main.models_future.occurrence import human_model_agreement_for_project
+        from ami.main.models_future.occurrence import model_agreement_for_project
 
         empty_project = Project.objects.create(name="empty")
-        result = human_model_agreement_for_project(Occurrence.objects.filter(project=empty_project))
+        result = model_agreement_for_project(Occurrence.objects.filter(project=empty_project))
         self.assertEqual(result["total_occurrences"], 0)
         self.assertEqual(result["verified_count"], 0)
         self.assertEqual(result["verified_pct"], 0.0)
@@ -4817,7 +4845,7 @@ class TestHumanModelAgreementForProject(APITestCase):
         self.assertEqual(result["agreed_under_order_pct"], 0.0)
 
     def test_buckets_canonical_cases(self):
-        from ami.main.models_future.occurrence import human_model_agreement_for_project
+        from ami.main.models_future.occurrence import model_agreement_for_project
 
         occurrences = list(Occurrence.objects.filter(project=self.project).order_by("pk"))
         self.assertEqual(len(occurrences), 4)
@@ -4829,7 +4857,7 @@ class TestHumanModelAgreementForProject(APITestCase):
         self._identify(occurrences[2], self.pieris_brassicae)
         # 3: unverified
 
-        result = human_model_agreement_for_project(Occurrence.objects.filter(project=self.project))
+        result = model_agreement_for_project(Occurrence.objects.filter(project=self.project))
         self.assertEqual(result["total_occurrences"], 4)
         self.assertEqual(result["verified_count"], 3)
         self.assertEqual(result["agreed_exact_count"], 1)
@@ -4922,9 +4950,9 @@ class TestOccurrenceStatsViewSet(APITestCase):
         self.assertEqual(stats_response.status_code, 200, "stats URL must resolve")
         self.assertEqual(retrieve_response.status_code, 200, "occurrence retrieve must still work")
 
-    # ----- /occurrences/stats/human-model-agreement/ -----
+    # ----- /occurrences/stats/model-agreement/ -----
 
-    agreement_url = "/api/v2/occurrences/stats/human-model-agreement/"
+    agreement_url = "/api/v2/occurrences/stats/model-agreement/"
 
     def test_agreement_no_project_id_returns_400(self):
         response = self.client.get(self.agreement_url)
@@ -4965,8 +4993,41 @@ class TestOccurrenceStatsViewSet(APITestCase):
         body = response.json()
         self.assertEqual(body["total_occurrences"], 4)
         self.assertEqual(body["verified_count"], 1)
+        self.assertEqual(body["verified_with_prediction_count"], 1)
+        self.assertEqual(body["no_prediction_count"], 0)
         self.assertEqual(body["agreed_exact_count"], 1)
         self.assertEqual(body["agreed_under_order_count"], 1)
+
+    def test_agreement_under_order_bucket(self):
+        """Disagreement at species but same genus → counted under-order, not exact.
+
+        Pick the machine prediction's sister species (same parent genus) for the
+        identification. LCA between the two species is GENUS, which is >= ORDER,
+        so the occurrence falls into the under-order bucket without contributing
+        to agreed_exact_count.
+        """
+        occurrence = Occurrence.objects.filter(project=self.project).order_by("pk").first()
+        machine_taxon = occurrence.detections.first().classifications.first().taxon
+        # Sister species: same parent (genus Vanessa), different SPECIES.
+        sister = (
+            Taxon.objects.filter(parent=machine_taxon.parent, rank=TaxonRank.SPECIES.name)
+            .exclude(pk=machine_taxon.pk)
+            .first()
+        )
+        self.assertIsNotNone(sister, "Test fixture must have a sister species under the same genus")
+        Taxon.objects.update_all_parents()
+        Identification.objects.create(user=self.alice, occurrence=occurrence, taxon=sister)
+
+        response = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["verified_count"], 1)
+        self.assertEqual(body["verified_with_prediction_count"], 1)
+        self.assertEqual(body["agreed_exact_count"], 0)
+        self.assertEqual(body["agreed_under_order_count"], 1)
+        # 0/1 exact, 1/1 under-order
+        self.assertEqual(body["agreed_exact_pct"], 0.0)
+        self.assertEqual(body["agreed_under_order_pct"], 1.0)
 
     def test_agreement_filter_passthrough(self):
         """`?deployment=` should narrow the set."""

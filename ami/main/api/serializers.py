@@ -1753,19 +1753,34 @@ class TopIdentifiersResponseSerializer(serializers.Serializer):
     top_identifiers = UserIdentificationCountSerializer(many=True)
 
 
-class HumanModelAgreementSerializer(serializers.Serializer):
+class ModelAgreementSerializer(serializers.Serializer):
     """Verified / agreement rates over the filtered Occurrence set.
 
     `agreed_exact_count` is a subset of `agreed_under_order_count` by
     construction — an exact match implies an LCA at SPECIES, which is
     deeper than ORDER. `*_pct` percentages are 0.0..1.0 (not 0..100).
+
+    Denominator note: `agreed_*_pct` divide by `verified_with_prediction_count`
+    (verified occurrences that *also* have a machine prediction), NOT by
+    `verified_count`. A verified occurrence with no machine prediction can't
+    agree or disagree — including it in the denominator would drag the rate
+    down without representing actual model disagreement. `no_prediction_count`
+    is surfaced so the consumer can see how many such occurrences exist.
     """
 
     project_id = serializers.IntegerField()
     total_occurrences = serializers.IntegerField()
-    verified_count = serializers.IntegerField()
+    verified_count = serializers.IntegerField(help_text="Occurrences with at least one non-withdrawn identification.")
     verified_pct = serializers.FloatField(help_text="verified_count / total_occurrences")
+    verified_with_prediction_count = serializers.IntegerField(
+        help_text="Verified occurrences that also have a machine prediction (denominator for agreed_*_pct)."
+    )
+    no_prediction_count = serializers.IntegerField(
+        help_text="Verified occurrences with no machine prediction (excluded from agreement denominator)."
+    )
     agreed_exact_count = serializers.IntegerField()
-    agreed_exact_pct = serializers.FloatField(help_text="agreed_exact_count / verified_count")
+    agreed_exact_pct = serializers.FloatField(help_text="agreed_exact_count / verified_with_prediction_count")
     agreed_under_order_count = serializers.IntegerField()
-    agreed_under_order_pct = serializers.FloatField(help_text="agreed_under_order_count / verified_count")
+    agreed_under_order_pct = serializers.FloatField(
+        help_text="agreed_under_order_count / verified_with_prediction_count"
+    )

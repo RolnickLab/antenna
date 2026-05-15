@@ -232,7 +232,7 @@ into pagination only if the kind genuinely needs it):
 
 - `GET /occurrences/stats/top-identifiers/` — done (this PR)
 - `GET /occurrences/stats/identifications-summary/` — total / distinct / verified counts
-- `GET /occurrences/stats/human-model-agreement/` — model agreement rate
+- `GET /occurrences/stats/model-agreement/` — model agreement rate
 - `GET /occurrences/stats/identifications-by-species/` — per-taxon ID counts
 - `GET /occurrences/stats/timeline/` — Plotly-shaped time series
 - `GET /deployments/stats/processed-images/` — processed images per station
