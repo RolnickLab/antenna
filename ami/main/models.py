@@ -2229,37 +2229,39 @@ class SourceImage(BaseModel):
                 except botocore.exceptions.ClientError as e:
                     logger.error(f"Could not read image for {self.path}: {e}")
                     raise ObjectDoesNotExist(f"SourceImage with id {self.pk} media not found") from e
-                else:
-                    # Make the thumbnail
-                    orig_width, orig_height = img.size
-                    width = size["width"]
-                    height = size.get("height", None)
-                    if not height:
-                        height = int(orig_height * (width / float(orig_width)))
-                    new_size = (width, height)
-                    img.thumbnail(new_size)
-
-                    buffer = BytesIO()
-                    img.save(buffer, format="JPEG")
-                    contents = buffer.getvalue()
-                    file_size = len(contents)
-
-                    # Write to storage
-                    buffer.seek(0)
-                    thumbnail_key = f"{prefix}capture_{self.pk}/{label}.jpg"
-                    thumbnail_path = default_storage.save(thumbnail_key, buffer)
-
-                    # Save to DB
-                    width, height = img.size
-                    # Remove prior thumbnails for this size
-                    for t in self.thumbnails.filter(label=label):
-                        default_storage.delete(t.path)
-                        t.delete()
-                    thumb = self.thumbnails.create(
-                        path=thumbnail_path, label=label, width=width, height=height, size=file_size
-                    )
+            elif self.path:
+                img = PIL.Image.open(default_storage.open(self.path))
             else:
                 raise ObjectDoesNotExist(f"SourceImage with id {self.pk} media config not found")
+            # Make the thumbnail
+            orig_width, orig_height = img.size
+            width = size["width"]
+            height = size.get("height", None)
+            if not height:
+                height = int(orig_height * (width / float(orig_width)))
+            new_size = (width, height)
+            img.thumbnail(new_size)
+
+            buffer = BytesIO()
+            img.save(buffer, format="JPEG")
+            contents = buffer.getvalue()
+            file_size = len(contents)
+
+            # Remove prior thumbnails for this size
+            for t in self.thumbnails.filter(label=label):
+                default_storage.delete(t.path)
+                t.delete()
+
+            # Write to storage
+            buffer.seek(0)
+            thumbnail_key = f"{prefix}capture_{self.pk}/{label}.jpg"
+            thumbnail_path = default_storage.save(thumbnail_key, buffer)
+
+            # Save to DB
+            width, height = img.size
+            thumb = self.thumbnails.create(
+                path=thumbnail_path, label=label, width=width, height=height, size=file_size
+            )
         return thumb
 
     class Meta:
@@ -2453,13 +2455,24 @@ class SourceImageThumbnail(BaseModel):
     """A thumbnail cache of a SourceImage"""
 
     path = models.CharField(max_length=255, blank=True)
-    label = models.CharField(max_length=255, blank=True, null=True)
+    label = models.CharField(max_length=255)
     width = models.IntegerField(null=True, blank=True)
     height = models.IntegerField(null=True, blank=True)
     size = models.BigIntegerField(null=True, blank=True)
     last_modified = models.DateTimeField(null=True, blank=True, auto_now_add=True)
 
     source_image = models.ForeignKey(SourceImage, on_delete=models.SET_NULL, null=True, related_name="thumbnails")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source_image", "label"],
+                name="unique_source_image_thumbnail_label",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["source_image", "label"]),
+        ]
 
 
 # @final

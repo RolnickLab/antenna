@@ -239,7 +239,7 @@ class TestImageThumbnailViews(TestCase):
 
     def test_thumbnail_new(self):
         response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
-        self.assertEqual(response.status_code, 301)
+        self.assertEqual(response.status_code, 302)
         thumb = self.first_capture.thumbnails.get(label="small")
         self.assertEqual(thumb.width, 240)
         self.assertEqual(thumb.height, 180)
@@ -247,7 +247,7 @@ class TestImageThumbnailViews(TestCase):
 
     def test_thumbnail_new_with_size(self):
         response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/?label=medium")
-        self.assertEqual(response.status_code, 301)
+        self.assertEqual(response.status_code, 302)
         thumb = self.first_capture.thumbnails.get(label="medium")
         self.assertEqual(thumb.width, 1024)
         self.assertEqual(thumb.height, 768)
@@ -259,18 +259,18 @@ class TestImageThumbnailViews(TestCase):
 
     def test_thumbnail_exists(self):
         response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
-        self.assertEqual(response.status_code, 301)
+        self.assertEqual(response.status_code, 302)
         t_id = self.first_capture.thumbnails.first().pk
         response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
         self.assertEqual(self.first_capture.thumbnails.count(), 1)
         self.assertEqual(self.first_capture.thumbnails.first().pk, t_id)
         thumb = self.first_capture.thumbnails.get(label="small")
-        self.assertEqual(response.status_code, 301)
+        self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
 
     def test_thumbnail_exists_newer_modified_source(self):
         response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
-        self.assertEqual(response.status_code, 301)
+        self.assertEqual(response.status_code, 302)
         thumb = self.first_capture.thumbnails.first()
         self.first_capture.last_modified = datetime.datetime.now()
         self.first_capture.save()
@@ -279,7 +279,7 @@ class TestImageThumbnailViews(TestCase):
         self.assertEqual(self.first_capture.thumbnails.count(), 1)
         self.assertNotEqual(self.first_capture.thumbnails.first().pk, thumb.pk)
         thumb = self.first_capture.thumbnails.get(label="small")
-        self.assertEqual(response.status_code, 301)
+        self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
 
     @override_settings(THUMBNAILS=NEW_THUMBNAIL_SETTINGS)
@@ -290,7 +290,7 @@ class TestImageThumbnailViews(TestCase):
         self.assertEqual(self.first_capture.thumbnails.count(), 1)
         thumb = self.first_capture.thumbnails.get(label="small")
         self.assertEqual(thumb.width, 300)
-        self.assertEqual(response.status_code, 301)
+        self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
 
     def test_captures_response_includes_thumbnail_urls(self):

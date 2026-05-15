@@ -737,7 +737,7 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
             thumb = obj.find_or_generate_thumbnail_for_label(label)
         except exceptions.ObjectDoesNotExist as e:
             raise api_exceptions.NotFound(detail=f"{e}")
-        return redirect(default_storage.url(thumb.path), permanent=True)
+        return redirect(default_storage.url(thumb.path))
 
 
 class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):

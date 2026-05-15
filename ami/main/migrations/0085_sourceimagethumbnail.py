@@ -17,7 +17,7 @@ class Migration(migrations.Migration):
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 ("path", models.CharField(blank=True, max_length=255)),
-                ("label", models.CharField(blank=True, max_length=255, null=True)),
+                ("label", models.CharField(max_length=255)),
                 ("width", models.IntegerField(blank=True, null=True)),
                 ("height", models.IntegerField(blank=True, null=True)),
                 ("size", models.BigIntegerField(blank=True, null=True)),
@@ -36,4 +36,14 @@ class Migration(migrations.Migration):
                 "abstract": False,
             },
         ),
+        migrations.AddIndex(
+            model_name="sourceimagethumbnail",
+            index=models.Index(fields=["source_image", "label"], name="main_source_source__b0d4cd_idx"),
+        ),
+        migrations.AddConstraint(
+            model_name="sourceimagethumbnail",
+            constraint=models.UniqueConstraint(
+                fields=("source_image", "label"), name="unique_source_image_thumbnail_label"
+            ),
+        ),        
     ]
