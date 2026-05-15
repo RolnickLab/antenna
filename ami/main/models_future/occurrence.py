@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from django.db.models import Count, F, OuterRef, Prefetch, Q, QuerySet, Subquery
+from django.db.models import Count, OuterRef, Prefetch, Q, QuerySet, Subquery
 
 from ami.main.models import Project, TaxonRank, User
 
@@ -178,44 +178,63 @@ def model_agreement_for_project(queryset: QuerySet[Occurrence]) -> dict:
     taxon and the model's prediction share an ancestor at rank >= ORDER
     (inclusive of ORDER itself).
 
-    Aggregation is SQL-side. Only the disagreement set (occurrences where
-    user and machine disagree at SPECIES) is materialized in Python, and
-    even then it's deduplicated to distinct (user_taxon, machine_taxon)
-    pairs so LCA runs once per pair, not once per occurrence.
+    Performance: the heavy work — correlated subqueries over Identification
+    and Classification — is scoped to the verified set, which is typically
+    a tiny fraction of total occurrences. Computing those subqueries over
+    the full filtered queryset would do 99% wasted work picking the "best
+    user identification" for occurrences that have none.
+
+      Step 1: total_occurrences = SQL Count(*).
+      Step 2: Fetch the verified set with (pk, best_user_taxon_id,
+              best_machine_prediction_taxon_id). Both correlated subqueries
+              evaluate only on verified rows.
+      Step 3: Bucket counts in Python (set is small).
+      Step 4: Dedupe disagreement to distinct (user, machine) pairs and run
+              one LCA per pair.
+
+    Bench against project 18 (43,149 occurrences, 45 verified): ~80ms cold.
     """
+    import collections
+
     from ami.main.models import BEST_IDENTIFICATION_ORDER, Identification, Taxon
+
+    total = queryset.count()
 
     best_user_ident = Identification.objects.filter(occurrence=OuterRef("pk"), withdrawn=False).order_by(
         *BEST_IDENTIFICATION_ORDER
     )
 
-    qs = queryset.with_best_machine_prediction().annotate(  # type: ignore[attr-defined]
-        best_user_taxon_id=Subquery(best_user_ident.values("taxon_id")[:1]),
+    verified_rows = list(
+        queryset.filter(identifications__withdrawn=False)
+        .distinct()
+        .with_best_machine_prediction()  # type: ignore[attr-defined]
+        .annotate(best_user_taxon_id=Subquery(best_user_ident.values("taxon_id")[:1]))
+        .values("pk", "best_machine_prediction_taxon_id", "best_user_taxon_id")
     )
 
-    verified_q = Q(best_user_taxon_id__isnull=False)
-    has_pred_q = Q(best_machine_prediction_taxon_id__isnull=False)
-    exact_q = verified_q & has_pred_q & Q(best_user_taxon_id=F("best_machine_prediction_taxon_id"))
-
-    aggregates = qs.aggregate(
-        total_occurrences=Count("pk"),
-        verified_count=Count("pk", filter=verified_q),
-        verified_with_prediction_count=Count("pk", filter=verified_q & has_pred_q),
-        no_prediction_count=Count("pk", filter=verified_q & ~has_pred_q),
-        agreed_exact_count=Count("pk", filter=exact_q),
+    verified = len(verified_rows)
+    no_prediction = sum(1 for r in verified_rows if r["best_machine_prediction_taxon_id"] is None)
+    verified_with_pred = verified - no_prediction
+    agreed_exact = sum(
+        1
+        for r in verified_rows
+        if r["best_machine_prediction_taxon_id"] is not None
+        and r["best_user_taxon_id"] == r["best_machine_prediction_taxon_id"]
     )
 
-    # Under-order: only the disagreement set hits Python, grouped by distinct
-    # (user_taxon, machine_taxon) pair so each pair's LCA is computed once.
-    disagreement_pairs = (
-        qs.filter(verified_q & has_pred_q)
-        .exclude(best_user_taxon_id=F("best_machine_prediction_taxon_id"))
-        .values("best_user_taxon_id", "best_machine_prediction_taxon_id")
-        .annotate(occurrence_count=Count("pk"))
-    )
+    # Dedupe disagreement pairs so each (user_taxon, machine_taxon) LCA runs once.
+    pair_counts: collections.Counter = collections.Counter()
+    for r in verified_rows:
+        m_id = r["best_machine_prediction_taxon_id"]
+        u_id = r["best_user_taxon_id"]
+        if m_id is None or u_id is None or u_id == m_id:
+            continue
+        pair_counts[(u_id, m_id)] += 1
 
-    pairs = list(disagreement_pairs)
-    needed_taxa_ids = {p["best_user_taxon_id"] for p in pairs} | {p["best_machine_prediction_taxon_id"] for p in pairs}
+    needed_taxa_ids: set[int] = set()
+    for u_id, m_id in pair_counts:
+        needed_taxa_ids.add(u_id)
+        needed_taxa_ids.add(m_id)
 
     taxa_by_id: dict[int, TaxonTuple] = {}
     if needed_taxa_ids:
@@ -226,20 +245,16 @@ def model_agreement_for_project(queryset: QuerySet[Occurrence]) -> dict:
             taxa_by_id[t.pk] = (t.pk, t.rank, parents)
 
     under_order_disagreement_count = 0
-    for pair in pairs:
-        u = taxa_by_id.get(pair["best_user_taxon_id"])
-        m = taxa_by_id.get(pair["best_machine_prediction_taxon_id"])
+    for (u_id, m_id), count in pair_counts.items():
+        u = taxa_by_id.get(u_id)
+        m = taxa_by_id.get(m_id)
         if not u or not m:
             continue
         lca = lca_rank_between(u, m)
         if lca is not None and lca >= TaxonRank.ORDER:
-            under_order_disagreement_count += pair["occurrence_count"]
+            under_order_disagreement_count += count
 
-    agreed_exact = aggregates["agreed_exact_count"]
     agreed_under_order = agreed_exact + under_order_disagreement_count
-    total = aggregates["total_occurrences"]
-    verified = aggregates["verified_count"]
-    verified_with_pred = aggregates["verified_with_prediction_count"]
 
     def _pct(num: int, denom: int) -> float:
         return round(num / denom, 4) if denom else 0.0
@@ -249,7 +264,7 @@ def model_agreement_for_project(queryset: QuerySet[Occurrence]) -> dict:
         "verified_count": verified,
         "verified_pct": _pct(verified, total),
         "verified_with_prediction_count": verified_with_pred,
-        "no_prediction_count": aggregates["no_prediction_count"],
+        "no_prediction_count": no_prediction,
         "agreed_exact_count": agreed_exact,
         "agreed_exact_pct": _pct(agreed_exact, verified_with_pred),
         "agreed_under_order_count": agreed_under_order,
