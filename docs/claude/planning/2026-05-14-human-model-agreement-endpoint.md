@@ -23,7 +23,7 @@
 
 ## File Structure
 
-```
+```text
 ami/
   main/
     models_future/
