@@ -236,6 +236,204 @@ class TestImageGrouping(TestCase):
         for event in events:
             assert event.captures.count() == images_per_night
 
+    def _populate_continuous_captures(self, days: int = 3, interval_minutes: int = 10):
+        """Create ``days`` of gap-free captures (no gap > ``interval_minutes``)."""
+        import pathlib
+        import uuid
+
+        start = datetime.datetime(2023, 4, 24, 3, 22, 38)
+        interval = datetime.timedelta(minutes=interval_minutes)
+        count = int(datetime.timedelta(days=days) / interval)
+        for i in range(count):
+            SourceImage.objects.create(
+                deployment=self.deployment,
+                timestamp=start + i * interval,
+                path=pathlib.Path("test") / f"{uuid.uuid4().hex[:8]}_continuous_{i}.jpg",
+            )
+        return count
+
+    def test_continuous_monitoring_capped_at_24_hours(self):
+        """
+        A deployment that captures images continuously (no gap > max_time_gap)
+        should still be broken into daily events by the max_event_duration cap,
+        not coalesced into one multi-day event.
+        """
+        self._populate_continuous_captures(days=3, interval_minutes=10)
+
+        events = group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(hours=2),
+            max_event_duration=datetime.timedelta(hours=24),
+        )
+
+        # 3 days × 24h / 10min = 432 captures; capped at 24h → exactly 3 events.
+        # `== 3` (not `>= 3`) guards against over-splitting regressions too.
+        assert len(events) == 3, f"expected exactly 3 daily events, got {len(events)}"
+        for event in events:
+            duration = event.end - event.start
+            assert duration <= datetime.timedelta(hours=24), f"event {event.pk} spans {duration}, exceeds 24h cap"
+
+    def test_regrouping_existing_long_event_refreshes_cached_fields(self):
+        """
+        Regression test for the regroup-existing-events path: a deployment
+        already grouped into a single multi-day event should, after re-running
+        grouping with the 24h cap, end up with no events exceeding 24h AND
+        every reused event's cached start/end/captures_count must reflect its
+        current captures (not its pre-regroup state).
+
+        This is narrower than #904's refactor on purpose: it asserts the
+        observable cap+refresh behavior without depending on the specific
+        group_by reuse mechanics that #904 is expected to remove.
+        """
+        total_captures = self._populate_continuous_captures(days=3, interval_minutes=10)
+
+        # First pass with the cap disabled → a single multi-day "mega-event".
+        events_uncapped = group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(hours=2),
+            max_event_duration=None,
+        )
+        assert len(events_uncapped) == 1
+        mega_event = events_uncapped[0]
+        assert (mega_event.end - mega_event.start) > datetime.timedelta(hours=24)
+
+        # Second pass with the cap → must split the mega-event and refresh
+        # cached fields on the reused event.
+        group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(hours=2),
+            max_event_duration=datetime.timedelta(hours=24),
+        )
+
+        all_events = Event.objects.filter(deployment=self.deployment)
+        assert all_events.count() == 3, f"expected exactly 3 events after regroup, got {all_events.count()}"
+
+        for event in all_events:
+            duration = event.end - event.start
+            assert duration <= datetime.timedelta(
+                hours=24
+            ), f"event {event.pk} spans {duration} after regroup; cached fields are stale"
+
+            # Per-event cached-count check: catches reused events whose captures_count
+            # was never refreshed after captures were reassigned away. A sum-only check
+            # can miss this when two events' errors offset each other.
+            actual_captures = SourceImage.objects.filter(event=event).count()
+            assert event.captures_count == actual_captures, (
+                f"event {event.pk} cached captures_count={event.captures_count} "
+                f"does not match actual related count={actual_captures}; cached counters are stale"
+            )
+
+        # Orphan check: every capture must belong to some event.
+        total_assigned = sum(e.captures_count for e in all_events)
+        assert total_assigned == total_captures, (
+            f"captures_count across events ({total_assigned}) does not match total captures ({total_captures}); "
+            f"captures were orphaned during regroup"
+        )
+
+    def test_regrouping_realigns_occurrence_event_id(self):
+        """
+        Regression test for stale ``Occurrence.event_id`` after regroup.
+
+        Occurrences are bound to an event once at creation time (from
+        ``detection.source_image.event``). When the 24h cap runs against a
+        deployment that already has detections + occurrences attached to a
+        single mega-event, the source_images are reassigned but the
+        occurrences' event_ids stay stuck at the mega-event unless we
+        explicitly realign them. This test asserts the realignment plus the
+        downstream ``occurrences_count`` consistency on the daily events.
+        """
+        self._populate_continuous_captures(days=3, interval_minutes=10)
+        captures = list(SourceImage.objects.filter(deployment=self.deployment).order_by("timestamp"))
+
+        # First pass with the cap disabled → one mega-event holding everything.
+        group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(hours=2),
+            max_event_duration=None,
+        )
+        mega_event = Event.objects.get(deployment=self.deployment)
+
+        # One occurrence per day, picked at mid-day offsets (12h / 36h / 60h)
+        # so each target sits well inside its event's window, far from the
+        # exact 24h boundary where the cap's strict ``>`` semantics matter.
+        # Index-based selection (e.g. ``captures[len // 3]``) lands at exactly
+        # 24h offset, where Event 2 starts at 24h+10min (one capture past),
+        # so two of the three targets would otherwise share an event.
+        start_ts = captures[0].timestamp
+        targets = [
+            next(c for c in captures if c.timestamp >= start_ts + datetime.timedelta(hours=12)),
+            next(c for c in captures if c.timestamp >= start_ts + datetime.timedelta(hours=36)),
+            next(c for c in captures if c.timestamp >= start_ts + datetime.timedelta(hours=60)),
+        ]
+        occurrences = []
+        for capture in targets:
+            detection = Detection.objects.create(
+                source_image=capture,
+                timestamp=capture.timestamp,
+                bbox=[10, 10, 20, 20],
+            )
+            occurrence = Occurrence.objects.create(
+                event=mega_event,
+                deployment=self.deployment,
+                project=self.project,
+            )
+            detection.occurrence = occurrence
+            detection.save()
+            occurrences.append(occurrence)
+
+        # Sanity: all three occurrences point at the mega-event before regroup.
+        for occurrence in occurrences:
+            occurrence.refresh_from_db()
+            assert occurrence.event_id == mega_event.pk
+
+        # Second pass: 24h cap → 3 daily events, each occurrence must follow
+        # its detection's source_image into the corresponding daily event.
+        group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(hours=2),
+            max_event_duration=datetime.timedelta(hours=24),
+        )
+
+        for occurrence in occurrences:
+            occurrence.refresh_from_db()
+            first_detection = (
+                Detection.objects.filter(occurrence=occurrence)
+                .select_related("source_image")
+                .order_by("source_image__timestamp")
+                .first()
+            )
+            assert first_detection is not None
+            expected_event_id = first_detection.source_image.event_id
+            assert occurrence.event_id == expected_event_id, (
+                f"occurrence {occurrence.pk}: stale event_id={occurrence.event_id} "
+                f"(expected {expected_event_id} from first detection's source_image)"
+            )
+
+        # Realignment must move all three occurrences onto distinct daily
+        # events. With targets at mid-day offsets, the three occurrences land
+        # on three different events — one on each day.
+        distinct_event_ids = {occ.event_id for occ in occurrences}
+        assert (
+            len(distinct_event_ids) == 3
+        ), f"expected 3 distinct event_ids across occurrences, got {distinct_event_ids}"
+
+        # Each daily event's cached ``occurrences_count`` must match the live
+        # computation that ``update_calculated_fields`` itself uses (which
+        # applies the project's default filters). Catches the case where
+        # occurrences moved off an event but its cached counter wasn't
+        # refreshed because the event wasn't tracked as touched.
+        daily_events = Event.objects.filter(deployment=self.deployment)
+        assert daily_events.count() == 3
+        for event in daily_events:
+            expected = event.get_occurrences_count()
+            assert event.occurrences_count == expected, (
+                f"event {event.pk} cached occurrences_count={event.occurrences_count} "
+                f"!= live get_occurrences_count()={expected}; cached counter is stale"
+            )
+
+        # No occurrence should be left pointing at a deleted/missing event.
+        assert Occurrence.objects.filter(deployment=self.deployment, event__isnull=True).count() == 0
+
     def test_pruning_empty_events(self):
         from ami.main.models import delete_empty_events
 
@@ -1143,6 +1341,55 @@ class TestProjectSettingsFiltering(APITestCase):
         self.assertEqual(response_device_ids, exepcted_device_ids)
 
 
+class TestProjectRequiredOnListEndpoints(APITestCase):
+    """
+    Verify that list endpoints on the four hot tables reject requests
+    without a project_id, while opt-out endpoints and unrelated list
+    endpoints remain unaffected.
+    """
+
+    def setUp(self) -> None:
+        self.project, _ = setup_test_project(reuse=False)
+        self.user = User.objects.create_user(email="testuser@insectai.org", is_staff=True)  # type: ignore
+        self.client.force_authenticate(user=self.user)
+        return super().setUp()
+
+    def test_hot_list_endpoints_require_project_id(self):
+        for path in [
+            "/api/v2/classifications/",
+            "/api/v2/occurrences/",
+            "/api/v2/detections/",
+            "/api/v2/captures/",
+        ]:
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, path)
+
+    def test_hot_list_endpoints_accept_with_project_id(self):
+        for path in [
+            "/api/v2/classifications/",
+            "/api/v2/occurrences/",
+            "/api/v2/detections/",
+            "/api/v2/captures/",
+        ]:
+            with self.subTest(path=path):
+                response = self.client.get(f"{path}?project_id={self.project.pk}")
+                self.assertEqual(response.status_code, status.HTTP_200_OK, path)
+
+    def test_summary_requires_project_id(self):
+        self.assertEqual(self.client.get("/api/v2/status/summary/").status_code, status.HTTP_400_BAD_REQUEST)
+        response = self.client.get(f"/api/v2/status/summary/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_unrelated_list_endpoints_still_work_without_project_id(self):
+        # Regression guard: project listing and global taxonomy must not be
+        # affected by the opt-in requirement.
+        for path in ["/api/v2/projects/", "/api/v2/taxa/"]:
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, status.HTTP_200_OK, path)
+
+
 class TestProjectOwnerAutoAssignment(APITestCase):
     def setUp(self) -> None:
         self.user_1 = User.objects.create_user(email="testuser@insectai.org", is_staff=True, is_superuser=True)
@@ -1338,7 +1585,7 @@ class TestRolePermissions(APITestCase):
                 "job": {
                     "create": True,
                     "update": True,
-                    "delete": True,
+                    "delete": False,
                     "run_single_image": True,
                     "run": True,
                 },
@@ -2296,49 +2543,12 @@ class TestDraftProjectPermissions(APITestCase):
             else:
                 self.assertEqual(value, 0, f"Outsider should see exactly 0 for {key} in draft project, got {value}")
 
-        # Test 3: Get global counts for both users
+        # Test 3: Global summary is no longer allowed — endpoint requires project_id (400).
         outsider_global_response = self._auth_get(self.outsider, global_url)
         member_global_response = self._auth_get(self.member, global_url)
 
-        self.assertEqual(outsider_global_response.status_code, 200)
-        self.assertEqual(member_global_response.status_code, 200)
-
-        outsider_global_data: dict[str, typing.Any] = outsider_global_response.json()
-        member_global_data: dict[str, typing.Any] = member_global_response.json()
-
-        # Test 4: Verify exact differences in global counts
-        for key in draft_project_counts.keys():
-            if key in project_count_keys:
-                # Skip project counts as they are not affected by draft status
-                continue
-
-            if key in ("num_taxa", "num_species", "taxa_count"):  # Two are deprecated aliases! @TOOD
-                # Taxa can be in multiple projects, so skip exact count check
-                logger.debug(f"Skipping exact count check for {key} due to potential multi-project association")
-                continue
-
-            outsider_global_count: int = outsider_global_data.get(key, 0)
-            member_global_count: int = member_global_data.get(key, 0)
-            draft_project_count: int = draft_project_counts[key]
-
-            # The difference should be exactly the draft project counts
-            # (assuming member has no other draft project access)
-            expected_member_count: int = outsider_global_count + draft_project_count
-
-            self.assertEqual(
-                member_global_count,
-                expected_member_count,
-                f"Member global count for {key} should be exactly {expected_member_count} "
-                f"(outsider: {outsider_global_count} + draft project: {draft_project_count}), "
-                f"got {member_global_count}",
-            )
-
-            logger.info(
-                f"{key} exact counts - Draft project: {draft_project_count}, "
-                f"Outsider global: {outsider_global_count}, "
-                f"Member global: {member_global_count}, "
-                f"Difference: {member_global_count - outsider_global_count}"
-            )
+        self.assertEqual(outsider_global_response.status_code, 400)
+        self.assertEqual(member_global_response.status_code, 400)
 
         # Test 5: Verify behavior when project becomes non-draft
         self.project.draft = False
@@ -2427,17 +2637,11 @@ class TestProjectDefaultThresholdFilter(APITestCase):
         for occ in self.low_occurrences:
             self.assertNotIn(occ.id, ids)
 
-    def test_no_project_id_returns_all(self):
-        """Without project_id, threshold falls back to 0.0 and returns all occurrences"""
+    def test_no_project_id_requires_project(self):
+        """Occurrence list now requires project_id to avoid unfiltered hot-table scans."""
         url = "/api/v2/occurrences/?limit=1000"
         res = self.client.get(url)
-        self.assertEqual(res.status_code, status.HTTP_200_OK)
-
-        # Check that our test occurrences are present (don't assume all in DB are ours)
-        expected_ids = {occ.pk for occ in list(self.high_occurrences) + list(self.low_occurrences)}
-        returned_ids = {o["id"] for o in res.data["results"]}
-
-        self.assertTrue(expected_ids.issubset(returned_ids), f"Missing occurrence IDs: {expected_ids - returned_ids}")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_retrieve_occurrence_respects_threshold(self):
         """Detail retrieval should 404 if occurrence is filtered out by threshold"""
@@ -2721,6 +2925,354 @@ class TestProjectDefaultThresholdFilter(APITestCase):
             summary_taxa_count,
             f"Mismatch with outside taxon: taxa endpoint returned {taxa_count}, summary {summary_taxa_count}",
         )
+
+
+class TestOccurrenceListQueryCount(APITestCase):
+    """Guard against N+1 regressions in OccurrenceViewSet.list (issue #1271).
+
+    The number of queries should be roughly constant regardless of page size:
+    a small handful of pagination/auth/permission queries plus a fixed set of
+    prefetches (occurrences, detections, classifications, identifications, etc.).
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=10)
+
+        # Use a low threshold so all occurrences are returned
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        self.user = User.objects.create_user(email="qcount@insectai.org", is_staff=False, is_superuser=False)
+        self.client.force_authenticate(user=self.user)
+
+    def _list_occurrences(self, limit: int) -> int:
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/v2/occurrences/?project_id={self.project.pk}&limit={limit}"
+        # Clear cachalot cache between runs so query counts reflect cold state.
+        # Failures must propagate — a warm cache hides query-scaling regressions.
+        caches["default"].clear()
+
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res.data["results"]), min(limit, res.data["count"]))
+        # List responses cap detection_images per row (1 cover image; prevents unbounded payload).
+        for row in res.data["results"]:
+            self.assertLessEqual(len(row["detection_images"]), 1)
+        return len(ctx.captured_queries)
+
+    def test_list_query_count_does_not_scale_with_page_size(self):
+        """Query count for a page of 25 should be very close to a page of 5."""
+        create_occurrences(deployment=self.deployment, num=25, determination_score=0.9)
+
+        small_count = self._list_occurrences(limit=5)
+        large_count = self._list_occurrences(limit=25)
+
+        # Allow a small constant overhead (e.g. cachalot bookkeeping) but
+        # nowhere near 5x scaling.
+        self.assertLessEqual(
+            large_count,
+            small_count + 5,
+            f"Query count grew with page size: {small_count} -> {large_count} (likely N+1 regression)",
+        )
+
+
+class TestOccurrenceDetailQueryCount(APITestCase):
+    """Guard against N+1 regressions on the detail endpoint.
+
+    `OccurrenceSerializer` extends `OccurrenceListSerializer`, so any
+    cache-key gating in the shared base can silently regress the detail
+    path. This guard pins detail-endpoint query count.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=10)
+
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        self.user = User.objects.create_user(email="qcount-detail@insectai.org", is_staff=False, is_superuser=False)
+        self.client.force_authenticate(user=self.user)
+
+    def _detail_query_count(self, occurrence_id: int) -> int:
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/v2/occurrences/{occurrence_id}/?project_id={self.project.pk}"
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return len(ctx.captured_queries)
+
+    def test_detail_query_count_is_bounded(self):
+        """Detail endpoint query count must not scale with detections per occurrence."""
+        create_occurrences(deployment=self.deployment, num=5, determination_score=0.9)
+        occurrence_id = Occurrence.objects.filter(project=self.project).values_list("pk", flat=True).first()
+        self.assertIsNotNone(occurrence_id)
+
+        count = self._detail_query_count(occurrence_id)
+        # 7 list-path queries + a small allowance for detail-only (full detections,
+        # nested predictions, source_image select_related). Hard ceiling catches
+        # silent reintroduction of N+1 in the shared serializer base.
+        self.assertLess(count, 20, f"Detail endpoint took {count} queries (likely N+1 regression)")
+
+    def test_detail_query_count_does_not_scale_with_detections(self):
+        """Detail with many detections per occurrence must not multiply queries.
+
+        `create_occurrences` produces 1 detection/classification per occurrence.
+        Inflate one occurrence to N detections × N classifications and confirm
+        query count stays in the same envelope as the single-detection case
+        (i.e. bounded by the ceiling above, not detection_count).
+        """
+        import datetime
+
+        from ami.main.models import Classification, Detection
+
+        create_occurrences(deployment=self.deployment, num=3, determination_score=0.9)
+        occurrence = Occurrence.objects.filter(project=self.project).first()
+        self.assertIsNotNone(occurrence)
+
+        seed_detection = occurrence.detections.first()
+        self.assertIsNotNone(seed_detection)
+        seed_classification = seed_detection.classifications.first()
+        self.assertIsNotNone(seed_classification)
+        source_image = seed_detection.source_image
+
+        for i in range(8):
+            det = Detection.objects.create(
+                source_image=source_image,
+                occurrence=occurrence,
+                timestamp=source_image.timestamp,
+                bbox=[10, 10, 20, 20],
+                path=f"detections/inflated_{i}.jpg",
+            )
+            for j in range(3):
+                Classification.objects.create(
+                    detection=det,
+                    taxon=seed_classification.taxon,
+                    algorithm=seed_classification.algorithm,
+                    score=0.8 + (j * 0.01),
+                    timestamp=datetime.datetime.now(),
+                )
+
+        count = self._detail_query_count(occurrence.pk)
+        self.assertLess(
+            count,
+            20,
+            f"Detail with 9 detections × 4 classifications took {count} queries — N+1 regression",
+        )
+
+
+class TestOccurrencePrefetchHelpersEdgeCases(APITestCase):
+    """Helpers in `models_future/occurrence.py` must handle empty prefetch caches gracefully.
+
+    `.valid()` excludes zero-detection occurrences from the list endpoint, but
+    helpers can still be called on objects whose detections were deleted, or in
+    non-API contexts (admin, exports). Empty must return None / [] without 500.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=2)
+        create_occurrences(deployment=self.deployment, num=2, determination_score=0.9)
+
+    def _empty_occurrence(self) -> "Occurrence":
+        """An occurrence with prefetch caches populated but all relations empty."""
+        from ami.main.models_future.occurrence import prefetch_detections_for_list
+
+        occurrence = (
+            Occurrence.objects.filter(project=self.project)
+            .prefetch_related(prefetch_detections_for_list(), "identifications")
+            .first()
+        )
+        assert occurrence is not None
+        # Wipe relations through DB to leave the prefetch cache empty.
+        occurrence.detections.all().delete()
+        occurrence.identifications.all().delete()
+        # Re-fetch with prefetches so the cache reflects the empty state.
+        return (
+            Occurrence.objects.filter(pk=occurrence.pk)
+            .prefetch_related(prefetch_detections_for_list(), "identifications")
+            .get()
+        )
+
+    def test_helpers_return_safe_defaults_on_empty(self):
+        from ami.main.models_future.occurrence import (
+            best_identification_from_prefetch,
+            best_prediction_from_prefetch,
+            detection_image_urls_from_prefetch,
+        )
+
+        occurrence = self._empty_occurrence()
+        self.assertIsNone(best_prediction_from_prefetch(occurrence))
+        self.assertIsNone(best_identification_from_prefetch(occurrence))
+        self.assertEqual(detection_image_urls_from_prefetch(occurrence), [])
+        self.assertEqual(detection_image_urls_from_prefetch(occurrence, limit=3), [])
+
+    def test_helpers_raise_when_prefetch_missing(self):
+        """Strict contract: missing prefetch must raise, not silently slow-path."""
+        from ami.main.models_future.occurrence import (
+            best_identification_from_prefetch,
+            best_prediction_from_prefetch,
+            detection_image_urls_from_prefetch,
+        )
+
+        # No prefetch applied
+        occurrence = Occurrence.objects.filter(project=self.project).first()
+        assert occurrence is not None
+        with self.assertRaises(RuntimeError):
+            best_prediction_from_prefetch(occurrence)
+        with self.assertRaises(RuntimeError):
+            best_identification_from_prefetch(occurrence)
+        with self.assertRaises(RuntimeError):
+            detection_image_urls_from_prefetch(occurrence)
+
+
+@override_settings(CACHALOT_ENABLED=False)
+class TestSourceImageListQueryCount(APITestCase):
+    """Audit SourceImageViewSet.list for N+1 (follow-up to PR #1274).
+
+    Cachalot disabled so we measure cold query count, not warm cache.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=25)
+        create_occurrences(deployment=self.deployment, num=25, determination_score=0.9)
+
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        self.user = User.objects.create_user(
+            email="qcount-sourceimage@insectai.org", is_staff=False, is_superuser=False
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def _list_query_count(self, limit: int, with_detections: bool) -> int:
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = (
+            f"/api/v2/captures/?project_id={self.project.pk}&limit={limit}"
+            f"&with_detections={'true' if with_detections else 'false'}"
+        )
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return len(ctx.captured_queries)
+
+    def test_list_query_count_does_not_scale_without_detections(self):
+        small = self._list_query_count(limit=5, with_detections=False)
+        large = self._list_query_count(limit=25, with_detections=False)
+        print(f"\n[AUDIT] SourceImage list (no detections): limit=5 -> {small}q, limit=25 -> {large}q")
+        self.assertLessEqual(large, small + 5, f"SourceImage list scaling: {small} -> {large} (likely N+1)")
+
+    def test_list_query_count_does_not_scale_with_detections(self):
+        small = self._list_query_count(limit=5, with_detections=True)
+        large = self._list_query_count(limit=25, with_detections=True)
+        print(f"\n[AUDIT] SourceImage list (with_detections=true): limit=5 -> {small}q, limit=25 -> {large}q")
+        self.assertLessEqual(
+            large, small + 5, f"SourceImage list scaling with detections: {small} -> {large} (likely N+1)"
+        )
+
+    def test_list_query_with_counts_and_detections(self):
+        """Realistic UI call: with_counts=true & with_detections=true at limit=25."""
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url_base = f"/api/v2/captures/?project_id={self.project.pk}&with_detections=true&with_counts=true"
+        # Two warmups: first request does session/auth bootstrap, second equalises pool state.
+        self.client.get(url_base + "&limit=1")
+        self.client.get(url_base + "&limit=1")
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx_small:
+            self.client.get(url_base + "&limit=5")
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx_large:
+            self.client.get(url_base + "&limit=25")
+        small, large = len(ctx_small.captured_queries), len(ctx_large.captured_queries)
+        print(
+            f"\n[AUDIT] SourceImage list (with_detections+with_counts): " f"limit=5 -> {small}q, limit=25 -> {large}q"
+        )
+        self.assertLessEqual(large, small + 5, f"SourceImage list scaling: {small} -> {large} (likely N+1)")
+
+    def test_list_response_shape_has_no_lazy_loads(self):
+        """Every row must serialize `url`, `size_display`, `deployment.name`, and
+        `event.name` without lazy loads — `select_related("deployment__data_source")`
+        is the contract that prevents per-row queries from `SourceImage.public_url()`."""
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/v2/captures/?project_id={self.project.pk}&limit=5"
+        self.client.get(url)
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        body = res.json()
+        self.assertGreater(len(body["results"]), 0)
+        row = body["results"][0]
+        # Confirm fields the serializer reads (some via model methods) are non-null/present.
+        for key in ("id", "url", "size_display", "deployment", "event", "detections_count", "path"):
+            self.assertIn(key, row, f"missing field {key!r} in list response")
+        self.assertIsNotNone(row["deployment"]["name"])
+        # No lazy-load queries should fire after the main list SELECT.
+        # 1 list select + 1 detection prefetch (no, not in this call) + savepoints.
+        self.assertLessEqual(
+            len(ctx.captured_queries),
+            6,
+            f"Unexpected extra queries — likely lazy-load from deferred field: {len(ctx.captured_queries)}",
+        )
+
+
+@override_settings(CACHALOT_ENABLED=False)
+class TestTaxonListQueryCount(APITestCase):
+    """Audit TaxonViewSet.list for N+1 (follow-up to PR #1274, task #9/#15).
+
+    Cachalot disabled so we measure cold query count, not warm cache.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=25)
+        # Spread occurrences across many taxa so the taxon list has 25+ rows.
+        taxa = list(Taxon.objects.filter(projects=self.project))
+        for taxon in taxa[:25]:
+            create_occurrences(deployment=self.deployment, num=2, taxon=taxon, determination_score=0.9)
+
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        self.user = User.objects.create_user(email="qcount-taxon@insectai.org", is_staff=False, is_superuser=False)
+        self.client.force_authenticate(user=self.user)
+
+    def _list_query_count(self, limit: int) -> int:
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/v2/taxa/?project_id={self.project.pk}&limit={limit}"
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return len(ctx.captured_queries)
+
+    def test_list_query_count_does_not_scale_with_page_size(self):
+        small = self._list_query_count(limit=5)
+        large = self._list_query_count(limit=25)
+        print(f"\n[AUDIT] Taxon list: limit=5 -> {small}q, limit=25 -> {large}q")
+        self.assertLessEqual(large, small + 5, f"Taxon list scaling: {small} -> {large} (likely N+1)")
 
 
 class TestProjectDefaultTaxaFilter(APITestCase):
@@ -4125,3 +4677,87 @@ class TestCachedCountsDefaultFilters(APITestCase):
                 f"SourceImage {image.pk} cache stale after raising threshold: "
                 f"cache={image.detections_count}, fresh={image.get_detections_count()}",
             )
+
+
+class TestOccurrenceStatsViewSet(APITestCase):
+    """Covers /api/v2/occurrences/stats/top-identifiers/.
+
+    See docs/claude/reference/api-stats-pattern.md for the broader convention.
+    """
+
+    top_url = "/api/v2/occurrences/stats/top-identifiers/"
+
+    def setUp(self) -> None:
+        project, deployment = setup_test_project()
+        create_taxa(project=project)
+        create_captures(deployment=deployment)
+        create_occurrences(deployment=deployment, num=4)
+        self.project = project
+        self.deployment = deployment
+        self.taxon = Taxon.objects.filter(projects=project).first()
+        self.alice = User.objects.create_user(email="alice@insectai.org")  # type: ignore
+        self.bob = User.objects.create_user(email="bob@insectai.org")  # type: ignore
+        self.carol = User.objects.create_user(email="carol@insectai.org")  # type: ignore
+        return super().setUp()
+
+    def _id(self, user: User, occurrence: Occurrence) -> Identification:
+        return Identification.objects.create(user=user, taxon=self.taxon, occurrence=occurrence)
+
+    def test_returns_ranked_list_in_envelope(self):
+        """Happy path: envelope shape + ranking + distinct-occurrence count + limit slice."""
+        occurrences = list(Occurrence.objects.filter(project=self.project))
+        # alice IDs 3 distinct occurrences (one of them twice — counts as 1)
+        for occ in occurrences[:3]:
+            self._id(self.alice, occ)
+        self._id(self.alice, occurrences[0])  # revised ID, same occurrence
+        # bob IDs 2, carol IDs 1
+        for occ in occurrences[:2]:
+            self._id(self.bob, occ)
+        self._id(self.carol, occurrences[0])
+
+        response = self.client.get(f"{self.top_url}?project_id={self.project.pk}&limit=2")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        # Scalar envelope, NOT DRF paginator's `{count, next, previous, results}`.
+        self.assertEqual(set(body.keys()), {"project_id", "top_identifiers"})
+        self.assertEqual(body["project_id"], self.project.pk)
+        # limit=2 caps to top 2 by identification_count; alice's revised ID counts as 1 occurrence.
+        counts = [(row["id"], row["identification_count"]) for row in body["top_identifiers"]]
+        self.assertEqual(counts, [(self.alice.pk, 3), (self.bob.pk, 2)])
+
+    def test_excludes_users_with_zero_count(self):
+        """`identification_count >= 1` is non-configurable so anon calls can't leak the project user list."""
+        # carol has no identifications in this project
+        self._id(self.alice, Occurrence.objects.filter(project=self.project).first())
+        self._id(self.bob, Occurrence.objects.filter(project=self.project).first())
+
+        response = self.client.get(f"{self.top_url}?project_id={self.project.pk}")
+        ids = [r["id"] for r in response.json()["top_identifiers"]]
+        self.assertEqual(set(ids), {self.alice.pk, self.bob.pk})
+
+    def test_no_project_id_returns_400(self):
+        response = self.client.get(self.top_url)
+        self.assertEqual(response.status_code, 400)
+
+    def test_invalid_limit_returns_400(self):
+        """Strict validation via SingleParamSerializer — no silent clamps."""
+        response = self.client.get(f"{self.top_url}?project_id={self.project.pk}&limit=999")
+        self.assertEqual(response.status_code, 400)
+
+    def test_draft_project_404_for_anon(self):
+        self.project.draft = True
+        self.project.save()
+        response = self.client.get(f"{self.top_url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 404)
+
+    def test_registration_order_preserves_occurrence_retrieve(self):
+        """`r"occurrences/stats"` MUST register before `r"occurrences"`.
+
+        If swapped, OccurrenceViewSet.retrieve's `^occurrences/(?P<pk>[^/.]+)/$`
+        captures `/occurrences/stats/` first and 404s on `pk="stats"`.
+        """
+        occurrence = Occurrence.objects.filter(project=self.project).first()
+        stats_response = self.client.get(f"{self.top_url}?project_id={self.project.pk}")
+        retrieve_response = self.client.get(f"/api/v2/occurrences/{occurrence.pk}/?project_id={self.project.pk}")
+        self.assertEqual(stats_response.status_code, 200, "stats URL must resolve")
+        self.assertEqual(retrieve_response.status_code, 200, "occurrence retrieve must still work")

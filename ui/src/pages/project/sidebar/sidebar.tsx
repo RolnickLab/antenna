@@ -25,7 +25,7 @@ export const Sidebar = ({ project }: { project: ProjectDetails }) => {
   }, [activeItem])
 
   return (
-    <div className="w-full h-min shrink-0 p-0 rounded-md border border-border overflow-hidden bg-background md:w-72">
+    <div className="w-full shrink-0 p-0 rounded-md border border-border overflow-hidden bg-background md:w-72">
       {project.image ? (
         <img src={project.image} alt="" />
       ) : (

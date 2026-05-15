@@ -72,11 +72,14 @@ class ProjectAdmin(GuardedModelAdmin):
         form.instance.ensure_owner_membership()
 
     list_display = ("name", "owner", "priority", "active", "created_at", "updated_at")
-    list_filter = ("active", "owner")
+    list_filter = ("active",)
     search_fields = ("name", "owner__email")
 
     inlines = [ProjectPipelineConfigInline]
-    autocomplete_fields = ("default_filters_include_taxa", "default_filters_exclude_taxa")
+    autocomplete_fields = ("owner", "default_filters_include_taxa", "default_filters_exclude_taxa")
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        return super().get_queryset(request).select_related("owner")
 
     fieldsets = (
         (

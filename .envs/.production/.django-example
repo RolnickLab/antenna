@@ -53,8 +53,58 @@ RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit consumer_timeout 604800000
 SENDGRID_API_KEY=
 
 # Newrelic
+# ------------------------------------------------------------------------------
+# Common defaults live in config/newrelic.ini and are tuned for production
+# safety (apdex_f trace threshold, obfuscated SQL, 0.5s stack/explain).
+# Staging/demo opts into more aggressive tracing here.
+#
+# Identity / lifecycle
 NEW_RELIC_CONFIG_FILE=/app/config/newrelic.ini
 NEW_RELIC_ENVIRONMENT=development
+# NEW_RELIC_LICENSE_KEY=        # overrides license_key in ini (preferred — keep key out of repo)
+# NEW_RELIC_APP_NAME=AMI Backend (Demo)
+# NEW_RELIC_MONITOR_MODE=true   # set false to silence the agent without removing it
+# NEW_RELIC_LOG_LEVEL=info      # bump to debug only when reproducing an agent issue
+# NEW_RELIC_HIGH_SECURITY=false # true forces obfuscated SQL + drops request params, irreversible per app
+#
+# Apdex / trace thresholds — the headline knobs
+#
+# NEW_RELIC_APDEX_T sets the satisfactory response time (default 0.5s). The
+# `apdex_f` threshold used below is automatically 4*Apdex T (so ~2s by default).
+# Raise Apdex T if antenna's normal latency drifts upward and you want the
+# Apdex score to track user expectations rather than alert-floor noise.
+# NEW_RELIC_APDEX_T=0.5
+#
+# Staging / demo — maximum visibility, no cost pressure:
+# NEW_RELIC_TRANSACTION_TRACER_TRANSACTION_THRESHOLD=0.5
+# NEW_RELIC_TRANSACTION_TRACER_STACK_TRACE_THRESHOLD=0.1
+# NEW_RELIC_TRANSACTION_TRACER_EXPLAIN_THRESHOLD=0.1
+# NEW_RELIC_TRANSACTION_TRACER_RECORD_SQL=raw
+#
+# Production — conservative; ini defaults are already production-safe so most
+# lines below can stay commented. Uncomment only the ones you want explicit.
+# NEW_RELIC_TRANSACTION_TRACER_TRANSACTION_THRESHOLD=apdex_f
+# NEW_RELIC_TRANSACTION_TRACER_STACK_TRACE_THRESHOLD=0.5
+# NEW_RELIC_TRANSACTION_TRACER_EXPLAIN_THRESHOLD=0.5
+# NEW_RELIC_TRANSACTION_TRACER_RECORD_SQL=obfuscated
+#
+# Attributes / privacy
+# NEW_RELIC_ATTRIBUTES_INCLUDE=request.parameters.*
+#   Captures ?project_id=12&page=4 on traces. Audit GET params for tokens / PII
+#   first. Safe-ish on antenna (mostly numeric IDs + pagination).
+# NEW_RELIC_ATTRIBUTES_EXCLUDE=request.headers.authorization,request.headers.cookie
+#   Belt-and-braces if you turn on parameters and want to hard-strip auth.
+#
+# Logging — already enabled in ini; cap volume here if needed
+# NEW_RELIC_APPLICATION_LOGGING_ENABLED=true
+# NEW_RELIC_APPLICATION_LOGGING_FORWARDING_ENABLED=true
+# NEW_RELIC_APPLICATION_LOGGING_FORWARDING_MAX_SAMPLES_STORED=10000
+# NEW_RELIC_APPLICATION_LOGGING_METRICS_ENABLED=true
+#
+# Sampling caps — only touch if hitting the NR trace cap on a hot env
+# NEW_RELIC_TRANSACTION_EVENTS_MAX_SAMPLES_STORED=10000
+# NEW_RELIC_SPAN_EVENTS_MAX_SAMPLES_STORED=2000
+# NEW_RELIC_DISTRIBUTED_TRACING_ENABLED=true
 
 # Storage
 DJANGO_AWS_S3_CUSTOM_DOMAIN=

@@ -102,7 +102,7 @@ export const HumanIdentification = ({
                           )
                         : false
                     }
-                    agreeWith={{ predictionId: identification.id }}
+                    agreeWith={{ identificationId: identification.id }}
                     applied={identification.applied}
                     occurrenceId={occurrence.id}
                     taxonId={identification.taxon.id}

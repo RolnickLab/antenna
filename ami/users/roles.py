@@ -131,6 +131,10 @@ class MLDataManager(Role):
         "Machine learning data managers have all basic member permissions, plus the ability to "
         "manage jobs and export data."
     )
+    # NOTE: delete_job is intentionally NOT granted to any role — Job records are kept in the DB
+    # for audit/traceability and only superusers may remove them. Roles that can run ML jobs can
+    # cancel them via the run_*_job permission, which terminates in-flight work without deleting
+    # the row. See issue #1283 for the broader cancel/cleanup lifecycle.
     permissions = BasicMember.permissions | {
         Project.Permissions.CREATE_JOB,
         Project.Permissions.UPDATE_JOB,
@@ -138,7 +142,6 @@ class MLDataManager(Role):
         Project.Permissions.RUN_POPULATE_CAPTURES_COLLECTION_JOB,
         Project.Permissions.RUN_DATA_STORAGE_SYNC_JOB,
         Project.Permissions.RUN_DATA_EXPORT_JOB,
-        Project.Permissions.DELETE_JOB,
         Project.Permissions.DELETE_OCCURRENCES,
         Project.Permissions.CREATE_PROJECT_PIPELINE_CONFIG,
         Project.Permissions.UPDATE_PROJECT_PIPELINE_CONFIG,

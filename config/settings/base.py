@@ -319,6 +319,13 @@ CELERY_RESULT_BACKEND_URL = env("CELERY_RESULT_BACKEND", default=None) or _celer
 # NATS
 # ------------------------------------------------------------------------------
 NATS_URL = env("NATS_URL", default="nats://localhost:4222")  # type: ignore[no-untyped-call]
+# How long a worker has to ack a dispatched task before NATS redelivers it.
+# Must exceed worst-case task duration: S3 download + GPU cold-start + batch
+# inference + synchronous POST of results. With 24 MB images and batch sizes
+# of 8-24, anything under a minute caused spurious redeliveries under load;
+# 5 minutes gives cold-start GPU pipelines headroom without holding tasks
+# invisibly long after a genuine worker crash (bounded by max_deliver).
+NATS_TASK_TTR = env.int("NATS_TASK_TTR", default=300)
 
 # ADMIN
 # ------------------------------------------------------------------------------
@@ -421,6 +428,23 @@ CELERY_REDIS_BACKEND_HEALTH_CHECK_INTERVAL = 30  # Check health every 30s
 # @TODO Review and test this setting
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_ENABLE_PREFETCH_COUNT_REDUCTION = True
+
+# Split Celery work across three queues so one class of task can't starve
+# another. Staging/production/worker compose files each run a dedicated
+# worker service per queue; local/CI use a single worker consuming all queues.
+# See docker-compose.*.yml. Tasks not listed here fall back to the default
+# queue (antenna).
+#
+#   antenna     — default: beat tasks, cache refreshes, sync jobs, misc housekeeping
+#   jobs        — long-running run_job invocations (can hold a slot for hours)
+#   ml_results  — high-volume process_nats_pipeline_result + save_results bursts,
+#                 plus create_detection_images (emitted from save_results)
+CELERY_TASK_ROUTES = {
+    "ami.jobs.tasks.run_job": {"queue": "jobs"},
+    "ami.jobs.tasks.process_nats_pipeline_result": {"queue": "ml_results"},
+    "ami.ml.models.pipeline.save_results": {"queue": "ml_results"},
+    "ami.ml.tasks.create_detection_images": {"queue": "ml_results"},
+}
 
 # Worker concurrency (prefork pool size)
 # https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-concurrency
@@ -551,3 +575,15 @@ DEFAULT_PIPELINES_ENABLED = env.list("DEFAULT_PIPELINES_ENABLED", default=None) 
 # Default taxa filters
 DEFAULT_INCLUDE_TAXA = env.list("DEFAULT_INCLUDE_TAXA", default=[])  # type: ignore[no-untyped-call]
 DEFAULT_EXCLUDE_TAXA = env.list("DEFAULT_EXCLUDE_TAXA", default=[])  # type: ignore[no-untyped-call]
+
+# Purpose: master switch for per-job logs in the database and UI.
+# Set to False to disable them as a contention escape hatch.
+#
+# When True, ``JobLogHandler.emit`` persists each log line to ``jobs_job.logs``
+# (JSONB column) so the per-job log feed in the UI stays populated. When False,
+# log lines go to the container stdout logger only — used as an escape hatch
+# under concurrent async_api load where the per-record UPDATE on ``jobs_job.logs``
+# becomes a row-lock contention point (see issue #1256, PR #1261). Default True
+# preserves existing behavior; deployments seeing contention can set to False
+# until the append-only ``JobLog`` child table (PR #1259) is in place.
+JOB_LOG_PERSIST_ENABLED = env.bool("JOB_LOG_PERSIST_ENABLED", default=True)  # type: ignore[no-untyped-call]

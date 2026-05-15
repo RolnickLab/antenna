@@ -279,9 +279,9 @@ class TestProjectPipelineRegistrationUpdatesLastSeen(APITestCase):
 class TestPipelineWithProcessingService(TestCase):
     def test_run_pipeline_with_errors_from_processing_service(self):
         """
-        Run a real pipeline and verify that if an error occurs for one image, the error is logged in job.logs.stderr.
+        Run a real pipeline and verify that if an error occurs for one image, the error is logged to JobLog.
         """
-        from ami.jobs.models import Job
+        from ami.jobs.models import Job, JobLog
 
         # Setup test project, images, and job
         project, deployment = setup_test_project()
@@ -305,11 +305,13 @@ class TestPipelineWithProcessingService(TestCase):
             pass  # Expected if the backend raises
 
         job.refresh_from_db()
-        stderr_logs = job.logs.stderr
+        stderr_logs = list(
+            JobLog.objects.filter(job=job, level__in=["ERROR", "CRITICAL"]).values_list("message", flat=True)
+        )
         # Check that an error message mentioning the failed image is present
         assert any(
             "Failed to process" in log for log in stderr_logs
-        ), f"Expected error message in job.logs.stderr, got: {stderr_logs}"
+        ), f"Expected error message in job logs, got: {stderr_logs}"
 
     def setUp(self):
         self.project, self.deployment = setup_test_project()
@@ -1513,3 +1515,73 @@ class TestSaveResultsRefreshesDeploymentCounts(TestCase):
             0,
             "Deployment.taxa_count should reflect taxa from occurrences created by save_results",
         )
+
+
+class TestAlgorithmViewSetProjectFilter(APITestCase):
+    """
+    The algorithm list endpoint is scoped to algorithms belonging to
+    pipelines enabled for the active project.
+    """
+
+    def setUp(self):
+        from ami.ml.models import ProjectPipelineConfig
+
+        self.user = User.objects.create_user(email="algos@example.com", is_staff=True)  # type: ignore
+        self.project = Project.objects.create(name="Algo Project A", create_defaults=False)
+        self.other_project = Project.objects.create(name="Algo Project B", create_defaults=False)
+
+        # Project A: one enabled pipeline, one disabled pipeline
+        self.algo_enabled = Algorithm.objects.create(name="Algo Enabled", version=1)
+        self.algo_disabled = Algorithm.objects.create(name="Algo Disabled", version=1)
+        # Project B: a different pipeline/algorithm
+        self.algo_other_project = Algorithm.objects.create(name="Algo Other Project", version=1)
+        # Unrelated algorithm not attached to any pipeline
+        self.algo_orphan = Algorithm.objects.create(name="Algo Orphan", version=1)
+
+        enabled_pipeline = Pipeline.objects.create(name="Enabled Pipeline")
+        enabled_pipeline.algorithms.add(self.algo_enabled)
+        ProjectPipelineConfig.objects.create(project=self.project, pipeline=enabled_pipeline, enabled=True)
+
+        disabled_pipeline = Pipeline.objects.create(name="Disabled Pipeline")
+        disabled_pipeline.algorithms.add(self.algo_disabled)
+        ProjectPipelineConfig.objects.create(project=self.project, pipeline=disabled_pipeline, enabled=False)
+
+        other_pipeline = Pipeline.objects.create(name="Other Project Pipeline")
+        other_pipeline.algorithms.add(self.algo_other_project)
+        ProjectPipelineConfig.objects.create(project=self.other_project, pipeline=other_pipeline, enabled=True)
+
+        self.client.force_authenticate(user=self.user)
+
+    def _list_algorithm_names(self, project_id=None):
+        params = {"project_id": project_id} if project_id is not None else {}
+        url = reverse_with_params("api:algorithm-list", params=params)
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        return {row["name"] for row in response.json()["results"]}
+
+    def test_lists_only_enabled_pipeline_algorithms_for_project(self):
+        names = self._list_algorithm_names(project_id=self.project.pk)
+        self.assertEqual(names, {"Algo Enabled"})
+
+    def test_other_project_only_sees_its_own_algorithms(self):
+        names = self._list_algorithm_names(project_id=self.other_project.pk)
+        self.assertEqual(names, {"Algo Other Project"})
+
+    def test_unscoped_request_returns_all_algorithms(self):
+        """Without project_id, current behavior lists all algorithms (unchanged)."""
+        names = self._list_algorithm_names()
+        self.assertIn("Algo Enabled", names)
+        self.assertIn("Algo Disabled", names)
+        self.assertIn("Algo Other Project", names)
+        self.assertIn("Algo Orphan", names)
+
+    def test_detail_endpoint_unscoped_even_with_project_id(self):
+        """Detail stays unscoped so historical classification links still resolve."""
+        url = reverse_with_params(
+            "api:algorithm-detail",
+            kwargs={"pk": self.algo_disabled.pk},
+            params={"project_id": self.project.pk},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["name"], "Algo Disabled")

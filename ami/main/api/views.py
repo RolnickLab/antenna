@@ -30,8 +30,9 @@ from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
-from ami.main.api.schemas import project_id_doc_param
+from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
+from ami.main.models_future.occurrence import top_identifiers_for_project
 from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
@@ -90,6 +91,7 @@ from .serializers import (
     TaxonListSerializer,
     TaxonSearchResultSerializer,
     TaxonSerializer,
+    TopIdentifiersResponseSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -483,6 +485,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
     GET /captures/1/
     """
 
+    require_project_for_list = True  # Unfiltered list scans are too expensive on this table
     queryset = SourceImage.objects.all()
 
     serializer_class = SourceImageSerializer
@@ -538,6 +541,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         queryset = queryset.select_related(
             "event",
             "deployment",
+            "deployment__data_source",
         ).order_by("timestamp")
 
         if self.action == "list":
@@ -905,6 +909,7 @@ class DetectionViewSet(DefaultViewSet, ProjectMixin):
     API endpoint that allows detections to be viewed or edited.
     """
 
+    require_project_for_list = True  # Unfiltered list scans are too expensive on this table
     queryset = Detection.objects.exclude(NULL_DETECTIONS_FILTER).select_related("source_image", "detection_algorithm")
     serializer_class = DetectionSerializer
     filterset_fields = ["source_image", "detection_algorithm", "source_image__project"]
@@ -921,18 +926,9 @@ class DetectionViewSet(DefaultViewSet, ProjectMixin):
 
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
+        # Force project_id validation before pagination triggers a full-table COUNT.
+        self.get_active_project()
         return super().list(request, *args, **kwargs)
-
-    # def get_queryset(self):
-    #     """
-    #     Return a different queryset for list and detail views.
-    #     """
-
-    #     if self.action == "list":
-    #         return Detection.objects.select_related().all()
-    #     else:
-    #         return Detection.objects.select_related(
-    #             "detection_algorithm").all()
 
 
 class CustomTaxonFilter(filters.BaseFilterBackend):
@@ -1177,6 +1173,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     API endpoint that allows occurrences to be viewed or edited.
     """
 
+    require_project_for_list = True  # Unfiltered list scans are too expensive on this table
     queryset = Occurrence.objects.all()
 
     serializer_class = OccurrenceSerializer
@@ -1233,12 +1230,10 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
         qs = qs.apply_default_filters(project, self.request)  # type: ignore
-        if self.action != "list":
-            qs = qs.prefetch_related(
-                Prefetch(
-                    "detections", queryset=Detection.objects.order_by("-timestamp").select_related("source_image")
-                )
-            )
+        if self.action == "list":
+            qs = qs.with_list_prefetches()  # type: ignore
+        else:
+            qs = qs.with_detail_prefetches()  # type: ignore
 
         return qs
 
@@ -1268,6 +1263,62 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+
+class OccurrenceStatsViewSet(viewsets.GenericViewSet, ProjectMixin):
+    """Aggregate stats over Occurrences. Each @action == one stats kind.
+
+    Response shape per kind is declared via a DRF serializer + `@extend_schema`
+    so drf-spectacular autodocs it. Most kinds will be small scalar dicts;
+    when a kind genuinely needs `?limit / ?offset / ?ordering` rails (a paginated
+    leaderboard of thousands of entities), opt into `viewsets.GenericViewSet`'s
+    paginator + filter_backends on a per-action basis. See
+    docs/claude/reference/api-stats-pattern.md and
+    docs/claude/planning/stats-list-pattern.md.
+
+    Conventions for every action:
+
+    - URL: `/<entity>/stats/<kind>/?project_id=X[&...]`
+    - Resolve project on the first line; we use the inline 2-line pattern below
+      so visibility (draft → 404) is gated explicitly. `ProjectMixin` only
+      enforces project presence (`require_project=True` → 400/404 on missing
+      or unknown id), not draft visibility.
+    - Query params (beyond `project_id`) go through
+      `SingleParamSerializer[T].clean(...)` for strict 400 validation —
+      no silent clamps.
+    """
+
+    permission_classes = [IsActiveStaffOrReadOnly]
+    require_project = True
+
+    @extend_schema(
+        parameters=[project_id_doc_param, limit_doc_param],
+        responses=TopIdentifiersResponseSerializer,
+    )
+    @action(detail=False, methods=["get"], url_path="top-identifiers")
+    def top_identifiers(self, request):
+        """Users ranked by distinct occurrences they identified.
+
+        `top_identifiers_for_project` bakes in `identification_count >= 1` —
+        non-configurable, so an empty / anonymous call can't leak the full
+        project user list.
+        """
+        project = self.get_active_project()
+        assert project is not None  # require_project=True guarantees this
+        if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
+            raise NotFound("Project not found.")
+
+        limit = SingleParamSerializer[int].clean(
+            param_name="limit",
+            field=serializers.IntegerField(required=False, min_value=1, max_value=50, default=5),
+            data=request.query_params,
+        )
+        top_users = list(top_identifiers_for_project(project)[:limit])
+        serializer = TopIdentifiersResponseSerializer(
+            {"project_id": project.pk, "top_identifiers": top_users},
+            context={"request": request},
+        )
+        return Response(serializer.data)
 
 
 class TaxonTaxaListFilter(filters.BaseFilterBackend):
@@ -1769,6 +1820,7 @@ class ClassificationViewSet(DefaultViewSet, ProjectMixin):
     API endpoint for viewing and adding classification results from a model.
     """
 
+    require_project_for_list = True  # Unfiltered list scans are too expensive on this table
     queryset = Classification.objects.all().select_related("taxon", "algorithm")  # , "detection")
     serializer_class = ClassificationSerializer
     filterset_fields = [
@@ -1807,6 +1859,7 @@ class ClassificationViewSet(DefaultViewSet, ProjectMixin):
 
 class SummaryView(GenericAPIView, ProjectMixin):
     permission_classes = [IsActiveStaffOrReadOnly]
+    require_project = True  # Unfiltered summary aggregates are too expensive
 
     @extend_schema(parameters=[project_id_doc_param])
     def get(self, request):
@@ -1815,43 +1868,30 @@ class SummaryView(GenericAPIView, ProjectMixin):
         """
         user = request.user
         project = self.get_active_project()
-        if project:
-            data = {
-                "projects_count": Project.objects.visible_for_user(  # type: ignore
-                    user
-                ).count(),  # @TODO filter by current user, here and everywhere!
-                "deployments_count": Deployment.objects.visible_for_user(user)  # type: ignore
-                .filter(project=project)
-                .count(),
-                "events_count": Event.objects.visible_for_user(user)  # type: ignore
-                .filter(deployment__project=project, deployment__isnull=False)
-                .count(),
-                "captures_count": SourceImage.objects.visible_for_user(user)  # type: ignore
-                .filter(deployment__project=project)
-                .count(),
-                # "detections_count": Detection.objects.filter(occurrence__project=project).count(),
-                "occurrences_count": Occurrence.objects.visible_for_user(user)  # type: ignore
-                .apply_default_filters(project=project, request=self.request)  # type: ignore
-                .valid()
-                .filter(project=project)
-                .count(),  # type: ignore
-                "taxa_count": Occurrence.objects.visible_for_user(user)  # type: ignore
-                .apply_default_filters(project=project, request=self.request)  # type: ignore
-                .unique_taxa(project=project)
-                .count(),
-            }
-        else:
-            data = {
-                "projects_count": Project.objects.visible_for_user(user).count(),  # type: ignore
-                "deployments_count": Deployment.objects.visible_for_user(user).count(),  # type: ignore
-                "events_count": Event.objects.visible_for_user(user)  # type: ignore
-                .filter(deployment__isnull=False)
-                .count(),
-                "captures_count": SourceImage.objects.visible_for_user(user).count(),  # type: ignore
-                "occurrences_count": Occurrence.objects.valid().visible_for_user(user).count(),  # type: ignore
-                "taxa_count": Occurrence.objects.visible_for_user(user).unique_taxa().count(),  # type: ignore
-                "last_updated": timezone.now(),
-            }
+        data = {
+            "projects_count": Project.objects.visible_for_user(  # type: ignore
+                user
+            ).count(),  # @TODO filter by current user, here and everywhere!
+            "deployments_count": Deployment.objects.visible_for_user(user)  # type: ignore
+            .filter(project=project)
+            .count(),
+            "events_count": Event.objects.visible_for_user(user)  # type: ignore
+            .filter(deployment__project=project, deployment__isnull=False)
+            .count(),
+            "captures_count": SourceImage.objects.visible_for_user(user)  # type: ignore
+            .filter(deployment__project=project)
+            .count(),
+            # "detections_count": Detection.objects.filter(occurrence__project=project).count(),
+            "occurrences_count": Occurrence.objects.visible_for_user(user)  # type: ignore
+            .apply_default_filters(project=project, request=self.request)  # type: ignore
+            .valid()
+            .filter(project=project)
+            .count(),  # type: ignore
+            "taxa_count": Occurrence.objects.visible_for_user(user)  # type: ignore
+            .apply_default_filters(project=project, request=self.request)  # type: ignore
+            .unique_taxa(project=project)
+            .count(),
+        }
 
         aliases = {
             "num_sessions": data["events_count"],

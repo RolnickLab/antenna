@@ -60,6 +60,11 @@ _POST_TITLE_MAX_LENGTH: Final = 80
 # over non-terminal, then highest score, with pk as the deterministic tiebreaker.
 BEST_MACHINE_PREDICTION_ORDER: Final = ("-terminal", "-score", "-pk")
 
+# Ordering for "best identification" selection used by Occurrence.best_identification,
+# OccurrenceQuerySet.with_verification_info(), and best_identification_from_prefetch().
+# Most recent non-withdrawn identification wins, with pk as the deterministic tiebreaker.
+BEST_IDENTIFICATION_ORDER: Final = ("-created_at", "-pk")
+
 
 class TaxonRank(OrderedEnum):
     KINGDOM = "KINGDOM"
@@ -1389,8 +1394,14 @@ def audit_event_lengths(deployment: Deployment):
         logger.error(f"Found {events_ending_before_start} event(s) with start > end in deployment {deployment}")
 
 
+DEFAULT_MAX_EVENT_DURATION = datetime.timedelta(hours=24)
+
+
 def group_images_into_events(
-    deployment: Deployment, max_time_gap=datetime.timedelta(minutes=120), delete_empty=True
+    deployment: Deployment,
+    max_time_gap=datetime.timedelta(minutes=120),
+    delete_empty=True,
+    max_event_duration: datetime.timedelta | None = DEFAULT_MAX_EVENT_DURATION,
 ) -> list[Event]:
     # Log a warning if multiple SourceImages have the same timestamp
     dupes = (
@@ -1417,11 +1428,14 @@ def group_images_into_events(
         .distinct()
     )
 
-    timestamp_groups = ami.utils.dates.group_datetimes_by_gap(image_timestamps, max_time_gap)
-    # @TODO this event grouping needs testing. Still getting events over 24 hours
-    # timestamp_groups = ami.utils.dates.group_datetimes_by_shifted_day(image_timestamps)
+    timestamp_groups = ami.utils.dates.group_datetimes_by_gap(
+        image_timestamps,
+        max_time_gap,
+        max_event_duration=max_event_duration,
+    )
 
     events = []
+    touched_event_pks: set[int] = set()
     for group in timestamp_groups:
         if not len(group):
             continue
@@ -1445,6 +1459,18 @@ def group_images_into_events(
             defaults={"start": start_date, "end": end_date},
         )
         events.append(event)
+        touched_event_pks.add(event.pk)
+
+        # Track events currently holding these captures — they'll lose captures
+        # to the UPDATE below and need their cached fields refreshed at the end.
+        touched_event_pks.update(
+            SourceImage.objects.filter(deployment=deployment, timestamp__in=group)
+            .exclude(event__isnull=True)
+            .exclude(event=event)
+            .values_list("event_id", flat=True)
+            .distinct()
+        )
+
         SourceImage.objects.filter(deployment=deployment, timestamp__in=group).update(event=event)
         event.save()  # Update start and end times and other cached fields
         logger.info(
@@ -1456,6 +1482,41 @@ def group_images_into_events(
         f"Done grouping {len(image_timestamps)} captures into {len(events)} events " f"for deployment {deployment}"
     )
 
+    # Realign Occurrence.event_id with each occurrence's detections' current
+    # source_image.event_id. Occurrences are bound to an event once at creation
+    # time (Detection.associate_new_occurrence and Pipeline.save_results both
+    # read source_image.event), and are never re-derived afterward. Without
+    # this refresh, a deployment regrouped under the 24h cap keeps every
+    # occurrence pointing at its original (pre-cap) event regardless of when
+    # its detections actually fired — breaking every Occurrence.event-keyed
+    # query (the occur_det_proj_evt index, Event.occurrences related-name,
+    # event_ids= filters at models.py:4232-4477). Track the events currently
+    # held by occurrences in this deployment before and after the refresh so
+    # update_calculated_fields_for_events below picks up both losers and
+    # gainers of occurrences when it recomputes occurrences_count.
+    deployment_occurrences = Occurrence.objects.filter(deployment=deployment)
+    touched_event_pks.update(
+        deployment_occurrences.exclude(event__isnull=True).values_list("event_id", flat=True).distinct()
+    )
+    deployment_occurrences.update(
+        event_id=models.Subquery(
+            Detection.objects.filter(occurrence_id=models.OuterRef("pk"))
+            .order_by("source_image__timestamp", "source_image_id", "pk")
+            .values("source_image__event_id")[:1]
+        )
+    )
+    touched_event_pks.update(
+        deployment_occurrences.exclude(event__isnull=True).values_list("event_id", flat=True).distinct()
+    )
+
+    # Refresh cached fields on every event touched by grouping. An event reused
+    # via matching group_by can lose captures to new events created by later
+    # iterations above, leaving its start/end/captures_count stale — e.g. a
+    # pre-existing multi-month event being re-grouped under a 24h cap.
+    # (#904 is expected to rework this reuse path more thoroughly.)
+    if touched_event_pks:
+        update_calculated_fields_for_events(pks=list(touched_event_pks))
+
     if delete_empty:
         logger.info("Deleting empty events for deployment")
         delete_empty_events(deployment=deployment)
@@ -1465,9 +1526,14 @@ def group_images_into_events(
         logger.info(f"Setting image dimensions for event {event}")
         set_dimensions_for_collection(event)
 
-    logger.info("Updating relevant cached fields on deployment")
-    deployment.events_count = len(events)
-    deployment.save(update_calculated_fields=False, update_fields=["events_count"])
+    # Refresh deployment-level cached counts. The async regroup_events task
+    # never goes through Deployment.save's calculated-fields refresh, so
+    # without this call the deployment list (occurrences_count, taxa_count,
+    # etc.) keeps showing pre-regroup numbers until the next save touches it.
+    # The save inside update_calculated_fields uses update_calculated_fields=False
+    # so it doesn't re-enter the regroup path.
+    logger.info("Updating cached fields on deployment")
+    deployment.update_calculated_fields(save=True)
 
     audit_event_lengths(deployment)
 
@@ -2871,6 +2937,18 @@ class OccurrenceQuerySet(BaseQuerySet):
             "identifications__user",
         )
 
+    def with_list_prefetches(self):
+        """Add prefetches the list serializer needs (detection paths, classifications)."""
+        from ami.main.models_future.occurrence import prefetch_detections_for_list
+
+        return self.prefetch_related(prefetch_detections_for_list())
+
+    def with_detail_prefetches(self):
+        """Add prefetches the detail serializer needs (detections + source_image + classifications)."""
+        from ami.main.models_future.occurrence import prefetch_detections_for_detail
+
+        return self.prefetch_related(prefetch_detections_for_detail())
+
     def with_best_detection(self):
         """
         Annotate the queryset with fields from the best detection.
@@ -2953,7 +3031,7 @@ class OccurrenceQuerySet(BaseQuerySet):
         """
         best_identification_subquery = Identification.objects.filter(
             occurrence=OuterRef("pk"), withdrawn=False
-        ).order_by("-created_at")
+        ).order_by(*BEST_IDENTIFICATION_ORDER)
 
         return self.annotate(
             verified_by_name=models.Subquery(best_identification_subquery.values("user__name")[:1]),
@@ -3179,7 +3257,11 @@ class Occurrence(BaseModel):
 
         @TODO this could use a confidence level chosen manually by the users/experts.
         """
-        return Identification.objects.filter(occurrence=self, withdrawn=False).order_by("-created_at").first()
+        return (
+            Identification.objects.filter(occurrence=self, withdrawn=False)
+            .order_by(*BEST_IDENTIFICATION_ORDER)
+            .first()
+        )
 
     def get_determination_score(self) -> float | None:
         if not self.determination:
