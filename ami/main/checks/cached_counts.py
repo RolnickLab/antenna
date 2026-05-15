@@ -97,7 +97,7 @@ def reconcile_cached_counts(
             if dry_run:
                 continue
             try:
-                instance.update_calculated_fields(save=True)
+                instance.update_cached_counts(run_async=False)
                 result.fixed += 1
             except Exception:
                 logger.exception("Failed to reconcile %s pk=%s", m.__name__, instance.pk)

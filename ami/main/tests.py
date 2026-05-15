@@ -3355,8 +3355,7 @@ class TestSourceImageCollectionCountsDenormalize(TransactionTestCase):
 
     Uses ``TransactionTestCase`` + eager Celery so ``transaction.on_commit``
     callbacks (registered by the signal handlers) actually fire inside the
-    test body and the dispatched ``refresh_collection_cached_counts`` task
-    runs inline.
+    test body and the dispatched ``recompute_cached_counts_task`` runs inline.
     """
 
     def setUp(self):
