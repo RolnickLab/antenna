@@ -15,7 +15,7 @@ from django.apps import apps
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser, AnonymousUser
 from django.contrib.postgres.fields import ArrayField
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, models, transaction
 from django.db.models import Exists, OuterRef, Q
@@ -44,6 +44,7 @@ from ami.ml.schemas import BoundingBox
 from ami.users.models import User
 from ami.utils.media import calculate_file_checksum, extract_timestamp
 from ami.utils.requests import get_apply_default_filters_flag, get_default_classification_threshold
+from ami.utils.s3 import botocore, read_image
 from ami.utils.schemas import OrderedEnum
 
 if typing.TYPE_CHECKING:
@@ -2205,6 +2206,61 @@ class SourceImage(BaseModel):
         if Project.Permissions.RUN_SINGLE_IMAGE_JOB in perms:
             custom_perms.add(Project.Permissions.RUN_SINGLE_IMAGE_JOB)
         return list(custom_perms)
+
+    def find_or_generate_thumbnail_for_label(self, label):
+        try:
+            thumb = self.thumbnails.get(label=label)
+        except SourceImageThumbnail.DoesNotExist:
+            thumb = None
+        size = settings.THUMBNAILS["SIZES"].get(label)
+        prefix = settings.THUMBNAILS["STORAGE_PREFIX"]
+
+        if (
+            not thumb
+            or thumb.width != size["width"]
+            or thumb.last_modified < self.last_modified
+            or not default_storage.exists(thumb.path)
+        ):
+            if self.path and self.deployment and self.deployment.data_source:
+                config = self.deployment.data_source.config
+                # Get the file
+                try:
+                    img = read_image(config=config, key=self.path)
+                except botocore.exceptions.ClientError as e:
+                    logger.error(f"Could not read image for {self.path}: {e}")
+                    raise ObjectDoesNotExist(f"SourceImage with id {self.pk} media not found") from e
+                else:
+                    # Make the thumbnail
+                    orig_width, orig_height = img.size
+                    width = size["width"]
+                    height = size.get("height", None)
+                    if not height:
+                        height = int(orig_height * (width / float(orig_width)))
+                    new_size = (width, height)
+                    img.thumbnail(new_size)
+
+                    buffer = BytesIO()
+                    img.save(buffer, format="JPEG")
+                    contents = buffer.getvalue()
+                    file_size = len(contents)
+
+                    # Write to storage
+                    buffer.seek(0)
+                    thumbnail_key = f"{prefix}capture_{self.pk}/{label}.jpg"
+                    thumbnail_path = default_storage.save(thumbnail_key, buffer)
+
+                    # Save to DB
+                    width, height = img.size
+                    # Remove prior thumbnails for this size
+                    for t in self.thumbnails.filter(label=label):
+                        default_storage.delete(t.path)
+                        t.delete()
+                    thumb = self.thumbnails.create(
+                        path=thumbnail_path, label=label, width=width, height=height, size=file_size
+                    )
+            else:
+                raise ObjectDoesNotExist(f"SourceImage with id {self.pk} media config not found")
+        return thumb
 
     class Meta:
         ordering = ("deployment", "event", "timestamp")

@@ -1,5 +1,4 @@
 import datetime
-import io
 import logging
 from statistics import mode
 
@@ -27,7 +26,6 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-import ami.utils.s3
 from ami.base.filters import NullsLastOrderingFilter, ThresholdFilter
 from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
@@ -56,7 +54,6 @@ from ..models import (
     Site,
     SourceImage,
     SourceImageCollection,
-    SourceImageThumbnail,
     SourceImageUpload,
     Tag,
     TaxaList,
@@ -728,7 +725,6 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
 
     def retrieve(self, request, pk=None):
         _sizes = settings.THUMBNAILS["SIZES"]
-        _prefix = settings.THUMBNAILS["STORAGE_PREFIX"]
 
         label = self.request.query_params.get("label", next(iter(_sizes)))
         size = _sizes.get(label, None)
@@ -738,55 +734,9 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
             )
         obj: SourceImage = self.get_object()
         try:
-            thumb = obj.thumbnails.get(label=label)
-        except SourceImageThumbnail.DoesNotExist:
-            thumb = None
-        if (
-            not thumb
-            or thumb.width != size["width"]
-            or thumb.last_modified < obj.last_modified
-            or not default_storage.exists(thumb.path)
-        ):
-            if obj.path and obj.deployment and obj.deployment.data_source:
-                config = obj.deployment.data_source.config
-                # Get the file
-                try:
-                    img = ami.utils.s3.read_image(config=config, key=obj.path)
-                except ami.utils.s3.botocore.exceptions.ClientError as e:
-                    logger.error(f"Could not read image for {obj.path}: {e}")
-                    raise api_exceptions.NotFound(detail=f"SourceImage with id {obj.id} media not found")
-                else:
-                    # Make the thumbnail
-                    orig_width, orig_height = img.size
-                    width = size["width"]
-                    height = size.get("height", None)
-                    if not height:
-                        height = int(orig_height * (width / float(orig_width)))
-                    new_size = (width, height)
-                    img.thumbnail(new_size)
-
-                    buffer = io.BytesIO()
-                    img.save(buffer, format="JPEG")
-                    contents = buffer.getvalue()
-                    file_size = len(contents)
-
-                    # Write to storage
-                    buffer.seek(0)
-                    thumbnail_key = f"{_prefix}capture_{obj.id}/{label}.jpg"
-                    thumbnail_path = default_storage.save(thumbnail_key, buffer)
-
-                    # Save to DB
-                    width, height = img.size
-                    # Remove prior thumbnails for this size
-                    for t in obj.thumbnails.filter(label=label):
-                        default_storage.delete(t.path)
-                        t.delete()
-                    thumb = obj.thumbnails.create(
-                        path=thumbnail_path, label=label, width=width, height=height, size=file_size
-                    )
-            else:
-                raise api_exceptions.NotFound(detail=f"SourceImage with id {obj.id} media config not found")
-
+            thumb = obj.find_or_generate_thumbnail_for_label(label)
+        except exceptions.ObjectDoesNotExist as e:
+            raise api_exceptions.NotFound(detail=f"{e}")
         return redirect(default_storage.url(thumb.path), permanent=True)
 
 
