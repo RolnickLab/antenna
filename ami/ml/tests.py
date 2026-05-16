@@ -1427,7 +1427,6 @@ class TestSaveResultsRefreshesDeploymentCounts(TestCase):
         self.event = Event.objects.create(
             project=self.project,
             deployment=self.deployment,
-            group_by="2026-04-16",
             start=event_time,
             end=event_time,
         )
