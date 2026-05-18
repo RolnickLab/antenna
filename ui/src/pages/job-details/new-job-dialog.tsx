@@ -1,7 +1,7 @@
 import { useCreateJob } from 'data-services/hooks/jobs/useCreateJob'
+import { Button } from 'design-system'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { PlusIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'

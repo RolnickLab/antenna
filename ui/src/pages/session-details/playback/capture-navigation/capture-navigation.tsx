@@ -1,7 +1,7 @@
 import { CaptureDetails } from 'data-services/models/capture-details'
 import { TimelineTick } from 'data-services/models/timeline-tick'
+import { Button } from 'design-system'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
 import { useEffect, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { findClosestCaptureId } from '../utils'

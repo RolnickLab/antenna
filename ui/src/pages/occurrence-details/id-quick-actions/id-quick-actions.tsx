@@ -1,7 +1,7 @@
 import { Taxon } from 'data-services/models/taxa'
+import { Button } from 'design-system'
 import * as Popover from 'design-system/components/popover/popover'
 import { EllipsisVerticalIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
 import { RefObject, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { IdButton } from './id-button'

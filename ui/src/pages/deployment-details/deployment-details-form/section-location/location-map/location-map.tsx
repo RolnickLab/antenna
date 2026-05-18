@@ -1,7 +1,7 @@
+import { Button } from 'design-system'
 import { EditableMap } from 'design-system/map/editable-map/editable-map'
 import { Map, MarkerPosition } from 'design-system/map/types'
 import { Loader2Icon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
 import { useRef, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { GeoSearch } from '../geo-search/geo-search'

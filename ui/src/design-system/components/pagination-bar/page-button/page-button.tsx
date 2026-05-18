@@ -1,4 +1,4 @@
-import { Button } from 'nova-ui-kit'
+import { Button } from 'design-system'
 
 interface PageButtonProps {
   page: number

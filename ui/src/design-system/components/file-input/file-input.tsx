@@ -1,4 +1,4 @@
-import { Button } from 'nova-ui-kit'
+import { Button } from 'design-system'
 import { useRef } from 'react'
 import { STRING, translate } from 'utils/language'
 import styles from './file-input.module.scss'

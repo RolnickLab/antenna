@@ -1,6 +1,6 @@
 import classNames from 'classnames'
+import { Button } from 'design-system'
 import { InfoIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
 import { ReactNode } from 'react'
 import { STRING, translate } from 'utils/language'
 import { DocsLink } from '../button/docs-link'

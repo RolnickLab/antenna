@@ -1,7 +1,7 @@
 import classNames from 'classnames'
+import { Button } from 'design-system'
 import _ from 'lodash'
 import { CheckIcon, EyeIcon, PenIcon, XIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
 import {
   ChangeEvent,
   CSSProperties,

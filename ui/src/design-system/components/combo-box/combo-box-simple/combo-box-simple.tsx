@@ -1,9 +1,9 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import classNames from 'classnames'
 import { Command } from 'cmdk'
+import { Button } from 'design-system'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { SearchIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
 import { useState } from 'react'
 import styles from '../styles.module.scss'
 

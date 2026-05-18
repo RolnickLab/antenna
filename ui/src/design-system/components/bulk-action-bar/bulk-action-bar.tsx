@@ -1,5 +1,5 @@
+import { Button } from 'design-system'
 import { XIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
 import { ReactNode } from 'react'
 import { STRING, translate } from 'utils/language'
 import styles from './bulk-action-bar.module.scss'

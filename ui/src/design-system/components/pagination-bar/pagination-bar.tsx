@@ -1,5 +1,5 @@
+import { Button } from 'design-system'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import { getPageWindow } from './getPageWindow'
 import { InfoLabel } from './info-label/info-label'

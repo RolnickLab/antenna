@@ -1,5 +1,5 @@
+import { buttonVariants } from 'design-system'
 import { BookOpenIcon, ChevronRight } from 'lucide-react'
-import { buttonVariants } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import { BasicTooltip } from '../tooltip/basic-tooltip'
 

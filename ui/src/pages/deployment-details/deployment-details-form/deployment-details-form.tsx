@@ -3,10 +3,10 @@ import {
   DeploymentDetails,
   DeploymentFieldValues,
 } from 'data-services/models/deployment-details'
+import { Button } from 'design-system'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { FormStepper as _FormStepper } from 'design-system/components/form-stepper/form-stepper'
 import { Loader2Icon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
 import { useCallback, useContext, useMemo } from 'react'
 import { FormContext, FormContextProvider } from 'utils/formContext/formContext'
 import { STRING, translate } from 'utils/language'

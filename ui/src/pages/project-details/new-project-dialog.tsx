@@ -1,7 +1,7 @@
 import { useCreateProject } from 'data-services/hooks/projects/useCreateProject'
+import { Button } from 'design-system'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { PlusIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'

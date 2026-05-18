@@ -1,6 +1,6 @@
 import { useRetryJob } from 'data-services/hooks/jobs/useRetryJob'
+import { Button } from 'design-system'
 import { CheckIcon, Loader2Icon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 
 export const RetryJob = ({ jobId }: { jobId: string }) => {

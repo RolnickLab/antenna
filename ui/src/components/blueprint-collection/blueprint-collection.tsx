@@ -1,7 +1,7 @@
 import classNames from 'classnames'
 import { LicenseInfo } from 'components/license-info/license-info'
+import { buttonVariants } from 'design-system'
 import { ChevronRightIcon } from 'lucide-react'
-import { buttonVariants } from 'nova-ui-kit'
 import { ReactNode, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'

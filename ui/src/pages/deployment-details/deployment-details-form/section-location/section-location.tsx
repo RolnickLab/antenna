@@ -5,9 +5,9 @@ import {
   FormSection,
 } from 'components/form/layout/layout'
 import { DeploymentFieldValues } from 'data-services/models/deployment-details'
+import { Button } from 'design-system'
 import { MarkerPosition } from 'design-system/map/types'
 import _ from 'lodash'
-import { Button } from 'nova-ui-kit'
 import { useContext, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { FormContext } from 'utils/formContext/formContext'
