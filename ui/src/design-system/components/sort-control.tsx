@@ -1,6 +1,6 @@
 import classNames from 'classnames'
+import { buttonVariants, Select } from 'design-system'
 import { ArrowUpDownIcon } from 'lucide-react'
-import { buttonVariants, Select } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import { TableSortSettings } from './table/types'
 import { BasicTooltip } from './tooltip/basic-tooltip'

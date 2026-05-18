@@ -1,7 +1,7 @@
 import { FormMessage } from 'components/form/layout/layout'
 import { useCaptureSets } from 'data-services/hooks/capture-sets/useCaptureSets'
+import { Button, Select } from 'design-system'
 import { ChevronRight, XIcon } from 'lucide-react'
-import { Button, Select } from 'nova-ui-kit'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'

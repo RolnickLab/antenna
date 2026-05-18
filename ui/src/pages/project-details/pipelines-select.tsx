@@ -1,5 +1,5 @@
 import { usePipelines } from 'data-services/hooks/pipelines/usePipelines'
-import { Select } from 'nova-ui-kit'
+import { Select } from 'design-system'
 import { useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 

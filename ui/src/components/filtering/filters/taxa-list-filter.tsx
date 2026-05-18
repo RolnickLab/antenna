@@ -1,5 +1,5 @@
 import { TaxaList } from 'data-services/models/taxa-list'
-import { Select } from 'nova-ui-kit'
+import { Select } from 'design-system'
 import { STRING, translate } from 'utils/language'
 import { FilterProps } from './types'
 

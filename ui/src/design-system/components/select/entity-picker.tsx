@@ -1,5 +1,5 @@
 import { useEntities } from 'data-services/hooks/entities/useEntities'
-import { Select } from 'nova-ui-kit'
+import { Select } from 'design-system'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 
