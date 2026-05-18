@@ -4,7 +4,7 @@ import { Tag } from 'components/taxon-tags/tag'
 import { TagsForm } from 'components/taxon-tags/tags-form'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { SpeciesDetails as Species } from 'data-services/models/species-details'
-import { Box } from 'design-system/components/box/box'
+import { Box } from 'design-system'
 import {
   InfoBlockField,
   InfoBlockFieldValue,

@@ -1,6 +1,6 @@
 import { ErrorState } from 'components/error-state/error-state'
 import { useSessionDetails } from 'data-services/hooks/sessions/useSessionDetails'
-import { Box } from 'design-system/components/box/box'
+import { Box } from 'design-system'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { PlotGrid } from 'design-system/components/plot-grid/plot-grid'
 import { Plot } from 'design-system/components/plot/lazy-plot'
@@ -53,7 +53,7 @@ export const SessionDetails = () => {
         <Playback session={session} projectId={projectId} />
       </div>
       <PlotGrid>
-        <Box>
+        <Box className="bg-background">
           <div className={styles.sessionInfo}>
             <SessionInfo session={session} />
           </div>
@@ -64,7 +64,10 @@ export const SessionDetails = () => {
           }
 
           return (
-            <Box key={index}>
+            <Box
+              key={index}
+              className="bg-background flex items-center justify-center"
+            >
               <Plot
                 title={summary.title}
                 data={summary.data}

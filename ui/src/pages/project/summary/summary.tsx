@@ -6,8 +6,7 @@ import { useProjectCharts } from 'data-services/hooks/projects/useProjectCharts'
 import { useTopSpecies } from 'data-services/hooks/species/useTopSpecies'
 import { useStatus } from 'data-services/hooks/useStatus'
 import { ProjectDetails } from 'data-services/models/project-details'
-import { buttonVariants } from 'design-system'
-import { Box } from 'design-system/components/box/box'
+import { Box, buttonVariants } from 'design-system'
 import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
 import { PlotGrid } from 'design-system/components/plot-grid/plot-grid'
 import { Plot } from 'design-system/components/plot/lazy-plot'
@@ -256,7 +255,7 @@ const Charts = ({ projectId }: { projectId: string }) => {
         <Tabs.Content key={section.id} value={section.id}>
           <PlotGrid>
             {section.plots.map((plot, index) => (
-              <Box key={index}>
+              <Box key={index} className="bg-background">
                 <Plot
                   data={plot.data}
                   orientation={plot.orientation}

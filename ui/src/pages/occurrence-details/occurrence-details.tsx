@@ -3,6 +3,7 @@ import {
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
+import { Box } from 'design-system'
 import {
   InfoBlockField,
   InfoBlockFieldValue,
@@ -11,7 +12,6 @@ import * as Tabs from 'design-system/components/tabs/tabs'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { SearchIcon } from 'lucide-react'
 import {
-  Box,
   Button,
   CodeBlock,
   IdentificationScore,

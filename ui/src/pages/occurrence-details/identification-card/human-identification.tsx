@@ -4,9 +4,9 @@ import {
   HumanIdentification as Identification,
   OccurrenceDetails as Occurrence,
 } from 'data-services/models/occurrence-details'
+import { Box } from 'design-system'
 import { TrashIcon, UserIcon } from 'lucide-react'
 import {
-  Box,
   Button,
   IdentificationCard,
   IdentificationDetails,
