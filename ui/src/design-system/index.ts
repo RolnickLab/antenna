@@ -11,3 +11,4 @@ export { IdentificationScore } from './components/identifications/identification
 export { IdentificationStatus } from './components/identifications/identification-status'
 export { ProgressCircle } from './components/progress-circle'
 export * as Select from './components/select'
+export { Switch } from './components/switch'
