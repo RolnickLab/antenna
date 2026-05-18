@@ -9,7 +9,7 @@ import { useDeployments } from 'data-services/hooks/deployments/useDeployments'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { Deployment } from 'data-services/models/deployment'
 import { ProjectDetails } from 'data-services/models/project-details'
-import { Button, buttonVariants, Select } from 'design-system'
+import { Button, buttonVariants, Select, Switch } from 'design-system'
 import * as Dialog from 'design-system/components/dialog/dialog'
 import { FormStepper } from 'design-system/components/form-stepper/form-stepper'
 import { InputValue } from 'design-system/components/input/input'
@@ -20,7 +20,7 @@ import {
   Loader2Icon,
   UploadIcon,
 } from 'lucide-react'
-import { Switch, Tooltip } from 'nova-ui-kit'
+import { Tooltip } from 'nova-ui-kit'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
