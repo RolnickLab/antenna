@@ -10,3 +10,4 @@ export { IdentificationDetails } from './components/identifications/identificati
 export { IdentificationScore } from './components/identifications/identification-score'
 export { IdentificationStatus } from './components/identifications/identification-status'
 export { ProgressCircle } from './components/progress-circle'
+export * as Select from './components/select'
