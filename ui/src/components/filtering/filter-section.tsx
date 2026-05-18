@@ -1,6 +1,6 @@
 import { BREAKPOINTS } from 'components/constants'
+import { Box, Button, Collapsible } from 'design-system'
 import { ChevronsUpDown } from 'lucide-react'
-import { Box, Button, Collapsible } from 'nova-ui-kit'
 import { ReactNode } from 'react'
 import { STRING, translate } from 'utils/language'
 

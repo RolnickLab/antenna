@@ -5,10 +5,10 @@ import {
   OccurrenceDetails as Occurrence,
 } from 'data-services/models/occurrence-details'
 import { Taxon } from 'data-services/models/taxa'
+import { Collapsible } from 'design-system'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { Loader2 } from 'lucide-react'
 import {
-  Collapsible,
   IdentificationCard,
   IdentificationDetails,
   IdentificationScore,
