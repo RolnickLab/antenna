@@ -4,14 +4,9 @@ import {
   HumanIdentification as Identification,
   OccurrenceDetails as Occurrence,
 } from 'data-services/models/occurrence-details'
-import { Box } from 'design-system'
+import { Box, IdentificationCard, IdentificationDetails } from 'design-system'
 import { TrashIcon, UserIcon } from 'lucide-react'
-import {
-  Button,
-  IdentificationCard,
-  IdentificationDetails,
-  TaxonDetails,
-} from 'nova-ui-kit'
+import { Button, TaxonDetails } from 'nova-ui-kit'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
