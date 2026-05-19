@@ -48,7 +48,10 @@ export const Summary = () => {
         </div>
       ) : (
         <>
-          <DeploymentsMap deployments={project.deployments} />
+          <DeploymentsMap
+            deployments={project.deployments}
+            projectId={project.id}
+          />
           <div>
             <h2 className="mb-4 heading-small">{translate(STRING.OVERVIEW)}</h2>
             <div className="grid gap-8 xl:grid-cols-3">
