@@ -49,25 +49,3 @@ def refresh_project_cached_counts(project_id: int) -> None:
 
     logger.info(f"Refreshing cached counts for project {project.pk} ({project.name})")
     project.update_related_calculated_fields()
-
-
-@celery_app.task(ignore_result=True)
-def reconcile_cached_counts_task(project_id: int | None = None, dry_run: bool = False) -> dict:
-    """Periodic drift check for every model with ``CachedCountField`` columns.
-
-    Catches drift introduced by bulk write paths that skip signals
-    (``bulk_create``, ``bulk_update``, raw SQL, ML post-processors). Default
-    is repair mode; pass ``dry_run=True`` for report-only.
-    """
-    from ami.main.checks.cached_counts import reconcile_cached_counts
-
-    result = reconcile_cached_counts(project_id=project_id, dry_run=dry_run)
-    logger.info(
-        "reconcile_cached_counts: checked=%d fixed=%d unfixable=%d (project_id=%s, dry_run=%s)",
-        result.checked,
-        result.fixed,
-        result.unfixable,
-        project_id,
-        dry_run,
-    )
-    return {"checked": result.checked, "fixed": result.fixed, "unfixable": result.unfixable}

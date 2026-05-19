@@ -209,7 +209,9 @@ def exclude_taxa_updated(sender, instance: Project, action, **kwargs):
 # a 10k-row pipeline save fires the recompute task at most once per affected
 # collection instead of once per detection. Bulk write paths that bypass
 # signals (``bulk_create``, ``bulk_update``, raw SQL) still drift the cached
-# counts; ``reconcile_cached_counts_task`` is the safety net for those.
+# counts; ``pipeline.save_results()`` explicitly recomputes for the ML path.
+# Generic periodic drift reconciliation across all CachedCountField models is
+# tracked as a follow-up (see docs/claude/planning/cached-counts-reconcile-followup.md).
 
 
 @receiver(m2m_changed, sender=SourceImageCollection.images.through)
