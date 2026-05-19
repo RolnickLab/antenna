@@ -6,7 +6,7 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0085_denormalize_sourceimagecollection_counts"),
+        ("main", "0086_backfill_sourceimagecollection_counts"),
     ]
 
     operations = [
