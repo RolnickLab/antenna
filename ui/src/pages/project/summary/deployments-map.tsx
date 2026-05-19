@@ -14,10 +14,15 @@ export const DeploymentsMap = ({
 }) => {
   const markers = useMemo(
     () =>
-      deployments.map((deployment) => ({
-        position: new MarkerPosition(deployment.latitude, deployment.longitude),
-        popupContent: <DeploymentsMapPopupContent deployment={deployment} />,
-      })),
+      deployments
+        .filter((deployment) => deployment.latitude || deployment.longitude)
+        .map((deployment) => ({
+          position: new MarkerPosition(
+            deployment.latitude,
+            deployment.longitude
+          ),
+          popupContent: <DeploymentsMapPopupContent deployment={deployment} />,
+        })),
     [deployments]
   )
 
