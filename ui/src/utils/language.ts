@@ -176,6 +176,7 @@ export enum STRING {
   MESSAGE_CAPTURE_TOO_MANY,
   MESSAGE_CAPTURE_UPLOAD_HIDDEN,
   MESSAGE_CHANGE_PASSWORD,
+  MESSAGE_CONFIGURE_LOCATION,
   MESSAGE_COULD_NOT_SAVE,
   MESSAGE_DATA_SOURCE_NOT_CONFIGURED,
   MESSAGE_DEFAULT_FILTERS,
@@ -524,6 +525,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'Station must be created before uploading captures.',
   [STRING.MESSAGE_CHANGE_PASSWORD]:
     'Contact an administrator to change your email or password.',
+  [STRING.MESSAGE_CONFIGURE_LOCATION]:
+    'Configure location for stations to see them on the map.',
   [STRING.MESSAGE_COULD_NOT_SAVE]: 'Could not save',
   [STRING.MESSAGE_DATA_SOURCE_NOT_CONFIGURED]:
     'A data source must be configured and saved before syncing captures.',

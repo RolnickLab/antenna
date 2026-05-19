@@ -96,11 +96,13 @@ export const DeploymentDetailsInfo = ({
           <FormRow>
             <InputValue
               label={translate(STRING.FIELD_LABEL_LATITUDE)}
-              value={`${deployment.latitude}`}
+              value={deployment.latitude ? `${deployment.latitude}` : undefined}
             />
             <InputValue
               label={translate(STRING.FIELD_LABEL_LONGITUDE)}
-              value={`${deployment.longitude}`}
+              value={
+                deployment.longitude ? `${deployment.longitude}` : undefined
+              }
             />
           </FormRow>
         </FormSection>
