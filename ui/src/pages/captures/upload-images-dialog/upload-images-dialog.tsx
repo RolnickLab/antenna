@@ -39,8 +39,8 @@ export const UploadImagesDialog = ({
   isOpen,
   setIsOpen,
 }: {
-  buttonSize?: string
-  buttonVariant?: string
+  buttonSize?: 'default' | 'small'
+  buttonVariant?: 'outline' | 'success'
   isOpen: boolean
   setIsOpen: (isOpen: boolean) => void
 }) => {

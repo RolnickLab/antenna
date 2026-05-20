@@ -19,8 +19,8 @@ export const NewEntityDialog = ({
   isCompact,
   type,
 }: {
-  buttonSize?: string
-  buttonVariant?: string
+  buttonSize?: 'default' | 'small'
+  buttonVariant?: 'outline' | 'success'
   collection: string
   isCompact?: boolean
   type: string

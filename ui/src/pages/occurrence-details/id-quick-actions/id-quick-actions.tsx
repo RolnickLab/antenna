@@ -66,7 +66,7 @@ export const IdQuickActions = ({
           <EllipsisVerticalIcon className="w-4 h-4" />
         </Button>
       </Popover.Trigger>
-      <Popover.Content align="start" side="right">
+      <Popover.Content className="p-0 w-auto" align="end" side="right">
         <div className={styles.wrapper}>
           {sections.map((section, index) => (
             <div key={index} className={styles.section}>

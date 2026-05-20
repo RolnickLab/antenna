@@ -15,8 +15,8 @@ export const NewProjectDialog = ({
   buttonSize = 'small',
   buttonVariant = 'outline',
 }: {
-  buttonSize?: string
-  buttonVariant?: string
+  buttonSize?: 'default' | 'small'
+  buttonVariant?: 'outline' | 'success'
 }) => {
   const navigate = useNavigate()
   const { createProject, isLoading, isSuccess, error } = useCreateProject()
