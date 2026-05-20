@@ -6171,3 +6171,105 @@ class TestOccurrenceValidQuerySet(TestCase):
         self.assertIn(real.pk, valid_pks)
         self.assertNotIn(null_only.pk, valid_pks)
         self.assertNotIn(no_determination.pk, valid_pks)
+
+
+class TestCleanupNullOnlyOccurrencesCommand(TestCase):
+    """
+    Covers ami/main/management/commands/cleanup_null_only_occurrences.py.
+    Verifies dry-run reports counts without deleting and --commit deletes
+    phantom occurrences and orphan null markers, leaving valid rows alone.
+    """
+
+    def setUp(self):
+        from ami.main.models import Taxon
+        from ami.ml.models.algorithm import Algorithm
+
+        self.project = Project.objects.create(name="Cleanup Cmd Test Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.event = Event.objects.create(
+            project=self.project,
+            deployment=self.deployment,
+            group_by="2024-01-01",
+            start=datetime.datetime(2024, 1, 1, 0, 0),
+        )
+        self.algorithm = Algorithm.objects.create(
+            name="cleanup-detector", key="cleanup-detector", task_type="detection"
+        )
+        self.taxon = Taxon.objects.create(name="Cleanup Test Taxon")
+
+        self.img_with_real = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            path="with-real.jpg",
+        )
+        self.img_only_null = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            path="only-null.jpg",
+        )
+
+        self.valid_occurrence = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+        )
+        self.real_detection = Detection.objects.create(
+            source_image=self.img_with_real,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+            occurrence=self.valid_occurrence,
+        )
+        self.null_on_processed_image = Detection.objects.create(
+            source_image=self.img_with_real,
+            bbox=None,
+            detection_algorithm=self.algorithm,
+        )
+
+        self.phantom_occurrence = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+        )
+        self.phantom_null = Detection.objects.create(
+            source_image=self.img_only_null,
+            bbox=None,
+            detection_algorithm=self.algorithm,
+            occurrence=self.phantom_occurrence,
+        )
+
+    def _call_command(self, *args):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command("cleanup_null_only_occurrences", *args, stdout=out)
+        return out.getvalue()
+
+    def test_dry_run_reports_counts_without_deleting(self):
+        output = self._call_command(f"--project={self.project.pk}")
+        self.assertIn("Phantom occurrences", output)
+        self.assertIn("Orphan null-marker detections", output)
+        self.assertIn("Dry run", output)
+        self.assertTrue(Occurrence.objects.filter(pk=self.phantom_occurrence.pk).exists())
+        self.assertTrue(Detection.objects.filter(pk=self.phantom_null.pk).exists())
+
+    def test_commit_deletes_phantoms_and_orphan_null_markers(self):
+        self._call_command(f"--project={self.project.pk}", "--commit")
+        self.assertFalse(Occurrence.objects.filter(pk=self.phantom_occurrence.pk).exists())
+        self.assertFalse(Detection.objects.filter(pk=self.phantom_null.pk).exists())
+        self.assertTrue(Occurrence.objects.filter(pk=self.valid_occurrence.pk).exists())
+        self.assertTrue(Detection.objects.filter(pk=self.real_detection.pk).exists())
+        self.assertTrue(
+            Detection.objects.filter(pk=self.null_on_processed_image.pk).exists(),
+            "Null markers on images with at least one real detection must be kept",
+        )
+
+    def test_commit_is_idempotent(self):
+        self._call_command(f"--project={self.project.pk}", "--commit")
+        second_run = self._call_command(f"--project={self.project.pk}", "--commit")
+        self.assertIn("Nothing to clean up", second_run)
