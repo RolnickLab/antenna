@@ -1,6 +1,6 @@
+import { Tooltip } from 'design-system'
 import { Badge } from 'design-system/components/badge/badge'
 import { Info } from 'design-system/components/info-tooltip'
-import { Tooltip } from 'nova-ui-kit'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 

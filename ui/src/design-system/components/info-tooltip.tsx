@@ -1,6 +1,6 @@
 import classNames from 'classnames'
+import { Button, buttonVariants, Tooltip } from 'design-system'
 import { ChevronRightIcon, InfoIcon } from 'lucide-react'
-import { Button, buttonVariants, Tooltip } from 'nova-ui-kit'
 import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 

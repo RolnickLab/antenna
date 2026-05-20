@@ -1,4 +1,4 @@
-import { Tooltip } from 'nova-ui-kit'
+import { Tooltip } from 'design-system'
 import { ReactNode } from 'react'
 
 interface TooltipProps {
