@@ -188,7 +188,6 @@ export const OccurrenceDetails = ({
                 <span>{translate(STRING.SUGGEST_ID)}</span>
               </Button>
               <IdQuickActions
-                containerRef={containerRef}
                 occurrenceIds={[occurrence.id]}
                 occurrenceTaxa={[occurrence.determinationTaxon]}
               />

@@ -1,7 +1,6 @@
 import { format } from 'date-fns'
-import { Calendar } from 'design-system'
+import { Button, Calendar, Popover } from 'design-system'
 import { AlertCircleIcon, Calendar as CalendarIcon } from 'lucide-react'
-import { Button, Popover } from 'nova-ui-kit'
 import { useEffect, useMemo, useState } from 'react'
 
 const dateToLabel = (date: Date) => {

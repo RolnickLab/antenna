@@ -1,7 +1,7 @@
 import { TaxonSearch } from 'components/taxon-search/taxon-search'
 import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
+import { Button, Popover } from 'design-system'
 import { ChevronDownIcon, Loader2Icon } from 'lucide-react'
-import { Button, Popover } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'

@@ -1,5 +1,6 @@
 import classNames from 'classnames'
 import { useLogout } from 'data-services/hooks/auth/useLogout'
+import { Button, buttonVariants, Popover } from 'design-system'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import {
   BookOpenIcon,
@@ -7,7 +8,6 @@ import {
   ExternalLinkIcon,
   Loader2Icon,
 } from 'lucide-react'
-import { Button, buttonVariants, Popover } from 'nova-ui-kit'
 import { Helmet } from 'react-helmet-async'
 import { Link, useLocation } from 'react-router-dom'
 import { APP_ROUTES, DOCS_URL, LANDING_PAGE_URL } from 'utils/constants'
