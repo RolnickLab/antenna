@@ -9,6 +9,7 @@ export { IdentificationCard } from './components/identifications/identification-
 export { IdentificationDetails } from './components/identifications/identification-details'
 export { IdentificationScore } from './components/identifications/identification-score'
 export { IdentificationStatus } from './components/identifications/identification-status'
+export * as Popover from './components/popover'
 export { ProgressCircle } from './components/progress-circle'
 export * as Select from './components/select'
 export { Slider } from './components/slider'
