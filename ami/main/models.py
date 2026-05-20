@@ -98,6 +98,16 @@ DEFAULT_RANKS = sorted(
 NULL_DETECTIONS_FILTER = Q(bbox__isnull=True) | Q(bbox=[])
 
 
+def null_detections_q(prefix: str = "") -> Q:
+    """
+    Return a Q expression matching null-marker Detection rows, optionally prefixed
+    for use across relations (e.g. null_detections_q("images__detections__") for an
+    aggregate filter on a parent table). For Detection queries directly, prefer
+    Detection.objects.null_markers() / .valid() instead.
+    """
+    return Q(**{f"{prefix}bbox__isnull": True}) | Q(**{f"{prefix}bbox": []})
+
+
 def get_media_url(path: str) -> str:
     """
     If path is a full URL, return it as-is.
@@ -814,7 +824,7 @@ class Deployment(BaseModel):
         was processed and no detections were found) to stay consistent with
         ``SourceImage.get_detections_count`` and ``Event.get_detections_count``.
         """
-        qs = Detection.objects.filter(source_image__deployment=self).exclude(NULL_DETECTIONS_FILTER)
+        qs = Detection.objects.filter(source_image__deployment=self).valid()
         filter_q = build_occurrence_default_filters_q(
             project=self.project,
             request=None,
@@ -1226,7 +1236,7 @@ class Event(BaseModel):
         Excludes null-bbox placeholder detections to stay consistent with
         ``SourceImage.get_detections_count`` and ``Deployment.get_detections_count``.
         """
-        qs = Detection.objects.filter(source_image__event=self).exclude(NULL_DETECTIONS_FILTER)
+        qs = Detection.objects.filter(source_image__event=self).valid()
         filter_q = build_occurrence_default_filters_q(
             project=self.project,
             request=None,
@@ -2034,7 +2044,7 @@ class SourceImage(BaseModel):
         Excludes detections without bounding boxes — those are placeholder records
         indicating the image was successfully processed and no detections were found.
         """
-        qs = self.detections.exclude(NULL_DETECTIONS_FILTER)
+        qs = self.detections.all().valid()
         project = self.project
         if not project:
             return qs.distinct().count()
@@ -2240,7 +2250,7 @@ def update_detection_counts(
     if null_only:
         qs = qs.filter(detections_count__isnull=True)
 
-    detection_qs = Detection.objects.filter(source_image_id=models.OuterRef("pk")).exclude(NULL_DETECTIONS_FILTER)
+    detection_qs = Detection.objects.filter(source_image_id=models.OuterRef("pk")).valid()
     if project is not None:
         filter_q = build_occurrence_default_filters_q(
             project=project,
@@ -4142,7 +4152,7 @@ class SourceImageCollectionQuerySet(BaseQuerySet):
         return self.annotate(
             source_images_with_detections_count=models.Count(
                 "images",
-                filter=(~models.Q(images__detections__bbox__isnull=True) & ~models.Q(images__detections__bbox=[])),
+                filter=~null_detections_q("images__detections__"),
                 distinct=True,
             )
         )

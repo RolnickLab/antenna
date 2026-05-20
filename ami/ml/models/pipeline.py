@@ -23,7 +23,6 @@ from django_pydantic_field import SchemaField
 from ami.base.models import BaseModel, BaseQuerySet
 from ami.base.schemas import ConfigurableStage, default_stages
 from ami.main.models import (
-    NULL_DETECTIONS_FILTER,
     Classification,
     Deployment,
     Detection,
@@ -96,11 +95,11 @@ def filter_processed_images(
             task_logger.debug(f"Image {image} needs processing: has no existing detections from pipeline's detector")
             # If there are no existing detections from this pipeline, send the image
             yield image
-        elif not existing_detections.exclude(NULL_DETECTIONS_FILTER).exists():  # type: ignore
+        elif not existing_detections.valid().exists():
             # All detections for this image are null (processed but nothing found) — skip
             task_logger.debug(f"Image {image} has only null detections from pipeline {pipeline}, skipping!")
             continue
-        elif existing_detections.exclude(NULL_DETECTIONS_FILTER).filter(classifications__isnull=True).exists():
+        elif existing_detections.valid().filter(classifications__isnull=True).exists():
             # Check if any real detections (non-null) have no classifications
             task_logger.debug(
                 f"Image {image} needs processing: has existing detections with no classifications "
@@ -440,8 +439,10 @@ def get_or_create_detection(
 
     if serialized_bbox is None:
         # Null detection: algorithm-specific lookup so different pipelines don't share sentinels.
-        # Use bbox__isnull=True because JSONField filter(bbox=None) matches JSON null literal,
-        # not SQL NULL which is what Detection(bbox=None) stores.
+        # Use bbox__isnull=True (not Detection.objects.null_markers()) because we want to find
+        # an exact match for THIS algorithm — null_markers() also includes legacy bbox=[] rows
+        # from other pipelines and would be wider than this dedup needs.
+        # See Detection.NULL_BBOX for the canonical sentinel value used by new writes.
         assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
         try:
             detection_algo = algorithms_known[detection_resp.algorithm.key]

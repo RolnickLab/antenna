@@ -37,7 +37,6 @@ from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
 from ..models import (
-    NULL_DETECTIONS_FILTER,
     Classification,
     Deployment,
     Detection,
@@ -611,7 +610,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         score = get_default_classification_threshold(project, self.request)
 
         prefetch_queryset = (
-            Detection.objects.exclude(NULL_DETECTIONS_FILTER)
+            Detection.objects.valid()
             .annotate(
                 determination_score=models.Max("occurrence__detections__classifications__score"),
                 # Store whether this occurrence should be included based on default filters
@@ -910,7 +909,7 @@ class DetectionViewSet(DefaultViewSet, ProjectMixin):
     """
 
     require_project_for_list = True  # Unfiltered list scans are too expensive on this table
-    queryset = Detection.objects.exclude(NULL_DETECTIONS_FILTER).select_related("source_image", "detection_algorithm")
+    queryset = Detection.objects.valid().select_related("source_image", "detection_algorithm")
     serializer_class = DetectionSerializer
     filterset_fields = ["source_image", "detection_algorithm", "source_image__project"]
     ordering_fields = ["created_at", "updated_at", "detection_score", "timestamp"]
