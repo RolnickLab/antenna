@@ -1097,6 +1097,45 @@ class TestPipeline(TestCase):
             "Image with failed run must be re-yielded for processing",
         )
 
+    def test_null_marker_not_persisted_when_broker_dispatch_fails(self):
+        """
+        Issue #1310 (takeaway-review follow-up): null markers must be the FINAL
+        write in save_results. Failures in any of the trailing steps —
+        create_detection_images.delay (broker outage), update_calculated_fields_for_events
+        (DB error), Deployment.update_calculated_fields (DB error) — must leave the
+        image unmarked.
+
+        This test patches the celery dispatch to raise, simulating a broker
+        outage between the real-detection save and the null-marker save.
+        """
+        from unittest.mock import patch
+
+        from ami.ml.models.pipeline import filter_processed_images
+
+        image_with_real, image_without_real = self.test_images
+        results = self.fake_pipeline_results(self.test_images, self.pipeline)
+        results.detections = [d for d in results.detections if str(d.source_image_id) == str(image_with_real.pk)]
+
+        with patch(
+            "ami.ml.models.pipeline.create_detection_images.delay",
+            side_effect=RuntimeError("simulated broker outage"),
+        ):
+            with self.assertRaises(RuntimeError):
+                save_results(results)
+
+        null_dets = image_without_real.detections.filter(bbox__isnull=True)
+        self.assertEqual(
+            null_dets.count(),
+            0,
+            "Null marker must not be persisted when create_detection_images.delay fails",
+        )
+        retry_yield = list(filter_processed_images([image_without_real], self.pipeline))
+        self.assertEqual(
+            retry_yield,
+            [image_without_real],
+            "Image with failed broker dispatch must be re-yielded for processing",
+        )
+
 
 class TestAlgorithmCategoryMaps(TestCase):
     def setUp(self):
