@@ -1058,15 +1058,6 @@ def save_results(
             "Algorithms and category maps must be registered before processing, using /info endpoint."
         )
 
-    # Ensure all images have detections
-    # if not, add a NULL detection (empty bbox) to the results
-    null_detections = create_null_detections_for_undetected_images(
-        results=results,
-        detection_algorithm=detection_algorithm,
-        logger=job_logger,
-    )
-    results.detections = results.detections + null_detections
-
     detections = create_detections(
         detections=results.detections,
         algorithms_known=algorithms_known,
@@ -1084,6 +1075,22 @@ def save_results(
     # @TODO remove when we implement tracking!
     create_and_update_occurrences_for_detections(
         detections=detections,
+        logger=job_logger,
+    )
+
+    # Mark images with no real detections as processed by creating null-bbox sentinels.
+    # Issue #1310: must run AFTER the real-detection / classification / occurrence steps
+    # so a failure earlier in the pipeline leaves the image unmarked (and therefore
+    # re-processed by filter_processed_images on the next run). Null DetectionResponses
+    # are kept out of the real-detection list so they bypass occurrence creation entirely.
+    null_detection_responses = create_null_detections_for_undetected_images(
+        results=results,
+        detection_algorithm=detection_algorithm,
+        logger=job_logger,
+    )
+    create_detections(
+        detections=null_detection_responses,
+        algorithms_known=algorithms_known,
         logger=job_logger,
     )
 
