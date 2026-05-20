@@ -546,8 +546,10 @@ def get_or_create_detection(
 
     if serialized_bbox is None:
         # Null detection: algorithm-specific lookup so different pipelines don't share sentinels.
-        # Use bbox__isnull=True because JSONField filter(bbox=None) matches JSON null literal,
-        # not SQL NULL which is what Detection(bbox=None) stores.
+        # Use bbox__isnull=True (not Detection.objects.null_markers()) because we want to find
+        # an exact match for THIS algorithm — null_markers() also includes legacy bbox=[] rows
+        # from other pipelines and would be wider than this dedup needs.
+        # See Detection.NULL_BBOX for the canonical sentinel value used by new writes.
         assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
         try:
             detection_algo = algorithms_known[detection_resp.algorithm.key]
