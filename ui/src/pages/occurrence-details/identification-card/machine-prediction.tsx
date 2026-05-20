@@ -1,4 +1,5 @@
 import { ErrorState } from 'components/error-state/error-state'
+import { TaxonDetails } from 'components/taxon-details/taxon-details'
 import { useClassificationDetails } from 'data-services/hooks/identifications/useClassificationDetails'
 import {
   MachinePrediction as Identification,
@@ -13,7 +14,6 @@ import {
 } from 'design-system'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { Loader2 } from 'lucide-react'
-import { TaxonDetails } from 'nova-ui-kit'
 import { ReactNode, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'

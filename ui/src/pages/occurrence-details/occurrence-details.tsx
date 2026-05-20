@@ -2,8 +2,9 @@ import {
   BlueprintCollection,
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
+import { TaxonDetails } from 'components/taxon-details/taxon-details'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
-import { Box, CodeBlock, IdentificationScore } from 'design-system'
+import { Box, Button, CodeBlock, IdentificationScore } from 'design-system'
 import {
   InfoBlockField,
   InfoBlockFieldValue,
@@ -11,7 +12,6 @@ import {
 import * as Tabs from 'design-system/components/tabs/tabs'
 import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { SearchIcon } from 'lucide-react'
-import { Button, TaxonDetails } from 'nova-ui-kit'
 import { useMemo, useRef, useState } from 'react'
 import { Helmet } from 'react-helmet-async'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'

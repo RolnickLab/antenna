@@ -1,3 +1,4 @@
+import { TaxonDetails } from 'components/taxon-details/taxon-details'
 import { Species } from 'data-services/models/species'
 import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
@@ -7,7 +8,6 @@ import {
   TextAlign,
 } from 'design-system/components/table/types'
 import { Toolbar } from 'design-system/components/toolbar'
-import { TaxonDetails } from 'nova-ui-kit'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'

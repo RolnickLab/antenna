@@ -1,12 +1,17 @@
 import { DeleteForm } from 'components/form/delete-form/delete-form'
+import { TaxonDetails } from 'components/taxon-details/taxon-details'
 import { useDeleteIdentification } from 'data-services/hooks/identifications/useDeleteIdentification'
 import {
   HumanIdentification as Identification,
   OccurrenceDetails as Occurrence,
 } from 'data-services/models/occurrence-details'
-import { Box, IdentificationCard, IdentificationDetails } from 'design-system'
+import {
+  Box,
+  Button,
+  IdentificationCard,
+  IdentificationDetails,
+} from 'design-system'
 import { TrashIcon, UserIcon } from 'lucide-react'
-import { Button, TaxonDetails } from 'nova-ui-kit'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
