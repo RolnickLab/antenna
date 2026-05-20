@@ -972,22 +972,6 @@ def save_results(
         logger=job_logger,
     )
 
-    # Mark images with no real detections as processed by creating null-bbox sentinels.
-    # Issue #1310: must run AFTER the real-detection / classification / occurrence steps
-    # so a failure earlier in the pipeline leaves the image unmarked (and therefore
-    # re-processed by filter_processed_images on the next run). Null DetectionResponses
-    # are kept out of the real-detection list so they bypass occurrence creation entirely.
-    null_detection_responses = create_null_detections_for_undetected_images(
-        results=results,
-        detection_algorithm=detection_algorithm,
-        logger=job_logger,
-    )
-    create_detections(
-        detections=null_detection_responses,
-        algorithms_known=algorithms_known,
-        logger=job_logger,
-    )
-
     # Update precalculated counts on source images and events
     source_images = list(source_images)
     logger.info(f"Updating calculated fields for {len(source_images)} source images")
@@ -1005,6 +989,22 @@ def save_results(
     deployment_ids = {img.deployment_id for img in source_images if img.deployment_id}
     for deployment in Deployment.objects.filter(pk__in=deployment_ids):
         deployment.update_calculated_fields(save=True)
+
+    # Mark images with no real detections as processed by creating null-bbox sentinels.
+    # Issue #1310: MUST be the final write. Persisting a null marker is the signal that
+    # filter_processed_images uses to skip an image on future runs, so it can only be
+    # written after every step that might fail has succeeded. Any raise earlier in the
+    # pipeline leaves the image unmarked so it gets retried on the next run.
+    null_detection_responses = create_null_detections_for_undetected_images(
+        results=results,
+        detection_algorithm=detection_algorithm,
+        logger=job_logger,
+    )
+    create_detections(
+        detections=null_detection_responses,
+        algorithms_known=algorithms_known,
+        logger=job_logger,
+    )
 
     total_time = time.time() - start_time
     job_logger.info(f"Saved results from pipeline {pipeline} in {total_time:.2f} seconds")
