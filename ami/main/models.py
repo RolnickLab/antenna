@@ -2718,7 +2718,23 @@ class Classification(BaseModel):
 
 
 class DetectionQuerySet(BaseQuerySet):
-    def null_detections(self):
+    def valid(self):
+        """
+        Detections suitable for consumer queries — excludes null-marker sentinels.
+
+        Null markers are rows that record "an algorithm ran against this image and
+        found nothing." Consumers asking "give me detections" should always go
+        through .valid(). Future predicates to fold in here: soft-delete tombstones,
+        detections missing an algorithm reference, detections missing classifications.
+        """
+        return self.exclude(NULL_DETECTIONS_FILTER)
+
+    def null_markers(self):
+        """
+        Sentinel rows that record "this algorithm ran against this image and found
+        nothing." Only relevant for SourceImage-level "has this been processed?"
+        questions. Detection consumers should use .valid() instead.
+        """
         return self.filter(NULL_DETECTIONS_FILTER)
 
 
@@ -2795,6 +2811,27 @@ class Detection(BaseModel):
     detection_algorithm_id: int
 
     objects = DetectionManager()
+
+    NULL_BBOX = None
+    """Canonical bbox value for null markers (rows that record 'an algorithm ran but
+    found nothing'). Use Detection.build_null_marker() to construct them. The legacy
+    bbox=[] form is still recognised by .null_markers() / .is_null_marker for
+    backwards compatibility with historical rows."""
+
+    @property
+    def is_null_marker(self) -> bool:
+        """True for sentinel rows representing 'no detections found by this algorithm.'"""
+        return self.bbox is None or self.bbox == []
+
+    @classmethod
+    def build_null_marker(cls, source_image, detection_algorithm) -> "Detection":
+        """Construct (without saving) a null-marker Detection for the given image+algorithm."""
+        return cls(
+            source_image=source_image,
+            bbox=cls.NULL_BBOX,
+            detection_algorithm=detection_algorithm,
+            timestamp=timezone.now(),
+        )
 
     def get_bbox(self):
         if self.bbox:

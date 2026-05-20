@@ -4761,3 +4761,78 @@ class TestOccurrenceStatsViewSet(APITestCase):
         retrieve_response = self.client.get(f"/api/v2/occurrences/{occurrence.pk}/?project_id={self.project.pk}")
         self.assertEqual(stats_response.status_code, 200, "stats URL must resolve")
         self.assertEqual(retrieve_response.status_code, 200, "occurrence retrieve must still work")
+
+
+class TestDetectionNullMarker(TestCase):
+    """
+    Covers the null-marker abstraction added for Issue #1310 follow-up:
+    Detection.is_null_marker, Detection.build_null_marker, and
+    DetectionQuerySet.valid() / .null_markers().
+    """
+
+    def setUp(self):
+        from ami.ml.models.algorithm import Algorithm
+
+        self.project = Project.objects.create(name="Null Marker Test Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.source_image = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            path="nullmarker-test.jpg",
+        )
+        self.algorithm = Algorithm.objects.create(name="test-detector", key="test-detector", task_type="detection")
+
+    def test_is_null_marker_for_bbox_none(self):
+        det = Detection.objects.create(
+            source_image=self.source_image,
+            bbox=None,
+            detection_algorithm=self.algorithm,
+        )
+        self.assertTrue(det.is_null_marker)
+
+    def test_is_null_marker_for_bbox_empty_list_legacy(self):
+        det = Detection.objects.create(
+            source_image=self.source_image,
+            bbox=[],
+            detection_algorithm=self.algorithm,
+        )
+        self.assertTrue(det.is_null_marker)
+
+    def test_is_null_marker_false_for_real_detection(self):
+        det = Detection.objects.create(
+            source_image=self.source_image,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+        )
+        self.assertFalse(det.is_null_marker)
+
+    def test_build_null_marker_sets_canonical_fields(self):
+        det = Detection.build_null_marker(self.source_image, self.algorithm)
+        self.assertIsNone(det.bbox)
+        self.assertEqual(det.source_image, self.source_image)
+        self.assertEqual(det.detection_algorithm, self.algorithm)
+        self.assertIsNotNone(det.timestamp)
+        self.assertTrue(det.is_null_marker)
+
+    def test_valid_and_null_markers_are_disjoint_and_complete(self):
+        real = Detection.objects.create(
+            source_image=self.source_image,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+        )
+        null_via_none = Detection.objects.create(
+            source_image=self.source_image,
+            bbox=None,
+            detection_algorithm=self.algorithm,
+        )
+        null_via_empty = Detection.objects.create(
+            source_image=self.source_image,
+            bbox=[],
+            detection_algorithm=self.algorithm,
+        )
+        scoped = Detection.objects.filter(source_image=self.source_image)
+        valid_pks = set(scoped.valid().values_list("pk", flat=True))
+        null_pks = set(scoped.null_markers().values_list("pk", flat=True))
+        self.assertEqual(valid_pks, {real.pk})
+        self.assertEqual(null_pks, {null_via_none.pk, null_via_empty.pk})
+        self.assertEqual(valid_pks & null_pks, set())
