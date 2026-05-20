@@ -4836,3 +4836,90 @@ class TestDetectionNullMarker(TestCase):
         self.assertEqual(valid_pks, {real.pk})
         self.assertEqual(null_pks, {null_via_none.pk, null_via_empty.pk})
         self.assertEqual(valid_pks & null_pks, set())
+
+
+class TestOccurrenceValidQuerySet(TestCase):
+    """
+    Covers OccurrenceQuerySet.valid() tightening for Issue #1310:
+    excludes occurrences with no real detections and occurrences missing a
+    determination, in addition to the existing detections__isnull=True
+    exclusion.
+    """
+
+    def setUp(self):
+        from ami.main.models import Taxon
+        from ami.ml.models.algorithm import Algorithm
+
+        self.project = Project.objects.create(name="Occurrence Valid Test Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.event = Event.objects.create(
+            project=self.project,
+            deployment=self.deployment,
+            group_by="2024-01-01",
+            start=datetime.datetime(2024, 1, 1, 0, 0),
+        )
+        self.source_image = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            path="occvalid-test.jpg",
+        )
+        self.algorithm = Algorithm.objects.create(name="valid-detector", key="valid-detector", task_type="detection")
+        self.taxon = Taxon.objects.create(name="Occurrence Valid Test Taxon")
+
+    def _make_occurrence_with_real_detection(self) -> Occurrence:
+        occ = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+        )
+        Detection.objects.create(
+            source_image=self.source_image,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+            occurrence=occ,
+        )
+        return occ
+
+    def _make_occurrence_with_only_null_detection(self) -> Occurrence:
+        occ = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+        )
+        Detection.objects.create(
+            source_image=self.source_image,
+            bbox=None,
+            detection_algorithm=self.algorithm,
+            occurrence=occ,
+        )
+        return occ
+
+    def _make_occurrence_with_null_determination(self) -> Occurrence:
+        occ = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=None,
+        )
+        Detection.objects.create(
+            source_image=self.source_image,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+            occurrence=occ,
+        )
+        return occ
+
+    def test_valid_returns_only_real_with_determination(self):
+        real = self._make_occurrence_with_real_detection()
+        null_only = self._make_occurrence_with_only_null_detection()
+        no_determination = self._make_occurrence_with_null_determination()
+
+        valid_qs = Occurrence.objects.filter(project=self.project).valid()
+        valid_pks = set(valid_qs.values_list("pk", flat=True))
+
+        self.assertIn(real.pk, valid_pks)
+        self.assertNotIn(null_only.pk, valid_pks)
+        self.assertNotIn(no_determination.pk, valid_pks)

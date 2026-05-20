@@ -2958,7 +2958,20 @@ class Detection(BaseModel):
 
 class OccurrenceQuerySet(BaseQuerySet):
     def valid(self):
-        return self.exclude(detections__isnull=True)
+        """
+        Occurrences fit to surface in API responses: at least one real detection AND
+        a determination set.
+
+        Excludes:
+          - Occurrences with no detections at all (orphans)
+          - Occurrences whose only detections are null-marker sentinels (Issue #1310:
+            field bug created phantom occurrences with no real bounding box backing
+            them)
+          - Occurrences with determination__isnull=True (no taxonomic identification,
+            same field bug shape)
+        """
+        has_valid_detection = Exists(Detection.objects.valid().filter(occurrence_id=OuterRef("pk")))
+        return self.filter(has_valid_detection).exclude(determination__isnull=True)
 
     def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
