@@ -6059,7 +6059,10 @@ class TestDetectionNullMarker(TestCase):
         self.assertIsNone(det.bbox)
         self.assertEqual(det.source_image, self.source_image)
         self.assertEqual(det.detection_algorithm, self.algorithm)
-        self.assertIsNotNone(det.timestamp)
+        # timestamp is intentionally not set on the builder — Detection.save() backfills
+        # it from the source image's capture time, so the marker sorts by capture time
+        # rather than processing time.
+        self.assertIsNone(det.timestamp)
         self.assertTrue(det.is_null_marker)
 
     def test_valid_and_null_markers_are_disjoint_and_complete(self):
