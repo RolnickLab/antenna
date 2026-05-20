@@ -1,10 +1,10 @@
-import { CONSTANTS } from 'nova-ui-kit'
 import plugin from 'tailwindcss/plugin'
 import { BREAKPOINTS } from './src/components/constants'
+import { CONSTANTS } from './src/design-system/constants'
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: ['./src/**/*.{ts,tsx}', './node_modules/nova-ui-kit/**/*.js'],
+  content: ['./src/**/*.{ts,tsx}'],
   theme: {
     colors: CONSTANTS.COLORS,
     screens: {
