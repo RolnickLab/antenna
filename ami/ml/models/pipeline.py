@@ -438,11 +438,10 @@ def get_or_create_detection(
     ), f"Detection belongs to a different source image: {detection_repr}"
 
     if serialized_bbox is None:
-        # Null detection: algorithm-specific lookup so different pipelines don't share sentinels.
-        # Use bbox__isnull=True (not Detection.objects.null_markers()) because we want to find
-        # an exact match for THIS algorithm — null_markers() also includes legacy bbox=[] rows
-        # from other pipelines and would be wider than this dedup needs.
-        # See Detection.NULL_BBOX for the canonical sentinel value used by new writes.
+        # Null marker: algorithm-specific lookup so different pipelines don't share sentinels.
+        # Use .null_markers() so legacy bbox=[] sentinels from older runs are also matched and
+        # re-used instead of producing duplicate rows. Detection.NULL_BBOX is the canonical
+        # sentinel value used for new writes; .null_markers() recognises both forms.
         assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
         try:
             detection_algo = algorithms_known[detection_resp.algorithm.key]
@@ -452,11 +451,14 @@ def get_or_create_detection(
                 "The processing service must declare it in the /info endpoint. "
                 f"Known algorithms: {list(algorithms_known.keys())}"
             ) from err
-        existing_detection = Detection.objects.filter(
-            source_image=source_image,
-            bbox__isnull=True,
-            detection_algorithm=detection_algo,
-        ).first()
+        existing_detection = (
+            Detection.objects.filter(
+                source_image=source_image,
+                detection_algorithm=detection_algo,
+            )
+            .null_markers()
+            .first()
+        )
     else:
         # Real detection: algorithm-agnostic — same bbox = same physical detection
         existing_detection = Detection.objects.filter(

@@ -580,7 +580,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         if has_detections is not None:
             has_detections = BooleanField(required=False).clean(has_detections)
             queryset = queryset.annotate(
-                has_detections=models.Exists(Detection.objects.filter(source_image=models.OuterRef("pk"))),
+                has_detections=models.Exists(Detection.objects.valid().filter(source_image=models.OuterRef("pk"))),
             ).filter(has_detections=has_detections)
         return queryset
 

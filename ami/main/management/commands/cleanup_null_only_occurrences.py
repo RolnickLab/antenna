@@ -74,11 +74,13 @@ class Command(BaseCommand):
             return
 
         with transaction.atomic():
-            null_deleted, _ = orphan_null_markers.delete()
-            phantom_deleted, _ = phantom_occs.delete()
+            orphan_null_markers.delete()
+            phantom_occs.delete()
 
+        # Report the pre-calculated counts of the rows we targeted directly. The tuple from
+        # .delete() also counts cascade-deleted related rows (e.g. classifications under a
+        # phantom occurrence's detections), which would inflate the numbers and confuse the
+        # operator about what the command actually targeted.
         self.stdout.write(
-            self.style.SUCCESS(
-                f"Deleted {phantom_deleted} phantom occurrences and {null_deleted} orphan null markers."
-            )
+            self.style.SUCCESS(f"Deleted {phantom_count} phantom occurrences and {null_count} orphan null markers.")
         )

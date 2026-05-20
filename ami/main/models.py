@@ -2840,7 +2840,6 @@ class Detection(BaseModel):
             source_image=source_image,
             bbox=cls.NULL_BBOX,
             detection_algorithm=detection_algorithm,
-            timestamp=timezone.now(),
         )
 
     def get_bbox(self):
@@ -4557,10 +4556,11 @@ class SourceImageCollection(BaseModel):
         return captures
 
     def sample_detections_only(self):
-        """Sample all source images with detections"""
+        """Sample all source images with at least one real (non-null-marker) detection."""
 
         qs = self.get_queryset()
-        return qs.filter(detections__isnull=False).distinct()
+        valid_detection_image_ids = Detection.objects.valid().values("source_image_id")
+        return qs.filter(pk__in=valid_detection_image_ids).distinct()
 
     def sample_full(
         self,
