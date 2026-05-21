@@ -25,6 +25,21 @@ const SORT_FIELDS = [
   { id: 'name', name: translate(STRING.FIELD_LABEL_NAME) },
   { id: 'created_at', name: translate(STRING.FIELD_LABEL_CREATED_AT) },
   { id: 'updated_at', name: translate(STRING.FIELD_LABEL_UPDATED_AT) },
+  {
+    id: 'last_capture_timestamp',
+    name: translate(STRING.SORT_RECENT_OBSERVATIONS),
+    defaultSortOrder: 'desc' as const,
+  },
+  {
+    id: 'last_occurrence_updated_at',
+    name: translate(STRING.SORT_RECENT_IDENTIFICATIONS),
+    defaultSortOrder: 'desc' as const,
+  },
+  {
+    id: 'last_job_updated_at',
+    name: translate(STRING.SORT_RECENT_JOBS),
+    defaultSortOrder: 'desc' as const,
+  },
 ]
 
 export const Projects = () => {
