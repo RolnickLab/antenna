@@ -74,7 +74,7 @@
 
     tr:not(:last-child) {
       td {
-        border-bottom: 1px solid $color-neutral-100;
+        border-bottom: 1px solid $color-border;
       }
     }
   }

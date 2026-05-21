@@ -4,7 +4,7 @@
 .container {
   display: flex;
   flex-direction: column;
-  border: 1px solid $color-neutral-100;
+  border: 1px solid $color-border;
   border-radius: 8px;
   overflow: hidden;
   height: 100%;
@@ -13,7 +13,7 @@
 .square {
   position: relative;
   background-color: $color-generic-white;
-  border-bottom: 1px solid $color-neutral-100;
+  border-bottom: 1px solid $color-border;
   overflow: hidden;
 }
 
@@ -45,7 +45,7 @@
 }
 
 .title {
-  color: $color-neutral-700;
+  color: $color-foreground;
   font-style: italic;
   word-break: break-word;
 

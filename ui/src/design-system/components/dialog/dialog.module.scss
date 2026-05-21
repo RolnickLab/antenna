@@ -70,7 +70,7 @@ $dialog-padding-medium: 32px;
   padding: 0 32px;
   box-sizing: border-box;
   background-color: $color-neutral-50;
-  border-bottom: 1px solid $color-neutral-100;
+  border-bottom: 1px solid $color-border;
   z-index: 1;
 }
 
@@ -78,7 +78,7 @@ $dialog-padding-medium: 32px;
   all: unset;
   display: block;
   @include heading-6();
-  color: $color-neutral-700;
+  color: $color-foreground;
   padding-top: 2px;
 }
 

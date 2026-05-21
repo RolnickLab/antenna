@@ -11,6 +11,6 @@
 
 .version {
   @include paragraph-x-small();
-  color: $color-neutral-700;
+  color: $color-foreground;
   white-space: nowrap;
 }

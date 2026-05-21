@@ -9,7 +9,7 @@
 
 .dialogTrigger {
   @include paragraph-medium();
-  color: $color-primary-1-600;
+  color: $color-primary;
   font-weight: 600;
 
   &:hover {

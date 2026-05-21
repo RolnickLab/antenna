@@ -6,7 +6,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 2px 2px 24px;
-  border-bottom: 1px solid $color-neutral-100;
+  border-bottom: 1px solid $color-border;
   background-color: $color-neutral-50;
   box-sizing: border-box;
   z-index: 3;
@@ -22,14 +22,14 @@
 .title {
   @include paragraph-large();
   font-weight: 600;
-  color: $color-neutral-700;
+  color: $color-foreground;
   margin: 0;
 }
 
 .subTitle {
   @include paragraph-small();
   font-weight: 600;
-  color: $color-neutral-300;
+  color: $color-muted-foreground;
   margin: 0;
 }
 

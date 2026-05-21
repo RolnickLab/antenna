@@ -8,7 +8,7 @@
 
   &:not(:last-child) {
     padding-bottom: 32px;
-    border-bottom: 1px solid $color-neutral-100;
+    border-bottom: 1px solid $color-border;
   }
 }
 
@@ -21,7 +21,7 @@
 
 .sectionTitle {
   @include paragraph-large();
-  color: $color-neutral-700;
+  color: $color-foreground;
   font-weight: 600;
   margin: 0;
 }
@@ -29,7 +29,7 @@
 .sectionDescription {
   display: block;
   @include paragraph-small();
-  color: $color-neutral-300;
+  color: $color-muted-foreground;
   font-style: italic;
   word-break: break-word;
   margin: 0;

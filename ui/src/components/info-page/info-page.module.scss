@@ -23,9 +23,9 @@
 .container {
   padding: 64px;
   border-radius: 8px;
-  border: 1px solid $color-neutral-100;
+  border: 1px solid $color-border;
   background: $color-generic-white;
-  color: $color-neutral-700;
+  color: $color-foreground;
 }
 
 .content {
@@ -71,7 +71,7 @@
   }
 
   a {
-    color: $color-primary-1-600;
+    color: $color-primary;
     font-weight: 600;
   }
 

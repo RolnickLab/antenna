@@ -27,7 +27,7 @@
 .description {
   display: block;
   @include paragraph-small();
-  color: $color-neutral-300;
+  color: $color-muted-foreground;
   font-style: italic;
   word-break: break-word;
 }
@@ -51,8 +51,8 @@
   padding: 0 16px;
   @include paragraph-small();
   background-color: $color-generic-white;
-  color: $color-neutral-700;
-  border: 1px solid $color-neutral-100;
+  color: $color-foreground;
+  border: 1px solid $color-border;
   box-sizing: border-box;
 
   &.password {
@@ -60,7 +60,7 @@
   }
 
   &::placeholder {
-    color: $color-neutral-300;
+    color: $color-muted-foreground;
     opacity: 1; /* For Firefox */
   }
 

@@ -10,7 +10,7 @@
 }
 
 .sidebar {
-  background-color: $color-neutral-700;
+  background-color: $color-foreground;
   border-bottom: 1px solid $color-neutral-600;
   position: relative;
 }
@@ -46,7 +46,7 @@
     @include paragraph-xx-small();
     text-transform: uppercase;
     font-weight: 600;
-    color: $color-neutral-300;
+    color: $color-muted-foreground;
   }
 }
 
@@ -67,7 +67,7 @@
 
 .bottomBar {
   grid-column: span 2;
-  background-color: $color-neutral-700;
+  background-color: $color-foreground;
   padding: 32px;
 }
 

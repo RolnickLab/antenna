@@ -46,19 +46,19 @@
 
 .title {
   @include heading-4-italic();
-  color: $color-primary-1-600;
+  color: $color-primary;
   margin: 0;
 }
 
 .text {
   @include paragraph-small();
-  color: $color-neutral-700;
+  color: $color-foreground;
   text-align: center;
   margin: 0;
 
   a {
-    color: $color-primary-1-600;
-    border-bottom: 1px dashed $color-primary-1-600;
+    color: $color-primary;
+    border-bottom: 1px dashed $color-primary;
   }
 
   strong {
@@ -66,7 +66,7 @@
   }
 
   &.divider {
-    color: $color-neutral-300;
+    color: $color-muted-foreground;
   }
 
   &.error {

@@ -11,7 +11,7 @@
   display: flex;
   align-items: flex-end;
   justify-content: flex-start;
-  border-bottom: 2px solid $color-neutral-100;
+  border-bottom: 2px solid $color-border;
   position: relative;
   padding: 2px 2px 0;
 
@@ -64,14 +64,14 @@
 .itemCount {
   display: block;
   @include heading-6();
-  color: $color-primary-1-600;
+  color: $color-primary;
   white-space: nowrap;
 }
 
 .itemTitle {
   display: block;
   @include label();
-  color: $color-neutral-300;
+  color: $color-muted-foreground;
   white-space: nowrap;
 }
 
@@ -89,7 +89,7 @@
   align-items: center;
   justify-content: center;
   transition: transform 400ms ease;
-  color: $color-primary-1-600;
+  color: $color-primary;
 
   &.active {
     color: $color-success-700;

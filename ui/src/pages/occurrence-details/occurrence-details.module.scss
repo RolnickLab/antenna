@@ -21,12 +21,12 @@
   gap: 16px;
   padding: 24px;
   background-color: $color-neutral-50;
-  border-bottom: 2px solid $color-neutral-100;
+  border-bottom: 2px solid $color-border;
   z-index: 2;
 
   .title {
     @include heading-4-italic();
-    color: $color-primary-1-600;
+    color: $color-primary;
 
     &:hover {
       cursor: pointer;

@@ -14,7 +14,7 @@
   .label {
     display: block;
     @include paragraph-medium();
-    color: $color-neutral-700;
+    color: $color-foreground;
     padding-top: 2px;
   }
 }

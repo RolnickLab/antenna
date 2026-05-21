@@ -18,7 +18,7 @@
 
   p {
     @include paragraph-small();
-    color: $color-neutral-700;
+    color: $color-foreground;
     margin: 0;
   }
 }

@@ -24,16 +24,12 @@
   @include paragraph-small();
   font-weight: 600;
   background-color: transparent;
-  height: 28px;
-  padding: 0 16px;
+  height: 32px;
+  padding: 0 24px;
   border-radius: 16px;
 
-  :not(:last-child) {
-    margin-right: 6px;
-  }
-
   > * {
-    color: $color-primary-1-600 !important;
+    color: $color-primary !important;
   }
 
   &:hover {
@@ -42,11 +38,12 @@
   }
 
   &:focus-visible {
+    outline: none;
     box-shadow: 0 0 0 2px $color-generic-black;
   }
 
   &[data-state='active'] {
-    background-color: $color-neutral-600;
+    background-color: $color-primary;
 
     > * {
       color: $color-generic-white !important;

@@ -11,6 +11,6 @@
 .title {
   @include paragraph-large();
   font-weight: 600;
-  color: $color-neutral-700;
+  color: $color-foreground;
   margin: 0 0 16px 0;
 }

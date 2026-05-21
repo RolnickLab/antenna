@@ -12,7 +12,7 @@
   display: block;
   @include paragraph-small();
   font-weight: 600;
-  color: $color-neutral-300;
+  color: $color-muted-foreground;
   margin-bottom: 16px;
 }
 

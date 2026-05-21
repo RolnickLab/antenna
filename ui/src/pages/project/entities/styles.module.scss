@@ -13,7 +13,7 @@
 
 .dialogTrigger {
   @include paragraph-medium();
-  color: $color-primary-1-600;
+  color: $color-primary;
 
   &:hover {
     cursor: pointer;

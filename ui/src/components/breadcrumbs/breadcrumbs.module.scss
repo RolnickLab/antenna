@@ -14,7 +14,7 @@
   display: block;
   @include paragraph-x-small();
   font-weight: 600;
-  color: $color-neutral-700;
+  color: $color-foreground;
 
   span {
     &:last-child {
@@ -23,7 +23,7 @@
   }
 
   &.link {
-    color: $color-primary-1-600;
+    color: $color-primary;
   }
 }
 
