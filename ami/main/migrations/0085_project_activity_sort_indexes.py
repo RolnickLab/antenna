@@ -3,13 +3,12 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-    """Add composite indexes that back the project "recent activity" sort options.
+    """Add the composite index that backs the project "recent identifications" sort.
 
-    Both tables are large in production (SourceImage in the tens of millions),
-    so the indexes are built CONCURRENTLY to avoid taking a write lock during
-    deploy. This requires a non-atomic migration.
+    Occurrence is large in production, so the index is built CONCURRENTLY to avoid
+    taking a write lock during deploy. This requires a non-atomic migration.
 
-    Building these indexes can take longer than a configured ``statement_timeout``
+    Building the index can take longer than a configured ``statement_timeout``
     (development sets 30s, see ``config/settings/local.py``; a production role may
     set one too). ``CREATE INDEX CONCURRENTLY`` runs as a single statement and is
     subject to that timeout, so we clear it for this connection before building.
@@ -27,10 +26,6 @@ class Migration(migrations.Migration):
         migrations.RunSQL(
             sql="SET statement_timeout = 0;",
             reverse_sql=migrations.RunSQL.noop,
-        ),
-        AddIndexConcurrently(
-            model_name="sourceimage",
-            index=models.Index(fields=["project", "-timestamp"], name="main_source_proj_ts_desc_idx"),
         ),
         AddIndexConcurrently(
             model_name="occurrence",

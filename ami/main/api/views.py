@@ -5,7 +5,7 @@ from statistics import mode
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.db import models
-from django.db.models import OuterRef, Prefetch, Q, Subquery
+from django.db.models import Max, OuterRef, Prefetch, Q, Subquery
 from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
@@ -176,16 +176,13 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
                 qs = qs.filter_by_user(user)
 
         # Annotate "recent activity" fields only when sorting by them, so the
-        # default list stays cheap (these are correlated subqueries over large
-        # related tables). Subqueries avoid the row fan-out that joined Max()
-        # annotations would cause when both are requested at once.
+        # default list stays cheap. Each ordering annotates a single field, so
+        # the GROUP BY a Max() introduces never fans out across relations.
         ordering = {field.lstrip("-") for field in self.request.query_params.get("ordering", "").split(",") if field}
         if "last_capture_timestamp" in ordering:
-            qs = qs.annotate(
-                last_capture_timestamp=Subquery(
-                    SourceImage.objects.filter(project=OuterRef("pk")).order_by("-timestamp").values("timestamp")[:1]
-                )
-            )
+            # Roll up the denormalized per-deployment timestamp rather than scanning
+            # the (very large) SourceImage table; the values match in practice.
+            qs = qs.annotate(last_capture_timestamp=Max("deployments__last_capture_timestamp"))
         if "last_occurrence_updated_at" in ordering:
             qs = qs.annotate(
                 last_occurrence_updated_at=Subquery(

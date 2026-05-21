@@ -2219,9 +2219,6 @@ class SourceImage(BaseModel):
             models.Index(fields=["deployment", "timestamp"]),
             models.Index(fields=["event", "timestamp"]),
             models.Index(fields=["timestamp"]),
-            # Supports sorting projects by their most recent capture timestamp
-            # (see ProjectViewSet ordering "last_capture_timestamp").
-            models.Index(fields=["project", "-timestamp"], name="main_source_proj_ts_desc_idx"),
         ]
 
 
