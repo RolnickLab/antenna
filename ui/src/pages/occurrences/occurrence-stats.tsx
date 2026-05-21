@@ -6,7 +6,17 @@ interface OccurrenceStatsProps {
   filters: { field: string; value?: string; error?: string }[]
 }
 
-const StatBar = ({ label, value }: { label: string; value: number }) => {
+const StatBar = ({
+  label,
+  value,
+  count,
+}: {
+  label: string
+  value: number
+  // Optional raw count shown alongside the percentage, e.g. "0% (23)". Useful
+  // when the percentage rounds to 0 but the underlying count is non-zero.
+  count?: number
+}) => {
   const pct = Math.round(Math.min(Math.max(value, 0), 1) * 100)
 
   return (
@@ -21,7 +31,15 @@ const StatBar = ({ label, value }: { label: string; value: number }) => {
             style={{ width: `${pct}%` }}
           />
         </div>
-        <span className="body-base tabular-nums">{pct}%</span>
+        <span className="body-base tabular-nums">
+          {pct}%
+          {count !== undefined ? (
+            <span className="text-muted-foreground">
+              {' '}
+              ({count.toLocaleString()})
+            </span>
+          ) : null}
+        </span>
       </div>
     </div>
   )
@@ -60,7 +78,11 @@ export const OccurrenceStats = ({
           </>
         ) : (
           <>
-            <StatBar label="Verified occurrences" value={data.verified_pct} />
+            <StatBar
+              label="Verified occurrences"
+              value={data.verified_pct}
+              count={data.verified_count}
+            />
             <StatBar
               label="Human-model agreement rate"
               value={data.agreed_any_rank_pct}
