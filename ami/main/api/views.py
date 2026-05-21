@@ -5,7 +5,7 @@ from statistics import mode
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.db import models
-from django.db.models import Prefetch, Q
+from django.db.models import OuterRef, Prefetch, Q, Subquery
 from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
@@ -155,7 +155,14 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
     serializer_class = ProjectSerializer
     pagination_class = ProjectPagination
     permission_classes = [ObjectPermission]
-    ordering_fields = ["name", "created_at", "updated_at"]
+    ordering_fields = [
+        "name",
+        "created_at",
+        "updated_at",
+        "last_capture_timestamp",
+        "last_occurrence_updated_at",
+        "last_job_updated_at",
+    ]
 
     def get_queryset(self):
         qs: ProjectQuerySet = super().get_queryset()  # type: ignore
@@ -167,6 +174,32 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
                 raise PermissionDenied("You can only view your projects")
             if user:
                 qs = qs.filter_by_user(user)
+
+        # Annotate "recent activity" fields only when sorting by them, so the
+        # default list stays cheap (these are correlated subqueries over large
+        # related tables). Subqueries avoid the row fan-out that joined Max()
+        # annotations would cause when both are requested at once.
+        ordering = {field.lstrip("-") for field in self.request.query_params.get("ordering", "").split(",") if field}
+        if "last_capture_timestamp" in ordering:
+            qs = qs.annotate(
+                last_capture_timestamp=Subquery(
+                    SourceImage.objects.filter(project=OuterRef("pk")).order_by("-timestamp").values("timestamp")[:1]
+                )
+            )
+        if "last_occurrence_updated_at" in ordering:
+            qs = qs.annotate(
+                last_occurrence_updated_at=Subquery(
+                    Occurrence.objects.filter(project=OuterRef("pk")).order_by("-updated_at").values("updated_at")[:1]
+                )
+            )
+        if "last_job_updated_at" in ordering:
+            from ami.jobs.models import Job
+
+            qs = qs.annotate(
+                last_job_updated_at=Subquery(
+                    Job.objects.filter(project=OuterRef("pk")).order_by("-updated_at").values("updated_at")[:1]
+                )
+            )
         return qs
 
     def get_serializer_class(self):
