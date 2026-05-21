@@ -63,7 +63,7 @@ export const OccurrenceStats = ({
             <StatBar label="Verified occurrences" value={data.verified_pct} />
             <StatBar
               label="Human-model agreement rate"
-              value={data.agreed_under_order_pct}
+              value={data.agreed_any_rank_pct}
             />
           </>
         )}
