@@ -1756,9 +1756,9 @@ class TopIdentifiersResponseSerializer(serializers.Serializer):
 class ModelAgreementSerializer(serializers.Serializer):
     """Verified / agreement rates over the filtered Occurrence set.
 
-    `agreed_exact_count` is a subset of `agreed_under_order_count` by
-    construction — an exact match implies an LCA at SPECIES, which is
-    deeper than ORDER. `*_pct` percentages are 0.0..1.0 (not 0..100).
+    `agreed_exact_count` is a subset of `agreed_any_rank_count` by
+    construction — an exact match implies the LCA is the taxon itself.
+    `*_pct` percentages are 0.0..1.0 (not 0..100).
 
     Denominator note: `agreed_*_pct` divide by `verified_with_prediction_count`
     (verified occurrences that *also* have a machine prediction), NOT by
@@ -1766,12 +1766,23 @@ class ModelAgreementSerializer(serializers.Serializer):
     agree or disagree — including it in the denominator would drag the rate
     down without representing actual model disagreement. `no_prediction_count`
     is surfaced so the consumer can see how many such occurrences exist.
+
+    Optional rank threshold: when the caller passes
+    `?agreement_coarsest_rank=FAMILY`, the response also includes
+    `agreed_coarser_rank_*` counting only LCAs at that rank or deeper. The
+    threshold rank is echoed in `agreement_coarsest_rank`. When the param is
+    absent, the coarser-rank fields are null and `agreement_coarsest_rank`
+    is null.
     """
 
     project_id = serializers.IntegerField()
     total_occurrences = serializers.IntegerField()
     verified_count = serializers.IntegerField(help_text="Occurrences with at least one non-withdrawn identification.")
-    verified_pct = serializers.FloatField(help_text="verified_count / total_occurrences")
+    verified_pct = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        help_text="verified_count / total_occurrences",
+    )
     verified_with_prediction_count = serializers.IntegerField(
         help_text="Verified occurrences that also have a machine prediction (denominator for agreed_*_pct)."
     )
@@ -1779,8 +1790,36 @@ class ModelAgreementSerializer(serializers.Serializer):
         help_text="Verified occurrences with no machine prediction (excluded from agreement denominator)."
     )
     agreed_exact_count = serializers.IntegerField()
-    agreed_exact_pct = serializers.FloatField(help_text="agreed_exact_count / verified_with_prediction_count")
-    agreed_under_order_count = serializers.IntegerField()
-    agreed_under_order_pct = serializers.FloatField(
-        help_text="agreed_under_order_count / verified_with_prediction_count"
+    agreed_exact_pct = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        help_text="agreed_exact_count / verified_with_prediction_count",
+    )
+    agreed_any_rank_count = serializers.IntegerField(
+        help_text="Exact matches plus disagreements whose LCA is at any real rank (UNKNOWN excluded)."
+    )
+    agreed_any_rank_pct = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        help_text="agreed_any_rank_count / verified_with_prediction_count",
+    )
+    agreement_coarsest_rank = serializers.CharField(
+        allow_null=True,
+        required=False,
+        help_text="Threshold rank from ?agreement_coarsest_rank query param. Null when the param is absent.",
+    )
+    agreed_coarser_rank_count = serializers.IntegerField(
+        allow_null=True,
+        required=False,
+        help_text=(
+            "Exact matches plus disagreements whose LCA is at `agreement_coarsest_rank` or deeper. "
+            "Null when no threshold was supplied."
+        ),
+    )
+    agreed_coarser_rank_pct = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        allow_null=True,
+        required=False,
+        help_text="agreed_coarser_rank_count / verified_with_prediction_count. Null when no threshold supplied.",
     )

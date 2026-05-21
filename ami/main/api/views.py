@@ -55,6 +55,7 @@ from ..models import (
     Tag,
     TaxaList,
     Taxon,
+    TaxonRank,
     User,
     update_detection_counts,
 )
@@ -1375,15 +1376,34 @@ class OccurrenceStatsViewSet(viewsets.GenericViewSet, ProjectMixin):
         Accepts every query param the `/occurrences/` list endpoint accepts.
         Reuses `apply_default_filters` so `apply_defaults=false` bypasses
         project default taxa lists + score thresholds.
+
+        Optional ?agreement_coarsest_rank=<RANK> adds `agreed_coarser_rank_*`
+        counts — LCAs at the given rank or deeper. Valid values: any
+        TaxonRank name (FAMILY, GENUS, etc.); invalid → 400.
         """
         project = self.get_active_project()
         assert project is not None  # require_project=True guarantees this
         if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
             raise NotFound("Project not found.")
 
+        coarsest_rank_param = request.query_params.get("agreement_coarsest_rank")
+        coarsest_rank = None
+        if coarsest_rank_param:
+            try:
+                coarsest_rank = TaxonRank[coarsest_rank_param.upper()]
+            except KeyError:
+                valid = ", ".join(r.name for r in TaxonRank if r.name != "UNKNOWN")
+                raise api_exceptions.ValidationError(
+                    {"agreement_coarsest_rank": f"Invalid rank '{coarsest_rank_param}'. Must be one of: {valid}."}
+                )
+            if coarsest_rank == TaxonRank.UNKNOWN:
+                raise api_exceptions.ValidationError(
+                    {"agreement_coarsest_rank": "UNKNOWN is not a valid threshold rank."}
+                )
+
         base_qs = Occurrence.objects.filter(project=project).valid().apply_default_filters(project, request)
         filtered_qs = self.filter_queryset(base_qs)
-        payload = model_agreement_for_project(filtered_qs)
+        payload = model_agreement_for_project(filtered_qs, coarsest_rank=coarsest_rank)
         payload["project_id"] = project.pk
         return Response(ModelAgreementSerializer(payload, context={"request": request}).data)
 

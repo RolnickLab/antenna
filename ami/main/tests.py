@@ -4803,8 +4803,9 @@ class TestLcaRankBetween(TestCase):
 class TestModelAgreementForProject(APITestCase):
     """Aggregation function over a filtered Occurrence queryset.
 
-    Covers the four bucket transitions: unverified, verified+exact-agreed,
-    verified+under-order-agreed, verified+disagreed-above-order.
+    Covers four bucket transitions: unverified, verified+exact-agreed,
+    verified+any-rank-agreed (no threshold), verified+disagreed-no-shared-rank.
+    Optional coarsest_rank threshold cases handled in the viewset tests below.
     """
 
     def setUp(self) -> None:
@@ -4842,7 +4843,11 @@ class TestModelAgreementForProject(APITestCase):
         self.assertEqual(result["verified_count"], 0)
         self.assertEqual(result["verified_pct"], 0.0)
         self.assertEqual(result["agreed_exact_pct"], 0.0)
-        self.assertEqual(result["agreed_under_order_pct"], 0.0)
+        self.assertEqual(result["agreed_any_rank_pct"], 0.0)
+        # No threshold passed → coarser-rank fields null.
+        self.assertIsNone(result["agreement_coarsest_rank"])
+        self.assertIsNone(result["agreed_coarser_rank_count"])
+        self.assertIsNone(result["agreed_coarser_rank_pct"])
 
     def test_buckets_canonical_cases(self):
         from ami.main.models_future.occurrence import model_agreement_for_project
@@ -4851,9 +4856,9 @@ class TestModelAgreementForProject(APITestCase):
         self.assertEqual(len(occurrences), 4)
         # 0: verified, machine == user (exact agreement at SPECIES)
         self._identify(occurrences[0], self.vanessa_atalanta)
-        # 1: verified, sister species (under-order at GENUS)
+        # 1: verified, sister species (LCA at GENUS)
         self._identify(occurrences[1], self.vanessa_cardui)
-        # 2: verified, different family same order (under-order at ORDER)
+        # 2: verified, different family same order (LCA at ORDER)
         self._identify(occurrences[2], self.pieris_brassicae)
         # 3: unverified
 
@@ -4861,10 +4866,33 @@ class TestModelAgreementForProject(APITestCase):
         self.assertEqual(result["total_occurrences"], 4)
         self.assertEqual(result["verified_count"], 3)
         self.assertEqual(result["agreed_exact_count"], 1)
-        self.assertEqual(result["agreed_under_order_count"], 3)
+        self.assertEqual(result["agreed_any_rank_count"], 3)
         self.assertAlmostEqual(result["verified_pct"], 0.75)
         self.assertAlmostEqual(result["agreed_exact_pct"], 1 / 3, places=3)
-        self.assertAlmostEqual(result["agreed_under_order_pct"], 1.0)
+        self.assertAlmostEqual(result["agreed_any_rank_pct"], 1.0)
+
+    def test_coarsest_rank_threshold_filters_shallow_lcas(self):
+        """With coarsest_rank=FAMILY, an ORDER-only LCA pair is excluded."""
+        from ami.main.models import TaxonRank
+        from ami.main.models_future.occurrence import model_agreement_for_project
+
+        occurrences = list(Occurrence.objects.filter(project=self.project).order_by("pk"))
+        # 0: exact (SPECIES) — counts in both
+        self._identify(occurrences[0], self.vanessa_atalanta)
+        # 1: sister species (LCA = GENUS, deeper than FAMILY) — counts in both
+        self._identify(occurrences[1], self.vanessa_cardui)
+        # 2: different family same order (LCA = ORDER, NOT >= FAMILY) — counts in any_rank only
+        self._identify(occurrences[2], self.pieris_brassicae)
+
+        result = model_agreement_for_project(
+            Occurrence.objects.filter(project=self.project),
+            coarsest_rank=TaxonRank.FAMILY,
+        )
+        self.assertEqual(result["agreed_any_rank_count"], 3)
+        self.assertEqual(result["agreement_coarsest_rank"], "FAMILY")
+        # exact + GENUS LCA = 2; ORDER LCA excluded
+        self.assertEqual(result["agreed_coarser_rank_count"], 2)
+        self.assertAlmostEqual(result["agreed_coarser_rank_pct"], 2 / 3, places=3)
 
 
 class TestOccurrenceStatsViewSet(APITestCase):
@@ -4973,7 +5001,11 @@ class TestOccurrenceStatsViewSet(APITestCase):
         self.assertEqual(body["verified_count"], 0)
         self.assertEqual(body["verified_pct"], 0.0)
         self.assertEqual(body["agreed_exact_pct"], 0.0)
-        self.assertEqual(body["agreed_under_order_pct"], 0.0)
+        self.assertEqual(body["agreed_any_rank_pct"], 0.0)
+        # No ?agreement_coarsest_rank → threshold + coarser fields null.
+        self.assertIsNone(body["agreement_coarsest_rank"])
+        self.assertIsNone(body["agreed_coarser_rank_count"])
+        self.assertIsNone(body["agreed_coarser_rank_pct"])
 
     def test_agreement_happy_path(self):
         """One verified occurrence; user agrees with the machine prediction → exact match.
@@ -4996,15 +5028,14 @@ class TestOccurrenceStatsViewSet(APITestCase):
         self.assertEqual(body["verified_with_prediction_count"], 1)
         self.assertEqual(body["no_prediction_count"], 0)
         self.assertEqual(body["agreed_exact_count"], 1)
-        self.assertEqual(body["agreed_under_order_count"], 1)
+        self.assertEqual(body["agreed_any_rank_count"], 1)
 
-    def test_agreement_under_order_bucket(self):
-        """Disagreement at species but same genus → counted under-order, not exact.
+    def test_agreement_any_rank_bucket(self):
+        """Disagreement at species but same genus → counted as any-rank agreement, not exact.
 
         Pick the machine prediction's sister species (same parent genus) for the
-        identification. LCA between the two species is GENUS, which is >= ORDER,
-        so the occurrence falls into the under-order bucket without contributing
-        to agreed_exact_count.
+        identification. LCA between the two species is GENUS, so the occurrence
+        falls into the any-rank bucket without contributing to agreed_exact_count.
         """
         occurrence = Occurrence.objects.filter(project=self.project).order_by("pk").first()
         machine_taxon = occurrence.detections.first().classifications.first().taxon
@@ -5024,10 +5055,34 @@ class TestOccurrenceStatsViewSet(APITestCase):
         self.assertEqual(body["verified_count"], 1)
         self.assertEqual(body["verified_with_prediction_count"], 1)
         self.assertEqual(body["agreed_exact_count"], 0)
-        self.assertEqual(body["agreed_under_order_count"], 1)
-        # 0/1 exact, 1/1 under-order
+        self.assertEqual(body["agreed_any_rank_count"], 1)
+        # 0/1 exact, 1/1 any-rank
         self.assertEqual(body["agreed_exact_pct"], 0.0)
-        self.assertEqual(body["agreed_under_order_pct"], 1.0)
+        self.assertEqual(body["agreed_any_rank_pct"], 1.0)
+
+    def test_agreement_coarsest_rank_invalid_returns_400(self):
+        response = self.client.get(
+            f"{self.agreement_url}?project_id={self.project.pk}&agreement_coarsest_rank=GARBAGE"
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("agreement_coarsest_rank", response.json())
+
+    def test_agreement_coarsest_rank_unknown_rejected(self):
+        """UNKNOWN is a real enum member but not a meaningful threshold."""
+        response = self.client.get(
+            f"{self.agreement_url}?project_id={self.project.pk}&agreement_coarsest_rank=UNKNOWN"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_agreement_coarsest_rank_echoed_in_response(self):
+        response = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}&agreement_coarsest_rank=family")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        # Param is case-insensitive; response echoes enum name (uppercase).
+        self.assertEqual(body["agreement_coarsest_rank"], "FAMILY")
+        # No verified occurrences in this fixture → coarser fields present but zero.
+        self.assertEqual(body["agreed_coarser_rank_count"], 0)
+        self.assertEqual(body["agreed_coarser_rank_pct"], 0.0)
 
     def test_agreement_filter_passthrough(self):
         """`?deployment=` should narrow the set."""

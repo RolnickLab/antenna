@@ -163,7 +163,10 @@ def detection_image_urls_from_prefetch(occurrence: Occurrence, limit: int | None
     return [get_media_url(det.path) for det in detections]
 
 
-def model_agreement_for_project(queryset: QuerySet[Occurrence]) -> dict:
+def model_agreement_for_project(
+    queryset: QuerySet[Occurrence],
+    coarsest_rank: TaxonRank | None = None,
+) -> dict:
     """Verified / agreement stats over a pre-filtered Occurrence queryset.
 
     The queryset MUST already be filtered to the project + user-supplied
@@ -174,9 +177,16 @@ def model_agreement_for_project(queryset: QuerySet[Occurrence]) -> dict:
 
     "Verified" means the occurrence has at least one non-withdrawn
     Identification. "Model prediction" means the Classification chosen by
-    BEST_MACHINE_PREDICTION_ORDER. "Under-order" agreement means the user's
-    taxon and the model's prediction share an ancestor at rank >= ORDER
-    (inclusive of ORDER itself).
+    BEST_MACHINE_PREDICTION_ORDER. "Any-rank" agreement means the user's
+    taxon and the model's prediction share an ancestor at any real rank
+    (UNKNOWN excluded) — exact matches included. The upstream filter (e.g.
+    a Lepidoptera include list) is what bounds the meaningful scope, not
+    a hardcoded rank threshold in this function.
+
+    When ``coarsest_rank`` is supplied, additionally compute "coarser-rank"
+    agreement: the LCA must be at ``coarsest_rank`` or deeper (e.g. passing
+    FAMILY only counts LCAs at FAMILY, GENUS, or SPECIES). Exact matches
+    always count regardless of rank.
 
     Performance: the heavy work — correlated subqueries over Identification
     and Classification — is scoped to the verified set, which is typically
@@ -198,6 +208,10 @@ def model_agreement_for_project(queryset: QuerySet[Occurrence]) -> dict:
 
     from ami.main.models import BEST_IDENTIFICATION_ORDER, Identification, Taxon
 
+    # Default filters can join Identification (verified_by_me) and Taxon
+    # parents_json (taxa_list_id) which inflates row count if not deduped.
+    # Dedupe up front so total + verified counts share one canonical set.
+    queryset = queryset.distinct()
     total = queryset.count()
 
     best_user_ident = Identification.objects.filter(occurrence=OuterRef("pk"), withdrawn=False).order_by(
@@ -244,22 +258,27 @@ def model_agreement_for_project(queryset: QuerySet[Occurrence]) -> dict:
             ]
             taxa_by_id[t.pk] = (t.pk, t.rank, parents)
 
-    under_order_disagreement_count = 0
+    any_rank_disagreement_count = 0
+    coarser_rank_disagreement_count = 0
     for (u_id, m_id), count in pair_counts.items():
         u = taxa_by_id.get(u_id)
         m = taxa_by_id.get(m_id)
         if not u or not m:
             continue
         lca = lca_rank_between(u, m)
-        if lca is not None and lca >= TaxonRank.ORDER:
-            under_order_disagreement_count += count
+        if lca is None:
+            continue
+        any_rank_disagreement_count += count
+        if coarsest_rank is not None and lca >= coarsest_rank:
+            coarser_rank_disagreement_count += count
 
-    agreed_under_order = agreed_exact + under_order_disagreement_count
+    agreed_any_rank = agreed_exact + any_rank_disagreement_count
+    agreed_coarser_rank = agreed_exact + coarser_rank_disagreement_count
 
     def _pct(num: int, denom: int) -> float:
         return round(num / denom, 4) if denom else 0.0
 
-    return {
+    payload: dict = {
         "total_occurrences": total,
         "verified_count": verified,
         "verified_pct": _pct(verified, total),
@@ -267,9 +286,15 @@ def model_agreement_for_project(queryset: QuerySet[Occurrence]) -> dict:
         "no_prediction_count": no_prediction,
         "agreed_exact_count": agreed_exact,
         "agreed_exact_pct": _pct(agreed_exact, verified_with_pred),
-        "agreed_under_order_count": agreed_under_order,
-        "agreed_under_order_pct": _pct(agreed_under_order, verified_with_pred),
+        "agreed_any_rank_count": agreed_any_rank,
+        "agreed_any_rank_pct": _pct(agreed_any_rank, verified_with_pred),
+        "agreement_coarsest_rank": coarsest_rank.name if coarsest_rank is not None else None,
+        "agreed_coarser_rank_count": agreed_coarser_rank if coarsest_rank is not None else None,
+        "agreed_coarser_rank_pct": (
+            _pct(agreed_coarser_rank, verified_with_pred) if coarsest_rank is not None else None
+        ),
     }
+    return payload
 
 
 def top_identifiers_for_project(project: Project) -> QuerySet[User]:
