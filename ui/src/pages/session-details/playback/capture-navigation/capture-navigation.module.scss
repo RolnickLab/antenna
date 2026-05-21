@@ -15,7 +15,8 @@
   box-sizing: border-box;
 
   span {
-    @include label();
+    @include body-overline-small();
+    font-weight: 600;
     color: $color-generic-white;
   }
 }

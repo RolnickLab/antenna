@@ -6,14 +6,14 @@
 
   .label {
     display: block;
-    @include paragraph-medium();
+    @include body-base();
     color: $color-foreground;
     word-break: break-word;
   }
 
   .details {
     display: block;
-    @include paragraph-x-small();
+    @include body-small();
     color: $color-neutral-600;
   }
 

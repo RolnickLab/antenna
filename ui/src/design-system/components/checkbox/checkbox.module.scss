@@ -49,7 +49,7 @@
 }
 
 .label {
-  @include paragraph-x-small();
+  @include body-small();
   color: $color-muted-foreground;
   margin-left: 6px;
 

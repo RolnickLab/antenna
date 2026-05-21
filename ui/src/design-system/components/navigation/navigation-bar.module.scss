@@ -63,14 +63,15 @@
 
 .itemCount {
   display: block;
-  @include heading-6();
+  @include body-xlarge();
   color: $color-primary;
   white-space: nowrap;
 }
 
 .itemTitle {
   display: block;
-  @include label();
+  @include body-overline-small();
+  font-weight: 600;
   color: $color-muted-foreground;
   white-space: nowrap;
 }

@@ -9,7 +9,7 @@
   .wizardTrigger {
     padding: 16px 64px;
     background-color: $color-neutral-50;
-    @include paragraph-small();
+    @include body-small();
     font-weight: 600;
   }
 

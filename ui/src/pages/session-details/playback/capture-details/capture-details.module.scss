@@ -26,7 +26,7 @@
 
 .label {
   display: block;
-  @include paragraph-xx-small();
+  @include body-small();
   text-transform: uppercase;
   font-weight: 600;
   color: $color-muted-foreground;
@@ -35,7 +35,7 @@
 
 .value {
   display: block;
-  @include paragraph-small();
+  @include body-small();
   color: $color-generic-white;
 
   &.bubble {

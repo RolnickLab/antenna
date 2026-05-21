@@ -10,7 +10,7 @@
 }
 
 .version {
-  @include paragraph-x-small();
+  @include body-small();
   color: $color-foreground;
   white-space: nowrap;
 }

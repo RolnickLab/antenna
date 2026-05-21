@@ -8,7 +8,7 @@
 }
 
 .dialogTrigger {
-  @include paragraph-medium();
+  @include body-base();
   color: $color-primary;
   font-weight: 600;
 

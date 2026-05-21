@@ -10,6 +10,6 @@
   padding: 4px 8px 2px;
   border-radius: 2px;
   background-color: $color-primary-2-50;
-  @include paragraph-x-small();
+  @include body-small();
   color: $color-foreground;
 }

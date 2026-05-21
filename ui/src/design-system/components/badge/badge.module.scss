@@ -7,7 +7,8 @@
   background-color: $color-success-100;
   color: $color-success-700;
   text-align: center;
-  @include label();
+  @include body-overline-small();
+  font-weight: 600;
 
   &.deprecated {
     background-color: $color-destructive-100;

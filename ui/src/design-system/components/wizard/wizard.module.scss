@@ -18,7 +18,7 @@
 .accordionHeader {
   all: unset;
   display: block;
-  @include paragraph-medium();
+  @include body-base();
   color: $color-muted-foreground;
   font-weight: 600;
   position: relative;

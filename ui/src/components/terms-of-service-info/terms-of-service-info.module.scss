@@ -6,7 +6,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  @include paragraph-x-small();
+  @include body-small();
   padding: 8px 16px;
   border-radius: 4px;
   background-color: $color-success-100;
@@ -14,7 +14,7 @@
   margin-bottom: 16px;
 
   p {
-    @include paragraph-small();
+    @include body-small();
     margin: 0;
   }
 

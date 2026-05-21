@@ -9,7 +9,7 @@
   padding: 4px 8px 2px;
   background-color: $color-success-100;
   color: $color-success-700;
-  @include paragraph-xx-small();
+  @include body-small();
   font-weight: 600;
   text-transform: uppercase;
 }

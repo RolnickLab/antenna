@@ -10,7 +10,7 @@
 
 .description {
   display: block;
-  @include paragraph-small();
+  @include body-small();
   font-weight: 600;
   color: $color-muted-foreground;
   margin-bottom: 16px;

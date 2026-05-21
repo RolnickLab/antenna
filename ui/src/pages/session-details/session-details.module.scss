@@ -40,7 +40,7 @@
 }
 
 .text {
-  @include paragraph-medium();
+  @include body-base();
   color: $color-foreground;
 }
 

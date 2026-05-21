@@ -8,7 +8,7 @@
 
   .label {
     display: block;
-    @include paragraph-xx-small();
+    @include body-small();
     font-weight: 600;
     color: $color-generic-white;
     text-transform: uppercase;

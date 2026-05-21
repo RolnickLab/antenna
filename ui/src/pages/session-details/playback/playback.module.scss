@@ -37,13 +37,14 @@
 
   .title {
     display: block;
-    @include label();
+    @include body-overline-small();
+    font-weight: 600;
     color: $color-generic-white;
   }
 
   .label {
     display: block;
-    @include paragraph-xx-small();
+    @include body-small();
     text-transform: uppercase;
     font-weight: 600;
     color: $color-muted-foreground;

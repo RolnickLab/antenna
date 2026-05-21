@@ -45,13 +45,13 @@
 }
 
 .title {
-  @include heading-4-italic();
+  @include heading-small();
   color: $color-primary;
   margin: 0;
 }
 
 .text {
-  @include paragraph-small();
+  @include body-small();
   color: $color-foreground;
   text-align: center;
   margin: 0;
@@ -70,7 +70,7 @@
   }
 
   &.error {
-    @include paragraph-x-small();
+    @include body-small();
     padding: 8px 32px;
     border-radius: 4px;
     background-color: $color-destructive-100;
@@ -78,7 +78,7 @@
   }
 
   &.success {
-    @include paragraph-x-small();
+    @include body-small();
     padding: 8px 32px;
     border-radius: 4px;
     background-color: $color-success-100;

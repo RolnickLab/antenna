@@ -4,7 +4,7 @@
 
 .infoLabel {
   display: block;
-  @include paragraph-small();
+  @include body-small();
   font-weight: 600;
   color: $color-muted-foreground;
 }

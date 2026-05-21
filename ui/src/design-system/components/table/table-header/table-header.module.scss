@@ -28,7 +28,7 @@
   gap: 8px;
 
   span {
-    @include paragraph-medium();
+    @include body-base();
     font-weight: 600;
     color: $color-muted-foreground;
   }

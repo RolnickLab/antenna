@@ -20,14 +20,14 @@
 }
 
 .title {
-  @include paragraph-large();
+  @include body-large();
   font-weight: 600;
   color: $color-foreground;
   margin: 0;
 }
 
 .subTitle {
-  @include paragraph-small();
+  @include body-small();
   font-weight: 600;
   color: $color-muted-foreground;
   margin: 0;

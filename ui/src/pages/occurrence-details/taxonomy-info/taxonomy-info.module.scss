@@ -17,7 +17,7 @@
   padding: 24px;
 
   p {
-    @include paragraph-small();
+    @include body-small();
     color: $color-foreground;
     margin: 0;
   }

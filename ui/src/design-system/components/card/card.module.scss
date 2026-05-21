@@ -50,11 +50,11 @@
   word-break: break-word;
 
   &.medium {
-    @include paragraph-small();
+    @include body-small();
   }
 
   &.large {
-    @include paragraph-medium();
+    @include body-base();
 
     &:not(:last-child) {
       margin-bottom: 2px;
@@ -66,10 +66,10 @@
   color: $color-neutral-600;
 
   &.medium {
-    @include paragraph-xx-small();
+    @include body-small();
   }
 
   &.large {
-    @include paragraph-x-small();
+    @include body-small();
   }
 }

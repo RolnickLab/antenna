@@ -6,14 +6,14 @@
   align-items: center;
 
   > :not(:last-child) {
-    margin-right: 16px;
+    margin-right: 12px;
   }
 }
 
 .breadcrumb {
   display: block;
-  @include paragraph-x-small();
-  font-weight: 600;
+  @include body-small();
+  font-weight: 500;
   color: $color-foreground;
 
   span {

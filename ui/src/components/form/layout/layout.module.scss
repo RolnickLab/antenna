@@ -20,7 +20,7 @@
 }
 
 .sectionTitle {
-  @include paragraph-large();
+  @include body-large();
   color: $color-foreground;
   font-weight: 600;
   margin: 0;
@@ -28,7 +28,7 @@
 
 .sectionDescription {
   display: block;
-  @include paragraph-small();
+  @include body-small();
   color: $color-muted-foreground;
   font-style: italic;
   word-break: break-word;

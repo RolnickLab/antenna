@@ -24,16 +24,6 @@
   border-bottom: 2px solid $color-border;
   z-index: 2;
 
-  .title {
-    @include heading-4-italic();
-    color: $color-primary;
-
-    &:hover {
-      cursor: pointer;
-      opacity: 0.7;
-    }
-  }
-
   .taxonActions {
     display: flex;
     align-items: center;

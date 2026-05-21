@@ -51,7 +51,7 @@
     color: $color-foreground;
     padding: 8px;
     box-sizing: border-box;
-    @include paragraph-x-small();
+    @include body-small();
     line-height: 12px;
 
     span {
