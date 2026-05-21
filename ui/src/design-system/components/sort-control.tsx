@@ -6,7 +6,12 @@ import { TableSortSettings } from './table/types'
 import { BasicTooltip } from './tooltip/basic-tooltip'
 
 interface SortControlProps {
-  columns: { id: string; name: string; sortField?: string }[]
+  columns: {
+    id: string
+    name: string
+    sortField?: string
+    defaultSortOrder?: TableSortSettings['order']
+  }[]
   setSort: (sort?: TableSortSettings) => void
   sort?: TableSortSettings
 }
@@ -17,11 +22,8 @@ export const SortControl = ({ columns, setSort, sort }: SortControlProps) => {
     : undefined
 
   const changeSortField = (field: string) => {
-    if (sort) {
-      setSort({ field, order: sort.order })
-    } else {
-      setSort({ field, order: 'asc' })
-    }
+    const selected = columns.find((column) => column.sortField === field)
+    setSort({ field, order: selected?.defaultSortOrder ?? sort?.order ?? 'asc' })
   }
 
   const changeSortOrder = () => {
