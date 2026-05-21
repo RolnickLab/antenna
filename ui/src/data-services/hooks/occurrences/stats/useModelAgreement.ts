@@ -10,16 +10,25 @@ interface ModelAgreementResponse {
   no_prediction_count: number
   agreed_exact_count: number
   agreed_exact_pct: number
-  agreed_under_order_count: number
-  agreed_under_order_pct: number
+  agreed_any_rank_count: number
+  agreed_any_rank_pct: number
+  // Only populated when the caller passes ?agreement_coarsest_rank=<RANK>.
+  agreement_coarsest_rank: string | null
+  agreed_coarser_rank_count: number | null
+  agreed_coarser_rank_pct: number | null
 }
+
+type FilterPrimitive = string | number | boolean
+type FilterValue = FilterPrimitive | FilterPrimitive[] | null | undefined
 
 // Accepts an arbitrary filter map so the occurrence list page's filter state
 // can be threaded through unchanged (deployment, event, taxon, score
-// thresholds, apply_defaults, etc).
+// thresholds, apply_defaults, etc). Arrays are appended as repeated query
+// params so multi-select filters (e.g. `algorithm`, `not_algorithm`, which
+// the backend reads via `request.query_params.getlist(...)`) survive.
 export const useModelAgreement = (
   projectId?: string,
-  filters?: Record<string, string | number | boolean | undefined>
+  filters?: Record<string, FilterValue>
 ) => {
   const url = `${API_URL}/${API_ROUTES.OCCURRENCES}/stats/model-agreement/`
 
@@ -27,11 +36,19 @@ export const useModelAgreement = (
   if (projectId) params.set('project_id', projectId)
   if (filters) {
     Object.entries(filters).forEach(([key, value]) => {
-      if (value !== undefined && value !== '' && value !== null) {
-        params.set(key, String(value))
+      if (value === undefined || value === null || value === '') return
+      if (Array.isArray(value)) {
+        value.forEach((item) => {
+          if (item !== undefined && item !== null && item !== '') {
+            params.append(key, String(item))
+          }
+        })
+        return
       }
+      params.set(key, String(value))
     })
   }
+  const queryString = params.toString()
 
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<ModelAgreementResponse>({
@@ -40,9 +57,9 @@ export const useModelAgreement = (
         'stats',
         'model-agreement',
         projectId,
-        filters,
+        queryString,
       ],
-      url: `${url}?${params.toString()}`,
+      url: `${url}?${queryString}`,
     })
 
   return {
