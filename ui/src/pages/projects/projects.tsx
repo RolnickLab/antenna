@@ -27,17 +27,17 @@ const SORT_FIELDS = [
   { id: 'updated_at', name: translate(STRING.FIELD_LABEL_UPDATED_AT) },
   {
     id: 'last_capture_timestamp',
-    name: translate(STRING.SORT_RECENT_OBSERVATIONS),
+    name: translate(STRING.SORT_RECENT_CAPTURES),
     defaultSortOrder: 'desc' as const,
   },
   {
     id: 'last_occurrence_updated_at',
-    name: translate(STRING.SORT_RECENT_IDENTIFICATIONS),
+    name: translate(STRING.SORT_OCCURRENCE_UPDATES),
     defaultSortOrder: 'desc' as const,
   },
   {
     id: 'last_job_updated_at',
-    name: translate(STRING.SORT_RECENT_JOBS),
+    name: translate(STRING.SORT_JOBS_ACTIVITY),
     defaultSortOrder: 'desc' as const,
   },
 ]
