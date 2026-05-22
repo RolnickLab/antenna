@@ -3,7 +3,7 @@
 
 .wrapper {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .checkboxRoot {
@@ -27,8 +27,8 @@
 
   &[data-state='checked'],
   &[data-state='indeterminate'] {
-    background-color: $color-neutral-600;
-    border-color: $color-neutral-600;
+    background-color: $color-primary;
+    border-color: $color-primary;
   }
 
   &[data-disabled] {

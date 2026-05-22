@@ -4,7 +4,7 @@
 .wrapper {
   width: auto !important;
   min-width: 180px;
-  padding: 20px;
+  padding: 24px;
   box-sizing: border-box;
 }
 
@@ -19,5 +19,5 @@
 .settings {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }

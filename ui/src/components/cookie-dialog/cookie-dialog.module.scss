@@ -6,14 +6,14 @@
   position: fixed;
   left: 32px;
   bottom: 32px;
-  max-width: 480px;
+  max-width: 576px;
   padding: 32px;
   border-radius: 4px;
   color: $color-foreground;
   background-color: $color-generic-white;
   box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.1);
   box-sizing: border-box;
-  z-index: 2;
+  z-index: 50;
 
   h1 {
     @include body-xlarge();
