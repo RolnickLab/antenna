@@ -62,7 +62,7 @@ export const InfoBlockFieldValue = ({
           </span>
         </Link>
       ) : (
-        <span>{valueLabel}</span>
+        <span className="body-base">{valueLabel}</span>
       )}
     </>
   )
