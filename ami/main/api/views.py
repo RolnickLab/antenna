@@ -5,7 +5,7 @@ from statistics import mode
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.db import models
-from django.db.models import Max, OuterRef, Prefetch, Q, Subquery
+from django.db.models import OuterRef, Prefetch, Q, Subquery
 from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
@@ -145,6 +145,12 @@ class DefaultReadOnlyViewSet(DefaultViewSetMixin, viewsets.ReadOnlyModelViewSet)
 class ProjectPagination(LimitOffsetPaginationWithPermissions):
     default_limit = 40
 
+    def get_count(self, queryset):
+        # The recent-activity orderings annotate correlated subqueries onto the
+        # queryset. They don't change the row count, so strip them (and ordering)
+        # before counting to keep the pagination COUNT query cheap.
+        return super().get_count(queryset.order_by().values("pk"))
+
 
 class ProjectViewSet(DefaultViewSet, ProjectMixin):
     """
@@ -159,6 +165,9 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
         "name",
         "created_at",
         "updated_at",
+        # The three below are not Project fields; get_queryset annotates them on
+        # demand (see below). last_capture_timestamp mirrors the DeploymentViewSet
+        # ordering of the same name, but is a per-project rollup of capture times.
         "last_capture_timestamp",
         "last_occurrence_updated_at",
         "last_job_updated_at",
@@ -176,13 +185,22 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
                 qs = qs.filter_by_user(user)
 
         # Annotate "recent activity" fields only when sorting by them, so the
-        # default list stays cheap. Each ordering annotates a single field, so
-        # the GROUP BY a Max() introduces never fans out across relations.
+        # default list stays cheap. Each is a correlated subquery returning one
+        # row via a covering index, and only one is ever added per request.
         ordering = {field.lstrip("-") for field in self.request.query_params.get("ordering", "").split(",") if field}
         if "last_capture_timestamp" in ordering:
-            # Roll up the denormalized per-deployment timestamp rather than scanning
-            # the (very large) SourceImage table; the values match in practice.
-            qs = qs.annotate(last_capture_timestamp=Max("deployments__last_capture_timestamp"))
+            # Live max capture time per project (Index Only Scan on
+            # main_source_proj_ts_desc_idx); kept live rather than reading the
+            # denormalized Deployment field so the sort never lags ingestion.
+            # timestamp is nullable, and DESC sorts NULLs first, so exclude them
+            # explicitly — otherwise a single undated capture masks the real max.
+            qs = qs.annotate(
+                last_capture_timestamp=Subquery(
+                    SourceImage.objects.filter(project=OuterRef("pk"), timestamp__isnull=False)
+                    .order_by("-timestamp")
+                    .values("timestamp")[:1]
+                )
+            )
         if "last_occurrence_updated_at" in ordering:
             qs = qs.annotate(
                 last_occurrence_updated_at=Subquery(
