@@ -1,3 +1,4 @@
+import { CONSTANTS } from 'design-system'
 import { Entity } from './entity'
 import { Pipeline, ServerPipeline } from './pipeline'
 
@@ -99,9 +100,9 @@ export class ProcessingService extends Entity {
     }[code]
 
     const color = {
-      [ProcessingServiceStatusType.Error]: '#ef4444', // color-destructive-500,
-      [ProcessingServiceStatusType.Success]: '#09af8a', // color-success-500
-      [ProcessingServiceStatusType.Unknown]: '#9ca3af', // gray-400
+      [ProcessingServiceStatusType.Error]: CONSTANTS.COLORS.destructive[500],
+      [ProcessingServiceStatusType.Success]: CONSTANTS.COLORS.success[500],
+      [ProcessingServiceStatusType.Unknown]: CONSTANTS.COLORS.neutral[500],
     }[type]
 
     return {

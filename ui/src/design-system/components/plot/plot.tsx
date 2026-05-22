@@ -1,16 +1,17 @@
 import classNames from 'classnames'
+import { CONSTANTS } from 'design-system/constants'
 import _ from 'lodash'
 import _Plot from 'react-plotly.js'
 import styles from './plot.module.scss'
 import { PlotProps } from './types'
 
 const fontFamily = 'Mazzard, sans-serif'
-const borderColor = '#f0f0f0'
-const markerColor = '#5f8ac6'
-const textColor = '#222426'
-const titleColor = '#6f7172'
-const tooltipBgColor = '#ffffff'
-const tooltipBorderColor = '#222426'
+const borderColor = CONSTANTS.COLOR_THEME.border
+const markerColor = CONSTANTS.COLORS.secondary[500]
+const textColor = CONSTANTS.COLOR_THEME.foreground
+const titleColor = CONSTANTS.COLOR_THEME.muted.foreground
+const tooltipBgColor = CONSTANTS.COLORS.generic.white
+const tooltipBorderColor = CONSTANTS.COLOR_THEME.muted.foreground
 
 const Plot = ({
   title,

@@ -1,3 +1,4 @@
+import { CONSTANTS } from 'design-system'
 import { UserPermission } from 'utils/user/types'
 import { Entity } from './entity'
 import { Pipeline } from './pipeline'
@@ -190,10 +191,10 @@ export class Job extends Entity {
     }[code]
 
     const color = {
-      [JobStatusType.Error]: '#ef4444', // color-destructive-500,
-      [JobStatusType.Neutral]: '#78777f', // color-neutral-300
-      [JobStatusType.Success]: '#09af8a', // color-success-500
-      [JobStatusType.Warning]: '#f59e0b', // color-warning-500
+      [JobStatusType.Error]: CONSTANTS.COLORS.destructive[500],
+      [JobStatusType.Neutral]: CONSTANTS.COLORS.neutral[500],
+      [JobStatusType.Success]: CONSTANTS.COLORS.success[500],
+      [JobStatusType.Warning]: CONSTANTS.COLORS.warning[500],
     }[type]
 
     return {

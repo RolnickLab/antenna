@@ -1,3 +1,4 @@
+import { CONSTANTS } from 'design-system'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { Algorithm, ServerAlgorithm } from './algorithm'
 import { Entity } from './entity'
@@ -140,8 +141,8 @@ export class Pipeline extends Entity {
     }[code]
 
     const color = {
-      [PipelineEnabledType.Disabled]: '#ef4444', // color-destructive-500,
-      [PipelineEnabledType.Enabled]: '#09af8a', // color-success-500
+      [PipelineEnabledType.Disabled]: CONSTANTS.COLORS.destructive[500],
+      [PipelineEnabledType.Enabled]: CONSTANTS.COLORS.success[500],
     }[type]
 
     return {
