@@ -1,5 +1,5 @@
 import { ComboBoxSimple } from 'design-system/components/combo-box/combo-box-simple/combo-box-simple'
-import { MarkerPosition } from 'design-system/map/types'
+import { MarkerPosition } from 'design-system/components/map/types'
 import { useMemo, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { useDebounce } from 'utils/useDebounce'

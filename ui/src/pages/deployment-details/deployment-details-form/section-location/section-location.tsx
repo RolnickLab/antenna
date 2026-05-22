@@ -6,7 +6,7 @@ import {
 } from 'components/form/layout/layout'
 import { DeploymentFieldValues } from 'data-services/models/deployment-details'
 import { Button } from 'design-system'
-import { MarkerPosition } from 'design-system/map/types'
+import { MarkerPosition } from 'design-system/components/map/types'
 import _ from 'lodash'
 import { useContext, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
