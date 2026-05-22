@@ -5033,21 +5033,22 @@ class TestOccurrenceStatsViewSet(APITestCase):
     def test_agreement_any_rank_bucket(self):
         """Disagreement at species but same genus → counted as any-rank agreement, not exact.
 
-        Pick the machine prediction's sister species (same parent genus) for the
-        identification. LCA between the two species is GENUS, so the occurrence
-        falls into the any-rank bucket without contributing to agreed_exact_count.
+        Pin the machine prediction and the human ID to two distinct species under
+        the same genus (Vanessa). LCA between the two species is GENUS, so the
+        occurrence falls into the any-rank bucket without contributing to
+        agreed_exact_count. Both taxa are fixed rather than the random fixture
+        pick (`create_detections` assigns a random taxon), so the test is
+        deterministic — a random non-species pick has no sister species and used
+        to flake ~50% of runs.
         """
         occurrence = Occurrence.objects.filter(project=self.project).order_by("pk").first()
-        machine_taxon = occurrence.detections.first().classifications.first().taxon
-        # Sister species: same parent (genus Vanessa), different SPECIES.
-        sister = (
-            Taxon.objects.filter(parent=machine_taxon.parent, rank=TaxonRank.SPECIES.name)
-            .exclude(pk=machine_taxon.pk)
-            .first()
-        )
-        self.assertIsNotNone(sister, "Test fixture must have a sister species under the same genus")
+        species = list(Taxon.objects.filter(parent__name="Vanessa", rank=TaxonRank.SPECIES.name).order_by("name"))
+        self.assertGreaterEqual(len(species), 2, "Fixture must define ≥2 Vanessa species")
+        machine_species, human_species = species[0], species[1]
+        # Pin the machine prediction deterministically, overriding the random fixture taxon.
+        Classification.objects.filter(detection__occurrence=occurrence).update(taxon=machine_species)
         Taxon.objects.update_all_parents()
-        Identification.objects.create(user=self.alice, occurrence=occurrence, taxon=sister)
+        Identification.objects.create(user=self.alice, occurrence=occurrence, taxon=human_species)
 
         response = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}")
         self.assertEqual(response.status_code, 200)
