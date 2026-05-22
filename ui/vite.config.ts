@@ -24,9 +24,20 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
 
   return {
+    assetsInclude: ['**/*.md'],
     base: '/',
     build: {
       outDir: './build',
+    },
+    css: {
+      preprocessorOptions: {
+        scss: {
+          additionalData: `@use 'src/design-system/mixins.scss' as *;`,
+        },
+      },
+    },
+    define: {
+      __COMMIT_HASH__: JSON.stringify(commitHash),
     },
     plugins: [
       cssVarsPlugin(),
@@ -35,10 +46,6 @@ export default defineConfig(({ mode }) => {
       svgr({ include: '**/*.svg?react' }),
       eslint({ exclude: ['/virtual:/**', 'node_modules/**'] }),
     ],
-    assetsInclude: ['**/*.md'],
-    define: {
-      __COMMIT_HASH__: JSON.stringify(commitHash),
-    },
     server: {
       open: true,
       port: 3000,

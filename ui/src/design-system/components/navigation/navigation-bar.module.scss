@@ -1,7 +1,3 @@
-@import 'src/design-system/variables/variables.scss';
-
-@import 'src/design-system/variables/typography.scss';
-
 .wrapper {
   width: 100%;
   overflow: hidden;
@@ -64,6 +60,7 @@
 .itemCount {
   display: block;
   @include body-xlarge();
+  font-weight: 600;
   color: var(--color-primary);
   white-space: nowrap;
 }
