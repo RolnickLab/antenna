@@ -3811,6 +3811,18 @@ class Taxon(BaseModel):
         # This is handled by an annotation if we are filtering by project, deployment or event
         return None
 
+    def verified_count(self) -> int | None:
+        # Handled by an annotation when filtering by project (TaxonViewSet.add_verification_data)
+        return None
+
+    def agreed_with_prediction_count(self) -> int | None:
+        # Handled by an annotation when filtering by project (TaxonViewSet.add_verification_data)
+        return None
+
+    def agreed_exact_count(self) -> int | None:
+        # Handled by an annotation only when with_agreement is requested or on the detail view
+        return None
+
     def occurrence_images(self, limit: int | None = 10) -> list[str]:
         # This is handled by an annotation if we are filtering by project, deployment or event
         return []

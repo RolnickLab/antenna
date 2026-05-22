@@ -37,6 +37,8 @@ from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
 from ..models import (
+    BEST_IDENTIFICATION_ORDER,
+    BEST_MACHINE_PREDICTION_ORDER,
     NULL_DETECTIONS_FILTER,
     Classification,
     Deployment,
@@ -1400,6 +1402,19 @@ class TagInverseFilter(filters.BaseFilterBackend):
         return queryset.distinct()
 
 
+class JSONBContains(models.Func):
+    """Postgres ``@>`` containment rendered as a boolean expression.
+
+    Needed for correlated subqueries where the right-hand side is built from an
+    ``OuterRef`` — the literal ``parents_json__contains=[{"id": ...}]`` lookup
+    can't embed an ``OuterRef`` (it would try to JSON-serialize the expression).
+    """
+
+    arg_joiner = " @> "
+    template = "(%(expressions)s)"
+    output_field = models.BooleanField()
+
+
 class TaxonViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows taxa to be viewed or edited.
@@ -1428,6 +1443,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         "created_at",
         "updated_at",
         "occurrences_count",
+        "verified_count",
         "last_detected",
         "best_determination_score",
         "name",
@@ -1653,6 +1669,113 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         if not include_unobserved:
             # Efficient EXISTS check that uses the composite index
             qs = qs.filter(models.Exists(Occurrence.objects.filter(base_filter)))
+
+        qs = self.add_verification_data(qs, occurrence_filters, default_filters_q)
+
+        return qs
+
+    def _occurrences_under_taxon(self, occurrence_filters: models.Q, default_filters_q: models.Q) -> QuerySet:
+        """
+        Correlated Occurrence queryset matching occurrences whose determination is the
+        outer Taxon (``OuterRef("id")``) or any of its descendants, project-scoped and
+        default-filtered.
+
+        Mirrors the hierarchical match used by the occurrence-list ``taxon=<id>`` filter
+        (``CustomOccurrenceDeterminationFilter``), but the descendant test is built with
+        an ``OuterRef`` right-hand side so a Family/Order row aggregates all its
+        descendant species' occurrences.
+        """
+        descendant_match = JSONBContains(
+            models.F("determination__parents_json"),
+            models.Func(
+                models.Func(
+                    models.Value("id"),
+                    models.OuterRef("id"),
+                    function="jsonb_build_object",
+                ),
+                function="jsonb_build_array",
+                output_field=models.JSONField(),
+            ),
+        )
+        return (
+            Occurrence.objects.filter(occurrence_filters)
+            .filter(default_filters_q)
+            .alias(_under_taxon=descendant_match)
+            .filter(models.Q(determination_id=models.OuterRef("id")) | models.Q(_under_taxon=True))
+        )
+
+    def _include_agreement(self) -> bool:
+        """Whether the heavier ``agreed_exact_count`` annotation should be computed."""
+        if self.action == "retrieve":
+            return True
+        return bool(BooleanField(required=False).clean(self.request.query_params.get("with_agreement")))
+
+    def add_verification_data(
+        self, qs: QuerySet, occurrence_filters: models.Q, default_filters_q: models.Q
+    ) -> QuerySet:
+        """
+        Annotate per-taxon verification and human/model agreement counts, and apply the
+        ``verified=true|false`` filter on list responses.
+
+        All counts roll up descendant occurrences via ``_occurrences_under_taxon`` and
+        respect the project's default filters (same ``apply_defaults`` handling as
+        ``occurrences_count``).
+        """
+        under_taxon = self._occurrences_under_taxon(occurrence_filters, default_filters_q)
+
+        has_identification = models.Exists(
+            Identification.objects.filter(occurrence=models.OuterRef("pk"), withdrawn=False)
+        )
+        verified_occurrences = under_taxon.filter(has_identification)
+
+        def correlated_count(occurrence_qs: QuerySet) -> Coalesce:
+            # Group by project_id (constant within the subquery) to collapse the
+            # hierarchical match — determination_id varies across descendants so it
+            # can't be the grouping key.
+            return Coalesce(
+                models.Subquery(
+                    occurrence_qs.values("project_id").annotate(c=models.Count("id")).values("c")[:1],
+                    output_field=models.IntegerField(),
+                ),
+                0,
+            )
+
+        # The chosen (best, non-withdrawn) identification's agreed_with_prediction FK is set.
+        best_identification_agreed_prediction = models.Subquery(
+            Identification.objects.filter(occurrence=models.OuterRef("pk"), withdrawn=False)
+            .order_by(*BEST_IDENTIFICATION_ORDER)
+            .values("agreed_with_prediction_id")[:1]
+        )
+        agreed_with_prediction_occurrences = under_taxon.annotate(
+            _best_agreed_prediction=best_identification_agreed_prediction
+        ).filter(_best_agreed_prediction__isnull=False)
+
+        qs = qs.annotate(
+            verified_count=correlated_count(verified_occurrences),
+            agreed_with_prediction_count=correlated_count(agreed_with_prediction_occurrences),
+        )
+
+        if self._include_agreement():
+            # Verified occurrence where the user determination equals the top machine
+            # prediction's taxon for the same occurrence.
+            best_machine_taxon = models.Subquery(
+                Classification.objects.filter(detection__occurrence=models.OuterRef("pk"))
+                .order_by(*BEST_MACHINE_PREDICTION_ORDER)
+                .values("taxon_id")[:1]
+            )
+            agreed_exact_occurrences = verified_occurrences.annotate(_best_machine_taxon=best_machine_taxon).filter(
+                determination_id=models.F("_best_machine_taxon")
+            )
+            qs = qs.annotate(agreed_exact_count=correlated_count(agreed_exact_occurrences))
+
+        # verified=true|false filter (list only); the complement uses the same set, so
+        # verified=false is the strict complement of verified=true on the filtered taxa.
+        if self.action == "list" and "verified" in self.request.query_params:
+            verified = BooleanField(required=False).clean(self.request.query_params.get("verified"))
+            if verified:
+                qs = qs.filter(models.Exists(verified_occurrences))
+            else:
+                qs = qs.filter(~models.Exists(verified_occurrences))
 
         return qs
 

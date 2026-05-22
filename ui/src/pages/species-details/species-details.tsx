@@ -157,6 +157,25 @@ export const SpeciesDetails = ({
                     })}
                   />
                 </InfoBlockField>
+                <InfoBlockField label="Verification">
+                  <InfoBlockFieldValue
+                    value={`Verified: ${species.numVerified}`}
+                    to={getAppRoute({
+                      to: APP_ROUTES.OCCURRENCES({
+                        projectId: projectId as string,
+                      }),
+                      filters: { taxon: species.id, verified: 'true' },
+                    })}
+                  />
+                  <InfoBlockFieldValue
+                    value={`Agreed with prediction: ${species.numAgreedWithPrediction}`}
+                  />
+                  {species.numAgreedExact !== undefined ? (
+                    <InfoBlockFieldValue
+                      value={`Matched model exactly: ${species.numAgreedExact}`}
+                    />
+                  ) : null}
+                </InfoBlockField>
                 <InfoBlockField
                   label={translate(STRING.FIELD_LABEL_BEST_SCORE)}
                 >

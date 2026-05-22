@@ -39,6 +39,7 @@ export const Species = () => {
     rank: false,
     'last-seen': true,
     occurrences: true,
+    verified: true,
     'best-determination-score': true,
     'created-at': false,
     'updated-at': false,
@@ -82,6 +83,7 @@ export const Species = () => {
             </>
           )}
           <FilterControl field="include_unobserved" />
+          <FilterControl field="verified" />
           {project?.featureFlags.tags ? (
             <>
               <FilterControl data={tags} field="tag_id" />

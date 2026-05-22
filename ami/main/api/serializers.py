@@ -588,12 +588,26 @@ class TagSerializer(DefaultSerializer):
         return [{"id": taxon.id, "name": taxon.name} for taxon in obj.taxa.all()]
 
 
+def agreement_requested(request: Request | None) -> bool:
+    """Whether ``with_agreement=true`` is set, gating the heavier agreed_exact_count."""
+    if request is None:
+        return False
+    value = request.query_params.get("with_agreement", "")
+    return str(value).lower() in ("true", "1", "yes", "on")
+
+
 class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent")
     tags = serializers.SerializerMethodField()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # agreed_exact_count is a gated annotation: omit it unless with_agreement=true.
+        if not agreement_requested(self.context.get("request")):
+            self.fields.pop("agreed_exact_count", None)
 
     def get_tags(self, obj):
         tag_list = getattr(obj, "prefetched_tags", [])
@@ -609,6 +623,9 @@ class TaxonListSerializer(DefaultSerializer):
             "parents",
             "details",
             "occurrences_count",
+            "verified_count",
+            "agreed_with_prediction_count",
+            "agreed_exact_count",
             "occurrences",
             "tags",
             "last_detected",
@@ -886,6 +903,9 @@ class TaxonSerializer(DefaultSerializer):
             "parents",
             "details",
             "occurrences_count",
+            "verified_count",
+            "agreed_with_prediction_count",
+            "agreed_exact_count",
             "events_count",
             "occurrences",
             "gbif_taxon_key",
