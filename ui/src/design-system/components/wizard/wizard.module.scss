@@ -1,9 +1,8 @@
-@import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 @import 'src/design-system/variables/variables.scss';
 
 .accordionRoot {
-  border: 2px solid $color-neutral-100;
+  border: 2px solid var(--color-neutral-100);
   border-radius: 4px;
 }
 
@@ -11,7 +10,7 @@
   position: relative;
 
   &:not(:last-child) {
-    border-bottom: 2px solid $color-neutral-100;
+    border-bottom: 2px solid var(--color-neutral-100);
   }
 }
 
@@ -19,12 +18,12 @@
   all: unset;
   display: block;
   @include body-base();
-  color: $color-muted-foreground;
+  color: var(--color-muted-foreground);
   font-weight: 600;
   position: relative;
 
   &[data-state='open'] {
-    color: $color-foreground;
+    color: var(--color-foreground);
 
     .toggle {
       transform: rotate(-180deg);
@@ -67,7 +66,7 @@
   }
 
   &:focus-visible {
-    box-shadow: 0 0 0 2px $color-generic-black;
+    box-shadow: 0 0 0 2px var(--color-generic-black);
   }
 }
 

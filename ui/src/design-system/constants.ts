@@ -84,6 +84,9 @@ const COLORS = {
     800: '#AD0505',
     900: '#830101',
   },
+  green: {
+    100: '#D8F2EC',
+  },
 }
 
 const GRADIENTS = {

@@ -1,4 +1,3 @@
-@import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
 .tableCell {
@@ -7,19 +6,19 @@
   .label {
     display: block;
     @include body-base();
-    color: $color-foreground;
+    color: var(--color-foreground);
     word-break: break-word;
   }
 
   .details {
     display: block;
     @include body-small();
-    color: $color-neutral-600;
+    color: var(--color-neutral-600);
   }
 
   &.primary {
     .label {
-      color: $color-primary;
+      color: var(--color-primary);
       font-weight: 600;
     }
   }

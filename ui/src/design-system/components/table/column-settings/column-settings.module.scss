@@ -1,4 +1,3 @@
-@import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
 .wrapper {
@@ -12,7 +11,7 @@
   display: block;
   @include body-small();
   font-weight: 600;
-  color: $color-muted-foreground;
+  color: var(--color-muted-foreground);
   margin-bottom: 16px;
 }
 

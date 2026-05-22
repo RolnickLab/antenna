@@ -1,5 +1,5 @@
 @import 'src/design-system/variables/variables.scss';
-@import 'src/design-system/variables/colors.scss';
+
 @import 'src/design-system/variables/typography.scss';
 
 .wrapper {
@@ -11,7 +11,7 @@
   display: flex;
   align-items: flex-end;
   justify-content: flex-start;
-  border-bottom: 2px solid $color-border;
+  border-bottom: 2px solid var(--color-border);
   position: relative;
   padding: 2px 2px 0;
 
@@ -36,16 +36,16 @@
 
   &.active {
     opacity: 1;
-    background-color: $color-green-100;
+    background-color: var(--color-green-100);
 
     .itemCount,
     .itemTitle {
-      color: $color-success-700;
+      color: var(--color-success-700);
     }
   }
 
   &:focus-visible {
-    box-shadow: 0 0 0 2px $color-generic-black;
+    box-shadow: 0 0 0 2px var(--color-generic-black);
   }
 }
 
@@ -64,7 +64,7 @@
 .itemCount {
   display: block;
   @include body-xlarge();
-  color: $color-primary;
+  color: var(--color-primary);
   white-space: nowrap;
 }
 
@@ -72,7 +72,7 @@
   display: block;
   @include body-overline-small();
   font-weight: 600;
-  color: $color-muted-foreground;
+  color: var(--color-muted-foreground);
   white-space: nowrap;
 }
 
@@ -81,7 +81,7 @@
   bottom: 0px;
   height: 2px;
   transform: translateY(100%);
-  background-color: $color-success-700;
+  background-color: var(--color-success-700);
   transition: left 400ms ease, width 200ms ease;
 }
 
@@ -90,10 +90,10 @@
   align-items: center;
   justify-content: center;
   transition: transform 400ms ease;
-  color: $color-primary;
+  color: var(--color-primary);
 
   &.active {
-    color: $color-success-700;
+    color: var(--color-success-700);
   }
 }
 

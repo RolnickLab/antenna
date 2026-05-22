@@ -1,8 +1,6 @@
-@import 'src/design-system/variables/colors.scss';
-
 .statusMarker {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background-color: $color-border;
+  background-color: var(--color-border);
 }

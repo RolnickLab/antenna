@@ -1,12 +1,11 @@
-@import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
 .root {
   display: flex;
   gap: 2px;
   height: 32px;
-  border: 1px solid $color-border;
-  background-color: $color-generic-white;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-generic-white);
   box-sizing: border-box;
   border-radius: 16px;
 }
@@ -18,11 +17,11 @@
   width: 48px;
   height: 100%;
   outline: none;
-  color: $color-primary;
+  color: var(--color-primary);
   border-radius: 16px;
 
   &.active {
-    background-color: $color-primary;
+    background-color: var(--color-primary);
   }
 
   &:hover {
@@ -31,6 +30,6 @@
   }
 
   &:focus-visible {
-    box-shadow: 0 0 0 2px $color-generic-black;
+    box-shadow: 0 0 0 2px var(--color-generic-black);
   }
 }

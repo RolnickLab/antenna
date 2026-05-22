@@ -1,4 +1,3 @@
-@import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
 $accessory-wrapper-size: 38px;
@@ -10,7 +9,7 @@ $accessory-wrapper-size: 38px;
 
 .content {
   border-radius: 4px;
-  background-color: $color-generic-white;
+  background-color: var(--color-generic-white);
   box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.1);
   box-sizing: border-box;
   padding: 8px;
@@ -30,19 +29,19 @@ $accessory-wrapper-size: 38px;
   border-radius: 4px;
   padding: 8px 12px;
   @include body-small();
-  color: $color-foreground;
-  border: 1px solid $color-border;
+  color: var(--color-foreground);
+  border: 1px solid var(--color-border);
   box-sizing: border-box;
   padding-right: $accessory-wrapper-size;
 
   &::placeholder {
-    color: $color-muted-foreground;
+    color: var(--color-muted-foreground);
     opacity: 1; /* For Firefox */
   }
 
   &:focus {
-    border-color: $color-success-600;
-    box-shadow: 0 0 0 4px $color-green-100;
+    border-color: var(--color-success);
+    box-shadow: 0 0 0 4px var(--color-green-100);
   }
 }
 
@@ -65,7 +64,7 @@ $accessory-wrapper-size: 38px;
   padding: 8px 12px;
   border-radius: 4px;
   @include body-small();
-  color: $color-foreground;
+  color: var(--color-foreground);
   box-sizing: border-box;
 
   &:not(.empty) {
@@ -78,15 +77,15 @@ $accessory-wrapper-size: 38px;
     }
 
     &:focus-visible {
-      box-shadow: 0 0 0 2px $color-generic-black;
+      box-shadow: 0 0 0 2px var(--color-generic-black);
     }
 
     &[aria-selected='true'] {
-      background-color: $color-primary-2-50;
+      background-color: var(--color-secondary-50);
     }
 
     &.selected {
-      background-color: $color-primary-2-100;
+      background-color: var(--color-secondary-100);
     }
   }
 
@@ -105,11 +104,11 @@ $accessory-wrapper-size: 38px;
 
   .details {
     @include body-small();
-    color: $color-muted-foreground;
+    color: var(--color-muted-foreground);
     padding: 0 8px 0 32px;
   }
 }
 
 .arrow {
-  fill: $color-generic-white;
+  fill: var(--color-generic-white);
 }

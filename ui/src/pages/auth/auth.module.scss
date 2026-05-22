@@ -1,5 +1,4 @@
 @import 'src/design-system/variables/variables.scss';
-@import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
 .wrapper {
@@ -46,19 +45,19 @@
 
 .title {
   @include heading-small();
-  color: $color-primary;
+  color: var(--color-primary);
   margin: 0;
 }
 
 .text {
   @include body-small();
-  color: $color-foreground;
+  color: var(--color-foreground);
   text-align: center;
   margin: 0;
 
   a {
-    color: $color-primary;
-    border-bottom: 1px dashed $color-primary;
+    color: var(--color-primary);
+    border-bottom: 1px dashed var(--color-primary);
   }
 
   strong {
@@ -66,23 +65,23 @@
   }
 
   &.divider {
-    color: $color-muted-foreground;
+    color: var(--color-muted-foreground);
   }
 
   &.error {
     @include body-small();
     padding: 8px 32px;
     border-radius: 4px;
-    background-color: $color-destructive-100;
-    color: $color-destructive-600;
+    background-color: var(--color-destructive-100);
+    color: var(--color-destructive);
   }
 
   &.success {
     @include body-small();
     padding: 8px 32px;
     border-radius: 4px;
-    background-color: $color-green-100;
-    color: $color-success-700;
+    background-color: var(--color-green-100);
+    color: var(--color-success-700);
   }
 }
 

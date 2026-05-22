@@ -1,5 +1,4 @@
 @import 'src/design-system/variables/variables.scss';
-@import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
 .wrapper {
@@ -20,8 +19,8 @@
   align-items: flex-start;
   gap: 16px;
   padding: 24px;
-  background-color: $color-neutral-50;
-  border-bottom: 2px solid $color-border;
+  background-color: var(--color-neutral-50);
+  border-bottom: 2px solid var(--color-border);
   z-index: 2;
 
   .taxonActions {

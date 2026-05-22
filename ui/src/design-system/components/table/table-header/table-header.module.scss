@@ -1,4 +1,3 @@
-@import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 @import 'src/design-system/variables/variables.scss';
 
@@ -6,8 +5,8 @@
   white-space: nowrap;
   vertical-align: middle;
   padding: 2px;
-  border-bottom: 2px solid $color-border;
-  background-color: $color-neutral-50;
+  border-bottom: 2px solid var(--color-border);
+  background-color: var(--color-neutral-50);
   text-align: left;
 
   &.sticky {
@@ -30,7 +29,7 @@
   span {
     @include body-base();
     font-weight: 600;
-    color: $color-muted-foreground;
+    color: var(--color-muted-foreground);
   }
 }
 
@@ -50,7 +49,7 @@
   }
 
   &:focus-visible {
-    box-shadow: 0 0 0 2px $color-generic-black;
+    box-shadow: 0 0 0 2px var(--color-generic-black);
   }
 }
 

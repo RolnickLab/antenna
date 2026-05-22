@@ -1,5 +1,4 @@
 @import 'src/design-system/variables/variables.scss';
-@import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
 .buttonWrapper {
@@ -25,7 +24,7 @@
 .image {
   width: fit-content;
   border-radius: 4px;
-  border: 1px solid $color-border;
+  border: 1px solid var(--color-border);
   overflow: hidden;
 
   img {

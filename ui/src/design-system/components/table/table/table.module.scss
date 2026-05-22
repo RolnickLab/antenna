@@ -1,4 +1,3 @@
-@import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
 .wrapper {
@@ -9,15 +8,15 @@
     .overflowFader {
       background-image: linear-gradient(
         to right,
-        rgba($color: $color-generic-white, $alpha: 0),
-        rgba($color: $color-generic-white, $alpha: 1)
+        rgba($color: #ffffff, $alpha: 0),
+        rgba($color: #ffffff, $alpha: 1)
       );
     }
 
     .tableContainer {
       tbody {
         tr:nth-child(odd) {
-          background-color: $color-neutral-50;
+          background-color: var(--color-neutral-50);
         }
       }
     }
@@ -40,8 +39,8 @@
   height: 100%;
   background-image: linear-gradient(
     to right,
-    rgba($color: $color-neutral-50, $alpha: 0),
-    rgba($color: $color-neutral-50, $alpha: 1)
+    rgba($color: #f9f9fa, $alpha: 0),
+    rgba($color: #f9f9fa, $alpha: 1)
   );
   opacity: 0;
   pointer-events: none;
@@ -69,12 +68,12 @@
     position: relative;
 
     tr {
-      background-color: $color-generic-white;
+      background-color: var(--color-generic-white);
     }
 
     tr:not(:last-child) {
       td {
-        border-bottom: 1px solid $color-border;
+        border-bottom: 1px solid var(--color-border);
       }
     }
   }
@@ -94,7 +93,7 @@
     tbody {
       tr:hover,
       tr:focus-within {
-        background-color: $color-neutral-50;
+        background-color: var(--color-neutral-50);
 
         td {
           &.sticky {

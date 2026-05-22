@@ -1,10 +1,9 @@
-@import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
 .container {
   display: flex;
   flex-direction: column;
-  border: 1px solid $color-border;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   overflow: hidden;
   height: 100%;
@@ -12,8 +11,8 @@
 
 .square {
   position: relative;
-  background-color: $color-generic-white;
-  border-bottom: 1px solid $color-border;
+  background-color: var(--color-generic-white);
+  border-bottom: 1px solid var(--color-border);
   overflow: hidden;
 }
 
@@ -40,12 +39,12 @@
   flex-direction: column;
   flex: 1;
   padding: 16px;
-  background-color: $color-generic-white;
+  background-color: var(--color-generic-white);
   position: relative;
 }
 
 .title {
-  color: $color-foreground;
+  color: var(--color-foreground);
   word-break: break-word;
 
   &.medium {
@@ -62,7 +61,7 @@
 }
 
 .subTitle {
-  color: $color-neutral-600;
+  color: var(--color-neutral-600);
 
   &.medium {
     @include body-small();

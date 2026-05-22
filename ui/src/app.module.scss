@@ -1,9 +1,8 @@
 @import 'src/design-system/variables/variables.scss';
-@import 'src/design-system/variables/colors.scss';
 
 .wrapper {
   position: relative;
-  background-color: $color-neutral-50;
+  background-color: var(--color-neutral-50);
   width: 100%;
   height: 100vh;
   height: 100dvh;

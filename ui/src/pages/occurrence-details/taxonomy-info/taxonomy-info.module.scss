@@ -1,5 +1,4 @@
 @import 'src/design-system/variables/variables.scss';
-@import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
 .container {
@@ -18,7 +17,7 @@
 
   p {
     @include body-small();
-    color: $color-foreground;
+    color: var(--color-foreground);
     margin: 0;
   }
 }

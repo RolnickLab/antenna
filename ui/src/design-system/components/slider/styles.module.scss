@@ -1,4 +1,3 @@
-@import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
 .timestampSlider {
@@ -10,7 +9,7 @@
     display: block;
     @include body-small();
     font-weight: 600;
-    color: $color-generic-white;
+    color: var(--color-generic-white);
     text-transform: uppercase;
     white-space: nowrap;
   }
@@ -20,7 +19,7 @@
     justify-content: space-between;
 
     .label {
-      color: $color-neutral-500;
+      color: var(--color-neutral-500);
     }
   }
 
@@ -39,7 +38,7 @@
 
   .sliderTrack {
     position: relative;
-    background-color: $color-neutral-400;
+    background-color: var(--color-neutral-400);
     flex-grow: 1;
     border-radius: 2px;
     height: 4px;
@@ -47,7 +46,7 @@
 
   .sliderRange {
     position: absolute;
-    background-color: $color-neutral-400;
+    background-color: var(--color-neutral-400);
     border-radius: 2px;
     height: 100%;
   }

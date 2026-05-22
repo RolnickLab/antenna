@@ -1,4 +1,3 @@
-@import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 
 .status {
@@ -8,17 +7,17 @@
   width: 24px;
   height: 24px;
   border-radius: 12px;
-  background-color: $color-primary-2-600;
+  background-color: var(--color-secondary);
   padding-top: 2px;
   @include body-small();
   font-weight: 600;
-  color: $color-generic-white;
+  color: var(--color-generic-white);
 
   &.success {
-    background-color: $color-success-500;
+    background-color: var(--color-success);
   }
 
   &.neutral {
-    background-color: $color-muted-foreground;
+    background-color: var(--color-muted-foreground);
   }
 }

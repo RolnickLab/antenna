@@ -1,12 +1,11 @@
 @import 'src/design-system/variables/variables.scss';
-@import 'src/design-system/variables/colors.scss';
 
 .menu {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   justify-content: space-between;
-  background-color: $color-neutral-50;
+  background-color: var(--color-neutral-50);
   box-sizing: border-box;
   z-index: 2;
 }

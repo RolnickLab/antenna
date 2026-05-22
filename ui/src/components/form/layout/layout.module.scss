@@ -1,4 +1,3 @@
-@import 'src/design-system/variables/colors.scss';
 @import 'src/design-system/variables/typography.scss';
 @import 'src/design-system/variables/variables.scss';
 
@@ -8,7 +7,7 @@
 
   &:not(:last-child) {
     padding-bottom: 32px;
-    border-bottom: 1px solid $color-border;
+    border-bottom: 1px solid var(--color-border);
   }
 }
 
@@ -21,7 +20,7 @@
 
 .sectionTitle {
   @include body-large();
-  color: $color-foreground;
+  color: var(--color-foreground);
   font-weight: 600;
   margin: 0;
 }
@@ -29,7 +28,7 @@
 .sectionDescription {
   display: block;
   @include body-small();
-  color: $color-muted-foreground;
+  color: var(--color-muted-foreground);
   font-style: italic;
   word-break: break-word;
   margin: 0;

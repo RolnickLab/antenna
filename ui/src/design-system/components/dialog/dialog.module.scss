@@ -1,5 +1,5 @@
 @import 'src/design-system/variables/variables.scss';
-@import 'src/design-system/variables/colors.scss';
+
 @import 'src/design-system/variables/typography.scss';
 
 $dialog-padding-large: 64px;
@@ -52,7 +52,7 @@ $dialog-padding-medium: 32px;
   height: inherit;
   max-width: 100%;
   border-radius: 4px;
-  background-color: $color-generic-white;
+  background-color: var(--color-generic-white);
   box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.1);
   overflow-y: auto;
   overflow-x: auto;
@@ -69,8 +69,8 @@ $dialog-padding-medium: 32px;
   height: $dialog-header-height;
   padding: 0 32px;
   box-sizing: border-box;
-  background-color: $color-neutral-50;
-  border-bottom: 1px solid $color-border;
+  background-color: var(--color-neutral-50);
+  border-bottom: 1px solid var(--color-border);
   z-index: 1;
 }
 
@@ -78,7 +78,7 @@ $dialog-padding-medium: 32px;
   all: unset;
   display: block;
   @include body-xlarge();
-  color: $color-foreground;
+  color: var(--color-foreground);
   padding-top: 2px;
 }
 
@@ -101,7 +101,7 @@ $dialog-padding-medium: 32px;
   }
 
   &:focus-visible {
-    box-shadow: 0 0 0 2px $color-generic-black;
+    box-shadow: 0 0 0 2px var(--color-generic-black);
   }
 }
 

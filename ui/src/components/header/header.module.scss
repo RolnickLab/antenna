@@ -1,5 +1,4 @@
 @import 'src/design-system/variables/variables.scss';
-@import 'src/design-system/variables/colors.scss';
 
 .header {
   position: sticky;
@@ -11,8 +10,8 @@
   justify-content: flex-start;
   gap: 32px;
   padding: 0 100px;
-  background-color: $color-generic-white;
-  border-bottom: 1px solid $color-border;
+  background-color: var(--color-generic-white);
+  border-bottom: 1px solid var(--color-border);
   box-sizing: border-box;
   z-index: 2;
   overflow-x: auto;
@@ -21,11 +20,6 @@
 .logoContainer {
   padding: 2px;
   border-radius: 50%;
-
-  &:hover {
-    opacity: 1;
-    background: $color-primary-1-100;
-  }
 }
 
 .logo {
