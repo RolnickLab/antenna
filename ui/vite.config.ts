@@ -4,6 +4,7 @@ import { defineConfig, loadEnv } from 'vite'
 import eslint from 'vite-plugin-eslint'
 import svgr from 'vite-plugin-svgr'
 import viteTsconfigPaths from 'vite-tsconfig-paths'
+import { cssVarsPlugin } from './src/design-system/plugins/cssVarsPlugin'
 
 let temporaryCommitHash: string
 try {
@@ -28,6 +29,7 @@ export default defineConfig(({ mode }) => {
       outDir: './build',
     },
     plugins: [
+      cssVarsPlugin(),
       react(),
       viteTsconfigPaths(),
       svgr({ include: '**/*.svg?react' }),
