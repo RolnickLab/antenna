@@ -10,7 +10,7 @@
 }
 
 .sidebar {
-  background-color: $color-foreground;
+  background-color: $color-neutral-800;
   border-bottom: 1px solid $color-neutral-600;
   position: relative;
 }
@@ -37,17 +37,16 @@
 
   .title {
     display: block;
-    @include body-overline-small();
+    @include body-large();
     font-weight: 600;
     color: $color-generic-white;
   }
 
   .label {
     display: block;
-    @include body-small();
-    text-transform: uppercase;
+    @include body-overline();
     font-weight: 600;
-    color: $color-muted-foreground;
+    color: $color-neutral-500;
   }
 }
 
@@ -61,6 +60,10 @@
   flex: 1;
   text-align: right;
 
+  p {
+    color: $color-neutral-500;
+  }
+
   p a {
     color: $color-generic-white;
   }
@@ -68,7 +71,7 @@
 
 .bottomBar {
   grid-column: span 2;
-  background-color: $color-foreground;
+  background-color: $color-neutral-800;
   padding: 32px;
 }
 

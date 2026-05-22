@@ -13,7 +13,7 @@
 .infoWrapper {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 24px;
   overflow: hidden;
 }
 
@@ -26,16 +26,15 @@
 
 .label {
   display: block;
-  @include body-small();
-  text-transform: uppercase;
+  @include body-overline();
   font-weight: 600;
-  color: $color-muted-foreground;
-  margin-bottom: 2px;
+  color: $color-neutral-500;
+  margin-bottom: 4px;
 }
 
 .value {
   display: block;
-  @include body-small();
+  @include body-base();
   color: $color-generic-white;
 
   &.bubble {

@@ -32,6 +32,13 @@
   line-height: 18px;
 }
 
+@mixin body-overline {
+  font-family: 'Mazzard', sans-serif;
+  font-size: 14px;
+  line-height: 14px;
+  text-transform: uppercase;
+}
+
 @mixin body-overline-small {
   font-family: 'Mazzard', sans-serif;
   font-size: 12px;
