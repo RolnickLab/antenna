@@ -73,7 +73,7 @@
   }
 }
 
-@media (max-width: $small-screen-breakpoint) {
+@media (max-width: $breakpoint-md) {
   .licenseInfoContent {
     text-align: left;
   }

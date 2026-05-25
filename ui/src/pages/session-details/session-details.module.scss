@@ -40,7 +40,7 @@
   color: var(--color-foreground);
 }
 
-@media only screen and (max-width: $small-screen-breakpoint) {
+@media only screen and (max-width: $breakpoint-md) {
   .playbackWrapper {
     margin-bottom: 16px;
   }

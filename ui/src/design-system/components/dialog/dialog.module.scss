@@ -62,7 +62,7 @@ $dialog-padding-medium: 32px;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  height: $dialog-header-height;
+  height: 72px;
   padding: 0 32px;
   box-sizing: border-box;
   background-color: var(--color-neutral-50);
@@ -106,14 +106,14 @@ $dialog-padding-medium: 32px;
   padding: 32px;
 }
 
-@media (max-width: $medium-screen-breakpoint) {
+@media (max-width: $breakpoint-lg) {
   .dialog {
     max-width: calc(100% - (2 * $dialog-padding-medium));
     max-height: calc(100vh - (2 * $dialog-padding-medium));
   }
 }
 
-@media (max-width: $small-screen-breakpoint) {
+@media (max-width: $breakpoint-md) {
   .dialog:not(.compact) {
     width: 100%;
     height: 100vh;
@@ -130,7 +130,7 @@ $dialog-padding-medium: 32px;
   }
 
   .dialogHeader {
-    height: $dialog-header-height-small;
+    height: 64px;
     padding: 0 16px;
 
     &.withActions {

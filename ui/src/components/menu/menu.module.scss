@@ -24,14 +24,14 @@
   box-sizing: border-box;
 }
 
-@media only screen and (max-width: $medium-screen-breakpoint) {
+@media only screen and (max-width: $breakpoint-lg) {
   .topBar,
   .navigationBar {
     padding: 0 32px;
   }
 }
 
-@media only screen and (max-width: $small-screen-breakpoint) {
+@media only screen and (max-width: $breakpoint-md) {
   .topBar {
     padding: 8px 16px;
   }

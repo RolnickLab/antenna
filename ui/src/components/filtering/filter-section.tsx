@@ -1,5 +1,4 @@
-import { BREAKPOINTS } from 'components/constants'
-import { Box, Button, Collapsible } from 'design-system'
+import { Box, Button, Collapsible, CONSTANTS } from 'design-system'
 import { ChevronsUpDown } from 'lucide-react'
 import { ReactNode } from 'react'
 import { STRING, translate } from 'utils/language'
@@ -18,7 +17,9 @@ export const FilterSection = ({
   <Box className="w-full h-min shrink-0 p-2 rounded-lg md:w-72 md:p-4 md:rounded-xl no-print">
     <Collapsible.Root
       className="space-y-4"
-      defaultOpen={window.innerWidth >= BREAKPOINTS.MD ? defaultOpen : false}
+      defaultOpen={
+        window.innerWidth >= CONSTANTS.BREAKPOINTS.MD ? defaultOpen : false
+      }
     >
       <div className="flex items-center justify-between">
         <span className="body-overline font-bold">{title}</span>

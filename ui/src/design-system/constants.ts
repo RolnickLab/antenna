@@ -1,3 +1,10 @@
+const BREAKPOINTS = {
+  SM: 576,
+  MD: 768,
+  LG: 1024,
+  XL: 1280,
+}
+
 const COLORS = {
   generic: { white: '#FFFFFF', black: '#000000' },
   neutral: {
@@ -89,12 +96,6 @@ const COLORS = {
   },
 }
 
-const GRADIENTS = {
-  fieldguide: 'linear-gradient(103deg, #5193F0 0%, #F476A4 108%)',
-  antenna:
-    'linear-gradient(102deg, #858FC7 -13.31%, #606BA4 21.25%, #313B72 100%)',
-}
-
 const COLOR_THEME = {
   background: COLORS.generic.white,
   foreground: COLORS.neutral[900],
@@ -126,6 +127,10 @@ const COLOR_THEME = {
     DEFAULT: COLORS.success[500],
     foreground: COLORS.generic.white,
   },
+  warning: {
+    DEFAULT: COLORS.warning[500],
+    foreground: COLORS.generic.white,
+  },
   destructive: {
     DEFAULT: COLORS.destructive[500],
     foreground: COLORS.generic.white,
@@ -135,8 +140,15 @@ const COLOR_THEME = {
   ring: COLORS.neutral[900],
 }
 
+const GRADIENTS = {
+  fieldguide: 'linear-gradient(103deg, #5193F0 0%, #F476A4 108%)',
+  antenna:
+    'linear-gradient(102deg, #858FC7 -13.31%, #606BA4 21.25%, #313B72 100%)',
+}
+
 export const CONSTANTS = {
+  BREAKPOINTS,
+  COLOR_THEME,
   COLORS,
   GRADIENTS,
-  COLOR_THEME,
 }

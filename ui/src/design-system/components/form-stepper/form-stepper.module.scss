@@ -89,7 +89,7 @@
   }
 }
 
-@media only screen and (max-width: $small-screen-breakpoint) {
+@media only screen and (max-width: $breakpoint-md) {
   .item {
     span {
       display: none;

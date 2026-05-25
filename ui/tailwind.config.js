@@ -1,5 +1,4 @@
 import plugin from 'tailwindcss/plugin'
-import { BREAKPOINTS } from './src/components/constants'
 import { CONSTANTS } from './src/design-system/constants'
 
 /** @type {import('tailwindcss').Config} */
@@ -8,10 +7,10 @@ module.exports = {
   theme: {
     colors: CONSTANTS.COLORS,
     screens: {
-      sm: `${BREAKPOINTS.SM}px`,
-      md: `${BREAKPOINTS.MD}px`,
-      lg: `${BREAKPOINTS.LG}px`,
-      xl: `${BREAKPOINTS.XL}px`,
+      sm: `${CONSTANTS.BREAKPOINTS.SM}px`,
+      md: `${CONSTANTS.BREAKPOINTS.MD}px`,
+      lg: `${CONSTANTS.BREAKPOINTS.LG}px`,
+      xl: `${CONSTANTS.BREAKPOINTS.XL}px`,
     },
     extend: {
       backgroundImage: CONSTANTS.GRADIENTS,

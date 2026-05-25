@@ -37,13 +37,13 @@
   display: contents;
 }
 
-@media only screen and (max-width: $medium-screen-breakpoint) {
+@media only screen and (max-width: $breakpoint-lg) {
   .header {
     padding: 0 32px;
   }
 }
 
-@media only screen and (max-width: $small-screen-breakpoint) {
+@media only screen and (max-width: $breakpoint-md) {
   .header {
     padding: 0 16px;
     gap: 16px;

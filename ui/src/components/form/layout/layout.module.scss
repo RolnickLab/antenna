@@ -58,7 +58,7 @@
 
   &.inDialog {
     position: sticky;
-    top: $dialog-header-height;
+    top: 72px; // Dialog header height
     z-index: 1;
   }
 }
@@ -67,7 +67,7 @@
   font-weight: 600;
 }
 
-@media only screen and (max-width: $small-screen-breakpoint) {
+@media only screen and (max-width: $breakpoint-md) {
   .section {
     margin: 16px;
 
@@ -97,7 +97,7 @@
     padding: 8px 16px;
 
     &.inDialog {
-      top: $dialog-header-height-small;
+      top: 64px; // Dialog header height (small screen)
     }
   }
 }

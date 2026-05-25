@@ -63,7 +63,7 @@
   justify-content: center;
 }
 
-@media only screen and (max-width: $small-screen-breakpoint) {
+@media only screen and (max-width: $breakpoint-md) {
   .wrapper {
     grid-column: span 2;
   }

@@ -71,7 +71,7 @@
   padding: 32px;
 }
 
-@media only screen and (max-width: $small-screen-breakpoint) {
+@media only screen and (max-width: $breakpoint-md) {
   .sidebar {
     grid-column: span 2;
   }

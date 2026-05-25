@@ -12,7 +12,7 @@
 .main {
   padding: 24px 100px 96px;
   width: 100%;
-  min-width: $page-min-width;
+  min-width: 320px;
   box-sizing: border-box;
 
   &.fullscreen {
@@ -25,13 +25,13 @@
   position: relative;
 }
 
-@media (max-width: $medium-screen-breakpoint) {
+@media (max-width: $breakpoint-lg) {
   .main {
     padding: 24px 24px 96px;
   }
 }
 
-@media (max-width: $small-screen-breakpoint) {
+@media (max-width: $breakpoint-md) {
   .main {
     padding: 16px 16px 80px;
   }
