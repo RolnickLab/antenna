@@ -11,12 +11,12 @@ Tracking issue: https://github.com/RolnickLab/antenna/issues/1271
 from __future__ import annotations
 
 import collections
-import math
 from typing import TYPE_CHECKING
 
 from django.db.models import Count, OuterRef, Prefetch, Q, QuerySet, Subquery
 
 from ami.main.models import Project, TaxonRank, User
+from ami.utils.stats import cohens_kappa, wilson_interval
 
 if TYPE_CHECKING:
     from ami.main.models import Classification, Identification, Occurrence
@@ -50,64 +50,6 @@ def lca_rank_between(a: TaxonTuple, b: TaxonTuple) -> TaxonRank | None:
             if deepest is None or rank > deepest:
                 deepest = rank
     return deepest
-
-
-# z-score for a 95% two-sided confidence interval (Wilson score).
-WILSON_Z_95 = 1.959963984540054
-
-
-def wilson_interval(successes: int, total: int, z: float = WILSON_Z_95) -> tuple[float, float] | None:
-    """Wilson score confidence interval for a binomial proportion.
-
-    Returns ``(low, high)`` bounded to ``[0, 1]`` (rounded to 4 dp), or
-    ``None`` when ``total`` is 0. Defaults to a 95% interval.
-
-    The Wilson score interval is used instead of the normal approximation
-    because the verified set is often tiny (single-digit counts), where the
-    normal approximation produces bounds outside [0, 1] and understates the
-    uncertainty. Wilson stays well-behaved at small n and at proportions
-    near 0 or 1.
-    """
-    if total <= 0:
-        return None
-    phat = successes / total
-    z2 = z * z
-    denom = 1 + z2 / total
-    center = (phat + z2 / (2 * total)) / denom
-    margin = (z / denom) * math.sqrt(phat * (1 - phat) / total + z2 / (4 * total * total))
-    low = max(0.0, center - margin)
-    high = min(1.0, center + margin)
-    return (round(low, 4), round(high, 4))
-
-
-def cohens_kappa(pairs: list[tuple[int, int]]) -> float | None:
-    """Cohen's kappa for exact-taxon agreement between human and model.
-
-    ``pairs`` is one ``(human_taxon_id, model_taxon_id)`` per occurrence that
-    both a human and the model assigned a taxon to. Returns kappa rounded to
-    4 dp in ``[-1, 1]`` (negative = worse than chance), or ``None`` when
-    there are no pairs or expected agreement is 1.0 (kappa undefined — a
-    single category leaves no chance-agreement to correct for).
-
-    Plain agreement rate rewards luck: in a project dominated by one common
-    species, human and model agree most of the time just by both naming the
-    common one. Kappa subtracts that chance agreement, so it answers "how
-    much better than guessing is the model" rather than "how often do they
-    happen to match".
-    """
-    n = len(pairs)
-    if n == 0:
-        return None
-    observed_agree = sum(1 for h, m in pairs if h == m) / n
-    human_counts: collections.Counter = collections.Counter(h for h, _ in pairs)
-    model_counts: collections.Counter = collections.Counter(m for _, m in pairs)
-    expected_agree = sum(
-        (human_counts[taxon_id] / n) * (model_counts[taxon_id] / n)
-        for taxon_id in set(human_counts) | set(model_counts)
-    )
-    if expected_agree >= 1.0:
-        return None
-    return round((observed_agree - expected_agree) / (1 - expected_agree), 4)
 
 
 def _detections_prefetch(*, ordering: tuple[str, ...], with_source_image: bool) -> Prefetch:

@@ -4804,13 +4804,13 @@ class TestWilsonInterval(TestCase):
     """Pure-Python Wilson score confidence interval."""
 
     def test_zero_total_returns_none(self):
-        from ami.main.models_future.occurrence import wilson_interval
+        from ami.utils.stats import wilson_interval
 
         self.assertIsNone(wilson_interval(0, 0))
 
     def test_known_value_8_of_10(self):
         """Textbook Wilson 95% CI for 8/10 ≈ [0.490, 0.943]."""
-        from ami.main.models_future.occurrence import wilson_interval
+        from ami.utils.stats import wilson_interval
 
         low, high = wilson_interval(8, 10)
         self.assertAlmostEqual(low, 0.4902, places=3)
@@ -4818,7 +4818,7 @@ class TestWilsonInterval(TestCase):
 
     def test_bounds_stay_within_unit_interval(self):
         """At p̂ = 1.0 the normal approximation would exceed 1; Wilson must not."""
-        from ami.main.models_future.occurrence import wilson_interval
+        from ami.utils.stats import wilson_interval
 
         low, high = wilson_interval(1, 1)
         self.assertGreaterEqual(low, 0.0)
@@ -4826,7 +4826,7 @@ class TestWilsonInterval(TestCase):
         self.assertLess(low, high)
 
     def test_interval_tightens_as_n_grows(self):
-        from ami.main.models_future.occurrence import wilson_interval
+        from ami.utils.stats import wilson_interval
 
         narrow = wilson_interval(90, 100)
         wide = wilson_interval(9, 10)
@@ -4837,18 +4837,18 @@ class TestCohensKappa(TestCase):
     """Pure-Python Cohen's kappa over (human_taxon, model_taxon) pairs."""
 
     def test_empty_returns_none(self):
-        from ami.main.models_future.occurrence import cohens_kappa
+        from ami.utils.stats import cohens_kappa
 
         self.assertIsNone(cohens_kappa([]))
 
     def test_single_category_is_undefined(self):
         """Everyone picks the same taxon → expected agreement 1.0 → kappa undefined."""
-        from ami.main.models_future.occurrence import cohens_kappa
+        from ami.utils.stats import cohens_kappa
 
         self.assertIsNone(cohens_kappa([(1, 1), (1, 1), (1, 1)]))
 
     def test_perfect_agreement_two_categories(self):
-        from ami.main.models_future.occurrence import cohens_kappa
+        from ami.utils.stats import cohens_kappa
 
         self.assertEqual(cohens_kappa([(1, 1), (2, 2)]), 1.0)
 
@@ -4857,13 +4857,13 @@ class TestCohensKappa(TestCase):
 
         pairs: 3× human=1, 1× human=2; model 1 twice, 2 twice; 3 of 4 match.
         """
-        from ami.main.models_future.occurrence import cohens_kappa
+        from ami.utils.stats import cohens_kappa
 
         self.assertEqual(cohens_kappa([(1, 1), (1, 1), (2, 2), (1, 2)]), 0.5)
 
     def test_can_be_negative(self):
         """Systematic disagreement → worse than chance → negative kappa."""
-        from ami.main.models_future.occurrence import cohens_kappa
+        from ami.utils.stats import cohens_kappa
 
         kappa = cohens_kappa([(1, 2), (2, 1), (1, 2), (2, 1)])
         self.assertLess(kappa, 0.0)
