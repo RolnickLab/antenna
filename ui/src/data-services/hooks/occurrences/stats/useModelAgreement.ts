@@ -10,8 +10,15 @@ interface ModelAgreementResponse {
   no_prediction_count: number
   agreed_exact_count: number
   agreed_exact_pct: number
+  agreed_exact_ci_low: number | null
+  agreed_exact_ci_high: number | null
   agreed_any_rank_count: number
   agreed_any_rank_pct: number
+  agreed_any_rank_ci_low: number | null
+  agreed_any_rank_ci_high: number | null
+  // Cohen's kappa (exact-taxon) — agreement beyond chance. Range [-1, 1];
+  // null when denominator is 0 or expected agreement is 1.0.
+  cohens_kappa: number | null
   // Only populated when the caller passes ?agreement_coarsest_rank=<RANK>.
   agreement_coarsest_rank: string | null
   agreed_coarser_rank_count: number | null
