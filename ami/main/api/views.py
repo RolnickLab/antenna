@@ -1459,9 +1459,12 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
 
     queryset = Taxon.objects.all().defer("notes")
     serializer_class = TaxonSerializer
+    # `?collection=` is handled inside annotate_taxon_counts (via get_occurrence_filters
+    # and a HAVING on occurrences_count > 0), so TaxonCollectionFilter would only add a
+    # redundant JOIN on the main queryset that the planner cannot reconcile with the
+    # conditional-aggregate GROUP BY — turning the page into a multi-minute scan.
     filter_backends = DefaultViewSetMixin.filter_backends + [
         CustomTaxonFilter,
-        TaxonCollectionFilter,
         TaxonTaxaListFilter,
         TaxonBestScoreFilter,
         TaxonTagFilter,
