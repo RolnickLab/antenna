@@ -1,5 +1,5 @@
-import { BasicTooltip, Button, Popover } from 'design-system'
 import { PlusIcon } from 'lucide-react'
+import { BasicTooltip, Button, Popover } from 'nova-ui-kit'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { AddTaxaListTaxon } from './add-taxa-list-taxon'

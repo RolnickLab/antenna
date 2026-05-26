@@ -8,7 +8,7 @@ import {
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
 import { Project } from 'data-services/models/project'
-import { ImageUpload, InputContent, SaveButton, Switch } from 'design-system'
+import { ImageUpload, InputContent, SaveButton, Switch } from 'nova-ui-kit'
 import { useForm } from 'react-hook-form'
 import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
 import { STRING, translate } from 'utils/language'

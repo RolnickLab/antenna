@@ -1,7 +1,7 @@
 import { DeleteForm } from 'components/form/delete-form/delete-form'
 import { useDeleteEntity } from 'data-services/hooks/entities/useDeleteEntity'
-import { Button, Dialog } from 'design-system'
 import { TrashIcon } from 'lucide-react'
+import { Button, Dialog } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'

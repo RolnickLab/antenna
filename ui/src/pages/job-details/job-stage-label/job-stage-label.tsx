@@ -1,4 +1,4 @@
-import { BasicTooltip, StatusMarker } from 'design-system'
+import { BasicTooltip, StatusMarker } from 'nova-ui-kit'
 import styles from './job-stage-label.module.scss'
 
 export const JobStageLabel = ({

@@ -1,4 +1,4 @@
-import { Button } from 'design-system'
+import { Button } from 'nova-ui-kit'
 import { ReactNode } from 'react'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'

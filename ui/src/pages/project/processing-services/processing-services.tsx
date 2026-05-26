@@ -6,7 +6,7 @@ import {
   PaginationBar,
   Table,
   TableSortSettings,
-} from 'design-system'
+} from 'nova-ui-kit'
 import { ProcessingServiceDetailsDialog } from 'pages/processing-service-details/processing-service-details-dialog'
 import { NewEntityDialog } from 'pages/project/entities/new-entity-dialog'
 import { useState } from 'react'

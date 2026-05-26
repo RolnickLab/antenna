@@ -1,7 +1,7 @@
 import { MultiMarkerMap } from 'components/map/multi-marker-map/multi-marker-map'
 import { MarkerPosition } from 'components/map/types'
 import { Deployment } from 'data-services/models/deployment'
-import { InfoBlock } from 'design-system'
+import { InfoBlock } from 'nova-ui-kit'
 import { useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'

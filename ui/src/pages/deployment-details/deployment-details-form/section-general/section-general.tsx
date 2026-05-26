@@ -10,8 +10,8 @@ import {
   DeploymentDetails,
   DeploymentFieldValues,
 } from 'data-services/models/deployment-details'
-import { Button, EntityPicker, ImageUpload, InputContent } from 'design-system'
 import _ from 'lodash'
+import { Button, EntityPicker, ImageUpload, InputContent } from 'nova-ui-kit'
 import { useContext } from 'react'
 import { useForm } from 'react-hook-form'
 import { useParams } from 'react-router-dom'

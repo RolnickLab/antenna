@@ -4,7 +4,7 @@ import {
   CellTheme,
   DateTableCell,
   TableColumn,
-} from 'design-system'
+} from 'nova-ui-kit'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'

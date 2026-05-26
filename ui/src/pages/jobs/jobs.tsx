@@ -2,6 +2,7 @@ import { FilterControl } from 'components/filtering/filter-control'
 import { FilterSection } from 'components/filtering/filter-section'
 import { useJobDetails } from 'data-services/hooks/jobs/useJobDetails'
 import { useJobs } from 'data-services/hooks/jobs/useJobs'
+import _ from 'lodash'
 import {
   ColumnSettings,
   Dialog,
@@ -10,8 +11,7 @@ import {
   PaginationBar,
   SortControl,
   Table,
-} from 'design-system'
-import _ from 'lodash'
+} from 'nova-ui-kit'
 import { JobDetails } from 'pages/job-details/job-details'
 import { NewJobDialog } from 'pages/job-details/new-job-dialog'
 import { useContext, useEffect } from 'react'

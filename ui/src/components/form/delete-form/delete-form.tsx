@@ -1,5 +1,5 @@
-import { Button } from 'design-system'
 import { CheckIcon, Loader2Icon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
 import { FormError, FormSection } from '../layout/layout'

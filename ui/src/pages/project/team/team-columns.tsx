@@ -1,4 +1,5 @@
 import { Member } from 'data-services/models/member'
+import { InfoIcon, UserIcon } from 'lucide-react'
 import {
   Badge,
   BasicTableCell,
@@ -7,8 +8,7 @@ import {
   DateTableCell,
   TableColumn,
   Toolbar,
-} from 'design-system'
-import { InfoIcon, UserIcon } from 'lucide-react'
+} from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import { LeaveTeamDialog } from './leave-team-dialog'
 import { ManageAccessDialog } from './manage-access-dialog'

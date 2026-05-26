@@ -4,7 +4,7 @@ import { defineConfig, loadEnv } from 'vite'
 import eslint from 'vite-plugin-eslint'
 import svgr from 'vite-plugin-svgr'
 import viteTsconfigPaths from 'vite-tsconfig-paths'
-import { cssVarsPlugin } from './src/design-system/plugins/cssVarsPlugin'
+import { cssVarsPlugin } from './src/nova-ui-kit/plugins/cssVarsPlugin'
 
 let temporaryCommitHash: string
 try {
@@ -32,7 +32,7 @@ export default defineConfig(({ mode }) => {
     css: {
       preprocessorOptions: {
         scss: {
-          additionalData: `@use 'src/design-system/mixins.scss' as *;`,
+          additionalData: `@use 'src/nova-ui-kit/mixins.scss' as *;`,
         },
       },
     },

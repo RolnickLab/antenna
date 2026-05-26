@@ -1,6 +1,6 @@
 import { Occurrence } from 'data-services/models/occurrence'
-import { Button } from 'design-system'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { useCallback, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'

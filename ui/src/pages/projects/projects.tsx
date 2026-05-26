@@ -5,7 +5,7 @@ import {
   PageHeader,
   PaginationBar,
   Tabs,
-} from 'design-system'
+} from 'nova-ui-kit'
 import { NewProjectDialog } from 'pages/project-details/new-project-dialog'
 import { DOCS_LINKS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'

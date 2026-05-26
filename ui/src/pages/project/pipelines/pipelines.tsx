@@ -6,7 +6,7 @@ import {
   PaginationBar,
   Table,
   TableSortSettings,
-} from 'design-system'
+} from 'nova-ui-kit'
 import { PipelineDetailsDialog } from 'pages/pipeline-details/pipeline-details-dialog'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'

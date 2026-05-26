@@ -1,6 +1,6 @@
 import { ErrorState } from 'components/error-state/error-state'
 import { ProjectDetails } from 'data-services/models/project-details'
-import { LoadingSpinner } from 'design-system'
+import { LoadingSpinner } from 'nova-ui-kit'
 import { Helmet } from 'react-helmet-async'
 import { Outlet, useOutletContext } from 'react-router-dom'
 import { Sidebar } from './sidebar/sidebar'

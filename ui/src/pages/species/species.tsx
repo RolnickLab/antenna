@@ -6,6 +6,7 @@ import { useSpecies } from 'data-services/hooks/species/useSpecies'
 import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
 import { useTaxaLists } from 'data-services/hooks/taxa-lists/useTaxaLists'
 import { useTags } from 'data-services/hooks/taxa-tags/useTags'
+import { Grid2x2Icon, TableIcon } from 'lucide-react'
 import {
   ColumnSettings,
   Dialog,
@@ -15,8 +16,7 @@ import {
   SortControl,
   Table,
   ToggleGroup,
-} from 'design-system'
-import { Grid2x2Icon, TableIcon } from 'lucide-react'
+} from 'nova-ui-kit'
 import { SpeciesDetails, TABS } from 'pages/species-details/species-details'
 import { useContext, useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'

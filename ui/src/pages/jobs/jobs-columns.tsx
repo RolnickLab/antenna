@@ -7,7 +7,7 @@ import {
   StatusTableCell,
   TableColumn,
   Toolbar,
-} from 'design-system'
+} from 'nova-ui-kit'
 import { CancelJob } from 'pages/job-details/job-actions/cancel-job'
 import { QueueJob } from 'pages/job-details/job-actions/queue-job'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'

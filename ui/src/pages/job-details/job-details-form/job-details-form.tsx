@@ -16,8 +16,8 @@ import {
   EntityPicker,
   InputContent,
   SaveButton,
-} from 'design-system'
-import { CaptureSetPicker } from 'design-system/components/select/capture-set-picker'
+} from 'nova-ui-kit'
+import { CaptureSetPicker } from 'nova-ui-kit/components/select/capture-set-picker'
 import { useForm } from 'react-hook-form'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES, DOCS_LINKS } from 'utils/constants'

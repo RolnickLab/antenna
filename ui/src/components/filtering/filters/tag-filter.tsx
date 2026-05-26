@@ -1,4 +1,4 @@
-import { Select } from 'design-system'
+import { Select } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import { FilterProps } from './types'
 

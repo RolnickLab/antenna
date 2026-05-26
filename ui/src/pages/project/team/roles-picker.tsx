@@ -1,5 +1,5 @@
 import { useRoles } from 'data-services/hooks/team/useRoles'
-import { Select } from 'design-system'
+import { Select } from 'nova-ui-kit'
 
 export const RolesPicker = ({
   value,

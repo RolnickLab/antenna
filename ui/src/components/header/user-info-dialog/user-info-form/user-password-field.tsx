@@ -8,7 +8,7 @@ import {
   InputContent,
   InputValue,
   SaveButton,
-} from 'design-system'
+} from 'nova-ui-kit'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'

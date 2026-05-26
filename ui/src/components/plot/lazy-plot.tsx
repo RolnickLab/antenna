@@ -1,5 +1,5 @@
 import { ErrorBoundary } from 'components/error-boundary/error-boundary'
-import { LoadingSpinner } from 'design-system'
+import { LoadingSpinner } from 'nova-ui-kit'
 import React, { Suspense } from 'react'
 import { PlotProps } from './types'
 

@@ -1,4 +1,4 @@
-import { CONSTANTS } from 'design-system'
+import { CONSTANTS } from 'nova-ui-kit'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { Algorithm, ServerAlgorithm } from './algorithm'
 import { Entity } from './entity'

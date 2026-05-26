@@ -6,6 +6,7 @@ import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurre
 import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
 import { useTaxaLists } from 'data-services/hooks/taxa-lists/useTaxaLists'
 import { Occurrence } from 'data-services/models/occurrence'
+import { DownloadIcon, Grid2X2Icon, TableIcon } from 'lucide-react'
 import {
   BulkActionBar,
   buttonVariants,
@@ -17,8 +18,7 @@ import {
   SortControl,
   Table,
   ToggleGroup,
-} from 'design-system'
-import { DownloadIcon, Grid2X2Icon, TableIcon } from 'lucide-react'
+} from 'nova-ui-kit'
 import {
   OccurrenceDetails,
   TABS,

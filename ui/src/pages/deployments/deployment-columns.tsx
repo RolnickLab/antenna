@@ -10,7 +10,7 @@ import {
   TableColumn,
   TextAlign,
   Toolbar,
-} from 'design-system'
+} from 'nova-ui-kit'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'

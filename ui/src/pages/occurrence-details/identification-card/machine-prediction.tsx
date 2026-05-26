@@ -6,14 +6,14 @@ import {
   OccurrenceDetails as Occurrence,
 } from 'data-services/models/occurrence-details'
 import { Taxon } from 'data-services/models/taxa'
+import { Loader2 } from 'lucide-react'
 import {
   BasicTooltip,
   Collapsible,
   IdentificationCard,
   IdentificationDetails,
   IdentificationScore,
-} from 'design-system'
-import { Loader2 } from 'lucide-react'
+} from 'nova-ui-kit'
 import { ReactNode, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'

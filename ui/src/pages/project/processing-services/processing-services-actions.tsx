@@ -1,8 +1,8 @@
 import classNames from 'classnames'
 import { usePopulateProcessingService } from 'data-services/hooks/processing-services/usePopulateProcessingService'
 import { ProcessingService } from 'data-services/models/processing-service'
-import { BasicTooltip, Button } from 'design-system'
 import { AlertCircleIcon, Loader2, RefreshCcwIcon } from 'lucide-react'
+import { BasicTooltip, Button } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 
 export const PopulateProcessingService = ({

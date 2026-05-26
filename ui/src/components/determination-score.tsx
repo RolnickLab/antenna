@@ -1,4 +1,4 @@
-import { BasicTooltip, IdentificationScore } from 'design-system'
+import { BasicTooltip, IdentificationScore } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 
 export const DeterminationScore = ({

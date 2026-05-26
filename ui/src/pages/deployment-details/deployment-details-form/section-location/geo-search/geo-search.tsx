@@ -1,5 +1,5 @@
 import { MarkerPosition } from 'components/map/types'
-import { ComboBox } from 'design-system'
+import { ComboBox } from 'nova-ui-kit'
 import { useMemo, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { useDebounce } from 'utils/useDebounce'

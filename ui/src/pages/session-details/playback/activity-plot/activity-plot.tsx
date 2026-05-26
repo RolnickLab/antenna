@@ -1,4 +1,4 @@
-import { CONSTANTS } from 'design-system'
+import { CONSTANTS } from 'nova-ui-kit'
 import { useRef } from 'react'
 import Plot from 'react-plotly.js'
 import { getCompactTimespanString } from 'utils/date/getCompactTimespanString/getCompactTimespanString'

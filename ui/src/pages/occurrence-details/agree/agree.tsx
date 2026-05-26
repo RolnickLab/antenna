@@ -1,6 +1,6 @@
 import { useCreateIdentification } from 'data-services/hooks/identifications/useCreateIdentification'
-import { BasicTooltip, Button } from 'design-system'
 import { AlertCircleIcon, CheckIcon, Loader2Icon } from 'lucide-react'
+import { BasicTooltip, Button } from 'nova-ui-kit'
 import { useEffect } from 'react'
 import { STRING, translate } from 'utils/language'
 

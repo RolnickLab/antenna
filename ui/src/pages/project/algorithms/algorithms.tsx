@@ -5,7 +5,7 @@ import {
   PaginationBar,
   Table,
   TableSortSettings,
-} from 'design-system'
+} from 'nova-ui-kit'
 import { AlgorithmDetailsDialog } from 'pages/algorithm-details/algorithm-details-dialog'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'

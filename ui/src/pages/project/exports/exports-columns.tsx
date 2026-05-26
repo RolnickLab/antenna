@@ -2,6 +2,7 @@ import classNames from 'classnames'
 import { API_ROUTES } from 'data-services/constants'
 import { Export } from 'data-services/models/export'
 import { JobStatusType } from 'data-services/models/job'
+import { DownloadIcon } from 'lucide-react'
 import {
   BasicTableCell,
   buttonVariants,
@@ -11,8 +12,7 @@ import {
   TableColumn,
   TextAlign,
   Toolbar,
-} from 'design-system'
-import { DownloadIcon } from 'lucide-react'
+} from 'nova-ui-kit'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'

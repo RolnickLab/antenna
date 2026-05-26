@@ -1,7 +1,7 @@
 import { useCreateJob } from 'data-services/hooks/jobs/useCreateJob'
 import { CaptureDetails } from 'data-services/models/capture-details'
-import { BasicTooltip, Button } from 'design-system'
 import { CheckIcon, Loader2Icon } from 'lucide-react'
+import { BasicTooltip, Button } from 'nova-ui-kit'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'

@@ -6,14 +6,14 @@ import { Tag } from 'components/taxon-tags/tag'
 import { TagsForm } from 'components/taxon-tags/tags-form'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { SpeciesDetails as Species } from 'data-services/models/species-details'
+import { ExternalLinkIcon, LockIcon } from 'lucide-react'
 import {
   Box,
   buttonVariants,
   InfoBlockField,
   InfoBlockFieldValue,
   Tabs,
-} from 'design-system'
-import { ExternalLinkIcon, LockIcon } from 'lucide-react'
+} from 'nova-ui-kit'
 import { Helmet } from 'react-helmet-async'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'

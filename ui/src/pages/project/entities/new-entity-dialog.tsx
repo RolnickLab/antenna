@@ -1,7 +1,7 @@
 import classNames from 'classnames'
 import { useCreateEntity } from 'data-services/hooks/entities/useCreateEntity'
-import { Button, Dialog } from 'design-system'
 import { PlusIcon } from 'lucide-react'
+import { Button, Dialog } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'

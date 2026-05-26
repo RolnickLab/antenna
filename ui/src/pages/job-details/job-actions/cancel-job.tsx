@@ -1,6 +1,6 @@
 import { useCancelJob } from 'data-services/hooks/jobs/useCancelJob'
-import { BasicTooltip, Button } from 'design-system'
 import { BanIcon, CheckIcon, Loader2Icon } from 'lucide-react'
+import { BasicTooltip, Button } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 
 export const CancelJob = ({

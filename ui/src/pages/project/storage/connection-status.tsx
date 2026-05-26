@@ -7,7 +7,7 @@ import {
   InputValue,
   ConnectionStatus as Status,
   Wizard,
-} from 'design-system'
+} from 'nova-ui-kit'
 import { useEffect, useState } from 'react'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'

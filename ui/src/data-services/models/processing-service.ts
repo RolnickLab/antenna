@@ -1,4 +1,4 @@
-import { CONSTANTS } from 'design-system'
+import { CONSTANTS } from 'nova-ui-kit'
 import { Entity } from './entity'
 import { Pipeline, ServerPipeline } from './pipeline'
 

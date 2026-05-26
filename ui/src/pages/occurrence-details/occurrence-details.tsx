@@ -4,6 +4,7 @@ import {
 } from 'components/blueprint-collection/blueprint-collection'
 import { TaxonDetails } from 'components/taxon-details/taxon-details'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
+import { SearchIcon } from 'lucide-react'
 import {
   BasicTooltip,
   Box,
@@ -13,8 +14,7 @@ import {
   InfoBlockField,
   InfoBlockFieldValue,
   Tabs,
-} from 'design-system'
-import { SearchIcon } from 'lucide-react'
+} from 'nova-ui-kit'
 import { useMemo, useRef, useState } from 'react'
 import { Helmet } from 'react-helmet-async'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'

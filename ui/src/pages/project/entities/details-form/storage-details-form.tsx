@@ -8,7 +8,7 @@ import {
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
 import { StorageSource } from 'data-services/models/storage'
-import { Input, LockedInput, SaveButton } from 'design-system'
+import { Input, LockedInput, SaveButton } from 'nova-ui-kit'
 import { ConnectionStatus } from 'pages/project/storage/connection-status'
 import { useState } from 'react'
 import {

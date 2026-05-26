@@ -6,14 +6,14 @@ import {
 import { SUCCESS_TIMEOUT } from 'data-services/constants'
 import { useUpdateMember } from 'data-services/hooks/team/useUpdateMember'
 import { Member } from 'data-services/models/member'
+import { SettingsIcon } from 'lucide-react'
 import {
   BasicTooltip,
   Button,
   Dialog,
   InputContent,
   SaveButton,
-} from 'design-system'
-import { SettingsIcon } from 'lucide-react'
+} from 'nova-ui-kit'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'

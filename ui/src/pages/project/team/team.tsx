@@ -1,7 +1,7 @@
 import { useMembers } from 'data-services/hooks/team/useMembers'
 import { ProjectDetails } from 'data-services/models/project-details'
-import { buttonVariants, PageHeader, PaginationBar, Table } from 'design-system'
 import { LockIcon } from 'lucide-react'
+import { buttonVariants, PageHeader, PaginationBar, Table } from 'nova-ui-kit'
 import { useEffect } from 'react'
 import { Link, useNavigate, useOutletContext } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'

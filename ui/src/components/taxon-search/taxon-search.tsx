@@ -1,5 +1,5 @@
 import { Taxon } from 'data-services/models/taxa'
-import { Command } from 'design-system'
+import { Command } from 'nova-ui-kit'
 import { useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useDebounce } from 'utils/useDebounce'

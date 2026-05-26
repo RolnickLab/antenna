@@ -4,7 +4,7 @@ import {
   DateTableCell,
   TableColumn,
   Toolbar,
-} from 'design-system'
+} from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import { DeleteEntityDialog } from './delete-entity-dialog'
 import { UpdateEntityDialog } from './entity-details-dialog'

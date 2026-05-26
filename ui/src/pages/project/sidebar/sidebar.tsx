@@ -1,7 +1,7 @@
 import classNames from 'classnames'
 import { ProjectDetails } from 'data-services/models/project-details'
-import { Badge, buttonVariants, Tooltip } from 'design-system'
 import { ChevronRightIcon, PenIcon } from 'lucide-react'
+import { Badge, buttonVariants, Tooltip } from 'nova-ui-kit'
 import { Fragment, ReactNode, useContext, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'

@@ -3,6 +3,7 @@ import { FormRow, FormSection } from 'components/form/layout/layout'
 import { Export } from 'data-services/models/export'
 import { JobStatusType } from 'data-services/models/job'
 import { JobDetails as Job } from 'data-services/models/job-details'
+import { CheckIcon } from 'lucide-react'
 import {
   CodeBlock,
   Dialog,
@@ -12,8 +13,7 @@ import {
   StatusBullet,
   StatusBulletTheme,
   Wizard,
-} from 'design-system'
-import { CheckIcon } from 'lucide-react'
+} from 'nova-ui-kit'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'

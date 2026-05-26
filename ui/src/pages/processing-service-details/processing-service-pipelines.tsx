@@ -6,7 +6,7 @@ import {
   Table,
   TableBackgroundTheme,
   TableColumn,
-} from 'design-system'
+} from 'nova-ui-kit'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'

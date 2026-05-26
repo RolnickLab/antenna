@@ -5,13 +5,13 @@ import {
   HumanIdentification as Identification,
   OccurrenceDetails as Occurrence,
 } from 'data-services/models/occurrence-details'
+import { TrashIcon, UserIcon } from 'lucide-react'
 import {
   Box,
   Button,
   IdentificationCard,
   IdentificationDetails,
-} from 'design-system'
-import { TrashIcon, UserIcon } from 'lucide-react'
+} from 'nova-ui-kit'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'

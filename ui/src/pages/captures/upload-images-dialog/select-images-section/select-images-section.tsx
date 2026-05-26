@@ -1,6 +1,6 @@
 import { FormSection } from 'components/form/layout/layout'
-import { Button, buttonVariants, FileInput } from 'design-system'
 import { PlusIcon, XIcon } from 'lucide-react'
+import { Button, buttonVariants, FileInput } from 'nova-ui-kit'
 import { ReactNode } from 'react'
 import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
 import { STRING, translate } from 'utils/language'

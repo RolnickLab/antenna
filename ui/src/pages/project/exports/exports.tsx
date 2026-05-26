@@ -6,7 +6,7 @@ import {
   PaginationBar,
   Table,
   TableSortSettings,
-} from 'design-system'
+} from 'nova-ui-kit'
 import { ExportDetailsDialog } from 'pages/export-details/export-details-dialog'
 import { NewEntityDialog } from 'pages/project/entities/new-entity-dialog'
 import { useEffect, useState } from 'react'

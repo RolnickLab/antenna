@@ -1,5 +1,5 @@
-import { Button, InfoTooltip } from 'design-system'
 import { XIcon } from 'lucide-react'
+import { Button, InfoTooltip } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
 import { AlgorithmFilter, NotAlgorithmFilter } from './filters/algorithm-filter'

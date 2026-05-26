@@ -6,7 +6,7 @@ import {
   TableColumn,
   TextAlign,
   Toolbar,
-} from 'design-system'
+} from 'nova-ui-kit'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { UpdateEntityDialog } from 'pages/project/entities/entity-details-dialog'
 import { STRING, translate } from 'utils/language'

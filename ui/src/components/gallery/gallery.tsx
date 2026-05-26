@@ -1,6 +1,6 @@
 import { EmptyState } from 'components/empty-state/empty-state'
 import { ErrorState } from 'components/error-state/error-state'
-import { Card, CardSize, LoadingSpinner } from 'design-system'
+import { Card, CardSize, LoadingSpinner } from 'nova-ui-kit'
 import { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import styles from './gallery.module.scss'

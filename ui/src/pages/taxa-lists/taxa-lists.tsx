@@ -1,6 +1,6 @@
 import { API_ROUTES } from 'data-services/constants'
 import { useTaxaLists } from 'data-services/hooks/taxa-lists/useTaxaLists'
-import { PageHeader, PaginationBar, SortControl, Table } from 'design-system'
+import { PageHeader, PaginationBar, SortControl, Table } from 'nova-ui-kit'
 import { NewEntityDialog } from 'pages/project/entities/new-entity-dialog'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'

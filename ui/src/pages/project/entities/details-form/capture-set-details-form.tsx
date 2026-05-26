@@ -9,14 +9,14 @@ import {
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
 import { CaptureSet } from 'data-services/models/capture-set'
+import { XIcon } from 'lucide-react'
 import {
   Button,
   DatePicker,
   InputContent,
   SaveButton,
   Select,
-} from 'design-system'
-import { XIcon } from 'lucide-react'
+} from 'nova-ui-kit'
 import { SERVER_SAMPLING_METHODS } from 'pages/project/capture-sets/constants'
 import { useForm } from 'react-hook-form'
 import {

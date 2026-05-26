@@ -4,7 +4,7 @@ import { useCaptureDetails } from 'data-services/hooks/captures/useCaptureDetail
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { useSessionTimeline } from 'data-services/hooks/sessions/useSessionTimeline'
 import { SessionDetails } from 'data-services/models/session-details'
-import { Checkbox, CheckboxTheme } from 'design-system'
+import { Checkbox, CheckboxTheme } from 'nova-ui-kit'
 import { useEffect, useState } from 'react'
 import { ActivityPlot } from './activity-plot/lazy-activity-plot'
 import { CaptureDetails } from './capture-details/capture-details'

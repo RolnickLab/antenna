@@ -1,4 +1,4 @@
-import { DatePicker } from 'design-system'
+import { DatePicker } from 'nova-ui-kit'
 import { FilterProps } from './types'
 
 export const DateFilter = ({ error, onAdd, onClear, value }: FilterProps) => (

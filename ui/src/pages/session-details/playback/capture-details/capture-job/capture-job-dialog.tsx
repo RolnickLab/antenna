@@ -1,7 +1,7 @@
 import { useJobDetails } from 'data-services/hooks/jobs/useJobDetails'
-import { BasicTooltip, Button, Dialog } from 'design-system'
 import _ from 'lodash'
 import { EyeIcon } from 'lucide-react'
+import { BasicTooltip, Button, Dialog } from 'nova-ui-kit'
 import { JobDetails } from 'pages/job-details/job-details'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'

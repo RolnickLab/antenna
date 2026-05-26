@@ -1,5 +1,5 @@
 import { useDeployments } from 'data-services/hooks/deployments/useDeployments'
-import { ColumnSettings, PageHeader, SortControl, Table } from 'design-system'
+import { ColumnSettings, PageHeader, SortControl, Table } from 'nova-ui-kit'
 import { DeploymentDetailsDialog } from 'pages/deployment-details/deployment-details-dialog'
 import { NewDeploymentDialog } from 'pages/deployment-details/new-deployment-dialog'
 import { useParams } from 'react-router-dom'

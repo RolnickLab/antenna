@@ -1,7 +1,7 @@
 import { FormError, FormSection } from 'components/form/layout/layout'
 import { useRemoveTaxaListTaxon } from 'data-services/hooks/taxa-lists/useRemoveTaxaListTaxon'
-import { BasicTooltip, Button, Dialog } from 'design-system'
 import { CheckIcon, Loader2Icon, XIcon } from 'lucide-react'
+import { BasicTooltip, Button, Dialog } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'

@@ -6,7 +6,7 @@ import {
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
-import { InputContent, SaveButton } from 'design-system'
+import { InputContent, SaveButton } from 'nova-ui-kit'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'

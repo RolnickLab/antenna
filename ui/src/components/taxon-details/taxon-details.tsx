@@ -1,6 +1,6 @@
-import { Tooltip } from 'design-system'
-import { cn } from 'design-system/utils'
 import { ChevronRightIcon, MinusIcon } from 'lucide-react'
+import { Tooltip } from 'nova-ui-kit'
+import { cn } from 'nova-ui-kit/utils'
 import { ReactNode } from 'react'
 import { Taxon } from './types'
 import { getMainParent, isGenusOrBelow } from './utils'

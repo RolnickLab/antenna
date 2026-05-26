@@ -1,6 +1,7 @@
 import { FilterControl } from 'components/filtering/filter-control'
 import { FilterSection } from 'components/filtering/filter-section'
 import { useSessions } from 'data-services/hooks/sessions/useSessions'
+import { Grid2X2Icon, TableIcon } from 'lucide-react'
 import {
   ColumnSettings,
   PageFooter,
@@ -9,8 +10,7 @@ import {
   SortControl,
   Table,
   ToggleGroup,
-} from 'design-system'
-import { Grid2X2Icon, TableIcon } from 'lucide-react'
+} from 'nova-ui-kit'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'

@@ -10,6 +10,13 @@ import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetail
 import { Deployment } from 'data-services/models/deployment'
 import { ProjectDetails } from 'data-services/models/project-details'
 import {
+  ChevronRight,
+  ChevronRightIcon,
+  InfoIcon,
+  Loader2Icon,
+  UploadIcon,
+} from 'lucide-react'
+import {
   Button,
   buttonVariants,
   Dialog,
@@ -18,14 +25,7 @@ import {
   Select,
   Switch,
   Tooltip,
-} from 'design-system'
-import {
-  ChevronRight,
-  ChevronRightIcon,
-  InfoIcon,
-  Loader2Icon,
-  UploadIcon,
-} from 'lucide-react'
+} from 'nova-ui-kit'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'

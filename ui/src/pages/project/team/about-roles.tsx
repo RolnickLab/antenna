@@ -1,7 +1,7 @@
 import { FormSection } from 'components/form/layout/layout'
 import { useRoles } from 'data-services/hooks/team/useRoles'
-import { Button, Dialog } from 'design-system'
 import { InfoIcon } from 'lucide-react'
+import { Button, Dialog } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 
 export const AboutRoles = () => {

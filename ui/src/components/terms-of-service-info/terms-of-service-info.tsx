@@ -1,5 +1,5 @@
-import { Button } from 'design-system'
 import { XIcon } from 'lucide-react'
+import { Button } from 'nova-ui-kit'
 import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'

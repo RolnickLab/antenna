@@ -1,5 +1,5 @@
-import { Box, Button, Collapsible, CONSTANTS } from 'design-system'
 import { ChevronsUpDown } from 'lucide-react'
+import { Box, Button, Collapsible, CONSTANTS } from 'nova-ui-kit'
 import { ReactNode } from 'react'
 import { STRING, translate } from 'utils/language'
 

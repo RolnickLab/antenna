@@ -8,7 +8,7 @@ import {
   PaginationBar,
   SortControl,
   Table,
-} from 'design-system'
+} from 'nova-ui-kit'
 import { SpeciesDetails, TABS } from 'pages/species-details/species-details'
 import { useContext, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'

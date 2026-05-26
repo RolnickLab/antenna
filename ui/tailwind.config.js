@@ -1,5 +1,5 @@
 import plugin from 'tailwindcss/plugin'
-import { CONSTANTS } from './src/design-system/constants'
+import { CONSTANTS } from './src/nova-ui-kit/constants'
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {

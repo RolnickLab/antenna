@@ -3,6 +3,8 @@ import { FormRow, FormSection } from 'components/form/layout/layout'
 import { useExportDetails } from 'data-services/hooks/exports/useExportDetails'
 import { Export } from 'data-services/models/export'
 import { JobStatusType } from 'data-services/models/job'
+import _ from 'lodash'
+import { DownloadIcon } from 'lucide-react'
 import {
   buttonVariants,
   Dialog,
@@ -10,10 +12,8 @@ import {
   InputValue,
   StatusBar,
   StatusMarker,
-} from 'design-system'
-import inputStyles from 'design-system/components/input/input.module.scss'
-import _ from 'lodash'
-import { DownloadIcon } from 'lucide-react'
+} from 'nova-ui-kit'
+import inputStyles from 'nova-ui-kit/components/input/input.module.scss'
 import { useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'

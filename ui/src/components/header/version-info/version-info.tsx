@@ -1,4 +1,4 @@
-import { Badge, BasicTooltip } from 'design-system'
+import { Badge, BasicTooltip } from 'nova-ui-kit'
 import styles from './version-info.module.scss'
 
 const COPY = {

@@ -1,5 +1,5 @@
 import { Job, SERVER_JOB_TYPES } from 'data-services/models/job'
-import { Select } from 'design-system'
+import { Select } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import { FilterProps } from './types'
 

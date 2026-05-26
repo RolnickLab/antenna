@@ -1,6 +1,6 @@
 import { Taxon } from 'data-services/models/taxa'
-import { Button, Popover } from 'design-system'
 import { PlusIcon } from 'lucide-react'
+import { Button, Popover } from 'nova-ui-kit'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { TaxonSearch } from './taxon-search'

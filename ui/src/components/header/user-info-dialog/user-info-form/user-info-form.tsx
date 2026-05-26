@@ -8,7 +8,7 @@ import {
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
 import { useUpdateUserInfo } from 'data-services/hooks/auth/useUpdateUserInfo'
-import { InputContent, SaveButton } from 'design-system'
+import { InputContent, SaveButton } from 'nova-ui-kit'
 import { useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { API_MAX_UPLOAD_SIZE } from 'utils/constants'

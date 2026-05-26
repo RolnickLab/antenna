@@ -1,6 +1,6 @@
 import classNames from 'classnames'
-import { CONSTANTS } from 'design-system/constants'
 import _ from 'lodash'
+import { CONSTANTS } from 'nova-ui-kit/constants'
 import _Plot from 'react-plotly.js'
 import styles from './plot.module.scss'
 import { PlotProps } from './types'
