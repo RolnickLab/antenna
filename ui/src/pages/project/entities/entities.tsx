@@ -1,8 +1,10 @@
 import { useEntities } from 'data-services/hooks/entities/useEntities'
-import { PageHeader } from 'design-system/components/page-header/page-header'
-import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
-import { Table } from 'design-system/components/table/table/table'
-import { TableSortSettings } from 'design-system/components/table/types'
+import {
+  PageHeader,
+  PaginationBar,
+  Table,
+  TableSortSettings,
+} from 'nova-ui-kit'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'

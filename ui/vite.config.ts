@@ -4,6 +4,7 @@ import { defineConfig, loadEnv } from 'vite'
 import eslint from 'vite-plugin-eslint'
 import svgr from 'vite-plugin-svgr'
 import viteTsconfigPaths from 'vite-tsconfig-paths'
+import { cssVarsPlugin } from './src/nova-ui-kit/plugins/cssVarsPlugin'
 
 let temporaryCommitHash: string
 try {
@@ -23,20 +24,28 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
 
   return {
+    assetsInclude: ['**/*.md'],
     base: '/',
     build: {
       outDir: './build',
     },
+    css: {
+      preprocessorOptions: {
+        scss: {
+          additionalData: `@use 'src/nova-ui-kit/mixins.scss' as *;`,
+        },
+      },
+    },
+    define: {
+      __COMMIT_HASH__: JSON.stringify(commitHash),
+    },
     plugins: [
+      cssVarsPlugin(),
       react(),
       viteTsconfigPaths(),
       svgr({ include: '**/*.svg?react' }),
       eslint({ exclude: ['/virtual:/**', 'node_modules/**'] }),
     ],
-    assetsInclude: ['**/*.md'],
-    define: {
-      __COMMIT_HASH__: JSON.stringify(commitHash),
-    },
     server: {
       open: true,
       port: 3000,

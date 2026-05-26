@@ -1,10 +1,12 @@
 import { usePipelines } from 'data-services/hooks/pipelines/usePipelines'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
-import { PageHeader } from 'design-system/components/page-header/page-header'
-import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
-import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
-import { Table } from 'design-system/components/table/table/table'
-import { TableSortSettings } from 'design-system/components/table/types'
+import {
+  ColumnSettings,
+  PageHeader,
+  PaginationBar,
+  Table,
+  TableSortSettings,
+} from 'nova-ui-kit'
 import { PipelineDetailsDialog } from 'pages/pipeline-details/pipeline-details-dialog'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'

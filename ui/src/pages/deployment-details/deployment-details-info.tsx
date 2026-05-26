@@ -1,11 +1,14 @@
 import { FormRow, FormSection } from 'components/form/layout/layout'
+import { MultiMarkerMap } from 'components/map/multi-marker-map/multi-marker-map'
+import { MarkerPosition } from 'components/map/types'
 import { DeploymentDetails } from 'data-services/models/deployment-details'
-import * as Dialog from 'design-system/components/dialog/dialog'
-import { ImageCarousel } from 'design-system/components/image-carousel/image-carousel'
-import { InputContent, InputValue } from 'design-system/components/input/input'
-import { MultiMarkerMap } from 'design-system/map/multi-marker-map/multi-marker-map'
-import { MarkerPosition } from 'design-system/map/types'
-import { Button } from 'nova-ui-kit'
+import {
+  Button,
+  Dialog,
+  ImageCarousel,
+  InputContent,
+  InputValue,
+} from 'nova-ui-kit'
 import { useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'

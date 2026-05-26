@@ -1,16 +1,16 @@
 import { API_ROUTES } from 'data-services/constants'
 import { Deployment } from 'data-services/models/deployment'
-import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
-import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
-import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
-import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import {
+  BasicTableCell,
   CellTheme,
+  DateTableCell,
   ImageCellTheme,
+  ImageTableCell,
+  StatusTableCell,
   TableColumn,
   TextAlign,
-} from 'design-system/components/table/types'
-import { Toolbar } from 'design-system/components/toolbar'
+  Toolbar,
+} from 'nova-ui-kit'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'

@@ -1,7 +1,6 @@
 import { useCreateProject } from 'data-services/hooks/projects/useCreateProject'
-import * as Dialog from 'design-system/components/dialog/dialog'
 import { PlusIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
+import { Button, Dialog } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -15,8 +14,8 @@ export const NewProjectDialog = ({
   buttonSize = 'small',
   buttonVariant = 'outline',
 }: {
-  buttonSize?: string
-  buttonVariant?: string
+  buttonSize?: 'default' | 'small'
+  buttonVariant?: 'outline' | 'success'
 }) => {
   const navigate = useNavigate()
   const { createProject, isLoading, isSuccess, error } = useCreateProject()

@@ -2,9 +2,7 @@ import classNames from 'classnames'
 import { DeterminationScore } from 'components/determination-score'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { CaptureDetection } from 'data-services/models/capture'
-import * as Dialog from 'design-system/components/dialog/dialog'
-import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
-import { Tooltip } from 'nova-ui-kit'
+import { Dialog, LoadingSpinner, Tooltip } from 'nova-ui-kit'
 import {
   OccurrenceDetails,
   TABS,
