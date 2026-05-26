@@ -62,8 +62,19 @@ SENDGRID_API_KEY=
 NEW_RELIC_CONFIG_FILE=/app/config/newrelic.ini
 NEW_RELIC_ENVIRONMENT=development
 # NEW_RELIC_LICENSE_KEY=        # overrides license_key in ini (preferred — keep key out of repo)
-# NEW_RELIC_APP_NAME=AMI Backend (Demo)
 # NEW_RELIC_MONITOR_MODE=true   # set false to silence the agent without removing it
+#
+# REQUIRED per deploy — config/newrelic.ini intentionally does not set
+# app_name. Examples (use the "Antenna Backend (<env>)" pattern for any
+# new entity; the legacy "AMI Backend (Staging)" entity already exists
+# in NR and can keep that name for history continuity if desired):
+#   NEW_RELIC_APP_NAME=Antenna Backend (live)       # production
+#   NEW_RELIC_APP_NAME=Antenna Backend (Demo)       # demo
+#   NEW_RELIC_APP_NAME=Antenna Backend (Staging)    # staging (new entity)
+#   NEW_RELIC_APP_NAME=Antenna Backend (preview-N)  # ephemeral preview stacks
+# Missing → agent reports under the literal name "Python Application", which
+# is an easy-to-spot orphan rather than a silent merge into another env.
+NEW_RELIC_APP_NAME=Antenna Backend (development)
 # NEW_RELIC_LOG_LEVEL=info      # bump to debug only when reproducing an agent issue
 # NEW_RELIC_HIGH_SECURITY=false # true forces obfuscated SQL + drops request params, irreversible per app
 #
