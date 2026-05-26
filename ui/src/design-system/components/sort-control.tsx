@@ -23,7 +23,10 @@ export const SortControl = ({ columns, setSort, sort }: SortControlProps) => {
 
   const changeSortField = (field: string) => {
     const selected = columns.find((column) => column.sortField === field)
-    setSort({ field, order: selected?.defaultSortOrder ?? sort?.order ?? 'asc' })
+    setSort({
+      field,
+      order: selected?.defaultSortOrder ?? sort?.order ?? 'asc',
+    })
   }
 
   const changeSortOrder = () => {
