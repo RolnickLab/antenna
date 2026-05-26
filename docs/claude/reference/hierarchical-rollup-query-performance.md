@@ -20,7 +20,7 @@ anti-pattern below and timed out; commit `16b14686` switched to the pattern.
   build `{taxon_id: count}` dicts (incrementing the determination taxon + every
   ancestor in `parents_json`), then apply as constant-time `CASE` annotations. Resolve
   any membership filter from the same set via `id__in`.
-- The GIN index (`main_taxon_parents_json_gin_idx`, migration `0085`) only helps the
+- The GIN index (`main_taxon_parents_json_gin_idx`, migration `0087`) only helps the
   **literal**-RHS containment filters (occurrence-list `taxon=<id>`,
   `build_occurrence_default_filters_q`), not correlated ones.
 

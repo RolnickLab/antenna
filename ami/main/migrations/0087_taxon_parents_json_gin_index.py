@@ -22,7 +22,7 @@ class Migration(migrations.Migration):
     atomic = False
 
     dependencies = [
-        ("main", "0084_revoke_delete_job_from_roles"),
+        ("main", "0086_sourceimage_recent_capture_index"),
     ]
 
     operations = [
