@@ -11,7 +11,10 @@ class Migration(migrations.Migration):
     Building the index can take longer than a configured ``statement_timeout``
     (development sets 30s, see ``config/settings/local.py``; a production role may
     set one too). ``CREATE INDEX CONCURRENTLY`` runs as a single statement and is
-    subject to that timeout, so we clear it for this connection before building.
+    subject to that timeout, so we clear it for this connection before building,
+    then RESET it afterwards. The SET is session-scoped and this migration is
+    non-atomic, so without the trailing RESET later migrations sharing the
+    connection would inherit ``timeout=0`` and silently lose the safeguard.
     """
 
     atomic = False
@@ -30,5 +33,11 @@ class Migration(migrations.Migration):
         AddIndexConcurrently(
             model_name="occurrence",
             index=models.Index(fields=["project", "-updated_at"], name="occur_proj_updated_desc_idx"),
+        ),
+        # Restore the session default so the disabled timeout does not leak into
+        # later migrations executed on the same (non-atomic) connection.
+        migrations.RunSQL(
+            sql="RESET statement_timeout;",
+            reverse_sql=migrations.RunSQL.noop,
         ),
     ]
