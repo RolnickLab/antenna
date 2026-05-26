@@ -102,6 +102,55 @@ and were the original timeout:
 - **GIN `jsonb_path_ops` only serves `@>` with a constant RHS.** Literal
   `parents_json__contains=[{"id": X}]` uses it; an `OuterRef` RHS does not.
 
+## When to use which mechanism (sparse vs dense)
+
+The CASE-from-map pattern above is the right tool **only when the map is sparse**.
+For *dense* per-taxon aggregates — one value per observed taxon, e.g. the existing
+`occurrences_count` / `best_determination_score` / `last_detected` for a project's
+~hundreds-to-thousands of taxa — it does **not** work: one `When` branch per taxon
+blows past `sqlparse`'s parser limit and the query fails with
+`SQLParseError: Maximum number of tokens exceeded (10000)`.
+
+The scalable alternative for dense aggregates is **conditional aggregation over the
+reverse relation** (already documented for Event counts in `build_occurrence_default_filters_q`):
+
+```python
+count_filter = (
+    self.get_occurrence_filters(project, accessor="occurrences")
+    & build_occurrence_default_filters_q(project, request, occurrence_accessor="occurrences", ...)
+)
+qs = qs.annotate(
+    occurrences_count=Count("occurrences", filter=count_filter, distinct=True),
+    best_determination_score=Max("occurrences__determination_score", filter=count_filter),
+    last_detected=Max("occurrences__detections__timestamp", filter=count_filter),
+).filter(occurrences_count__gt=0)  # HAVING — replaces the EXISTS membership query
+```
+
+One GROUP BY, constant-size SQL, scales in both taxa and occurrences. `Count(distinct)`
+dedupes the detections fan-out under `?collection=`. The HAVING replaces a separate
+membership query (the determination ids present in the filtered set are exactly the
+observed taxa).
+
+### Two gotchas that turn fast conditional aggregation into a multi-minute scan
+
+1. **Do not include the default *taxa* include/exclude filter in `count_filter` when
+   the count groups by `determination = the taxon row`.** The filter is redundant
+   (`filter_by_project_default_taxa` already keeps/drops the row at the queryset
+   level), and including it adds a `parents_json` containment join inside the
+   aggregate that the planner cannot reconcile with the detections join from
+   `?collection=` — measured 0.3s → 182s on a ~1k-taxa project. Keep only the score
+   threshold (per-occurrence, not redundant). The verification rollup *base* (which
+   queries Occurrence directly and rolls up to ancestors) does still need the taxa
+   filter, and pays no cost because its driving set is sparse.
+
+2. **Audit `filter_backends` for redundant collection / event JOIN filters before
+   adding conditional-aggregate annotations.** A backend like
+   `queryset.filter(occurrences__detections__source_image__collections=<id>)` was
+   harmless on top of correlated subqueries but, combined with the aggregate
+   GROUP BY, induces an INNER JOIN that multiplies taxon rows and breaks the planner.
+   Express the filter once — inside the aggregate (`accessor="occurrences"`) — and
+   remove the backend, since the HAVING already enforces membership.
+
 ## Future direction — denormalised per-project observed taxa
 
 The precompute approach scales with verified-data volume. If per-project taxa
