@@ -1795,6 +1795,20 @@ class ModelAgreementSerializer(serializers.Serializer):
         max_value=1.0,
         help_text="agreed_exact_count / verified_with_prediction_count",
     )
+    agreed_exact_ci_low = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        allow_null=True,
+        required=False,
+        help_text="Wilson 95% CI lower bound for agreed_exact_pct. Null when verified_with_prediction_count is 0.",
+    )
+    agreed_exact_ci_high = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        allow_null=True,
+        required=False,
+        help_text="Wilson 95% CI upper bound for agreed_exact_pct. Null when verified_with_prediction_count is 0.",
+    )
     agreed_any_rank_count = serializers.IntegerField(
         help_text="Exact matches plus disagreements whose LCA is at any real rank (UNKNOWN excluded)."
     )
@@ -1802,6 +1816,31 @@ class ModelAgreementSerializer(serializers.Serializer):
         min_value=0.0,
         max_value=1.0,
         help_text="agreed_any_rank_count / verified_with_prediction_count",
+    )
+    agreed_any_rank_ci_low = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        allow_null=True,
+        required=False,
+        help_text="Wilson 95% CI lower bound for agreed_any_rank_pct. Null when verified_with_prediction_count is 0.",
+    )
+    agreed_any_rank_ci_high = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        allow_null=True,
+        required=False,
+        help_text="Wilson 95% CI upper bound for agreed_any_rank_pct. Null when verified_with_prediction_count is 0.",
+    )
+    cohens_kappa = serializers.FloatField(
+        min_value=-1.0,
+        max_value=1.0,
+        allow_null=True,
+        required=False,
+        help_text=(
+            "Cohen's kappa (exact-taxon) — human↔model agreement beyond chance. "
+            "Range [-1, 1]; negative is worse than chance. Null when there are no "
+            "doubly-classified occurrences or expected agreement is 1.0."
+        ),
     )
     agreement_coarsest_rank = serializers.CharField(
         allow_null=True,
