@@ -1701,7 +1701,10 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             .filter(models.Exists(Identification.objects.filter(occurrence=models.OuterRef("pk"), withdrawn=False)))
             .annotate(_agreed_prediction_id=best_identification_agreed_prediction)
         )
-        value_fields = ["determination_id", "determination__parents_json", "_agreed_prediction_id"]
+        # ``pk`` is selected only so ``.distinct()`` below dedupes by occurrence: when
+        # occurrence_filters joins to detections (e.g. ?collection=<id>), one Occurrence
+        # yields a row per matching Detection, which would otherwise inflate the counts.
+        value_fields = ["pk", "determination_id", "determination__parents_json", "_agreed_prediction_id"]
         if include_agreement:
             # Top machine prediction's taxon for the same occurrence.
             verified_occurrences = verified_occurrences.annotate(
@@ -1716,7 +1719,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         verified_counts: dict[int, int] = {}
         agreed_with_prediction_counts: dict[int, int] = {}
         agreed_exact_counts: dict[int, int] = {}
-        for row in verified_occurrences.values(*value_fields):
+        for row in verified_occurrences.values(*value_fields).distinct():
             determination_id = row["determination_id"]
             # The taxon itself plus every ancestor — i.e. every row this occurrence rolls up to.
             taxon_ids: set[int] = set()

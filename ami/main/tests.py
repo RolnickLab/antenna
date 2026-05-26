@@ -4890,3 +4890,26 @@ class TestTaxaVerification(APITestCase):
 
         verified_bypassed = set(self._list_by_name(self.list_url + "&verified=true&apply_defaults=false").keys())
         self.assertEqual(verified_bypassed, {"Vanessa cardui", "Vanessa atalanta"})
+
+    # --- collection filter must not inflate counts via the detections join ---
+
+    def test_verified_count_not_inflated_by_collection_join(self):
+        # A second detection on a verified occurrence means the ?collection= INNER JOIN to
+        # detections yields two rows for that occurrence; the rollup must still count it once.
+        extra_detection = Detection.objects.create(
+            source_image=self.occ_exact.best_detection.source_image,
+            occurrence=self.occ_exact,
+            timestamp=self.occ_exact.best_detection.timestamp,
+            bbox=[0.5, 0.5, 0.6, 0.6],
+            path="detections/test_detection_dup.jpg",
+        )
+        extra_detection.classifications.create(taxon=self.cardui, score=0.9, timestamp=datetime.datetime.now())
+        self.assertEqual(self.occ_exact.detections.count(), 2)
+
+        collection = SourceImageCollection.objects.create(project=self.project, name="verif-dedup")
+        collection.images.set(SourceImage.objects.filter(deployment=self.deployment))
+
+        rows = self._list_by_name(f"{self.list_url}&collection={collection.pk}&with_agreement=true")
+        # 2 verified cardui occurrences, not 3 — the duplicate detection must not double-count.
+        self.assertEqual(rows["Vanessa cardui"]["verified_count"], 2)
+        self.assertEqual(rows["Vanessa cardui"]["agreed_exact_count"], 2)
