@@ -1,7 +1,6 @@
 import { DeleteForm } from 'components/form/delete-form/delete-form'
 import { useDeleteProject } from 'data-services/hooks/projects/useDeleteProject'
-import { Button } from 'design-system'
-import * as Dialog from 'design-system/components/dialog/dialog'
+import { Button, Dialog } from 'design-system'
 import { TrashIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'

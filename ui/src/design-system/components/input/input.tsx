@@ -1,5 +1,5 @@
 import classNames from 'classnames'
-import { Button } from 'design-system'
+import { BasicTooltip, Button, InfoTooltip } from 'design-system'
 import _ from 'lodash'
 import { CheckIcon, EyeIcon, PenIcon, XIcon } from 'lucide-react'
 import {
@@ -14,8 +14,6 @@ import {
 import { Link } from 'react-router-dom'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
-import { InfoTooltip } from '../info-tooltip'
-import { BasicTooltip } from '../tooltip/basic-tooltip'
 import styles from './input.module.scss'
 
 interface InputProps {

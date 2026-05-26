@@ -1,6 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog'
-import { Button } from 'design-system'
-import { Checkbox } from 'design-system/components/checkbox/checkbox'
+import { Button, Checkbox } from 'design-system'
 import { useState } from 'react'
 import { useCookieConsent } from 'utils/cookieConsent/cookieConsentContext'
 import { CookieCategory } from 'utils/cookieConsent/types'

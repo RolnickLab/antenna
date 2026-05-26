@@ -1,6 +1,6 @@
 import { getFormatedDateString } from 'utils/date/getFormatedDateString/getFormatedDateString'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
-import { BasicTableCell } from '../basic-table-cell/basic-table-cell'
+import { BasicTableCell } from 'design-system'
 
 interface DateTableCellProps {
   date?: Date

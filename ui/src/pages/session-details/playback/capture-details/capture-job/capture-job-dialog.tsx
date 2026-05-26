@@ -1,7 +1,5 @@
 import { useJobDetails } from 'data-services/hooks/jobs/useJobDetails'
-import { Button } from 'design-system'
-import * as Dialog from 'design-system/components/dialog/dialog'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { BasicTooltip, Button, Dialog } from 'design-system'
 import _ from 'lodash'
 import { EyeIcon } from 'lucide-react'
 import { JobDetails } from 'pages/job-details/job-details'

@@ -1,5 +1,5 @@
 import { API_ROUTES } from 'data-services/constants'
-import { EntityPicker } from 'design-system/components/select/entity-picker'
+import { EntityPicker } from 'design-system'
 import { FilterProps } from './types'
 
 export const StationFilter = ({ onAdd, onClear, value }: FilterProps) => (

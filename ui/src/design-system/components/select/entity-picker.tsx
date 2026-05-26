@@ -3,6 +3,7 @@ import { Select } from 'design-system'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 
+// TODO: Move to src/components, this is not a design system component
 export const EntityPicker = ({
   collection,
   value: _value,

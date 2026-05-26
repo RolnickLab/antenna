@@ -1,4 +1,4 @@
-import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
+import { LoadingSpinner } from 'design-system'
 import { STRING, translate } from 'utils/language'
 import styles from './fetch-info.module.scss'
 

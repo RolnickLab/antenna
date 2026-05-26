@@ -1,6 +1,5 @@
-import { Tooltip } from 'design-system'
-import { Badge } from 'design-system/components/badge/badge'
-import { Info } from 'design-system/components/info-tooltip'
+import { Badge, Tooltip } from 'design-system'
+import { Info } from 'design-system/components/tooltip/info-tooltip'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 

@@ -1,4 +1,4 @@
-import { Input } from 'design-system/components/input/input'
+import { Input } from 'design-system'
 import { FocusEvent } from 'react'
 import { ControllerProps, FieldPath, FieldValues } from 'react-hook-form'
 import { FormController } from './form-controller'

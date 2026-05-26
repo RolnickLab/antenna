@@ -2,13 +2,13 @@ import { FormField } from 'components/form/form-field'
 import { FormError } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
 import { useUpdateUserPassword } from 'data-services/hooks/auth/useUpdateUserPassword'
-import { Button } from 'design-system'
-import { SaveButton } from 'design-system/components/button/save-button'
 import {
+  Button,
   EditableInput,
   InputContent,
   InputValue,
-} from 'design-system/components/input/input'
+  SaveButton,
+} from 'design-system'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'

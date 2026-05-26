@@ -1,7 +1,6 @@
-import { buttonVariants } from 'design-system'
+import { BasicTooltip, buttonVariants } from 'design-system'
 import { BookOpenIcon, ChevronRight } from 'lucide-react'
 import { STRING, translate } from 'utils/language'
-import { BasicTooltip } from '../tooltip/basic-tooltip'
 
 export const DocsLink = ({
   href,

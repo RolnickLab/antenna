@@ -1,11 +1,13 @@
 import { Member } from 'data-services/models/member'
-import { Button } from 'design-system'
-import { Badge } from 'design-system/components/badge/badge'
-import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
-import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
-import { TableColumn } from 'design-system/components/table/types'
-import { Toolbar } from 'design-system/components/toolbar'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import {
+  Badge,
+  BasicTableCell,
+  BasicTooltip,
+  Button,
+  DateTableCell,
+  TableColumn,
+  Toolbar,
+} from 'design-system'
 import { InfoIcon, UserIcon } from 'lucide-react'
 import { STRING, translate } from 'utils/language'
 import { LeaveTeamDialog } from './leave-team-dialog'

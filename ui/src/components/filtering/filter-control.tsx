@@ -1,5 +1,4 @@
-import { Button } from 'design-system'
-import { InfoTooltip } from 'design-system/components/info-tooltip'
+import { Button, InfoTooltip } from 'design-system'
 import { XIcon } from 'lucide-react'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'

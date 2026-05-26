@@ -6,16 +6,18 @@ import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurre
 import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
 import { useTaxaLists } from 'data-services/hooks/taxa-lists/useTaxaLists'
 import { Occurrence } from 'data-services/models/occurrence'
-import { buttonVariants } from 'design-system'
-import { BulkActionBar } from 'design-system/components/bulk-action-bar/bulk-action-bar'
-import * as Dialog from 'design-system/components/dialog/dialog'
-import { PageFooter } from 'design-system/components/page-footer/page-footer'
-import { PageHeader } from 'design-system/components/page-header/page-header'
-import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
-import { SortControl } from 'design-system/components/sort-control'
-import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
-import { Table } from 'design-system/components/table/table/table'
-import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
+import {
+  BulkActionBar,
+  buttonVariants,
+  ColumnSettings,
+  Dialog,
+  PageFooter,
+  PageHeader,
+  PaginationBar,
+  SortControl,
+  Table,
+  ToggleGroup,
+} from 'design-system'
 import { DownloadIcon, Grid2X2Icon, TableIcon } from 'lucide-react'
 import {
   OccurrenceDetails,

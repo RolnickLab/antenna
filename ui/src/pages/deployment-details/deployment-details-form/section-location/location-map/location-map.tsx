@@ -1,6 +1,6 @@
+import { EditableMap } from 'components/map/editable-map/editable-map'
+import { Map, MarkerPosition } from 'components/map/types'
 import { Button } from 'design-system'
-import { EditableMap } from 'design-system/components/map/editable-map/editable-map'
-import { Map, MarkerPosition } from 'design-system/components/map/types'
 import { Loader2Icon } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { STRING, translate } from 'utils/language'

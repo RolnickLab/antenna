@@ -4,9 +4,9 @@ import {
   FormRow,
   FormSection,
 } from 'components/form/layout/layout'
+import { MarkerPosition } from 'components/map/types'
 import { DeploymentFieldValues } from 'data-services/models/deployment-details'
 import { Button } from 'design-system'
-import { MarkerPosition } from 'design-system/components/map/types'
 import _ from 'lodash'
 import { useContext, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'

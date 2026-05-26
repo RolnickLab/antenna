@@ -1,7 +1,6 @@
 import { DeleteForm } from 'components/form/delete-form/delete-form'
 import { useDeleteEntity } from 'data-services/hooks/entities/useDeleteEntity'
-import { Button } from 'design-system'
-import * as Dialog from 'design-system/components/dialog/dialog'
+import { Button, Dialog } from 'design-system'
 import { TrashIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'

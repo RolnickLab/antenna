@@ -1,4 +1,4 @@
-import { TableSortSettings } from 'design-system/components/table/types'
+import { TableSortSettings } from 'design-system'
 import { useSearchParams } from 'react-router-dom'
 
 const SEARCH_PARAM_KEY_ORDERING = 'ordering'

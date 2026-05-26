@@ -2,15 +2,14 @@ import { Button } from 'design-system'
 import { useRef } from 'react'
 import { STRING, translate } from 'utils/language'
 import styles from './file-input.module.scss'
-import { FileInputAccept } from './types'
 
-const acceptValues: { [key in FileInputAccept]: string | undefined } = {
-  [FileInputAccept.All]: undefined,
-  [FileInputAccept.Images]: 'image/png, image/gif, image/jpeg',
+const acceptValues: { [key: string]: string | undefined } = {
+  all: undefined,
+  images: 'image/png, image/gif, image/jpeg',
 }
 
 interface FileInputProps {
-  accept?: FileInputAccept
+  accept?: 'all' | 'images'
   loading?: boolean
   multiple?: boolean
   name: string
@@ -23,7 +22,7 @@ interface FileInputProps {
 }
 
 export const FileInput = ({
-  accept = FileInputAccept.All,
+  accept = 'all',
   loading,
   multiple,
   name,

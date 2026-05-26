@@ -1,11 +1,8 @@
 import classNames from 'classnames'
-import { Button } from 'design-system'
+import { BasicTooltip, Button, DocsLink, LoadingSpinner } from 'design-system'
 import { InfoIcon } from 'lucide-react'
 import { ReactNode } from 'react'
 import { STRING, translate } from 'utils/language'
-import { DocsLink } from '../button/docs-link'
-import { LoadingSpinner } from '../loading-spinner/loading-spinner'
-import { BasicTooltip } from '../tooltip/basic-tooltip'
 import styles from './page-header.module.scss'
 
 interface PageHeaderProps {

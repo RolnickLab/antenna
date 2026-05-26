@@ -1,4 +1,4 @@
-import { MarkerPosition } from 'design-system/components/map/types'
+import { MarkerPosition } from 'components/map/types'
 
 export interface ServerSearchResult {
   osm_id: number

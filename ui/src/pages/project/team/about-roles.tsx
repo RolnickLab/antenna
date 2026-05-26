@@ -1,7 +1,6 @@
 import { FormSection } from 'components/form/layout/layout'
 import { useRoles } from 'data-services/hooks/team/useRoles'
-import { Button } from 'design-system'
-import * as Dialog from 'design-system/components/dialog/dialog'
+import { Button, Dialog } from 'design-system'
 import { InfoIcon } from 'lucide-react'
 import { STRING, translate } from 'utils/language'
 

@@ -1,7 +1,6 @@
 import { useCreateDeployment } from 'data-services/hooks/deployments/useCreateDeployment'
 import { DeploymentDetails } from 'data-services/models/deployment-details'
-import { Button } from 'design-system'
-import * as Dialog from 'design-system/components/dialog/dialog'
+import { Button, Dialog } from 'design-system'
 import { PlusIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'

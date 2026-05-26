@@ -6,14 +6,16 @@ import { useSpecies } from 'data-services/hooks/species/useSpecies'
 import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
 import { useTaxaLists } from 'data-services/hooks/taxa-lists/useTaxaLists'
 import { useTags } from 'data-services/hooks/taxa-tags/useTags'
-import * as Dialog from 'design-system/components/dialog/dialog'
-import { PageFooter } from 'design-system/components/page-footer/page-footer'
-import { PageHeader } from 'design-system/components/page-header/page-header'
-import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
-import { SortControl } from 'design-system/components/sort-control'
-import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
-import { Table } from 'design-system/components/table/table/table'
-import { ToggleGroup } from 'design-system/components/toggle-group/toggle-group'
+import {
+  ColumnSettings,
+  Dialog,
+  PageFooter,
+  PageHeader,
+  PaginationBar,
+  SortControl,
+  Table,
+  ToggleGroup,
+} from 'design-system'
 import { Grid2x2Icon, TableIcon } from 'lucide-react'
 import { SpeciesDetails, TABS } from 'pages/species-details/species-details'
 import { useContext, useEffect, useMemo } from 'react'

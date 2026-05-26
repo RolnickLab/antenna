@@ -1,6 +1,6 @@
 import { Gallery } from 'components/gallery/gallery'
 import { Project } from 'data-services/models/project'
-import { Card, CardSize } from 'design-system/components/card/card'
+import { Card, CardSize } from 'design-system'
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'

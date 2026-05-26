@@ -1,6 +1,5 @@
 import { useQueueJob } from 'data-services/hooks/jobs/useQueueJob'
-import { Button } from 'design-system'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { BasicTooltip, Button } from 'design-system'
 import { CheckIcon, Loader2Icon, PlayIcon } from 'lucide-react'
 import { STRING, translate } from 'utils/language'
 

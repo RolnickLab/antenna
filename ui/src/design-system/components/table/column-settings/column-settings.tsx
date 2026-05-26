@@ -1,6 +1,4 @@
-import { Button, Popover } from 'design-system'
-import { Checkbox } from 'design-system/components/checkbox/checkbox'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { BasicTooltip, Button, Checkbox, Popover } from 'design-system'
 import { Columns3CogIcon } from 'lucide-react'
 import { STRING, translate } from 'utils/language'
 import styles from './column-settings.module.scss'

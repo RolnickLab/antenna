@@ -1,5 +1,4 @@
-import { ImageCarousel } from 'design-system/components/image-carousel/image-carousel'
-import { ImageCellTheme } from '../types'
+import { ImageCarousel, ImageCellTheme } from 'design-system'
 import styles from './image-table-cell.module.scss'
 
 interface ImageTableCellProps {

@@ -3,15 +3,16 @@ import { FormRow, FormSection } from 'components/form/layout/layout'
 import { Export } from 'data-services/models/export'
 import { JobStatusType } from 'data-services/models/job'
 import { JobDetails as Job } from 'data-services/models/job-details'
-import { CodeBlock } from 'design-system'
-import * as Dialog from 'design-system/components/dialog/dialog'
-import { InputContent, InputValue } from 'design-system/components/input/input'
-import { StatusBar } from 'design-system/components/status/status-bar'
 import {
+  CodeBlock,
+  Dialog,
+  InputContent,
+  InputValue,
+  StatusBar,
   StatusBullet,
   StatusBulletTheme,
-} from 'design-system/components/wizard/status-bullet/status-bullet'
-import * as Wizard from 'design-system/components/wizard/wizard'
+  Wizard,
+} from 'design-system'
 import { CheckIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'

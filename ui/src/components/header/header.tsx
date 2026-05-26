@@ -1,7 +1,6 @@
 import classNames from 'classnames'
 import { useLogout } from 'data-services/hooks/auth/useLogout'
-import { Button, buttonVariants, Popover } from 'design-system'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { BasicTooltip, Button, buttonVariants, Popover } from 'design-system'
 import {
   BookOpenIcon,
   ChevronDownIcon,

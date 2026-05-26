@@ -1,5 +1,5 @@
-import { ComboBoxSimple } from 'design-system/components/combo-box/combo-box-simple/combo-box-simple'
-import { MarkerPosition } from 'design-system/components/map/types'
+import { MarkerPosition } from 'components/map/types'
+import { ComboBox } from 'design-system'
 import { useMemo, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { useDebounce } from 'utils/useDebounce'
@@ -25,7 +25,7 @@ export const GeoSearch = ({
   }, [data])
 
   return (
-    <ComboBoxSimple
+    <ComboBox
       emptyLabel={translate(STRING.MESSAGE_NO_RESULTS)}
       items={items}
       label={translate(STRING.SEARCH_MAP)}

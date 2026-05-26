@@ -1,4 +1,4 @@
-import { DatePicker } from 'design-system/components/select/date-picker'
+import { DatePicker } from 'design-system'
 import { FilterProps } from './types'
 
 export const DateFilter = ({ error, onAdd, onClear, value }: FilterProps) => (

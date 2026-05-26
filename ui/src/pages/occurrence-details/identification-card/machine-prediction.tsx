@@ -7,12 +7,12 @@ import {
 } from 'data-services/models/occurrence-details'
 import { Taxon } from 'data-services/models/taxa'
 import {
+  BasicTooltip,
   Collapsible,
   IdentificationCard,
   IdentificationDetails,
   IdentificationScore,
 } from 'design-system'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { Loader2 } from 'lucide-react'
 import { ReactNode, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'

@@ -1,4 +1,4 @@
-export enum Status {
+export enum ConnectionStatus {
   NotConnected,
   Connecting,
   Connected,

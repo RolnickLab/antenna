@@ -1,9 +1,12 @@
 import classNames from 'classnames'
-import { buttonVariants, Select } from 'design-system'
+import {
+  BasicTooltip,
+  buttonVariants,
+  Select,
+  TableSortSettings,
+} from 'design-system'
 import { ArrowUpDownIcon } from 'lucide-react'
 import { STRING, translate } from 'utils/language'
-import { TableSortSettings } from './table/types'
-import { BasicTooltip } from './tooltip/basic-tooltip'
 
 interface SortControlProps {
   columns: { id: string; name: string; sortField?: string }[]

@@ -1,7 +1,10 @@
 import { Algorithm } from 'data-services/models/algorithm'
-import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
-import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
-import { CellTheme, TableColumn } from 'design-system/components/table/types'
+import {
+  BasicTableCell,
+  CellTheme,
+  DateTableCell,
+  TableColumn,
+} from 'design-system'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'

@@ -1,6 +1,6 @@
 import { ErrorBoundary } from 'components/error-boundary/error-boundary'
+import { LoadingSpinner } from 'design-system'
 import React, { Suspense } from 'react'
-import { LoadingSpinner } from '../loading-spinner/loading-spinner'
 import { PlotProps } from './types'
 
 const _Plot = React.lazy(() => import('./plot'))

@@ -1,10 +1,12 @@
 import { API_ROUTES } from 'data-services/constants'
 import { useCaptureSets } from 'data-services/hooks/capture-sets/useCaptureSets'
-import { PageHeader } from 'design-system/components/page-header/page-header'
-import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
-import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
-import { Table } from 'design-system/components/table/table/table'
-import { TableSortSettings } from 'design-system/components/table/types'
+import {
+  ColumnSettings,
+  PageHeader,
+  PaginationBar,
+  Table,
+  TableSortSettings,
+} from 'design-system'
 import { NewEntityDialog } from 'pages/project/entities/new-entity-dialog'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'

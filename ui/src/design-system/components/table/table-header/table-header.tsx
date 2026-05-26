@@ -1,7 +1,6 @@
 import classNames from 'classnames'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { BasicTooltip, TableColumn, TableSortSettings } from 'design-system'
 import { ArrowDownIcon, InfoIcon } from 'lucide-react'
-import { TableColumn, TableSortSettings } from '../types'
 import styles from './table-header.module.scss'
 
 interface TableHeaderProps<T> {

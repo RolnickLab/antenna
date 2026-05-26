@@ -1,12 +1,12 @@
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { BasicTooltip } from 'design-system'
 import { CircleCheckIcon, CircleQuestionMark, Loader2Icon } from 'lucide-react'
-import { Status } from './types'
+import { ConnectionStatus } from './types'
 
-export const StatusInfo = ({
+export const ConnectionStatusInfo = ({
   status,
   tooltip,
 }: {
-  status: Status
+  status: ConnectionStatus
   tooltip?: string
 }) => (
   <BasicTooltip content={tooltip}>
@@ -14,12 +14,12 @@ export const StatusInfo = ({
   </BasicTooltip>
 )
 
-const StatusIcon = ({ status }: { status: Status }) => {
-  if (status === Status.Connected) {
+const StatusIcon = ({ status }: { status: ConnectionStatus }) => {
+  if (status === ConnectionStatus.Connected) {
     return <CircleCheckIcon className="w-6 h-6 text-success" />
   }
 
-  if (status === Status.NotConnected) {
+  if (status === ConnectionStatus.NotConnected) {
     return <CircleQuestionMark className="w-6 h-6 text-destructive" />
   }
 

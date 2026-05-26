@@ -2,8 +2,13 @@ import classNames from 'classnames'
 import { FormRow } from 'components/form/layout/layout'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { ProjectDetails } from 'data-services/models/project-details'
-import { Button, buttonVariants, Popover, Switch } from 'design-system'
-import { InputValue } from 'design-system/components/input/input'
+import {
+  Button,
+  buttonVariants,
+  InputValue,
+  Popover,
+  Switch,
+} from 'design-system'
 import { ChevronRightIcon, InfoIcon } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'

@@ -1,7 +1,7 @@
 import classNames from 'classnames'
+import { CellTheme, TextAlign } from 'design-system'
 import _ from 'lodash'
 import { CSSProperties, ReactNode } from 'react'
-import { CellTheme, TextAlign } from '../types'
 import styles from './basic-table-cell.module.scss'
 
 interface BasicTableCellProps {

@@ -1,13 +1,12 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import classNames from 'classnames'
 import { Command } from 'cmdk'
-import { Button } from 'design-system'
-import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
+import { Button, LoadingSpinner } from 'design-system'
 import { SearchIcon } from 'lucide-react'
 import { useState } from 'react'
-import styles from '../styles.module.scss'
+import styles from './styles.module.scss'
 
-export const ComboBoxSimple = ({
+export const ComboBox = ({
   emptyLabel,
   items = [],
   label,

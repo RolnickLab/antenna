@@ -1,8 +1,8 @@
 import classNames from 'classnames'
+import { Badge } from 'design-system'
 import { ImageIcon } from 'lucide-react'
 import { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { Badge } from '../badge/badge'
 import styles from './card.module.scss'
 
 export enum CardSize {

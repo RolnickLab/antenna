@@ -2,16 +2,16 @@ import classNames from 'classnames'
 import { API_ROUTES } from 'data-services/constants'
 import { Export } from 'data-services/models/export'
 import { JobStatusType } from 'data-services/models/job'
-import { buttonVariants } from 'design-system'
-import { StatusBar } from 'design-system/components/status/status-bar'
-import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
-import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
 import {
+  BasicTableCell,
+  buttonVariants,
   CellTheme,
+  DateTableCell,
+  StatusBar,
   TableColumn,
   TextAlign,
-} from 'design-system/components/table/types'
-import { Toolbar } from 'design-system/components/toolbar'
+  Toolbar,
+} from 'design-system'
 import { DownloadIcon } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'

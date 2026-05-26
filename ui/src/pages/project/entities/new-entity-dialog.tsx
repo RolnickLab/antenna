@@ -1,7 +1,6 @@
 import classNames from 'classnames'
 import { useCreateEntity } from 'data-services/hooks/entities/useCreateEntity'
-import { Button } from 'design-system'
-import * as Dialog from 'design-system/components/dialog/dialog'
+import { Button, Dialog } from 'design-system'
 import { PlusIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'

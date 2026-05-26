@@ -1,5 +1,4 @@
-import { Button, Popover } from 'design-system'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { BasicTooltip, Button, Popover } from 'design-system'
 import { SearchIcon } from 'lucide-react'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'

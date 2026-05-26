@@ -1,7 +1,5 @@
 import { FormSection } from 'components/form/layout/layout'
-import { Button, buttonVariants } from 'design-system'
-import { FileInput } from 'design-system/components/file-input/file-input'
-import { FileInputAccept } from 'design-system/components/file-input/types'
+import { Button, buttonVariants, FileInput } from 'design-system'
 import { PlusIcon, XIcon } from 'lucide-react'
 import { ReactNode } from 'react'
 import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
@@ -65,7 +63,7 @@ export const SelectImagesSection = ({
         {canUpload && (
           <Card>
             <FileInput
-              accept={FileInputAccept.Images}
+              accept="images"
               multiple
               name="select-captures"
               renderInput={({ onClick }) => (

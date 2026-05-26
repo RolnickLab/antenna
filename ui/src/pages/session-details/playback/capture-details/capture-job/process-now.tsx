@@ -1,7 +1,6 @@
 import { useCreateJob } from 'data-services/hooks/jobs/useCreateJob'
 import { CaptureDetails } from 'data-services/models/capture-details'
-import { Button } from 'design-system'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { BasicTooltip, Button } from 'design-system'
 import { CheckIcon, Loader2Icon } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'

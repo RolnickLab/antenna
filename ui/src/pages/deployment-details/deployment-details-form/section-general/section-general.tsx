@@ -10,10 +10,7 @@ import {
   DeploymentDetails,
   DeploymentFieldValues,
 } from 'data-services/models/deployment-details'
-import { Button } from 'design-system'
-import { ImageUpload } from 'design-system/components/image-upload/image-upload'
-import { InputContent } from 'design-system/components/input/input'
-import { EntityPicker } from 'design-system/components/select/entity-picker'
+import { Button, EntityPicker, ImageUpload, InputContent } from 'design-system'
 import _ from 'lodash'
 import { useContext } from 'react'
 import { useForm } from 'react-hook-form'

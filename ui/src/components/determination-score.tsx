@@ -1,5 +1,4 @@
-import { IdentificationScore } from 'design-system'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { BasicTooltip, IdentificationScore } from 'design-system'
 import { STRING, translate } from 'utils/language'
 
 export const DeterminationScore = ({

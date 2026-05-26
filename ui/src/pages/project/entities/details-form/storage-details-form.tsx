@@ -8,8 +8,7 @@ import {
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
 import { StorageSource } from 'data-services/models/storage'
-import { SaveButton } from 'design-system/components/button/save-button'
-import { Input, LockedInput } from 'design-system/components/input/input'
+import { Input, LockedInput, SaveButton } from 'design-system'
 import { ConnectionStatus } from 'pages/project/storage/connection-status'
 import { useState } from 'react'
 import {

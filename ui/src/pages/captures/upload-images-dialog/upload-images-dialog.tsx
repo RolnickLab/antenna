@@ -9,10 +9,16 @@ import { useDeployments } from 'data-services/hooks/deployments/useDeployments'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { Deployment } from 'data-services/models/deployment'
 import { ProjectDetails } from 'data-services/models/project-details'
-import { Button, buttonVariants, Select, Switch, Tooltip } from 'design-system'
-import * as Dialog from 'design-system/components/dialog/dialog'
-import { FormStepper } from 'design-system/components/form-stepper/form-stepper'
-import { InputValue } from 'design-system/components/input/input'
+import {
+  Button,
+  buttonVariants,
+  Dialog,
+  FormStepper,
+  InputValue,
+  Select,
+  Switch,
+  Tooltip,
+} from 'design-system'
 import {
   ChevronRight,
   ChevronRightIcon,

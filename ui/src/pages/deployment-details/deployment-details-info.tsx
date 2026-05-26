@@ -1,11 +1,14 @@
 import { FormRow, FormSection } from 'components/form/layout/layout'
+import { MultiMarkerMap } from 'components/map/multi-marker-map/multi-marker-map'
+import { MarkerPosition } from 'components/map/types'
 import { DeploymentDetails } from 'data-services/models/deployment-details'
-import { Button } from 'design-system'
-import * as Dialog from 'design-system/components/dialog/dialog'
-import { ImageCarousel } from 'design-system/components/image-carousel/image-carousel'
-import { InputContent, InputValue } from 'design-system/components/input/input'
-import { MultiMarkerMap } from 'design-system/components/map/multi-marker-map/multi-marker-map'
-import { MarkerPosition } from 'design-system/components/map/types'
+import {
+  Button,
+  Dialog,
+  ImageCarousel,
+  InputContent,
+  InputValue,
+} from 'design-system'
 import { useMemo } from 'react'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'

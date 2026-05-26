@@ -1,5 +1,4 @@
-import { StatusMarker } from 'design-system/components/status/status-marker/status-marker'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { BasicTooltip, StatusMarker } from 'design-system'
 import styles from './status-table-cell.module.scss'
 
 interface StatusTableCellProps {

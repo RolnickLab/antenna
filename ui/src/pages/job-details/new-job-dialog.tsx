@@ -1,6 +1,5 @@
 import { useCreateJob } from 'data-services/hooks/jobs/useCreateJob'
-import { Button } from 'design-system'
-import * as Dialog from 'design-system/components/dialog/dialog'
+import { Button, Dialog } from 'design-system'
 import { PlusIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'

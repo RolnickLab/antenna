@@ -1,6 +1,5 @@
 import { useCancelJob } from 'data-services/hooks/jobs/useCancelJob'
-import { Button } from 'design-system'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { BasicTooltip, Button } from 'design-system'
 import { BanIcon, CheckIcon, Loader2Icon } from 'lucide-react'
 import { STRING, translate } from 'utils/language'
 

@@ -6,6 +6,7 @@ import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 
+// TODO: Move to src/components, this is not a design system component
 export const CaptureSetPicker = ({
   clearable,
   value: _value,

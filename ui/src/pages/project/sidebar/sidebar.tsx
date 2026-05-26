@@ -1,7 +1,6 @@
 import classNames from 'classnames'
 import { ProjectDetails } from 'data-services/models/project-details'
-import { buttonVariants, Tooltip } from 'design-system'
-import { Badge } from 'design-system/components/badge/badge'
+import { Badge, buttonVariants, Tooltip } from 'design-system'
 import { ChevronRightIcon, PenIcon } from 'lucide-react'
 import { Fragment, ReactNode, useContext, useEffect } from 'react'
 import { Link } from 'react-router-dom'

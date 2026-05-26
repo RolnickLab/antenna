@@ -1,7 +1,7 @@
 import { useDeploymentDetails } from 'data-services/hooks/deployments/useDeploymentsDetails'
 import { useUpdateDeployment } from 'data-services/hooks/deployments/useUpdateDeployment'
 import { DeploymentDetails } from 'data-services/models/deployment-details'
-import * as Dialog from 'design-system/components/dialog/dialog'
+import { Dialog } from 'design-system'
 import _ from 'lodash'
 import { useContext, useEffect, useState } from 'react'
 import { Helmet } from 'react-helmet-async'

@@ -1,17 +1,18 @@
 import { BlueprintCollection } from 'components/blueprint-collection/blueprint-collection'
 import { DeterminationScore } from 'components/determination-score'
+import { Plot } from 'components/plot/lazy-plot'
 import { TaxonDetails } from 'components/taxon-details/taxon-details'
 import { Tag } from 'components/taxon-tags/tag'
 import { TagsForm } from 'components/taxon-tags/tags-form'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { SpeciesDetails as Species } from 'data-services/models/species-details'
-import { Box, buttonVariants } from 'design-system'
 import {
+  Box,
+  buttonVariants,
   InfoBlockField,
   InfoBlockFieldValue,
-} from 'design-system/components/info-block/info-block'
-import { Plot } from 'design-system/components/plot/lazy-plot'
-import * as Tabs from 'design-system/components/tabs/tabs'
+  Tabs,
+} from 'design-system'
 import { ExternalLinkIcon, LockIcon } from 'lucide-react'
 import { Helmet } from 'react-helmet-async'
 import { Link, useNavigate, useParams } from 'react-router-dom'

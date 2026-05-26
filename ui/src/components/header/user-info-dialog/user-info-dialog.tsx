@@ -1,4 +1,4 @@
-import * as Dialog from 'design-system/components/dialog/dialog'
+import { Dialog } from 'design-system'
 import { STRING, translate } from 'utils/language'
 import { UserInfo } from 'utils/user/types'
 import { useUserInfo } from 'utils/user/userInfoContext'

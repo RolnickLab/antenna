@@ -1,8 +1,7 @@
 import classNames from 'classnames'
 import { usePopulateProcessingService } from 'data-services/hooks/processing-services/usePopulateProcessingService'
 import { ProcessingService } from 'data-services/models/processing-service'
-import { Button } from 'design-system'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { BasicTooltip, Button } from 'design-system'
 import { AlertCircleIcon, Loader2, RefreshCcwIcon } from 'lucide-react'
 import { STRING, translate } from 'utils/language'
 

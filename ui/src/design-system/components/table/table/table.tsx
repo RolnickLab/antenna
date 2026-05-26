@@ -1,14 +1,17 @@
 import classNames from 'classnames'
 import { EmptyState } from 'components/empty-state/empty-state'
 import { ErrorState } from 'components/error-state/error-state'
-import { Checkbox } from 'design-system/components/checkbox/checkbox'
-import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import {
+  BasicTableCell,
+  BasicTooltip,
+  Checkbox,
+  LoadingSpinner,
+  TableColumn,
+  TableSortSettings,
+} from 'design-system'
 import { useRef } from 'react'
-import { BasicTableCell } from '../basic-table-cell/basic-table-cell'
 import { TableHeader } from '../table-header/table-header'
 import tableHeaderStyles from '../table-header/table-header.module.scss'
-import { TableColumn, TableSortSettings } from '../types'
 import { StickyHeaderTable } from './sticky-header-table'
 import styles from './table.module.scss'
 import { useScrollFader } from './useScrollFader'

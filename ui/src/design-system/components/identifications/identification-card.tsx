@@ -1,8 +1,7 @@
-import { Button } from 'design-system'
+import { BasicTooltip, Button } from 'design-system'
 import { cn } from 'design-system/utils'
 import { ChevronsUpDownIcon } from 'lucide-react'
 import { ReactNode } from 'react'
-import { BasicTooltip } from '../tooltip/basic-tooltip'
 
 interface IdentificationCard {
   avatar: ReactNode

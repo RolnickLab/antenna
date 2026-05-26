@@ -1,9 +1,11 @@
 import { useProjects } from 'data-services/hooks/projects/useProjects'
-import { Button } from 'design-system'
-import { PageFooter } from 'design-system/components/page-footer/page-footer'
-import { PageHeader } from 'design-system/components/page-header/page-header'
-import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
-import * as Tabs from 'design-system/components/tabs/tabs'
+import {
+  Button,
+  PageFooter,
+  PageHeader,
+  PaginationBar,
+  Tabs,
+} from 'design-system'
 import { NewProjectDialog } from 'pages/project-details/new-project-dialog'
 import { DOCS_LINKS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'

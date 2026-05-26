@@ -1,6 +1,6 @@
 import * as _ToggleGroup from '@radix-ui/react-toggle-group'
 import classNames from 'classnames'
-import { BasicTooltip } from '../tooltip/basic-tooltip'
+import { BasicTooltip } from 'design-system'
 import styles from './toggle-group.module.scss'
 
 interface ToggleGroupProps {

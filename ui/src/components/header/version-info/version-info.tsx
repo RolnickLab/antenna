@@ -1,5 +1,4 @@
-import { Badge } from 'design-system/components/badge/badge'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import { Badge, BasicTooltip } from 'design-system'
 import styles from './version-info.module.scss'
 
 const COPY = {

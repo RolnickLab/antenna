@@ -6,11 +6,13 @@ import {
 import { SUCCESS_TIMEOUT } from 'data-services/constants'
 import { useUpdateMember } from 'data-services/hooks/team/useUpdateMember'
 import { Member } from 'data-services/models/member'
-import { Button } from 'design-system'
-import { SaveButton } from 'design-system/components/button/save-button'
-import * as Dialog from 'design-system/components/dialog/dialog'
-import { InputContent } from 'design-system/components/input/input'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
+import {
+  BasicTooltip,
+  Button,
+  Dialog,
+  InputContent,
+  SaveButton,
+} from 'design-system'
 import { SettingsIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'

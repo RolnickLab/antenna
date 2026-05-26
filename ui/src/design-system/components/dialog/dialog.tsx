@@ -1,9 +1,9 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import classNames from 'classnames'
 import { ErrorState } from 'components/error-state/error-state'
+import { LoadingSpinner } from 'design-system'
 import { XIcon } from 'lucide-react'
 import { ReactNode } from 'react'
-import { LoadingSpinner } from '../loading-spinner/loading-spinner'
 import styles from './dialog.module.scss'
 
 const Root = ({
