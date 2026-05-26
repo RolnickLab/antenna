@@ -1710,17 +1710,23 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         """
         from ami.main.models_future.filters import build_occurrence_default_filters_q
 
-        default_kwargs = dict(
-            apply_default_score_filter=apply_default_score_filter,
-            apply_default_taxa_filter=apply_default_taxa_filter,
-        )
-
         # Filters expressed through the Taxon→occurrences reverse relation, for conditional
-        # aggregation on the main query.
+        # aggregation on the main query. The default *taxa* include/exclude filter is
+        # deliberately omitted here: occurrences_count groups by determination = the taxon
+        # row itself, so the per-occurrence taxa filter is redundant with the row already
+        # being kept/dropped by filter_by_project_default_taxa (applied to the queryset for
+        # list responses). Including it would add a parents_json containment join inside the
+        # aggregate that the planner cannot reconcile with the detections (?collection=)
+        # join — turning the page into a multi-minute scan. The score threshold is per
+        # occurrence, so it is kept.
         count_filter = self.get_occurrence_filters(
             project, accessor="occurrences"
         ) & build_occurrence_default_filters_q(
-            project, self.request, occurrence_accessor="occurrences", **default_kwargs
+            project,
+            self.request,
+            occurrence_accessor="occurrences",
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=False,
         )
         qs = qs.annotate(
             occurrences_count=models.Count("occurrences", filter=count_filter, distinct=True),
@@ -1730,10 +1736,18 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         if restrict_to_observed:
             qs = qs.filter(occurrences_count__gt=0)
 
-        # The verification rollup queries the Occurrence model directly, so it needs the
-        # same filters without the relation prefix.
+        # The verification rollup queries the Occurrence model directly (so no relation
+        # prefix), and rolls up to ancestors via parents_json, so it does need the full
+        # default filters. Its driving set is sparse (verified occurrences only), so the
+        # taxa containment join here is cheap.
         base = Occurrence.objects.filter(self.get_occurrence_filters(project)).filter(
-            build_occurrence_default_filters_q(project, self.request, occurrence_accessor="", **default_kwargs)
+            build_occurrence_default_filters_q(
+                project,
+                self.request,
+                occurrence_accessor="",
+                apply_default_score_filter=apply_default_score_filter,
+                apply_default_taxa_filter=apply_default_taxa_filter,
+            )
         )
         return self._annotate_verification_counts(qs, base)
 
