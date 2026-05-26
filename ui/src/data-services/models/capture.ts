@@ -176,9 +176,6 @@ export class Capture {
   }
   
   get src(): string {
-    if (this._capture.thumbnails && this._capture.thumbnails.small) {
-      return this._capture.thumbnails.small
-    }
     return this._capture.url
   }
 
