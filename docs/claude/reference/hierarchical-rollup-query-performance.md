@@ -5,10 +5,12 @@ How to compute a per-taxon count that rolls up descendant occurrences
 endpoint on large projects. Generalises to any "aggregate over a node and
 all its `parents_json` descendants" problem.
 
-Reference implementation: `TaxonViewSet.add_verification_data` in
-`ami/main/api/views.py` (verified_count / agreed_with_prediction_count /
+Reference implementation: `TaxonQuerySet.with_verification_counts` in
+`ami/main/models.py` (verified_count / agreed_with_prediction_count /
 agreed_exact_count for #1316). History: the first revision used the
 anti-pattern below and timed out; commit `16b14686` switched to the pattern.
+The logic moved from `TaxonViewSet.add_verification_data` → the queryset
+method as part of the view→queryset refactor for #1317.
 
 ## TL;DR
 
