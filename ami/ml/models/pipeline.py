@@ -23,7 +23,6 @@ from django_pydantic_field import SchemaField
 from ami.base.models import BaseModel, BaseQuerySet
 from ami.base.schemas import ConfigurableStage, default_stages
 from ami.main.models import (
-    NULL_DETECTIONS_FILTER,
     Classification,
     Deployment,
     Detection,
@@ -96,11 +95,11 @@ def filter_processed_images(
             task_logger.debug(f"Image {image} needs processing: has no existing detections from pipeline's detector")
             # If there are no existing detections from this pipeline, send the image
             yield image
-        elif not existing_detections.exclude(NULL_DETECTIONS_FILTER).exists():  # type: ignore
+        elif not existing_detections.valid().exists():
             # All detections for this image are null (processed but nothing found) — skip
             task_logger.debug(f"Image {image} has only null detections from pipeline {pipeline}, skipping!")
             continue
-        elif existing_detections.exclude(NULL_DETECTIONS_FILTER).filter(classifications__isnull=True).exists():
+        elif existing_detections.valid().filter(classifications__isnull=True).exists():
             # Check if any real detections (non-null) have no classifications
             task_logger.debug(
                 f"Image {image} needs processing: has existing detections with no classifications "
@@ -439,9 +438,10 @@ def get_or_create_detection(
     ), f"Detection belongs to a different source image: {detection_repr}"
 
     if serialized_bbox is None:
-        # Null detection: algorithm-specific lookup so different pipelines don't share sentinels.
-        # Use bbox__isnull=True because JSONField filter(bbox=None) matches JSON null literal,
-        # not SQL NULL which is what Detection(bbox=None) stores.
+        # Null marker: algorithm-specific lookup so different pipelines don't share sentinels.
+        # Use .null_markers() so legacy bbox=[] sentinels from older runs are also matched and
+        # re-used instead of producing duplicate rows. Detection.NULL_BBOX is the canonical
+        # sentinel value used for new writes; .null_markers() recognises both forms.
         assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
         try:
             detection_algo = algorithms_known[detection_resp.algorithm.key]
@@ -451,11 +451,14 @@ def get_or_create_detection(
                 "The processing service must declare it in the /info endpoint. "
                 f"Known algorithms: {list(algorithms_known.keys())}"
             ) from err
-        existing_detection = Detection.objects.filter(
-            source_image=source_image,
-            bbox__isnull=True,
-            detection_algorithm=detection_algo,
-        ).first()
+        existing_detection = (
+            Detection.objects.filter(
+                source_image=source_image,
+                detection_algorithm=detection_algo,
+            )
+            .null_markers()
+            .first()
+        )
     else:
         # Real detection: algorithm-agnostic — same bbox = same physical detection
         existing_detection = Detection.objects.filter(
@@ -952,15 +955,6 @@ def save_results(
             "Algorithms and category maps must be registered before processing, using /info endpoint."
         )
 
-    # Ensure all images have detections
-    # if not, add a NULL detection (empty bbox) to the results
-    null_detections = create_null_detections_for_undetected_images(
-        results=results,
-        detection_algorithm=detection_algorithm,
-        logger=job_logger,
-    )
-    results.detections = results.detections + null_detections
-
     detections = create_detections(
         detections=results.detections,
         algorithms_known=algorithms_known,
@@ -998,6 +992,22 @@ def save_results(
     deployment_ids = {img.deployment_id for img in source_images if img.deployment_id}
     for deployment in Deployment.objects.filter(pk__in=deployment_ids):
         deployment.update_calculated_fields(save=True)
+
+    # Mark images with no real detections as processed by creating null-bbox sentinels.
+    # Issue #1310: MUST be the final write. Persisting a null marker is the signal that
+    # filter_processed_images uses to skip an image on future runs, so it can only be
+    # written after every step that might fail has succeeded. Any raise earlier in the
+    # pipeline leaves the image unmarked so it gets retried on the next run.
+    null_detection_responses = create_null_detections_for_undetected_images(
+        results=results,
+        detection_algorithm=detection_algorithm,
+        logger=job_logger,
+    )
+    create_detections(
+        detections=null_detection_responses,
+        algorithms_known=algorithms_known,
+        logger=job_logger,
+    )
 
     total_time = time.time() - start_time
     job_logger.info(f"Saved results from pipeline {pipeline} in {total_time:.2f} seconds")

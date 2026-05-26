@@ -13,6 +13,7 @@ from ami.main.models import (
     Deployment,
     Detection,
     Event,
+    Occurrence,
     Project,
     SourceImage,
     SourceImageCollection,
@@ -1023,6 +1024,117 @@ class TestPipeline(TestCase):
         # Should still be exactly one null detection
         null_detections = image.detections.filter(bbox__isnull=True)
         self.assertEqual(null_detections.count(), 1, "Same pipeline should not create duplicate null detections")
+
+    def test_null_detection_does_not_create_phantom_occurrence(self):
+        """
+        Issue #1310: a null detection (empty-bbox sentinel marking "image processed,
+        nothing found") must NOT spawn an Occurrence. Occurrences with no
+        determination and no real detections leak to the API as ghost rows.
+        """
+        image = self.test_images[0]
+        results = self.fake_pipeline_results([image], self.pipeline)
+        results.detections = []  # pipeline found nothing
+
+        save_results(results)
+
+        null_dets = image.detections.filter(bbox__isnull=True)
+        self.assertEqual(null_dets.count(), 1, "Null marker should still be created")
+        self.assertIsNone(
+            null_dets.first().occurrence,
+            "Null detection must NOT be associated with an Occurrence",
+        )
+        # No phantom Occurrence in DB tied to this image at all
+        phantom_occs = Occurrence.objects.filter(detections__source_image=image, determination__isnull=True)
+        self.assertEqual(
+            phantom_occs.count(),
+            0,
+            "No Occurrence with NULL determination should exist for an image that had no detections",
+        )
+
+    def test_captures_not_marked_processed_after_failure(self):
+        """
+        Issue #1310: null markers should only flag images as processed AFTER all
+        downstream save steps (classifications, occurrences) succeed. If any
+        downstream step raises, the image must remain unmarked so the next run
+        re-processes it.
+
+        Reproduces the field bug where 400 images ended up with null markers but
+        no real detections — created when null-creation ran ahead of a later step
+        that failed.
+        """
+        from unittest.mock import patch
+
+        from ami.ml.models.pipeline import filter_processed_images
+
+        # Mix: image_with_real has a detection in the response, image_without_real does not.
+        # The without-real image is the one that would get a null marker.
+        image_with_real, image_without_real = self.test_images
+        results = self.fake_pipeline_results(self.test_images, self.pipeline)
+        # Trim detections to only the first image so the second qualifies for null-marker creation
+        results.detections = [d for d in results.detections if str(d.source_image_id) == str(image_with_real.pk)]
+
+        # Inject failure in a step that runs AFTER detection bulk_create
+        with patch(
+            "ami.ml.models.pipeline.create_classifications",
+            side_effect=RuntimeError("simulated classification failure"),
+        ):
+            with self.assertRaises(RuntimeError):
+                save_results(results)
+
+        # The image with no real detection must NOT have a null marker —
+        # the run failed, so it should be re-tried.
+        null_dets = image_without_real.detections.filter(bbox__isnull=True)
+        self.assertEqual(
+            null_dets.count(),
+            0,
+            "Image without real detections must not be marked processed when downstream step fails",
+        )
+        # filter_processed_images should still yield it for the next run
+        retry_yield = list(filter_processed_images([image_without_real], self.pipeline))
+        self.assertEqual(
+            retry_yield,
+            [image_without_real],
+            "Image with failed run must be re-yielded for processing",
+        )
+
+    def test_null_marker_not_persisted_when_broker_dispatch_fails(self):
+        """
+        Issue #1310 (takeaway-review follow-up): null markers must be the FINAL
+        write in save_results. Failures in any of the trailing steps —
+        create_detection_images.delay (broker outage), update_calculated_fields_for_events
+        (DB error), Deployment.update_calculated_fields (DB error) — must leave the
+        image unmarked.
+
+        This test patches the celery dispatch to raise, simulating a broker
+        outage between the real-detection save and the null-marker save.
+        """
+        from unittest.mock import patch
+
+        from ami.ml.models.pipeline import filter_processed_images
+
+        image_with_real, image_without_real = self.test_images
+        results = self.fake_pipeline_results(self.test_images, self.pipeline)
+        results.detections = [d for d in results.detections if str(d.source_image_id) == str(image_with_real.pk)]
+
+        with patch(
+            "ami.ml.models.pipeline.create_detection_images.delay",
+            side_effect=RuntimeError("simulated broker outage"),
+        ):
+            with self.assertRaises(RuntimeError):
+                save_results(results)
+
+        null_dets = image_without_real.detections.filter(bbox__isnull=True)
+        self.assertEqual(
+            null_dets.count(),
+            0,
+            "Null marker must not be persisted when create_detection_images.delay fails",
+        )
+        retry_yield = list(filter_processed_images([image_without_real], self.pipeline))
+        self.assertEqual(
+            retry_yield,
+            [image_without_real],
+            "Image with failed broker dispatch must be re-yielded for processing",
+        )
 
 
 class TestAlgorithmCategoryMaps(TestCase):
