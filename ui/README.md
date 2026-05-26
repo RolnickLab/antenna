@@ -99,7 +99,7 @@ Colors can be applied in different ways from code. Tailwind CSS is the recommend
 ```typescript
 import { CONSTANTS } from 'nova-ui-kit'
 
-const Box = () => (
+const Component = () => (
   <div
     style={{
       background: CONSTANTS.COLORS.neutral[50],
@@ -189,11 +189,34 @@ Components are exported from `src/nova-ui-kit/index.ts` and can be imported as f
 ```tsx
 import { Button } from 'nova-ui-kit'
 
-const Box = () => (
+const Component = () => (
   <div>
     <Button>
       <span>Some label</span>
     </Button>
+  </div>
+)
+```
+
+## Translations
+
+Since we likely want to support multiple languages in future, we try to avoid hard coded strings in components. Instead, we manage strings from a translation system defined in `src/utils/language.ts`. At the moment, we only support English translations.
+
+**How it works:**
+
+- All string keys are defined in the `STRING` enum
+- English strings are stored in the `ENGLISH_STRINGS` object
+- Use the `translate()` function to get translated strings in components
+
+**Example:**
+
+```typescript
+import { STRING, translate } from 'utils/language'
+import { Button } from 'nova-ui-kit'
+
+const Component = () => (
+  <div>
+    {translate(STRING.SOME_KEY)}</span>
   </div>
 )
 ```
