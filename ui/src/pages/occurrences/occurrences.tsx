@@ -153,7 +153,7 @@ export const Occurrences = () => {
               to={APP_ROUTES.EXPORTS({ projectId: projectId as string })}
             >
               <DownloadIcon className="w-4 h-4" />
-              <span>Export </span>
+              <span>Export</span>
             </Link>
             <SortControl columns={tableColumns} setSort={setSort} sort={sort} />
             <ColumnSettings
