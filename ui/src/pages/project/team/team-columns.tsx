@@ -21,7 +21,6 @@ export const columns = ({
 }): TableColumn<Member>[] => [
   {
     id: 'user',
-    sortField: 'name',
     name: translate(STRING.FIELD_LABEL_USER),
     renderCell: (item: Member) => (
       <BasicTableCell>
