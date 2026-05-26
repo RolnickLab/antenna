@@ -38,7 +38,7 @@ export const columns = ({
 
       return (
         <ImageTableCell
-          images={[{ src: item.src }]}
+          images={[{ src: item.thumbnail_small }]}
           theme={ImageCellTheme.Light}
           to={detailsRoute}
         />

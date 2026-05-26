@@ -107,7 +107,7 @@ export const Playback = ({
         detections={detections}
         height={activeCapture?.height ?? session.firstCapture.height}
         showDetections={showDetections}
-        src={activeCapture?.src}
+        src={activeCapture?.thumbnail_medium}
         width={activeCapture?.width ?? session.firstCapture.width}
       />
       <div className={styles.bottomBar}>
