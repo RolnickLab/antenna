@@ -73,6 +73,23 @@ class UserNestedSerializer(DefaultSerializer):
         ]
 
 
+class SourceImageThumbnailSerializer(DefaultSerializer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["thumbnails"] = serializers.SerializerMethodField()
+
+    def get_thumbnails(self, obj: SourceImage) -> dict | None:
+        return {
+            label: reverse_with_params(
+                "sourceimagethumbnail-detail",
+                args=(obj.pk,),
+                request=self.context.get("request"),
+                params={"label": label},
+            )
+            for label in settings.THUMBNAILS["SIZES"]
+        }
+
+
 class SourceImageNestedSerializer(DefaultSerializer):
     event_id = serializers.PrimaryKeyRelatedField(source="event", read_only=True)
 
@@ -91,7 +108,7 @@ class SourceImageNestedSerializer(DefaultSerializer):
         ]
 
 
-class ExampleSourceImageNestedSerializer(DefaultSerializer):
+class ExampleSourceImageNestedSerializer(SourceImageThumbnailSerializer):
     class Meta:
         model = SourceImage
         fields = [
@@ -1091,25 +1108,13 @@ class DetectionSerializer(DefaultSerializer):
         ]
 
 
-class SourceImageListSerializer(DefaultSerializer):
+class SourceImageListSerializer(SourceImageThumbnailSerializer):
     detections_count = serializers.IntegerField(read_only=True)
     detections = CaptureDetectionsSerializer(many=True, read_only=True, source="filtered_detections")
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), required=False)
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
-    thumbnails = serializers.SerializerMethodField()
-
-    def get_thumbnails(self, obj: SourceImage) -> dict | None:
-        return {
-            label: reverse_with_params(
-                "sourceimagethumbnail-detail",
-                args=(obj.pk,),
-                request=self.context.get("request"),
-                params={"label": label},
-            )
-            for label in settings.THUMBNAILS["SIZES"]
-        }
 
     class Meta:
         model = SourceImage
@@ -1130,7 +1135,6 @@ class SourceImageListSerializer(DefaultSerializer):
             "taxa_count",
             "detections",
             "project",
-            "thumbnails",
         ]
 
 
@@ -1467,7 +1471,7 @@ class OccurrenceSerializer(OccurrenceListSerializer):
         ]
 
 
-class EventCaptureNestedSerializer(DefaultSerializer):
+class EventCaptureNestedSerializer(SourceImageThumbnailSerializer):
     """
     Load the first capture for an event. Or @TODO a single capture from the URL params.
     """

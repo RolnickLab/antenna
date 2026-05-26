@@ -313,6 +313,22 @@ class TestImageThumbnailViews(TestCase):
             capture_json["thumbnails"]["medium"], f"{self.base_url}{self.first_capture.pk}/?label=medium"
         )
 
+    def test_session_example_captures_response_includes_thumbnail_urls(self):
+        response = self.client.get(f"/api/v2/events/?deployment={self.deployment.pk}")
+        self.assertEqual(response.status_code, 200)
+        capture_json = response.json()["results"][0]["example_captures"][0]
+        self.assertIn("thumbnails", capture_json)
+        self.assertURLEqual(capture_json["thumbnails"]["small"], f"{self.base_url}{capture_json['id']}/?label=small")
+        self.assertURLEqual(capture_json["thumbnails"]["medium"], f"{self.base_url}{capture_json['id']}/?label=medium")
+
+    def test_session_first_capture_response_includes_thumbnail_urls(self):
+        response = self.client.get(f"/api/v2/events/{self.deployment.events.all()[0].pk}/")
+        self.assertEqual(response.status_code, 200)
+        capture_json = response.json()["first_capture"]
+        self.assertIn("thumbnails", capture_json)
+        self.assertURLEqual(capture_json["thumbnails"]["small"], f"{self.base_url}{capture_json['id']}/?label=small")
+        self.assertURLEqual(capture_json["thumbnails"]["medium"], f"{self.base_url}{capture_json['id']}/?label=medium")
+
 
 class TestImageGrouping(TestCase):
     def setUp(self) -> None:
