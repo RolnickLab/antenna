@@ -979,7 +979,9 @@ class CustomOccurrenceDeterminationFilter(CustomTaxonFilter):
     def filter_queryset(self, request, queryset, view):
         taxon = self.get_filter_taxon(request, query_params=self.query_params)
         if taxon:
-            # Here the queryset is the Occurrence queryset
+            # Here the queryset is the Occurrence queryset.
+            # The literal parents_json containment (constant RHS) is what the GIN index from
+            # migration 0085 serves — this hierarchical taxon filter is the index's main consumer.
             return queryset.filter(
                 models.Q(determination=taxon) | models.Q(determination__parents_json__contains=[{"id": taxon.pk}])
             )
