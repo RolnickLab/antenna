@@ -17,6 +17,9 @@ export interface TableColumn<T> {
   name: string
   renderCell: (item: T, rowIndex: number, columnIndex: number) => JSX.Element
   sortField?: string
+  // Order applied when this field is first selected in the sort control. Useful
+  // for date-like fields (e.g. "Recent ...") that read better newest-first.
+  defaultSortOrder?: 'asc' | 'desc'
   sticky?: boolean
   styles?: {
     textAlign?: TextAlign
