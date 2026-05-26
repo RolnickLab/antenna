@@ -1,4 +1,4 @@
-import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
+import { LoadingSpinner } from 'nova-ui-kit'
 import { ReactElement, useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import styles from './info-page.module.scss'

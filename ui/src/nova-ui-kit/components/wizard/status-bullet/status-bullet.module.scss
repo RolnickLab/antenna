@@ -1,0 +1,21 @@
+.status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  background-color: var(--color-secondary);
+  padding-top: 2px;
+  @include body-small();
+  font-weight: 600;
+  color: var(--color-generic-white);
+
+  &.success {
+    background-color: var(--color-success);
+  }
+
+  &.neutral {
+    background-color: var(--color-muted-foreground);
+  }
+}

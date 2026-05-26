@@ -7,7 +7,7 @@ from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.core.files.storage import default_storage
 from django.db import models
-from django.db.models import Prefetch, Q
+from django.db.models import OuterRef, Prefetch, Q, Subquery
 from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
@@ -147,6 +147,12 @@ class DefaultReadOnlyViewSet(DefaultViewSetMixin, viewsets.ReadOnlyModelViewSet)
 class ProjectPagination(LimitOffsetPaginationWithPermissions):
     default_limit = 40
 
+    def get_count(self, queryset):
+        # The recent-activity orderings annotate correlated subqueries onto the
+        # queryset. They don't change the row count, so strip them (and ordering)
+        # before counting to keep the pagination COUNT query cheap.
+        return super().get_count(queryset.order_by().values("pk"))
+
 
 class ProjectViewSet(DefaultViewSet, ProjectMixin):
     """
@@ -157,6 +163,17 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
     serializer_class = ProjectSerializer
     pagination_class = ProjectPagination
     permission_classes = [ObjectPermission]
+    ordering_fields = [
+        "name",
+        "created_at",
+        "updated_at",
+        # The three below are not Project fields; get_queryset annotates them on
+        # demand (see below). last_capture_timestamp mirrors the DeploymentViewSet
+        # ordering of the same name, but is a per-project rollup of capture times.
+        "last_capture_timestamp",
+        "last_occurrence_updated_at",
+        "last_job_updated_at",
+    ]
 
     def get_queryset(self):
         qs: ProjectQuerySet = super().get_queryset()  # type: ignore
@@ -168,6 +185,38 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
                 raise PermissionDenied("You can only view your projects")
             if user:
                 qs = qs.filter_by_user(user)
+
+        # Annotate "recent activity" fields only when sorting by them, so the
+        # default list stays cheap. Each is a correlated subquery returning one
+        # row via a covering index, and only one is ever added per request.
+        ordering = {field.lstrip("-") for field in self.request.query_params.get("ordering", "").split(",") if field}
+        if "last_capture_timestamp" in ordering:
+            # Live max capture time per project (Index Only Scan on
+            # main_source_proj_ts_desc_idx); kept live rather than reading the
+            # denormalized Deployment field so the sort never lags ingestion.
+            # timestamp is nullable, and DESC sorts NULLs first, so exclude them
+            # explicitly — otherwise a single undated capture masks the real max.
+            qs = qs.annotate(
+                last_capture_timestamp=Subquery(
+                    SourceImage.objects.filter(project=OuterRef("pk"), timestamp__isnull=False)
+                    .order_by("-timestamp")
+                    .values("timestamp")[:1]
+                )
+            )
+        if "last_occurrence_updated_at" in ordering:
+            qs = qs.annotate(
+                last_occurrence_updated_at=Subquery(
+                    Occurrence.objects.filter(project=OuterRef("pk")).order_by("-updated_at").values("updated_at")[:1]
+                )
+            )
+        if "last_job_updated_at" in ordering:
+            from ami.jobs.models import Job
+
+            qs = qs.annotate(
+                last_job_updated_at=Subquery(
+                    Job.objects.filter(project=OuterRef("pk")).order_by("-updated_at").values("updated_at")[:1]
+                )
+            )
         return qs
 
     def get_serializer_class(self):

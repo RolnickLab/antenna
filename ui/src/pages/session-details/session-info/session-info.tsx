@@ -1,5 +1,5 @@
 import { Session } from 'data-services/models/session'
-import { InfoBlock } from 'design-system/components/info-block/info-block'
+import { InfoBlock } from 'nova-ui-kit'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'

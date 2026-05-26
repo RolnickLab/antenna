@@ -1,6 +1,3 @@
-@import 'src/design-system/variables/colors.scss';
-@import 'src/design-system/variables/typography.scss';
-
 .content {
   width: 100%;
   display: grid;
@@ -9,8 +6,8 @@
 }
 
 .title {
-  @include paragraph-large();
+  @include body-large();
   font-weight: 600;
-  color: $color-neutral-700;
+  color: var(--color-foreground);
   margin: 0 0 16px 0;
 }

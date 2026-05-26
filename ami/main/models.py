@@ -2277,6 +2277,9 @@ class SourceImage(BaseModel):
             models.Index(fields=["deployment", "timestamp"]),
             models.Index(fields=["event", "timestamp"]),
             models.Index(fields=["timestamp"]),
+            # Backs the project "recent captures" sort: a per-project max(timestamp)
+            # lookup (see ProjectViewSet ordering "last_capture_timestamp").
+            models.Index(fields=["project", "-timestamp"], name="main_source_proj_ts_desc_idx"),
         ]
 
 
@@ -3423,6 +3426,9 @@ class Occurrence(BaseModel):
                 fields=["determination_id", "project_id", "event_id"],
                 name="occur_det_proj_evt",
             ),
+            # Supports sorting projects by their most recently updated occurrence
+            # (see ProjectViewSet ordering "last_occurrence_updated_at").
+            models.Index(fields=["project", "-updated_at"], name="occur_proj_updated_desc_idx"),
         ]
 
 
