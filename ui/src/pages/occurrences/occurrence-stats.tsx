@@ -6,6 +6,9 @@ interface OccurrenceStatsProps {
   filters: { field: string; value?: string; error?: string }[]
 }
 
+const clampPct = (value: number) =>
+  Math.round(Math.min(Math.max(value, 0), 1) * 100)
+
 const StatBar = ({
   label,
   value,
@@ -17,7 +20,7 @@ const StatBar = ({
   // when the percentage rounds to 0 but the underlying count is non-zero.
   count?: number
 }) => {
-  const pct = Math.round(Math.min(Math.max(value, 0), 1) * 100)
+  const pct = clampPct(value)
 
   return (
     <div className="space-y-2">
@@ -45,43 +48,93 @@ const StatBar = ({
   )
 }
 
-// Horizontal range bar for a Wilson confidence interval. Draws a filled
-// segment between `low` and `high` over a 0–100% track, so a wide CI reads as
-// a wide bar (= shaky number) and a tight CI as a narrow one. Null bounds →
-// "—".
-const RangeBar = ({
+// Combined point estimate + Wilson 95% CI in one bar so the uncertainty is
+// adjacent to the number it qualifies (more visible than the previous
+// separate-row RangeBar). Layout per row:
+//
+//   Label
+//   [ ━━━━┃══════╋══════┃━━━━ ]   pct% (k of n)   low–high% CI
+//          ^cap  ^point  ^cap
+//
+// The full track is 0–100%. The CI band is a translucent fill from low to
+// high. Small vertical caps mark the CI bounds (error-bar whiskers). A solid
+// vertical line marks the point estimate. When CI bounds are absent (e.g.
+// `agreed_coarser_rank` has no CI in the BE response), just the bar + point
+// render.
+const AgreementBar = ({
   label,
-  low,
-  high,
+  value,
+  count,
+  total,
+  ciLow,
+  ciHigh,
 }: {
   label: string
-  low: number | null
-  high: number | null
+  value: number
+  count?: number
+  total?: number
+  ciLow?: number | null
+  ciHigh?: number | null
 }) => {
-  const hasData = low !== null && high !== null
-  const lowPct = hasData ? Math.round(Math.min(Math.max(low, 0), 1) * 100) : 0
-  const highPct = hasData ? Math.round(Math.min(Math.max(high, 0), 1) * 100) : 0
+  const pct = clampPct(value)
+  const hasCi =
+    ciLow !== null &&
+    ciLow !== undefined &&
+    ciHigh !== null &&
+    ciHigh !== undefined
+  const lowPct = hasCi ? clampPct(ciLow as number) : 0
+  const highPct = hasCi ? clampPct(ciHigh as number) : 0
 
   return (
     <div className="space-y-2">
       <span className="body-overline font-bold text-muted-foreground">
         {label}
       </span>
-      <div className="flex items-center gap-3">
-        <div className="h-2 flex-1 rounded-full bg-muted relative">
-          {hasData ? (
+      <div className="space-y-1">
+        <div className="flex items-center gap-3">
+          <div className="h-3 flex-1 rounded-full bg-muted relative overflow-hidden">
+            {hasCi ? (
+              <>
+                <div
+                  className="absolute top-0 h-3 bg-primary/40"
+                  style={{
+                    left: `${lowPct}%`,
+                    width: `${Math.max(highPct - lowPct, 0.5)}%`,
+                  }}
+                  aria-label="95% confidence interval"
+                />
+                <div
+                  className="absolute top-0 h-3 w-[2px] bg-primary"
+                  style={{ left: `calc(${lowPct}% - 1px)` }}
+                />
+                <div
+                  className="absolute top-0 h-3 w-[2px] bg-primary"
+                  style={{ left: `calc(${highPct}% - 1px)` }}
+                />
+              </>
+            ) : null}
             <div
-              className="absolute h-2 rounded-full bg-primary transition-all"
-              style={{
-                left: `${lowPct}%`,
-                width: `${Math.max(highPct - lowPct, 1)}%`,
-              }}
+              className="absolute top-[-2px] h-[16px] w-[3px] rounded-sm bg-foreground transition-all"
+              style={{ left: `calc(${pct}% - 1.5px)` }}
+              aria-label="point estimate"
             />
-          ) : null}
+          </div>
+          <span className="body-base tabular-nums whitespace-nowrap">
+            {pct}%
+            {count !== undefined ? (
+              <span className="text-muted-foreground">
+                {total !== undefined
+                  ? ` (${count.toLocaleString()} of ${total.toLocaleString()})`
+                  : ` (${count.toLocaleString()})`}
+              </span>
+            ) : null}
+          </span>
         </div>
-        <span className="body-base tabular-nums">
-          {hasData ? `${lowPct}–${highPct}%` : '—'}
-        </span>
+        {hasCi ? (
+          <div className="body-small tabular-nums text-muted-foreground">
+            95% CI {lowPct}–{highPct}%
+          </div>
+        ) : null}
       </div>
     </div>
   )
@@ -147,6 +200,10 @@ export const OccurrenceStats = ({
     return null
   }
 
+  const hasCoarser =
+    data?.agreement_coarsest_rank != null &&
+    data?.agreed_coarser_rank_pct !== null
+
   return (
     <Box className="w-full h-min shrink-0 p-2 rounded-lg md:w-72 md:p-4 md:rounded-xl no-print">
       <span className="body-overline font-bold">Stats</span>
@@ -165,15 +222,30 @@ export const OccurrenceStats = ({
               value={data.verified_pct}
               count={data.verified_count}
             />
-            <StatBar
-              label="Human-model agreement rate"
+            <AgreementBar
+              label="Agreement (exact taxon)"
+              value={data.agreed_exact_pct}
+              count={data.agreed_exact_count}
+              total={data.verified_with_prediction_count}
+              ciLow={data.agreed_exact_ci_low}
+              ciHigh={data.agreed_exact_ci_high}
+            />
+            <AgreementBar
+              label="Agreement (any rank)"
               value={data.agreed_any_rank_pct}
+              count={data.agreed_any_rank_count}
+              total={data.verified_with_prediction_count}
+              ciLow={data.agreed_any_rank_ci_low}
+              ciHigh={data.agreed_any_rank_ci_high}
             />
-            <RangeBar
-              label="Agreement 95% CI (Wilson)"
-              low={data.agreed_any_rank_ci_low}
-              high={data.agreed_any_rank_ci_high}
-            />
+            {hasCoarser ? (
+              <AgreementBar
+                label={`Agreement (≥ ${data.agreement_coarsest_rank})`}
+                value={data.agreed_coarser_rank_pct as number}
+                count={data.agreed_coarser_rank_count as number}
+                total={data.verified_with_prediction_count}
+              />
+            ) : null}
             <SignedBar
               label="Cohen's κ (beyond chance)"
               value={data.cohens_kappa}
