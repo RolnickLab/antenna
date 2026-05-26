@@ -84,15 +84,6 @@ export class Species extends Taxon {
     return this._species.verified_count ?? 0
   }
 
-  get numAgreedWithPrediction(): number {
-    return this._species.agreed_with_prediction_count ?? 0
-  }
-
-  // Only present when with_agreement=true is requested (or on the detail view).
-  get numAgreedExact(): number | undefined {
-    return this._species.agreed_exact_count ?? undefined
-  }
-
   get score(): number | undefined {
     const score = this._species.best_determination_score
 

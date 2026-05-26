@@ -3571,11 +3571,9 @@ class TaxonQuerySet(BaseQuerySet):
         occurrence_filters: models.Q,
         apply_default_score_filter: bool = True,
         apply_default_taxa_filter: bool = True,
-        include_agreement: bool = False,
         verified: bool | None = None,
     ):
-        """Annotate ``verified_count`` / ``agreed_with_prediction_count`` (and, if
-        ``include_agreement``, ``agreed_exact_count``) and optionally apply the
+        """Annotate ``verified_count`` and optionally apply the
         ``verified=true|false`` filter.
 
         Counts roll up descendant occurrences (verifying a species also counts toward
@@ -3584,6 +3582,9 @@ class TaxonQuerySet(BaseQuerySet):
         hierarchical rollup is a single Python pass over that small subset applied as
         constant-time ``CASE`` annotations. A correlated ``parents_json`` subquery per
         taxon would not scale (GIN can't serve a containment with an ``OuterRef`` RHS).
+
+        Model-agreement counts (whether the chosen identification matched the model's
+        top prediction) are tracked separately — see issue #1319.
         """
         default_q = build_occurrence_default_filters_q(
             project,
@@ -3592,34 +3593,17 @@ class TaxonQuerySet(BaseQuerySet):
             apply_default_score_filter=apply_default_score_filter,
             apply_default_taxa_filter=apply_default_taxa_filter,
         )
-        base = Occurrence.objects.filter(occurrence_filters).filter(default_q)
-
-        # The chosen (best, non-withdrawn) identification's agreed_with_prediction FK.
-        best_identification_agreed_prediction = models.Subquery(
-            Identification.objects.filter(occurrence=OuterRef("pk"), withdrawn=False)
-            .order_by(*BEST_IDENTIFICATION_ORDER)
-            .values("agreed_with_prediction_id")[:1]
+        verified_occurrences = (
+            Occurrence.objects.filter(occurrence_filters)
+            .filter(default_q)
+            .filter(Exists(Identification.objects.filter(occurrence=OuterRef("pk"), withdrawn=False)))
         )
-        verified_occurrences = base.filter(
-            Exists(Identification.objects.filter(occurrence=OuterRef("pk"), withdrawn=False))
-        ).annotate(_agreed_prediction_id=best_identification_agreed_prediction)
         # ``pk`` is selected only so ``.distinct()`` below dedupes by occurrence: when
         # occurrence_filters joins to detections (e.g. ?collection=<id>), one Occurrence
         # yields a row per matching Detection, which would otherwise inflate counts.
-        value_fields = ["pk", "determination_id", "determination__parents_json", "_agreed_prediction_id"]
-        if include_agreement:
-            verified_occurrences = verified_occurrences.annotate(
-                _best_machine_taxon_id=models.Subquery(
-                    Classification.objects.filter(detection__occurrence=OuterRef("pk"))
-                    .order_by(*BEST_MACHINE_PREDICTION_ORDER)
-                    .values("taxon_id")[:1]
-                )
-            )
-            value_fields.append("_best_machine_taxon_id")
+        value_fields = ["pk", "determination_id", "determination__parents_json"]
 
         verified_counts: dict[int, int] = {}
-        agreed_with_prediction_counts: dict[int, int] = {}
-        agreed_exact_counts: dict[int, int] = {}
         for row in verified_occurrences.values(*value_fields).distinct():
             determination_id = row["determination_id"]
             taxon_ids: set[int] = set()
@@ -3631,27 +3615,10 @@ class TaxonQuerySet(BaseQuerySet):
                 parent_id = parent.get("id") if isinstance(parent, dict) else getattr(parent, "id", None)
                 if parent_id is not None:
                     taxon_ids.add(int(parent_id))
-
             for taxon_id in taxon_ids:
                 verified_counts[taxon_id] = verified_counts.get(taxon_id, 0) + 1
-            if row["_agreed_prediction_id"] is not None:
-                for taxon_id in taxon_ids:
-                    agreed_with_prediction_counts[taxon_id] = agreed_with_prediction_counts.get(taxon_id, 0) + 1
-            if (
-                include_agreement
-                and determination_id is not None
-                and determination_id == row["_best_machine_taxon_id"]
-            ):
-                for taxon_id in taxon_ids:
-                    agreed_exact_counts[taxon_id] = agreed_exact_counts.get(taxon_id, 0) + 1
 
-        int_field = models.IntegerField()
-        qs = self.annotate(
-            verified_count=_case_from_map(verified_counts, 0, int_field),
-            agreed_with_prediction_count=_case_from_map(agreed_with_prediction_counts, 0, int_field),
-        )
-        if include_agreement:
-            qs = qs.annotate(agreed_exact_count=_case_from_map(agreed_exact_counts, 0, int_field))
+        qs = self.annotate(verified_count=_case_from_map(verified_counts, 0, models.IntegerField()))
 
         if verified is True:
             qs = qs.filter(id__in=list(verified_counts.keys()))
@@ -4050,14 +4017,6 @@ class Taxon(BaseModel):
 
     def verified_count(self) -> int | None:
         # Handled by an annotation when filtering by project (TaxonQuerySet.with_verification_counts)
-        return None
-
-    def agreed_with_prediction_count(self) -> int | None:
-        # Handled by an annotation when filtering by project (TaxonQuerySet.with_verification_counts)
-        return None
-
-    def agreed_exact_count(self) -> int | None:
-        # Handled by an annotation only when with_agreement is requested or on the detail view
         return None
 
     def occurrence_images(self, limit: int | None = 10) -> list[str]:

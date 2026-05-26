@@ -4825,40 +4825,12 @@ class TestTaxaVerification(APITestCase):
         for ancestor in (self.genus, self.family, self.order):
             self.assertEqual(self._detail(ancestor)["verified_count"], 3, ancestor.name)
 
-    # --- agreed_with_prediction_count (chosen identification only) ---
-
-    def test_agreed_with_prediction_counts_only_chosen_identification(self):
-        self.assertEqual(self._detail(self.cardui)["agreed_with_prediction_count"], 1)
-        self.assertEqual(self._detail(self.atalanta)["agreed_with_prediction_count"], 0)
-        # Rolls up: only occ_pred contributes under the genus.
-        self.assertEqual(self._detail(self.genus)["agreed_with_prediction_count"], 1)
-
-    # --- agreed_exact_count (gated) ---
-
-    def test_agreed_exact_count_on_detail(self):
-        # occ_pred + occ_exact: user determination == top machine prediction (cardui).
-        self.assertEqual(self._detail(self.cardui)["agreed_exact_count"], 2)
-        # occ_disagree: user picked atalanta, model said cardui → not exact.
-        self.assertEqual(self._detail(self.atalanta)["agreed_exact_count"], 0)
-        self.assertEqual(self._detail(self.genus)["agreed_exact_count"], 2)
-
-    def test_agreed_exact_count_gated_on_list(self):
-        rows = self._list_by_name()
-        self.assertIn("verified_count", rows["Vanessa cardui"])
-        self.assertIn("agreed_with_prediction_count", rows["Vanessa cardui"])
-        self.assertNotIn("agreed_exact_count", rows["Vanessa cardui"])
-
-        rows = self._list_by_name(self.list_url + "&with_agreement=true")
-        self.assertIn("agreed_exact_count", rows["Vanessa cardui"])
-        self.assertEqual(rows["Vanessa cardui"]["agreed_exact_count"], 2)
-
     # --- list field values ---
 
     def test_list_field_values(self):
         rows = self._list_by_name()
         self.assertEqual(rows["Vanessa cardui"]["occurrences_count"], 2)
         self.assertEqual(rows["Vanessa cardui"]["verified_count"], 2)
-        self.assertEqual(rows["Vanessa cardui"]["agreed_with_prediction_count"], 1)
         self.assertEqual(rows["Vanessa atalanta"]["verified_count"], 1)
         self.assertEqual(rows["Vanessa itea"]["verified_count"], 0)
 
@@ -4909,7 +4881,6 @@ class TestTaxaVerification(APITestCase):
         collection = SourceImageCollection.objects.create(project=self.project, name="verif-dedup")
         collection.images.set(SourceImage.objects.filter(deployment=self.deployment))
 
-        rows = self._list_by_name(f"{self.list_url}&collection={collection.pk}&with_agreement=true")
+        rows = self._list_by_name(f"{self.list_url}&collection={collection.pk}")
         # 2 verified cardui occurrences, not 3 — the duplicate detection must not double-count.
         self.assertEqual(rows["Vanessa cardui"]["verified_count"], 2)
-        self.assertEqual(rows["Vanessa cardui"]["agreed_exact_count"], 2)

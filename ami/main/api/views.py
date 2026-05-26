@@ -1683,15 +1683,8 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             occurrence_filters=direct_filters,
             apply_default_score_filter=apply_default_score_filter,
             apply_default_taxa_filter=apply_default_taxa_filter,
-            include_agreement=self._include_agreement(),
             verified=verified_param,
         )
-
-    def _include_agreement(self) -> bool:
-        """Whether the heavier ``agreed_exact_count`` annotation should be computed."""
-        if self.action == "retrieve":
-            return True
-        return bool(BooleanField(required=False).clean(self.request.query_params.get("with_agreement")))
 
     def attach_tags_by_project(self, qs: QuerySet, project: Project) -> QuerySet:
         """
