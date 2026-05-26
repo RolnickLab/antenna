@@ -1705,8 +1705,19 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         )
 
         if not include_unobserved:
-            # Efficient EXISTS check that uses the composite index
-            qs = qs.filter(models.Exists(Occurrence.objects.filter(base_filter)))
+            # Membership via a single "distinct determination" subquery rather than a
+            # correlated EXISTS. The EXISTS form is index-served and cheap for the default
+            # filters, but when occurrence_filters joins detections (?collection=<id>) it
+            # degrades to a per-taxon scan that times out the pagination COUNT (which has
+            # no LIMIT to short-circuit it). The id__in subquery runs the join once.
+            observed_taxon_ids = (
+                Occurrence.objects.filter(occurrence_filters)
+                .filter(default_filters_q)
+                .filter(determination_id__isnull=False)
+                .values("determination_id")
+                .distinct()
+            )
+            qs = qs.filter(id__in=observed_taxon_ids)
 
         qs = self.add_verification_data(qs, occurrence_filters, default_filters_q)
 
