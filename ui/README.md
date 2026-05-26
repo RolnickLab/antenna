@@ -18,21 +18,21 @@ Web interface to manage and explore data from automated insect monitoring statio
 
 ```
 src/
-├── components/        # Reusable UI components
-├── data-services/     # API integration layer
-│   ├── hooks/         # Hooks for API calls
-│   ├── models/        # TypeScript data layer
-├── design-system/     # Design system (colors, text styles, breakpoints, UI primitives)
-├── pages/             # Page components
-└── utils/             # Helper functions and utilities
+├── components/       # Reusable UI components
+├── data-services/    # API integration layer
+│   ├── hooks/        # Hooks for API calls
+│   ├── models/       # TypeScript data layer
+├── nova-ui-kit/      # Design system (colors, text styles, breakpoints, UI primitives)
+├── pages/            # Page components
+└── utils/            # Helper functions and utilities
 ```
 
 ## Development
 
 ### System requirements
 
-- Node
-- Yarn
+- [Node.js](https://nodejs.org/en/download/)
+- [Yarn](https://yarnpkg.com/getting-started/install)
 
 The `.nvmrc` file in project root describes what Node version to use to make sure we all use the same. To switch between Node versions, a version manager, such as [Node Version Manager (NVM)](https://github.com/nvm-sh/nvm), is suggested.
 
@@ -48,13 +48,17 @@ yarn start
 
 Now you can navigate to the following URL: http://localhost:3000
 
-## Design system
+### Configuration
 
-The design system is centralized in the `src/design-system` directory and defines the visual language used across the application. It includes colors, typography, responsive breakpoints, and reusable UI primitives.
+By default this will try to connect to http://localhost:8000 for the backend API. Use the env var `API_PROXY_TARGET` to change this. You can create multiple `.env` files in the `ui/` directory for different environments or configurations. For example, use `yarn start --mode staging` to load `.env.staging` and point the `API_PROXY_TARGET` to a remote backend.
+
+## Nova UI Kit
+
+This is our design system. This code is centralized in the `src/nova-ui-kit` directory and defines the visual language used across the application. It includes colors, typography, responsive breakpoints, and reusable UI primitives.
 
 ### Colors
 
-Colors are defined in `src/design-system/constants.ts` and organized into both raw colors and theme colors. For consistency, use the theme colors when possible and the raw colors for special cases. Avoid hard coded colors.
+Colors are defined in `src/nova-ui-kit/constants.ts` and organized into both raw colors and theme colors. For consistency, use the theme colors when possible and the raw colors for special cases. Avoid hard coded colors.
 
 Colors can be applied in different ways from code. Tailwind CSS is the recommended approach. We define colors in one place in code and generate variables for the different use cases build time.
 
@@ -93,7 +97,7 @@ Colors can be applied in different ways from code. Tailwind CSS is the recommend
 **TypeScript:**
 
 ```typescript
-import { CONSTANTS } from 'design-system'
+import { CONSTANTS } from 'nova-ui-kit'
 
 const Box = () => (
   <div
@@ -110,7 +114,7 @@ const Box = () => (
 
 ### Text styles
 
-Text styles are defined using SCSS mixins in `design-system/mixins.scss` with the `Mazzard` font family as the primary typeface. All text styles are based on a consistent scale for font sizes and line heights. For consistency, avoid hard coded font sizes and line heights.
+Text styles are defined using SCSS mixins in `nova-ui-kit/mixins.scss` with the `Mazzard` font family as the primary typeface. All text styles are based on a consistent scale for font sizes and line heights. For consistency, avoid hard coded font sizes and line heights.
 
 **Tailwind CSS (recommended):**
 
@@ -133,7 +137,7 @@ Text styles are defined using SCSS mixins in `design-system/mixins.scss` with th
 
 ### Breakpoints
 
-Responsive breakpoints are defined in `src/design-system/constants.ts`. Use these to adapt layouts to different screen sizes.
+Responsive breakpoints are defined in `src/nova-ui-kit/constants.ts`. Use these to adapt layouts to different screen sizes.
 
 Breakpoints can be applied in different ways from code. Tailwind CSS is using a small screen first approach and makes it possible to define responsive styles in a compact and intuitive way.
 
@@ -180,10 +184,10 @@ Breakpoints can be applied in different ways from code. Tailwind CSS is using a 
 
 UI primitives are built on [Radix UI](https://www.radix-ui.com/primitives) (unstyled, accessible components) and [shadcn/ui](https://ui.shadcn.com/) (pre-styled variants). Use these instead of building custom components for better accessibility and consistency.
 
-Components are exported from `src/design-system/index.ts` and can be imported as follows:
+Components are exported from `src/nova-ui-kit/index.ts` and can be imported as follows:
 
 ```tsx
-import { Button } from 'design-system'
+import { Button } from 'nova-ui-kit'
 
 const Box = () => (
   <div>
