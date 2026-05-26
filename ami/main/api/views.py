@@ -1705,16 +1705,18 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         )
 
         if not include_unobserved:
-            # Membership via a single "distinct determination" subquery rather than a
+            # Membership via a materialised "distinct determination" id set rather than a
             # correlated EXISTS. The EXISTS form is index-served and cheap for the default
             # filters, but when occurrence_filters joins detections (?collection=<id>) it
-            # degrades to a per-taxon scan that times out the pagination COUNT (which has
-            # no LIMIT to short-circuit it). The id__in subquery runs the join once.
-            observed_taxon_ids = (
+            # degrades to a per-taxon scan that times out the pagination COUNT (no LIMIT to
+            # short-circuit it). Materialising the id set runs the detections join exactly
+            # once (~0.2s) and leaves COUNT/page as a plain indexed `id IN (...)`; the same
+            # pattern is used for the verified filter in add_verification_data.
+            observed_taxon_ids = list(
                 Occurrence.objects.filter(occurrence_filters)
                 .filter(default_filters_q)
                 .filter(determination_id__isnull=False)
-                .values("determination_id")
+                .values_list("determination_id", flat=True)
                 .distinct()
             )
             qs = qs.filter(id__in=observed_taxon_ids)
