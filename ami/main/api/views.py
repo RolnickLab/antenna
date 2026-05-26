@@ -1537,11 +1537,15 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         else:
             return TaxonSerializer
 
-    def get_occurrence_filters(self, project: Project) -> models.Q:
+    def get_occurrence_filters(self, project: Project, accessor: str = "") -> models.Q:
         """
-        Filter taxa by when/where it has occurred.
+        Filter by when/where a taxon has occurred.
 
         Supports querying by occurrence, project, deployment, or event.
+
+        ``accessor`` is the relation path to the Occurrence model. Pass "" to filter the
+        Occurrence model directly, or "occurrences" to filter the Taxon model via its
+        reverse relation (for conditional aggregation in annotate_taxon_counts).
 
         @TODO Consider using a custom filter class for this (see get_filter_name)
         @TODO Move this to a custom QuerySet manager on the Taxon model
@@ -1554,12 +1558,12 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         event_id = self.request.query_params.get("event") or self.request.query_params.get("occurrences__event")
         collection_id = self.request.query_params.get("collection")
 
-        # filter_active = any([occurrence_id, project, deployment_id, event_id, collection_id])
+        prefix = f"{accessor}__" if accessor else ""
 
-        filters = models.Q(
-            project=project,
-            event__isnull=False,
-        )
+        def field(path: str) -> str:
+            return f"{prefix}{path}"
+
+        filters = models.Q(**{field("project"): project, field("event__isnull"): False})
         try:
             """
             Ensure that the related objects exist before filtering by them.
@@ -1568,16 +1572,16 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             if occurrence_id:
                 Occurrence.objects.get(id=occurrence_id)
                 # This query does not need the same filtering as the others
-                filters &= models.Q(id=occurrence_id)
+                filters &= models.Q(**{field("id"): occurrence_id})
             if deployment_id:
                 Deployment.objects.get(id=deployment_id)
-                filters &= models.Q(deployment=deployment_id)
+                filters &= models.Q(**{field("deployment"): deployment_id})
             if event_id:
                 Event.objects.get(id=event_id)
-                filters &= models.Q(event=event_id)
+                filters &= models.Q(**{field("event"): event_id})
             if collection_id:
                 SourceImageCollection.objects.get(id=collection_id)
-                filters &= models.Q(detections__source_image__collections=collection_id)
+                filters &= models.Q(**{field("detections__source_image__collections"): collection_id})
         except exceptions.ObjectDoesNotExist as e:
             # Raise a 404 if any of the related objects don't exist
             raise NotFound(detail=str(e))
@@ -1641,29 +1645,13 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         Counts are computed by annotate_taxon_counts from one filtered occurrence set
         (occurrence_filters + the project's default filters), not per-taxon subqueries.
         """
-        occurrence_filters = self.get_occurrence_filters(project)
-
-        # Build a single Q filter for default filters (score threshold + taxa filters)
-        # This creates an efficient filter that works with composite indexes
-        # Respects apply_defaults flag: build_occurrence_default_filters_q checks it internally
-        from ami.main.models_future.filters import build_occurrence_default_filters_q
-
-        default_filters_q = build_occurrence_default_filters_q(
+        return self.annotate_taxon_counts(
+            qs,
             project,
-            self.request,
-            occurrence_accessor="",
             apply_default_score_filter=apply_default_score_filter,
             apply_default_taxa_filter=apply_default_taxa_filter,
-        )
-
-        qs = self.annotate_taxon_counts(
-            qs,
-            occurrence_filters,
-            default_filters_q,
             restrict_to_observed=not include_unobserved,
         )
-
-        return qs
 
     def _include_agreement(self) -> bool:
         """Whether the heavier ``agreed_exact_count`` annotation should be computed."""
@@ -1693,58 +1681,60 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
     def annotate_taxon_counts(
         self,
         qs: QuerySet,
-        occurrence_filters: models.Q,
-        default_filters_q: models.Q,
+        project: Project,
         *,
+        apply_default_score_filter: bool = True,
+        apply_default_taxa_filter: bool = True,
         restrict_to_observed: bool,
     ) -> QuerySet:
         """Centralised per-(project, taxon) count annotations for the taxa endpoint.
 
-        Every count is derived from one filtered occurrence set
-        (``occurrence_filters`` + the project default filters) by precomputing
-        ``{taxon_id: value}`` maps in Python and applying them as constant-time ``CASE``
-        annotations (:meth:`_case_from_map`), rather than per-taxon correlated subqueries.
-        The subquery form does not scale once ``occurrence_filters`` joins detections
+        Every count comes from the same filtered occurrence set (the project's
+        occurrence_filters + default filters); nothing here uses a per-taxon correlated
+        subquery, which does not scale once the filters join detections
         (``?collection=<id>``): each annotation degrades to a per-row scan — 25x on the
         page, and once per taxon in the unbounded pagination ``COUNT``.
 
-        Two count shapes share the same base queryset:
+        Two count shapes, two mechanisms:
 
         - Direct aggregates (``occurrences_count``, ``best_determination_score``,
-          ``last_detected``), keyed by the occurrence's own determination — one GROUP BY.
-          ``Count(distinct)`` dedupes the detections-join fan-out under ``?collection=``.
-        - ``verified_count`` / ``agreed_*`` roll up to ancestors via ``parents_json`` over
-          the (sparse) verified subset — see :meth:`_annotate_verification_counts`.
-
-        The determination ids present in the filtered set are exactly the observed taxa,
-        so ``restrict_to_observed`` reuses them instead of a separate membership query.
+          ``last_detected``) are dense — one value per observed taxon — so they use
+          conditional aggregation over the Taxon→occurrences reverse relation (one GROUP
+          BY, constant-size SQL). ``Count(distinct)`` dedupes the detections-join fan-out
+          under ``?collection=``; ``restrict_to_observed`` is then a HAVING on the count.
+        - ``verified_count`` / ``agreed_*`` are sparse (only *verified* occurrences) and
+          roll up to ancestors via ``parents_json``, so they are precomputed in Python and
+          applied as ``CASE`` annotations — see :meth:`_annotate_verification_counts`. A
+          dense map would not work there: one ``CASE`` branch per taxon blows past the SQL
+          token limit on large projects.
         """
-        base = Occurrence.objects.filter(occurrence_filters).filter(default_filters_q)
+        from ami.main.models_future.filters import build_occurrence_default_filters_q
 
-        occurrences_count: dict[int, int] = {}
-        best_score: dict[int, float | None] = {}
-        last_detected: dict[int, object] = {}
-        for row in base.values("determination_id").annotate(
-            _n=models.Count("id", distinct=True),
-            _score=models.Max("determination_score"),
-            _last=models.Max("detections__timestamp"),
-        ):
-            determination_id = row["determination_id"]
-            if determination_id is None:
-                continue
-            occurrences_count[determination_id] = row["_n"]
-            best_score[determination_id] = row["_score"]
-            last_detected[determination_id] = row["_last"]
-
-        qs = qs.annotate(
-            occurrences_count=self._case_from_map(occurrences_count, 0, models.IntegerField()),
-            best_determination_score=self._case_from_map(best_score, None, models.FloatField()),
-            last_detected=self._case_from_map(last_detected, None, models.DateTimeField()),
+        default_kwargs = dict(
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=apply_default_taxa_filter,
         )
 
+        # Filters expressed through the Taxon→occurrences reverse relation, for conditional
+        # aggregation on the main query.
+        count_filter = self.get_occurrence_filters(
+            project, accessor="occurrences"
+        ) & build_occurrence_default_filters_q(
+            project, self.request, occurrence_accessor="occurrences", **default_kwargs
+        )
+        qs = qs.annotate(
+            occurrences_count=models.Count("occurrences", filter=count_filter, distinct=True),
+            best_determination_score=models.Max("occurrences__determination_score", filter=count_filter),
+            last_detected=models.Max("occurrences__detections__timestamp", filter=count_filter),
+        )
         if restrict_to_observed:
-            qs = qs.filter(id__in=list(occurrences_count.keys()))
+            qs = qs.filter(occurrences_count__gt=0)
 
+        # The verification rollup queries the Occurrence model directly, so it needs the
+        # same filters without the relation prefix.
+        base = Occurrence.objects.filter(self.get_occurrence_filters(project)).filter(
+            build_occurrence_default_filters_q(project, self.request, occurrence_accessor="", **default_kwargs)
+        )
         return self._annotate_verification_counts(qs, base)
 
     def _annotate_verification_counts(self, qs: QuerySet, base: QuerySet) -> QuerySet:
