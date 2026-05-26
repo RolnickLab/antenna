@@ -3,7 +3,9 @@ import {
   Button,
   PageFooter,
   PageHeader,
-  PaginationBar, SortControl, Tabs
+  PaginationBar,
+  SortControl,
+  Tabs,
 } from 'nova-ui-kit'
 import { NewProjectDialog } from 'pages/project-details/new-project-dialog'
 import { DOCS_LINKS } from 'utils/constants'
