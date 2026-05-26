@@ -30,7 +30,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^0.2.0",
     "leaflet": "^1.9.3",
-    "lodash": "^4.17.21",
+    "lodash": "^4.18.1",
     "lucide-react": "^1.0.1",
     "plotly.js": "^2.25.2",
     "react": "^18.2.0",
@@ -45,7 +45,7 @@
     "react-router-dom": "^6.8.2",
     "tailwind-merge": "^3.6.0",
     "typescript": "^4.4.2",
-    "vite": "^4.5.3",
+    "vite": "^5.4.21",
     "vite-tsconfig-paths": "^4.2.1"
   },
   "scripts": {
