@@ -12,7 +12,7 @@ class Migration(migrations.Migration):
     Note it does NOT back the #1316 per-taxon verification / agreement rollup: that is
     computed in a single Python pass over the (sparse) verified-occurrence set rather
     than a correlated subquery, because a containment whose RHS is an OuterRef can't use
-    the index. See TaxonViewSet.add_verification_data.
+    the index. See TaxonViewSet._annotate_verification_counts.
 
     CREATE INDEX CONCURRENTLY can't run inside a transaction, so this migration is
     non-atomic. IF NOT EXISTS keeps it safe to co-exist with the same index if it lands

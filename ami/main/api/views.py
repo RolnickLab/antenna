@@ -6,7 +6,6 @@ from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.db import models
 from django.db.models import OuterRef, Prefetch, Q, Subquery
-from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
 from django.shortcuts import get_object_or_404
@@ -1639,10 +1638,8 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         If a project is passed, only return taxa that have been observed.
         Also add the number of occurrences and the last time it was detected.
 
-        Uses efficient subqueries with default filters applied directly via Q objects
-        to leverage composite indexes on (determination_id, project_id, event_id, determination_score).
-        This avoids the N+1 query problem by building a single Q filter that can be reused
-        across all subqueries.
+        Counts are computed by annotate_taxon_counts from one filtered occurrence set
+        (occurrence_filters + the project's default filters), not per-taxon subqueries.
         """
         occurrence_filters = self.get_occurrence_filters(project)
 
@@ -1659,69 +1656,12 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             apply_default_taxa_filter=apply_default_taxa_filter,
         )
 
-        # Combine base occurrence filters with default filters
-        base_filter = models.Q(
+        qs = self.annotate_taxon_counts(
+            qs,
             occurrence_filters,
-            determination_id=models.OuterRef("id"),
+            default_filters_q,
+            restrict_to_observed=not include_unobserved,
         )
-
-        base_filter = base_filter & default_filters_q
-
-        # Count occurrences - uses composite index (determination_id, project_id, event_id, determination_score)
-        occurrences_count_subquery = models.Subquery(
-            Occurrence.objects.filter(base_filter)
-            .values("determination_id")
-            .annotate(count=models.Count("id"))
-            .values("count")[:1],
-            output_field=models.IntegerField(),
-        )
-
-        # Get best score - uses same composite index
-        best_score_subquery = models.Subquery(
-            Occurrence.objects.filter(base_filter)
-            .values("determination_id")
-            .annotate(max_score=models.Max("determination_score"))
-            .values("max_score")[:1],
-            output_field=models.FloatField(),
-        )
-
-        # Get last detected timestamp - requires join with detections
-        last_detected_subquery = models.Subquery(
-            Occurrence.objects.filter(
-                base_filter,
-                detections__timestamp__isnull=False,
-            )
-            .values("determination_id")
-            .annotate(last_detected=models.Max("detections__timestamp"))
-            .values("last_detected")[:1],
-            output_field=models.DateTimeField(),
-        )
-
-        # Apply annotations
-        qs = qs.annotate(
-            occurrences_count=Coalesce(occurrences_count_subquery, 0),
-            best_determination_score=best_score_subquery,
-            last_detected=last_detected_subquery,
-        )
-
-        if not include_unobserved:
-            # Membership via a materialised "distinct determination" id set rather than a
-            # correlated EXISTS. The EXISTS form is index-served and cheap for the default
-            # filters, but when occurrence_filters joins detections (?collection=<id>) it
-            # degrades to a per-taxon scan that times out the pagination COUNT (no LIMIT to
-            # short-circuit it). Materialising the id set runs the detections join exactly
-            # once (~0.2s) and leaves COUNT/page as a plain indexed `id IN (...)`; the same
-            # pattern is used for the verified filter in add_verification_data.
-            observed_taxon_ids = list(
-                Occurrence.objects.filter(occurrence_filters)
-                .filter(default_filters_q)
-                .filter(determination_id__isnull=False)
-                .values_list("determination_id", flat=True)
-                .distinct()
-            )
-            qs = qs.filter(id__in=observed_taxon_ids)
-
-        qs = self.add_verification_data(qs, occurrence_filters, default_filters_q)
 
         return qs
 
@@ -1731,23 +1671,94 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             return True
         return bool(BooleanField(required=False).clean(self.request.query_params.get("with_agreement")))
 
-    def add_verification_data(
-        self, qs: QuerySet, occurrence_filters: models.Q, default_filters_q: models.Q
-    ) -> QuerySet:
+    @staticmethod
+    def _case_from_map(mapping: dict, default, output_field: models.Field) -> models.expressions.Combinable:
+        """Turn a precomputed ``{taxon_id: value}`` map into a constant-time ``CASE``.
+
+        The result is constant per row, so it is DB-sortable, paginatable, and stripped
+        from the pagination ``COUNT`` — unlike a per-taxon correlated subquery, which is
+        re-evaluated for every row and (in ``COUNT``) for every taxon in the project.
         """
-        Annotate per-taxon verification and human/model agreement counts, and apply the
+        if not mapping:
+            return models.Value(default, output_field=output_field)
+        return models.Case(
+            *(
+                models.When(id=taxon_id, then=models.Value(value, output_field=output_field))
+                for taxon_id, value in mapping.items()
+            ),
+            default=models.Value(default, output_field=output_field),
+            output_field=output_field,
+        )
+
+    def annotate_taxon_counts(
+        self,
+        qs: QuerySet,
+        occurrence_filters: models.Q,
+        default_filters_q: models.Q,
+        *,
+        restrict_to_observed: bool,
+    ) -> QuerySet:
+        """Centralised per-(project, taxon) count annotations for the taxa endpoint.
+
+        Every count is derived from one filtered occurrence set
+        (``occurrence_filters`` + the project default filters) by precomputing
+        ``{taxon_id: value}`` maps in Python and applying them as constant-time ``CASE``
+        annotations (:meth:`_case_from_map`), rather than per-taxon correlated subqueries.
+        The subquery form does not scale once ``occurrence_filters`` joins detections
+        (``?collection=<id>``): each annotation degrades to a per-row scan — 25x on the
+        page, and once per taxon in the unbounded pagination ``COUNT``.
+
+        Two count shapes share the same base queryset:
+
+        - Direct aggregates (``occurrences_count``, ``best_determination_score``,
+          ``last_detected``), keyed by the occurrence's own determination — one GROUP BY.
+          ``Count(distinct)`` dedupes the detections-join fan-out under ``?collection=``.
+        - ``verified_count`` / ``agreed_*`` roll up to ancestors via ``parents_json`` over
+          the (sparse) verified subset — see :meth:`_annotate_verification_counts`.
+
+        The determination ids present in the filtered set are exactly the observed taxa,
+        so ``restrict_to_observed`` reuses them instead of a separate membership query.
+        """
+        base = Occurrence.objects.filter(occurrence_filters).filter(default_filters_q)
+
+        occurrences_count: dict[int, int] = {}
+        best_score: dict[int, float | None] = {}
+        last_detected: dict[int, object] = {}
+        for row in base.values("determination_id").annotate(
+            _n=models.Count("id", distinct=True),
+            _score=models.Max("determination_score"),
+            _last=models.Max("detections__timestamp"),
+        ):
+            determination_id = row["determination_id"]
+            if determination_id is None:
+                continue
+            occurrences_count[determination_id] = row["_n"]
+            best_score[determination_id] = row["_score"]
+            last_detected[determination_id] = row["_last"]
+
+        qs = qs.annotate(
+            occurrences_count=self._case_from_map(occurrences_count, 0, models.IntegerField()),
+            best_determination_score=self._case_from_map(best_score, None, models.FloatField()),
+            last_detected=self._case_from_map(last_detected, None, models.DateTimeField()),
+        )
+
+        if restrict_to_observed:
+            qs = qs.filter(id__in=list(occurrences_count.keys()))
+
+        return self._annotate_verification_counts(qs, base)
+
+    def _annotate_verification_counts(self, qs: QuerySet, base: QuerySet) -> QuerySet:
+        """
+        Annotate per-taxon verification / human-model agreement counts, and apply the
         ``verified=true|false`` filter on list responses.
 
+        ``base`` is the shared filtered occurrence set from :meth:`annotate_taxon_counts`.
         Counts roll up descendant occurrences (verifying a species also counts toward its
-        genus/family rows) and respect the project's default filters (same
-        ``apply_defaults`` handling as ``occurrences_count``).
-
-        All three counts only concern *verified* occurrences (those with a non-withdrawn
-        Identification), which are sparse relative to all occurrences. So the hierarchical
-        rollup is computed in a single pass over that small set in Python and applied as
-        constant-time ``CASE`` annotations. A correlated ``parents_json`` subquery per
-        taxon does not scale: on large projects it forces a per-row scan that the GIN
-        index can't serve (the containment RHS is an ``OuterRef``), timing out the list.
+        genus/family rows). They only concern *verified* occurrences (those with a
+        non-withdrawn Identification), which are sparse, so the hierarchical rollup is a
+        single Python pass over that small subset applied as constant-time ``CASE``
+        annotations. A correlated ``parents_json`` subquery per taxon does not scale: the
+        GIN index can't serve a containment whose RHS is an ``OuterRef``.
         """
         include_agreement = self._include_agreement()
 
@@ -1757,12 +1768,9 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             .order_by(*BEST_IDENTIFICATION_ORDER)
             .values("agreed_with_prediction_id")[:1]
         )
-        verified_occurrences = (
-            Occurrence.objects.filter(occurrence_filters)
-            .filter(default_filters_q)
-            .filter(models.Exists(Identification.objects.filter(occurrence=models.OuterRef("pk"), withdrawn=False)))
-            .annotate(_agreed_prediction_id=best_identification_agreed_prediction)
-        )
+        verified_occurrences = base.filter(
+            models.Exists(Identification.objects.filter(occurrence=models.OuterRef("pk"), withdrawn=False))
+        ).annotate(_agreed_prediction_id=best_identification_agreed_prediction)
         # ``pk`` is selected only so ``.distinct()`` below dedupes by occurrence: when
         # occurrence_filters joins to detections (e.g. ?collection=<id>), one Occurrence
         # yields a row per matching Detection, which would otherwise inflate the counts.
@@ -1807,21 +1815,13 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
                 for taxon_id in taxon_ids:
                     agreed_exact_counts[taxon_id] = agreed_exact_counts.get(taxon_id, 0) + 1
 
-        def count_annotation(counts: dict[int, int]) -> models.expressions.Combinable:
-            if not counts:
-                return models.Value(0, output_field=models.IntegerField())
-            return models.Case(
-                *(models.When(id=taxon_id, then=models.Value(count)) for taxon_id, count in counts.items()),
-                default=models.Value(0),
-                output_field=models.IntegerField(),
-            )
-
+        int_field = models.IntegerField()
         qs = qs.annotate(
-            verified_count=count_annotation(verified_counts),
-            agreed_with_prediction_count=count_annotation(agreed_with_prediction_counts),
+            verified_count=self._case_from_map(verified_counts, 0, int_field),
+            agreed_with_prediction_count=self._case_from_map(agreed_with_prediction_counts, 0, int_field),
         )
         if include_agreement:
-            qs = qs.annotate(agreed_exact_count=count_annotation(agreed_exact_counts))
+            qs = qs.annotate(agreed_exact_count=self._case_from_map(agreed_exact_counts, 0, int_field))
 
         # verified=true|false filter (list only); verified=false is the strict complement.
         if self.action == "list" and "verified" in self.request.query_params:

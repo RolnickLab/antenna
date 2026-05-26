@@ -3818,11 +3818,11 @@ class Taxon(BaseModel):
         return None
 
     def verified_count(self) -> int | None:
-        # Handled by an annotation when filtering by project (TaxonViewSet.add_verification_data)
+        # Handled by an annotation when filtering by project (TaxonViewSet.annotate_taxon_counts)
         return None
 
     def agreed_with_prediction_count(self) -> int | None:
-        # Handled by an annotation when filtering by project (TaxonViewSet.add_verification_data)
+        # Handled by an annotation when filtering by project (TaxonViewSet.annotate_taxon_counts)
         return None
 
     def agreed_exact_count(self) -> int | None:
