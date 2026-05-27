@@ -13,6 +13,7 @@ type FilterType =
   | 'taxa_list_id'
   | 'taxon'
   | 'timestamp'
+  | 'verified'
 
 export const getAppRoute = ({
   to,

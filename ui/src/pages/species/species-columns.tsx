@@ -96,6 +96,24 @@ export const columns: (project: {
     ),
   },
   {
+    id: 'verified',
+    sortField: 'verified_count',
+    name: 'Verified',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Species) => (
+      <Link
+        to={getAppRoute({
+          to: APP_ROUTES.OCCURRENCES({ projectId }),
+          filters: { taxon: item.id, verified: 'true' },
+        })}
+      >
+        <BasicTableCell value={item.numVerified} theme={CellTheme.Bubble} />
+      </Link>
+    ),
+  },
+  {
     id: 'best-determination-score',
     name: translate(STRING.FIELD_LABEL_BEST_SCORE),
     sortField: 'best_determination_score',

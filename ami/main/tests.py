@@ -4761,3 +4761,126 @@ class TestOccurrenceStatsViewSet(APITestCase):
         retrieve_response = self.client.get(f"/api/v2/occurrences/{occurrence.pk}/?project_id={self.project.pk}")
         self.assertEqual(stats_response.status_code, 200, "stats URL must resolve")
         self.assertEqual(retrieve_response.status_code, 200, "occurrence retrieve must still work")
+
+
+class TestTaxaVerification(APITestCase):
+    """Per-taxon verification + human/model agreement annotations and the verified filter (#1316)."""
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.taxa_list = create_taxa(self.project)
+        self.order = Taxon.objects.get(name="Lepidoptera")
+        self.family = Taxon.objects.get(name="Nymphalidae")
+        self.genus = Taxon.objects.get(name="Vanessa")
+        self.cardui = Taxon.objects.get(name="Vanessa cardui")
+        self.atalanta = Taxon.objects.get(name="Vanessa atalanta")
+        self.itea = Taxon.objects.get(name="Vanessa itea")
+
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=3)
+        # 3 occurrences ML-determined to cardui, 1 to itea (left unverified)
+        create_occurrences(deployment=self.deployment, num=3, taxon=self.cardui, determination_score=0.9)
+        create_occurrences(deployment=self.deployment, num=1, taxon=self.itea, determination_score=0.9)
+
+        self.user = User.objects.create_user(email="verifier@insectai.org", is_staff=True, is_superuser=True)
+        self.client.force_authenticate(user=self.user)
+
+        cardui_occ = list(Occurrence.objects.filter(project=self.project, determination=self.cardui).order_by("pk"))
+        self.assertEqual(len(cardui_occ), 3)
+        self.occ_pred, self.occ_exact, self.occ_disagree = cardui_occ
+
+        # occ_pred: user agrees with the model prediction (cardui), agreed_with_prediction set
+        Identification.objects.create(
+            occurrence=self.occ_pred,
+            taxon=self.cardui,
+            user=self.user,
+            agreed_with_prediction=self.occ_pred.best_prediction,
+        )
+        # occ_exact: same taxon as the model, but not via the "agree" workflow
+        Identification.objects.create(occurrence=self.occ_exact, taxon=self.cardui, user=self.user)
+        # occ_disagree: user overrides to a different taxon (atalanta) than the model (cardui)
+        Identification.objects.create(occurrence=self.occ_disagree, taxon=self.atalanta, user=self.user)
+
+        self.itea_occ = Occurrence.objects.get(project=self.project, determination=self.itea)
+        self.list_url = f"/api/v2/taxa/?project_id={self.project.pk}&limit=1000"
+
+    def _detail(self, taxon):
+        res = self.client.get(f"/api/v2/taxa/{taxon.pk}/?project_id={self.project.pk}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return res.json()
+
+    def _list_by_name(self, url=None):
+        res = self.client.get(url or self.list_url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return {row["name"]: row for row in res.json()["results"]}
+
+    # --- verified_count (hierarchical rollup) ---
+
+    def test_verified_count_species(self):
+        self.assertEqual(self._detail(self.cardui)["verified_count"], 2)
+        self.assertEqual(self._detail(self.atalanta)["verified_count"], 1)
+        self.assertEqual(self._detail(self.itea)["verified_count"], 0)
+
+    def test_verified_count_rolls_up_to_ancestors(self):
+        # Verifying species marks genus/family/order verified, occurrence-weighted by descendants.
+        for ancestor in (self.genus, self.family, self.order):
+            self.assertEqual(self._detail(ancestor)["verified_count"], 3, ancestor.name)
+
+    # --- list field values ---
+
+    def test_list_field_values(self):
+        rows = self._list_by_name()
+        self.assertEqual(rows["Vanessa cardui"]["occurrences_count"], 2)
+        self.assertEqual(rows["Vanessa cardui"]["verified_count"], 2)
+        self.assertEqual(rows["Vanessa atalanta"]["verified_count"], 1)
+        self.assertEqual(rows["Vanessa itea"]["verified_count"], 0)
+
+    # --- verified=true|false filter ---
+
+    def test_verified_filter_true_false_complement(self):
+        all_names = set(self._list_by_name().keys())
+        verified = set(self._list_by_name(self.list_url + "&verified=true").keys())
+        unverified = set(self._list_by_name(self.list_url + "&verified=false").keys())
+        self.assertEqual(verified, {"Vanessa cardui", "Vanessa atalanta"})
+        self.assertEqual(unverified, {"Vanessa itea"})
+        # verified=false is the strict complement of verified=true on the filtered set.
+        self.assertEqual(verified | unverified, all_names)
+        self.assertEqual(verified & unverified, set())
+
+    def test_ordering_by_verified_count(self):
+        res = self.client.get(self.list_url + "&ordering=verified_count")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        counts = [row["verified_count"] for row in res.json()["results"]]
+        self.assertEqual(counts, sorted(counts))
+
+    # --- apply_defaults handling ---
+
+    def test_verified_filter_respects_apply_defaults(self):
+        self.project.default_filters_exclude_taxa.add(self.atalanta)
+
+        verified_default = set(self._list_by_name(self.list_url + "&verified=true").keys())
+        self.assertEqual(verified_default, {"Vanessa cardui"})
+
+        verified_bypassed = set(self._list_by_name(self.list_url + "&verified=true&apply_defaults=false").keys())
+        self.assertEqual(verified_bypassed, {"Vanessa cardui", "Vanessa atalanta"})
+
+    # --- collection filter must not inflate counts via the detections join ---
+
+    def test_verified_count_not_inflated_by_collection_join(self):
+        # A second detection on a verified occurrence means the ?collection= INNER JOIN to
+        # detections yields two rows for that occurrence; the rollup must still count it once.
+        extra_detection = Detection.objects.create(
+            source_image=self.occ_exact.best_detection.source_image,
+            occurrence=self.occ_exact,
+            timestamp=self.occ_exact.best_detection.timestamp,
+            bbox=[0.5, 0.5, 0.6, 0.6],
+            path="detections/test_detection_dup.jpg",
+        )
+        extra_detection.classifications.create(taxon=self.cardui, score=0.9, timestamp=datetime.datetime.now())
+        self.assertEqual(self.occ_exact.detections.count(), 2)
+
+        collection = SourceImageCollection.objects.create(project=self.project, name="verif-dedup")
+        collection.images.set(SourceImage.objects.filter(deployment=self.deployment))
+
+        rows = self._list_by_name(f"{self.list_url}&collection={collection.pk}")
+        # 2 verified cardui occurrences, not 3 — the duplicate detection must not double-count.
+        self.assertEqual(rows["Vanessa cardui"]["verified_count"], 2)
