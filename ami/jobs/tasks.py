@@ -136,30 +136,53 @@ def update_async_services_seen_for_project(project_id: int) -> None:
     )
 
 
-@celery_app.task(bind=True, soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
+# acks_late + reject_on_worker_lost so a worker SIGKILL/OOM mid-task does not
+# silently drop the job: the broker holds the message until the task body
+# either completes successfully or raises, and redelivers if the worker dies.
+# Pairs with the early-guard below — a redelivered run_job that finds the job
+# already in a terminal state (or mid-cancellation) returns cleanly instead of
+# re-running side effects. See RolnickLab/antenna#1323.
+@celery_app.task(
+    bind=True,
+    soft_time_limit=default_soft_time_limit,
+    time_limit=default_time_limit,
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
 def run_job(self, job_id: int) -> None:
-    from ami.jobs.models import Job
+    from ami.jobs.models import Job, JobState
 
     try:
         job = Job.objects.get(pk=job_id)
     except Job.DoesNotExist as e:
         raise e
         # self.retry(exc=e, countdown=1, max_retries=1)
-    else:
-        job.logger.info(f"Running job {job}")
-        try:
-            job.run()
-        except Exception as e:
-            job.logger.error(f'Job #{job.pk} "{job.name}" failed: {e}')
-            raise
-        else:
-            from ami.jobs.models import JobDispatchMode
 
-            job.refresh_from_db()
-            if job.dispatch_mode == JobDispatchMode.ASYNC_API and not job.progress.is_complete():
-                _log_worker_availability(job)
-            else:
-                job.logger.info(f"Finished job {job}")
+    # Early-guard: under acks_late, the broker may redeliver this message after a
+    # worker SIGKILL/OOM, and Job.cancel() may also flip status to CANCELING /
+    # REVOKED while the message sits in the prefetch buffer. Don't re-run a job
+    # that's already settled or being torn down.
+    if job.status in JobState.final_states() or job.status == JobState.CANCELING:
+        job.logger.info(
+            f"Skipping run_job for job {job.pk}: already in status {job.status} "
+            f"(redelivery or cancellation in flight)"
+        )
+        return
+
+    job.logger.info(f"Running job {job}")
+    try:
+        job.run()
+    except Exception as e:
+        job.logger.error(f'Job #{job.pk} "{job.name}" failed: {e}')
+        raise
+    else:
+        from ami.jobs.models import JobDispatchMode
+
+        job.refresh_from_db()
+        if job.dispatch_mode == JobDispatchMode.ASYNC_API and not job.progress.is_complete():
+            _log_worker_availability(job)
+        else:
+            job.logger.info(f"Finished job {job}")
 
 
 def _log_worker_availability(job) -> None:

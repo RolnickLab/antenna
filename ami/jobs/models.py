@@ -1067,25 +1067,39 @@ class Job(BaseModel):
 
     def cancel(self):
         """
-        Cancel a job. For async_api jobs, clean up NATS/Redis resources
-        and transition through CANCELING → REVOKED. For other jobs,
-        revoke the Celery task.
+        Cancel a job.
+
+        For ASYNC_API jobs the long-running work is on remote ADC workers via
+        NATS, not in the local ``run_job`` celery task — by the time the user
+        clicks cancel, ``run_job`` has usually already finished
+        ``queue_images_to_nats`` and returned. Tearing down the NATS stream +
+        Redis state (``cleanup_async_job_if_needed``) is what actually stops
+        further work: ADC stops being delivered tasks, and any in-flight
+        result handlers see no Redis state and fast-fail. Calling
+        ``revoke(terminate=True)`` on the (likely-done) run_job would SIGTERM
+        the worker child if it happens to still be inside the bootstrap (e.g.
+        a slow ``filter_processed_images`` for a huge collection), which
+        prior to ``acks_late`` was an unrecoverable message loss. We revoke
+        without terminate so a not-yet-started copy is dropped without
+        killing in-flight bootstrap; the in-flight copy then notices
+        ``status == CANCELING`` via the early-guard in ``run_job`` next time
+        it's invoked (e.g. on redelivery) and bails out cleanly.
+
+        For INTERNAL / SYNC_API jobs the celery task body owns the entire
+        job lifecycle, so terminating it remains the only way to stop
+        active work.
         """
         self.status = JobState.CANCELING
         self.save()
 
+        is_async_api = self.dispatch_mode == JobDispatchMode.ASYNC_API
         if self.task_id:
             task = run_job.AsyncResult(self.task_id)
             if task:
-                task.revoke(terminate=True)
-            if self.dispatch_mode == JobDispatchMode.ASYNC_API:
-                # For async jobs we need to set the status to revoked here since the task already
-                # finished (it only queues the images).
-                self.status = JobState.REVOKED
-                self.save()
-        else:
-            self.status = JobState.REVOKED
-            self.save()
+                task.revoke(terminate=not is_async_api)
+
+        self.status = JobState.REVOKED
+        self.save()
 
         cleanup_async_job_if_needed(self)
 

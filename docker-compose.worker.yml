@@ -51,6 +51,16 @@ services:
     command: /start-celeryworker
     environment:
       CELERY_QUEUES: "jobs"
+      # TODO(#1323): consider overriding CELERY_WORKER_CONCURRENCY to ~4 here.
+      # Counter-intuitive but: per-container prefetch = concurrency × prefetch_multiplier(=1),
+      # so a 16-wide jobs container reserves up to 16 messages on a single broker channel.
+      # When one run_job sits idle inside filter_processed_images for minutes, the other 15
+      # reserved slots block sibling jobs from being offered to an idle peer container.
+      # Lowering to 4 shrinks the reservation window so the broker spills aggressively to
+      # peers. Acceptable for jobs queue because run_job spends most of its time waiting on
+      # NATS results rather than CPU. Other queues (ml_results, antenna) want the larger
+      # pool — they're DB/Redis-bound and benefit from oversubscription.
+      # CELERY_WORKER_CONCURRENCY: "4"
     restart: always
 
   celeryworker_ml:

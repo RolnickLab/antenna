@@ -375,10 +375,92 @@ class TestJobView(APITestCase):
         # Accept either 401 (TokenAuthentication) or 403 (SessionAuthentication with AnonymousUser)
         self.assertIn(resp.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
 
-    def test_cancel_job(self):
-        # This cannot be tested until we have a way to cancel jobs
-        # and a way to run async tasks in tests.
-        pass
+    def test_cancel_async_api_job_does_not_terminate_celery_task(self):
+        """ASYNC_API cancel must revoke without terminate=True.
+
+        The remote ADC worker is doing the actual work via NATS — terminating
+        the (likely-done) local ``run_job`` bootstrap doesn't stop them, and
+        SIGTERM'ing a still-bootstrapping child loses the message under the
+        broker's early-ack default. Cleanup of NATS/Redis state is what
+        actually stops further work.
+        """
+        from unittest.mock import MagicMock, patch
+
+        job = Job.objects.create(
+            project=self.project,
+            name="Cancel async_api",
+            task_id="fake-async-task-id",
+            status=JobState.STARTED,
+            dispatch_mode=JobDispatchMode.ASYNC_API,
+        )
+
+        with patch("ami.jobs.models.run_job") as mock_run_job, patch(
+            "ami.jobs.models.cleanup_async_job_if_needed"
+        ) as mock_cleanup:
+            mock_task = MagicMock()
+            mock_run_job.AsyncResult.return_value = mock_task
+
+            job.cancel()
+
+            mock_run_job.AsyncResult.assert_called_once_with("fake-async-task-id")
+            mock_task.revoke.assert_called_once_with(terminate=False)
+            mock_cleanup.assert_called_once_with(job)
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.REVOKED)
+
+    def test_cancel_sync_api_job_terminates_celery_task(self):
+        """SYNC_API / INTERNAL cancel must keep terminate=True.
+
+        Their celery task body owns the entire job lifecycle, so terminating
+        the task is the only way to stop active work.
+        """
+        from unittest.mock import MagicMock, patch
+
+        job = Job.objects.create(
+            project=self.project,
+            name="Cancel sync_api",
+            task_id="fake-sync-task-id",
+            status=JobState.STARTED,
+            dispatch_mode=JobDispatchMode.SYNC_API,
+        )
+
+        with patch("ami.jobs.models.run_job") as mock_run_job, patch(
+            "ami.jobs.models.cleanup_async_job_if_needed"
+        ) as mock_cleanup:
+            mock_task = MagicMock()
+            mock_run_job.AsyncResult.return_value = mock_task
+
+            job.cancel()
+
+            mock_task.revoke.assert_called_once_with(terminate=True)
+            mock_cleanup.assert_called_once_with(job)
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.REVOKED)
+
+    def test_cancel_job_without_task_id_still_revokes(self):
+        """A job that never made it to enqueue (no task_id) still transitions
+        to REVOKED and triggers async-cleanup (a no-op for non-ASYNC_API)."""
+        from unittest.mock import patch
+
+        job = Job.objects.create(
+            project=self.project,
+            name="Cancel never-enqueued",
+            task_id="",
+            status=JobState.PENDING,
+            dispatch_mode=JobDispatchMode.INTERNAL,
+        )
+
+        with patch("ami.jobs.models.run_job") as mock_run_job, patch(
+            "ami.jobs.models.cleanup_async_job_if_needed"
+        ) as mock_cleanup:
+            job.cancel()
+            mock_run_job.AsyncResult.assert_not_called()
+            mock_cleanup.assert_called_once_with(job)
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.REVOKED)
 
     def test_list_jobs_with_ids_only(self):
         """Test the ids_only parameter returns only job IDs."""
