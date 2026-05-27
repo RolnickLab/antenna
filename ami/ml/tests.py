@@ -962,6 +962,95 @@ class TestPipeline(TestCase):
         result = list(filter_processed_images([image], self.pipeline))
         self.assertEqual(result, [], "Fully classified image with null detection should be skipped")
 
+    def test_filter_processed_images_empty_input(self):
+        """An empty iterable should yield nothing and run no per-image queries."""
+        from ami.ml.models.pipeline import filter_processed_images
+
+        with self.assertNumQueries(1):  # one query: pipeline.algorithms.all()
+            result = list(filter_processed_images([], self.pipeline))
+        self.assertEqual(result, [])
+
+    def test_filter_processed_images_mixed_batch(self):
+        """
+        A mixed batch of images covering all five branches should yield only
+        the ones that need processing, in input order.
+        """
+        from ami.ml.models.pipeline import filter_processed_images
+
+        detector = self.algorithms["random-detector"]
+        binary = self.algorithms["random-binary-classifier"]
+        species = self.algorithms["random-species-classifier"]
+
+        unprocessed = SourceImage.objects.create(path="unprocessed.jpg")
+        null_only = SourceImage.objects.create(path="null_only.jpg")
+        unclassified = SourceImage.objects.create(path="unclassified.jpg")
+        fully_classified = SourceImage.objects.create(path="fully_classified.jpg")
+
+        Detection.objects.create(source_image=null_only, detection_algorithm=detector, bbox=None)
+
+        Detection.objects.create(source_image=unclassified, detection_algorithm=detector, bbox=[0.1, 0.2, 0.3, 0.4])
+
+        real_det = Detection.objects.create(
+            source_image=fully_classified, detection_algorithm=detector, bbox=[0.1, 0.2, 0.3, 0.4]
+        )
+        taxon = Taxon.objects.create(name="Test Mixed Batch Taxon")
+        Classification.objects.create(
+            detection=real_det, taxon=taxon, algorithm=binary, score=0.9, timestamp=datetime.datetime.now()
+        )
+        Classification.objects.create(
+            detection=real_det, taxon=taxon, algorithm=species, score=0.8, timestamp=datetime.datetime.now()
+        )
+
+        images = [unprocessed, null_only, unclassified, fully_classified]
+        result = list(filter_processed_images(images, self.pipeline))
+        self.assertEqual(result, [unprocessed, unclassified])
+
+    def test_filter_processed_images_query_count_is_bounded_per_batch(self):
+        """
+        With N images and batch_size=B, the query count should scale as
+        O(N / B), not O(N). Locks in the bulk-query rewrite from issue #1321.
+
+        Each batch issues at most:
+          - 1 Detection bulk select
+          - 1 Classification bulk select (only when real detections exist)
+        Plus one initial pipeline.algorithms.all() that's shared across batches.
+        """
+        from ami.ml.models.pipeline import filter_processed_images
+
+        detector = self.algorithms["random-detector"]
+        binary = self.algorithms["random-binary-classifier"]
+        species = self.algorithms["random-species-classifier"]
+        taxon = Taxon.objects.create(name="Bounded Query Test Taxon")
+
+        # 10 images. Batch 1: 5 fully-classified (triggers classification query).
+        # Batch 2: 5 unprocessed (no detections, classification query skipped).
+        images = [SourceImage.objects.create(path=f"bulk-{i}.jpg") for i in range(10)]
+        for image in images[:5]:
+            real_det = Detection.objects.create(
+                source_image=image, detection_algorithm=detector, bbox=[0.1, 0.2, 0.3, 0.4]
+            )
+            Classification.objects.create(
+                detection=real_det, taxon=taxon, algorithm=binary, score=0.9, timestamp=datetime.datetime.now()
+            )
+            Classification.objects.create(
+                detection=real_det, taxon=taxon, algorithm=species, score=0.8, timestamp=datetime.datetime.now()
+            )
+
+        # Expected: 1 (pipeline) + 2 (detection × 2 batches) + 1 (classification, batch 1 only) = 4.
+        with self.assertNumQueries(4):
+            result = list(filter_processed_images(images, self.pipeline, batch_size=5))
+
+        # First 5 fully classified → skipped. Last 5 fresh → yielded.
+        self.assertEqual(result, images[5:])
+
+    def test_filter_processed_images_preserves_input_order_across_batches(self):
+        """Output should preserve input ordering even when batched."""
+        from ami.ml.models.pipeline import filter_processed_images
+
+        images = [SourceImage.objects.create(path=f"order-{i}.jpg") for i in range(7)]
+        result = list(filter_processed_images(images, self.pipeline, batch_size=3))
+        self.assertEqual(result, images)
+
     def test_null_detections_are_algorithm_specific(self):
         """
         Null detections from different pipelines/algorithms should not be shared.

@@ -8,6 +8,7 @@ if TYPE_CHECKING:
 
 import collections
 import dataclasses
+import itertools
 import logging
 import time
 import typing
@@ -23,7 +24,6 @@ from django_pydantic_field import SchemaField
 from ami.base.models import BaseModel, BaseQuerySet
 from ami.base.schemas import ConfigurableStage, default_stages
 from ami.main.models import (
-    NULL_DETECTIONS_FILTER,
     Classification,
     Deployment,
     Detection,
@@ -57,10 +57,14 @@ from ami.utils.requests import create_session, extract_error_message_from_respon
 logger = logging.getLogger(__name__)
 
 
+FILTER_PROCESSED_BATCH_SIZE = 1000
+
+
 def filter_processed_images(
     images: typing.Iterable[SourceImage],
     pipeline: Pipeline,
     task_logger: logging.Logger = logger,
+    batch_size: int = FILTER_PROCESSED_BATCH_SIZE,
 ) -> typing.Iterable[SourceImage]:
     """
     Return only images that need to be processed by a given pipeline.
@@ -79,56 +83,91 @@ def filter_processed_images(
 
     Null detections are sentinels that mark an image as "processed, nothing found."
     They are excluded from classification checks so they don't trigger reprocessing.
-    """
-    pipeline_algorithms = pipeline.algorithms.all()
 
-    detection_type_keys = Algorithm.detection_task_types
-    detection_algorithms = pipeline_algorithms.filter(task_type__in=detection_type_keys)
-    if not detection_algorithms.exists():
+    Input images are processed in batches so the work scales as O(image_count /
+    batch_size) database round-trips instead of O(image_count). This keeps the
+    Collect stage well under the Celery broker's AMQP heartbeat window for the
+    large-collection case (see issue #1321).
+    """
+    pipeline_algorithms = list(pipeline.algorithms.all())
+    pipeline_algorithm_ids = [a.id for a in pipeline_algorithms]
+
+    detection_type_keys = set(Algorithm.detection_task_types)
+    has_detection_algorithm = any(a.task_type in detection_type_keys for a in pipeline_algorithms)
+    if not has_detection_algorithm:
         task_logger.warning(f"Pipeline {pipeline} has no detection algorithms saved. Will reprocess all images.")
-    classification_algorithms = pipeline_algorithms.exclude(task_type__in=detection_type_keys)
-    if not classification_algorithms.exists():
+    pipeline_classifier_ids = {a.id for a in pipeline_algorithms if a.task_type not in detection_type_keys}
+    if not pipeline_classifier_ids:
         task_logger.warning(f"Pipeline {pipeline} has no classification algorithms saved. Will reprocess all images.")
 
-    for image in images:
-        existing_detections = image.detections.filter(detection_algorithm__in=pipeline_algorithms)
-        if not existing_detections.exists():
-            task_logger.debug(f"Image {image} needs processing: has no existing detections from pipeline's detector")
-            # If there are no existing detections from this pipeline, send the image
-            yield image
-        elif not existing_detections.exclude(NULL_DETECTIONS_FILTER).exists():  # type: ignore
-            # All detections for this image are null (processed but nothing found) — skip
-            task_logger.debug(f"Image {image} has only null detections from pipeline {pipeline}, skipping!")
-            continue
-        elif existing_detections.exclude(NULL_DETECTIONS_FILTER).filter(classifications__isnull=True).exists():
-            # Check if any real detections (non-null) have no classifications
-            task_logger.debug(
-                f"Image {image} needs processing: has existing detections with no classifications "
-                "from pipeline {pipeline}"
-            )
-            yield image
-        else:
-            # If there are existing detections with classifications,
-            # Compare their classification algorithms to the current pipeline's algorithms
-            pipeline_algorithm_ids = set(classification_algorithms.values_list("id", flat=True))
-            detection_algorithm_ids = set(existing_detections.values_list("classifications__algorithm_id", flat=True))
+    image_iter = iter(images)
+    while True:
+        batch = list(itertools.islice(image_iter, batch_size))
+        if not batch:
+            return
 
-            if not pipeline_algorithm_ids.issubset(detection_algorithm_ids):
+        batch_ids = [image.pk for image in batch]
+
+        images_with_any_detection: set[int] = set()
+        real_detections_per_image: dict[int, set[int]] = collections.defaultdict(set)
+        detection_rows = Detection.objects.filter(
+            source_image_id__in=batch_ids,
+            detection_algorithm_id__in=pipeline_algorithm_ids,
+        ).values_list("source_image_id", "id", "bbox")
+        for source_image_id, detection_id, bbox in detection_rows:
+            images_with_any_detection.add(source_image_id)
+            if bbox not in (None, []):
+                real_detections_per_image[source_image_id].add(detection_id)
+
+        classifier_ids_per_detection: dict[int, set[int]] = collections.defaultdict(set)
+        real_detection_ids = [d for dets in real_detections_per_image.values() for d in dets]
+        if real_detection_ids:
+            classification_rows = Classification.objects.filter(
+                detection_id__in=real_detection_ids,
+            ).values_list("detection_id", "algorithm_id")
+            for detection_id, algorithm_id in classification_rows:
+                classifier_ids_per_detection[detection_id].add(algorithm_id)
+
+        for image in batch:
+            image_id = image.pk
+
+            if image_id not in images_with_any_detection:
                 task_logger.debug(
-                    f"Image {image} has existing detections that haven't been classified by the pipeline: {pipeline}:"
-                    f" {detection_algorithm_ids} vs {pipeline_algorithm_ids}"
+                    f"Image {image} needs processing: has no existing detections from pipeline's detector"
+                )
+                yield image
+                continue
+
+            real_det_ids = real_detections_per_image.get(image_id)
+            if not real_det_ids:
+                task_logger.debug(f"Image {image} has only null detections from pipeline {pipeline}, skipping!")
+                continue
+
+            if any(detection_id not in classifier_ids_per_detection for detection_id in real_det_ids):
+                task_logger.debug(
+                    f"Image {image} needs processing: has existing detections with no classifications "
+                    f"from pipeline {pipeline}"
+                )
+                yield image
+                continue
+
+            observed_classifier_ids: set[int] = set()
+            for detection_id in real_det_ids:
+                observed_classifier_ids.update(classifier_ids_per_detection[detection_id])
+
+            if not pipeline_classifier_ids.issubset(observed_classifier_ids):
+                missing_algos = pipeline_classifier_ids - observed_classifier_ids
+                task_logger.debug(
+                    f"Image {image} has existing detections that haven't been classified by the pipeline: {pipeline}: "
+                    f"{observed_classifier_ids} vs {pipeline_classifier_ids}. "
                     f"Since we do yet have a mechanism to reclassify detections, processing the image from scratch."
                 )
-                # log all algorithms that are in the pipeline but not in the detection
-                missing_algos = pipeline_algorithm_ids - detection_algorithm_ids
                 task_logger.debug(f"Image #{image.pk} needs classification by pipeline's algorithms: {missing_algos}")
                 yield image
             else:
-                # If all detections have been classified by the pipeline, skip the image
                 task_logger.debug(
                     f"Image {image} has existing detections classified by the pipeline: {pipeline}, skipping!"
                 )
-                continue
 
 
 def collect_images(
