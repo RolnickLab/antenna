@@ -99,6 +99,9 @@ def filter_processed_images(
     Collect stage well under the Celery broker's AMQP heartbeat window for the
     large-collection case (see issue #1321).
     """
+    if batch_size <= 0:
+        raise ValueError(f"batch_size must be > 0, got {batch_size}")
+
     pipeline_algorithms = list(pipeline.algorithms.all())
     pipeline_algorithm_ids = [a.id for a in pipeline_algorithms]
 
@@ -181,7 +184,8 @@ def filter_processed_images(
                 task_logger.debug(
                     f"Image {image} has existing detections that haven't been classified by the pipeline: {pipeline}: "
                     f"{observed_classifier_ids} vs {pipeline_classifier_ids}. "
-                    f"Since we do yet have a mechanism to reclassify detections, processing the image from scratch."
+                    f"Since we do not yet have a mechanism to reclassify detections, "
+                    f"processing the image from scratch."
                 )
                 task_logger.debug(f"Image #{image.pk} needs classification by pipeline's algorithms: {missing_algos}")
                 yield image
@@ -225,9 +229,12 @@ def collect_images(
     else:
         job = None
 
-    # Set source to first argument that is not None. Always prefetch the
-    # deployment + data_source joins so later calls to image.url() in
-    # queue_images_to_nats don't trigger N+1 lookups (see issue #1321).
+    # Set source to first argument that is not None. The collection- and
+    # deployment-backed branches prefetch the deployment + data_source joins so
+    # later calls to image.url() in queue_images_to_nats don't trigger N+1
+    # lookups (see issue #1321). The source_images branch passes the caller's
+    # iterable through unchanged — callers handing us a pre-built list are
+    # responsible for any prefetching they need.
     if collection:
         images = collection.images.select_related("deployment__data_source")
     elif source_images:
