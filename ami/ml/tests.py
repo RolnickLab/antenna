@@ -554,6 +554,43 @@ class TestPipeline(TestCase):
         images = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
         assert len(images) == 2
 
+    def test_collect_images_prefetches_deployment_and_data_source(self):
+        """
+        collect_images() must hand back SourceImage rows with deployment and
+        deployment.data_source already joined, so the downstream queue_images_to_nats
+        loop doesn't trigger N+1 FK lookups inside image.url() (see issue #1321).
+        """
+        from ami.main.models import S3StorageSource
+
+        data_source = S3StorageSource.objects.create(
+            name="ds-prefetch-test",
+            bucket="prefetch-bucket",
+            access_key="x",
+            secret_key="y",
+            public_base_url="https://example.invalid/",
+            project=self.project,
+        )
+        deployment = Deployment.objects.create(
+            name="prefetch-deployment", project=self.project, data_source=data_source
+        )
+        images = [
+            SourceImage.objects.create(path=f"prefetch-{i}.jpg", deployment=deployment, project=self.project)
+            for i in range(3)
+        ]
+        collection = SourceImageCollection.objects.create(project=self.project, name="prefetch-collection")
+        collection.images.set(images)
+
+        collected = list(collect_images(collection=collection, pipeline=self.pipeline))
+        self.assertEqual(len(collected), 3)
+
+        # Accessing deployment.data_source on the returned images should
+        # require zero extra queries because select_related joined both.
+        with self.assertNumQueries(0):
+            for image in collected:
+                self.assertEqual(image.deployment_id, deployment.pk)
+                self.assertEqual(image.deployment.data_source_id, data_source.pk)
+                self.assertEqual(image.deployment.data_source.public_base_url, "https://example.invalid/")
+
     def fake_pipeline_results(
         self,
         source_images: list[SourceImage],

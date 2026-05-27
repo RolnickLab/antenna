@@ -197,13 +197,15 @@ def collect_images(
     else:
         job = None
 
-    # Set source to first argument that is not None
+    # Set source to first argument that is not None. Always prefetch the
+    # deployment + data_source joins so later calls to image.url() in
+    # queue_images_to_nats don't trigger N+1 lookups (see issue #1321).
     if collection:
-        images = collection.images.all()
+        images = collection.images.select_related("deployment__data_source")
     elif source_images:
         images = source_images
     elif deployment:
-        images = SourceImage.objects.filter(deployment=deployment)
+        images = SourceImage.objects.filter(deployment=deployment).select_related("deployment__data_source")
     else:
         raise ValueError("Must specify a collection, deployment or a list of images")
 
