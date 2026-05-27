@@ -34,6 +34,7 @@ from ami.main.models import (
     TaxaList,
     Taxon,
     TaxonRank,
+    bbox_is_null,
     update_calculated_fields_for_events,
     update_occurrence_determination,
 )
@@ -108,37 +109,43 @@ def filter_processed_images(
 
         batch_ids = [image.pk for image in batch]
 
-        images_with_any_detection: set[int] = set()
-        real_detections_per_image: dict[int, set[int]] = collections.defaultdict(set)
-        detection_rows = Detection.objects.filter(
-            source_image_id__in=batch_ids,
-            detection_algorithm_id__in=pipeline_algorithm_ids,
-        ).values_list("source_image_id", "id", "bbox")
+        images_with_pipeline_detection: set[int] = set()
+        real_pipeline_detections_per_image: dict[int, set[int]] = collections.defaultdict(set)
+        detection_rows = (
+            Detection.objects.filter(
+                source_image_id__in=batch_ids,
+                detection_algorithm_id__in=pipeline_algorithm_ids,
+            )
+            .order_by()
+            .values_list("source_image_id", "id", "bbox")
+        )
         for source_image_id, detection_id, bbox in detection_rows:
-            images_with_any_detection.add(source_image_id)
-            if bbox not in (None, []):
-                real_detections_per_image[source_image_id].add(detection_id)
+            images_with_pipeline_detection.add(source_image_id)
+            if not bbox_is_null(bbox):
+                real_pipeline_detections_per_image[source_image_id].add(detection_id)
 
         classifier_ids_per_detection: dict[int, set[int]] = collections.defaultdict(set)
-        real_detection_ids = [d for dets in real_detections_per_image.values() for d in dets]
-        if real_detection_ids:
-            classification_rows = Classification.objects.filter(
-                detection_id__in=real_detection_ids,
-            ).values_list("detection_id", "algorithm_id")
+        real_pipeline_detection_ids = [d for dets in real_pipeline_detections_per_image.values() for d in dets]
+        if real_pipeline_detection_ids:
+            classification_rows = (
+                Classification.objects.filter(detection_id__in=real_pipeline_detection_ids)
+                .order_by()
+                .values_list("detection_id", "algorithm_id")
+            )
             for detection_id, algorithm_id in classification_rows:
                 classifier_ids_per_detection[detection_id].add(algorithm_id)
 
         for image in batch:
             image_id = image.pk
 
-            if image_id not in images_with_any_detection:
+            if image_id not in images_with_pipeline_detection:
                 task_logger.debug(
                     f"Image {image} needs processing: has no existing detections from pipeline's detector"
                 )
                 yield image
                 continue
 
-            real_det_ids = real_detections_per_image.get(image_id)
+            real_det_ids = real_pipeline_detections_per_image.get(image_id)
             if not real_det_ids:
                 task_logger.debug(f"Image {image} has only null detections from pipeline {pipeline}, skipping!")
                 continue
