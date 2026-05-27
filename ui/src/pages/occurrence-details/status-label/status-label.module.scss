@@ -1,15 +1,11 @@
-@import 'src/design-system/variables/variables.scss';
-@import 'src/design-system/variables/colors.scss';
-@import 'src/design-system/variables/typography.scss';
-
 .statusLabel {
   position: absolute;
   top: 8px;
   right: 8px;
   padding: 4px 8px 2px;
-  background-color: $color-success-100;
-  color: $color-success-700;
-  @include paragraph-xx-small();
+  background-color: var(--color-green-100);
+  color: var(--color-success-700);
+  @include body-small();
   font-weight: 600;
   text-transform: uppercase;
 }

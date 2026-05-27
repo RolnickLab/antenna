@@ -10,12 +10,14 @@ import {
 import { FormConfig } from 'components/form/types'
 import { API_ROUTES } from 'data-services/constants'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
-import { DocsLink } from 'design-system/components/button/docs-link'
-import { SaveButton } from 'design-system/components/button/save-button'
-import { Checkbox } from 'design-system/components/checkbox/checkbox'
-import { InputContent } from 'design-system/components/input/input'
-import { CaptureSetPicker } from 'design-system/components/select/capture-set-picker'
-import { EntityPicker } from 'design-system/components/select/entity-picker'
+import {
+  Checkbox,
+  DocsLink,
+  EntityPicker,
+  InputContent,
+  SaveButton,
+} from 'nova-ui-kit'
+import { CaptureSetPicker } from 'nova-ui-kit/components/select/capture-set-picker'
 import { useForm } from 'react-hook-form'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES, DOCS_LINKS } from 'utils/constants'

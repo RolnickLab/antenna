@@ -1,7 +1,7 @@
 import { Capture } from 'data-services/models/capture'
 import { SessionDetails } from 'data-services/models/session-details'
 import { TimelineTick } from 'data-services/models/timeline-tick'
-import { TimestampSlider } from 'design-system/components/slider/timestamp-slider'
+import { TimestampSlider } from 'nova-ui-kit/components/slider/timestamp-slider'
 import { useEffect, useState } from 'react'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { dateToValue, findClosestCaptureId, valueToDate } from '../utils'

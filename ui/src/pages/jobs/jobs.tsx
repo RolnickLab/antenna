@@ -2,14 +2,16 @@ import { FilterControl } from 'components/filtering/filter-control'
 import { FilterSection } from 'components/filtering/filter-section'
 import { useJobDetails } from 'data-services/hooks/jobs/useJobDetails'
 import { useJobs } from 'data-services/hooks/jobs/useJobs'
-import * as Dialog from 'design-system/components/dialog/dialog'
-import { PageFooter } from 'design-system/components/page-footer/page-footer'
-import { PageHeader } from 'design-system/components/page-header/page-header'
-import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
-import { SortControl } from 'design-system/components/sort-control'
-import { ColumnSettings } from 'design-system/components/table/column-settings/column-settings'
-import { Table } from 'design-system/components/table/table/table'
 import _ from 'lodash'
+import {
+  ColumnSettings,
+  Dialog,
+  PageFooter,
+  PageHeader,
+  PaginationBar,
+  SortControl,
+  Table,
+} from 'nova-ui-kit'
 import { JobDetails } from 'pages/job-details/job-details'
 import { NewJobDialog } from 'pages/job-details/new-job-dialog'
 import { useContext, useEffect } from 'react'

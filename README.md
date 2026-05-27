@@ -98,34 +98,7 @@ If using VS Code, install the [formatting extensions](.vscode/extensions.json) t
 
 ### Frontend
 
-#### Dependencies
-
-- [Node.js](https://nodejs.org/en/download/)
-- [Yarn](https://yarnpkg.com/getting-started/install)
-
-#### Configuration
-
-By default this will try to connect to http://localhost:8000 for the backend API. Use the env var `API_PROXY_TARGET` to change this. You can create multiple `.env` files in the `ui/` directory for different environments or configurations. For example, use `yarn start --mode staging` to load `.env.staging` and point the `API_PROXY_TARGET` to a remote backend.
-
-#### Installation
-
-Note: if you installed the ui using Docker first (as instructed in the quick-start) then your local `node_modules/` directory will be owned by root. Change the permissions with:
-`sudo chown -R ${UID}:${UID} ui/node_modules`. The version of Node on your host machine must match that of the Docker container (which will be the case if you follow the `nvm` instructions below.)
-
-```bash
-# Enter into the ui directory
-cd ui
-# Install Node Version Manager
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-# Install required Node.js version
-nvm install
-# Install Yarn dependencies
-yarn install
-# Start the frontend
-yarn start
-```
-
-Visit http://localhost:3000/
+See `ui/README.md` for information about the frontend!
 
 ### Backend
 

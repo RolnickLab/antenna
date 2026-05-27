@@ -1,7 +1,3 @@
-@import 'src/design-system/variables/colors.scss';
-@import 'src/design-system/variables/typography.scss';
-@import 'src/design-system/variables/variables.scss';
-
 .loadingWrapper {
   display: flex;
   align-items: center;
@@ -40,11 +36,11 @@
 }
 
 .text {
-  @include paragraph-medium();
-  color: $color-neutral-700;
+  @include body-base();
+  color: var(--color-foreground);
 }
 
-@media only screen and (max-width: $small-screen-breakpoint) {
+@media only screen and (max-width: $breakpoint-md) {
   .playbackWrapper {
     margin-bottom: 16px;
   }

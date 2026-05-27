@@ -1,4 +1,5 @@
 import { DeleteForm } from 'components/form/delete-form/delete-form'
+import { TaxonDetails } from 'components/taxon-details/taxon-details'
 import { useDeleteIdentification } from 'data-services/hooks/identifications/useDeleteIdentification'
 import {
   HumanIdentification as Identification,
@@ -10,7 +11,6 @@ import {
   Button,
   IdentificationCard,
   IdentificationDetails,
-  TaxonDetails,
 } from 'nova-ui-kit'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'

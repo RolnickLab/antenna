@@ -3,7 +3,7 @@ import { TaxonSelect } from 'components/taxon-search/taxon-select'
 import { useCreateIdentifications } from 'data-services/hooks/identifications/useCreateIdentifications'
 import { Taxon } from 'data-services/models/taxa'
 import { Loader2Icon } from 'lucide-react'
-import { Button, Input } from 'nova-ui-kit'
+import { Button, Input, InputContent } from 'nova-ui-kit'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
@@ -31,22 +31,19 @@ export const SuggestId = ({ occurrenceIds, onCancel }: SuggestIdProps) => {
       )}
       <div className="px-4 py-6">
         <div className="mb-8">
-          <span className="block body-overline-small font-semibold text-muted-foreground mb-2">
-            {translate(STRING.FIELD_LABEL_TAXON)}
-          </span>
-          <TaxonSelect
-            triggerLabel={
-              taxon ? taxon.name : translate(STRING.SELECT_TAXON_PLACEHOLDER)
-            }
-            taxon={taxon}
-            onTaxonChange={setTaxon}
-          />
+          <InputContent label={translate(STRING.FIELD_LABEL_TAXON)}>
+            <TaxonSelect
+              triggerLabel={
+                taxon ? taxon.name : translate(STRING.SELECT_TAXON_PLACEHOLDER)
+              }
+              taxon={taxon}
+              onTaxonChange={setTaxon}
+            />
+          </InputContent>
         </div>
         <div className="mb-8">
-          <span className="block body-overline-small font-semibold text-muted-foreground mb-2">
-            {translate(STRING.FIELD_LABEL_COMMENT)}
-          </span>
           <Input
+            label={translate(STRING.FIELD_LABEL_COMMENT)}
             name="comment"
             value={comment}
             onChange={(e) => setComment(e.target.value)}

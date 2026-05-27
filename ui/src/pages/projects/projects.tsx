@@ -1,10 +1,12 @@
 import { useProjects } from 'data-services/hooks/projects/useProjects'
-import { PageFooter } from 'design-system/components/page-footer/page-footer'
-import { PageHeader } from 'design-system/components/page-header/page-header'
-import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
-import { SortControl } from 'design-system/components/sort-control'
-import * as Tabs from 'design-system/components/tabs/tabs'
-import { Button } from 'nova-ui-kit'
+import {
+  Button,
+  PageFooter,
+  PageHeader,
+  PaginationBar,
+  SortControl,
+  Tabs,
+} from 'nova-ui-kit'
 import { NewProjectDialog } from 'pages/project-details/new-project-dialog'
 import { DOCS_LINKS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'

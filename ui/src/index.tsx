@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/react'
-import 'nova-ui-kit/dist/style.css'
+import 'nova-ui-kit/global.scss'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { App } from './app'

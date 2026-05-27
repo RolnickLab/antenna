@@ -1,3 +1,4 @@
+import { CONSTANTS } from 'nova-ui-kit'
 import { useRef } from 'react'
 import Plot from 'react-plotly.js'
 import { getCompactTimespanString } from 'utils/date/getCompactTimespanString/getCompactTimespanString'
@@ -6,12 +7,12 @@ import { ActivityPlotProps } from './types'
 import { useDynamicPlotWidth } from './useDynamicPlotWidth'
 
 const fontFamily = 'Mazzard, sans-serif'
-const lineColorCaptures = '#4E4F57'
-const lineColorDetections = '#5F8AC6'
-const spikeColor = '#FFFFFF'
-const textColor = '#303137'
-const tooltipBgColor = '#FFFFFF'
-const tooltipBorderColor = '#303137'
+const lineColorCaptures = CONSTANTS.COLORS.neutral[500]
+const lineColorDetections = CONSTANTS.COLORS.secondary[500]
+const spikeColor = CONSTANTS.COLORS.generic.white
+const textColor = CONSTANTS.COLOR_THEME.muted.foreground
+const tooltipBgColor = CONSTANTS.COLORS.generic.white
+const tooltipBorderColor = CONSTANTS.COLOR_THEME.muted.foreground
 
 const ActivityPlot = ({
   session,
