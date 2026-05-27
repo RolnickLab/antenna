@@ -1088,6 +1088,73 @@ class TestPipeline(TestCase):
         result = list(filter_processed_images(images, self.pipeline, batch_size=3))
         self.assertEqual(result, images)
 
+    def test_filter_processed_images_emits_throttled_collect_progress(self):
+        """
+        When `job` and `total` are passed, filter_processed_images should call
+        job.save(update_fields=["progress"]) at most once per
+        COLLECT_PROGRESS_SAVE_INTERVAL_SECONDS of wall time, capped at
+        COLLECT_PROGRESS_MAX_FRACTION. Keeps the reaper's "no forward progress"
+        heuristic happy on multi-minute Collect stages without hot-saving the
+        Job row on every chunk (issue #1321 follow-up).
+        """
+        from unittest.mock import patch
+
+        from ami.jobs.models import Job, MLJob
+        from ami.ml.models.pipeline import COLLECT_PROGRESS_MAX_FRACTION, filter_processed_images
+
+        job = Job.objects.create(
+            project=self.project,
+            name="collect progress cadence test",
+            pipeline=self.pipeline,
+            job_type_key=MLJob.key,
+        )
+        # First save triggered MLJob.setup → "collect" stage exists.
+        job.progress.get_stage("collect")
+
+        images = [SourceImage.objects.create(path=f"cadence-{i}.jpg") for i in range(10)]
+
+        # batch_size=3 over 10 images → 4 batches.
+        # Per-batch time.monotonic() return values:
+        #   init=0, after batch1=1 (gap 1, no save),
+        #   after batch2=6 (gap 6, SAVE → last=6),
+        #   after batch3=7 (gap 1, no save),
+        #   after batch4=12 (gap 6, SAVE → last=12).
+        # Expected: exactly 2 saves.
+        monotonic_values = iter([0.0, 1.0, 6.0, 7.0, 12.0])
+        with patch("ami.ml.models.pipeline.time.monotonic", side_effect=lambda: next(monotonic_values)):
+            with patch.object(Job, "save", autospec=True) as mock_save:
+                list(filter_processed_images(images, self.pipeline, batch_size=3, job=job, total=10))
+
+        self.assertEqual(mock_save.call_count, 2, "Expected throttle to allow exactly 2 saves")
+        for call in mock_save.call_args_list:
+            self.assertEqual(
+                call.kwargs.get("update_fields"),
+                ["progress"],
+                "Throttled saves should write only the progress column",
+            )
+
+        # Final emitted fraction comes from the second save (batch 4): processed=10,
+        # total=10 → raw 1.0, capped at COLLECT_PROGRESS_MAX_FRACTION.
+        collect_stage = job.progress.get_stage("collect")
+        self.assertEqual(collect_stage.progress, COLLECT_PROGRESS_MAX_FRACTION)
+
+    def test_filter_processed_images_skips_progress_emission_without_job(self):
+        """
+        Legacy callers that omit `job` (the only callers before this change)
+        should see zero job.save() calls — the throttle block is fully gated
+        on both `job` and `total` being passed.
+        """
+        from unittest.mock import patch
+
+        from ami.jobs.models import Job
+        from ami.ml.models.pipeline import filter_processed_images
+
+        images = [SourceImage.objects.create(path=f"nojob-{i}.jpg") for i in range(5)]
+        with patch.object(Job, "save", autospec=True) as mock_save:
+            list(filter_processed_images(images, self.pipeline, batch_size=2))
+
+        self.assertEqual(mock_save.call_count, 0)
+
     def test_null_detections_are_algorithm_specific(self):
         """
         Null detections from different pipelines/algorithms should not be shared.

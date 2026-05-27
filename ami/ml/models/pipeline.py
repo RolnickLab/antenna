@@ -59,6 +59,13 @@ logger = logging.getLogger(__name__)
 
 
 FILTER_PROCESSED_BATCH_SIZE = 1000
+# Minimum wall-time (seconds) between in-loop Job.progress writes inside
+# filter_processed_images. The reaper's "no forward progress" heuristic keys off
+# job.updated_at, so we need to tick at least once per ~10min; 5s gives ample
+# headroom while still amortising the JSONB UPDATE across many chunks. Caps at
+# 0.99 so the caller still owns the final status=SUCCESS, progress=1 flip.
+COLLECT_PROGRESS_SAVE_INTERVAL_SECONDS = 5.0
+COLLECT_PROGRESS_MAX_FRACTION = 0.99
 
 
 def filter_processed_images(
@@ -66,6 +73,8 @@ def filter_processed_images(
     pipeline: Pipeline,
     task_logger: logging.Logger = logger,
     batch_size: int = FILTER_PROCESSED_BATCH_SIZE,
+    job: Job | None = None,
+    total: int | None = None,
 ) -> typing.Iterable[SourceImage]:
     """
     Return only images that need to be processed by a given pipeline.
@@ -102,6 +111,11 @@ def filter_processed_images(
         task_logger.warning(f"Pipeline {pipeline} has no classification algorithms saved. Will reprocess all images.")
 
     image_iter = iter(images)
+    # Track how many of the input images we've inspected so far so we can emit
+    # a fractional `collect` progress to the Job row. Only used when both
+    # `job` and `total` are passed by the caller; legacy callers stay silent.
+    processed_count = 0
+    last_progress_save_monotonic = time.monotonic()
     while True:
         batch = list(itertools.islice(image_iter, batch_size))
         if not batch:
@@ -176,6 +190,20 @@ def filter_processed_images(
                     f"Image {image} has existing detections classified by the pipeline: {pipeline}, skipping!"
                 )
 
+        # Throttled progress emit. Save only when both `job` and `total` are
+        # provided, the total is non-zero, and at least
+        # COLLECT_PROGRESS_SAVE_INTERVAL_SECONDS of wall time have passed since
+        # the last save. Capped at COLLECT_PROGRESS_MAX_FRACTION so the caller's
+        # final status=SUCCESS, progress=1 flip still owns the terminal value.
+        processed_count += len(batch)
+        if job is not None and total:
+            now_monotonic = time.monotonic()
+            if now_monotonic - last_progress_save_monotonic >= COLLECT_PROGRESS_SAVE_INTERVAL_SECONDS:
+                fraction = min(processed_count / total, COLLECT_PROGRESS_MAX_FRACTION)
+                job.progress.update_stage("collect", progress=fraction)
+                job.save(update_fields=["progress"])
+                last_progress_save_monotonic = now_monotonic
+
 
 def collect_images(
     collection: SourceImageCollection | None = None,
@@ -213,7 +241,19 @@ def collect_images(
     if pipeline and not reprocess_all_images:
         msg = f"Filtering images that have already been processed by pipeline {pipeline}"
         task_logger.info(msg)
-        images = list(filter_processed_images(images, pipeline, task_logger=task_logger))
+        # Pass `job` and `total` so filter_processed_images can emit throttled
+        # `collect` progress updates as it chews through the input — keeps the
+        # reaper "no forward progress" heuristic happy on large collections
+        # (issue #1321 follow-up).
+        images = list(
+            filter_processed_images(
+                images,
+                pipeline,
+                task_logger=task_logger,
+                job=job,
+                total=total_images,
+            )
+        )
     else:
         msg = "NOT filtering images that have already been processed"
         task_logger.info(msg)
