@@ -18,6 +18,7 @@ def _stub_manager(mock_manager_cls, publish_results=None):
     instance = mock_manager_cls.return_value
     instance.__aenter__ = AsyncMock(return_value=instance)
     instance.__aexit__ = AsyncMock(return_value=False)
+    instance.ensure_job_resources = AsyncMock()
     instance._ensure_stream = AsyncMock()
     instance._ensure_consumer = AsyncMock()
     instance.log_async = AsyncMock()
@@ -85,8 +86,7 @@ class TestQueueImagesToNatsFanout(TestCase):
 
         queue_images_to_nats(job, images)
 
-        self.assertEqual(instance._ensure_stream.await_count, 1)
-        self.assertEqual(instance._ensure_consumer.await_count, 1)
+        self.assertEqual(instance.ensure_job_resources.await_count, 1)
         self.assertEqual(instance.publish_task.await_count, 5)
 
     def test_chunks_across_fanout_boundary(self, mock_mgr_cls, _state_cls):
@@ -100,8 +100,7 @@ class TestQueueImagesToNatsFanout(TestCase):
 
         self.assertEqual(instance.publish_task.await_count, n)
         # Warm-up still only runs once even when we span multiple chunks.
-        self.assertEqual(instance._ensure_stream.await_count, 1)
-        self.assertEqual(instance._ensure_consumer.await_count, 1)
+        self.assertEqual(instance.ensure_job_resources.await_count, 1)
 
     def test_partial_failure_counted_as_failed_not_raised(self, mock_mgr_cls, _state_cls):
         # 3 images, middle one fails. Method should return False (failure summary)
@@ -116,10 +115,10 @@ class TestQueueImagesToNatsFanout(TestCase):
         self.assertEqual(instance.publish_task.await_count, 3)
 
     def test_stream_setup_failure_short_circuits_publishing(self, mock_mgr_cls, _state_cls):
-        # If _ensure_stream raises, we should not attempt any publish_task calls —
-        # the whole batch is marked failed in one shot.
+        # If ensure_job_resources raises, we should not attempt any publish_task
+        # calls — the whole batch is marked failed in one shot.
         instance = _stub_manager(mock_mgr_cls)
-        instance._ensure_stream = AsyncMock(side_effect=RuntimeError("nats down"))
+        instance.ensure_job_resources = AsyncMock(side_effect=RuntimeError("nats down"))
         images = self._make_images(4)
         job = self._make_job()
 

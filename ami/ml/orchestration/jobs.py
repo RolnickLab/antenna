@@ -139,8 +139,7 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
             # first call, each one still runs inside the publish coroutine and
             # serialises with the gather below.
             try:
-                await manager._ensure_stream(job.pk)
-                await manager._ensure_consumer(job.pk)
+                await manager.ensure_job_resources(job.pk)
             except Exception as e:
                 await manager.log_async(
                     logging.ERROR,
