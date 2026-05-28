@@ -4832,6 +4832,16 @@ class TestWilsonInterval(TestCase):
         wide = wilson_interval(9, 10)
         self.assertLess(narrow[1] - narrow[0], wide[1] - wide[0])
 
+    def test_successes_out_of_range_raises(self):
+        """successes > total can only be a caller bug — fail loud, not with an
+        opaque math-domain error from a negative sqrt."""
+        from ami.utils.stats import wilson_interval
+
+        with self.assertRaises(ValueError):
+            wilson_interval(5, 3)
+        with self.assertRaises(ValueError):
+            wilson_interval(-1, 10)
+
 
 class TestCohensKappa(TestCase):
     """Pure-Python Cohen's kappa over (human_taxon, model_taxon) pairs."""

@@ -25,9 +25,15 @@ def wilson_interval(successes: int, total: int, z: float = WILSON_Z_95) -> tuple
     normal approximation produces bounds outside [0, 1] and understates the
     uncertainty. Wilson stays well-behaved at small n and at proportions
     near 0 or 1.
+
+    Raises ``ValueError`` if ``successes`` is outside ``[0, total]`` — that
+    can only come from a caller bug, and letting it through would make the
+    sqrt term negative and crash deeper in with an opaque math-domain error.
     """
     if total <= 0:
         return None
+    if not 0 <= successes <= total:
+        raise ValueError(f"successes ({successes}) must be between 0 and total ({total})")
     phat = successes / total
     z2 = z * z
     denom = 1 + z2 / total
