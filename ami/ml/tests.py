@@ -1007,6 +1007,33 @@ class TestPipeline(TestCase):
             result = list(filter_processed_images([], self.pipeline))
         self.assertEqual(result, [])
 
+    def test_filter_processed_images_yields_all_when_pipeline_has_no_classifiers(self):
+        """
+        When a pipeline has no classifier algorithms registered, filter_processed_images
+        must yield every image (matching the "Will reprocess all images" warning).
+        Without the short-circuit, the empty `pipeline_classifier_ids` set makes
+        `set().issubset(observed) == True` and every image with existing detections
+        is silently skipped — directly contradicting the warning.
+        """
+        from ami.ml.models.pipeline import filter_processed_images
+
+        detector_only_pipeline = Pipeline.objects.create(name="Detector Only Pipeline")
+        detector_only_pipeline.algorithms.set([self.algorithms["random-detector"]])
+
+        # Image with a real, fully-processed-looking detection from the detector.
+        # Pre-short-circuit this would be skipped because the empty pipeline classifier
+        # set is vacuously a subset of any observed-classifier set.
+        image_with_detection = SourceImage.objects.create(path="no-classifier-with-det.jpg")
+        Detection.objects.create(
+            source_image=image_with_detection,
+            detection_algorithm=self.algorithms["random-detector"],
+            bbox=[0.1, 0.2, 0.3, 0.4],
+        )
+        image_unprocessed = SourceImage.objects.create(path="no-classifier-unprocessed.jpg")
+
+        result = list(filter_processed_images([image_with_detection, image_unprocessed], detector_only_pipeline))
+        self.assertEqual(result, [image_with_detection, image_unprocessed])
+
     def test_filter_processed_images_mixed_batch(self):
         """
         A mixed batch of images covering all five branches should yield only
