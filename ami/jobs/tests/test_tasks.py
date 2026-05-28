@@ -667,7 +667,7 @@ class TestRunJobEarlyGuard(TransactionTestCase):
         job = self._make_job(JobState.REVOKED)
 
         with patch.object(Job, "run") as mock_run:
-            result = run_job.apply(args=[job.pk])
+            result = run_job.apply(kwargs={"job_id": job.pk})
 
         self.assertTrue(result.successful(), msg=f"task should succeed, got {result.state}: {result.traceback}")
         mock_run.assert_not_called()
@@ -679,7 +679,7 @@ class TestRunJobEarlyGuard(TransactionTestCase):
         job = self._make_job(JobState.CANCELING)
 
         with patch.object(Job, "run") as mock_run:
-            result = run_job.apply(args=[job.pk])
+            result = run_job.apply(kwargs={"job_id": job.pk})
 
         self.assertTrue(result.successful(), msg=f"task should succeed, got {result.state}: {result.traceback}")
         mock_run.assert_not_called()
@@ -691,7 +691,7 @@ class TestRunJobEarlyGuard(TransactionTestCase):
         job = self._make_job(JobState.SUCCESS)
 
         with patch.object(Job, "run") as mock_run:
-            result = run_job.apply(args=[job.pk])
+            result = run_job.apply(kwargs={"job_id": job.pk})
 
         self.assertTrue(result.successful(), msg=f"task should succeed, got {result.state}: {result.traceback}")
         mock_run.assert_not_called()
@@ -703,9 +703,28 @@ class TestRunJobEarlyGuard(TransactionTestCase):
         job = self._make_job(JobState.PENDING)
 
         with patch.object(Job, "run") as mock_run:
-            run_job.apply(args=[job.pk])
+            run_job.apply(kwargs={"job_id": job.pk})
 
         mock_run.assert_called_once()
+
+    def test_prerun_signal_does_not_clobber_revoked_status(self):
+        """
+        Regression: the ``task_prerun`` signal would otherwise call
+        ``update_job_status(state="PENDING")`` and overwrite a REVOKED/CANCELING
+        status before the ``run_job`` early-guard reads it. With the prerun
+        guard in place, the status survives the signal, the early-guard fires,
+        and ``Job.run()`` is not called.
+        """
+        from ami.jobs.tasks import run_job
+
+        job = self._make_job(JobState.REVOKED)
+
+        with patch.object(Job, "run") as mock_run:
+            run_job.apply(kwargs={"job_id": job.pk})
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.REVOKED)
+        mock_run.assert_not_called()
 
 
 class TestResultEndpointWithError(APITestCase):

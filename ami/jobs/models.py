@@ -529,6 +529,28 @@ class MLJob(JobType):
             progress=1,
         )
 
+        # Mid-bootstrap cancel guard. ``collect_images`` above can run for many
+        # minutes on large collections (S3 list + DB joins), and the user may
+        # cancel during that window. ``Job.cancel()`` for ASYNC_API does
+        # ``revoke(terminate=False)`` to avoid SIGKILL'ing this worker, then
+        # writes REVOKED + tears down the NATS stream / Redis state. Without
+        # this check we would (a) clobber the cancel's REVOKED via the next
+        # full ``job.save()`` and (b) proceed to ``queue_images_to_nats``,
+        # recreating the stream the cancel just deleted and dispatching real
+        # GPU work to ADC for a revoked job. Refresh is read-only against the
+        # ``status`` column; the in-memory ``progress`` mutations from the
+        # collect stage are intentionally dropped on the bail path because the
+        # job is settled — no further progress writes make sense. Covers
+        # ASYNC_API (NATS dispatch) and SYNC paths (Celery sub-tasks in
+        # ``process_images``); INTERNAL jobs benefit too. See
+        # RolnickLab/antenna#1323.
+        db_status = Job.objects.values_list("status", flat=True).get(pk=job.pk)
+        if db_status in JobState.final_states() or db_status == JobState.CANCELING:
+            job.logger.info(
+                f"Job {job.pk} settled to {db_status} during bootstrap; " f"skipping dispatch of {len(images)} images"
+            )
+            return
+
         # End image collection stage
         job.save()
 
@@ -1040,6 +1062,21 @@ class Job(BaseModel):
 
         if save:
             self.save()
+
+    def is_settled(self) -> bool:
+        """Return True when the job is in a terminal state or being cancelled.
+
+        Used by every code path that must not start (or continue) work for a
+        job whose lifecycle has effectively ended: the ``run_job`` early-guard
+        (after acks_late redelivery), the ``MLJob.run`` mid-bootstrap cancel
+        check (before ``queue_images_to_nats`` dispatches GPU work to ADC),
+        the prerun signal handler (so a redelivered or canceled message does
+        not get its status reset to PENDING), and ``_fail_job``. Centralized
+        so the predicate stays in one place — adding a new "do not resume"
+        status only requires touching :meth:`JobState.final_states` or this
+        method.
+        """
+        return self.status in JobState.final_states() or self.status == JobState.CANCELING
 
     def run(self):
         """

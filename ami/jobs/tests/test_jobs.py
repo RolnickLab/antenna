@@ -439,6 +439,50 @@ class TestJobView(APITestCase):
         job.refresh_from_db()
         self.assertEqual(job.status, JobState.REVOKED)
 
+    def test_mljob_run_bails_when_cancelled_during_bootstrap(self):
+        """Regression for the cancel-during-bootstrap race in ASYNC_API jobs.
+
+        ``Job.cancel()`` revokes without terminate=True (so the local worker is
+        not SIGTERM'd), marks the row REVOKED, and tears down NATS/Redis state.
+        If the worker is still inside ``MLJob.run`` (typically blocked in the
+        slow ``collect_images`` step), it must refresh the row and bail BEFORE
+        calling ``queue_images_to_nats`` — otherwise it would recreate the
+        stream and dispatch real GPU work to ADC for a revoked job.
+        """
+        from unittest.mock import patch
+
+        from ami.jobs.models import MLJob
+
+        pipeline = Pipeline.objects.create(name="Cancel-race pipeline", slug="cancel-race-pipeline")
+        pipeline.projects.add(self.project)
+        collection = SourceImageCollection.objects.create(name="Cancel-race collection", project=self.project)
+        job = Job.objects.create(
+            project=self.project,
+            name="Cancel-race",
+            pipeline=pipeline,
+            source_image_collection=collection,
+            status=JobState.STARTED,
+            dispatch_mode=JobDispatchMode.ASYNC_API,
+        )
+        job.setup()
+
+        def cancel_mid_collect(*_args, **_kwargs):
+            # Simulate the user clicking cancel while collect_images is still
+            # running: rewrite the DB row out from under this in-flight task.
+            Job.objects.filter(pk=job.pk).update(status=JobState.REVOKED)
+            return []
+
+        with patch.object(
+            pipeline,
+            "collect_images",
+            side_effect=cancel_mid_collect,
+        ), patch("ami.ml.orchestration.jobs.queue_images_to_nats") as mock_queue:
+            MLJob.run(job)
+
+        mock_queue.assert_not_called()
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.REVOKED)
+
     def test_cancel_job_without_task_id_still_revokes(self):
         """A job that never made it to enqueue (no task_id) still transitions
         to REVOKED and triggers async-cleanup (a no-op for non-ASYNC_API)."""

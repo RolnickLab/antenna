@@ -150,7 +150,7 @@ def update_async_services_seen_for_project(project_id: int) -> None:
     reject_on_worker_lost=True,
 )
 def run_job(self, job_id: int) -> None:
-    from ami.jobs.models import Job, JobState
+    from ami.jobs.models import Job
 
     try:
         job = Job.objects.get(pk=job_id)
@@ -161,8 +161,10 @@ def run_job(self, job_id: int) -> None:
     # Early-guard: under acks_late, the broker may redeliver this message after a
     # worker SIGKILL/OOM, and Job.cancel() may also flip status to CANCELING /
     # REVOKED while the message sits in the prefetch buffer. Don't re-run a job
-    # that's already settled or being torn down.
-    if job.status in JobState.final_states() or job.status == JobState.CANCELING:
+    # that's already settled or being torn down. The companion guard in
+    # pre_update_job_status above prevents the task_prerun signal from
+    # overwriting that status with PENDING before we get here.
+    if job.is_settled():
         job.logger.info(
             f"Skipping run_job for job {job.pk}: already in status {job.status} "
             f"(redelivery or cancellation in flight)"
@@ -444,7 +446,7 @@ def _fail_job(job_id: int, reason: str) -> None:
     try:
         with transaction.atomic():
             job = Job.objects.select_for_update().get(pk=job_id)
-            if job.status in (JobState.CANCELING, *JobState.final_states()):
+            if job.is_settled():
                 return
             job.update_status(JobState.FAILURE, save=False)
             job.finished_at = datetime.datetime.now()
@@ -1327,7 +1329,34 @@ def cleanup_async_job_if_needed(job) -> None:
 
 @task_prerun.connect(sender=run_job)
 def pre_update_job_status(sender, task_id, task, **kwargs):
-    # in the prerun signal, set the job status to PENDING
+    """Bump the job to PENDING when a worker picks the message up.
+
+    Skipped when the job is already settled (terminal state) or being
+    cancelled. Without that guard, a broker redelivery (acks_late + worker
+    crash) or a cancel that arrived while the message was still in the
+    prefetch buffer would have its REVOKED/CANCELING status silently
+    overwritten with PENDING here, and the ``run_job`` early-guard
+    (which reads ``Job.status`` after this signal fires) would then fail
+    to short-circuit and re-run the job. See RolnickLab/antenna#1323.
+    """
+    from ami.jobs.models import Job
+
+    job_id = task.request.kwargs.get("job_id") if task.request.kwargs else None
+    if job_id is None and task.request.args:
+        job_id = task.request.args[0]
+    if job_id is not None:
+        try:
+            job = Job.objects.only("status").get(pk=job_id)
+        except Job.DoesNotExist:
+            pass
+        else:
+            if job.is_settled():
+                logger.info(
+                    "task_prerun: skipping PENDING write for job %s in status %s " "(redelivery or cancel in flight)",
+                    job_id,
+                    job.status,
+                )
+                return
     update_job_status(sender, task_id, task, "PENDING", **kwargs)
 
 
