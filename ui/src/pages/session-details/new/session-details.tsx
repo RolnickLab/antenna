@@ -10,6 +10,7 @@ import { useParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { STRING, translate } from 'utils/language'
 import { useUser } from 'utils/user/userContext'
+import ActivityPlot from './activity-plot/activity-plot'
 import { CaptureNavigation } from './capture-navigation'
 import { Capture } from './capture/capture'
 import { useActiveCaptureId } from './hooks/useActiveCapture'
@@ -17,6 +18,7 @@ import { useActiveOccurrences } from './hooks/useActiveOccurrences'
 import { SessionInfo } from './session-info'
 import { SessionPlots } from './session-plots'
 import { StarButton } from './star-button'
+import { TimelineSlider } from './timeline-slider/timeline-slider'
 
 const TABS = {
   FIELDS: 'fields',
@@ -102,63 +104,78 @@ const Content = ({ session }: { session: SessionDetails }) => {
   }
 
   return (
-    <div className="flex flex-col gap-6 mt-6 md:flex-row">
-      <Box className="p-2 bg-background rounded-lg md:min-w-72 md:p-4 md:rounded-xl">
-        <Tabs.Root defaultValue={TABS.FIELDS}>
-          <Tabs.List>
-            <Tabs.Trigger
-              value={TABS.FIELDS}
-              label={translate(STRING.TAB_ITEM_FIELDS)}
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-6 mt-6 md:flex-row">
+        <Box className="p-2 bg-background rounded-lg md:min-w-72 md:p-4 md:rounded-xl">
+          <Tabs.Root defaultValue={TABS.FIELDS}>
+            <Tabs.List>
+              <Tabs.Trigger
+                value={TABS.FIELDS}
+                label={translate(STRING.TAB_ITEM_FIELDS)}
+              />
+              <Tabs.Trigger
+                value={TABS.CHARTS}
+                label={translate(STRING.TAB_ITEM_CHARTS)}
+              />
+            </Tabs.List>
+            <Tabs.Content value={TABS.FIELDS}>
+              <SessionInfo session={session} />
+            </Tabs.Content>
+            <Tabs.Content value={TABS.CHARTS}>
+              <div className="w-96 space-y-4">
+                <SessionPlots session={session} />
+              </div>
+            </Tabs.Content>
+          </Tabs.Root>
+        </Box>
+        <div className="grow flex flex-col bg-background rounded-lg border border-border overflow-hidden md:rounded-xl">
+          <div className="grow flex items-center justify-center">
+            <Capture
+              defaultFilters
+              detections={activeCapture?.detections ?? []}
+              height={activeCapture?.height ?? session.firstCapture.height}
+              showDetections
+              src={activeCapture?.src}
+              width={activeCapture?.width ?? session.firstCapture.width}
             />
-            <Tabs.Trigger
-              value={TABS.CHARTS}
-              label={translate(STRING.TAB_ITEM_CHARTS)}
-            />
-          </Tabs.List>
-          <Tabs.Content value={TABS.FIELDS}>
-            <SessionInfo session={session} />
-          </Tabs.Content>
-          <Tabs.Content value={TABS.CHARTS}>
-            <div className="w-96 space-y-4">
-              <SessionPlots session={session} />
+          </div>
+          <div className="grid grid-cols-3 p-6 border-t border-border">
+            <div className="flex items-center gap-2">
+              {activeCapture ? (
+                <>
+                  <span className="pt-0.5 text-muted-foreground">
+                    {activeCapture.dateTimeLabel}
+                  </span>
+                  <StarButton
+                    capture={activeCapture}
+                    canStar={user.loggedIn && activeCapture.canStar}
+                  />
+                </>
+              ) : null}
             </div>
-          </Tabs.Content>
-        </Tabs.Root>
-      </Box>
-      <div className="grow flex flex-col bg-background rounded-lg border border-border overflow-hidden md:rounded-xl">
-        <div className="grow flex items-center justify-center">
-          <Capture
-            defaultFilters
-            detections={activeCapture?.detections ?? []}
-            height={activeCapture?.height ?? session.firstCapture.height}
-            showDetections
-            src={activeCapture?.src}
-            width={activeCapture?.width ?? session.firstCapture.width}
-          />
-        </div>
-        <div className="grid grid-cols-3 p-6 border-t border-border">
-          <div className="flex items-center gap-2">
-            {activeCapture ? (
-              <>
-                <span className="pt-0.5 text-muted-foreground">
-                  {activeCapture.dateTimeLabel}
-                </span>
-                <StarButton
-                  capture={activeCapture}
-                  canStar={user.loggedIn && activeCapture.canStar}
-                />
-              </>
-            ) : null}
+            <div className="flex items-center justify-center">
+              <CaptureNavigation
+                activeCapture={activeCapture}
+                timeline={timeline}
+                setActiveCaptureId={setActiveCaptureId}
+              />
+            </div>
+            <div />
           </div>
-          <div className="flex items-center justify-center">
-            <CaptureNavigation
-              activeCapture={activeCapture}
-              timeline={timeline}
-              setActiveCaptureId={setActiveCaptureId}
-            />
-          </div>
-          <div />
         </div>
+      </div>
+      <div className="bg-background rounded-lg border border-border p-4">
+        <ActivityPlot
+          session={session}
+          setActiveCaptureId={setActiveCaptureId}
+          timeline={timeline}
+        />
+        <TimelineSlider
+          activeCapture={activeCapture}
+          session={session}
+          setActiveCaptureId={setActiveCaptureId}
+          timeline={timeline}
+        />
       </div>
     </div>
   )
