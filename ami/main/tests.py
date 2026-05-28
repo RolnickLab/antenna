@@ -5198,6 +5198,21 @@ class TestOccurrenceStatsViewSet(APITestCase):
         self.assertEqual(gated["total_occurrences"], 0)
         self.assertEqual(bypassed["total_occurrences"], 4)
 
+    def test_options_emits_response_field_schema(self):
+        """OPTIONS on a stats action returns the response serializer's field
+        schema (with `help_text`) under `actions.GET`, so frontends can read
+        stat descriptions without hardcoding them."""
+        response = self.client.options(f"{self.agreement_url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIn("actions", body)
+        self.assertIn("GET", body["actions"])
+        fields = body["actions"]["GET"]
+        self.assertIn("verified_pct", fields)
+        self.assertEqual(fields["verified_pct"]["help_text"], "verified_count / total_occurrences")
+        self.assertIn("cohens_kappa", fields)
+        self.assertIn("beyond chance", fields["cohens_kappa"]["help_text"])
+
 
 class TestTaxaVerification(APITestCase):
     """Per-taxon verification + human/model agreement annotations and the verified filter (#1316)."""

@@ -24,6 +24,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ami.base.filters import NullsLastOrderingFilter, ThresholdFilter
+from ami.base.metadata import ResponseSchemaMetadata
 from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
@@ -1330,6 +1331,10 @@ class OccurrenceStatsViewSet(viewsets.GenericViewSet, ProjectMixin):
 
     permission_classes = [IsActiveStaffOrReadOnly]
     require_project = True
+    # OPTIONS on each action returns its response serializer field schema
+    # (type + help_text) under `actions.GET`. Frontends consume this to render
+    # tooltips and labels without hardcoding stat descriptions in the UI.
+    metadata_class = ResponseSchemaMetadata
     # Filter machinery for actions that opt into `self.filter_queryset(...)`.
     # `top_identifiers` doesn't call it, so its behavior is unchanged.
     queryset = Occurrence.objects.none()
@@ -1340,7 +1345,12 @@ class OccurrenceStatsViewSet(viewsets.GenericViewSet, ProjectMixin):
         parameters=[project_id_doc_param, limit_doc_param],
         responses=TopIdentifiersResponseSerializer,
     )
-    @action(detail=False, methods=["get"], url_path="top-identifiers")
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="top-identifiers",
+        serializer_class=TopIdentifiersResponseSerializer,
+    )
     def top_identifiers(self, request):
         """Users ranked by distinct occurrences they identified.
 
@@ -1369,7 +1379,12 @@ class OccurrenceStatsViewSet(viewsets.GenericViewSet, ProjectMixin):
         parameters=[project_id_doc_param],
         responses=ModelAgreementSerializer,
     )
-    @action(detail=False, methods=["get"], url_path="model-agreement")
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="model-agreement",
+        serializer_class=ModelAgreementSerializer,
+    )
     def model_agreement(self, request):
         """Verified / human↔model agreement rates over the filtered occurrence set.
 
