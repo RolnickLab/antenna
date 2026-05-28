@@ -165,6 +165,34 @@ class SingleParamSerializer(serializers.Serializer, typing.Generic[T]):
         self.fields[param_name] = field
 
 
+class EnumChoiceField(serializers.ChoiceField):
+    """A ``ChoiceField`` backed by a Python ``enum.Enum`` class.
+
+    Accepts enum member *names* (case-insensitive) and returns the
+    corresponding enum member on ``to_internal_value``.  Use the
+    ``exclude`` parameter to reject specific members (e.g. sentinel
+    values like ``UNKNOWN``) with a standard 400 invalid-choice error.
+
+    Example::
+
+        field = EnumChoiceField(TaxonRank, exclude=[TaxonRank.UNKNOWN], required=False, default=None)
+        rank = SingleParamSerializer[TaxonRank | None].clean("agreement_coarsest_rank", field, request.query_params)
+    """
+
+    def __init__(self, enum_class: type, exclude: list | None = None, **kwargs: typing.Any) -> None:
+        self._enum_class = enum_class
+        excluded = set(exclude or [])
+        choices = [m.name for m in enum_class if m not in excluded]
+        kwargs.setdefault("choices", choices)
+        super().__init__(**kwargs)
+
+    def to_internal_value(self, data: typing.Any) -> typing.Any:
+        normalized = str(data).upper()
+        if normalized not in self.choices:
+            self.fail("invalid_choice", input=data)
+        return self._enum_class[normalized]
+
+
 class FilterParamsSerializer(serializers.Serializer):
     """
     Serializer for validating query parameters in DRF views.

@@ -27,7 +27,7 @@ from ami.base.filters import NullsLastOrderingFilter, ThresholdFilter
 from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
-from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
+from ami.base.serializers import EnumChoiceField, FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
@@ -1386,24 +1386,15 @@ class OccurrenceStatsViewSet(viewsets.GenericViewSet, ProjectMixin):
         if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
             raise NotFound("Project not found.")
 
-        coarsest_rank_param = request.query_params.get("agreement_coarsest_rank")
-        coarsest_rank = None
-        if coarsest_rank_param:
-            try:
-                coarsest_rank = TaxonRank[coarsest_rank_param.upper()]
-            except KeyError:
-                valid = ", ".join(r.name for r in TaxonRank if r.name != "UNKNOWN")
-                raise api_exceptions.ValidationError(
-                    {"agreement_coarsest_rank": f"Invalid rank '{coarsest_rank_param}'. Must be one of: {valid}."}
-                )
-            if coarsest_rank == TaxonRank.UNKNOWN:
-                raise api_exceptions.ValidationError(
-                    {"agreement_coarsest_rank": "UNKNOWN is not a valid threshold rank."}
-                )
+        coarsest_rank = SingleParamSerializer[TaxonRank | None].clean(
+            "agreement_coarsest_rank",
+            EnumChoiceField(TaxonRank, exclude=[TaxonRank.UNKNOWN], required=False, allow_null=True, default=None),
+            request.query_params,
+        )
 
         base_qs = Occurrence.objects.filter(project=project).valid().apply_default_filters(project, request)
         filtered_qs = self.filter_queryset(base_qs)
-        payload = model_agreement_for_project(filtered_qs, coarsest_rank=coarsest_rank)
+
         payload["project_id"] = project.pk
         return Response(ModelAgreementSerializer(payload, context={"request": request}).data)
 
