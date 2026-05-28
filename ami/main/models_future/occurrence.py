@@ -229,6 +229,16 @@ def model_agreement_for_project(
     verified = len(verified_rows)
     no_prediction = sum(1 for r in verified_rows if r["best_machine_prediction_taxon_id"] is None)
     verified_with_pred = verified - no_prediction
+    # The agreement cohort needs BOTH a machine prediction and a human taxon to
+    # compare. Identification.taxon is nullable (comment-only verifications), so a
+    # verified row can have a prediction but no human label — it can neither agree
+    # nor disagree and must be excluded from the denominator, not just the numerator.
+    no_user_taxon = sum(
+        1
+        for r in verified_rows
+        if r["best_machine_prediction_taxon_id"] is not None and r["best_user_taxon_id"] is None
+    )
+    comparable = verified_with_pred - no_user_taxon
     agreed_exact = sum(
         1
         for r in verified_rows
@@ -278,8 +288,8 @@ def model_agreement_for_project(
     # Extra stats over the same verified_rows already in memory — no extra query.
     # Wilson 95% CI conveys how shaky each rate is at small n; Cohen's kappa
     # (exact-taxon) discounts the agreement you'd get by chance.
-    exact_ci = wilson_interval(agreed_exact, verified_with_pred)
-    any_rank_ci = wilson_interval(agreed_any_rank, verified_with_pred)
+    exact_ci = wilson_interval(agreed_exact, comparable)
+    any_rank_ci = wilson_interval(agreed_any_rank, comparable)
     both_present_pairs = [
         (r["best_user_taxon_id"], r["best_machine_prediction_taxon_id"])
         for r in verified_rows
@@ -296,20 +306,20 @@ def model_agreement_for_project(
         "verified_pct": _pct(verified, total),
         "verified_with_prediction_count": verified_with_pred,
         "no_prediction_count": no_prediction,
+        "verified_without_taxon_count": no_user_taxon,
+        "comparable_count": comparable,
         "agreed_exact_count": agreed_exact,
-        "agreed_exact_pct": _pct(agreed_exact, verified_with_pred),
+        "agreed_exact_pct": _pct(agreed_exact, comparable),
         "agreed_exact_ci_low": exact_ci[0] if exact_ci else None,
         "agreed_exact_ci_high": exact_ci[1] if exact_ci else None,
         "agreed_any_rank_count": agreed_any_rank,
-        "agreed_any_rank_pct": _pct(agreed_any_rank, verified_with_pred),
+        "agreed_any_rank_pct": _pct(agreed_any_rank, comparable),
         "agreed_any_rank_ci_low": any_rank_ci[0] if any_rank_ci else None,
         "agreed_any_rank_ci_high": any_rank_ci[1] if any_rank_ci else None,
         "cohens_kappa": kappa,
         "agreement_coarsest_rank": coarsest_rank.name if coarsest_rank is not None else None,
         "agreed_coarser_rank_count": agreed_coarser_rank if coarsest_rank is not None else None,
-        "agreed_coarser_rank_pct": (
-            _pct(agreed_coarser_rank, verified_with_pred) if coarsest_rank is not None else None
-        ),
+        "agreed_coarser_rank_pct": (_pct(agreed_coarser_rank, comparable) if coarsest_rank is not None else None),
     }
     return payload
 

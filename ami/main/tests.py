@@ -4963,6 +4963,29 @@ class TestModelAgreementForProject(APITestCase):
         self.assertEqual(result["agreed_coarser_rank_count"], 2)
         self.assertAlmostEqual(result["agreed_coarser_rank_pct"], 2 / 3, places=3)
 
+    def test_taxon_less_verification_excluded_from_denominator(self):
+        """A comment-only verification (Identification.taxon=None) has a machine
+        prediction but no human taxon. It can neither agree nor disagree, so it
+        must be excluded from comparable_count, not just from the numerators."""
+        from ami.main.models_future.occurrence import model_agreement_for_project
+
+        occurrences = list(Occurrence.objects.filter(project=self.project).order_by("pk"))
+        # 0: exact agreement (machine == user)
+        self._identify(occurrences[0], self.vanessa_atalanta)
+        # 1: comment-only verification — has a prediction but no human taxon
+        Identification.objects.create(user=self.user, occurrence=occurrences[1], taxon=None)
+
+        result = model_agreement_for_project(Occurrence.objects.filter(project=self.project))
+        # Both rows are "verified" and both have a machine prediction.
+        self.assertEqual(result["verified_count"], 2)
+        self.assertEqual(result["verified_with_prediction_count"], 2)
+        # But only the row with a human taxon is comparable.
+        self.assertEqual(result["verified_without_taxon_count"], 1)
+        self.assertEqual(result["comparable_count"], 1)
+        # 1 exact agreement out of 1 comparable → 100%, not 50%.
+        self.assertEqual(result["agreed_exact_count"], 1)
+        self.assertAlmostEqual(result["agreed_exact_pct"], 1.0)
+
 
 class TestOccurrenceStatsViewSet(APITestCase):
     """Covers /api/v2/occurrences/stats/top-identifiers/.

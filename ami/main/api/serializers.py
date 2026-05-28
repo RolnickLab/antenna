@@ -1760,12 +1760,13 @@ class ModelAgreementSerializer(serializers.Serializer):
     construction — an exact match implies the LCA is the taxon itself.
     `*_pct` percentages are 0.0..1.0 (not 0..100).
 
-    Denominator note: `agreed_*_pct` divide by `verified_with_prediction_count`
-    (verified occurrences that *also* have a machine prediction), NOT by
-    `verified_count`. A verified occurrence with no machine prediction can't
-    agree or disagree — including it in the denominator would drag the rate
-    down without representing actual model disagreement. `no_prediction_count`
-    is surfaced so the consumer can see how many such occurrences exist.
+    Denominator note: `agreed_*_pct` divide by `comparable_count` — verified
+    occurrences that have BOTH a machine prediction and a human taxon, NOT by
+    `verified_count`. Two kinds of verified occurrence are excluded because they
+    can't agree or disagree: those with no machine prediction (`no_prediction_count`)
+    and those whose human identification has no taxon, e.g. a comment-only
+    verification (`verified_without_taxon_count`). Both are surfaced so the
+    consumer can see why `comparable_count` differs from `verified_count`.
 
     Optional rank threshold: when the caller passes
     `?agreement_coarsest_rank=FAMILY`, the response also includes
@@ -1784,16 +1785,30 @@ class ModelAgreementSerializer(serializers.Serializer):
         help_text="verified_count / total_occurrences",
     )
     verified_with_prediction_count = serializers.IntegerField(
-        help_text="Verified occurrences that also have a machine prediction (denominator for agreed_*_pct)."
+        help_text="Verified occurrences that also have a machine prediction."
     )
     no_prediction_count = serializers.IntegerField(
         help_text="Verified occurrences with no machine prediction (excluded from agreement denominator)."
+    )
+    verified_without_taxon_count = serializers.IntegerField(
+        help_text=(
+            "Verified occurrences that have a machine prediction but no human taxon "
+            "(e.g. comment-only identification). Excluded from the agreement denominator "
+            "since there is no human label to compare."
+        )
+    )
+    comparable_count = serializers.IntegerField(
+        help_text=(
+            "Verified occurrences with BOTH a machine prediction and a human taxon — the "
+            "denominator for all agreed_*_pct and the Wilson CIs. Equals "
+            "verified_with_prediction_count minus verified_without_taxon_count."
+        )
     )
     agreed_exact_count = serializers.IntegerField()
     agreed_exact_pct = serializers.FloatField(
         min_value=0.0,
         max_value=1.0,
-        help_text="agreed_exact_count / verified_with_prediction_count",
+        help_text="agreed_exact_count / comparable_count",
     )
     agreed_exact_ci_low = serializers.FloatField(
         min_value=0.0,
