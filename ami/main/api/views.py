@@ -8,7 +8,6 @@ from django.core import exceptions
 from django.core.files.storage import default_storage
 from django.db import models
 from django.db.models import OuterRef, Prefetch, Q, Subquery
-from django.db.models.functions import Coalesce
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
 from django.shortcuts import get_object_or_404, redirect
@@ -1057,7 +1056,9 @@ class CustomOccurrenceDeterminationFilter(CustomTaxonFilter):
     def filter_queryset(self, request, queryset, view):
         taxon = self.get_filter_taxon(request, query_params=self.query_params)
         if taxon:
-            # Here the queryset is the Occurrence queryset
+            # Here the queryset is the Occurrence queryset.
+            # The literal parents_json containment (constant RHS) is what the GIN index from
+            # migration 0087 serves — this hierarchical taxon filter is the index's main consumer.
             return queryset.filter(
                 models.Q(determination=taxon) | models.Q(determination__parents_json__contains=[{"id": taxon.pk}])
             )
@@ -1230,22 +1231,6 @@ class OccurrenceTaxaListFilter(filters.BaseFilterBackend):
                 queryset = queryset.exclude(query_filter)
 
         return queryset
-
-
-class TaxonCollectionFilter(filters.BaseFilterBackend):
-    """
-    Filter taxa by the capture set their occurrences belong to.
-    """
-
-    query_param = "collection"
-
-    def filter_queryset(self, request, queryset, view):
-        collection_id = IntegerField(required=False).clean(request.query_params.get(self.query_param))
-        if collection_id:
-            # Here the queryset is the Taxon queryset
-            return queryset.filter(occurrences__detections__source_image__collections=collection_id)
-        else:
-            return queryset
 
 
 class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
@@ -1487,9 +1472,13 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
 
     queryset = Taxon.objects.all().defer("notes")
     serializer_class = TaxonSerializer
+    # ``?collection=`` is handled inside get_taxa_observed (via get_occurrence_filters
+    # + TaxonQuerySet.with_observation_counts_aggregated + HAVING). A dedicated
+    # filter_backends entry that re-applied the collection filter on the main queryset
+    # would add a redundant JOIN that the planner cannot reconcile with the
+    # conditional-aggregate GROUP BY, turning the page into a multi-minute scan.
     filter_backends = DefaultViewSetMixin.filter_backends + [
         CustomTaxonFilter,
-        TaxonCollectionFilter,
         TaxonTaxaListFilter,
         TaxonBestScoreFilter,
         TaxonTagFilter,
@@ -1508,6 +1497,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         "created_at",
         "updated_at",
         "occurrences_count",
+        "verified_count",
         "last_detected",
         "best_determination_score",
         "name",
@@ -1564,11 +1554,16 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         else:
             return TaxonSerializer
 
-    def get_occurrence_filters(self, project: Project) -> models.Q:
+    def get_occurrence_filters(self, project: Project, accessor: str = "") -> models.Q:
         """
-        Filter taxa by when/where it has occurred.
+        Filter by when/where a taxon has occurred.
 
         Supports querying by occurrence, project, deployment, or event.
+
+        ``accessor`` is the relation path to the Occurrence model. Pass "" to filter the
+        Occurrence model directly, or "occurrences" to filter the Taxon model via its
+        reverse relation (for conditional aggregation in
+        :meth:`TaxonQuerySet.with_observation_counts_aggregated`).
 
         @TODO Consider using a custom filter class for this (see get_filter_name)
         @TODO Move this to a custom QuerySet manager on the Taxon model
@@ -1581,12 +1576,12 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         event_id = self.request.query_params.get("event") or self.request.query_params.get("occurrences__event")
         collection_id = self.request.query_params.get("collection")
 
-        # filter_active = any([occurrence_id, project, deployment_id, event_id, collection_id])
+        prefix = f"{accessor}__" if accessor else ""
 
-        filters = models.Q(
-            project=project,
-            event__isnull=False,
-        )
+        def field(path: str) -> str:
+            return f"{prefix}{path}"
+
+        filters = models.Q(**{field("project"): project, field("event__isnull"): False})
         try:
             """
             Ensure that the related objects exist before filtering by them.
@@ -1595,16 +1590,16 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             if occurrence_id:
                 Occurrence.objects.get(id=occurrence_id)
                 # This query does not need the same filtering as the others
-                filters &= models.Q(id=occurrence_id)
+                filters &= models.Q(**{field("id"): occurrence_id})
             if deployment_id:
                 Deployment.objects.get(id=deployment_id)
-                filters &= models.Q(deployment=deployment_id)
+                filters &= models.Q(**{field("deployment"): deployment_id})
             if event_id:
                 Event.objects.get(id=event_id)
-                filters &= models.Q(event=event_id)
+                filters &= models.Q(**{field("event"): event_id})
             if collection_id:
                 SourceImageCollection.objects.get(id=collection_id)
-                filters &= models.Q(detections__source_image__collections=collection_id)
+                filters &= models.Q(**{field("detections__source_image__collections"): collection_id})
         except exceptions.ObjectDoesNotExist as e:
             # Raise a 404 if any of the related objects don't exist
             raise NotFound(detail=str(e))
@@ -1661,80 +1656,66 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         apply_default_score_filter=True,
         apply_default_taxa_filter=True,
     ) -> QuerySet:
+        """Annotate per-(project, taxon) counts and optionally restrict to observed taxa.
+
+        Two SQL shapes for the direct aggregates (``occurrences_count`` /
+        ``best_determination_score`` / ``last_detected``):
+
+        - **Default / event / deployment / verified paths** — correlated ``Subquery``
+          annotations, index-served by the composite
+          ``(determination_id, project_id, event_id, determination_score)`` index on
+          Occurrence. Membership via materialised ``id__in``.
+        - **``?collection=<id>``** — conditional aggregation over the Taxon→occurrences
+          reverse relation. The detections join would turn each correlated subquery into
+          a per-row scan, so we switch to one GROUP BY. Membership via HAVING.
+
+        The sparse verification rollup (``verified_count`` / ``agreed_*``) is the same on
+        either path — a Python pass over the verified subset applied as ``CASE``
+        annotations, see :meth:`TaxonQuerySet.with_verification_counts`.
         """
-        If a project is passed, only return taxa that have been observed.
-        Also add the number of occurrences and the last time it was detected.
+        request = self.request
+        use_aggregation = "collection" in request.query_params
+        direct_filters = self.get_occurrence_filters(project)
 
-        Uses efficient subqueries with default filters applied directly via Q objects
-        to leverage composite indexes on (determination_id, project_id, event_id, determination_score).
-        This avoids the N+1 query problem by building a single Q filter that can be reused
-        across all subqueries.
-        """
-        occurrence_filters = self.get_occurrence_filters(project)
+        if use_aggregation:
+            relation_filters = self.get_occurrence_filters(project, accessor="occurrences")
+            qs = qs.with_observation_counts_aggregated(
+                project,
+                request,
+                relation_occurrence_filters=relation_filters,
+                apply_default_score_filter=apply_default_score_filter,
+            )
+            if not include_unobserved:
+                qs = qs.filter(occurrences_count__gt=0)
+        else:
+            qs = qs.with_observation_counts_subqueries(
+                project,
+                request,
+                occurrence_filters=direct_filters,
+                apply_default_score_filter=apply_default_score_filter,
+                apply_default_taxa_filter=apply_default_taxa_filter,
+            )
+            if not include_unobserved:
+                qs = qs.observed_in_project_subqueries(
+                    project,
+                    request,
+                    occurrence_filters=direct_filters,
+                    apply_default_score_filter=apply_default_score_filter,
+                    apply_default_taxa_filter=apply_default_taxa_filter,
+                )
 
-        # Build a single Q filter for default filters (score threshold + taxa filters)
-        # This creates an efficient filter that works with composite indexes
-        # Respects apply_defaults flag: build_occurrence_default_filters_q checks it internally
-        from ami.main.models_future.filters import build_occurrence_default_filters_q
+        verified_param: bool | None = None
+        if self.action == "list" and "verified" in request.query_params:
+            verified_param = BooleanField(required=False).clean(request.query_params.get("verified"))
 
-        default_filters_q = build_occurrence_default_filters_q(
+        return qs.with_verification_counts(
             project,
-            self.request,
-            occurrence_accessor="",
+            request,
+            occurrence_filters=direct_filters,
             apply_default_score_filter=apply_default_score_filter,
             apply_default_taxa_filter=apply_default_taxa_filter,
+            verified=verified_param,
         )
-
-        # Combine base occurrence filters with default filters
-        base_filter = models.Q(
-            occurrence_filters,
-            determination_id=models.OuterRef("id"),
-        )
-
-        base_filter = base_filter & default_filters_q
-
-        # Count occurrences - uses composite index (determination_id, project_id, event_id, determination_score)
-        occurrences_count_subquery = models.Subquery(
-            Occurrence.objects.filter(base_filter)
-            .values("determination_id")
-            .annotate(count=models.Count("id"))
-            .values("count")[:1],
-            output_field=models.IntegerField(),
-        )
-
-        # Get best score - uses same composite index
-        best_score_subquery = models.Subquery(
-            Occurrence.objects.filter(base_filter)
-            .values("determination_id")
-            .annotate(max_score=models.Max("determination_score"))
-            .values("max_score")[:1],
-            output_field=models.FloatField(),
-        )
-
-        # Get last detected timestamp - requires join with detections
-        last_detected_subquery = models.Subquery(
-            Occurrence.objects.filter(
-                base_filter,
-                detections__timestamp__isnull=False,
-            )
-            .values("determination_id")
-            .annotate(last_detected=models.Max("detections__timestamp"))
-            .values("last_detected")[:1],
-            output_field=models.DateTimeField(),
-        )
-
-        # Apply annotations
-        qs = qs.annotate(
-            occurrences_count=Coalesce(occurrences_count_subquery, 0),
-            best_determination_score=best_score_subquery,
-            last_detected=last_detected_subquery,
-        )
-
-        if not include_unobserved:
-            # Efficient EXISTS check that uses the composite index
-            qs = qs.filter(models.Exists(Occurrence.objects.filter(base_filter)))
-
-        return qs
 
     def attach_tags_by_project(self, qs: QuerySet, project: Project) -> QuerySet:
         """

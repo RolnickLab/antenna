@@ -158,6 +158,17 @@ export const SpeciesDetails = ({
                     })}
                   />
                 </InfoBlockField>
+                <InfoBlockField label="Verification">
+                  <InfoBlockFieldValue
+                    value={`Verified: ${species.numVerified}`}
+                    to={getAppRoute({
+                      to: APP_ROUTES.OCCURRENCES({
+                        projectId: projectId as string,
+                      }),
+                      filters: { taxon: species.id, verified: 'true' },
+                    })}
+                  />
+                </InfoBlockField>
                 <InfoBlockField
                   label={translate(STRING.FIELD_LABEL_BEST_SCORE)}
                 >
