@@ -44,7 +44,7 @@ class TestQueueImagesToNatsFanout(TestCase):
             name="ds",
             bucket="b",
             access_key="x",
-            secret_key="y",
+            secret_key="y",  # noqa: S106 - fixture value, never used as a real credential
             public_base_url="https://example.invalid/",
             project=self.project,
         )

@@ -112,6 +112,11 @@ def filter_processed_images(
     pipeline_classifier_ids = {a.id for a in pipeline_algorithms if a.task_type not in detection_type_keys}
     if not pipeline_classifier_ids:
         task_logger.warning(f"Pipeline {pipeline} has no classification algorithms saved. Will reprocess all images.")
+        # set().issubset(anything) is vacuously True, so without this short-circuit
+        # every image with existing detections gets skipped by the subset check
+        # below — contradicting the warning above. Yield everything and exit.
+        yield from images
+        return
 
     image_iter = iter(images)
     # Track how many of the input images we've inspected so far so we can emit
@@ -199,13 +204,19 @@ def filter_processed_images(
         # COLLECT_PROGRESS_SAVE_INTERVAL_SECONDS of wall time have passed since
         # the last save. Capped at COLLECT_PROGRESS_MAX_FRACTION so the caller's
         # final status=SUCCESS, progress=1 flip still owns the terminal value.
+        #
+        # `updated_at` is included in update_fields explicitly: Django only fires
+        # auto_now's pre_save hook for fields listed in update_fields, so without
+        # it the reaper's `Job.updated_at < cutoff` heuristic
+        # (`ami/jobs/tasks.py:929-944`) would not see this heartbeat and could
+        # still revoke the job mid-Collect.
         processed_count += len(batch)
         if job is not None and total:
             now_monotonic = time.monotonic()
             if now_monotonic - last_progress_save_monotonic >= COLLECT_PROGRESS_SAVE_INTERVAL_SECONDS:
                 fraction = min(processed_count / total, COLLECT_PROGRESS_MAX_FRACTION)
                 job.progress.update_stage("collect", progress=fraction)
-                job.save(update_fields=["progress"])
+                job.save(update_fields=["progress", "updated_at"])
                 last_progress_save_monotonic = now_monotonic
 
 

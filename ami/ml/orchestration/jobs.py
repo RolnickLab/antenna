@@ -104,7 +104,7 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
         # touches deployment + data_source and the call cost adds up across
         # large collections. The upstream queryset in collect_images() also
         # prefetches those joins so this stays cheap (see issue #1321).
-        image_url = image.url() if hasattr(image, "url") else None
+        image_url = image.url()
         if not image_url:
             job.logger.warning(f"Image {image.pk} has no URL, skipping queuing to NATS for job '{job.pk}'")
             skipped_count += 1

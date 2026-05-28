@@ -566,7 +566,7 @@ class TestPipeline(TestCase):
             name="ds-prefetch-test",
             bucket="prefetch-bucket",
             access_key="x",
-            secret_key="y",
+            secret_key="y",  # noqa: S106 - fixture value, never used as a real credential
             public_base_url="https://example.invalid/",
             project=self.project,
         )
@@ -1129,8 +1129,9 @@ class TestPipeline(TestCase):
         for call in mock_save.call_args_list:
             self.assertEqual(
                 call.kwargs.get("update_fields"),
-                ["progress"],
-                "Throttled saves should write only the progress column",
+                ["progress", "updated_at"],
+                "Throttled saves must include `updated_at` so Django's auto_now fires "
+                "and the reaper's stale-job heuristic sees forward motion.",
             )
 
         # Final emitted fraction comes from the second save (batch 4): processed=10,
