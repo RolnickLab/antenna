@@ -1401,20 +1401,22 @@ class OccurrenceStatsViewSet(viewsets.GenericViewSet, ProjectMixin):
         if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
             raise NotFound("Project not found.")
 
-        coarsest_rank_param = request.query_params.get("agreement_coarsest_rank")
-        coarsest_rank = None
-        if coarsest_rank_param:
-            try:
-                coarsest_rank = TaxonRank[coarsest_rank_param.upper()]
-            except KeyError:
-                valid = ", ".join(r.name for r in TaxonRank if r.name != "UNKNOWN")
-                raise api_exceptions.ValidationError(
-                    {"agreement_coarsest_rank": f"Invalid rank '{coarsest_rank_param}'. Must be one of: {valid}."}
-                )
-            if coarsest_rank == TaxonRank.UNKNOWN:
-                raise api_exceptions.ValidationError(
-                    {"agreement_coarsest_rank": "UNKNOWN is not a valid threshold rank."}
-                )
+        # ChoiceField gives strict 400s for free: blank (?agreement_coarsest_rank=),
+        # unknown ranks, and UNKNOWN (not in the choice list) all fail at the boundary.
+        # drf-spectacular reads the choices into the OpenAPI schema as an enum.
+        # Build a plain dict (not the QueryDict) so a blank value is validated as a
+        # real "" — DRF treats blank fields in HTML/QueryDict input as absent, which
+        # would let ?agreement_coarsest_rank= silently no-op. Uppercase the raw value
+        # so the param stays case-insensitive.
+        valid_ranks = [r.name for r in TaxonRank if r != TaxonRank.UNKNOWN]
+        raw_rank = request.query_params.get("agreement_coarsest_rank")
+        rank_data = {} if raw_rank is None else {"agreement_coarsest_rank": raw_rank.upper()}
+        coarsest_rank_param = SingleParamSerializer[str].clean(
+            param_name="agreement_coarsest_rank",
+            field=serializers.ChoiceField(choices=valid_ranks, required=False, allow_blank=False),
+            data=rank_data,
+        )
+        coarsest_rank = TaxonRank[coarsest_rank_param] if coarsest_rank_param else None
 
         base_qs = Occurrence.objects.filter(project=project).valid().apply_default_filters(project, request)
         filtered_qs = self.filter_queryset(base_qs)

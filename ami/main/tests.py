@@ -5191,6 +5191,12 @@ class TestOccurrenceStatsViewSet(APITestCase):
         )
         self.assertEqual(response.status_code, 400)
 
+    def test_agreement_coarsest_rank_blank_returns_400(self):
+        """An empty value must 400 like any other invalid rank, not silently no-op."""
+        response = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}&agreement_coarsest_rank=")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("agreement_coarsest_rank", response.json())
+
     def test_agreement_coarsest_rank_echoed_in_response(self):
         response = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}&agreement_coarsest_rank=family")
         self.assertEqual(response.status_code, 200)
