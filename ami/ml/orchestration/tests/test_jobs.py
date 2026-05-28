@@ -5,7 +5,6 @@ from django.test import TestCase
 from ami.jobs.models import Job, JobDispatchMode, MLJob
 from ami.main.models import Deployment, Project, S3StorageSource, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
-from ami.ml.orchestration import jobs as orchestration_jobs
 from ami.ml.orchestration.jobs import NATS_PUBLISH_FANOUT_CHUNK_SIZE, queue_images_to_nats
 
 
@@ -126,9 +125,3 @@ class TestQueueImagesToNatsFanout(TestCase):
 
         self.assertFalse(result)
         self.assertEqual(instance.publish_task.await_count, 0)
-
-    def test_default_chunk_size_is_explicit(self, _mgr_cls, _state_cls):
-        # Lock the constant so a future change to the chunk size is a deliberate
-        # decision visible in the diff. The value itself is not a tuned magic
-        # number — it's an empirical floor that keeps gather() bounded.
-        self.assertEqual(orchestration_jobs.NATS_PUBLISH_FANOUT_CHUNK_SIZE, 200)

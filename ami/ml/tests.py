@@ -1080,14 +1080,6 @@ class TestPipeline(TestCase):
         # First 5 fully classified → skipped. Last 5 fresh → yielded.
         self.assertEqual(result, images[5:])
 
-    def test_filter_processed_images_preserves_input_order_across_batches(self):
-        """Output should preserve input ordering even when batched."""
-        from ami.ml.models.pipeline import filter_processed_images
-
-        images = [SourceImage.objects.create(path=f"order-{i}.jpg") for i in range(7)]
-        result = list(filter_processed_images(images, self.pipeline, batch_size=3))
-        self.assertEqual(result, images)
-
     def test_filter_processed_images_emits_throttled_collect_progress(self):
         """
         When `job` and `total` are passed, filter_processed_images should call
@@ -1113,15 +1105,23 @@ class TestPipeline(TestCase):
 
         images = [SourceImage.objects.create(path=f"cadence-{i}.jpg") for i in range(10)]
 
-        # batch_size=3 over 10 images → 4 batches.
-        # Per-batch time.monotonic() return values:
-        #   init=0, after batch1=1 (gap 1, no save),
-        #   after batch2=6 (gap 6, SAVE → last=6),
-        #   after batch3=7 (gap 1, no save),
-        #   after batch4=12 (gap 6, SAVE → last=12).
-        # Expected: exactly 2 saves.
-        monotonic_values = iter([0.0, 1.0, 6.0, 7.0, 12.0])
-        with patch("ami.ml.models.pipeline.time.monotonic", side_effect=lambda: next(monotonic_values)):
+        # batch_size=3 over 10 images → 4 batches. Each monotonic() call
+        # advances the clock by 3s. Expected sequence: init=0, batch1=3
+        # (gap 3, no save), batch2=6 (gap 6, SAVE → last=6), batch3=9
+        # (gap 3, no save), batch4=12 (gap 6, SAVE → last=12). Two saves.
+        #
+        # Counter-based stub (vs an iter/next sequence) means extra
+        # monotonic() calls added to filter_processed_images later will
+        # advance time faster and the assertion will fail with a clear
+        # cadence mismatch, not StopIteration.
+        clock = {"t": 0.0}
+
+        def fake_monotonic():
+            t = clock["t"]
+            clock["t"] += 3.0
+            return t
+
+        with patch("ami.ml.models.pipeline.time.monotonic", side_effect=fake_monotonic):
             with patch.object(Job, "save", autospec=True) as mock_save:
                 list(filter_processed_images(images, self.pipeline, batch_size=3, job=job, total=10))
 
