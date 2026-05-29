@@ -86,7 +86,6 @@ const Content = ({ session }: { session: SessionDetails }) => {
   const [settings, setSettings] = useState({
     defaultFilters: true,
     showDetections: true,
-    snapToDetections: session.numDetections ? true : false,
   })
 
   // Data
@@ -209,7 +208,6 @@ const Content = ({ session }: { session: SessionDetails }) => {
             </div>
             <div className="flex-1 flex items-center justify-end">
               <ViewSettings
-                session={session}
                 onSettingsChange={setSettings}
                 settings={settings}
               />
@@ -220,7 +218,6 @@ const Content = ({ session }: { session: SessionDetails }) => {
           <ActivityPlot
             session={session}
             setActiveCaptureId={setActiveCaptureId}
-            snapToDetections={settings.snapToDetections}
             timeline={timeline}
           />
           <TimelineSlider

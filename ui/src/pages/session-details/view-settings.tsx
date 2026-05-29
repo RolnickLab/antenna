@@ -1,6 +1,5 @@
 import { DefaultFiltersTooltip } from 'components/filtering/default-filter-control'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
-import { SessionDetails } from 'data-services/models/session-details'
 import { SettingsIcon } from 'lucide-react'
 import { BasicTooltip, Button, Checkbox, Popover } from 'nova-ui-kit'
 import { useParams } from 'react-router-dom'
@@ -8,19 +7,15 @@ import { STRING, translate } from 'utils/language'
 
 export const ViewSettings = ({
   onSettingsChange,
-  session,
   settings,
 }: {
   onSettingsChange: (settings: {
     defaultFilters: boolean
     showDetections: boolean
-    snapToDetections: boolean
   }) => void
-  session: SessionDetails
   settings: {
     defaultFilters: boolean
     showDetections: boolean
-    snapToDetections: boolean
   }
 }) => {
   const { projectId } = useParams()
@@ -70,18 +65,6 @@ export const ViewSettings = ({
             />
             {project ? <DefaultFiltersTooltip project={project} /> : null}
           </div>
-          <Checkbox
-            id="snap-to-detections"
-            label={translate(STRING.SNAP_TO_DETECTIONS)}
-            checked={settings.snapToDetections}
-            onCheckedChange={() =>
-              onSettingsChange({
-                ...settings,
-                snapToDetections: !settings.snapToDetections,
-              })
-            }
-            disabled={session.numDetections ? false : true}
-          />
         </div>
       </Popover.Content>
     </Popover.Root>
