@@ -18,7 +18,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  @include body-small();
+  @include body-small;
   font-weight: 600;
   background-color: transparent;
   height: 32px;

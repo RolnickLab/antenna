@@ -13,7 +13,7 @@
   padding: 24px;
 
   p {
-    @include body-small();
+    @include body-small;
     color: var(--color-foreground);
     margin: 0;
   }

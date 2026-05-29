@@ -68,7 +68,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  @include body-small();
+  @include body-small;
   color: var(--color-foreground);
   text-align: center;
 

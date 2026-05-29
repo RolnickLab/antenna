@@ -17,14 +17,14 @@
 }
 
 .title {
-  @include body-large();
+  @include body-large;
   font-weight: 600;
   color: var(--color-foreground);
   margin: 0;
 }
 
 .subTitle {
-  @include body-small();
+  @include body-small;
   font-weight: 600;
   color: var(--color-muted-foreground);
   margin: 0;

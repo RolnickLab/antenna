@@ -26,7 +26,7 @@ $accessory-wrapper-size: 38px;
   width: 100%;
   border-radius: 4px;
   padding: 8px 12px;
-  @include body-small();
+  @include body-small;
   color: var(--color-foreground);
   border: 1px solid var(--color-border);
   box-sizing: border-box;
@@ -61,7 +61,7 @@ $accessory-wrapper-size: 38px;
   justify-content: flex-start;
   padding: 8px 12px;
   border-radius: 4px;
-  @include body-small();
+  @include body-small;
   color: var(--color-foreground);
   box-sizing: border-box;
 
@@ -101,7 +101,7 @@ $accessory-wrapper-size: 38px;
   }
 
   .details {
-    @include body-small();
+    @include body-small;
     color: var(--color-muted-foreground);
     padding: 0 8px 0 32px;
   }

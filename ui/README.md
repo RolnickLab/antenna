@@ -127,11 +127,11 @@ Text styles are defined using SCSS mixins in `nova-ui-kit/mixins.scss` with the 
 
 ```scss
 .some-title {
-  @include heading-large();
+  @include heading-large;
 }
 
 .some-text {
-  @include body-base();
+  @include body-base;
 }
 ```
 
