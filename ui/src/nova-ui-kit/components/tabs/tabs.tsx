@@ -43,13 +43,15 @@ const Trigger = ({ value, label }: { value: string; label: string }) => (
 )
 
 const Content = ({
-  value,
   children,
+  className,
+  value,
 }: {
-  value: string
   children: ReactNode
+  className?: string
+  value: string
 }) => (
-  <Tabs.Content value={value} tabIndex={-1}>
+  <Tabs.Content className={className} tabIndex={-1} value={value}>
     {children}
   </Tabs.Content>
 )

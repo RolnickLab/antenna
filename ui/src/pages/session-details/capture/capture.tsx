@@ -10,13 +10,19 @@ import {
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { SCORE_THRESHOLDS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
-import { useActiveOccurrences } from '../useActiveOccurrences'
-import styles from './frame.module.scss'
-import { BoxStyle } from './types'
+import { useActiveOccurrences } from '../hooks/useActiveOccurrences'
+import styles from './capture.module.scss'
 
 const FALLBACK_RATIO = 16 / 9
 
-interface FrameProps {
+interface BoxStyle {
+  width: string
+  height: string
+  top: string
+  left: string
+}
+
+interface CaptureProps {
   defaultFilters: boolean
   detections: CaptureDetection[]
   height: number | null
@@ -25,14 +31,14 @@ interface FrameProps {
   width: number | null
 }
 
-export const Frame = ({
+export const Capture = ({
   defaultFilters,
   detections,
   height,
   showDetections,
   src,
   width,
-}: FrameProps) => {
+}: CaptureProps) => {
   const [naturalSize, setNaturalSize] = useState<{
     width: number
     height: number
@@ -121,11 +127,11 @@ export const Frame = ({
       <img ref={imageRef} className={styles.image} />
       <div
         className={classNames(styles.details, {
-          [styles.showOverlay]: showDetections,
+          [styles.showOverlay]: showDetections && detections.length,
         })}
       >
-        {renderOverlay && <FrameOverlay boxStyles={boxStyles} />}
-        <FrameDetections
+        {renderOverlay && <CaptureOverlay boxStyles={boxStyles} />}
+        <CaptureDetections
           boxStyles={boxStyles}
           defaultFilters={defaultFilters}
           detections={detections}
@@ -141,7 +147,7 @@ export const Frame = ({
   )
 }
 
-const FrameOverlay = ({
+const CaptureOverlay = ({
   boxStyles,
 }: {
   boxStyles: { [key: number]: BoxStyle }
@@ -172,7 +178,7 @@ const FrameOverlay = ({
   </svg>
 )
 
-const FrameDetections = ({
+const CaptureDetections = ({
   boxStyles,
   defaultFilters,
   detections,
@@ -273,7 +279,7 @@ const FrameDetections = ({
   )
 }
 
-export const OccurrenceDetailsDialog = ({
+const OccurrenceDetailsDialog = ({
   id,
   onClose,
 }: {

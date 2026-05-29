@@ -48,7 +48,7 @@ export const columns = ({
   },
   {
     id: 'status',
-    name: 'Latest job status',
+    name: translate(STRING.FIELD_LABEL_LATEST_JOB_STATUS),
     tooltip: translate(STRING.TOOLTIP_LATEST_JOB_STATUS, {
       type: translate(STRING.ENTITY_TYPE_CAPTURE_SET),
     }),
