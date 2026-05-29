@@ -23,7 +23,7 @@ export interface ActivityPlotProps {
   timeline: TimelineTick[]
 }
 
-const ActivityPlot = ({
+export const ActivityPlot = ({
   session,
   snapToDetections,
   timeline,

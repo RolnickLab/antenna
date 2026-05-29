@@ -93,7 +93,7 @@ const Slider = ({
       </_Slider.Track>
       <_Slider.Thumb className={styles.sliderThumb}>
         {valueLabel && <span className={styles.label}>{valueLabel}</span>}
-        <TriangleIcon className="text-primary" />
+        <TriangleIcon className="text-primary bg-background" />
       </_Slider.Thumb>
     </_Slider.Root>
     <div className={styles.labels}>
