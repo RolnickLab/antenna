@@ -1448,30 +1448,35 @@ class TestCapturesProcessedFilter(APITestCase):
         self.assertEqual(self._count("&has_detections=false"), 2)
 
 
-class TestDeploymentLastProcessed(APITestCase):
+class TestCapturesLastProcessed(APITestCase):
     """
-    The deployments list annotates and can order by ``last_processed`` — the most
-    recent detection created_at across the deployment's captures.
+    The captures list annotates and can order by ``last_processed`` — the most
+    recent detection created_at for each capture. Captures that were never
+    processed expose ``last_processed = None``.
     """
 
     def setUp(self) -> None:
         self.project, self.deployment = setup_test_project(reuse=False)
         self.captures = create_captures(self.deployment, num_nights=1, images_per_night=2)
+        # First capture is processed (has a detection); the second is left untouched.
         create_detections(self.captures[0], bboxes=[(0.1, 0.1, 0.2, 0.2)])
-        self.user = User.objects.create_user(email="lastproc@insectai.org", is_staff=True)  # type: ignore
+        self.user = User.objects.create_user(email="cap-lastproc@insectai.org", is_staff=True)  # type: ignore
         self.client.force_authenticate(user=self.user)
-        self.url = f"/api/v2/deployments/?project_id={self.project.pk}"
+        self.url = f"/api/v2/captures/?project_id={self.project.pk}"
         return super().setUp()
 
-    def _deployment_row(self, data: dict) -> dict:
-        return next(d for d in data["results"] if d["id"] == self.deployment.pk)
+    def _row(self, data: dict, capture_id: int) -> dict:
+        return next(c for c in data["results"] if c["id"] == capture_id)
 
     def test_last_processed_annotated_and_orderable(self):
         # One request exercises the annotation, the serializer field, and the
         # ordering registration together.
         response = self.client.get(f"{self.url}&ordering=-last_processed")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertIsNotNone(self._deployment_row(response.json())["last_processed"])
+        data = response.json()
+        # Processed capture has a timestamp; the untouched one is null.
+        self.assertIsNotNone(self._row(data, self.captures[0].pk)["last_processed"])
+        self.assertIsNone(self._row(data, self.captures[1].pk)["last_processed"])
 
 
 class TestProjectOwnerAutoAssignment(APITestCase):

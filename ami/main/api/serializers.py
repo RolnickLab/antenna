@@ -167,8 +167,6 @@ class DeploymentListSerializer(DefaultSerializer):
     device = DeviceNestedSerializer(read_only=True)
     research_site = SiteNestedSerializer(read_only=True)
     jobs = JobStatusSerializer(many=True, read_only=True)
-    # Annotated in DeploymentViewSet.get_queryset (latest detection created_at).
-    last_processed = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = Deployment
@@ -190,7 +188,6 @@ class DeploymentListSerializer(DefaultSerializer):
             "longitude",
             "first_date",
             "last_date",
-            "last_processed",
             "device",
             "research_site",
             "jobs",
@@ -1101,6 +1098,8 @@ class SourceImageListSerializer(DefaultSerializer):
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), required=False)
+    # Annotated in SourceImageViewSet.get_queryset (latest detection created_at).
+    last_processed = serializers.DateTimeField(read_only=True)
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
 
     class Meta:
@@ -1121,6 +1120,7 @@ class SourceImageListSerializer(DefaultSerializer):
             "detections_count",
             "occurrences_count",
             "taxa_count",
+            "last_processed",
             "detections",
             "project",
         ]

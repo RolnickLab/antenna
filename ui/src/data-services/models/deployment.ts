@@ -74,12 +74,6 @@ export class Deployment extends Entity {
     return this._deployment.taxa_count
   }
 
-  get lastProcessed(): Date | undefined {
-    return this._deployment.last_processed
-      ? new Date(this._deployment.last_processed)
-      : undefined
-  }
-
   get device(): Entity | undefined {
     if (this._deployment.device) {
       return new Entity(this._deployment.device)

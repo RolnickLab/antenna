@@ -296,7 +296,6 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         "taxa_count",
         "first_capture_timestamp",
         "last_capture_timestamp",
-        "last_processed",
         "name",
     ]
 
@@ -316,18 +315,6 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         project = self.get_active_project()
         if project:
             qs = qs.filter(project=project)
-
-        # "Last processed" = the most recent detection created_at across this
-        # deployment's captures. A correlated subquery (rather than a join +
-        # Max) keeps the row count stable for pagination. Null when the
-        # deployment has no detections yet; NullsLastOrderingFilter sorts those last.
-        qs = qs.annotate(
-            last_processed=models.Subquery(
-                Detection.objects.filter(source_image__deployment=models.OuterRef("pk"))
-                .order_by("-created_at")
-                .values("created_at")[:1]
-            )
-        )
 
         num_example_captures = 10
         if self.action == "retrieve":
@@ -575,6 +562,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         "deployment__name",
         "event__start",
         "path",
+        "last_processed",
     ]
     permission_classes = [ObjectPermission]
 
@@ -613,12 +601,14 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             # It's cumbersome to override the default list view, so customize the queryset here
             queryset = self.filter_by_processed(queryset)
             queryset = self.filter_by_has_detections(queryset)
+            queryset = self.annotate_last_processed(queryset)
 
         elif self.action == "retrieve":
             # For detail view, include storage info and additional prefetches
             with_counts_default = True
             queryset = queryset.prefetch_related("jobs", "collections")
             queryset = self.add_adjacent_captures(queryset)
+            queryset = self.annotate_last_processed(queryset)
             with_detections_default = True
 
         with_detections = self.request.query_params.get("with_detections", with_detections_default)
@@ -677,6 +667,26 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
                 ),
             ).filter(has_detections=has_detections)
         return queryset
+
+    def annotate_last_processed(self, queryset: QuerySet) -> QuerySet:
+        """
+        Annotate each capture with ``last_processed`` — the most recent detection
+        ``created_at`` for that capture, i.e. when it was last run through a
+        detection pipeline. Null when the capture has never been processed;
+        NullsLastOrderingFilter sorts those last.
+
+        A correlated subquery (rather than a join + Max) keeps the row count stable
+        for pagination. The supporting index on Detection(source_image, -created_at)
+        makes the per-row lookup an index scan, so this stays cheap without
+        denormalizing a timestamp onto SourceImage.
+        """
+        return queryset.annotate(
+            last_processed=models.Subquery(
+                Detection.objects.filter(source_image=models.OuterRef("pk"))
+                .order_by("-created_at")
+                .values("created_at")[:1]
+            )
+        )
 
     def prefetch_detections(self, queryset: QuerySet, project: Project | None = None) -> QuerySet:
         """
