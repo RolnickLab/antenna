@@ -125,8 +125,8 @@ const Content = ({ session }: { session: SessionDetails }) => {
       >
         {activeCapture ? <Process capture={activeCapture} /> : null}
       </PageHeader>
-      <div className="flex flex-col gap-6">
-        <div className="flex flex-col gap-6 mt-6 md:flex-row">
+      <div className="flex flex-col gap-4 md:gap-6">
+        <div className="flex flex-col gap-4 mt-6 md:flex-row md:gap-6">
           <Box className="p-2 bg-background rounded-lg md:p-4 md:rounded-xl">
             <Tabs.Root defaultValue={TABS.SESSION}>
               <Tabs.List>
@@ -155,7 +155,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
                   ) : null}
                 </div>
               </Tabs.Content>
-              <Tabs.Content value={TABS.CHARTS}>
+              <Tabs.Content className="overflow-x-auto" value={TABS.CHARTS}>
                 <div className="w-96 space-y-4">
                   <SessionPlots session={session} />
                 </div>
@@ -163,7 +163,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
             </Tabs.Root>
           </Box>
           <div className="grow flex flex-col bg-background rounded-lg border border-border overflow-hidden md:rounded-xl">
-            <div className="grow flex items-center justify-center">
+            <div className="grow flex items-center justify-center bg-foreground">
               <Capture
                 defaultFilters={settings.defaultFilters}
                 detections={activeCapture?.detections ?? []}
@@ -173,11 +173,11 @@ const Content = ({ session }: { session: SessionDetails }) => {
                 width={activeCapture?.width ?? session.firstCapture.width}
               />
             </div>
-            <div className="grid grid-cols-3 p-6 border-t border-border">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-wrap justify-between gap-x-8 gap-y-2 p-2 border-t border-border md:p-6">
+              <div className="flex-1 flex items-center gap-2">
                 {activeCapture ? (
                   <>
-                    <span className="pt-0.5 text-muted-foreground">
+                    <span className="pt-0.5 text-muted-foreground truncate">
                       {activeCapture.dateTimeLabel}
                     </span>
                     <StarButton
@@ -209,7 +209,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
                   setActiveCaptureId={setActiveCaptureId}
                 />
               </div>
-              <div className="flex items-center justify-end">
+              <div className="flex-1 flex items-center justify-end">
                 <ViewSettings
                   session={session}
                   onSettingsChange={setSettings}
@@ -219,7 +219,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
             </div>
           </div>
         </div>
-        <div className="bg-background rounded-lg border border-border p-4">
+        <div className="bg-background rounded-lg border border-border p-2 md:p-4">
           <ActivityPlot
             session={session}
             setActiveCaptureId={setActiveCaptureId}
