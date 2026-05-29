@@ -38,7 +38,13 @@ from ami.main.models import (
 from ami.ml.models.pipeline import Pipeline
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
-from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
+from ami.tests.fixtures.main import (
+    create_captures,
+    create_detections,
+    create_occurrences,
+    create_taxa,
+    setup_test_project,
+)
 from ami.tests.fixtures.storage import populate_bucket
 from ami.users.models import User
 from ami.users.roles import BasicMember, Identifier, MLDataManager, ProjectManager, create_roles_for_project
@@ -1388,6 +1394,40 @@ class TestProjectRequiredOnListEndpoints(APITestCase):
             with self.subTest(path=path):
                 response = self.client.get(path)
                 self.assertEqual(response.status_code, status.HTTP_200_OK, path)
+
+
+class TestCapturesProcessedFilter(APITestCase):
+    """
+    The captures list supports ?has_detections=true|false, which the UI surfaces
+    as the "Processing status" filter. A capture is "processed" when it has any
+    Detection row (including null markers for "processed, found nothing").
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.captures = create_captures(self.deployment, num_nights=1, images_per_night=4)
+        # Mark the first two captures as processed by giving them a detection.
+        for capture in self.captures[:2]:
+            create_detections(capture, bboxes=[(0.1, 0.1, 0.2, 0.2)])
+        self.user = User.objects.create_user(email="proc-filter@insectai.org", is_staff=True)  # type: ignore
+        self.client.force_authenticate(user=self.user)
+        self.list_url = f"/api/v2/captures/?project_id={self.project.pk}"
+        return super().setUp()
+
+    def test_no_filter_returns_all_captures(self):
+        response = self.client.get(self.list_url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["count"], 4)
+
+    def test_has_detections_true_returns_only_processed(self):
+        response = self.client.get(f"{self.list_url}&has_detections=true")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["count"], 2)
+
+    def test_has_detections_false_returns_only_unprocessed(self):
+        response = self.client.get(f"{self.list_url}&has_detections=false")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["count"], 2)
 
 
 class TestProjectOwnerAutoAssignment(APITestCase):
