@@ -1398,36 +1398,80 @@ class TestProjectRequiredOnListEndpoints(APITestCase):
 
 class TestCapturesProcessedFilter(APITestCase):
     """
-    The captures list supports ?has_detections=true|false, which the UI surfaces
-    as the "Processing status" filter. A capture is "processed" when it has any
-    Detection row (including null markers for "processed, found nothing").
+    The captures list distinguishes two related filters:
+
+    - ``?processed=true|false`` (the UI "Processing status" filter): a capture is
+      "processed" when it has *any* Detection row, including the null markers that
+      record a "processed, found nothing" result.
+    - ``?has_detections=true|false``: a capture has *real* detections (a detection
+      with a bounding box). Null markers are excluded.
+
+    Fixture: 4 captures — 2 with a real detection, 1 with only a null marker
+    (processed but found nothing), 1 untouched. So:
+        processed=true       -> 3   has_detections=true  -> 2
+        processed=false      -> 1   has_detections=false -> 2
     """
 
     def setUp(self) -> None:
         self.project, self.deployment = setup_test_project(reuse=False)
         self.captures = create_captures(self.deployment, num_nights=1, images_per_night=4)
-        # Mark the first two captures as processed by giving them a detection.
+        # Two captures get a real detection (bounding box present).
         for capture in self.captures[:2]:
             create_detections(capture, bboxes=[(0.1, 0.1, 0.2, 0.2)])
+        # One capture gets only a null marker: processed, but nothing found.
+        Detection.objects.create(
+            source_image=self.captures[2],
+            bbox=None,
+            timestamp=self.captures[2].timestamp,
+        )
+        # self.captures[3] is left untouched (never processed).
         self.user = User.objects.create_user(email="proc-filter@insectai.org", is_staff=True)  # type: ignore
         self.client.force_authenticate(user=self.user)
         self.list_url = f"/api/v2/captures/?project_id={self.project.pk}"
         return super().setUp()
 
-    def test_no_filter_returns_all_captures(self):
-        response = self.client.get(self.list_url)
+    def _count(self, query: str = "") -> int:
+        response = self.client.get(f"{self.list_url}{query}")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.json()["count"], 4)
+        return response.json()["count"]
 
-    def test_has_detections_true_returns_only_processed(self):
-        response = self.client.get(f"{self.list_url}&has_detections=true")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.json()["count"], 2)
+    def test_processed_counts_null_markers(self):
+        # The null-marker capture counts as processed (2 real + 1 marker); its
+        # complement is the single untouched capture.
+        self.assertEqual(self._count("&processed=true"), 3)
+        self.assertEqual(self._count("&processed=false"), 1)
 
-    def test_has_detections_false_returns_only_unprocessed(self):
-        response = self.client.get(f"{self.list_url}&has_detections=false")
+    def test_has_detections_excludes_null_markers(self):
+        # Only the 2 real-detection captures; the processed-but-empty capture
+        # falls on the has_detections=false side.
+        self.assertEqual(self._count("&has_detections=true"), 2)
+        self.assertEqual(self._count("&has_detections=false"), 2)
+
+
+class TestDeploymentLastProcessed(APITestCase):
+    """
+    The deployments list annotates and can order by ``last_processed`` — the most
+    recent detection created_at across the deployment's captures.
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.captures = create_captures(self.deployment, num_nights=1, images_per_night=2)
+        create_detections(self.captures[0], bboxes=[(0.1, 0.1, 0.2, 0.2)])
+        self.user = User.objects.create_user(email="lastproc@insectai.org", is_staff=True)  # type: ignore
+        self.client.force_authenticate(user=self.user)
+        self.url = f"/api/v2/deployments/?project_id={self.project.pk}"
+        return super().setUp()
+
+    def _deployment_row(self, data: dict) -> dict:
+        return next(d for d in data["results"] if d["id"] == self.deployment.pk)
+
+    def test_last_processed_annotated_and_orderable(self):
+        # One request exercises the annotation, the serializer field, and the
+        # ordering registration together.
+        response = self.client.get(f"{self.url}&ordering=-last_processed")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.json()["count"], 2)
+        self.assertIsNotNone(self._deployment_row(response.json())["last_processed"])
 
 
 class TestProjectOwnerAutoAssignment(APITestCase):

@@ -65,7 +65,7 @@ export const Captures = () => {
         <FilterSection defaultOpen>
           <FilterControl field="deployment" />
           <FilterControl field="collections" />
-          <FilterControl field="has_detections" />
+          <FilterControl field="processed" />
         </FilterSection>
       </div>
       <div className="w-full overflow-hidden">

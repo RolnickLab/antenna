@@ -296,6 +296,7 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         "taxa_count",
         "first_capture_timestamp",
         "last_capture_timestamp",
+        "last_processed",
         "name",
     ]
 
@@ -315,6 +316,19 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         project = self.get_active_project()
         if project:
             qs = qs.filter(project=project)
+
+        # "Last processed" = the most recent detection created_at across this
+        # deployment's captures. A correlated subquery (rather than a join +
+        # Max) keeps the row count stable for pagination. Null when the
+        # deployment has no detections yet; NullsLastOrderingFilter sorts those last.
+        qs = qs.annotate(
+            last_processed=models.Subquery(
+                Detection.objects.filter(source_image__deployment=models.OuterRef("pk"))
+                .order_by("-created_at")
+                .values("created_at")[:1]
+            )
+        )
+
         num_example_captures = 10
         if self.action == "retrieve":
             qs = qs.prefetch_related(
@@ -597,6 +611,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
 
         if self.action == "list":
             # It's cumbersome to override the default list view, so customize the queryset here
+            queryset = self.filter_by_processed(queryset)
             queryset = self.filter_by_has_detections(queryset)
 
         elif self.action == "retrieve":
@@ -627,12 +642,38 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
 
         return queryset
 
+    def filter_by_processed(self, queryset: QuerySet) -> QuerySet:
+        """
+        Filter by whether a capture has been processed by a detection pipeline.
+
+        "Processed" means the capture has *any* Detection row, including the null
+        markers (``NULL_DETECTIONS_FILTER``) that record a "processed, found nothing"
+        result. This mirrors how the capture set list separates the processed count
+        from the (real) detections count. Use ``has_detections`` to filter on real
+        detections only.
+        """
+        processed = self.request.query_params.get("processed")
+        if processed is not None:
+            processed = BooleanField(required=False).clean(processed)
+            queryset = queryset.annotate(
+                processed=models.Exists(Detection.objects.filter(source_image=models.OuterRef("pk"))),
+            ).filter(processed=processed)
+        return queryset
+
     def filter_by_has_detections(self, queryset: QuerySet) -> QuerySet:
+        """
+        Filter by whether a capture has any *real* detections (a detection with a
+        bounding box). Null detection markers are excluded, so a capture that was
+        processed but yielded nothing returns ``has_detections=false``. Use the
+        ``processed`` param to filter on processing status regardless of findings.
+        """
         has_detections = self.request.query_params.get("has_detections")
         if has_detections is not None:
             has_detections = BooleanField(required=False).clean(has_detections)
             queryset = queryset.annotate(
-                has_detections=models.Exists(Detection.objects.filter(source_image=models.OuterRef("pk"))),
+                has_detections=models.Exists(
+                    Detection.objects.filter(source_image=models.OuterRef("pk")).exclude(NULL_DETECTIONS_FILTER)
+                ),
             ).filter(has_detections=has_detections)
         return queryset
 

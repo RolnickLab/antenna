@@ -138,7 +138,7 @@ export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
   },
   {
     label: 'Processing status',
-    field: 'has_detections',
+    field: 'processed',
     tooltip: {
       text: 'Filter captures by whether they have been processed by a detection pipeline.',
     },

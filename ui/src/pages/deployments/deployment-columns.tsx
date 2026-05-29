@@ -226,6 +226,12 @@ export const columns = ({
     renderCell: (item: Deployment) => <DateTableCell date={item.updatedAt} />,
   },
   {
+    id: 'last-processed',
+    name: translate(STRING.FIELD_LABEL_LAST_PROCESSED),
+    sortField: 'last_processed',
+    renderCell: (item: Deployment) => <DateTableCell date={item.lastProcessed} />,
+  },
+  {
     id: 'actions',
     name: '',
     sticky: true,

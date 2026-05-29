@@ -20,6 +20,7 @@ export const Deployments = () => {
     taxa: true,
     'first-date': true,
     'last-date': true,
+    'last-processed': true,
   })
   const { sort, setSort } = useSort({
     field: 'name',

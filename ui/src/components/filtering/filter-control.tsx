@@ -31,7 +31,7 @@ const ComponentMap: {
   deployment: StationFilter,
   detections__source_image: ImageFilter,
   event: SessionFilter,
-  has_detections: ProcessingStatusFilter,
+  processed: ProcessingStatusFilter,
   include_unobserved: BooleanFilter,
   job_type_key: TypeFilter,
   not_algorithm: NotAlgorithmFilter,

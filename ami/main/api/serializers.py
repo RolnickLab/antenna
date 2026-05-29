@@ -167,6 +167,8 @@ class DeploymentListSerializer(DefaultSerializer):
     device = DeviceNestedSerializer(read_only=True)
     research_site = SiteNestedSerializer(read_only=True)
     jobs = JobStatusSerializer(many=True, read_only=True)
+    # Annotated in DeploymentViewSet.get_queryset (latest detection created_at).
+    last_processed = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = Deployment
@@ -188,6 +190,7 @@ class DeploymentListSerializer(DefaultSerializer):
             "longitude",
             "first_date",
             "last_date",
+            "last_processed",
             "device",
             "research_site",
             "jobs",
