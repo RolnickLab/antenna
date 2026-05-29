@@ -86,7 +86,6 @@ const Content = ({ session }: { session: SessionDetails }) => {
   const [settings, setSettings] = useState({
     defaultFilters: true,
     showDetections: true,
-    snapToDetections: session.numDetections ? true : false,
   })
 
   // Data
@@ -124,107 +123,105 @@ const Content = ({ session }: { session: SessionDetails }) => {
         })}
         tooltip={translate(STRING.TOOLTIP_SESSION)}
       >
-        {activeCapture ? <Process capture={activeCapture} /> : null}
+        {user.loggedIn ? <Process capture={activeCapture} /> : null}
       </PageHeader>
-      <div className="flex flex-col gap-4 md:gap-6">
-        <div className="flex flex-col gap-4 mt-6 md:flex-row md:gap-6">
-          <Box className="p-2 bg-background rounded-lg md:p-4 md:rounded-xl">
-            <Tabs.Root defaultValue={TABS.SESSION}>
-              <Tabs.List>
-                <Tabs.Trigger
-                  value={TABS.SESSION}
-                  label={translate(STRING.TAB_ITEM_SESSION)}
-                />
-                <Tabs.Trigger
-                  value={TABS.CAPTURE}
-                  label={translate(STRING.TAB_ITEM_CAPTURE)}
-                />
-                <Tabs.Trigger
-                  value={TABS.CHARTS}
-                  label={translate(STRING.TAB_ITEM_CHARTS)}
-                />
-              </Tabs.List>
-              <Tabs.Content value={TABS.SESSION}>
-                <div className="w-72">
-                  <SessionInfo session={session} />
-                </div>
-              </Tabs.Content>
-              <Tabs.Content value={TABS.CAPTURE}>
-                <div className="w-72">
-                  {activeCapture ? (
-                    <CaptureInfo capture={activeCapture} />
-                  ) : null}
-                </div>
-              </Tabs.Content>
-              <Tabs.Content className="overflow-x-auto" value={TABS.CHARTS}>
-                <div className="w-96 space-y-4">
-                  <SessionPlots session={session} />
-                </div>
-              </Tabs.Content>
-            </Tabs.Root>
-          </Box>
-          <div className="grow flex flex-col bg-background rounded-lg border border-border overflow-hidden md:rounded-xl">
-            <div className="grow flex items-center justify-center bg-foreground">
-              <Capture
-                defaultFilters={settings.defaultFilters}
-                detections={activeCapture?.detections ?? []}
-                height={activeCapture?.height ?? session.firstCapture.height}
-                showDetections={settings.showDetections}
-                src={activeCapture?.src}
-                width={activeCapture?.width ?? session.firstCapture.width}
+      <div className="grid grid-cols-1 gap-4 mt-6 md:grid-cols-[auto_1fr] md:gap-6">
+        <Box className="order-last p-2 bg-background rounded-lg md:order-first md:p-4 md:rounded-xl">
+          <Tabs.Root defaultValue={TABS.SESSION}>
+            <Tabs.List>
+              <Tabs.Trigger
+                value={TABS.SESSION}
+                label={translate(STRING.TAB_ITEM_SESSION)}
+              />
+              <Tabs.Trigger
+                value={TABS.CAPTURE}
+                label={translate(STRING.TAB_ITEM_CAPTURE)}
+              />
+              <Tabs.Trigger
+                value={TABS.CHARTS}
+                label={translate(STRING.TAB_ITEM_CHARTS)}
+              />
+            </Tabs.List>
+            <Tabs.Content value={TABS.SESSION}>
+              <div className="w-72">
+                <SessionInfo session={session} />
+              </div>
+            </Tabs.Content>
+            <Tabs.Content value={TABS.CAPTURE}>
+              <div className="w-72">
+                {activeCapture ? <CaptureInfo capture={activeCapture} /> : null}
+              </div>
+            </Tabs.Content>
+            <Tabs.Content className="overflow-x-auto" value={TABS.CHARTS}>
+              <div className="w-96 space-y-4">
+                <SessionPlots session={session} />
+              </div>
+            </Tabs.Content>
+          </Tabs.Root>
+        </Box>
+        <div className="grow flex flex-col bg-background rounded-lg border border-border overflow-hidden md:rounded-xl">
+          <div className="grow flex items-center justify-center bg-foreground">
+            <Capture
+              defaultFilters={settings.defaultFilters}
+              detections={activeCapture?.detections ?? []}
+              height={activeCapture?.height ?? session.firstCapture.height}
+              showDetections={settings.showDetections}
+              src={activeCapture?.src}
+              width={activeCapture?.width ?? session.firstCapture.width}
+            />
+          </div>
+          <div className="flex flex-col flex-wrap justify-between gap-2 p-2 border-t border-border md:flex-row md:p-6">
+            <div className="min-h-8 flex-1 flex items-center gap-2">
+              {activeCapture ? (
+                <>
+                  <span className="pt-0.5 text-muted-foreground truncate">
+                    {activeCapture.dateTimeLabel}
+                  </span>
+                  <StarButton
+                    capture={activeCapture}
+                    canStar={user.loggedIn && activeCapture.canStar}
+                  />
+                  <BasicTooltip
+                    asChild
+                    content={translate(STRING.TOOLTIP_VIEW_SOURCE_FILE)}
+                  >
+                    <a
+                      href={activeCapture.url}
+                      className={cn(
+                        buttonVariants({ size: 'icon', variant: 'ghost' })
+                      )}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      <ExternalLinkIcon className="w-4 h-4" />
+                    </a>
+                  </BasicTooltip>
+                </>
+              ) : (
+                <span className="pt-0.5 text-muted-foreground truncate">
+                  {translate(STRING.LOADING_DATA)}...
+                </span>
+              )}
+            </div>
+            <div className="flex items-center md:justify-center">
+              <CaptureNavigation
+                activeCapture={activeCapture}
+                timeline={timeline}
+                setActiveCaptureId={setActiveCaptureId}
               />
             </div>
-            <div className="flex flex-wrap justify-between gap-x-8 gap-y-2 p-2 border-t border-border md:p-6">
-              <div className="flex-1 flex items-center gap-2">
-                {activeCapture ? (
-                  <>
-                    <span className="pt-0.5 text-muted-foreground truncate">
-                      {activeCapture.dateTimeLabel}
-                    </span>
-                    <StarButton
-                      capture={activeCapture}
-                      canStar={user.loggedIn && activeCapture.canStar}
-                    />
-                    <BasicTooltip
-                      asChild
-                      content={translate(STRING.TOOLTIP_VIEW_SOURCE_FILE)}
-                    >
-                      <a
-                        href={activeCapture.url}
-                        className={cn(
-                          buttonVariants({ size: 'icon', variant: 'ghost' })
-                        )}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        <ExternalLinkIcon className="w-4 h-4" />
-                      </a>
-                    </BasicTooltip>
-                  </>
-                ) : null}
-              </div>
-              <div className="flex items-center justify-center">
-                <CaptureNavigation
-                  activeCapture={activeCapture}
-                  timeline={timeline}
-                  setActiveCaptureId={setActiveCaptureId}
-                />
-              </div>
-              <div className="flex-1 flex items-center justify-end">
-                <ViewSettings
-                  session={session}
-                  onSettingsChange={setSettings}
-                  settings={settings}
-                />
-              </div>
+            <div className="flex-1 flex items-center md:justify-end">
+              <ViewSettings
+                onSettingsChange={setSettings}
+                settings={settings}
+              />
             </div>
           </div>
         </div>
-        <div className="bg-background rounded-lg border border-border p-2 md:p-4">
+        <div className="p-2 bg-background rounded-lg border border-border overflow-hidden md:col-span-2 md:p-4">
           <ActivityPlot
             session={session}
             setActiveCaptureId={setActiveCaptureId}
-            snapToDetections={settings.snapToDetections}
             timeline={timeline}
           />
           <TimelineSlider

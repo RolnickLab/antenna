@@ -18,12 +18,21 @@ import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
 import { ProcessNow } from './process-now'
 
-export const Process = ({ capture }: { capture: CaptureDetails }) => {
+export const Process = ({ capture }: { capture?: CaptureDetails }) => {
   const { projectId } = useParams()
   const { project } = useProjectDetails(projectId as string, true)
   const [pipelineId, setPipelineId] = useState(
     project?.settings.defaultProcessingPipeline?.id
   )
+
+  if (!capture) {
+    return (
+      <Button disabled size="small" variant="outline">
+        <span>{translate(STRING.PROCESS)}</span>
+        <ChevronDownIcon className="w-4 h-4" />
+      </Button>
+    )
+  }
 
   return (
     <Popover.Root>

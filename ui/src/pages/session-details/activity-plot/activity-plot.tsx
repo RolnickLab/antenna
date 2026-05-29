@@ -19,13 +19,11 @@ const tooltipBorderColor = CONSTANTS.COLOR_THEME.border
 export interface ActivityPlotProps {
   session: SessionDetails
   setActiveCaptureId: (captureId: string) => void
-  snapToDetections?: boolean
   timeline: TimelineTick[]
 }
 
 export const ActivityPlot = ({
   session,
-  snapToDetections,
   timeline,
   setActiveCaptureId,
 }: ActivityPlotProps) => {
@@ -156,14 +154,13 @@ export const ActivityPlot = ({
               return
             }
 
-            const captureId =
-              snapToDetections || !timelineTick.representativeCaptureId
-                ? findClosestCaptureId({
-                    snapToDetections,
-                    timeline,
-                    targetDate: timelineTick.startDate,
-                  })
-                : timelineTick.representativeCaptureId
+            const captureId = !timelineTick.representativeCaptureId
+              ? findClosestCaptureId({
+                  snapToDetections: false,
+                  timeline,
+                  targetDate: timelineTick.startDate,
+                })
+              : timelineTick.representativeCaptureId
 
             if (captureId) {
               setActiveCaptureId(captureId)
