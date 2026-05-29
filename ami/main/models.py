@@ -98,6 +98,11 @@ DEFAULT_RANKS = sorted(
 NULL_DETECTIONS_FILTER = Q(bbox__isnull=True) | Q(bbox=[])
 
 
+def bbox_is_null(bbox) -> bool:
+    """In-memory equivalent of NULL_DETECTIONS_FILTER for already-fetched bbox values."""
+    return bbox is None or bbox == []
+
+
 def get_media_url(path: str) -> str:
     """
     If path is a full URL, return it as-is.
