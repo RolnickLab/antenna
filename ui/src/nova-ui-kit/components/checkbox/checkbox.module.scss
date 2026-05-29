@@ -14,10 +14,6 @@
   border: 1px solid var(--color-border);
   flex-shrink: 0;
 
-  &.neutral {
-    border-color: var(--color-neutral-400);
-  }
-
   &:focus-visible {
     box-shadow: 0 0 0 2px var(--color-generic-black);
   }
@@ -49,18 +45,6 @@
   @include body-small();
   color: var(--color-muted-foreground);
   margin-left: 6px;
-
-  &.success {
-    color: var(--color-success);
-  }
-
-  &.alert {
-    color: var(--color-accent);
-  }
-
-  &.neutral {
-    color: var(--color-generic-white);
-  }
 
   &.disabled {
     opacity: 0.5;

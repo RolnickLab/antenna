@@ -127,7 +127,7 @@ export const Capture = ({
       <img ref={imageRef} className={styles.image} />
       <div
         className={classNames(styles.details, {
-          [styles.showOverlay]: showDetections,
+          [styles.showOverlay]: showDetections && detections.length,
         })}
       >
         {renderOverlay && <CaptureOverlay boxStyles={boxStyles} />}

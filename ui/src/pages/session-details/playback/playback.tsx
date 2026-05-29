@@ -4,7 +4,7 @@ import { useCaptureDetails } from 'data-services/hooks/captures/useCaptureDetail
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { useSessionTimeline } from 'data-services/hooks/sessions/useSessionTimeline'
 import { SessionDetails } from 'data-services/models/session-details'
-import { Checkbox, CheckboxTheme } from 'nova-ui-kit'
+import { Checkbox } from 'nova-ui-kit'
 import { useEffect, useState } from 'react'
 import { ActivityPlot } from './activity-plot/lazy-activity-plot'
 import { CaptureDetails } from './capture-details/capture-details'
@@ -74,7 +74,6 @@ export const Playback = ({
               label="Show detections"
               checked={showDetections}
               onCheckedChange={setShowDetections}
-              theme={CheckboxTheme.Neutral}
             />
             <div className="flex items-center gap-1">
               <Checkbox
@@ -82,21 +81,14 @@ export const Playback = ({
                 label="Default filters"
                 checked={defaultFilters}
                 onCheckedChange={setDefaultFilters}
-                theme={CheckboxTheme.Neutral}
               />
-              {project ? (
-                <DefaultFiltersTooltip
-                  className="text-neutral-200 hover:bg-transparent"
-                  project={project}
-                />
-              ) : null}
+              {project ? <DefaultFiltersTooltip project={project} /> : null}
             </div>
             <Checkbox
               id="snap-to-detections"
               label="Snap to images with detections"
               checked={snapToDetections}
               onCheckedChange={setSnapToDetections}
-              theme={CheckboxTheme.Neutral}
               disabled={session.numDetections ? false : true}
             />
           </div>

@@ -29,6 +29,7 @@ import { SessionInfo } from './session-info'
 import { SessionPlots } from './session-plots'
 import { StarButton } from './star-button'
 import { TimelineSlider } from './timeline-slider/timeline-slider'
+import { ViewSettings } from './view-settings'
 
 const TABS = {
   SESSION: 'session',
@@ -87,6 +88,11 @@ export const SessionDetailsPage = () => {
 const Content = ({ session }: { session: SessionDetails }) => {
   // Settings
   const [poll, setPoll] = useState(false)
+  const [settings, setSettings] = useState({
+    defaultFilters: true,
+    showDetections: true,
+    snapToDetections: session.numDetections ? true : false,
+  })
 
   // Data
   const { projectId } = useParams()
@@ -153,10 +159,10 @@ const Content = ({ session }: { session: SessionDetails }) => {
         <div className="grow flex flex-col bg-background rounded-lg border border-border overflow-hidden md:rounded-xl">
           <div className="grow flex items-center justify-center">
             <Capture
-              defaultFilters
+              defaultFilters={settings.defaultFilters}
               detections={activeCapture?.detections ?? []}
               height={activeCapture?.height ?? session.firstCapture.height}
-              showDetections
+              showDetections={settings.showDetections}
               src={activeCapture?.src}
               width={activeCapture?.width ?? session.firstCapture.width}
             />
@@ -197,7 +203,13 @@ const Content = ({ session }: { session: SessionDetails }) => {
                 setActiveCaptureId={setActiveCaptureId}
               />
             </div>
-            <div />
+            <div className="flex items-center justify-end">
+              <ViewSettings
+                session={session}
+                onSettingsChange={setSettings}
+                settings={settings}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -205,6 +217,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
         <ActivityPlot
           session={session}
           setActiveCaptureId={setActiveCaptureId}
+          snapToDetections={settings.snapToDetections}
           timeline={timeline}
         />
         <TimelineSlider
