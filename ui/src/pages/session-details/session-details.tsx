@@ -123,7 +123,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
         })}
         tooltip={translate(STRING.TOOLTIP_SESSION)}
       >
-        {activeCapture ? <Process capture={activeCapture} /> : null}
+        {user.loggedIn ? <Process capture={activeCapture} /> : null}
       </PageHeader>
       <div className="grid grid-cols-1 gap-4 mt-6 md:grid-cols-[auto_1fr] md:gap-6">
         <Box className="order-last p-2 bg-background rounded-lg md:order-first md:p-4 md:rounded-xl">
@@ -170,8 +170,8 @@ const Content = ({ session }: { session: SessionDetails }) => {
               width={activeCapture?.width ?? session.firstCapture.width}
             />
           </div>
-          <div className="flex flex-wrap justify-between gap-x-8 gap-y-2 p-2 border-t border-border md:p-6">
-            <div className="flex-1 flex items-center gap-2">
+          <div className="flex flex-col flex-wrap justify-between gap-2 p-2 border-t border-border md:flex-row md:p-6">
+            <div className="min-h-8 flex-1 flex items-center gap-2">
               {activeCapture ? (
                 <>
                   <span className="pt-0.5 text-muted-foreground truncate">
@@ -197,16 +197,20 @@ const Content = ({ session }: { session: SessionDetails }) => {
                     </a>
                   </BasicTooltip>
                 </>
-              ) : null}
+              ) : (
+                <span className="pt-0.5 text-muted-foreground truncate">
+                  {translate(STRING.LOADING_DATA)}...
+                </span>
+              )}
             </div>
-            <div className="flex items-center justify-center">
+            <div className="flex items-center md:justify-center">
               <CaptureNavigation
                 activeCapture={activeCapture}
                 timeline={timeline}
                 setActiveCaptureId={setActiveCaptureId}
               />
             </div>
-            <div className="flex-1 flex items-center justify-end">
+            <div className="flex-1 flex items-center md:justify-end">
               <ViewSettings
                 onSettingsChange={setSettings}
                 settings={settings}

@@ -28,7 +28,7 @@ export const ViewSettings = ({
           <Button
             aria-label={translate(STRING.VIEW_SETTINGS)}
             size="icon"
-            variant="ghost"
+            variant="outline"
           >
             <SettingsIcon className="w-4 h-4" />
           </Button>
