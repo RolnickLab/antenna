@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from asgiref.sync import async_to_sync
@@ -9,6 +10,14 @@ from ami.ml.orchestration.nats_queue import TaskQueueManager
 from ami.ml.schemas import PipelineProcessingTask
 
 logger = logging.getLogger(__name__)
+
+# Number of concurrent JetStream publishes per fanout chunk. The bottleneck on
+# large-collection jobs is the per-message ack round-trip (~1.3ms each on
+# Serbia 2026-05-27, sequential), so awaiting publishes one at a time scales
+# linearly with image count and pushes >450k-image jobs past the reaper
+# threshold. Issuing ~200 publishes per gather() lets NATS pipeline the acks
+# back to us; the chunk boundary keeps memory and concurrent-task counts bounded.
+NATS_PUBLISH_FANOUT_CHUNK_SIZE = 200
 
 
 def cleanup_async_job_resources(job_id: int) -> bool:
@@ -91,7 +100,11 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
     skipped_count = 0
     for image in images:
         image_id = str(image.pk)
-        image_url = image.url() if hasattr(image, "url") and image.url() else ""
+        # Call image.url() exactly once per iteration — the implementation
+        # touches deployment + data_source and the call cost adds up across
+        # large collections. The upstream queryset in collect_images() also
+        # prefetches those joins so this stays cheap (see issue #1321).
+        image_url = image.url()
         if not image_url:
             job.logger.warning(f"Image {image.pk} has no URL, skipping queuing to NATS for job '{job.pk}'")
             skipped_count += 1
@@ -120,28 +133,43 @@ def queue_images_to_nats(job: "Job", images: list[SourceImage]):
         # the sync_to_async bridge for JobLogHandler's ORM save lives in one
         # place instead of being re-implemented at every call site.
         async with TaskQueueManager(job_logger=job.logger) as manager:
-            for image_pk, task in tasks:
+            # Warm the stream + consumer caches once so per-publish calls skip
+            # the cached-noop branches in publish_task -> _ensure_stream /
+            # _ensure_consumer. Even though those branches are O(1) after the
+            # first call, each one still runs inside the publish coroutine and
+            # serialises with the gather below.
+            try:
+                await manager.ensure_job_resources(job.pk)
+            except Exception as e:
+                await manager.log_async(
+                    logging.ERROR,
+                    f"Failed to set up NATS stream/consumer for job '{job.pk}': {e}",
+                    exc_info=True,
+                )
+                return 0, len(tasks)
+
+            async def publish_one(image_pk: int, task: PipelineProcessingTask) -> bool:
                 try:
-                    await manager.log_async(
-                        logging.DEBUG,
-                        f"Queueing image {image_pk} to stream for job '{job.pk}': {task.image_url}",
-                    )
-                    success = await manager.publish_task(
-                        job_id=job.pk,
-                        data=task,
-                    )
+                    return await manager.publish_task(job_id=job.pk, data=task)
                 except Exception as e:
                     await manager.log_async(
                         logging.ERROR,
                         f"Failed to queue image {image_pk} to stream for job '{job.pk}': {e}",
                         exc_info=True,
                     )
-                    success = False
+                    return False
 
-                if success:
-                    successful_queues += 1
-                else:
-                    failed_queues += 1
+            for chunk_start in range(0, len(tasks), NATS_PUBLISH_FANOUT_CHUNK_SIZE):
+                chunk = tasks[chunk_start : chunk_start + NATS_PUBLISH_FANOUT_CHUNK_SIZE]
+                results = await asyncio.gather(
+                    *(publish_one(image_pk, task) for image_pk, task in chunk),
+                    return_exceptions=False,
+                )
+                for success in results:
+                    if success:
+                        successful_queues += 1
+                    else:
+                        failed_queues += 1
 
         return successful_queues, failed_queues
 
