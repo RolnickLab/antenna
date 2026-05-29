@@ -651,13 +651,14 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         result. This mirrors how the capture set list separates the processed count
         from the (real) detections count. Use ``has_detections`` to filter on real
         detections only.
+
+        Reuses the ``with_was_processed`` queryset annotation so the "processed"
+        definition stays in one place.
         """
         processed = self.request.query_params.get("processed")
         if processed is not None:
             processed = BooleanField(required=False).clean(processed)
-            queryset = queryset.annotate(
-                processed=models.Exists(Detection.objects.filter(source_image=models.OuterRef("pk"))),
-            ).filter(processed=processed)
+            queryset = queryset.with_was_processed().filter(was_processed=processed)
         return queryset
 
     def filter_by_has_detections(self, queryset: QuerySet) -> QuerySet:
