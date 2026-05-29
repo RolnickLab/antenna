@@ -1447,6 +1447,23 @@ class TestCapturesProcessedFilter(APITestCase):
         self.assertEqual(self._count("&has_detections=true"), 2)
         self.assertEqual(self._count("&has_detections=false"), 2)
 
+    def test_processed_count_respects_narrowing_filter(self):
+        # The count is computed by subtraction (total - processed) off a base
+        # queryset that must apply the same narrowing filters as the list. Add a
+        # second deployment whose captures are all unprocessed, then scope to it:
+        # the processed/false counts must reflect only that deployment, not the
+        # whole project.
+        other_deployment = Deployment.objects.create(project=self.project, name="Empty deployment")
+        create_captures(other_deployment, num_nights=1, images_per_night=2)
+        scope = f"&deployment={other_deployment.pk}"
+        # None of the second deployment's captures are processed.
+        self.assertEqual(self._count(f"{scope}&processed=true"), 0)
+        self.assertEqual(self._count(f"{scope}&processed=false"), 2)
+        # The first deployment is unchanged (3 processed, 1 not).
+        first_scope = f"&deployment={self.deployment.pk}"
+        self.assertEqual(self._count(f"{first_scope}&processed=true"), 3)
+        self.assertEqual(self._count(f"{first_scope}&processed=false"), 1)
+
 
 class TestCapturesLastProcessed(APITestCase):
     """
