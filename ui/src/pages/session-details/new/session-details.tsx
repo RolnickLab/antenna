@@ -3,7 +3,16 @@ import { useCaptureDetails } from 'data-services/hooks/captures/useCaptureDetail
 import { useSessionDetails } from 'data-services/hooks/sessions/useSessionDetails'
 import { useSessionTimeline } from 'data-services/hooks/sessions/useSessionTimeline'
 import { SessionDetails } from 'data-services/models/session-details'
-import { Box, LoadingSpinner, PageHeader, Tabs } from 'nova-ui-kit'
+import { ExternalLinkIcon } from 'lucide-react'
+import {
+  BasicTooltip,
+  Box,
+  buttonVariants,
+  LoadingSpinner,
+  PageHeader,
+  Tabs,
+} from 'nova-ui-kit'
+import { cn } from 'nova-ui-kit/utils'
 import { useContext, useEffect, useState } from 'react'
 import { Helmet } from 'react-helmet-async'
 import { useParams } from 'react-router-dom'
@@ -11,6 +20,7 @@ import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { STRING, translate } from 'utils/language'
 import { useUser } from 'utils/user/userContext'
 import ActivityPlot from './activity-plot/activity-plot'
+import { CaptureInfo } from './capture-info'
 import { CaptureNavigation } from './capture-navigation'
 import { Capture } from './capture/capture'
 import { useActiveCaptureId } from './hooks/useActiveCapture'
@@ -21,7 +31,8 @@ import { StarButton } from './star-button'
 import { TimelineSlider } from './timeline-slider/timeline-slider'
 
 const TABS = {
-  FIELDS: 'fields',
+  SESSION: 'session',
+  CAPTURE: 'capture',
   CHARTS: 'charts',
 }
 
@@ -106,20 +117,31 @@ const Content = ({ session }: { session: SessionDetails }) => {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-6 mt-6 md:flex-row">
-        <Box className="p-2 bg-background rounded-lg md:min-w-72 md:p-4 md:rounded-xl">
-          <Tabs.Root defaultValue={TABS.FIELDS}>
+        <Box className="p-2 bg-background rounded-lg md:p-4 md:rounded-xl">
+          <Tabs.Root defaultValue={TABS.SESSION}>
             <Tabs.List>
               <Tabs.Trigger
-                value={TABS.FIELDS}
-                label={translate(STRING.TAB_ITEM_FIELDS)}
+                value={TABS.SESSION}
+                label={translate(STRING.TAB_ITEM_SESSION)}
+              />
+              <Tabs.Trigger
+                value={TABS.CAPTURE}
+                label={translate(STRING.TAB_ITEM_CAPTURE)}
               />
               <Tabs.Trigger
                 value={TABS.CHARTS}
                 label={translate(STRING.TAB_ITEM_CHARTS)}
               />
             </Tabs.List>
-            <Tabs.Content value={TABS.FIELDS}>
-              <SessionInfo session={session} />
+            <Tabs.Content value={TABS.SESSION}>
+              <div className="w-72">
+                <SessionInfo session={session} />
+              </div>
+            </Tabs.Content>
+            <Tabs.Content value={TABS.CAPTURE}>
+              <div className="w-72">
+                {activeCapture ? <CaptureInfo capture={activeCapture} /> : null}
+              </div>
             </Tabs.Content>
             <Tabs.Content value={TABS.CHARTS}>
               <div className="w-96 space-y-4">
@@ -150,6 +172,21 @@ const Content = ({ session }: { session: SessionDetails }) => {
                     capture={activeCapture}
                     canStar={user.loggedIn && activeCapture.canStar}
                   />
+                  <BasicTooltip
+                    asChild
+                    content={translate(STRING.TOOLTIP_VIEW_SOURCE_FILE)}
+                  >
+                    <a
+                      href={activeCapture.url}
+                      className={cn(
+                        buttonVariants({ size: 'icon', variant: 'ghost' })
+                      )}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      <ExternalLinkIcon className="w-4 h-4" />
+                    </a>
+                  </BasicTooltip>
                 </>
               ) : null}
             </div>
