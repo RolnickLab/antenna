@@ -1,19 +1,22 @@
 import { CaptureDetails } from 'data-services/models/capture-details'
 import { TimelineTick } from 'data-services/models/timeline-tick'
-import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ChevronsLeftIcon,
+  ChevronsRightIcon,
+} from 'lucide-react'
+import { BasicTooltip, Button } from 'nova-ui-kit'
 import { useEffect, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { findClosestCaptureId } from './utils'
 
 export const CaptureNavigation = ({
   activeCapture,
-  snapToDetections,
   timeline,
   setActiveCaptureId,
 }: {
   activeCapture?: CaptureDetails
-  snapToDetections?: boolean
   timeline: TimelineTick[]
   setActiveCaptureId: (captureId: string) => void
 }) => {
@@ -30,18 +33,25 @@ export const CaptureNavigation = ({
   }, [activeCapture])
 
   const goToPrev = () => {
+    if (!activeCapture?.prevCaptureId) {
+      return
+    }
+
+    setActiveCaptureId(activeCapture.prevCaptureId)
+  }
+
+  const goToPrevWithDetections = () => {
     if (!activeCapture) {
       return
     }
 
-    const prevCaptureId = snapToDetections
-      ? findClosestCaptureId({
-          maxDate: activeCapture.date,
-          snapToDetections: true,
-          targetDate: activeCapture.date,
-          timeline,
-        })
-      : activeCapture.prevCaptureId
+    const prevCaptureId =
+      findClosestCaptureId({
+        maxDate: activeCapture.date,
+        snapToDetections: true,
+        targetDate: activeCapture.date,
+        timeline,
+      }) ?? activeCapture.prevCaptureId
 
     if (prevCaptureId) {
       setActiveCaptureId(prevCaptureId)
@@ -49,18 +59,25 @@ export const CaptureNavigation = ({
   }
 
   const goToNext = () => {
+    if (!activeCapture?.nextCaptureId) {
+      return
+    }
+
+    setActiveCaptureId(activeCapture.nextCaptureId)
+  }
+
+  const goToNextWithDetections = () => {
     if (!activeCapture) {
       return
     }
 
-    const nextCaptureId = snapToDetections
-      ? findClosestCaptureId({
-          minDate: activeCapture.date,
-          snapToDetections: true,
-          targetDate: activeCapture.date,
-          timeline,
-        })
-      : activeCapture.nextCaptureId
+    const nextCaptureId =
+      findClosestCaptureId({
+        minDate: activeCapture.date,
+        snapToDetections: true,
+        targetDate: activeCapture.date,
+        timeline,
+      }) ?? activeCapture.nextCaptureId
 
     if (nextCaptureId) {
       setActiveCaptureId(nextCaptureId)
@@ -85,7 +102,18 @@ export const CaptureNavigation = ({
   }, [goToPrev, goToNext])
 
   return (
-    <div className="flex items-center justify-center gap-4">
+    <div className="flex items-center justify-center gap-1">
+      <BasicTooltip asChild content={translate(STRING.SNAP_TO_DETECTIONS)}>
+        <Button
+          aria-label={translate(STRING.SNAP_TO_DETECTIONS)}
+          disabled={!activeCapture?.prevCaptureId}
+          onClick={goToPrevWithDetections}
+          size="icon"
+          variant="outline"
+        >
+          <ChevronsLeftIcon className="w-4 h-4" />
+        </Button>
+      </BasicTooltip>
       <Button
         aria-label={translate(STRING.PREVIOUS)}
         disabled={!activeCapture?.prevCaptureId}
@@ -95,7 +123,7 @@ export const CaptureNavigation = ({
       >
         <ChevronLeftIcon className="w-4 h-4" />
       </Button>
-      <span className="pt-0.5">
+      <span className="pt-0.5 px-3">
         {currentIndex?.toLocaleString()} / {totalCaptures?.toLocaleString()}
       </span>
       <Button
@@ -107,6 +135,17 @@ export const CaptureNavigation = ({
       >
         <ChevronRightIcon className="w-4 h-4" />
       </Button>
+      <BasicTooltip asChild content={translate(STRING.SNAP_TO_DETECTIONS)}>
+        <Button
+          aria-label={translate(STRING.SNAP_TO_DETECTIONS)}
+          disabled={!activeCapture?.nextCaptureId}
+          onClick={goToNextWithDetections}
+          size="icon"
+          variant="outline"
+        >
+          <ChevronsRightIcon className="w-4 h-4" />
+        </Button>
+      </BasicTooltip>
     </div>
   )
 }

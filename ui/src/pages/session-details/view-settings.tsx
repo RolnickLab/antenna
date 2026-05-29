@@ -72,7 +72,7 @@ export const ViewSettings = ({
           </div>
           <Checkbox
             id="snap-to-detections"
-            label="Snap to images with detections"
+            label={translate(STRING.SNAP_TO_DETECTIONS)}
             checked={settings.snapToDetections}
             onCheckedChange={() =>
               onSettingsChange({
