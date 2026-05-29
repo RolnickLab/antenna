@@ -24,6 +24,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ami.base.filters import NullsLastOrderingFilter, ThresholdFilter
+from ami.base.metadata import ResponseSchemaMetadata
 from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
@@ -31,7 +32,7 @@ from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
-from ami.main.models_future.occurrence import top_identifiers_for_project
+from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
 from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
@@ -55,6 +56,7 @@ from ..models import (
     Tag,
     TaxaList,
     Taxon,
+    TaxonRank,
     User,
     update_detection_counts,
 )
@@ -71,6 +73,7 @@ from .serializers import (
     EventSerializer,
     EventTimelineSerializer,
     IdentificationSerializer,
+    ModelAgreementSerializer,
     OccurrenceListSerializer,
     OccurrenceSerializer,
     PageListSerializer,
@@ -1202,6 +1205,24 @@ class OccurrenceTaxaListFilter(filters.BaseFilterBackend):
         return queryset
 
 
+OCCURRENCE_FILTER_BACKENDS = (
+    CustomOccurrenceDeterminationFilter,
+    OccurrenceCollectionFilter,
+    OccurrenceAlgorithmFilter,
+    OccurrenceDateFilter,
+    OccurrenceVerified,
+    OccurrenceVerifiedByMeFilter,
+    OccurrenceTaxaListFilter,
+)
+
+OCCURRENCE_FILTERSET_FIELDS = (
+    "event",
+    "deployment",
+    "determination__rank",
+    "detections__source_image",
+)
+
+
 class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows occurrences to be viewed or edited.
@@ -1211,22 +1232,8 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     queryset = Occurrence.objects.all()
 
     serializer_class = OccurrenceSerializer
-    # filter_backends = [CustomDeterminationFilter, DjangoFilterBackend, NullsLastOrderingFilter, SearchFilter]
-    filter_backends = DefaultViewSetMixin.filter_backends + [
-        CustomOccurrenceDeterminationFilter,
-        OccurrenceCollectionFilter,
-        OccurrenceAlgorithmFilter,
-        OccurrenceDateFilter,
-        OccurrenceVerified,
-        OccurrenceVerifiedByMeFilter,
-        OccurrenceTaxaListFilter,
-    ]
-    filterset_fields = [
-        "event",
-        "deployment",
-        "determination__rank",
-        "detections__source_image",
-    ]
+    filter_backends = DefaultViewSetMixin.filter_backends + list(OCCURRENCE_FILTER_BACKENDS)
+    filterset_fields = list(OCCURRENCE_FILTERSET_FIELDS)
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -1324,12 +1331,26 @@ class OccurrenceStatsViewSet(viewsets.GenericViewSet, ProjectMixin):
 
     permission_classes = [IsActiveStaffOrReadOnly]
     require_project = True
+    # OPTIONS on each action returns its response serializer field schema
+    # (type + help_text) under `actions.GET`. Frontends consume this to render
+    # tooltips and labels without hardcoding stat descriptions in the UI.
+    metadata_class = ResponseSchemaMetadata
+    # Filter machinery for actions that opt into `self.filter_queryset(...)`.
+    # `top_identifiers` doesn't call it, so its behavior is unchanged.
+    queryset = Occurrence.objects.none()
+    filter_backends = [DjangoFilterBackend, *OCCURRENCE_FILTER_BACKENDS]
+    filterset_fields = list(OCCURRENCE_FILTERSET_FIELDS)
 
     @extend_schema(
         parameters=[project_id_doc_param, limit_doc_param],
         responses=TopIdentifiersResponseSerializer,
     )
-    @action(detail=False, methods=["get"], url_path="top-identifiers")
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="top-identifiers",
+        serializer_class=TopIdentifiersResponseSerializer,
+    )
     def top_identifiers(self, request):
         """Users ranked by distinct occurrences they identified.
 
@@ -1353,6 +1374,55 @@ class OccurrenceStatsViewSet(viewsets.GenericViewSet, ProjectMixin):
             context={"request": request},
         )
         return Response(serializer.data)
+
+    @extend_schema(
+        parameters=[project_id_doc_param],
+        responses=ModelAgreementSerializer,
+    )
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="model-agreement",
+        serializer_class=ModelAgreementSerializer,
+    )
+    def model_agreement(self, request):
+        """Verified / human↔model agreement rates over the filtered occurrence set.
+
+        Accepts every query param the `/occurrences/` list endpoint accepts.
+        Reuses `apply_default_filters` so `apply_defaults=false` bypasses
+        project default taxa lists + score thresholds.
+
+        Optional ?agreement_coarsest_rank=<RANK> adds `agreed_coarser_rank_*`
+        counts — LCAs at the given rank or deeper. Valid values: any
+        TaxonRank name (FAMILY, GENUS, etc.); invalid → 400.
+        """
+        project = self.get_active_project()
+        assert project is not None  # require_project=True guarantees this
+        if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
+            raise NotFound("Project not found.")
+
+        # ChoiceField gives strict 400s for free: blank (?agreement_coarsest_rank=),
+        # unknown ranks, and UNKNOWN (not in the choice list) all fail at the boundary.
+        # drf-spectacular reads the choices into the OpenAPI schema as an enum.
+        # Build a plain dict (not the QueryDict) so a blank value is validated as a
+        # real "" — DRF treats blank fields in HTML/QueryDict input as absent, which
+        # would let ?agreement_coarsest_rank= silently no-op. Uppercase the raw value
+        # so the param stays case-insensitive.
+        valid_ranks = [r.name for r in TaxonRank if r != TaxonRank.UNKNOWN]
+        raw_rank = request.query_params.get("agreement_coarsest_rank")
+        rank_data = {} if raw_rank is None else {"agreement_coarsest_rank": raw_rank.upper()}
+        coarsest_rank_param = SingleParamSerializer[str].clean(
+            param_name="agreement_coarsest_rank",
+            field=serializers.ChoiceField(choices=valid_ranks, required=False, allow_blank=False),
+            data=rank_data,
+        )
+        coarsest_rank = TaxonRank[coarsest_rank_param] if coarsest_rank_param else None
+
+        base_qs = Occurrence.objects.filter(project=project).valid().apply_default_filters(project, request)
+        filtered_qs = self.filter_queryset(base_qs)
+        payload = model_agreement_for_project(filtered_qs, coarsest_rank=coarsest_rank)
+        payload["project_id"] = project.pk
+        return Response(ModelAgreementSerializer(payload, context={"request": request}).data)
 
 
 class TaxonTaxaListFilter(filters.BaseFilterBackend):
