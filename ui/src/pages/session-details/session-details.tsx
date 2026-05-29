@@ -70,10 +70,11 @@ export const SessionDetailsPage = () => {
 
   return (
     <>
-      <Helmet>
-        <meta name="og:image" content={session.exampleCaptures[0]?.src} />
-      </Helmet>
-
+      {session.exampleCaptures[0] ? (
+        <Helmet>
+          <meta name="og:image" content={session.exampleCaptures[0]?.src} />
+        </Helmet>
+      ) : null}
       <Content session={session} />
     </>
   )

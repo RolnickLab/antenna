@@ -41,53 +41,53 @@
 }
 
 .heading-large {
-  @include heading-large();
+  @include heading-large;
 }
 
 .heading-medium {
-  @include heading-medium();
+  @include heading-medium;
 }
 
 .heading-small {
-  @include heading-small();
+  @include heading-small;
 }
 
 .body-xlarge {
-  @include body-xlarge();
+  @include body-xlarge;
 }
 
 .body-large {
-  @include body-large();
+  @include body-large;
 }
 
 .body-base {
-  @include body-base();
+  @include body-base;
 }
 
 .body-small {
-  @include body-small();
+  @include body-small;
 }
 
 .body-overline {
-  @include body-overline();
+  @include body-overline;
 }
 
 .body-overline-small {
-  @include body-overline-small();
+  @include body-overline-small;
 }
 
 .body-overline-xsmall {
-  @include body-overline-xsmall();
+  @include body-overline-xsmall;
 }
 
 .body-number {
-  @include body-number();
+  @include body-number;
 }
 
 .body-number-small {
-  @include body-number-small();
+  @include body-number-small;
 }
 
 .bubble-label {
-  @include bubble-label();
+  @include bubble-label;
 }

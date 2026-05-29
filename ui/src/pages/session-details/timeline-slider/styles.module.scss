@@ -5,7 +5,7 @@
 
   .label {
     display: block;
-    @include body-overline();
+    @include body-overline;
     font-weight: 600;
     color: var(--color-primary);
     text-transform: uppercase;
@@ -17,7 +17,7 @@
     justify-content: space-between;
 
     .label {
-      @include body-overline-small();
+      @include body-overline-small;
       color: var(--color-muted-foreground);
     }
   }

@@ -18,7 +18,8 @@ export const ProcessNow = ({
   const canProcess = capture.userPermissions.includes(
     UserPermission.RunSingleImage
   )
-  const disabled = capture.hasJobInProgress || !pipelineId || !canProcess
+  const disabled =
+    isLoading || capture.hasJobInProgress || !pipelineId || !canProcess
   // @TODO: also check if pipeline is healthy/available
 
   return (

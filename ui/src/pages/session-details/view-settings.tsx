@@ -46,7 +46,7 @@ export const ViewSettings = ({
         <div className="grid gap-2">
           <Checkbox
             id="show-detections"
-            label="Show detections"
+            label={translate(STRING.SHOW_DETECTIONS)}
             checked={settings.showDetections}
             onCheckedChange={() =>
               onSettingsChange({
@@ -58,7 +58,7 @@ export const ViewSettings = ({
           <div className="flex items-center gap-1">
             <Checkbox
               id="default-filters"
-              label="Default filters"
+              label={translate(STRING.NAV_ITEM_DEFAULT_FILTERS)}
               checked={settings.defaultFilters}
               onCheckedChange={() =>
                 onSettingsChange({

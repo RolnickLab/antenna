@@ -58,18 +58,18 @@ export const Process = ({ capture }: { capture: CaptureDetails }) => {
         {capture.currentJob ?? capture.numJobs ? (
           <FormSection>
             <FormRow>
-              <InputContent
-                label={translate(STRING.FIELD_LABEL_LATEST_JOB_STATUS)}
-              >
-                {capture.currentJob ? (
+              {capture.currentJob ? (
+                <InputContent
+                  label={translate(STRING.FIELD_LABEL_LATEST_JOB_STATUS)}
+                >
                   <div className="flex items-center gap-2">
                     <StatusMarker color={capture.currentJob.status.color} />
                     <span className="pt-0.5 body-base">
                       {capture.currentJob.status.label}
                     </span>
                   </div>
-                ) : null}
-              </InputContent>
+                </InputContent>
+              ) : null}
               <InputContent label={translate(STRING.FIELD_LABEL_JOBS)}>
                 <Link
                   className="bubble-label"

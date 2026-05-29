@@ -13,16 +13,18 @@ export const StarButton = ({
 }) => {
   const isStarred = capture.isStarred ?? false
   const { starCapture, isLoading } = useStarCapture(capture.id, isStarred)
-  const tooltipContent = canStar
-    ? isStarred
-      ? translate(STRING.STARRED)
-      : translate(STRING.STAR)
-    : translate(STRING.MESSAGE_PERMISSIONS_MISSING)
+
+  if (!canStar) {
+    return null
+  }
 
   return (
-    <BasicTooltip asChild content={tooltipContent}>
+    <BasicTooltip
+      asChild
+      content={isStarred ? translate(STRING.STARRED) : translate(STRING.STAR)}
+    >
       <Button
-        disabled={!canStar}
+        disabled={isLoading}
         aria-label={
           isStarred ? translate(STRING.STARRED) : translate(STRING.STAR)
         }
