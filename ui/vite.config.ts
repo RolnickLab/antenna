@@ -32,7 +32,7 @@ export default defineConfig(({ mode }) => {
     css: {
       preprocessorOptions: {
         scss: {
-          additionalData: `@use 'src/nova-ui-kit/mixins.scss' as *;`,
+          additionalData: `@use '/src/nova-ui-kit/mixins.scss' as *;`,
         },
       },
     },
