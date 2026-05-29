@@ -154,59 +154,6 @@ class ProjectPagination(LimitOffsetPaginationWithPermissions):
         return super().get_count(queryset.order_by().values("pk"))
 
 
-class SourceImagePagination(LimitOffsetPaginationWithPermissions):
-    """
-    Pagination for the captures list that computes the COUNT for the ``processed``
-    and ``has_detections`` filters by subtraction instead of counting an
-    EXISTS / NOT EXISTS subquery directly.
-
-    On a large project (~900k captures) the page of rows is cheap because the LIMIT
-    prunes early, but the pagination COUNT has no LIMIT to prune: ``NOT EXISTS``
-    becomes a full anti-join over the wide source-image table (~12s). Instead we
-    count the captures *with* detections off the Detection table (a small index
-    scan, COUNT(DISTINCT source_image_id)) and subtract from the project total:
-
-        processed=true   -> processed_count
-        processed=false  -> total - processed_count
-
-    Both counts are exact and the cost scales with the number of detection rows,
-    not the processed/unprocessed ratio, so it is fast in both directions. Any
-    other filter (or no filter) falls back to the default count.
-    """
-
-    def paginate_queryset(self, queryset, request, view=None):
-        # DRF sets self.request *after* get_count() runs, but get_count() needs the
-        # query params and the view, so stash them here first.
-        self.request = request
-        self._view = view
-        return super().paginate_queryset(queryset, request, view=view)
-
-    def get_count(self, queryset):
-        params = self.request.query_params
-        processed = params.get("processed")
-        has_detections = params.get("has_detections")
-
-        # Only the single-existence-filter case can be expressed as a subtraction.
-        # If both are set (or neither), fall back to counting the queryset directly.
-        if (processed is None) == (has_detections is None):
-            return super().get_count(queryset)
-
-        base = self._view.get_count_base_queryset()
-        total = base.order_by().values("pk").count()
-
-        detections = Detection.objects.filter(source_image__in=base.values("pk"))
-        if has_detections is not None:
-            # has_detections counts *real* detections only (null markers excluded).
-            detections = detections.exclude(NULL_DETECTIONS_FILTER)
-            raw = has_detections
-        else:
-            raw = processed
-        processed_count = detections.values("source_image_id").distinct().count()
-
-        want_true = BooleanField(required=False).clean(raw)
-        return processed_count if want_true else total - processed_count
-
-
 class ProjectViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows projects to be viewed or edited.
@@ -592,7 +539,6 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
 
     require_project_for_list = True  # Unfiltered list scans are too expensive on this table
     queryset = SourceImage.objects.all()
-    pagination_class = SourceImagePagination
 
     serializer_class = SourceImageSerializer
     filterset_fields = [
@@ -685,21 +631,6 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             )
 
         return queryset
-
-    def get_count_base_queryset(self) -> QuerySet:
-        """
-        Captures scoped by the same project/event/deployment/collection filters as
-        the list, but *without* the ``processed`` / ``has_detections`` predicate.
-
-        Used by ``SourceImagePagination`` to count via subtraction. Only the
-        ``DjangoFilterBackend`` is applied (not ordering/search) — ordering would
-        reference the ``last_processed`` annotation, which isn't present here and
-        doesn't affect the count anyway.
-        """
-        qs = SourceImage.objects.all()
-        if isinstance(qs, BaseQuerySet):
-            qs = qs.visible_for_user(self.request.user)  # type: ignore[attr-defined]
-        return DjangoFilterBackend().filter_queryset(self.request, qs, self)
 
     def filter_by_processed(self, queryset: QuerySet) -> QuerySet:
         """
