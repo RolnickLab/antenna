@@ -80,7 +80,9 @@ export const CaptureDetails = ({
         ) : null}
         {user.loggedIn && capture.currentJob ? (
           <div>
-            <span className={styles.label}>Latest job status</span>
+            <span className={styles.label}>
+              {translate(STRING.FIELD_LABEL_LATEST_JOB_STATUS)}
+            </span>
             <JobDetails job={capture.currentJob} />
           </div>
         ) : null}
