@@ -1,8 +1,10 @@
 import { Entity } from 'data-services/models/entity'
-import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
-import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
-import { TableColumn } from 'design-system/components/table/types'
-import { Toolbar } from 'design-system/components/toolbar'
+import {
+  BasicTableCell,
+  DateTableCell,
+  TableColumn,
+  Toolbar,
+} from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import { DeleteEntityDialog } from './delete-entity-dialog'
 import { UpdateEntityDialog } from './entity-details-dialog'

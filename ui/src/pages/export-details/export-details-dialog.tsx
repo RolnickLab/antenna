@@ -3,14 +3,17 @@ import { FormRow, FormSection } from 'components/form/layout/layout'
 import { useExportDetails } from 'data-services/hooks/exports/useExportDetails'
 import { Export } from 'data-services/models/export'
 import { JobStatusType } from 'data-services/models/job'
-import * as Dialog from 'design-system/components/dialog/dialog'
-import { InputContent, InputValue } from 'design-system/components/input/input'
-import inputStyles from 'design-system/components/input/input.module.scss'
-import { StatusBar } from 'design-system/components/status/status-bar'
-import { StatusMarker } from 'design-system/components/status/status-marker/status-marker'
 import _ from 'lodash'
 import { DownloadIcon } from 'lucide-react'
-import { buttonVariants } from 'nova-ui-kit'
+import {
+  buttonVariants,
+  Dialog,
+  InputContent,
+  InputValue,
+  StatusBar,
+  StatusMarker,
+} from 'nova-ui-kit'
+import inputStyles from 'nova-ui-kit/components/input/input.module.scss'
 import { useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'

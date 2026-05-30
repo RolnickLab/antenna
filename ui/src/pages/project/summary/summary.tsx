@@ -1,17 +1,14 @@
 import classNames from 'classnames'
 import { ErrorState } from 'components/error-state/error-state'
+import { PlotGrid } from 'components/plot-grid/plot-grid'
+import { Plot } from 'components/plot/lazy-plot'
 import { useTopIdentifiers } from 'data-services/hooks/occurrences/stats/useTopIdentifiers'
 import { useLatestOccurrences } from 'data-services/hooks/occurrences/useLatestOccurrences'
 import { useProjectCharts } from 'data-services/hooks/projects/useProjectCharts'
 import { useTopSpecies } from 'data-services/hooks/species/useTopSpecies'
 import { useStatus } from 'data-services/hooks/useStatus'
 import { ProjectDetails } from 'data-services/models/project-details'
-import { Box } from 'design-system/components/box/box'
-import { LoadingSpinner } from 'design-system/components/loading-spinner/loading-spinner'
-import { PlotGrid } from 'design-system/components/plot-grid/plot-grid'
-import { Plot } from 'design-system/components/plot/lazy-plot'
-import * as Tabs from 'design-system/components/tabs/tabs'
-import { buttonVariants } from 'nova-ui-kit'
+import { Box, buttonVariants, LoadingSpinner, Tabs } from 'nova-ui-kit'
 import { UploadImagesDialog } from 'pages/captures/upload-images-dialog/upload-images-dialog'
 import { useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
@@ -48,7 +45,10 @@ export const Summary = () => {
         </div>
       ) : (
         <>
-          <DeploymentsMap deployments={project.deployments} />
+          <DeploymentsMap
+            deployments={project.deployments}
+            projectId={project.id}
+          />
           <div>
             <h2 className="mb-4 heading-small">{translate(STRING.OVERVIEW)}</h2>
             <div className="grid gap-8 xl:grid-cols-3">
@@ -256,7 +256,7 @@ const Charts = ({ projectId }: { projectId: string }) => {
         <Tabs.Content key={section.id} value={section.id}>
           <PlotGrid>
             {section.plots.map((plot, index) => (
-              <Box key={index}>
+              <Box key={index} className="bg-background">
                 <Plot
                   data={plot.data}
                   orientation={plot.orientation}

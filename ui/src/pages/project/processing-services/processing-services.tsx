@@ -1,10 +1,12 @@
 import { ErrorState } from 'components/error-state/error-state'
 import { API_ROUTES } from 'data-services/constants'
 import { useProcessingServices } from 'data-services/hooks/processing-services/useProcessingServices'
-import { PageHeader } from 'design-system/components/page-header/page-header'
-import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
-import { Table } from 'design-system/components/table/table/table'
-import { TableSortSettings } from 'design-system/components/table/types'
+import {
+  PageHeader,
+  PaginationBar,
+  Table,
+  TableSortSettings,
+} from 'nova-ui-kit'
 import { ProcessingServiceDetailsDialog } from 'pages/processing-service-details/processing-service-details-dialog'
 import { NewEntityDialog } from 'pages/project/entities/new-entity-dialog'
 import { useState } from 'react'

@@ -609,6 +609,7 @@ class TaxonListSerializer(DefaultSerializer):
             "parents",
             "details",
             "occurrences_count",
+            "verified_count",
             "occurrences",
             "tags",
             "last_detected",
@@ -886,6 +887,7 @@ class TaxonSerializer(DefaultSerializer):
             "parents",
             "details",
             "occurrences_count",
+            "verified_count",
             "events_count",
             "occurrences",
             "gbif_taxon_key",
@@ -1749,3 +1751,129 @@ class TopIdentifiersResponseSerializer(serializers.Serializer):
 
     project_id = serializers.IntegerField()
     top_identifiers = UserIdentificationCountSerializer(many=True)
+
+
+class ModelAgreementSerializer(serializers.Serializer):
+    """Verified / agreement rates over the filtered Occurrence set.
+
+    `agreed_exact_count` is a subset of `agreed_any_rank_count` by
+    construction — an exact match implies the LCA is the taxon itself.
+    `*_pct` percentages are 0.0..1.0 (not 0..100).
+
+    Denominator note: `agreed_*_pct` divide by `comparable_count` — verified
+    occurrences that have BOTH a machine prediction and a human taxon, NOT by
+    `verified_count`. Two kinds of verified occurrence are excluded because they
+    can't agree or disagree: those with no machine prediction (`no_prediction_count`)
+    and those whose human identification has no taxon, e.g. a comment-only
+    verification (`verified_without_taxon_count`). Both are surfaced so the
+    consumer can see why `comparable_count` differs from `verified_count`.
+
+    Optional rank threshold: when the caller passes
+    `?agreement_coarsest_rank=FAMILY`, the response also includes
+    `agreed_coarser_rank_*` counting only LCAs at that rank or deeper. The
+    threshold rank is echoed in `agreement_coarsest_rank`. When the param is
+    absent, the coarser-rank fields are null and `agreement_coarsest_rank`
+    is null.
+    """
+
+    project_id = serializers.IntegerField()
+    total_occurrences = serializers.IntegerField()
+    verified_count = serializers.IntegerField(help_text="Occurrences with at least one non-withdrawn identification.")
+    verified_pct = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        help_text="verified_count / total_occurrences",
+    )
+    verified_with_prediction_count = serializers.IntegerField(
+        help_text="Verified occurrences that also have a machine prediction."
+    )
+    no_prediction_count = serializers.IntegerField(
+        help_text="Verified occurrences with no machine prediction (excluded from agreement denominator)."
+    )
+    verified_without_taxon_count = serializers.IntegerField(
+        help_text=(
+            "Verified occurrences that have a machine prediction but no human taxon "
+            "(e.g. comment-only identification). Excluded from the agreement denominator "
+            "since there is no human label to compare."
+        )
+    )
+    comparable_count = serializers.IntegerField(
+        help_text=(
+            "Verified occurrences with BOTH a machine prediction and a human taxon — the "
+            "denominator for all agreed_*_pct and the Wilson CIs. Equals "
+            "verified_with_prediction_count minus verified_without_taxon_count."
+        )
+    )
+    agreed_exact_count = serializers.IntegerField()
+    agreed_exact_pct = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        help_text="agreed_exact_count / comparable_count",
+    )
+    agreed_exact_ci_low = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        allow_null=True,
+        required=False,
+        help_text="Wilson 95% CI lower bound for agreed_exact_pct. Null when verified_with_prediction_count is 0.",
+    )
+    agreed_exact_ci_high = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        allow_null=True,
+        required=False,
+        help_text="Wilson 95% CI upper bound for agreed_exact_pct. Null when verified_with_prediction_count is 0.",
+    )
+    agreed_any_rank_count = serializers.IntegerField(
+        help_text="Exact matches plus disagreements whose LCA is at any real rank (UNKNOWN excluded)."
+    )
+    agreed_any_rank_pct = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        help_text="agreed_any_rank_count / verified_with_prediction_count",
+    )
+    agreed_any_rank_ci_low = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        allow_null=True,
+        required=False,
+        help_text="Wilson 95% CI lower bound for agreed_any_rank_pct. Null when verified_with_prediction_count is 0.",
+    )
+    agreed_any_rank_ci_high = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        allow_null=True,
+        required=False,
+        help_text="Wilson 95% CI upper bound for agreed_any_rank_pct. Null when verified_with_prediction_count is 0.",
+    )
+    cohens_kappa = serializers.FloatField(
+        min_value=-1.0,
+        max_value=1.0,
+        allow_null=True,
+        required=False,
+        help_text=(
+            "Cohen's kappa (exact-taxon) — human↔model agreement beyond chance. "
+            "Range [-1, 1]; negative is worse than chance. Null when there are no "
+            "doubly-classified occurrences or expected agreement is 1.0."
+        ),
+    )
+    agreement_coarsest_rank = serializers.CharField(
+        allow_null=True,
+        required=False,
+        help_text="Threshold rank from ?agreement_coarsest_rank query param. Null when the param is absent.",
+    )
+    agreed_coarser_rank_count = serializers.IntegerField(
+        allow_null=True,
+        required=False,
+        help_text=(
+            "Exact matches plus disagreements whose LCA is at `agreement_coarsest_rank` or deeper. "
+            "Null when no threshold was supplied."
+        ),
+    )
+    agreed_coarser_rank_pct = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        allow_null=True,
+        required=False,
+        help_text="agreed_coarser_rank_count / verified_with_prediction_count. Null when no threshold supplied.",
+    )

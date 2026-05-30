@@ -196,6 +196,48 @@ e.g. `ui/src/data-services/hooks/occurrences/stats/useTopIdentifiers.ts`.
 
 The hook's `Response` interface matches the kind-specific serializer.
 
+## Response field schema via OPTIONS
+
+Stats endpoints set `metadata_class = ResponseSchemaMetadata` (from
+`ami/base/metadata.py`) on the viewset and pass `serializer_class=` to
+each `@action(...)` decorator. The default DRF `SimpleMetadata` only
+emits serializer fields for write methods (POST / PUT) — without this
+override the response shape and its `help_text=` annotations are
+invisible to clients on read-only endpoints.
+
+With it wired, `OPTIONS /<entity>/stats/<kind>/` returns the response
+serializer's field schema under `actions.GET`:
+
+```json
+{
+  "name": "Model agreement",
+  "description": "Verified / human↔model agreement rates...",
+  "actions": {
+    "GET": {
+      "verified_pct": {
+        "type": "float",
+        "label": "Verified pct",
+        "help_text": "verified_count / total_occurrences",
+        "min_value": 0.0,
+        "max_value": 1.0
+      },
+      ...
+    }
+  }
+}
+```
+
+Frontends fetch OPTIONS once at component mount and key tooltips /
+labels by field name, so stat copy lives next to the serializer
+definition rather than being hardcoded in the UI. Interpretation copy
+("wide CI means shaky number") stays in the FE bundle next to the
+visualization — `help_text` describes *what the number is*, not *how
+to read it as a human*.
+
+Each `@action` must pass `serializer_class=` so `view.get_serializer()`
+returns the right response shape during OPTIONS resolution. Multiple
+actions on one viewset can carry different serializers this way.
+
 ## Tests required (in the same commit)
 
 For every new stats action:
@@ -232,7 +274,7 @@ into pagination only if the kind genuinely needs it):
 
 - `GET /occurrences/stats/top-identifiers/` — done (this PR)
 - `GET /occurrences/stats/identifications-summary/` — total / distinct / verified counts
-- `GET /occurrences/stats/human-model-agreement/` — model agreement rate
+- `GET /occurrences/stats/model-agreement/` — model agreement rate
 - `GET /occurrences/stats/identifications-by-species/` — per-taxon ID counts
 - `GET /occurrences/stats/timeline/` — Plotly-shaped time series
 - `GET /deployments/stats/processed-images/` — processed images per station

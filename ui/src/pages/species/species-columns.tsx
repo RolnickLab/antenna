@@ -1,16 +1,16 @@
 import { DeterminationScore } from 'components/determination-score'
+import { TaxonDetails } from 'components/taxon-details/taxon-details'
 import { Tag } from 'components/taxon-tags/tag'
 import { Species } from 'data-services/models/species'
-import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
-import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
-import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
 import {
+  BasicTableCell,
   CellTheme,
+  DateTableCell,
   ImageCellTheme,
+  ImageTableCell,
   TableColumn,
   TextAlign,
-} from 'design-system/components/table/types'
-import { TaxonDetails } from 'nova-ui-kit'
+} from 'nova-ui-kit'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -92,6 +92,24 @@ export const columns: (project: {
         })}
       >
         <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
+      </Link>
+    ),
+  },
+  {
+    id: 'verified',
+    sortField: 'verified_count',
+    name: 'Verified',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Species) => (
+      <Link
+        to={getAppRoute({
+          to: APP_ROUTES.OCCURRENCES({ projectId }),
+          filters: { taxon: item.id, verified: 'true' },
+        })}
+      >
+        <BasicTableCell value={item.numVerified} theme={CellTheme.Bubble} />
       </Link>
     ),
   },

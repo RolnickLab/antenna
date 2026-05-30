@@ -5,12 +5,14 @@ export enum STRING {
   BACK,
   CANCEL,
   CHANGE_IMAGE,
+  CHANGE_SORT_ORDER,
   CHOOSE_IMAGE,
   CLEAR_FILTERS,
   CLEAR,
   COLLAPSE,
   CONFIRM,
   CONFIRMED,
+  CREATE_NEW,
   CURRENT_LOCATION,
   DELETE,
   DELETED,
@@ -99,8 +101,8 @@ export enum STRING {
   FIELD_LABEL_EMAIL,
   FIELD_LABEL_ENDPOINT,
   FIELD_LABEL_ERRORS,
-  FIELD_LABEL_FILENAME,
   FIELD_LABEL_FILE_SIZE,
+  FIELD_LABEL_FILENAME,
   FIELD_LABEL_FINISHED_AT,
   FIELD_LABEL_FIRST_DATE,
   FIELD_LABEL_FORMAT,
@@ -112,9 +114,10 @@ export enum STRING {
   FIELD_LABEL_JOB,
   FIELD_LABEL_JOBS,
   FIELD_LABEL_KEY,
-  FIELD_LABEL_LAST_SEEN,
   FIELD_LABEL_LAST_DATE,
+  FIELD_LABEL_LAST_SEEN,
   FIELD_LABEL_LAST_SYNCED,
+  FIELD_LABEL_LATEST_JOB_STATUS,
   FIELD_LABEL_LATITUDE,
   FIELD_LABEL_LOCATION,
   FIELD_LABEL_LOGS,
@@ -176,6 +179,7 @@ export enum STRING {
   MESSAGE_CAPTURE_TOO_MANY,
   MESSAGE_CAPTURE_UPLOAD_HIDDEN,
   MESSAGE_CHANGE_PASSWORD,
+  MESSAGE_CONFIGURE_LOCATION,
   MESSAGE_COULD_NOT_SAVE,
   MESSAGE_DATA_SOURCE_NOT_CONFIGURED,
   MESSAGE_DEFAULT_FILTERS,
@@ -237,11 +241,13 @@ export enum STRING {
 
   /* TAB_ITEM */
   TAB_ITEM_ALL_PROJECTS,
+  TAB_ITEM_CAPTURE,
   TAB_ITEM_CHARTS,
   TAB_ITEM_FIELDS,
   TAB_ITEM_GALLERY,
   TAB_ITEM_IDENTIFICATION,
   TAB_ITEM_MY_PROJECTS,
+  TAB_ITEM_SESSION,
   TAB_ITEM_TABLE,
 
   /* JOB STATUS */
@@ -267,8 +273,8 @@ export enum STRING {
   TOOLTIP_SCORE,
   TOOLTIP_SESSION,
   TOOLTIP_SITE,
-
   TOOLTIP_STORAGE,
+  TOOLTIP_VIEW_SOURCE_FILE,
 
   /* OTHER */
   ABOUT_ROLE,
@@ -306,11 +312,13 @@ export enum STRING {
   OR,
   OVERVIEW,
   PIPELINES,
+  PROCESS,
   RECENT,
   REJECT_ID_SHORT,
   REJECT_ID,
   REMOVE_MEMBER,
   REMOVE_TAXA_LIST_TAXON,
+  RESULTS_CAPTURES,
   RESULTS_MEMBERS,
   RESULTS,
   SELECT_COLUMNS,
@@ -320,7 +328,12 @@ export enum STRING {
   SET_PASSWORD_DETAILS,
   SET_PASSWORD,
   SETTINGS,
+  SHOW_DETECTIONS,
+  SNAP_TO_DETECTIONS,
   SORT_BY,
+  SORT_JOBS_ACTIVITY,
+  SORT_OCCURRENCE_UPDATES,
+  SORT_RECENT_CAPTURES,
   STAGES,
   SUMMARY,
   TABLE_COLUMNS,
@@ -335,6 +348,7 @@ export enum STRING {
   VERIFIED_BY,
   VERIFIED,
   VIEW_IN_SESSION,
+  VIEW_SETTINGS,
   YOU,
 }
 
@@ -345,12 +359,14 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.BACK]: 'Back',
   [STRING.CANCEL]: 'Cancel',
   [STRING.CHANGE_IMAGE]: 'Change image',
+  [STRING.CHANGE_SORT_ORDER]: 'Change sort order',
   [STRING.CHOOSE_IMAGE]: 'Choose image',
   [STRING.CLEAR_FILTERS]: 'Clear filters',
   [STRING.CLEAR]: 'Clear',
   [STRING.COLLAPSE]: 'Collapse',
   [STRING.CONFIRM]: 'Confirm',
   [STRING.CONFIRMED]: 'Confirmed',
+  [STRING.CREATE_NEW]: 'Create new',
   [STRING.CURRENT_LOCATION]: 'Use current location',
   [STRING.DELETE]: 'Delete',
   [STRING.DELETED]: 'Deleted',
@@ -360,12 +376,13 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.EXPAND]: 'Expand',
   [STRING.LOGIN]: 'Login',
   [STRING.LOGOUT]: 'Logout',
-  [STRING.MORE]: 'More',
   [STRING.MANAGE_ACCESS]: 'Manage access',
+  [STRING.MORE]: 'More',
   [STRING.NEXT]: 'Next',
   [STRING.POPULATE]: 'Populate',
   [STRING.PREVIOUS]: 'Previous',
   [STRING.PROCESS_NOW]: 'Process now',
+  [STRING.PROCESS]: 'Process',
   [STRING.QUEUED]: 'Queued',
   [STRING.REFRESH]: 'Refresh',
   [STRING.REGISTER_PIPELINES]: 'Register pipelines',
@@ -417,8 +434,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_EMAIL]: 'Email',
   [STRING.FIELD_LABEL_ENDPOINT]: 'Endpoint URL',
   [STRING.FIELD_LABEL_ERRORS]: 'Errors',
-  [STRING.FIELD_LABEL_FILENAME]: 'Filename',
   [STRING.FIELD_LABEL_FILE_SIZE]: 'File size',
+  [STRING.FIELD_LABEL_FILENAME]: 'Filename',
   [STRING.FIELD_LABEL_FINISHED_AT]: 'Finished at',
   [STRING.FIELD_LABEL_FIRST_DATE]: 'First date',
   [STRING.FIELD_LABEL_FORMAT]: 'Format',
@@ -430,9 +447,10 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_JOB]: 'Job',
   [STRING.FIELD_LABEL_JOBS]: 'Jobs',
   [STRING.FIELD_LABEL_KEY]: 'Key',
-  [STRING.FIELD_LABEL_LAST_SEEN]: 'Last seen',
   [STRING.FIELD_LABEL_LAST_DATE]: 'Last date',
+  [STRING.FIELD_LABEL_LAST_SEEN]: 'Last seen',
   [STRING.FIELD_LABEL_LAST_SYNCED]: 'Last synced with data source',
+  [STRING.FIELD_LABEL_LATEST_JOB_STATUS]: 'Latest job status',
   [STRING.FIELD_LABEL_LATITUDE]: 'Latitude',
   [STRING.FIELD_LABEL_LOCATION]: 'Location',
   [STRING.FIELD_LABEL_LOGS]: 'Logs',
@@ -524,6 +542,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'Station must be created before uploading captures.',
   [STRING.MESSAGE_CHANGE_PASSWORD]:
     'Contact an administrator to change your email or password.',
+  [STRING.MESSAGE_CONFIGURE_LOCATION]:
+    'Configure location for stations to see them on the map.',
   [STRING.MESSAGE_COULD_NOT_SAVE]: 'Could not save',
   [STRING.MESSAGE_DATA_SOURCE_NOT_CONFIGURED]:
     'A data source must be configured and saved before syncing captures.',
@@ -557,7 +577,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_PERMISSIONS_MISSING]:
     'Permissions missing to perform the action',
   [STRING.MESSAGE_PROCESS_NOW_TOOLTIP]:
-    'Process this single image with presets',
+    'Process this single capture with presets',
   [STRING.MESSAGE_REMOVE_MEMBER_CONFIRM]:
     'Are you sure you want to remove {{user}} from the team?',
   [STRING.MESSAGE_REMOVE_TAXA_LIST_TAXON_CONFIRM]:
@@ -601,11 +621,13 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
 
   /* TAB_ITEM */
   [STRING.TAB_ITEM_ALL_PROJECTS]: 'All projects',
+  [STRING.TAB_ITEM_CAPTURE]: 'Capture',
   [STRING.TAB_ITEM_CHARTS]: 'Charts',
   [STRING.TAB_ITEM_FIELDS]: 'Fields',
   [STRING.TAB_ITEM_GALLERY]: 'Gallery view',
   [STRING.TAB_ITEM_IDENTIFICATION]: 'Identification',
   [STRING.TAB_ITEM_MY_PROJECTS]: 'My projects',
+  [STRING.TAB_ITEM_SESSION]: 'Session',
   [STRING.TAB_ITEM_TABLE]: 'Table view',
 
   /* JOB STATUS */
@@ -646,6 +668,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'A site is a physical location where monitoring is taking place. One or many stations can be connected to a site.',
   [STRING.TOOLTIP_STORAGE]:
     'A storage is a place where captures are kept, for example a S3 bucket. One or many stations can be connected to a storage.',
+  [STRING.TOOLTIP_VIEW_SOURCE_FILE]: 'View source file',
 
   /* OTHER */
   [STRING.ABOUT_ROLE]: 'About role',
@@ -688,6 +711,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.REJECT_ID]: 'Reject ID',
   [STRING.REMOVE_MEMBER]: 'Remove member',
   [STRING.REMOVE_TAXA_LIST_TAXON]: 'Remove taxon',
+  [STRING.RESULTS_CAPTURES]: '{{total}} capture(s)',
   [STRING.RESULTS_MEMBERS]: '{{total}} member(s)',
   [STRING.RESULTS]: '{{total}} result(s)',
   [STRING.SELECT_COLUMNS]: 'Select columns',
@@ -697,7 +721,12 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SET_PASSWORD_DETAILS]: 'Please set a new password for your acccount.',
   [STRING.SET_PASSWORD]: 'Set password',
   [STRING.SETTINGS]: 'Settings',
+  [STRING.SHOW_DETECTIONS]: 'Show detections',
+  [STRING.SNAP_TO_DETECTIONS]: 'Snap to captures with detections',
   [STRING.SORT_BY]: 'Sort by',
+  [STRING.SORT_JOBS_ACTIVITY]: 'Jobs activity',
+  [STRING.SORT_OCCURRENCE_UPDATES]: 'Occurrence updates',
+  [STRING.SORT_RECENT_CAPTURES]: 'Recent captures',
   [STRING.STAGES]: 'Stages',
   [STRING.SUMMARY]: 'Summary',
   [STRING.TABLE_COLUMNS]: 'Table columns',
@@ -712,6 +741,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.VERIFIED_BY]: 'Verified by\n{{name}}',
   [STRING.VERIFIED]: 'Verified',
   [STRING.VIEW_IN_SESSION]: 'View in session',
+  [STRING.VIEW_SETTINGS]: 'View settings',
   [STRING.YOU]: 'You',
 }
 

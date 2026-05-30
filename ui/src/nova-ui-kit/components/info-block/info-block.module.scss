@@ -1,0 +1,7 @@
+.bubble {
+  @include bubble-label();
+
+  @media not print {
+    margin: 4px 0;
+  }
+}

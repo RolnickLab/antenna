@@ -4679,6 +4679,324 @@ class TestCachedCountsDefaultFilters(APITestCase):
             )
 
 
+class TestLcaRankBetween(TestCase):
+    """Pure-Python LCA over (taxon_id, rank, parents_json) tuples.
+
+    Inputs encode each taxon as ``(id, rank_str, [{"id": int, "rank": str}, ...])``
+    where the parents list is ordered root → immediate-parent (matches
+    Taxon.parents_json layout).
+    """
+
+    GENUS_NOCTUA = (
+        101,
+        "GENUS",
+        [
+            {"id": 1, "rank": "KINGDOM"},
+            {"id": 4, "rank": "ORDER"},
+            {"id": 30, "rank": "FAMILY"},
+        ],
+    )
+    SPECIES_NOCTUA_PRONUBA = (
+        201,
+        "SPECIES",
+        [
+            {"id": 1, "rank": "KINGDOM"},
+            {"id": 4, "rank": "ORDER"},
+            {"id": 30, "rank": "FAMILY"},
+            {"id": 101, "rank": "GENUS"},
+        ],
+    )
+    SPECIES_NOCTUA_FIMBRIATA = (
+        202,
+        "SPECIES",
+        [
+            {"id": 1, "rank": "KINGDOM"},
+            {"id": 4, "rank": "ORDER"},
+            {"id": 30, "rank": "FAMILY"},
+            {"id": 101, "rank": "GENUS"},
+        ],
+    )
+    SPECIES_DIFFERENT_FAMILY = (
+        301,
+        "SPECIES",
+        [
+            {"id": 1, "rank": "KINGDOM"},
+            {"id": 4, "rank": "ORDER"},
+            {"id": 99, "rank": "FAMILY"},
+        ],
+    )
+    SPECIES_DIFFERENT_ORDER = (
+        401,
+        "SPECIES",
+        [
+            {"id": 1, "rank": "KINGDOM"},
+            {"id": 5, "rank": "ORDER"},
+        ],
+    )
+
+    def test_identical_taxa_lca_is_self_rank(self):
+        from ami.main.models_future.occurrence import lca_rank_between
+
+        rank = lca_rank_between(self.SPECIES_NOCTUA_PRONUBA, self.SPECIES_NOCTUA_PRONUBA)
+        self.assertEqual(rank, TaxonRank.SPECIES)
+
+    def test_sister_species_share_genus(self):
+        from ami.main.models_future.occurrence import lca_rank_between
+
+        rank = lca_rank_between(self.SPECIES_NOCTUA_PRONUBA, self.SPECIES_NOCTUA_FIMBRIATA)
+        self.assertEqual(rank, TaxonRank.GENUS)
+
+    def test_genus_vs_species_in_same_genus(self):
+        from ami.main.models_future.occurrence import lca_rank_between
+
+        rank = lca_rank_between(self.GENUS_NOCTUA, self.SPECIES_NOCTUA_PRONUBA)
+        self.assertEqual(rank, TaxonRank.GENUS)
+
+    def test_different_family_same_order(self):
+        from ami.main.models_future.occurrence import lca_rank_between
+
+        rank = lca_rank_between(self.SPECIES_NOCTUA_PRONUBA, self.SPECIES_DIFFERENT_FAMILY)
+        self.assertEqual(rank, TaxonRank.ORDER)
+
+    def test_different_order_same_kingdom(self):
+        from ami.main.models_future.occurrence import lca_rank_between
+
+        rank = lca_rank_between(self.SPECIES_NOCTUA_PRONUBA, self.SPECIES_DIFFERENT_ORDER)
+        self.assertEqual(rank, TaxonRank.KINGDOM)
+
+    def test_no_shared_ancestor_returns_none(self):
+        from ami.main.models_future.occurrence import lca_rank_between
+
+        rootless = (501, "SPECIES", [])
+        rank = lca_rank_between(rootless, self.SPECIES_NOCTUA_PRONUBA)
+        self.assertIsNone(rank)
+
+    def test_unknown_rank_excluded_from_lca(self):
+        """TaxonRank.UNKNOWN sorts after SPECIES in OrderedEnum definition order,
+        so without explicit exclusion `UNKNOWN >= ORDER` would be True and a
+        shared UNKNOWN ancestor would wrongly count as under-order agreement.
+        """
+        from ami.main.models_future.occurrence import lca_rank_between
+
+        # Both chains share a KINGDOM ancestor and an UNKNOWN ancestor; the LCA
+        # at a real taxonomic rank is KINGDOM, not UNKNOWN.
+        unknown_a = (
+            701,
+            "SPECIES",
+            [
+                {"id": 1, "rank": "KINGDOM"},
+                {"id": 999, "rank": "UNKNOWN"},
+            ],
+        )
+        unknown_b = (
+            702,
+            "SPECIES",
+            [
+                {"id": 1, "rank": "KINGDOM"},
+                {"id": 999, "rank": "UNKNOWN"},
+            ],
+        )
+        rank = lca_rank_between(unknown_a, unknown_b)
+        self.assertEqual(rank, TaxonRank.KINGDOM)
+
+
+class TestWilsonInterval(TestCase):
+    """Pure-Python Wilson score confidence interval."""
+
+    def test_zero_total_returns_none(self):
+        from ami.utils.stats import wilson_interval
+
+        self.assertIsNone(wilson_interval(0, 0))
+
+    def test_known_value_8_of_10(self):
+        """Textbook Wilson 95% CI for 8/10 ≈ [0.490, 0.943]."""
+        from ami.utils.stats import wilson_interval
+
+        low, high = wilson_interval(8, 10)
+        self.assertAlmostEqual(low, 0.4902, places=3)
+        self.assertAlmostEqual(high, 0.9433, places=3)
+
+    def test_bounds_stay_within_unit_interval(self):
+        """At p̂ = 1.0 the normal approximation would exceed 1; Wilson must not."""
+        from ami.utils.stats import wilson_interval
+
+        low, high = wilson_interval(1, 1)
+        self.assertGreaterEqual(low, 0.0)
+        self.assertLessEqual(high, 1.0)
+        self.assertLess(low, high)
+
+    def test_interval_tightens_as_n_grows(self):
+        from ami.utils.stats import wilson_interval
+
+        narrow = wilson_interval(90, 100)
+        wide = wilson_interval(9, 10)
+        self.assertLess(narrow[1] - narrow[0], wide[1] - wide[0])
+
+    def test_successes_out_of_range_raises(self):
+        """successes > total can only be a caller bug — fail loud, not with an
+        opaque math-domain error from a negative sqrt."""
+        from ami.utils.stats import wilson_interval
+
+        with self.assertRaises(ValueError):
+            wilson_interval(5, 3)
+        with self.assertRaises(ValueError):
+            wilson_interval(-1, 10)
+
+
+class TestCohensKappa(TestCase):
+    """Pure-Python Cohen's kappa over (human_taxon, model_taxon) pairs."""
+
+    def test_empty_returns_none(self):
+        from ami.utils.stats import cohens_kappa
+
+        self.assertIsNone(cohens_kappa([]))
+
+    def test_single_category_is_undefined(self):
+        """Everyone picks the same taxon → expected agreement 1.0 → kappa undefined."""
+        from ami.utils.stats import cohens_kappa
+
+        self.assertIsNone(cohens_kappa([(1, 1), (1, 1), (1, 1)]))
+
+    def test_perfect_agreement_two_categories(self):
+        from ami.utils.stats import cohens_kappa
+
+        self.assertEqual(cohens_kappa([(1, 1), (2, 2)]), 1.0)
+
+    def test_known_2x2_value(self):
+        """observed 0.75, expected 0.5 → kappa = 0.5.
+
+        pairs: 3× human=1, 1× human=2; model 1 twice, 2 twice; 3 of 4 match.
+        """
+        from ami.utils.stats import cohens_kappa
+
+        self.assertEqual(cohens_kappa([(1, 1), (1, 1), (2, 2), (1, 2)]), 0.5)
+
+    def test_can_be_negative(self):
+        """Systematic disagreement → worse than chance → negative kappa."""
+        from ami.utils.stats import cohens_kappa
+
+        kappa = cohens_kappa([(1, 2), (2, 1), (1, 2), (2, 1)])
+        self.assertLess(kappa, 0.0)
+
+
+class TestModelAgreementForProject(APITestCase):
+    """Aggregation function over a filtered Occurrence queryset.
+
+    Covers four bucket transitions: unverified, verified+exact-agreed,
+    verified+any-rank-agreed (no threshold), verified+disagreed-no-shared-rank.
+    Optional coarsest_rank threshold cases handled in the viewset tests below.
+    """
+
+    def setUp(self) -> None:
+        project, deployment = setup_test_project()
+        create_taxa(project=project)
+        create_captures(deployment=deployment)
+        # Add a sibling family + species under the same ORDER so we can exercise
+        # the "different family, same order → under-order" bucket.
+        lepidoptera = Taxon.objects.get(name="Lepidoptera", projects=project)
+        pieridae = Taxon.objects.create(name="Pieridae", parent=lepidoptera, rank=TaxonRank.FAMILY.name)
+        pieridae.projects.add(project)
+        pieris = Taxon.objects.create(name="Pieris brassicae", parent=pieridae, rank=TaxonRank.SPECIES.name)
+        pieris.projects.add(project)
+        # Use Vanessa atalanta as the baseline machine prediction so all
+        # occurrences start with a known classification.
+        self.vanessa_atalanta = Taxon.objects.get(name="Vanessa atalanta", projects=project)
+        create_occurrences(deployment=deployment, num=4, taxon=self.vanessa_atalanta)
+        # Populate parents_json on every taxon — fixtures don't do this.
+        Taxon.objects.update_all_parents()
+        self.project = project
+        self.deployment = deployment
+        self.vanessa_cardui = Taxon.objects.get(name="Vanessa cardui", projects=project)
+        self.pieris_brassicae = pieris
+        self.user = User.objects.create_user(email="ider@insectai.org")  # type: ignore
+
+    def _identify(self, occurrence: Occurrence, taxon: Taxon) -> Identification:
+        return Identification.objects.create(user=self.user, occurrence=occurrence, taxon=taxon)
+
+    def test_empty_project_returns_zeros_not_nans(self):
+        from ami.main.models_future.occurrence import model_agreement_for_project
+
+        empty_project = Project.objects.create(name="empty")
+        result = model_agreement_for_project(Occurrence.objects.filter(project=empty_project))
+        self.assertEqual(result["total_occurrences"], 0)
+        self.assertEqual(result["verified_count"], 0)
+        self.assertEqual(result["verified_pct"], 0.0)
+        self.assertEqual(result["agreed_exact_pct"], 0.0)
+        self.assertEqual(result["agreed_any_rank_pct"], 0.0)
+        # No threshold passed → coarser-rank fields null.
+        self.assertIsNone(result["agreement_coarsest_rank"])
+        self.assertIsNone(result["agreed_coarser_rank_count"])
+        self.assertIsNone(result["agreed_coarser_rank_pct"])
+
+    def test_buckets_canonical_cases(self):
+        from ami.main.models_future.occurrence import model_agreement_for_project
+
+        occurrences = list(Occurrence.objects.filter(project=self.project).order_by("pk"))
+        self.assertEqual(len(occurrences), 4)
+        # 0: verified, machine == user (exact agreement at SPECIES)
+        self._identify(occurrences[0], self.vanessa_atalanta)
+        # 1: verified, sister species (LCA at GENUS)
+        self._identify(occurrences[1], self.vanessa_cardui)
+        # 2: verified, different family same order (LCA at ORDER)
+        self._identify(occurrences[2], self.pieris_brassicae)
+        # 3: unverified
+
+        result = model_agreement_for_project(Occurrence.objects.filter(project=self.project))
+        self.assertEqual(result["total_occurrences"], 4)
+        self.assertEqual(result["verified_count"], 3)
+        self.assertEqual(result["agreed_exact_count"], 1)
+        self.assertEqual(result["agreed_any_rank_count"], 3)
+        self.assertAlmostEqual(result["verified_pct"], 0.75)
+        self.assertAlmostEqual(result["agreed_exact_pct"], 1 / 3, places=3)
+        self.assertAlmostEqual(result["agreed_any_rank_pct"], 1.0)
+
+    def test_coarsest_rank_threshold_filters_shallow_lcas(self):
+        """With coarsest_rank=FAMILY, an ORDER-only LCA pair is excluded."""
+        from ami.main.models import TaxonRank
+        from ami.main.models_future.occurrence import model_agreement_for_project
+
+        occurrences = list(Occurrence.objects.filter(project=self.project).order_by("pk"))
+        # 0: exact (SPECIES) — counts in both
+        self._identify(occurrences[0], self.vanessa_atalanta)
+        # 1: sister species (LCA = GENUS, deeper than FAMILY) — counts in both
+        self._identify(occurrences[1], self.vanessa_cardui)
+        # 2: different family same order (LCA = ORDER, NOT >= FAMILY) — counts in any_rank only
+        self._identify(occurrences[2], self.pieris_brassicae)
+
+        result = model_agreement_for_project(
+            Occurrence.objects.filter(project=self.project),
+            coarsest_rank=TaxonRank.FAMILY,
+        )
+        self.assertEqual(result["agreed_any_rank_count"], 3)
+        self.assertEqual(result["agreement_coarsest_rank"], "FAMILY")
+        # exact + GENUS LCA = 2; ORDER LCA excluded
+        self.assertEqual(result["agreed_coarser_rank_count"], 2)
+        self.assertAlmostEqual(result["agreed_coarser_rank_pct"], 2 / 3, places=3)
+
+    def test_taxon_less_verification_excluded_from_denominator(self):
+        """A comment-only verification (Identification.taxon=None) has a machine
+        prediction but no human taxon. It can neither agree nor disagree, so it
+        must be excluded from comparable_count, not just from the numerators."""
+        from ami.main.models_future.occurrence import model_agreement_for_project
+
+        occurrences = list(Occurrence.objects.filter(project=self.project).order_by("pk"))
+        # 0: exact agreement (machine == user)
+        self._identify(occurrences[0], self.vanessa_atalanta)
+        # 1: comment-only verification — has a prediction but no human taxon
+        Identification.objects.create(user=self.user, occurrence=occurrences[1], taxon=None)
+
+        result = model_agreement_for_project(Occurrence.objects.filter(project=self.project))
+        # Both rows are "verified" and both have a machine prediction.
+        self.assertEqual(result["verified_count"], 2)
+        self.assertEqual(result["verified_with_prediction_count"], 2)
+        # But only the row with a human taxon is comparable.
+        self.assertEqual(result["verified_without_taxon_count"], 1)
+        self.assertEqual(result["comparable_count"], 1)
+        # 1 exact agreement out of 1 comparable → 100%, not 50%.
+        self.assertEqual(result["agreed_exact_count"], 1)
+        self.assertAlmostEqual(result["agreed_exact_pct"], 1.0)
+
+
 class TestOccurrenceStatsViewSet(APITestCase):
     """Covers /api/v2/occurrences/stats/top-identifiers/.
 
@@ -4761,3 +5079,298 @@ class TestOccurrenceStatsViewSet(APITestCase):
         retrieve_response = self.client.get(f"/api/v2/occurrences/{occurrence.pk}/?project_id={self.project.pk}")
         self.assertEqual(stats_response.status_code, 200, "stats URL must resolve")
         self.assertEqual(retrieve_response.status_code, 200, "occurrence retrieve must still work")
+
+    # ----- /occurrences/stats/model-agreement/ -----
+
+    agreement_url = "/api/v2/occurrences/stats/model-agreement/"
+
+    def test_agreement_no_project_id_returns_400(self):
+        response = self.client.get(self.agreement_url)
+        self.assertEqual(response.status_code, 400)
+
+    def test_agreement_draft_project_404_for_anon(self):
+        self.project.draft = True
+        self.project.save()
+        response = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 404)
+
+    def test_agreement_empty_returns_zero_pcts(self):
+        response = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["project_id"], self.project.pk)
+        self.assertEqual(body["total_occurrences"], 4)
+        self.assertEqual(body["verified_count"], 0)
+        self.assertEqual(body["verified_pct"], 0.0)
+        self.assertEqual(body["agreed_exact_pct"], 0.0)
+        self.assertEqual(body["agreed_any_rank_pct"], 0.0)
+        # No ?agreement_coarsest_rank → threshold + coarser fields null.
+        self.assertIsNone(body["agreement_coarsest_rank"])
+        self.assertIsNone(body["agreed_coarser_rank_count"])
+        self.assertIsNone(body["agreed_coarser_rank_pct"])
+
+    def test_agreement_happy_path(self):
+        """One verified occurrence; user agrees with the machine prediction → exact match.
+
+        The fixture creates a single classification per occurrence via
+        `create_occurrences()`, which uses a random taxon. We identify the
+        first occurrence with that same taxon to force an exact match.
+        """
+        occurrence = Occurrence.objects.filter(project=self.project).order_by("pk").first()
+        # The machine prediction is whatever `create_occurrences()` picked — match it.
+        machine_taxon = occurrence.detections.first().classifications.first().taxon
+        Taxon.objects.update_all_parents()
+        Identification.objects.create(user=self.alice, occurrence=occurrence, taxon=machine_taxon)
+
+        response = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["total_occurrences"], 4)
+        self.assertEqual(body["verified_count"], 1)
+        self.assertEqual(body["verified_with_prediction_count"], 1)
+        self.assertEqual(body["no_prediction_count"], 0)
+        self.assertEqual(body["agreed_exact_count"], 1)
+        self.assertEqual(body["agreed_any_rank_count"], 1)
+
+    def test_agreement_any_rank_bucket(self):
+        """Disagreement at species but same genus → counted as any-rank agreement, not exact.
+
+        Pin the machine prediction and the human ID to two distinct species under
+        the same genus (Vanessa). LCA between the two species is GENUS, so the
+        occurrence falls into the any-rank bucket without contributing to
+        agreed_exact_count. Both taxa are fixed rather than the random fixture
+        pick (`create_detections` assigns a random taxon), so the test is
+        deterministic — a random non-species pick has no sister species and used
+        to flake ~50% of runs.
+        """
+        occurrence = Occurrence.objects.filter(project=self.project).order_by("pk").first()
+        species = list(Taxon.objects.filter(parent__name="Vanessa", rank=TaxonRank.SPECIES.name).order_by("name"))
+        self.assertGreaterEqual(len(species), 2, "Fixture must define ≥2 Vanessa species")
+        machine_species, human_species = species[0], species[1]
+        # Pin the machine prediction deterministically, overriding the random fixture taxon.
+        Classification.objects.filter(detection__occurrence=occurrence).update(taxon=machine_species)
+        Taxon.objects.update_all_parents()
+        Identification.objects.create(user=self.alice, occurrence=occurrence, taxon=human_species)
+
+        response = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["verified_count"], 1)
+        self.assertEqual(body["verified_with_prediction_count"], 1)
+        self.assertEqual(body["agreed_exact_count"], 0)
+        self.assertEqual(body["agreed_any_rank_count"], 1)
+        # 0/1 exact, 1/1 any-rank
+        self.assertEqual(body["agreed_exact_pct"], 0.0)
+        self.assertEqual(body["agreed_any_rank_pct"], 1.0)
+
+    def test_agreement_ci_and_kappa_present(self):
+        """Wilson CI bounds bracket the rate; kappa is null for a single-category set."""
+        occurrence = Occurrence.objects.filter(project=self.project).order_by("pk").first()
+        machine_taxon = occurrence.detections.first().classifications.first().taxon
+        Taxon.objects.update_all_parents()
+        Identification.objects.create(user=self.alice, occurrence=occurrence, taxon=machine_taxon)
+
+        body = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}").json()
+        self.assertIsNotNone(body["agreed_exact_ci_low"])
+        self.assertIsNotNone(body["agreed_exact_ci_high"])
+        self.assertLessEqual(body["agreed_exact_ci_low"], body["agreed_exact_pct"])
+        self.assertGreaterEqual(body["agreed_exact_ci_high"], body["agreed_exact_pct"])
+        # One verified occurrence, exact match → a single taxon category → kappa undefined.
+        self.assertIsNone(body["cohens_kappa"])
+
+    def test_agreement_empty_ci_and_kappa_null(self):
+        """No verified occurrences → CI bounds and kappa are null, not zero."""
+        body = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}").json()
+        self.assertIsNone(body["agreed_exact_ci_low"])
+        self.assertIsNone(body["agreed_exact_ci_high"])
+        self.assertIsNone(body["agreed_any_rank_ci_low"])
+        self.assertIsNone(body["agreed_any_rank_ci_high"])
+        self.assertIsNone(body["cohens_kappa"])
+
+    def test_agreement_coarsest_rank_invalid_returns_400(self):
+        response = self.client.get(
+            f"{self.agreement_url}?project_id={self.project.pk}&agreement_coarsest_rank=GARBAGE"
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("agreement_coarsest_rank", response.json())
+
+    def test_agreement_coarsest_rank_unknown_rejected(self):
+        """UNKNOWN is a real enum member but not a meaningful threshold."""
+        response = self.client.get(
+            f"{self.agreement_url}?project_id={self.project.pk}&agreement_coarsest_rank=UNKNOWN"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_agreement_coarsest_rank_blank_returns_400(self):
+        """An empty value must 400 like any other invalid rank, not silently no-op."""
+        response = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}&agreement_coarsest_rank=")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("agreement_coarsest_rank", response.json())
+
+    def test_agreement_coarsest_rank_echoed_in_response(self):
+        response = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}&agreement_coarsest_rank=family")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        # Param is case-insensitive; response echoes enum name (uppercase).
+        self.assertEqual(body["agreement_coarsest_rank"], "FAMILY")
+        # No verified occurrences in this fixture → coarser fields present but zero.
+        self.assertEqual(body["agreed_coarser_rank_count"], 0)
+        self.assertEqual(body["agreed_coarser_rank_pct"], 0.0)
+
+    def test_agreement_filter_passthrough(self):
+        """`?deployment=` should narrow the set."""
+        other_deployment = Deployment.objects.create(name="other", project=self.project)
+        response = self.client.get(
+            f"{self.agreement_url}?project_id={self.project.pk}&deployment={other_deployment.pk}"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["total_occurrences"], 0)
+
+    def test_agreement_apply_defaults_false_bypasses_score_threshold(self):
+        """A score threshold filters out occurrences; apply_defaults=false restores them."""
+        self.project.default_filters_score_threshold = 0.99
+        self.project.save()
+        gated = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}").json()
+        bypassed = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}&apply_defaults=false").json()
+        self.assertGreaterEqual(bypassed["total_occurrences"], gated["total_occurrences"])
+        # Sanity: with threshold=0.99 and fixture's score=0.9, gated should be 0.
+        self.assertEqual(gated["total_occurrences"], 0)
+        self.assertEqual(bypassed["total_occurrences"], 4)
+
+    def test_options_emits_response_field_schema(self):
+        """OPTIONS on a stats action returns the response serializer's field
+        schema (with `help_text`) under `actions.GET`, so frontends can read
+        stat descriptions without hardcoding them."""
+        response = self.client.options(f"{self.agreement_url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIn("actions", body)
+        self.assertIn("GET", body["actions"])
+        fields = body["actions"]["GET"]
+        self.assertIn("verified_pct", fields)
+        self.assertEqual(fields["verified_pct"]["help_text"], "verified_count / total_occurrences")
+        self.assertIn("cohens_kappa", fields)
+        self.assertIn("beyond chance", fields["cohens_kappa"]["help_text"])
+
+
+class TestTaxaVerification(APITestCase):
+    """Per-taxon verification + human/model agreement annotations and the verified filter (#1316)."""
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.taxa_list = create_taxa(self.project)
+        self.order = Taxon.objects.get(name="Lepidoptera")
+        self.family = Taxon.objects.get(name="Nymphalidae")
+        self.genus = Taxon.objects.get(name="Vanessa")
+        self.cardui = Taxon.objects.get(name="Vanessa cardui")
+        self.atalanta = Taxon.objects.get(name="Vanessa atalanta")
+        self.itea = Taxon.objects.get(name="Vanessa itea")
+
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=3)
+        # 3 occurrences ML-determined to cardui, 1 to itea (left unverified)
+        create_occurrences(deployment=self.deployment, num=3, taxon=self.cardui, determination_score=0.9)
+        create_occurrences(deployment=self.deployment, num=1, taxon=self.itea, determination_score=0.9)
+
+        self.user = User.objects.create_user(email="verifier@insectai.org", is_staff=True, is_superuser=True)
+        self.client.force_authenticate(user=self.user)
+
+        cardui_occ = list(Occurrence.objects.filter(project=self.project, determination=self.cardui).order_by("pk"))
+        self.assertEqual(len(cardui_occ), 3)
+        self.occ_pred, self.occ_exact, self.occ_disagree = cardui_occ
+
+        # occ_pred: user agrees with the model prediction (cardui), agreed_with_prediction set
+        Identification.objects.create(
+            occurrence=self.occ_pred,
+            taxon=self.cardui,
+            user=self.user,
+            agreed_with_prediction=self.occ_pred.best_prediction,
+        )
+        # occ_exact: same taxon as the model, but not via the "agree" workflow
+        Identification.objects.create(occurrence=self.occ_exact, taxon=self.cardui, user=self.user)
+        # occ_disagree: user overrides to a different taxon (atalanta) than the model (cardui)
+        Identification.objects.create(occurrence=self.occ_disagree, taxon=self.atalanta, user=self.user)
+
+        self.itea_occ = Occurrence.objects.get(project=self.project, determination=self.itea)
+        self.list_url = f"/api/v2/taxa/?project_id={self.project.pk}&limit=1000"
+
+    def _detail(self, taxon):
+        res = self.client.get(f"/api/v2/taxa/{taxon.pk}/?project_id={self.project.pk}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return res.json()
+
+    def _list_by_name(self, url=None):
+        res = self.client.get(url or self.list_url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return {row["name"]: row for row in res.json()["results"]}
+
+    # --- verified_count (hierarchical rollup) ---
+
+    def test_verified_count_species(self):
+        self.assertEqual(self._detail(self.cardui)["verified_count"], 2)
+        self.assertEqual(self._detail(self.atalanta)["verified_count"], 1)
+        self.assertEqual(self._detail(self.itea)["verified_count"], 0)
+
+    def test_verified_count_rolls_up_to_ancestors(self):
+        # Verifying species marks genus/family/order verified, occurrence-weighted by descendants.
+        for ancestor in (self.genus, self.family, self.order):
+            self.assertEqual(self._detail(ancestor)["verified_count"], 3, ancestor.name)
+
+    # --- list field values ---
+
+    def test_list_field_values(self):
+        rows = self._list_by_name()
+        self.assertEqual(rows["Vanessa cardui"]["occurrences_count"], 2)
+        self.assertEqual(rows["Vanessa cardui"]["verified_count"], 2)
+        self.assertEqual(rows["Vanessa atalanta"]["verified_count"], 1)
+        self.assertEqual(rows["Vanessa itea"]["verified_count"], 0)
+
+    # --- verified=true|false filter ---
+
+    def test_verified_filter_true_false_complement(self):
+        all_names = set(self._list_by_name().keys())
+        verified = set(self._list_by_name(self.list_url + "&verified=true").keys())
+        unverified = set(self._list_by_name(self.list_url + "&verified=false").keys())
+        self.assertEqual(verified, {"Vanessa cardui", "Vanessa atalanta"})
+        self.assertEqual(unverified, {"Vanessa itea"})
+        # verified=false is the strict complement of verified=true on the filtered set.
+        self.assertEqual(verified | unverified, all_names)
+        self.assertEqual(verified & unverified, set())
+
+    def test_ordering_by_verified_count(self):
+        res = self.client.get(self.list_url + "&ordering=verified_count")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        counts = [row["verified_count"] for row in res.json()["results"]]
+        self.assertEqual(counts, sorted(counts))
+
+    # --- apply_defaults handling ---
+
+    def test_verified_filter_respects_apply_defaults(self):
+        self.project.default_filters_exclude_taxa.add(self.atalanta)
+
+        verified_default = set(self._list_by_name(self.list_url + "&verified=true").keys())
+        self.assertEqual(verified_default, {"Vanessa cardui"})
+
+        verified_bypassed = set(self._list_by_name(self.list_url + "&verified=true&apply_defaults=false").keys())
+        self.assertEqual(verified_bypassed, {"Vanessa cardui", "Vanessa atalanta"})
+
+    # --- collection filter must not inflate counts via the detections join ---
+
+    def test_verified_count_not_inflated_by_collection_join(self):
+        # A second detection on a verified occurrence means the ?collection= INNER JOIN to
+        # detections yields two rows for that occurrence; the rollup must still count it once.
+        extra_detection = Detection.objects.create(
+            source_image=self.occ_exact.best_detection.source_image,
+            occurrence=self.occ_exact,
+            timestamp=self.occ_exact.best_detection.timestamp,
+            bbox=[0.5, 0.5, 0.6, 0.6],
+            path="detections/test_detection_dup.jpg",
+        )
+        extra_detection.classifications.create(taxon=self.cardui, score=0.9, timestamp=datetime.datetime.now())
+        self.assertEqual(self.occ_exact.detections.count(), 2)
+
+        collection = SourceImageCollection.objects.create(project=self.project, name="verif-dedup")
+        collection.images.set(SourceImage.objects.filter(deployment=self.deployment))
+
+        rows = self._list_by_name(f"{self.list_url}&collection={collection.pk}")
+        # 2 verified cardui occurrences, not 3 — the duplicate detection must not double-count.
+        self.assertEqual(rows["Vanessa cardui"]["verified_count"], 2)

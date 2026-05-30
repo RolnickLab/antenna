@@ -1,8 +1,7 @@
 import { Taxon } from 'data-services/models/taxa'
-import * as Popover from 'design-system/components/popover/popover'
 import { EllipsisVerticalIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
-import { RefObject, useState } from 'react'
+import { Button, Popover } from 'nova-ui-kit'
+import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import { IdButton } from './id-button'
 import styles from './id-quick-actions.module.scss'
@@ -11,13 +10,11 @@ import { useRejectOptions } from './useRejectOptions'
 import { getCommonRanks } from './utils'
 
 interface IdQuickActionsProps {
-  containerRef?: RefObject<HTMLDivElement>
   occurrenceIds: string[]
   occurrenceTaxa: Taxon[]
 }
 
 export const IdQuickActions = ({
-  containerRef,
   occurrenceIds = [],
   occurrenceTaxa = [],
 }: IdQuickActionsProps) => {
@@ -69,13 +66,7 @@ export const IdQuickActions = ({
           <EllipsisVerticalIcon className="w-4 h-4" />
         </Button>
       </Popover.Trigger>
-      <Popover.Content
-        align="start"
-        ariaCloselabel={translate(STRING.CLOSE)}
-        container={containerRef?.current ?? undefined}
-        disableOutsideClose
-        side="right"
-      >
+      <Popover.Content className="p-0 w-auto" align="end" side="right">
         <div className={styles.wrapper}>
           {sections.map((section, index) => (
             <div key={index} className={styles.section}>

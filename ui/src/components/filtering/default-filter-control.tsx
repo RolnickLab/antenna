@@ -2,9 +2,14 @@ import classNames from 'classnames'
 import { FormRow } from 'components/form/layout/layout'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { ProjectDetails } from 'data-services/models/project-details'
-import { InputValue } from 'design-system/components/input/input'
 import { ChevronRightIcon, InfoIcon } from 'lucide-react'
-import { Button, buttonVariants, Popover, Switch } from 'nova-ui-kit'
+import {
+  Button,
+  buttonVariants,
+  InputValue,
+  Popover,
+  Switch,
+} from 'nova-ui-kit'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
@@ -44,20 +49,13 @@ export const DefaultFiltersControl = ({ field }: { field: string }) => {
 }
 
 export const DefaultFiltersTooltip = ({
-  className,
   project,
 }: {
-  className?: string
   project: ProjectDetails
 }) => (
   <Popover.Root>
     <Popover.Trigger asChild>
-      <Button
-        aria-label={translate(STRING.INFO)}
-        className={className}
-        size="icon"
-        variant="ghost"
-      >
+      <Button aria-label={translate(STRING.INFO)} size="icon" variant="ghost">
         <InfoIcon className="w-4 h-4" />
       </Button>
     </Popover.Trigger>
