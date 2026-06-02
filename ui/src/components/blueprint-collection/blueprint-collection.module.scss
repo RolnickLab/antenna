@@ -47,7 +47,7 @@
     color: var(--color-foreground);
     padding: 8px;
     box-sizing: border-box;
-    @include body-small();
+    @include body-small;
     line-height: 12px;
 
     span {

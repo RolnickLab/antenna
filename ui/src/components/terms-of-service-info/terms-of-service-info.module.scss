@@ -2,7 +2,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  @include body-small();
+  @include body-small;
   padding: 8px 16px;
   border-radius: 4px;
   background-color: var(--color-green-100);
@@ -10,7 +10,7 @@
   margin-bottom: 16px;
 
   p {
-    @include body-small();
+    @include body-small;
     margin: 0;
   }
 

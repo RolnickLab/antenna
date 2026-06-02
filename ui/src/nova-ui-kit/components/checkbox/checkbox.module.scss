@@ -42,7 +42,7 @@
 }
 
 .label {
-  @include body-small();
+  @include body-small;
   color: var(--color-muted-foreground);
   margin-left: 6px;
 
