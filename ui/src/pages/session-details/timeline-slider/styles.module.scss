@@ -5,9 +5,9 @@
 
   .label {
     display: block;
-    @include body-small();
+    @include body-overline;
     font-weight: 600;
-    color: var(--color-generic-white);
+    color: var(--color-primary);
     text-transform: uppercase;
     white-space: nowrap;
   }
@@ -17,7 +17,8 @@
     justify-content: space-between;
 
     .label {
-      color: var(--color-neutral-500);
+      @include body-overline-small;
+      color: var(--color-muted-foreground);
     }
   }
 
@@ -36,7 +37,7 @@
 
   .sliderTrack {
     position: relative;
-    background-color: var(--color-neutral-400);
+    background-color: var(--color-neutral-300);
     flex-grow: 1;
     border-radius: 2px;
     height: 4px;
@@ -44,7 +45,7 @@
 
   .sliderRange {
     position: absolute;
-    background-color: var(--color-neutral-400);
+    background-color: var(--color-neutral-300);
     border-radius: 2px;
     height: 100%;
   }

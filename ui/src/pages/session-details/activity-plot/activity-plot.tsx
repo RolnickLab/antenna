@@ -1,22 +1,29 @@
+import { SessionDetails } from 'data-services/models/session-details'
+import { TimelineTick } from 'data-services/models/timeline-tick'
 import { CONSTANTS } from 'nova-ui-kit'
 import { useRef } from 'react'
 import Plot from 'react-plotly.js'
 import { getCompactTimespanString } from 'utils/date/getCompactTimespanString/getCompactTimespanString'
 import { findClosestCaptureId } from '../utils'
-import { ActivityPlotProps } from './types'
 import { useDynamicPlotWidth } from './useDynamicPlotWidth'
 
-const fontFamily = 'Mazzard, sans-serif'
-const lineColorCaptures = CONSTANTS.COLORS.neutral[500]
-const lineColorDetections = CONSTANTS.COLORS.secondary[500]
-const spikeColor = CONSTANTS.COLORS.generic.white
-const textColor = CONSTANTS.COLOR_THEME.muted.foreground
-const tooltipBgColor = CONSTANTS.COLORS.generic.white
-const tooltipBorderColor = CONSTANTS.COLOR_THEME.muted.foreground
+const fontFamily = 'Mazzard'
+const fontSize = 14
+const lineColorCaptures = CONSTANTS.COLORS.neutral[300]
+const lineColorDetections = CONSTANTS.COLOR_THEME.secondary.DEFAULT
+const spikeColor = CONSTANTS.COLOR_THEME.foreground
+const textColor = CONSTANTS.COLOR_THEME.foreground
+const tooltipBgColor = CONSTANTS.COLOR_THEME.background
+const tooltipBorderColor = CONSTANTS.COLOR_THEME.border
 
-const ActivityPlot = ({
+export interface ActivityPlotProps {
+  session: SessionDetails
+  setActiveCaptureId: (captureId: string) => void
+  timeline: TimelineTick[]
+}
+
+export const ActivityPlot = ({
   session,
-  snapToDetections,
   timeline,
   setActiveCaptureId,
 }: ActivityPlotProps) => {
@@ -130,7 +137,7 @@ const ActivityPlot = ({
               bordercolor: tooltipBorderColor,
               font: {
                 family: fontFamily,
-                size: 12,
+                size: fontSize,
                 color: textColor,
               },
             },
@@ -147,14 +154,13 @@ const ActivityPlot = ({
               return
             }
 
-            const captureId =
-              snapToDetections || !timelineTick.representativeCaptureId
-                ? findClosestCaptureId({
-                    snapToDetections,
-                    timeline,
-                    targetDate: timelineTick.startDate,
-                  })
-                : timelineTick.representativeCaptureId
+            const captureId = !timelineTick.representativeCaptureId
+              ? findClosestCaptureId({
+                  snapToDetections: false,
+                  timeline,
+                  targetDate: timelineTick.startDate,
+                })
+              : timelineTick.representativeCaptureId
 
             if (captureId) {
               setActiveCaptureId(captureId)

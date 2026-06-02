@@ -49,20 +49,13 @@ export const DefaultFiltersControl = ({ field }: { field: string }) => {
 }
 
 export const DefaultFiltersTooltip = ({
-  className,
   project,
 }: {
-  className?: string
   project: ProjectDetails
 }) => (
   <Popover.Root>
     <Popover.Trigger asChild>
-      <Button
-        aria-label={translate(STRING.INFO)}
-        className={className}
-        size="icon"
-        variant="ghost"
-      >
+      <Button aria-label={translate(STRING.INFO)} size="icon" variant="ghost">
         <InfoIcon className="w-4 h-4" />
       </Button>
     </Popover.Trigger>

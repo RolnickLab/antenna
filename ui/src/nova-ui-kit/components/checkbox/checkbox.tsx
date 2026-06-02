@@ -3,19 +3,11 @@ import classNames from 'classnames'
 import { CheckIcon, MinusIcon } from 'lucide-react'
 import styles from './checkbox.module.scss'
 
-export enum CheckboxTheme {
-  Default = 'default',
-  Success = 'success',
-  Alert = 'alert',
-  Neutral = 'neutral',
-}
-
 interface CheckboxProps {
   checked: boolean | 'indeterminate'
   disabled?: boolean
   id?: string
   label?: string
-  theme?: CheckboxTheme
   onCheckedChange?: (checked: boolean) => void
 }
 
@@ -24,15 +16,12 @@ export const Checkbox = ({
   disabled,
   id,
   label,
-  theme = CheckboxTheme.Default,
   onCheckedChange,
 }: CheckboxProps) => (
   <div className={styles.wrapper}>
     <_Checkbox.Root
       checked={checked}
-      className={classNames(styles.checkboxRoot, {
-        [styles.neutral]: theme === CheckboxTheme.Neutral,
-      })}
+      className={styles.checkboxRoot}
       disabled={disabled}
       id={id}
       onCheckedChange={onCheckedChange}
@@ -48,9 +37,6 @@ export const Checkbox = ({
       <label
         htmlFor={id}
         className={classNames(styles.label, {
-          [styles.success]: theme === CheckboxTheme.Success,
-          [styles.alert]: theme === CheckboxTheme.Alert,
-          [styles.neutral]: theme === CheckboxTheme.Neutral,
           [styles.disabled]: disabled,
         })}
       >
