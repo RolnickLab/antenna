@@ -24,7 +24,7 @@
   gap: 8px;
 
   span {
-    @include body-base();
+    @include body-base;
     font-weight: 600;
     color: var(--color-muted-foreground);
   }

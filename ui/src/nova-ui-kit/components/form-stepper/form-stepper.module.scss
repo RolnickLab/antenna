@@ -15,7 +15,7 @@
   span {
     padding: 0 32px;
     white-space: nowrap;
-    @include body-overline-small();
+    @include body-overline-small;
     font-weight: 600;
     color: var(--color-muted-foreground);
   }

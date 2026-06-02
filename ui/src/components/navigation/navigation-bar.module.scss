@@ -59,7 +59,7 @@
 
 .itemCount {
   display: block;
-  @include body-xlarge();
+  @include body-xlarge;
   font-weight: 600;
   color: var(--color-primary);
   white-space: nowrap;
@@ -67,7 +67,7 @@
 
 .itemTitle {
   display: block;
-  @include body-overline-small();
+  @include body-overline-small;
   font-weight: 600;
   color: var(--color-muted-foreground);
   white-space: nowrap;

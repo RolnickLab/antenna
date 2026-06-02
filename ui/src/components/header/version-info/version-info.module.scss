@@ -6,7 +6,7 @@
 }
 
 .version {
-  @include body-small();
+  @include body-small;
   color: var(--color-foreground);
   white-space: nowrap;
 }

@@ -153,7 +153,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
               </div>
             </Tabs.Content>
             <Tabs.Content className="overflow-x-auto" value={TABS.CHARTS}>
-              <div className="w-96 space-y-4">
+              <div className="w-96 grid gap-6">
                 <SessionPlots session={session} />
               </div>
             </Tabs.Content>
