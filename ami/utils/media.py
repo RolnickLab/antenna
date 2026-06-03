@@ -2,12 +2,19 @@ import hashlib
 import logging
 from datetime import datetime
 
+import requests
 from PIL import Image
 from PIL.ExifTags import TAGS
 
 from ami.utils.dates import get_image_timestamp_from_filename
 
 logger = logging.getLogger(__name__)
+
+
+def fetch_image_content(url: str) -> bytes:
+    response = requests.get(url)
+    response.raise_for_status()
+    return response.content
 
 
 def extract_timestamp_from_exif(image: Image.Image) -> datetime | None:

@@ -15,7 +15,7 @@ from django.apps import apps
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser, AnonymousUser
 from django.contrib.postgres.fields import ArrayField
-from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, models, transaction
 from django.db.models import Exists, OuterRef, Q
@@ -42,9 +42,8 @@ from ami.main.models_future.filters import (
 from ami.main.models_future.projects import ProjectSettingsMixin
 from ami.ml.schemas import BoundingBox
 from ami.users.models import User
-from ami.utils.media import calculate_file_checksum, extract_timestamp
+from ami.utils.media import calculate_file_checksum, extract_timestamp, fetch_image_content
 from ami.utils.requests import get_apply_default_filters_flag, get_default_classification_threshold
-from ami.utils.s3 import botocore, read_image
 from ami.utils.schemas import OrderedEnum
 
 if typing.TYPE_CHECKING:
@@ -2226,18 +2225,7 @@ class SourceImage(BaseModel):
             or thumb.last_modified < self.last_modified
             or not default_storage.exists(thumb.path)
         ):
-            if self.path and self.deployment and self.deployment.data_source:
-                config = self.deployment.data_source.config
-                # Get the file
-                try:
-                    img = read_image(config=config, key=self.path)
-                except botocore.exceptions.ClientError as e:
-                    logger.error(f"Could not read image for {self.path}: {e}")
-                    raise ObjectDoesNotExist(f"SourceImage with id {self.pk} media not found") from e
-            elif self.path:
-                img = PIL.Image.open(default_storage.open(self.path))
-            else:
-                raise ObjectDoesNotExist(f"SourceImage with id {self.pk} media config not found")
+            img = PIL.Image.open(BytesIO(fetch_image_content(self.public_url(raise_errors=True))))
             # Make the thumbnail
             orig_width, orig_height = img.size
             width = size["width"]
