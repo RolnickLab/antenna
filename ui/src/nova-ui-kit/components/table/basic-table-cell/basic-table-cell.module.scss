@@ -3,14 +3,14 @@
 
   .label {
     display: block;
-    @include body-base();
+    @include body-base;
     color: var(--color-foreground);
     word-break: break-word;
   }
 
   .details {
     display: block;
-    @include body-small();
+    @include body-small;
     color: var(--color-neutral-600);
   }
 
@@ -23,7 +23,7 @@
 
   &.bubble {
     .label {
-      @include bubble-label();
+      @include bubble-label;
       display: inline-flex;
     }
   }

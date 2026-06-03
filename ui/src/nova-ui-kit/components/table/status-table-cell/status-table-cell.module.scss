@@ -10,7 +10,7 @@
 
   .label {
     display: block;
-    @include body-base();
+    @include body-base;
     color: var(--color-foreground);
     padding-top: 2px;
   }

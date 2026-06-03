@@ -41,13 +41,13 @@
 }
 
 .title {
-  @include heading-small();
+  @include heading-small;
   color: var(--color-primary);
   margin: 0;
 }
 
 .text {
-  @include body-small();
+  @include body-small;
   color: var(--color-foreground);
   text-align: center;
   margin: 0;
@@ -66,7 +66,7 @@
   }
 
   &.error {
-    @include body-small();
+    @include body-small;
     padding: 8px 32px;
     border-radius: 4px;
     background-color: var(--color-destructive-100);
@@ -74,7 +74,7 @@
   }
 
   &.success {
-    @include body-small();
+    @include body-small;
     padding: 8px 32px;
     border-radius: 4px;
     background-color: var(--color-green-100);

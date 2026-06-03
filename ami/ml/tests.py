@@ -554,6 +554,43 @@ class TestPipeline(TestCase):
         images = list(collect_images(collection=self.image_collection, pipeline=self.pipeline))
         assert len(images) == 2
 
+    def test_collect_images_prefetches_deployment_and_data_source(self):
+        """
+        collect_images() must hand back SourceImage rows with deployment and
+        deployment.data_source already joined, so the downstream queue_images_to_nats
+        loop doesn't trigger N+1 FK lookups inside image.url() (see issue #1321).
+        """
+        from ami.main.models import S3StorageSource
+
+        data_source = S3StorageSource.objects.create(
+            name="ds-prefetch-test",
+            bucket="prefetch-bucket",
+            access_key="x",
+            secret_key="y",  # noqa: S106 - fixture value, never used as a real credential
+            public_base_url="https://example.invalid/",
+            project=self.project,
+        )
+        deployment = Deployment.objects.create(
+            name="prefetch-deployment", project=self.project, data_source=data_source
+        )
+        images = [
+            SourceImage.objects.create(path=f"prefetch-{i}.jpg", deployment=deployment, project=self.project)
+            for i in range(3)
+        ]
+        collection = SourceImageCollection.objects.create(project=self.project, name="prefetch-collection")
+        collection.images.set(images)
+
+        collected = list(collect_images(collection=collection, pipeline=self.pipeline))
+        self.assertEqual(len(collected), 3)
+
+        # Accessing deployment.data_source on the returned images should
+        # require zero extra queries because select_related joined both.
+        with self.assertNumQueries(0):
+            for image in collected:
+                self.assertEqual(image.deployment_id, deployment.pk)
+                self.assertEqual(image.deployment.data_source_id, data_source.pk)
+                self.assertEqual(image.deployment.data_source.public_base_url, "https://example.invalid/")
+
     def fake_pipeline_results(
         self,
         source_images: list[SourceImage],
@@ -961,6 +998,190 @@ class TestPipeline(TestCase):
 
         result = list(filter_processed_images([image], self.pipeline))
         self.assertEqual(result, [], "Fully classified image with null detection should be skipped")
+
+    def test_filter_processed_images_empty_input(self):
+        """An empty iterable should yield nothing and run no per-image queries."""
+        from ami.ml.models.pipeline import filter_processed_images
+
+        with self.assertNumQueries(1):  # one query: pipeline.algorithms.all()
+            result = list(filter_processed_images([], self.pipeline))
+        self.assertEqual(result, [])
+
+    def test_filter_processed_images_yields_all_when_pipeline_has_no_classifiers(self):
+        """
+        When a pipeline has no classifier algorithms registered, filter_processed_images
+        must yield every image (matching the "Will reprocess all images" warning).
+        Without the short-circuit, the empty `pipeline_classifier_ids` set makes
+        `set().issubset(observed) == True` and every image with existing detections
+        is silently skipped — directly contradicting the warning.
+        """
+        from ami.ml.models.pipeline import filter_processed_images
+
+        detector_only_pipeline = Pipeline.objects.create(name="Detector Only Pipeline")
+        detector_only_pipeline.algorithms.set([self.algorithms["random-detector"]])
+
+        # Image with a real, fully-processed-looking detection from the detector.
+        # Pre-short-circuit this would be skipped because the empty pipeline classifier
+        # set is vacuously a subset of any observed-classifier set.
+        image_with_detection = SourceImage.objects.create(path="no-classifier-with-det.jpg")
+        Detection.objects.create(
+            source_image=image_with_detection,
+            detection_algorithm=self.algorithms["random-detector"],
+            bbox=[0.1, 0.2, 0.3, 0.4],
+        )
+        image_unprocessed = SourceImage.objects.create(path="no-classifier-unprocessed.jpg")
+
+        result = list(filter_processed_images([image_with_detection, image_unprocessed], detector_only_pipeline))
+        self.assertEqual(result, [image_with_detection, image_unprocessed])
+
+    def test_filter_processed_images_mixed_batch(self):
+        """
+        A mixed batch of images covering all five branches should yield only
+        the ones that need processing, in input order.
+        """
+        from ami.ml.models.pipeline import filter_processed_images
+
+        detector = self.algorithms["random-detector"]
+        binary = self.algorithms["random-binary-classifier"]
+        species = self.algorithms["random-species-classifier"]
+
+        unprocessed = SourceImage.objects.create(path="unprocessed.jpg")
+        null_only = SourceImage.objects.create(path="null_only.jpg")
+        unclassified = SourceImage.objects.create(path="unclassified.jpg")
+        fully_classified = SourceImage.objects.create(path="fully_classified.jpg")
+
+        Detection.objects.create(source_image=null_only, detection_algorithm=detector, bbox=None)
+
+        Detection.objects.create(source_image=unclassified, detection_algorithm=detector, bbox=[0.1, 0.2, 0.3, 0.4])
+
+        real_det = Detection.objects.create(
+            source_image=fully_classified, detection_algorithm=detector, bbox=[0.1, 0.2, 0.3, 0.4]
+        )
+        taxon = Taxon.objects.create(name="Test Mixed Batch Taxon")
+        Classification.objects.create(
+            detection=real_det, taxon=taxon, algorithm=binary, score=0.9, timestamp=datetime.datetime.now()
+        )
+        Classification.objects.create(
+            detection=real_det, taxon=taxon, algorithm=species, score=0.8, timestamp=datetime.datetime.now()
+        )
+
+        images = [unprocessed, null_only, unclassified, fully_classified]
+        result = list(filter_processed_images(images, self.pipeline))
+        self.assertEqual(result, [unprocessed, unclassified])
+
+    def test_filter_processed_images_query_count_is_bounded_per_batch(self):
+        """
+        With N images and batch_size=B, the query count should scale as
+        O(N / B), not O(N). Locks in the bulk-query rewrite from issue #1321.
+
+        Each batch issues at most:
+          - 1 Detection bulk select
+          - 1 Classification bulk select (only when real detections exist)
+        Plus one initial pipeline.algorithms.all() that's shared across batches.
+        """
+        from ami.ml.models.pipeline import filter_processed_images
+
+        detector = self.algorithms["random-detector"]
+        binary = self.algorithms["random-binary-classifier"]
+        species = self.algorithms["random-species-classifier"]
+        taxon = Taxon.objects.create(name="Bounded Query Test Taxon")
+
+        # 10 images. Batch 1: 5 fully-classified (triggers classification query).
+        # Batch 2: 5 unprocessed (no detections, classification query skipped).
+        images = [SourceImage.objects.create(path=f"bulk-{i}.jpg") for i in range(10)]
+        for image in images[:5]:
+            real_det = Detection.objects.create(
+                source_image=image, detection_algorithm=detector, bbox=[0.1, 0.2, 0.3, 0.4]
+            )
+            Classification.objects.create(
+                detection=real_det, taxon=taxon, algorithm=binary, score=0.9, timestamp=datetime.datetime.now()
+            )
+            Classification.objects.create(
+                detection=real_det, taxon=taxon, algorithm=species, score=0.8, timestamp=datetime.datetime.now()
+            )
+
+        # Expected: 1 (pipeline) + 2 (detection × 2 batches) + 1 (classification, batch 1 only) = 4.
+        with self.assertNumQueries(4):
+            result = list(filter_processed_images(images, self.pipeline, batch_size=5))
+
+        # First 5 fully classified → skipped. Last 5 fresh → yielded.
+        self.assertEqual(result, images[5:])
+
+    def test_filter_processed_images_emits_throttled_collect_progress(self):
+        """
+        When `job` and `total` are passed, filter_processed_images should call
+        job.save(update_fields=["progress"]) at most once per
+        COLLECT_PROGRESS_SAVE_INTERVAL_SECONDS of wall time, capped at
+        COLLECT_PROGRESS_MAX_FRACTION. Keeps the reaper's "no forward progress"
+        heuristic happy on multi-minute Collect stages without hot-saving the
+        Job row on every chunk (issue #1321 follow-up).
+        """
+        from unittest.mock import patch
+
+        from ami.jobs.models import Job, MLJob
+        from ami.ml.models.pipeline import COLLECT_PROGRESS_MAX_FRACTION, filter_processed_images
+
+        job = Job.objects.create(
+            project=self.project,
+            name="collect progress cadence test",
+            pipeline=self.pipeline,
+            job_type_key=MLJob.key,
+        )
+        # First save triggered MLJob.setup → "collect" stage exists.
+        job.progress.get_stage("collect")
+
+        images = [SourceImage.objects.create(path=f"cadence-{i}.jpg") for i in range(10)]
+
+        # batch_size=3 over 10 images → 4 batches. Each monotonic() call
+        # advances the clock by 3s. Expected sequence: init=0, batch1=3
+        # (gap 3, no save), batch2=6 (gap 6, SAVE → last=6), batch3=9
+        # (gap 3, no save), batch4=12 (gap 6, SAVE → last=12). Two saves.
+        #
+        # Counter-based stub (vs an iter/next sequence) means extra
+        # monotonic() calls added to filter_processed_images later will
+        # advance time faster and the assertion will fail with a clear
+        # cadence mismatch, not StopIteration.
+        clock = {"t": 0.0}
+
+        def fake_monotonic():
+            t = clock["t"]
+            clock["t"] += 3.0
+            return t
+
+        with patch("ami.ml.models.pipeline.time.monotonic", side_effect=fake_monotonic):
+            with patch.object(Job, "save", autospec=True) as mock_save:
+                list(filter_processed_images(images, self.pipeline, batch_size=3, job=job, total=10))
+
+        self.assertEqual(mock_save.call_count, 2, "Expected throttle to allow exactly 2 saves")
+        for call in mock_save.call_args_list:
+            self.assertEqual(
+                call.kwargs.get("update_fields"),
+                ["progress", "updated_at"],
+                "Throttled saves must include `updated_at` so Django's auto_now fires "
+                "and the reaper's stale-job heuristic sees forward motion.",
+            )
+
+        # Final emitted fraction comes from the second save (batch 4): processed=10,
+        # total=10 → raw 1.0, capped at COLLECT_PROGRESS_MAX_FRACTION.
+        collect_stage = job.progress.get_stage("collect")
+        self.assertEqual(collect_stage.progress, COLLECT_PROGRESS_MAX_FRACTION)
+
+    def test_filter_processed_images_skips_progress_emission_without_job(self):
+        """
+        Legacy callers that omit `job` (the only callers before this change)
+        should see zero job.save() calls — the throttle block is fully gated
+        on both `job` and `total` being passed.
+        """
+        from unittest.mock import patch
+
+        from ami.jobs.models import Job
+        from ami.ml.models.pipeline import filter_processed_images
+
+        images = [SourceImage.objects.create(path=f"nojob-{i}.jpg") for i in range(5)]
+        with patch.object(Job, "save", autospec=True) as mock_save:
+            list(filter_processed_images(images, self.pipeline, batch_size=2))
+
+        self.assertEqual(mock_save.call_count, 0)
 
     def test_null_detections_are_algorithm_specific(self):
         """

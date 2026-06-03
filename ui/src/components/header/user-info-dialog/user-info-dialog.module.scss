@@ -7,7 +7,7 @@
   justify-content: center;
   border-radius: 50%;
   outline: none;
-  @include body-small();
+  @include body-small;
   font-weight: 600;
   color: var(--color-primary);
   text-transform: uppercase;

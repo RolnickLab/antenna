@@ -50,7 +50,7 @@ Now you can navigate to the following URL: http://localhost:3000
 
 ### Configuration
 
-By default this will try to connect to http://localhost:8000 for the backend API. Use the env var `API_PROXY_TARGET` to change this. You can create multiple `.env` files in the `ui/` directory for different environments or configurations. For example, use `yarn start --mode staging` to load `.env.staging` and point the `API_PROXY_TARGET` to a remote backend.
+By default the app will try to connect to http://localhost:8000 for the backend API. Use the env var `API_PROXY_TARGET` to change this. You can create multiple `.env` files in the `ui/` directory for different environments or configurations. For example, use `yarn start --mode staging` to load `.env.staging` and point the `API_PROXY_TARGET` to a remote backend.
 
 ## Nova UI Kit
 
@@ -127,11 +127,11 @@ Text styles are defined using SCSS mixins in `nova-ui-kit/mixins.scss` with the 
 
 ```scss
 .some-title {
-  @include heading-large();
+  @include heading-large;
 }
 
 .some-text {
-  @include body-base();
+  @include body-base;
 }
 ```
 

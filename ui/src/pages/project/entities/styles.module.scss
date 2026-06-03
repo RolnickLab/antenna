@@ -9,7 +9,7 @@
 }
 
 .dialogTrigger {
-  @include body-base();
+  @include body-base;
   color: var(--color-primary);
 
   &:hover {

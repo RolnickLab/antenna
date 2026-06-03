@@ -9,7 +9,7 @@
 
 .breadcrumb {
   display: block;
-  @include body-small();
+  @include body-small;
   font-weight: 500;
   color: var(--color-foreground);
 
