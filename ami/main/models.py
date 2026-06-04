@@ -2852,6 +2852,11 @@ class Detection(BaseModel):
             "frame_num",
             "timestamp",
         ]
+        indexes = [
+            # Supports the "last processed" subquery on the captures list: the
+            # latest detection created_at per source image (index scan, top 1).
+            models.Index(fields=["source_image", "-created_at"], name="det_srcimg_created_idx"),
+        ]
 
     def best_classification(self):
         # @TODO where is this used?
