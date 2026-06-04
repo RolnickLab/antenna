@@ -2229,16 +2229,9 @@ class SourceImage(BaseModel):
         # synced before upload backfill — treat that as "no signal of source change, trust
         # the cached thumb" rather than raising ``TypeError`` on ``datetime < None``.
         source_changed = (
-            self.last_modified is not None
-            and thumb is not None
-            and thumb.last_modified < self.last_modified
+            self.last_modified is not None and thumb is not None and thumb.last_modified < self.last_modified
         )
-        if (
-            not thumb
-            or thumb.width != size["width"]
-            or source_changed
-            or not default_storage.exists(thumb.path)
-        ):
+        if not thumb or thumb.width != size["width"] or source_changed or not default_storage.exists(thumb.path):
             img = PIL.Image.open(BytesIO(fetch_image_content(self.public_url(raise_errors=True))))
             # JPEG only supports L, RGB, CMYK. Convert anything else (RGBA, P, LA, PA, …) before
             # encoding, or PIL raises ``OSError: cannot write mode <X> as JPEG``. Uploaded PNGs

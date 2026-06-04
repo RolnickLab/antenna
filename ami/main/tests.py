@@ -471,9 +471,7 @@ class TestImageThumbnailViews(TestCase):
         path = default_storage.save("thumbnails/signal_test.jpg", ContentFile(b"\x00\x01\x02\x03"))
         self.assertTrue(default_storage.exists(path))
 
-        thumb = self.first_capture.thumbnails.create(
-            path=path, label="small", width=240, height=180, size=4
-        )
+        thumb = self.first_capture.thumbnails.create(path=path, label="small", width=240, height=180, size=4)
         thumb.delete()
 
         self.assertFalse(default_storage.exists(path), "pre_delete signal must clean the storage blob")

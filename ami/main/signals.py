@@ -135,8 +135,7 @@ def delete_thumbnail_storage_blob(sender, instance, **kwargs):
         default_storage.delete(instance.path)
     except Exception as e:
         logger.warning(
-            f"Could not delete storage blob {instance.path} for SourceImageThumbnail "
-            f"id={instance.pk}: {e}"
+            f"Could not delete storage blob {instance.path} for SourceImageThumbnail " f"id={instance.pk}: {e}"
         )
 
 
