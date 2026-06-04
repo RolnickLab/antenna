@@ -89,7 +89,7 @@ def revoke_new_permissions(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0084_revoke_delete_job_from_roles"),
+        ("main", "0088_detection_det_srcimg_created_idx"),
         ("guardian", "0002_generic_permissions_index"),
     ]
 
