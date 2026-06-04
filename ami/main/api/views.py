@@ -5,8 +5,7 @@ from statistics import mode
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.db import models
-from django.db.models import Prefetch, Q
-from django.db.models.functions import Coalesce
+from django.db.models import OuterRef, Prefetch, Q, Subquery
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
 from django.shortcuts import get_object_or_404
@@ -25,13 +24,15 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ami.base.filters import NullsLastOrderingFilter, ThresholdFilter
+from ami.base.metadata import ResponseSchemaMetadata
 from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
-from ami.main.api.schemas import project_id_doc_param
+from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
+from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
 from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
@@ -55,6 +56,7 @@ from ..models import (
     Tag,
     TaxaList,
     Taxon,
+    TaxonRank,
     User,
     update_detection_counts,
 )
@@ -71,6 +73,7 @@ from .serializers import (
     EventSerializer,
     EventTimelineSerializer,
     IdentificationSerializer,
+    ModelAgreementSerializer,
     OccurrenceListSerializer,
     OccurrenceSerializer,
     PageListSerializer,
@@ -90,6 +93,7 @@ from .serializers import (
     TaxonListSerializer,
     TaxonSearchResultSerializer,
     TaxonSerializer,
+    TopIdentifiersResponseSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -143,6 +147,12 @@ class DefaultReadOnlyViewSet(DefaultViewSetMixin, viewsets.ReadOnlyModelViewSet)
 class ProjectPagination(LimitOffsetPaginationWithPermissions):
     default_limit = 40
 
+    def get_count(self, queryset):
+        # The recent-activity orderings annotate correlated subqueries onto the
+        # queryset. They don't change the row count, so strip them (and ordering)
+        # before counting to keep the pagination COUNT query cheap.
+        return super().get_count(queryset.order_by().values("pk"))
+
 
 class ProjectViewSet(DefaultViewSet, ProjectMixin):
     """
@@ -153,6 +163,17 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
     serializer_class = ProjectSerializer
     pagination_class = ProjectPagination
     permission_classes = [ObjectPermission]
+    ordering_fields = [
+        "name",
+        "created_at",
+        "updated_at",
+        # The three below are not Project fields; get_queryset annotates them on
+        # demand (see below). last_capture_timestamp mirrors the DeploymentViewSet
+        # ordering of the same name, but is a per-project rollup of capture times.
+        "last_capture_timestamp",
+        "last_occurrence_updated_at",
+        "last_job_updated_at",
+    ]
 
     def get_queryset(self):
         qs: ProjectQuerySet = super().get_queryset()  # type: ignore
@@ -164,6 +185,38 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
                 raise PermissionDenied("You can only view your projects")
             if user:
                 qs = qs.filter_by_user(user)
+
+        # Annotate "recent activity" fields only when sorting by them, so the
+        # default list stays cheap. Each is a correlated subquery returning one
+        # row via a covering index, and only one is ever added per request.
+        ordering = {field.lstrip("-") for field in self.request.query_params.get("ordering", "").split(",") if field}
+        if "last_capture_timestamp" in ordering:
+            # Live max capture time per project (Index Only Scan on
+            # main_source_proj_ts_desc_idx); kept live rather than reading the
+            # denormalized Deployment field so the sort never lags ingestion.
+            # timestamp is nullable, and DESC sorts NULLs first, so exclude them
+            # explicitly — otherwise a single undated capture masks the real max.
+            qs = qs.annotate(
+                last_capture_timestamp=Subquery(
+                    SourceImage.objects.filter(project=OuterRef("pk"), timestamp__isnull=False)
+                    .order_by("-timestamp")
+                    .values("timestamp")[:1]
+                )
+            )
+        if "last_occurrence_updated_at" in ordering:
+            qs = qs.annotate(
+                last_occurrence_updated_at=Subquery(
+                    Occurrence.objects.filter(project=OuterRef("pk")).order_by("-updated_at").values("updated_at")[:1]
+                )
+            )
+        if "last_job_updated_at" in ordering:
+            from ami.jobs.models import Job
+
+            qs = qs.annotate(
+                last_job_updated_at=Subquery(
+                    Job.objects.filter(project=OuterRef("pk")).order_by("-updated_at").values("updated_at")[:1]
+                )
+            )
         return qs
 
     def get_serializer_class(self):
@@ -262,6 +315,7 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         project = self.get_active_project()
         if project:
             qs = qs.filter(project=project)
+
         num_example_captures = 10
         if self.action == "retrieve":
             qs = qs.prefetch_related(
@@ -508,6 +562,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         "deployment__name",
         "event__start",
         "path",
+        "last_processed",
     ]
     permission_classes = [ObjectPermission]
 
@@ -539,17 +594,21 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         queryset = queryset.select_related(
             "event",
             "deployment",
+            "deployment__data_source",
         ).order_by("timestamp")
 
         if self.action == "list":
             # It's cumbersome to override the default list view, so customize the queryset here
+            queryset = self.filter_by_processed(queryset)
             queryset = self.filter_by_has_detections(queryset)
+            queryset = self.annotate_last_processed(queryset)
 
         elif self.action == "retrieve":
             # For detail view, include storage info and additional prefetches
             with_counts_default = True
             queryset = queryset.prefetch_related("jobs", "collections")
             queryset = self.add_adjacent_captures(queryset)
+            queryset = self.annotate_last_processed(queryset)
             with_detections_default = True
 
         with_detections = self.request.query_params.get("with_detections", with_detections_default)
@@ -573,14 +632,61 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
 
         return queryset
 
+    def filter_by_processed(self, queryset: QuerySet) -> QuerySet:
+        """
+        Filter by whether a capture has been processed by a detection pipeline.
+
+        "Processed" means the capture has *any* Detection row, including the null
+        markers (``NULL_DETECTIONS_FILTER``) that record a "processed, found nothing"
+        result. This mirrors how the capture set list separates the processed count
+        from the (real) detections count. Use ``has_detections`` to filter on real
+        detections only.
+
+        Reuses the ``with_was_processed`` queryset annotation so the "processed"
+        definition stays in one place.
+        """
+        processed = self.request.query_params.get("processed")
+        if processed is not None:
+            processed = BooleanField(required=False).clean(processed)
+            queryset = queryset.with_was_processed().filter(was_processed=processed)
+        return queryset
+
     def filter_by_has_detections(self, queryset: QuerySet) -> QuerySet:
+        """
+        Filter by whether a capture has any *real* detections (a detection with a
+        bounding box). Null detection markers are excluded, so a capture that was
+        processed but yielded nothing returns ``has_detections=false``. Use the
+        ``processed`` param to filter on processing status regardless of findings.
+        """
         has_detections = self.request.query_params.get("has_detections")
         if has_detections is not None:
             has_detections = BooleanField(required=False).clean(has_detections)
             queryset = queryset.annotate(
-                has_detections=models.Exists(Detection.objects.filter(source_image=models.OuterRef("pk"))),
+                has_detections=models.Exists(
+                    Detection.objects.filter(source_image=models.OuterRef("pk")).exclude(NULL_DETECTIONS_FILTER)
+                ),
             ).filter(has_detections=has_detections)
         return queryset
+
+    def annotate_last_processed(self, queryset: QuerySet) -> QuerySet:
+        """
+        Annotate each capture with ``last_processed`` — the most recent detection
+        ``created_at`` for that capture, i.e. when it was last run through a
+        detection pipeline. Null when the capture has never been processed;
+        NullsLastOrderingFilter sorts those last.
+
+        A correlated subquery (rather than a join + Max) keeps the row count stable
+        for pagination. The supporting index on Detection(source_image, -created_at)
+        makes the per-row lookup an index scan, so this stays cheap without
+        denormalizing a timestamp onto SourceImage.
+        """
+        return queryset.annotate(
+            last_processed=models.Subquery(
+                Detection.objects.filter(source_image=models.OuterRef("pk"))
+                .order_by("-created_at")
+                .values("created_at")[:1]
+            )
+        )
 
     def prefetch_detections(self, queryset: QuerySet, project: Project | None = None) -> QuerySet:
         """
@@ -974,7 +1080,9 @@ class CustomOccurrenceDeterminationFilter(CustomTaxonFilter):
     def filter_queryset(self, request, queryset, view):
         taxon = self.get_filter_taxon(request, query_params=self.query_params)
         if taxon:
-            # Here the queryset is the Occurrence queryset
+            # Here the queryset is the Occurrence queryset.
+            # The literal parents_json containment (constant RHS) is what the GIN index from
+            # migration 0087 serves — this hierarchical taxon filter is the index's main consumer.
             return queryset.filter(
                 models.Q(determination=taxon) | models.Q(determination__parents_json__contains=[{"id": taxon.pk}])
             )
@@ -1149,20 +1257,22 @@ class OccurrenceTaxaListFilter(filters.BaseFilterBackend):
         return queryset
 
 
-class TaxonCollectionFilter(filters.BaseFilterBackend):
-    """
-    Filter taxa by the capture set their occurrences belong to.
-    """
+OCCURRENCE_FILTER_BACKENDS = (
+    CustomOccurrenceDeterminationFilter,
+    OccurrenceCollectionFilter,
+    OccurrenceAlgorithmFilter,
+    OccurrenceDateFilter,
+    OccurrenceVerified,
+    OccurrenceVerifiedByMeFilter,
+    OccurrenceTaxaListFilter,
+)
 
-    query_param = "collection"
-
-    def filter_queryset(self, request, queryset, view):
-        collection_id = IntegerField(required=False).clean(request.query_params.get(self.query_param))
-        if collection_id:
-            # Here the queryset is the Taxon queryset
-            return queryset.filter(occurrences__detections__source_image__collections=collection_id)
-        else:
-            return queryset
+OCCURRENCE_FILTERSET_FIELDS = (
+    "event",
+    "deployment",
+    "determination__rank",
+    "detections__source_image",
+)
 
 
 class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
@@ -1174,22 +1284,8 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     queryset = Occurrence.objects.all()
 
     serializer_class = OccurrenceSerializer
-    # filter_backends = [CustomDeterminationFilter, DjangoFilterBackend, NullsLastOrderingFilter, SearchFilter]
-    filter_backends = DefaultViewSetMixin.filter_backends + [
-        CustomOccurrenceDeterminationFilter,
-        OccurrenceCollectionFilter,
-        OccurrenceAlgorithmFilter,
-        OccurrenceDateFilter,
-        OccurrenceVerified,
-        OccurrenceVerifiedByMeFilter,
-        OccurrenceTaxaListFilter,
-    ]
-    filterset_fields = [
-        "event",
-        "deployment",
-        "determination__rank",
-        "detections__source_image",
-    ]
+    filter_backends = DefaultViewSetMixin.filter_backends + list(OCCURRENCE_FILTER_BACKENDS)
+    filterset_fields = list(OCCURRENCE_FILTERSET_FIELDS)
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -1227,12 +1323,10 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
         qs = qs.apply_default_filters(project, self.request)  # type: ignore
-        if self.action != "list":
-            qs = qs.prefetch_related(
-                Prefetch(
-                    "detections", queryset=Detection.objects.order_by("-timestamp").select_related("source_image")
-                )
-            )
+        if self.action == "list":
+            qs = qs.with_list_prefetches()  # type: ignore
+        else:
+            qs = qs.with_detail_prefetches()  # type: ignore
 
         return qs
 
@@ -1262,6 +1356,125 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+
+class OccurrenceStatsViewSet(viewsets.GenericViewSet, ProjectMixin):
+    """Aggregate stats over Occurrences. Each @action == one stats kind.
+
+    Response shape per kind is declared via a DRF serializer + `@extend_schema`
+    so drf-spectacular autodocs it. Most kinds will be small scalar dicts;
+    when a kind genuinely needs `?limit / ?offset / ?ordering` rails (a paginated
+    leaderboard of thousands of entities), opt into `viewsets.GenericViewSet`'s
+    paginator + filter_backends on a per-action basis. See
+    docs/claude/reference/api-stats-pattern.md and
+    docs/claude/planning/stats-list-pattern.md.
+
+    Conventions for every action:
+
+    - URL: `/<entity>/stats/<kind>/?project_id=X[&...]`
+    - Resolve project on the first line; we use the inline 2-line pattern below
+      so visibility (draft → 404) is gated explicitly. `ProjectMixin` only
+      enforces project presence (`require_project=True` → 400/404 on missing
+      or unknown id), not draft visibility.
+    - Query params (beyond `project_id`) go through
+      `SingleParamSerializer[T].clean(...)` for strict 400 validation —
+      no silent clamps.
+    """
+
+    permission_classes = [IsActiveStaffOrReadOnly]
+    require_project = True
+    # OPTIONS on each action returns its response serializer field schema
+    # (type + help_text) under `actions.GET`. Frontends consume this to render
+    # tooltips and labels without hardcoding stat descriptions in the UI.
+    metadata_class = ResponseSchemaMetadata
+    # Filter machinery for actions that opt into `self.filter_queryset(...)`.
+    # `top_identifiers` doesn't call it, so its behavior is unchanged.
+    queryset = Occurrence.objects.none()
+    filter_backends = [DjangoFilterBackend, *OCCURRENCE_FILTER_BACKENDS]
+    filterset_fields = list(OCCURRENCE_FILTERSET_FIELDS)
+
+    @extend_schema(
+        parameters=[project_id_doc_param, limit_doc_param],
+        responses=TopIdentifiersResponseSerializer,
+    )
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="top-identifiers",
+        serializer_class=TopIdentifiersResponseSerializer,
+    )
+    def top_identifiers(self, request):
+        """Users ranked by distinct occurrences they identified.
+
+        `top_identifiers_for_project` bakes in `identification_count >= 1` —
+        non-configurable, so an empty / anonymous call can't leak the full
+        project user list.
+        """
+        project = self.get_active_project()
+        assert project is not None  # require_project=True guarantees this
+        if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
+            raise NotFound("Project not found.")
+
+        limit = SingleParamSerializer[int].clean(
+            param_name="limit",
+            field=serializers.IntegerField(required=False, min_value=1, max_value=50, default=5),
+            data=request.query_params,
+        )
+        top_users = list(top_identifiers_for_project(project)[:limit])
+        serializer = TopIdentifiersResponseSerializer(
+            {"project_id": project.pk, "top_identifiers": top_users},
+            context={"request": request},
+        )
+        return Response(serializer.data)
+
+    @extend_schema(
+        parameters=[project_id_doc_param],
+        responses=ModelAgreementSerializer,
+    )
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="model-agreement",
+        serializer_class=ModelAgreementSerializer,
+    )
+    def model_agreement(self, request):
+        """Verified / human↔model agreement rates over the filtered occurrence set.
+
+        Accepts every query param the `/occurrences/` list endpoint accepts.
+        Reuses `apply_default_filters` so `apply_defaults=false` bypasses
+        project default taxa lists + score thresholds.
+
+        Optional ?agreement_coarsest_rank=<RANK> adds `agreed_coarser_rank_*`
+        counts — LCAs at the given rank or deeper. Valid values: any
+        TaxonRank name (FAMILY, GENUS, etc.); invalid → 400.
+        """
+        project = self.get_active_project()
+        assert project is not None  # require_project=True guarantees this
+        if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
+            raise NotFound("Project not found.")
+
+        # ChoiceField gives strict 400s for free: blank (?agreement_coarsest_rank=),
+        # unknown ranks, and UNKNOWN (not in the choice list) all fail at the boundary.
+        # drf-spectacular reads the choices into the OpenAPI schema as an enum.
+        # Build a plain dict (not the QueryDict) so a blank value is validated as a
+        # real "" — DRF treats blank fields in HTML/QueryDict input as absent, which
+        # would let ?agreement_coarsest_rank= silently no-op. Uppercase the raw value
+        # so the param stays case-insensitive.
+        valid_ranks = [r.name for r in TaxonRank if r != TaxonRank.UNKNOWN]
+        raw_rank = request.query_params.get("agreement_coarsest_rank")
+        rank_data = {} if raw_rank is None else {"agreement_coarsest_rank": raw_rank.upper()}
+        coarsest_rank_param = SingleParamSerializer[str].clean(
+            param_name="agreement_coarsest_rank",
+            field=serializers.ChoiceField(choices=valid_ranks, required=False, allow_blank=False),
+            data=rank_data,
+        )
+        coarsest_rank = TaxonRank[coarsest_rank_param] if coarsest_rank_param else None
+
+        base_qs = Occurrence.objects.filter(project=project).valid().apply_default_filters(project, request)
+        filtered_qs = self.filter_queryset(base_qs)
+        payload = model_agreement_for_project(filtered_qs, coarsest_rank=coarsest_rank)
+        payload["project_id"] = project.pk
+        return Response(ModelAgreementSerializer(payload, context={"request": request}).data)
 
 
 class TaxonTaxaListFilter(filters.BaseFilterBackend):
@@ -1350,9 +1563,13 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
 
     queryset = Taxon.objects.all().defer("notes")
     serializer_class = TaxonSerializer
+    # ``?collection=`` is handled inside get_taxa_observed (via get_occurrence_filters
+    # + TaxonQuerySet.with_observation_counts_aggregated + HAVING). A dedicated
+    # filter_backends entry that re-applied the collection filter on the main queryset
+    # would add a redundant JOIN that the planner cannot reconcile with the
+    # conditional-aggregate GROUP BY, turning the page into a multi-minute scan.
     filter_backends = DefaultViewSetMixin.filter_backends + [
         CustomTaxonFilter,
-        TaxonCollectionFilter,
         TaxonTaxaListFilter,
         TaxonBestScoreFilter,
         TaxonTagFilter,
@@ -1371,6 +1588,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         "created_at",
         "updated_at",
         "occurrences_count",
+        "verified_count",
         "last_detected",
         "best_determination_score",
         "name",
@@ -1427,11 +1645,16 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         else:
             return TaxonSerializer
 
-    def get_occurrence_filters(self, project: Project) -> models.Q:
+    def get_occurrence_filters(self, project: Project, accessor: str = "") -> models.Q:
         """
-        Filter taxa by when/where it has occurred.
+        Filter by when/where a taxon has occurred.
 
         Supports querying by occurrence, project, deployment, or event.
+
+        ``accessor`` is the relation path to the Occurrence model. Pass "" to filter the
+        Occurrence model directly, or "occurrences" to filter the Taxon model via its
+        reverse relation (for conditional aggregation in
+        :meth:`TaxonQuerySet.with_observation_counts_aggregated`).
 
         @TODO Consider using a custom filter class for this (see get_filter_name)
         @TODO Move this to a custom QuerySet manager on the Taxon model
@@ -1444,12 +1667,12 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         event_id = self.request.query_params.get("event") or self.request.query_params.get("occurrences__event")
         collection_id = self.request.query_params.get("collection")
 
-        # filter_active = any([occurrence_id, project, deployment_id, event_id, collection_id])
+        prefix = f"{accessor}__" if accessor else ""
 
-        filters = models.Q(
-            project=project,
-            event__isnull=False,
-        )
+        def field(path: str) -> str:
+            return f"{prefix}{path}"
+
+        filters = models.Q(**{field("project"): project, field("event__isnull"): False})
         try:
             """
             Ensure that the related objects exist before filtering by them.
@@ -1458,16 +1681,16 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             if occurrence_id:
                 Occurrence.objects.get(id=occurrence_id)
                 # This query does not need the same filtering as the others
-                filters &= models.Q(id=occurrence_id)
+                filters &= models.Q(**{field("id"): occurrence_id})
             if deployment_id:
                 Deployment.objects.get(id=deployment_id)
-                filters &= models.Q(deployment=deployment_id)
+                filters &= models.Q(**{field("deployment"): deployment_id})
             if event_id:
                 Event.objects.get(id=event_id)
-                filters &= models.Q(event=event_id)
+                filters &= models.Q(**{field("event"): event_id})
             if collection_id:
                 SourceImageCollection.objects.get(id=collection_id)
-                filters &= models.Q(detections__source_image__collections=collection_id)
+                filters &= models.Q(**{field("detections__source_image__collections"): collection_id})
         except exceptions.ObjectDoesNotExist as e:
             # Raise a 404 if any of the related objects don't exist
             raise NotFound(detail=str(e))
@@ -1524,80 +1747,66 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         apply_default_score_filter=True,
         apply_default_taxa_filter=True,
     ) -> QuerySet:
+        """Annotate per-(project, taxon) counts and optionally restrict to observed taxa.
+
+        Two SQL shapes for the direct aggregates (``occurrences_count`` /
+        ``best_determination_score`` / ``last_detected``):
+
+        - **Default / event / deployment / verified paths** — correlated ``Subquery``
+          annotations, index-served by the composite
+          ``(determination_id, project_id, event_id, determination_score)`` index on
+          Occurrence. Membership via materialised ``id__in``.
+        - **``?collection=<id>``** — conditional aggregation over the Taxon→occurrences
+          reverse relation. The detections join would turn each correlated subquery into
+          a per-row scan, so we switch to one GROUP BY. Membership via HAVING.
+
+        The sparse verification rollup (``verified_count`` / ``agreed_*``) is the same on
+        either path — a Python pass over the verified subset applied as ``CASE``
+        annotations, see :meth:`TaxonQuerySet.with_verification_counts`.
         """
-        If a project is passed, only return taxa that have been observed.
-        Also add the number of occurrences and the last time it was detected.
+        request = self.request
+        use_aggregation = "collection" in request.query_params
+        direct_filters = self.get_occurrence_filters(project)
 
-        Uses efficient subqueries with default filters applied directly via Q objects
-        to leverage composite indexes on (determination_id, project_id, event_id, determination_score).
-        This avoids the N+1 query problem by building a single Q filter that can be reused
-        across all subqueries.
-        """
-        occurrence_filters = self.get_occurrence_filters(project)
+        if use_aggregation:
+            relation_filters = self.get_occurrence_filters(project, accessor="occurrences")
+            qs = qs.with_observation_counts_aggregated(
+                project,
+                request,
+                relation_occurrence_filters=relation_filters,
+                apply_default_score_filter=apply_default_score_filter,
+            )
+            if not include_unobserved:
+                qs = qs.filter(occurrences_count__gt=0)
+        else:
+            qs = qs.with_observation_counts_subqueries(
+                project,
+                request,
+                occurrence_filters=direct_filters,
+                apply_default_score_filter=apply_default_score_filter,
+                apply_default_taxa_filter=apply_default_taxa_filter,
+            )
+            if not include_unobserved:
+                qs = qs.observed_in_project_subqueries(
+                    project,
+                    request,
+                    occurrence_filters=direct_filters,
+                    apply_default_score_filter=apply_default_score_filter,
+                    apply_default_taxa_filter=apply_default_taxa_filter,
+                )
 
-        # Build a single Q filter for default filters (score threshold + taxa filters)
-        # This creates an efficient filter that works with composite indexes
-        # Respects apply_defaults flag: build_occurrence_default_filters_q checks it internally
-        from ami.main.models_future.filters import build_occurrence_default_filters_q
+        verified_param: bool | None = None
+        if self.action == "list" and "verified" in request.query_params:
+            verified_param = BooleanField(required=False).clean(request.query_params.get("verified"))
 
-        default_filters_q = build_occurrence_default_filters_q(
+        return qs.with_verification_counts(
             project,
-            self.request,
-            occurrence_accessor="",
+            request,
+            occurrence_filters=direct_filters,
             apply_default_score_filter=apply_default_score_filter,
             apply_default_taxa_filter=apply_default_taxa_filter,
+            verified=verified_param,
         )
-
-        # Combine base occurrence filters with default filters
-        base_filter = models.Q(
-            occurrence_filters,
-            determination_id=models.OuterRef("id"),
-        )
-
-        base_filter = base_filter & default_filters_q
-
-        # Count occurrences - uses composite index (determination_id, project_id, event_id, determination_score)
-        occurrences_count_subquery = models.Subquery(
-            Occurrence.objects.filter(base_filter)
-            .values("determination_id")
-            .annotate(count=models.Count("id"))
-            .values("count")[:1],
-            output_field=models.IntegerField(),
-        )
-
-        # Get best score - uses same composite index
-        best_score_subquery = models.Subquery(
-            Occurrence.objects.filter(base_filter)
-            .values("determination_id")
-            .annotate(max_score=models.Max("determination_score"))
-            .values("max_score")[:1],
-            output_field=models.FloatField(),
-        )
-
-        # Get last detected timestamp - requires join with detections
-        last_detected_subquery = models.Subquery(
-            Occurrence.objects.filter(
-                base_filter,
-                detections__timestamp__isnull=False,
-            )
-            .values("determination_id")
-            .annotate(last_detected=models.Max("detections__timestamp"))
-            .values("last_detected")[:1],
-            output_field=models.DateTimeField(),
-        )
-
-        # Apply annotations
-        qs = qs.annotate(
-            occurrences_count=Coalesce(occurrences_count_subquery, 0),
-            best_determination_score=best_score_subquery,
-            last_detected=last_detected_subquery,
-        )
-
-        if not include_unobserved:
-            # Efficient EXISTS check that uses the composite index
-            qs = qs.filter(models.Exists(Occurrence.objects.filter(base_filter)))
-
-        return qs
 
     def attach_tags_by_project(self, qs: QuerySet, project: Project) -> QuerySet:
         """

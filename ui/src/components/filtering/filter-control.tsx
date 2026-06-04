@@ -1,6 +1,5 @@
-import { InfoTooltip } from 'design-system/components/info-tooltip'
 import { XIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
+import { Button, InfoTooltip } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import { useFilters } from 'utils/useFilters'
 import { AlgorithmFilter, NotAlgorithmFilter } from './filters/algorithm-filter'
@@ -17,6 +16,7 @@ import { TaxaListFilter } from './filters/taxa-list-filter'
 import { TaxonFilter } from './filters/taxon-filter'
 import { TypeFilter } from './filters/type-filter'
 import { FilterProps } from './filters/types'
+import { ProcessingStatusFilter } from './filters/processing-status-filter'
 import { VerificationStatusFilter } from './filters/verification-status-filter'
 import { VerifiedByFilter } from './filters/verified-by-filter'
 
@@ -31,6 +31,7 @@ const ComponentMap: {
   deployment: StationFilter,
   detections__source_image: ImageFilter,
   event: SessionFilter,
+  processed: ProcessingStatusFilter,
   include_unobserved: BooleanFilter,
   job_type_key: TypeFilter,
   not_algorithm: NotAlgorithmFilter,

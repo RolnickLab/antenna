@@ -1,18 +1,18 @@
 import { ErrorState } from 'components/error-state/error-state'
+import { TaxonDetails } from 'components/taxon-details/taxon-details'
 import { useClassificationDetails } from 'data-services/hooks/identifications/useClassificationDetails'
 import {
   MachinePrediction as Identification,
   OccurrenceDetails as Occurrence,
 } from 'data-services/models/occurrence-details'
 import { Taxon } from 'data-services/models/taxa'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { Loader2 } from 'lucide-react'
 import {
+  BasicTooltip,
   Collapsible,
   IdentificationCard,
   IdentificationDetails,
   IdentificationScore,
-  TaxonDetails,
 } from 'nova-ui-kit'
 import { ReactNode, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'

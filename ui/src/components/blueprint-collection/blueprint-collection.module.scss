@@ -1,19 +1,15 @@
-@import 'src/design-system/variables/colors.scss';
-@import 'src/design-system/variables/typography.scss';
-@import 'src/design-system/variables/variables.scss';
-
 .blueprint {
   padding: 24px;
   width: 100%;
   min-height: 100%;
-  background-color: rgba($color: $color-primary-2-50, $alpha: 0.5);
+  background-color: rgba($color: #fafbff, $alpha: 0.5);
   background-size: 20px 20px;
   background-image: linear-gradient(
       to right,
-      $color-neutral-70 1px,
+      var(--color-neutral-100) 1px,
       transparent 1px
     ),
-    linear-gradient(to bottom, $color-neutral-70 1px, transparent 1px);
+    linear-gradient(to bottom, var(--color-neutral-100) 1px, transparent 1px);
   box-sizing: border-box;
 }
 
@@ -48,10 +44,10 @@
     justify-content: center;
     gap: 16px;
     max-width: 100%;
-    color: $color-neutral-700;
+    color: var(--color-foreground);
     padding: 8px;
     box-sizing: border-box;
-    @include paragraph-x-small();
+    @include body-small;
     line-height: 12px;
 
     span {
@@ -73,11 +69,11 @@
     display: inline-block;
     padding: 4px 8px;
     box-sizing: border-box;
-    background-color: $color-generic-white;
+    background-color: var(--color-generic-white);
   }
 }
 
-@media (max-width: $small-screen-breakpoint) {
+@media (max-width: $breakpoint-md) {
   .licenseInfoContent {
     text-align: left;
   }

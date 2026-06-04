@@ -60,6 +60,11 @@ _POST_TITLE_MAX_LENGTH: Final = 80
 # over non-terminal, then highest score, with pk as the deterministic tiebreaker.
 BEST_MACHINE_PREDICTION_ORDER: Final = ("-terminal", "-score", "-pk")
 
+# Ordering for "best identification" selection used by Occurrence.best_identification,
+# OccurrenceQuerySet.with_verification_info(), and best_identification_from_prefetch().
+# Most recent non-withdrawn identification wins, with pk as the deterministic tiebreaker.
+BEST_IDENTIFICATION_ORDER: Final = ("-created_at", "-pk")
+
 
 class TaxonRank(OrderedEnum):
     KINGDOM = "KINGDOM"
@@ -91,6 +96,11 @@ DEFAULT_RANKS = sorted(
 )
 
 NULL_DETECTIONS_FILTER = Q(bbox__isnull=True) | Q(bbox=[])
+
+
+def bbox_is_null(bbox) -> bool:
+    """In-memory equivalent of NULL_DETECTIONS_FILTER for already-fetched bbox values."""
+    return bbox is None or bbox == []
 
 
 def get_media_url(path: str) -> str:
@@ -2214,6 +2224,9 @@ class SourceImage(BaseModel):
             models.Index(fields=["deployment", "timestamp"]),
             models.Index(fields=["event", "timestamp"]),
             models.Index(fields=["timestamp"]),
+            # Backs the project "recent captures" sort: a per-project max(timestamp)
+            # lookup (see ProjectViewSet ordering "last_capture_timestamp").
+            models.Index(fields=["project", "-timestamp"], name="main_source_proj_ts_desc_idx"),
         ]
 
 
@@ -2839,6 +2852,11 @@ class Detection(BaseModel):
             "frame_num",
             "timestamp",
         ]
+        indexes = [
+            # Supports the "last processed" subquery on the captures list: the
+            # latest detection created_at per source image (index scan, top 1).
+            models.Index(fields=["source_image", "-created_at"], name="det_srcimg_created_idx"),
+        ]
 
     def best_classification(self):
         # @TODO where is this used?
@@ -2932,6 +2950,18 @@ class OccurrenceQuerySet(BaseQuerySet):
             "identifications__user",
         )
 
+    def with_list_prefetches(self):
+        """Add prefetches the list serializer needs (detection paths, classifications)."""
+        from ami.main.models_future.occurrence import prefetch_detections_for_list
+
+        return self.prefetch_related(prefetch_detections_for_list())
+
+    def with_detail_prefetches(self):
+        """Add prefetches the detail serializer needs (detections + source_image + classifications)."""
+        from ami.main.models_future.occurrence import prefetch_detections_for_detail
+
+        return self.prefetch_related(prefetch_detections_for_detail())
+
     def with_best_detection(self):
         """
         Annotate the queryset with fields from the best detection.
@@ -3014,7 +3044,7 @@ class OccurrenceQuerySet(BaseQuerySet):
         """
         best_identification_subquery = Identification.objects.filter(
             occurrence=OuterRef("pk"), withdrawn=False
-        ).order_by("-created_at")
+        ).order_by(*BEST_IDENTIFICATION_ORDER)
 
         return self.annotate(
             verified_by_name=models.Subquery(best_identification_subquery.values("user__name")[:1]),
@@ -3240,7 +3270,11 @@ class Occurrence(BaseModel):
 
         @TODO this could use a confidence level chosen manually by the users/experts.
         """
-        return Identification.objects.filter(occurrence=self, withdrawn=False).order_by("-created_at").first()
+        return (
+            Identification.objects.filter(occurrence=self, withdrawn=False)
+            .order_by(*BEST_IDENTIFICATION_ORDER)
+            .first()
+        )
 
     def get_determination_score(self) -> float | None:
         if not self.determination:
@@ -3319,6 +3353,9 @@ class Occurrence(BaseModel):
                 fields=["determination_id", "project_id", "event_id"],
                 name="occur_det_proj_evt",
             ),
+            # Supports sorting projects by their most recently updated occurrence
+            # (see ProjectViewSet ordering "last_occurrence_updated_at").
+            models.Index(fields=["project", "-updated_at"], name="occur_proj_updated_desc_idx"),
         ]
 
 
@@ -3392,15 +3429,213 @@ def update_occurrence_determination(
     return needs_update
 
 
-class TaxonQuerySet(BaseQuerySet):
-    def with_occurrence_counts(self, project: Project):
-        """
-        Annotate each taxon with the count of its occurrences for a given project.
-        """
-        qs = self
-        qs = qs.filter(occurrences__project=project)
+def _case_from_map(mapping: dict, default, output_field: models.Field) -> models.expressions.Combinable:
+    """Turn a precomputed ``{taxon_id: value}`` map into a constant-time ``CASE``.
 
-        return qs.annotate(occurrence_count=models.Count("occurrences", distinct=True))
+    The result is constant per row, so it is DB-sortable, paginatable, and stripped from
+    the pagination ``COUNT`` — unlike a per-taxon correlated subquery, which is
+    re-evaluated for every row and (in ``COUNT``) for every taxon in the project. Only
+    sparse maps work here: one ``When`` per entry blows past sqlparse's 10000-token
+    limit at ~hundreds of taxa × multiple columns.
+    """
+    if not mapping:
+        return models.Value(default, output_field=output_field)
+    return models.Case(
+        *(
+            models.When(id=taxon_id, then=models.Value(value, output_field=output_field))
+            for taxon_id, value in mapping.items()
+        ),
+        default=models.Value(default, output_field=output_field),
+        output_field=output_field,
+    )
+
+
+class TaxonQuerySet(BaseQuerySet):
+    def with_observation_counts_subqueries(
+        self,
+        project: Project,
+        request: Request | None,
+        *,
+        occurrence_filters: models.Q,
+        apply_default_score_filter: bool = True,
+        apply_default_taxa_filter: bool = True,
+    ):
+        """Annotate ``occurrences_count`` / ``best_determination_score`` / ``last_detected``
+        via three correlated ``Subquery`` annotations.
+
+        Index-served by the composite ``(determination_id, project_id, event_id,
+        determination_score)`` index on Occurrence. Use this on non-collection paths.
+        When ``occurrence_filters`` joins detections (e.g. ``?collection=<id>``) the
+        correlated form degrades to a per-row scan; use
+        :meth:`with_observation_counts_aggregated` instead.
+        """
+        default_filters_q = build_occurrence_default_filters_q(
+            project,
+            request,
+            occurrence_accessor="",
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=apply_default_taxa_filter,
+        )
+        base_filter = models.Q(occurrence_filters, determination_id=OuterRef("id")) & default_filters_q
+
+        occurrences_count_subquery = models.Subquery(
+            Occurrence.objects.filter(base_filter)
+            .values("determination_id")
+            .annotate(count=models.Count("id"))
+            .values("count")[:1],
+            output_field=models.IntegerField(),
+        )
+        best_score_subquery = models.Subquery(
+            Occurrence.objects.filter(base_filter)
+            .values("determination_id")
+            .annotate(max_score=models.Max("determination_score"))
+            .values("max_score")[:1],
+            output_field=models.FloatField(),
+        )
+        last_detected_subquery = models.Subquery(
+            Occurrence.objects.filter(base_filter, detections__timestamp__isnull=False)
+            .values("determination_id")
+            .annotate(last_detected=models.Max("detections__timestamp"))
+            .values("last_detected")[:1],
+            output_field=models.DateTimeField(),
+        )
+        return self.annotate(
+            occurrences_count=Coalesce(occurrences_count_subquery, 0),
+            best_determination_score=best_score_subquery,
+            last_detected=last_detected_subquery,
+        )
+
+    def with_observation_counts_aggregated(
+        self,
+        project: Project,
+        request: Request | None,
+        *,
+        relation_occurrence_filters: models.Q,
+        apply_default_score_filter: bool = True,
+    ):
+        """Annotate ``occurrences_count`` / ``best_determination_score`` / ``last_detected``
+        via conditional aggregation over the Taxon→occurrences reverse relation.
+
+        Required when ``relation_occurrence_filters`` joins detections (``?collection=<id>``),
+        where the correlated-subquery form degrades to per-row scans. One GROUP BY,
+        constant-size SQL. ``Count(distinct)`` dedupes the detections-join fan-out.
+
+        The default *taxa* include/exclude filter is deliberately omitted from
+        ``count_filter``: it is redundant with row-level
+        :meth:`filter_by_project_default_taxa`, and including it adds a
+        ``parents_json`` containment join inside the aggregate that the planner cannot
+        reconcile with the detections join (measured: 0.3s → 182s on a ~1k-taxa project).
+        Score threshold is per-occurrence so it stays.
+        """
+        count_filter = relation_occurrence_filters & build_occurrence_default_filters_q(
+            project,
+            request,
+            occurrence_accessor="occurrences",
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=False,
+        )
+        return self.annotate(
+            occurrences_count=models.Count("occurrences", filter=count_filter, distinct=True),
+            best_determination_score=models.Max("occurrences__determination_score", filter=count_filter),
+            last_detected=models.Max("occurrences__detections__timestamp", filter=count_filter),
+        )
+
+    def observed_in_project_subqueries(
+        self,
+        project: Project,
+        request: Request | None,
+        *,
+        occurrence_filters: models.Q,
+        apply_default_score_filter: bool = True,
+        apply_default_taxa_filter: bool = True,
+    ):
+        """Restrict the queryset to taxa observed in the filtered occurrence set, via a
+        materialised ``id__in``. Pair with :meth:`with_observation_counts_subqueries`.
+
+        The materialised form runs the (potentially detections-joined) filter exactly
+        once and leaves the pagination ``COUNT`` / page as a plain indexed ``id IN
+        (...)``. Aggregation-path callers should use ``.filter(occurrences_count__gt=0)``
+        (HAVING) instead.
+        """
+        default_filters_q = build_occurrence_default_filters_q(
+            project,
+            request,
+            occurrence_accessor="",
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=apply_default_taxa_filter,
+        )
+        observed_taxon_ids = list(
+            Occurrence.objects.filter(occurrence_filters)
+            .filter(default_filters_q)
+            .filter(determination_id__isnull=False)
+            .values_list("determination_id", flat=True)
+            .distinct()
+        )
+        return self.filter(id__in=observed_taxon_ids)
+
+    def with_verification_counts(
+        self,
+        project: Project,
+        request: Request | None,
+        *,
+        occurrence_filters: models.Q,
+        apply_default_score_filter: bool = True,
+        apply_default_taxa_filter: bool = True,
+        verified: bool | None = None,
+    ):
+        """Annotate ``verified_count`` and optionally apply the
+        ``verified=true|false`` filter.
+
+        Counts roll up descendant occurrences (verifying a species also counts toward
+        its genus / family rows). They concern only *verified* occurrences (those with a
+        non-withdrawn ``Identification``) — sparse relative to all occurrences — so the
+        hierarchical rollup is a single Python pass over that small subset applied as
+        constant-time ``CASE`` annotations. A correlated ``parents_json`` subquery per
+        taxon would not scale (GIN can't serve a containment with an ``OuterRef`` RHS).
+
+        Model-agreement counts (whether the chosen identification matched the model's
+        top prediction) are tracked separately — see issue #1319.
+        """
+        default_q = build_occurrence_default_filters_q(
+            project,
+            request,
+            occurrence_accessor="",
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=apply_default_taxa_filter,
+        )
+        verified_occurrences = (
+            Occurrence.objects.filter(occurrence_filters)
+            .filter(default_q)
+            .filter(Exists(Identification.objects.filter(occurrence=OuterRef("pk"), withdrawn=False)))
+        )
+        # ``pk`` is selected only so ``.distinct()`` below dedupes by occurrence: when
+        # occurrence_filters joins to detections (e.g. ?collection=<id>), one Occurrence
+        # yields a row per matching Detection, which would otherwise inflate counts.
+        value_fields = ["pk", "determination_id", "determination__parents_json"]
+
+        verified_counts: dict[int, int] = {}
+        for row in verified_occurrences.values(*value_fields).distinct():
+            determination_id = row["determination_id"]
+            taxon_ids: set[int] = set()
+            if determination_id is not None:
+                taxon_ids.add(determination_id)
+            for parent in row["determination__parents_json"] or []:
+                # parents_json round-trips through the pydantic schema field, so elements
+                # may be dicts or ``TaxonParent`` objects depending on the query path.
+                parent_id = parent.get("id") if isinstance(parent, dict) else getattr(parent, "id", None)
+                if parent_id is not None:
+                    taxon_ids.add(int(parent_id))
+            for taxon_id in taxon_ids:
+                verified_counts[taxon_id] = verified_counts.get(taxon_id, 0) + 1
+
+        qs = self.annotate(verified_count=_case_from_map(verified_counts, 0, models.IntegerField()))
+
+        if verified is True:
+            qs = qs.filter(id__in=list(verified_counts.keys()))
+        elif verified is False:
+            qs = qs.exclude(id__in=list(verified_counts.keys()))
+
+        return qs
 
     def filter_by_project_default_taxa(self, project: Project | None = None, request: Request | None = None):
         """
@@ -3788,6 +4023,10 @@ class Taxon(BaseModel):
 
     def best_determination_score(self) -> float | None:
         # This is handled by an annotation if we are filtering by project, deployment or event
+        return None
+
+    def verified_count(self) -> int | None:
+        # Handled by an annotation when filtering by project (TaxonQuerySet.with_verification_counts)
         return None
 
     def occurrence_images(self, limit: int | None = 10) -> list[str]:

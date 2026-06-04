@@ -1,0 +1,53 @@
+.tabsRoot {
+  position: relative;
+}
+
+.tabsList {
+  padding: 2px 0;
+
+  &:not(:last-child) {
+    margin-bottom: 16px;
+  }
+
+  :not(:last-child) {
+    margin-right: 4px;
+  }
+}
+
+.tabsTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  @include body-small;
+  font-weight: 600;
+  background-color: transparent;
+  height: 32px;
+  padding: 0 24px;
+  border-radius: 16px;
+
+  > * {
+    color: var(--color-primary) !important;
+  }
+
+  &:hover {
+    opacity: 0.7;
+    cursor: pointer;
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--color-generic-black);
+  }
+
+  &[data-state='active'] {
+    background-color: var(--color-primary);
+
+    > * {
+      color: var(--color-generic-white) !important;
+    }
+  }
+}
+
+.label {
+  padding-top: 2px;
+}

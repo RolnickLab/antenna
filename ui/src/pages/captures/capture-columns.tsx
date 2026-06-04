@@ -1,14 +1,15 @@
 import { API_ROUTES } from 'data-services/constants'
 import { Capture } from 'data-services/models/capture'
-import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
-import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
 import {
+  BasicTableCell,
   CellTheme,
+  DateTableCell,
   ImageCellTheme,
+  ImageTableCell,
   TableColumn,
   TextAlign,
-} from 'design-system/components/table/types'
-import { Toolbar } from 'design-system/components/toolbar'
+  Toolbar,
+} from 'nova-ui-kit'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -150,6 +151,12 @@ export const columns = ({
     name: translate(STRING.FIELD_LABEL_PATH),
     sortField: 'path',
     renderCell: (item: Capture) => <BasicTableCell value={item.path} />,
+  },
+  {
+    id: 'last-processed',
+    name: translate(STRING.FIELD_LABEL_LAST_PROCESSED),
+    sortField: 'last_processed',
+    renderCell: (item: Capture) => <DateTableCell date={item.lastProcessed} />,
   },
   {
     id: 'occurrences',
