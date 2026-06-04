@@ -1,4 +1,5 @@
 import collections
+import contextlib
 import datetime
 import functools
 import logging
@@ -6,6 +7,7 @@ import textwrap
 import time
 import typing
 import urllib.parse
+import uuid
 from io import BytesIO
 from typing import Final, final  # noqa: F401
 
@@ -420,6 +422,7 @@ class Project(ProjectSettingsMixin, BaseModel):
         RUN_SINGLE_IMAGE_JOB = "run_single_image_ml_job"
         RUN_POPULATE_CAPTURES_COLLECTION_JOB = "run_populate_captures_collection_job"
         RUN_DATA_STORAGE_SYNC_JOB = "run_data_storage_sync_job"
+        RUN_REGROUP_EVENTS_JOB = "run_regroup_events_job"
         RUN_DATA_EXPORT_JOB = "run_data_export_job"
         RUN_POST_PROCESSING_JOB = "run_post_processing_job"
         DELETE_JOB = "delete_job"
@@ -501,6 +504,7 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("run_ml_job", "Can run/retry/cancel ML jobs"),
             ("run_populate_captures_collection_job", "Can run/retry/cancel Populate Collection jobs"),
             ("run_data_storage_sync_job", "Can run/retry/cancel Data Storage Sync jobs"),
+            ("run_regroup_events_job", "Can run/retry/cancel Regroup Events jobs"),
             ("run_data_export_job", "Can run/retry/cancel Data Export jobs"),
             ("run_single_image_ml_job", "Can process a single capture"),
             ("run_post_processing_job", "Can run/retry/cancel Post-Processing jobs"),
@@ -853,8 +857,20 @@ class Deployment(BaseModel):
         else:
             return filesizeformat(self.data_source_total_size)
 
-    def sync_captures(self, batch_size=1000, regroup_events_per_batch=False, job: "Job | None" = None) -> int:
-        """Import images from the deployment's data source"""
+    def sync_captures(
+        self,
+        batch_size=1000,
+        regroup_events_per_batch=False,
+        regroup_after=True,
+        job: "Job | None" = None,
+    ) -> int:
+        """
+        Import images from the deployment's data source.
+
+        Set ``regroup_after=False`` when the caller (e.g. ``DataStorageSyncJob``)
+        will run regrouping as a tracked stage of its own so the work is visible
+        in the Jobs UI instead of buried inside ``Deployment.save()``.
+        """
 
         deployment = self
         assert deployment.data_source, f"Deployment {deployment.name} has no data source configured"
@@ -936,18 +952,25 @@ class Deployment(BaseModel):
 
         # @TODO decide if we should delete SourceImages that are no longer in the data source
 
-        if job:
-            job.logger.info("Saving and recalculating sessions for deployment")
-            job.progress.update_stage(job.job_type().key, progress=1)
-            job.progress.add_stage("Update deployment cache")
-            job.update_progress()
+        if regroup_after:
+            if job:
+                job.logger.info("Saving and recalculating sessions for deployment")
+                job.progress.update_stage(job.job_type().key, progress=1)
+                job.progress.add_stage("Update deployment cache")
+                job.update_progress()
 
-        # If new images were added, ensure the regroup happens now, not queued as an async task.
-        self.save(regroup_async=False)
+            # If new images were added, ensure the regroup happens now, not queued as an async task.
+            self.save(regroup_async=False)
 
-        if job:
-            job.progress.update_stage("Update deployment cache", progress=1)
-            job.update_progress()
+            if job:
+                job.progress.update_stage("Update deployment cache", progress=1)
+                job.update_progress()
+        else:
+            # Caller (e.g. DataStorageSyncJob) is responsible for running regroup as
+            # an explicit stage. Skip Deployment.save's autoregroup but still refresh
+            # cached counts so the deployment row reflects new file totals.
+            self.save(regroup_async=False, update_calculated_fields=False)
+            self.update_calculated_fields(save=True)
 
         return total_files
 
@@ -1404,11 +1427,81 @@ def audit_event_lengths(deployment: Deployment):
 DEFAULT_MAX_EVENT_DURATION = datetime.timedelta(hours=24)
 
 
+REGROUP_LOCK_TTL_SECONDS = 60 * 60  # matches ami.tasks Celery soft_time_limit for regroup
+
+
+@contextlib.contextmanager
+def _regroup_lock(deployment_id: int):
+    """
+    Acquire a per-deployment lock for regrouping. Token-based release —
+    the lock is only deleted if the value we wrote is still there, so an
+    expired-then-reacquired-by-someone-else lock doesn't get clobbered.
+
+    Yields True if acquired (caller should proceed), False if another run
+    already holds it (caller should short-circuit).
+    """
+    from django.core.cache import cache
+
+    lock_key = f"regroup_events:lock:deployment:{deployment_id}"
+    token = uuid.uuid4().hex
+    acquired = cache.add(lock_key, token, timeout=REGROUP_LOCK_TTL_SECONDS)
+    try:
+        yield acquired
+    finally:
+        if acquired:
+            current = cache.get(lock_key)
+            if current == token:
+                cache.delete(lock_key)
+
+
 def group_images_into_events(
     deployment: Deployment,
     max_time_gap: datetime.timedelta | None = None,
     delete_empty=True,
     max_event_duration: datetime.timedelta | None = DEFAULT_MAX_EVENT_DURATION,
+    job: "Job | None" = None,
+    stage_key: str | None = None,
+) -> list[Event]:
+    """
+    Group a deployment's captures into Events based on timestamp gaps.
+
+    Holds a per-deployment cache lock so concurrent calls (autoregroup-on-save,
+    manual API/admin trigger, sync-time regroup) collapse to a single in-flight
+    run rather than racing on the same rows. If the lock is already held, this
+    function logs and returns an empty list without touching the DB.
+
+    When ``job`` and ``stage_key`` are passed, summary stats (events created,
+    events touched, duplicate-timestamp count, ungrouped captures) are written
+    to the named stage so the Jobs UI can surface them. Pure callers (e.g.
+    ``Deployment.save`` autoregroup, ``sync_captures`` per-batch) leave both
+    arguments at ``None``.
+    """
+    with _regroup_lock(deployment.pk) as acquired:
+        if not acquired:
+            msg = f"group_images_into_events skipped for deployment {deployment.pk}: another regroup is in progress."
+            if job:
+                job.logger.warning(msg)
+            else:
+                logger.warning(msg)
+            return []
+
+        return _group_images_into_events_locked(
+            deployment,
+            max_time_gap=max_time_gap,
+            delete_empty=delete_empty,
+            max_event_duration=max_event_duration,
+            job=job,
+            stage_key=stage_key,
+        )
+
+
+def _group_images_into_events_locked(
+    deployment: Deployment,
+    max_time_gap: datetime.timedelta | None,
+    delete_empty: bool,
+    max_event_duration: datetime.timedelta | None,
+    job: "Job | None",
+    stage_key: str | None,
 ) -> list[Event]:
     if max_time_gap is None:
         default_gap = datetime.timedelta(minutes=120)
@@ -1432,7 +1525,8 @@ def group_images_into_events(
         .filter(count__gt=1)
         .exclude(timestamp=None)
     )
-    if dupes.count():
+    duplicate_timestamp_count = dupes.count()
+    if duplicate_timestamp_count:
         values = "\n".join(
             [f'{d.strftime("%Y-%m-%d %H:%M:%S")} x{c}' for d, c in dupes.values_list("timestamp", "count")]
         )
@@ -1538,9 +1632,10 @@ def group_images_into_events(
     if touched_event_pks:
         update_calculated_fields_for_events(pks=list(touched_event_pks))
 
+    events_deleted_empty = 0
     if delete_empty:
         logger.info("Deleting empty events for deployment")
-        delete_empty_events(deployment=deployment)
+        events_deleted_empty = delete_empty_events(deployment=deployment)
 
     for event in events:
         # Set the width and height of all images in each event based on the first image
@@ -1557,6 +1652,27 @@ def group_images_into_events(
     deployment.update_calculated_fields(save=True)
 
     audit_event_lengths(deployment)
+
+    # Surface stats to the Jobs UI when this regroup is wrapped in a job.
+    # ungrouped_captures = images with valid timestamps that didn't land in any event
+    # (should be 0 unless an event delete races a capture insert; useful signal).
+    if job and stage_key:
+        ungrouped_captures = (
+            SourceImage.objects.filter(deployment=deployment, event__isnull=True).exclude(timestamp=None).count()
+        )
+        no_timestamp_captures = SourceImage.objects.filter(deployment=deployment, timestamp=None).count()
+        job.progress.update_stage(
+            stage_key,
+            captures_grouped=len(image_timestamps),
+            events_created=len(events),
+            events_touched=len(touched_event_pks),
+            events_deleted_empty=events_deleted_empty,
+            duplicate_timestamps=duplicate_timestamp_count,
+            ungrouped_captures=ungrouped_captures,
+            no_timestamp_captures=no_timestamp_captures,
+        )
+        job.update_progress()
+        job.save()
 
     return events
 
@@ -1605,9 +1721,11 @@ def deployment_events_need_update(deployment: Deployment) -> bool:
     return needs_update
 
 
-def delete_empty_events(deployment: Deployment, dry_run=False):
+def delete_empty_events(deployment: Deployment, dry_run=False) -> int:
     """
     Delete events that have no images, occurrences or other related records.
+
+    Returns the number of events deleted (or that would be deleted, for dry runs).
     """
 
     # @TODO Search all models that have a foreign key to Event
@@ -1626,12 +1744,14 @@ def delete_empty_events(deployment: Deployment, dry_run=False):
         .filter(num_images=0, num_occurrences=0)
     )
 
+    count = events.count()
     if dry_run:
         for event in events:
             logger.debug(f"Would delete event {event} (dry run)")
     else:
-        logger.info(f"Deleting {events.count()} empty events")
+        logger.info(f"Deleting {count} empty events")
         events.delete()
+    return count
 
 
 def sample_events(deployment: Deployment, day_interval: int = 3) -> typing.Generator[Event, None, None]:

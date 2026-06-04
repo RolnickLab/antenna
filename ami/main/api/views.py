@@ -362,23 +362,32 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
     @action(detail=True, methods=["post"], name="regroup-sessions", url_path="regroup-sessions")
     def regroup_sessions(self, _request, pk=None) -> Response:
         """
-        Queue a background task to regroup the deployment's source images into sessions.
+        Queue a ``RegroupEventsJob`` to regroup the deployment's source images into sessions.
 
         Uses the project's ``session_time_gap_seconds`` setting to determine
         the maximum gap between consecutive images before a new session is started.
 
         (Sessions are stored as ``Event`` records internally.)
         """
-        from ami.tasks import regroup_events as regroup_events_task
+        from ami.jobs.models import Job, RegroupEventsJob
 
         deployment: Deployment = self.get_object()
-        async_result = regroup_events_task.delay(deployment.pk)
-        logger.info(f"Queued regroup_sessions for deployment {deployment.pk} (task {async_result.id})")
+        assert deployment.project
+
+        job = Job.objects.create(
+            name=f"Regroup sessions for deployment {deployment.pk}",
+            deployment=deployment,
+            project=deployment.project,
+            job_type_key=RegroupEventsJob.key,
+        )
+        job.enqueue()
+        msg = f"Queued regroup sessions for deployment {deployment.pk} (job {job.pk})"
+        logger.info(msg)
         return Response(
             {
-                "task_id": async_result.id,
+                "job_id": job.pk,
                 "deployment_id": deployment.pk,
-                "project_id": deployment.project_id,
+                "project_id": deployment.project.pk,
             },
             status=status.HTTP_202_ACCEPTED,
         )

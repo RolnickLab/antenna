@@ -1,5 +1,4 @@
 import { FormController } from 'components/form/form-controller'
-import { FormField } from 'components/form/form-field'
 import {
   FormActions,
   FormError,
@@ -17,7 +16,6 @@ import { PipelinesSelect } from './pipelines-select'
 
 interface ProcessingFormValues {
   defaultProcessingPipeline: { id: string; name: string }
-  sessionTimeGapSeconds: number
 }
 
 const config: FormConfig = {
@@ -25,12 +23,6 @@ const config: FormConfig = {
     label: 'Default processing pipeline',
     description:
       'The default pipeline to use for processing images in this project.',
-  },
-  sessionTimeGapSeconds: {
-    label: 'Maximum time gap between sessions (default)',
-    description:
-      'Maximum time gap (in seconds) between consecutive images before a new session is started. Default is 7200 seconds (2 hours).',
-    rules: { required: true, min: 1 },
   },
 }
 
@@ -54,7 +46,6 @@ export const ProcessingForm = ({
   } = useForm<ProcessingFormValues>({
     defaultValues: {
       defaultProcessingPipeline: project.settings.defaultProcessingPipeline,
-      sessionTimeGapSeconds: project.settings.sessionTimeGapSeconds,
     },
     mode: 'onChange',
   })
@@ -92,14 +83,6 @@ export const ProcessingForm = ({
                 />
               </InputContent>
             )}
-          />
-        </FormRow>
-        <FormRow>
-          <FormField
-            name="sessionTimeGapSeconds"
-            type="number"
-            config={config}
-            control={control}
           />
         </FormRow>
       </FormSection>

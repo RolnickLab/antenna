@@ -673,8 +673,20 @@ class MLJob(JobType):
 
 
 class DataStorageSyncJob(JobType):
+    """
+    Sync captures from the deployment's data source, then regroup them into
+    sessions as a separate tracked stage.
+
+    The regroup stage runs inside this job (not via ``Deployment.save()``
+    autoregroup) so its logs land on the same Job row and a regroup failure
+    flips the Job to FAILURE. Previously a sync would silently succeed even
+    if the post-sync regroup raised — see #1157.
+    """
+
     name = "Data storage sync"
     key = "data_storage_sync"
+    regroup_stage_key = "regroup_sessions"
+    regroup_stage_name = "Regroup sessions"
 
     @classmethod
     def run(cls, job: "Job"):
@@ -683,10 +695,24 @@ class DataStorageSyncJob(JobType):
 
         This is meant to be called by an async task, not directly.
         """
+        from ami.main.models import group_images_into_events
 
-        job.progress.add_stage(cls.name)
+        job.progress.add_stage(cls.name, key=cls.key)
         job.progress.add_stage_param(cls.key, "Total files", 0)
         job.progress.add_stage_param(cls.key, "Failed", 0)
+
+        job.progress.add_stage(cls.regroup_stage_name, key=cls.regroup_stage_key)
+        for param_key in (
+            "captures_grouped",
+            "events_created",
+            "events_touched",
+            "events_deleted_empty",
+            "duplicate_timestamps",
+            "ungrouped_captures",
+            "no_timestamp_captures",
+        ):
+            job.progress.add_stage_param(cls.regroup_stage_key, param_key, 0)
+
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
@@ -694,27 +720,31 @@ class DataStorageSyncJob(JobType):
 
         if not job.deployment:
             raise ValueError("No deployment provided for data storage sync job")
-        else:
-            job.logger.info(f"Syncing captures for deployment {job.deployment}")
-            job.progress.update_stage(
-                cls.key,
-                status=JobState.STARTED,
-                progress=0,
-                total_files=0,
-            )
-            job.save()
 
-            job.deployment.sync_captures(job=job)
+        job.logger.info(f"Syncing captures for deployment {job.deployment}")
+        job.progress.update_stage(
+            cls.key,
+            status=JobState.STARTED,
+            progress=0,
+            total_files=0,
+        )
+        job.save()
 
-            job.logger.info(f"Finished syncing captures for deployment {job.deployment}")
-            job.progress.update_stage(
-                cls.key,
-                status=JobState.SUCCESS,
-                progress=1,
-            )
-            job.update_status(JobState.SUCCESS)
-            job.save()
+        job.deployment.sync_captures(job=job, regroup_after=False)
 
+        job.logger.info(f"Finished syncing captures for deployment {job.deployment}")
+        job.progress.update_stage(cls.key, status=JobState.SUCCESS, progress=1)
+        job.save()
+
+        job.logger.info(f"Regrouping captures into sessions for deployment {job.deployment}")
+        job.progress.update_stage(cls.regroup_stage_key, status=JobState.STARTED, progress=0)
+        job.save()
+
+        events = group_images_into_events(job.deployment, job=job, stage_key=cls.regroup_stage_key)
+        job.logger.info(f"Deployment {job.deployment} now has {len(events)} events after sync regroup.")
+
+        job.progress.update_stage(cls.regroup_stage_key, status=JobState.SUCCESS, progress=1)
+        job.update_status(JobState.SUCCESS)
         job.finished_at = datetime.datetime.now()
         job.save()
 
@@ -834,6 +864,57 @@ class PostProcessingJob(JobType):
         job.save()
 
 
+class RegroupEventsJob(JobType):
+    """
+    Regroup a deployment's captures into Events using the project's
+    ``session_time_gap_seconds`` setting.
+
+    Single-stage job: ``group_images_into_events`` is one mostly-atomic SQL
+    pass with no per-image Python loop, so we cannot report incremental %
+    progress meaningfully. Stage transitions are CREATED → STARTED (0%) →
+    SUCCESS/FAILURE (100%). Summary stats (events created/touched/deleted,
+    duplicates, ungrouped captures) are written to the stage params by
+    ``group_images_into_events`` itself before it returns. Closes #1157, #1158.
+    """
+
+    name = "Regroup sessions"
+    key = "regroup_events"
+
+    @classmethod
+    def run(cls, job: "Job"):
+        from ami.main.models import group_images_into_events
+
+        if not job.deployment:
+            raise ValueError("No deployment provided for regroup events job")
+
+        job.progress.add_stage(cls.name, key=cls.key)
+        for param_key in (
+            "captures_grouped",
+            "events_created",
+            "events_touched",
+            "events_deleted_empty",
+            "duplicate_timestamps",
+            "ungrouped_captures",
+            "no_timestamp_captures",
+        ):
+            job.progress.add_stage_param(cls.key, param_key, 0)
+
+        job.update_status(JobState.STARTED)
+        job.started_at = datetime.datetime.now()
+        job.finished_at = None
+        job.progress.update_stage(cls.key, status=JobState.STARTED, progress=0)
+        job.save()
+
+        job.logger.info(f"Regrouping captures for deployment {job.deployment}")
+        events = group_images_into_events(job.deployment, job=job, stage_key=cls.key)
+        job.logger.info(f"Deployment {job.deployment} now has {len(events)} events after regrouping.")
+
+        job.progress.update_stage(cls.key, status=JobState.SUCCESS, progress=1)
+        job.update_status(JobState.SUCCESS, save=False)
+        job.finished_at = datetime.datetime.now()
+        job.save()
+
+
 class UnknownJobType(JobType):
     name = "Unknown"
     key = "unknown"
@@ -847,6 +928,7 @@ VALID_JOB_TYPES = [
     MLJob,
     SourceImageCollectionPopulateJob,
     DataStorageSyncJob,
+    RegroupEventsJob,
     UnknownJobType,
     DataExportJob,
     PostProcessingJob,

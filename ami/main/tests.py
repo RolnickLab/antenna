@@ -551,39 +551,58 @@ class TestImageGrouping(TestCase):
             # NOT 12 (which is what bad_value=0 would produce without the guard).
             assert count == 2, f"expected 2 Events at gap={bad_value} (default fallback), got {count}"
 
-    def test_regroup_events_task_is_idempotent_under_concurrent_calls(self):
+    def test_regroup_is_idempotent_under_concurrent_calls(self):
         """
-        ``ami.tasks.regroup_events`` uses a per-deployment cache lock so
-        concurrent enqueues collapse to a single run. The second call should
-        skip without touching the DB.
+        ``group_images_into_events`` holds a per-deployment cache lock so
+        concurrent calls (admin, API action, autoregroup-on-save, sync-stage)
+        collapse to a single in-flight run. The second call should return an
+        empty list without creating any Events.
         """
-        from unittest.mock import patch
-
         from django.core.cache import cache
 
-        from ami.tasks import regroup_events
-
+        lock_key = f"regroup_events:lock:deployment:{self.deployment.pk}"
         # Make sure no stale lock from a prior test leaks in.
-        cache.delete(f"regroup_events:lock:deployment:{self.deployment.pk}")
+        cache.delete(lock_key)
 
         self._create_burst(datetime.datetime(2023, 8, 5, 22, 0), n=6, interval_minutes=5)
+        Event.objects.filter(deployment=self.deployment).delete()
 
-        with patch("ami.main.models.group_images_into_events") as mock_group:
-            # Pre-take the lock to simulate an in-flight run.
-            cache.add(f"regroup_events:lock:deployment:{self.deployment.pk}", 1, timeout=60)
-            try:
-                regroup_events(self.deployment.pk)
-            finally:
-                cache.delete(f"regroup_events:lock:deployment:{self.deployment.pk}")
-            assert mock_group.call_count == 0, "Locked run should skip group_images_into_events"
+        # Pre-take the lock with a token we control.
+        cache.add(lock_key, "other-run-token", timeout=60)
+        try:
+            result = group_images_into_events(deployment=self.deployment)
+        finally:
+            cache.delete(lock_key)
+
+        assert result == [], "Locked run should return empty list"
+        assert Event.objects.filter(deployment=self.deployment).count() == 0, "Locked run should not create Events"
 
         # Without the pre-taken lock, the next call should run normally and release the lock.
-        with patch("ami.main.models.group_images_into_events", return_value=[]) as mock_group:
-            regroup_events(self.deployment.pk)
-            assert mock_group.call_count == 1, "Unlocked run should invoke group_images_into_events"
-        assert (
-            cache.get(f"regroup_events:lock:deployment:{self.deployment.pk}") is None
-        ), "Lock should be released after the task body completes"
+        events = group_images_into_events(deployment=self.deployment)
+        assert len(events) >= 1, "Unlocked run should produce Events"
+        assert cache.get(lock_key) is None, "Lock should be released after the function returns"
+
+    def test_regroup_lock_release_does_not_clobber_a_newer_owner(self):
+        """
+        Token-based lock release: if our run takes longer than the lock TTL and
+        another caller acquires the same key with a fresh token, our ``finally``
+        block must not delete the other caller's lock.
+        """
+        from django.core.cache import cache
+
+        from ami.main.models import _regroup_lock
+
+        lock_key = f"regroup_events:lock:deployment:{self.deployment.pk}"
+        cache.delete(lock_key)
+
+        with _regroup_lock(self.deployment.pk) as acquired:
+            assert acquired, "Should acquire the lock on first try"
+            # Simulate the TTL expiring and a newer caller taking the lock.
+            cache.set(lock_key, "newer-owner-token", timeout=60)
+
+        # Our `finally` ran. The newer owner's lock should still be there.
+        assert cache.get(lock_key) == "newer-owner-token", "Expired-lock release must not clobber the newer owner"
+        cache.delete(lock_key)
 
     def test_pruning_empty_events(self):
         from ami.main.models import delete_empty_events

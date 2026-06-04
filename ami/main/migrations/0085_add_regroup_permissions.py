@@ -1,41 +1,67 @@
 """
-Add the ``regroup_sessions_deployment`` custom permission to ``Project`` and
-grant it to existing ``ProjectManager`` role groups.
+Add two custom permissions to ``Project`` and grant them to the relevant role
+groups:
 
-The new ``POST /api/v2/deployments/<pk>/regroup-sessions/`` action runs through
-``BaseModel.check_custom_permission``, which builds the codename as
-``{action}_{model_name}`` — for the ``regroup_sessions`` action on a
-``Deployment`` viewset that resolves project permission via the parent project,
-the perm needed is ``regroup_sessions_deployment``. Mirrors how
-``sync_deployment`` is granted in ``ami.users.roles.ProjectManager``.
+* ``regroup_sessions_deployment`` — gates the
+  ``POST /api/v2/deployments/<pk>/regroup-sessions/`` action via
+  ``BaseModel.check_custom_permission`` (codename = ``{action}_{model_name}``).
+  Mirrors how ``sync_deployment`` is granted. Goes to ``ProjectManager``.
+
+* ``run_regroup_events_job`` — gates create/run/cancel of the new
+  ``RegroupEventsJob`` type via ``Job.check_custom_permission`` (codename =
+  ``run_{job_type_key}_job``). Mirrors how ``run_data_storage_sync_job`` is
+  granted. Goes to ``MLDataManager`` (which ``ProjectManager`` inherits from).
 """
 
 from django.db import migrations
 from django.db.models import Q
 
 
-def grant_regroup_sessions_to_project_managers(apps, schema_editor):
-    Group = apps.get_model("auth", "Group")
+def _get_or_create_perm(apps, codename: str, name: str):
     Permission = apps.get_model("auth", "Permission")
+    ContentType = apps.get_model("contenttypes", "ContentType")
+    project_ct = ContentType.objects.get(app_label="main", model="project")
+    perm, _ = Permission.objects.get_or_create(
+        codename=codename,
+        content_type=project_ct,
+        defaults={"name": name},
+    )
+    return perm, project_ct
+
+
+def grant_new_permissions(apps, schema_editor):
+    Group = apps.get_model("auth", "Group")
     ContentType = apps.get_model("contenttypes", "ContentType")
 
     try:
-        project_ct = ContentType.objects.get(app_label="main", model="project")
+        ContentType.objects.get(app_label="main", model="project")
     except ContentType.DoesNotExist:
         return
 
-    perm, _ = Permission.objects.get_or_create(
-        codename="regroup_sessions_deployment",
-        content_type=project_ct,
-        defaults={"name": "Can regroup deployment captures into sessions"},
+    regroup_perm, _ = _get_or_create_perm(
+        apps,
+        "regroup_sessions_deployment",
+        "Can regroup deployment captures into sessions",
+    )
+    run_regroup_job_perm, _ = _get_or_create_perm(
+        apps,
+        "run_regroup_events_job",
+        "Can run/retry/cancel Regroup Events jobs",
     )
 
-    role_groups = Group.objects.filter(Q(name__endswith="_ProjectManager"))
-    for group in role_groups:
-        group.permissions.add(perm)
+    project_manager_groups = Group.objects.filter(Q(name__endswith="_ProjectManager"))
+    for group in project_manager_groups:
+        group.permissions.add(regroup_perm)
+
+    # run_regroup_events_job goes to anyone who can run a sync job today —
+    # MLDataManager is the primary holder; ProjectManager inherits from it
+    # and has its own role group.
+    job_runner_groups = Group.objects.filter(Q(name__endswith="_MLDataManager") | Q(name__endswith="_ProjectManager"))
+    for group in job_runner_groups:
+        group.permissions.add(run_regroup_job_perm)
 
 
-def revoke_regroup_sessions_from_project_managers(apps, schema_editor):
+def revoke_new_permissions(apps, schema_editor):
     Group = apps.get_model("auth", "Group")
     Permission = apps.get_model("auth", "Permission")
     ContentType = apps.get_model("contenttypes", "ContentType")
@@ -45,20 +71,20 @@ def revoke_regroup_sessions_from_project_managers(apps, schema_editor):
         project_ct = ContentType.objects.get(app_label="main", model="project")
     except ContentType.DoesNotExist:
         return
-    try:
-        perm = Permission.objects.get(codename="regroup_sessions_deployment", content_type=project_ct)
-    except Permission.DoesNotExist:
-        return
 
-    role_groups = Group.objects.filter(Q(name__endswith="_ProjectManager"))
-    for group in role_groups:
-        group.permissions.remove(perm)
-
-    GroupObjectPermission.objects.filter(
-        permission=perm,
-        content_type=project_ct,
-        group__in=role_groups,
-    ).delete()
+    for codename in ("regroup_sessions_deployment", "run_regroup_events_job"):
+        try:
+            perm = Permission.objects.get(codename=codename, content_type=project_ct)
+        except Permission.DoesNotExist:
+            continue
+        role_groups = Group.objects.filter(Q(name__endswith="_ProjectManager") | Q(name__endswith="_MLDataManager"))
+        for group in role_groups:
+            group.permissions.remove(perm)
+        GroupObjectPermission.objects.filter(
+            permission=perm,
+            content_type=project_ct,
+            group__in=role_groups,
+        ).delete()
 
 
 class Migration(migrations.Migration):
@@ -81,6 +107,7 @@ class Migration(migrations.Migration):
                     ("run_ml_job", "Can run/retry/cancel ML jobs"),
                     ("run_populate_captures_collection_job", "Can run/retry/cancel Populate Collection jobs"),
                     ("run_data_storage_sync_job", "Can run/retry/cancel Data Storage Sync jobs"),
+                    ("run_regroup_events_job", "Can run/retry/cancel Regroup Events jobs"),
                     ("run_data_export_job", "Can run/retry/cancel Data Export jobs"),
                     ("run_single_image_ml_job", "Can process a single capture"),
                     ("run_post_processing_job", "Can run/retry/cancel Post-Processing jobs"),
@@ -129,7 +156,7 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.RunPython(
-            grant_regroup_sessions_to_project_managers,
-            revoke_regroup_sessions_from_project_managers,
+            grant_new_permissions,
+            revoke_new_permissions,
         ),
     ]

@@ -141,6 +141,7 @@ class MLDataManager(Role):
         Project.Permissions.RUN_ML_JOB,
         Project.Permissions.RUN_POPULATE_CAPTURES_COLLECTION_JOB,
         Project.Permissions.RUN_DATA_STORAGE_SYNC_JOB,
+        Project.Permissions.RUN_REGROUP_EVENTS_JOB,
         Project.Permissions.RUN_DATA_EXPORT_JOB,
         Project.Permissions.DELETE_OCCURRENCES,
         Project.Permissions.CREATE_PROJECT_PIPELINE_CONFIG,

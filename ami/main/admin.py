@@ -171,17 +171,54 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
 
     # list action that runs deployment.import_captures and displays a message
     # https://docs.djangoproject.com/en/3.2/ref/contrib/admin/actions/#writing-action-functions
-    @admin.action(description="Sync captures from deployment's data source (async)")
+    @admin.action(description="Sync captures from deployment's data source (Job)")
     def sync_captures(self, request: HttpRequest, queryset: QuerySet[Deployment]) -> None:
-        queued_tasks = [tasks.sync_source_images.delay(deployment.pk) for deployment in queryset]
-        msg = f"Syncing captures for {len(queued_tasks)} deployments in background: {queued_tasks}"
+        from ami.jobs.models import DataStorageSyncJob
+
+        queued_job_ids: list[int] = []
+        skipped: list[str] = []
+        for deployment in queryset:
+            if not deployment.project_id:
+                skipped.append(f"{deployment} (no project)")
+                continue
+            if not deployment.data_source_id:
+                skipped.append(f"{deployment} (no data source)")
+                continue
+            job = Job.objects.create(
+                name=f"Sync captures for deployment {deployment.pk}",
+                deployment=deployment,
+                project=deployment.project,
+                job_type_key=DataStorageSyncJob.key,
+            )
+            job.enqueue()
+            queued_job_ids.append(job.pk)
+        msg = f"Queued DataStorageSyncJob for {len(queued_job_ids)} deployments: {queued_job_ids}"
+        if skipped:
+            msg += f" — skipped: {', '.join(skipped)}"
         self.message_user(request, msg)
 
     # Action that regroups all captures in the deployment into events
-    @admin.action(description="Regroup captures into events (async)")
+    @admin.action(description="Regroup captures into sessions (Job)")
     def regroup_events(self, request: HttpRequest, queryset: QuerySet[Deployment]) -> None:
-        queued_tasks = [tasks.regroup_events.delay(deployment.pk) for deployment in queryset]
-        msg = f"Regrouping captures into events for {len(queued_tasks)} deployments in background: {queued_tasks}"
+        from ami.jobs.models import RegroupEventsJob
+
+        queued_job_ids: list[int] = []
+        skipped: list[str] = []
+        for deployment in queryset:
+            if not deployment.project_id:
+                skipped.append(f"{deployment} (no project)")
+                continue
+            job = Job.objects.create(
+                name=f"Regroup sessions for deployment {deployment.pk}",
+                deployment=deployment,
+                project=deployment.project,
+                job_type_key=RegroupEventsJob.key,
+            )
+            job.enqueue()
+            queued_job_ids.append(job.pk)
+        msg = f"Queued RegroupEventsJob for {len(queued_job_ids)} deployments: {queued_job_ids}"
+        if skipped:
+            msg += f" — skipped: {', '.join(skipped)}"
         self.message_user(request, msg)
 
     list_filter = ("project",)
