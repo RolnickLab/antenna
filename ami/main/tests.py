@@ -325,6 +325,15 @@ class TestImageThumbnailViews(TestCase):
         self.assertGreaterEqual(captured.last_modified, before)
         self.assertLessEqual(captured.last_modified, after)
 
+    @override_settings(THUMBNAILS={"STORAGE_PREFIX": "thumbnails/", "SIZES": {}})
+    def test_thumbnail_empty_sizes_returns_clear_error(self):
+        """If THUMBNAILS['SIZES'] is empty the endpoint must return a clear API error,
+        not 500 with ``StopIteration`` from ``next(iter(empty))``.
+        """
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 404)
+        self.assertIn(b"No thumbnail sizes", response.content)
+
     def test_thumbnail_non_rgb_source_converts(self):
         """RGBA/P/etc. source images must be converted to RGB before JPEG encode."""
         from unittest import mock

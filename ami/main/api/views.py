@@ -833,8 +833,12 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
 
     def retrieve(self, request, pk=None):
         _sizes = settings.THUMBNAILS["SIZES"]
+        if not _sizes:
+            # Misconfiguration. Without ``next(iter(...), None)`` the default-label path
+            # raised ``StopIteration`` and surfaced as a 500. Return a clear API error.
+            raise api_exceptions.NotFound(detail="No thumbnail sizes are configured (settings.THUMBNAILS['SIZES']).")
 
-        label = self.request.query_params.get("label", next(iter(_sizes)))
+        label = self.request.query_params.get("label") or next(iter(_sizes))
         size = _sizes.get(label, None)
         if size is None:
             raise api_exceptions.ValidationError(
