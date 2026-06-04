@@ -1801,6 +1801,11 @@ def create_source_image_from_upload(
         checksum_algorithm=checksum_algorithm,
         width=width,
         height=height,
+        # Parity with the S3-sync path (which copies the object's LastModified header into
+        # this field). Without it the field is None for uploaded captures, which breaks
+        # downstream consumers that compare source mtime against derived-artifact mtime
+        # (e.g. SourceImage.find_or_generate_thumbnail_for_label).
+        last_modified=timezone.now(),
         test_image=True,
         uploaded_by=request.user if request else None,
     )
@@ -2219,10 +2224,19 @@ class SourceImage(BaseModel):
         size = settings.THUMBNAILS["SIZES"].get(label)
         prefix = settings.THUMBNAILS["STORAGE_PREFIX"]
 
+        # ``self.last_modified`` tracks the source bytes' mtime (S3 LastModified on the
+        # sync path; upload time on the upload path). It can still be None on legacy rows
+        # synced before upload backfill — treat that as "no signal of source change, trust
+        # the cached thumb" rather than raising ``TypeError`` on ``datetime < None``.
+        source_changed = (
+            self.last_modified is not None
+            and thumb is not None
+            and thumb.last_modified < self.last_modified
+        )
         if (
             not thumb
             or thumb.width != size["width"]
-            or thumb.last_modified < self.last_modified
+            or source_changed
             or not default_storage.exists(thumb.path)
         ):
             img = PIL.Image.open(BytesIO(fetch_image_content(self.public_url(raise_errors=True))))

@@ -9,6 +9,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection, models
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from guardian.shortcuts import assign_perm, get_perms, remove_perm
 from PIL import Image
 from rest_framework import status
@@ -282,6 +283,47 @@ class TestImageThumbnailViews(TestCase):
         thumb = self.first_capture.thumbnails.get(label="small")
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_source_last_modified_none_does_not_crash(self):
+        """Legacy SourceImage rows synced before the upload backfill have last_modified=None.
+
+        Once a thumbnail row exists, the regen check used to raise
+        ``TypeError: '<' not supported between instances of 'datetime.datetime' and 'NoneType'``
+        on every subsequent request. Now the comparison should treat None as "no signal of
+        source change" and reuse the cached thumb.
+        """
+        # First request generates the thumb (last_modified=None at this point is fine because
+        # the short-circuit on ``not thumb`` doesn't reach the comparison).
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        thumb_id = self.first_capture.thumbnails.first().pk
+
+        # Simulate a legacy row with no source mtime.
+        SourceImage.objects.filter(pk=self.first_capture.pk).update(last_modified=None)
+
+        # Second request must reuse the cached thumb, not raise.
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.first_capture.thumbnails.count(), 1)
+        self.assertEqual(self.first_capture.thumbnails.first().pk, thumb_id)
+
+    def test_upload_handler_backfills_last_modified(self):
+        """``create_source_image_from_upload`` must set ``last_modified`` so uploaded
+        captures match the parity of S3-synced ones and can be invalidated when re-uploaded.
+        """
+        from ami.main.models import create_source_image_from_upload
+
+        png = BytesIO()
+        Image.new("RGB", (320, 240), (255, 0, 0)).save(png, format="JPEG")
+        png.seek(0)
+        upload = SimpleUploadedFile("20200101000000-test.jpg", png.read(), content_type="image/jpeg")
+        before = timezone.now()
+        captured = create_source_image_from_upload(image=upload, deployment=self.deployment, process_now=False)
+        after = timezone.now()
+
+        self.assertIsNotNone(captured.last_modified)
+        self.assertGreaterEqual(captured.last_modified, before)
+        self.assertLessEqual(captured.last_modified, after)
 
     def test_thumbnail_non_rgb_source_converts(self):
         """RGBA/P/etc. source images must be converted to RGB before JPEG encode."""
