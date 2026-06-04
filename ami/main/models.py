@@ -2510,7 +2510,10 @@ class SourceImageThumbnail(BaseModel):
     size = models.BigIntegerField(null=True, blank=True)
     last_modified = models.DateTimeField(null=True, blank=True, auto_now_add=True)
 
-    source_image = models.ForeignKey(SourceImage, on_delete=models.SET_NULL, null=True, related_name="thumbnails")
+    # CASCADE: thumbnails are pure derivatives of their source. SET_NULL leaves
+    # orphan rows + dangling storage blobs forever and nothing else reaps them.
+    # The pre_delete signal in ``ami.main.signals`` cleans the storage blob.
+    source_image = models.ForeignKey(SourceImage, on_delete=models.CASCADE, related_name="thumbnails")
 
     class Meta:
         constraints = [

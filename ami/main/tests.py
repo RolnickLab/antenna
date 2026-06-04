@@ -435,6 +435,49 @@ class TestImageThumbnailViews(TestCase):
         self.assertURLEqual(capture_json["thumbnails"]["small"], f"{self.base_url}{capture_json['id']}/?label=small")
         self.assertURLEqual(capture_json["thumbnails"]["medium"], f"{self.base_url}{capture_json['id']}/?label=medium")
 
+    def test_source_image_delete_cascades_to_thumbnails(self):
+        """Deleting a SourceImage must cascade-delete its SourceImageThumbnail rows.
+
+        The previous SET_NULL FK left orphan rows (and their storage blobs) forever
+        with no reaper. CASCADE + the pre_delete signal in ami.main.signals together
+        guarantee the row is gone and the blob is cleaned up.
+        """
+        from ami.main.models import SourceImageThumbnail
+
+        # Pre-populate two thumbnail rows for the capture.
+        for label, width in [("small", 240), ("medium", 1024)]:
+            self.first_capture.thumbnails.create(
+                path=f"thumbnails/cascadetest_{label}.jpg", label=label, width=width, height=180, size=42
+            )
+        capture_pk = self.first_capture.pk
+        self.assertEqual(SourceImageThumbnail.objects.filter(source_image_id=capture_pk).count(), 2)
+
+        # Delete the parent capture.
+        self.first_capture.delete()
+
+        # Thumbnail rows must be gone via CASCADE.
+        self.assertEqual(SourceImageThumbnail.objects.filter(source_image_id=capture_pk).count(), 0)
+
+    def test_thumbnail_delete_removes_storage_blob(self):
+        """The pre_delete signal must call default_storage.delete on the row's path.
+
+        Covers both explicit row deletes and CASCADE deletes — the signal fires for
+        both. Use FileSystemStorage's exists() to verify the blob is gone.
+        """
+        from django.core.files.base import ContentFile
+        from django.core.files.storage import default_storage
+
+        # Plant a real blob in storage and wire up a row pointing at it.
+        path = default_storage.save("thumbnails/signal_test.jpg", ContentFile(b"\x00\x01\x02\x03"))
+        self.assertTrue(default_storage.exists(path))
+
+        thumb = self.first_capture.thumbnails.create(
+            path=path, label="small", width=240, height=180, size=4
+        )
+        thumb.delete()
+
+        self.assertFalse(default_storage.exists(path), "pre_delete signal must clean the storage blob")
+
 
 class TestImageGrouping(TestCase):
     def setUp(self) -> None:

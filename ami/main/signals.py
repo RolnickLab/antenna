@@ -1,12 +1,13 @@
 import logging
 
 from django.contrib.auth.models import Group
+from django.core.files.storage import default_storage
 from django.db import transaction
 from django.db.models.signals import m2m_changed, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from guardian.shortcuts import assign_perm
 
-from ami.main.models import Project
+from ami.main.models import Project, SourceImageThumbnail
 from ami.main.tasks import refresh_project_cached_counts
 from ami.users.roles import BasicMember, ProjectManager, create_roles_for_project
 
@@ -113,6 +114,30 @@ def delete_project_groups(sender, instance, **kwargs):
     prefix = f"{instance.pk}_"
     # Find and delete all groups that start with {project_id}_
     Group.objects.filter(name__startswith=prefix).delete()
+
+
+@receiver(pre_delete, sender=SourceImageThumbnail)
+def delete_thumbnail_storage_blob(sender, instance, **kwargs):
+    """Best-effort cleanup of the storage blob backing a SourceImageThumbnail row.
+
+    Fires on both explicit row deletes and CASCADE deletes from the parent
+    SourceImage. A thumbnail row is a pure derivative of source + width — the
+    blob is dead weight in storage once the row is gone, and there is no other
+    code path that reaps it.
+
+    Failures here are logged but never re-raised: the row delete must still
+    complete (callers that delete a SourceImage do not want a transient storage
+    error to leave them with a half-deleted graph).
+    """
+    if not instance.path:
+        return
+    try:
+        default_storage.delete(instance.path)
+    except Exception as e:
+        logger.warning(
+            f"Could not delete storage blob {instance.path} for SourceImageThumbnail "
+            f"id={instance.pk}: {e}"
+        )
 
 
 # ============================================================================
