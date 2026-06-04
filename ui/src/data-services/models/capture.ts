@@ -180,7 +180,7 @@ export class Capture {
     }
     return this._capture.url
   }
-  
+
   get src(): string {
     return this._capture.url
   }
