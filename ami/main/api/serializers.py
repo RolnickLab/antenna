@@ -1116,6 +1116,8 @@ class SourceImageListSerializer(SourceImageThumbnailSerializer):
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), required=False)
+    # Annotated in SourceImageViewSet.get_queryset (latest detection created_at).
+    last_processed = serializers.DateTimeField(read_only=True)
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
 
     class Meta:
@@ -1135,6 +1137,7 @@ class SourceImageListSerializer(SourceImageThumbnailSerializer):
             "detections_count",
             "occurrences_count",
             "taxa_count",
+            "last_processed",
             "detections",
             "project",
         ]

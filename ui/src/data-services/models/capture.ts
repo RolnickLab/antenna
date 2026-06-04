@@ -96,6 +96,12 @@ export class Capture {
     })
   }
 
+  get lastProcessed(): Date | undefined {
+    return this._capture.last_processed
+      ? new Date(this._capture.last_processed)
+      : undefined
+  }
+
   get deploymentId(): string | undefined {
     return this._capture.deployment
       ? `${this._capture.deployment.id}`

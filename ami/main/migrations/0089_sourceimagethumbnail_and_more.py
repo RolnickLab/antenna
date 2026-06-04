@@ -6,7 +6,7 @@ import django.db.models.deletion
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0087_taxon_parents_json_gin_index"),
+        ("main", "0088_detection_det_srcimg_created_idx"),
     ]
 
     operations = [
