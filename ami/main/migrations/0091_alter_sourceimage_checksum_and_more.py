@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0090_sourceimagethumbnail_cascade_source_image"),
+        ("main", "0089_sourceimagethumbnail_and_more"),
     ]
 
     operations = [
