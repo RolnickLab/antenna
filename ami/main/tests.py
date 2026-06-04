@@ -236,8 +236,8 @@ class TestImageThumbnailViews(TestCase):
         return super().setUp()
 
     def test_thumbnail_no_list(self):
-        response = self.client.get(f"/api/v2/captures/thumbnails/")
-        self.assertEqual(response.status_code, 404)
+        response = self.client.get("/api/v2/captures/thumbnails/")
+        self.assertEqual(response.status_code, 405)
 
     def test_thumbnail_new(self):
         response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")

@@ -824,7 +824,12 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
     permission_classes = [ObjectPermission]
 
     def list(self, request):
-        raise api_exceptions.NotFound(detail=f"No collection of thumbnails")
+        # The route exists for ``/captures/thumbnails/<pk>/?label=...`` only. Listing has
+        # no defined semantics (which capture's thumbnails?), so return a proper 405 with
+        # the Allow header rather than a fake 404.
+        raise api_exceptions.MethodNotAllowed(
+            method="GET", detail="Listing thumbnails is not supported; request a single capture's thumbnail by pk."
+        )
 
     def retrieve(self, request, pk=None):
         _sizes = settings.THUMBNAILS["SIZES"]
