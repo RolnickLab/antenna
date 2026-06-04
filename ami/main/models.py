@@ -2259,21 +2259,55 @@ class SourceImage(BaseModel):
             contents = buffer.getvalue()
             file_size = len(contents)
 
-            # Remove prior thumbnails for this size
-            for t in self.thumbnails.filter(label=label):
-                default_storage.delete(t.path)
-                t.delete()
+            # Snapshot the previously cached blob path so we can clean it up post-update.
+            # Done before writing the new blob so the cleanup at the end reflects the
+            # row's prior state, not its post-update state.
+            prior_path = self.thumbnails.filter(label=label).values_list("path", flat=True).first()
 
-            # Write to storage
+            # Write to storage. Backends that overwrite an existing key (boto3 with
+            # AWS_S3_FILE_OVERWRITE=True) return the same key; backends that suffix on
+            # collision (FileSystemStorage default) return a new path. Either way we
+            # record whatever the backend returned.
             buffer.seek(0)
             thumbnail_key = f"{prefix}capture_{self.pk}/{label}.jpg"
             thumbnail_path = default_storage.save(thumbnail_key, buffer)
 
-            # Save to DB
+            # ``update_or_create`` handles the (source_image, label) UniqueConstraint
+            # under concurrent gen: if a parallel request just inserted the row, Django
+            # catches the IntegrityError on INSERT and falls back to a UPDATE. The
+            # previous code did a pre-save ``filter(...).delete()`` loop that, under
+            # the same race, destroyed the other racer's just-created row and storage
+            # blob. Both bugs go away by replacing the delete-then-create with a single
+            # atomic upsert.
             width, height = img.size
-            thumb = self.thumbnails.create(
-                path=thumbnail_path, label=label, width=width, height=height, size=file_size
+            thumb, _created = self.thumbnails.update_or_create(
+                label=label,
+                defaults={
+                    "path": thumbnail_path,
+                    "width": width,
+                    "height": height,
+                    "size": file_size,
+                },
             )
+            # ``SourceImageThumbnail.last_modified`` is declared ``auto_now_add=True``
+            # which fires only on INSERT; on UPDATE, Django's pre_save callback leaves
+            # the existing value in place. Without this force-bump the freshness check
+            # ``thumb.last_modified < self.last_modified`` would stay True after every
+            # regen and trigger regen on every subsequent request. Use ``QuerySet.update``
+            # to bypass the field's auto_now_add semantic on UPDATE.
+            if not _created:
+                type(thumb).objects.filter(pk=thumb.pk).update(last_modified=timezone.now())
+                thumb.refresh_from_db(fields=["last_modified"])
+
+            # Best-effort cleanup of the file the row pointed at before this regen.
+            # Skipped when the backend overwrote in place (prior_path == thumbnail_path)
+            # or when there was no prior row. A failure here only leaves an orphan blob;
+            # it must not break the response.
+            if prior_path and prior_path != thumbnail_path:
+                try:
+                    default_storage.delete(prior_path)
+                except Exception as e:
+                    logger.warning(f"Could not delete prior thumbnail blob at {prior_path}: {e}")
         return thumb
 
     class Meta:

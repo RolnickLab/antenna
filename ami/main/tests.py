@@ -274,15 +274,22 @@ class TestImageThumbnailViews(TestCase):
         response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
         self.assertEqual(response.status_code, 302)
         thumb = self.first_capture.thumbnails.first()
+        original_pk = thumb.pk
+        original_thumb_last_modified = thumb.last_modified
         self.first_capture.last_modified = datetime.datetime.now()
         self.first_capture.save()
         self.assertTrue(self.first_capture.last_modified > thumb.last_modified)
         response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
         self.assertEqual(self.first_capture.thumbnails.count(), 1)
-        self.assertNotEqual(self.first_capture.thumbnails.first().pk, thumb.pk)
-        thumb = self.first_capture.thumbnails.get(label="small")
+        # Row is reused via update_or_create — the previous delete-then-create flow
+        # would have allocated a new PK and destroyed any concurrent racer's row.
+        refreshed = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(refreshed.pk, original_pk)
+        # Freshness marker is force-bumped on regen so the next request doesn't
+        # re-trigger regen forever (auto_now_add fires only on INSERT, not UPDATE).
+        self.assertGreater(refreshed.last_modified, original_thumb_last_modified)
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+        self.assertEqual(response.headers["Location"], f"/media/{refreshed.path}")
 
     def test_thumbnail_source_last_modified_none_does_not_crash(self):
         """Legacy SourceImage rows synced before the upload backfill have last_modified=None.
@@ -306,6 +313,38 @@ class TestImageThumbnailViews(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(self.first_capture.thumbnails.count(), 1)
         self.assertEqual(self.first_capture.thumbnails.first().pk, thumb_id)
+
+    def test_thumbnail_regen_reuses_row_via_upsert(self):
+        """Regenerating an existing thumbnail must upsert into the same row, not
+        delete-then-recreate (which under concurrent gen destroyed the other
+        racer's row and storage blob).
+
+        Triggers the regen path by deleting the storage blob out from under the
+        cached row, then re-requesting. Asserts the row's primary key is
+        preserved (proving ``update_or_create`` UPDATE was used, not a fresh
+        INSERT after a DELETE).
+        """
+        from django.core.files.storage import default_storage
+
+        # First request populates the cache.
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        original_thumb = self.first_capture.thumbnails.get(label="small")
+        original_pk = original_thumb.pk
+        original_path = original_thumb.path
+
+        # Storage blob disappears (could happen via TTL eviction, manual cleanup,
+        # or a backing-store outage). This forces the regen branch via
+        # ``not default_storage.exists(thumb.path)``.
+        default_storage.delete(original_path)
+        self.assertFalse(default_storage.exists(original_path))
+
+        # Regen must reuse the same row and not raise on the (source_image, label)
+        # UniqueConstraint.
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.first_capture.thumbnails.filter(label="small").count(), 1)
+        self.assertEqual(self.first_capture.thumbnails.get(label="small").pk, original_pk)
 
     def test_upload_handler_backfills_last_modified(self):
         """``create_source_image_from_upload`` must set ``last_modified`` so uploaded
