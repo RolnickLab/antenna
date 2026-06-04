@@ -11,8 +11,17 @@ from ami.utils.dates import get_image_timestamp_from_filename
 logger = logging.getLogger(__name__)
 
 
-def fetch_image_content(url: str) -> bytes:
-    response = requests.get(url)
+def fetch_image_content(url: str, timeout: tuple[float, float] = (5.0, 30.0)) -> bytes:
+    """Fetch raw image bytes from ``url``.
+
+    ``timeout`` defaults to ``(connect=5s, read=30s)``. Without it ``requests.get``
+    waits indefinitely, which under upstream-storage failure stalls callers — most
+    notably the synchronous thumbnail-generation path served from web workers
+    (see ``SourceImage.find_or_generate_thumbnail_for_label``). A few hung
+    requests will tie up the gunicorn pool. Callers that need different limits
+    (e.g. very large images on a slow link) can override.
+    """
+    response = requests.get(url, timeout=timeout)
     response.raise_for_status()
     return response.content
 
