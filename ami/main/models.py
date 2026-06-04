@@ -1944,10 +1944,34 @@ class SourceImage(BaseModel):
     timestamp = models.DateTimeField(null=True, blank=True, db_index=True)
     width = models.IntegerField(null=True, blank=True)
     height = models.IntegerField(null=True, blank=True)
-    size = models.BigIntegerField(null=True, blank=True)
-    last_modified = models.DateTimeField(null=True, blank=True)
-    checksum = models.CharField(max_length=255, blank=True, null=True)
-    checksum_algorithm = models.CharField(max_length=255, blank=True, null=True)
+    # These four track metadata about the source image file as it lives in storage.
+    # Values are normally populated server-side by the sync flow
+    # (POST /api/v2/deployments/<pk>/sync/ → DataStorageSyncJob) and the upload
+    # handler, but stay writable in the API so a project owner can create
+    # SourceImage entries manually via an API client when needed. The admin marks
+    # them as ``readonly_fields`` so they can't be edited by mistake through the UI.
+    size = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="Size of the image file in bytes, read from the source file in image storage.",
+    )
+    last_modified = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the image file was last modified, read from the source file in image storage.",
+    )
+    checksum = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Checksum of the image file, read from the source file in image storage.",
+    )
+    checksum_algorithm = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Algorithm used for the checksum (e.g. MD5, SHA256).",
+    )
     uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     test_image = models.BooleanField(default=False)
 

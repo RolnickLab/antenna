@@ -285,6 +285,12 @@ class SourceImageAdmin(AdminBase):
         "path",
     )
 
+    # These four are populated from the source file in image storage during sync /
+    # upload — not intended to be edited manually. Mark read-only in the admin so
+    # operators don't accidentally clobber the cached metadata. The API stays
+    # writable to leave a route for migrations / fixups.
+    readonly_fields = ("size", "last_modified", "checksum", "checksum_algorithm")
+
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         return (
             super()
