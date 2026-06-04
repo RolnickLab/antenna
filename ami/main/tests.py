@@ -283,6 +283,21 @@ class TestImageThumbnailViews(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
 
+    def test_thumbnail_non_rgb_source_converts(self):
+        """RGBA/P/etc. source images must be converted to RGB before JPEG encode."""
+        from unittest import mock
+
+        rgba_buf = BytesIO()
+        Image.new("RGBA", (320, 240), (255, 0, 0, 128)).save(rgba_buf, format="PNG")
+        rgba_bytes = rgba_buf.getvalue()
+
+        with mock.patch("ami.main.models.fetch_image_content", return_value=rgba_bytes):
+            response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(thumb.width, 240)
+
     @override_settings(THUMBNAILS=NEW_THUMBNAIL_SETTINGS)
     def test_thumbnail_settings_change_regenerates(self):
         # A pre-existing different size thumb

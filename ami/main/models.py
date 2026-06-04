@@ -2226,6 +2226,11 @@ class SourceImage(BaseModel):
             or not default_storage.exists(thumb.path)
         ):
             img = PIL.Image.open(BytesIO(fetch_image_content(self.public_url(raise_errors=True))))
+            # JPEG only supports L, RGB, CMYK. Convert anything else (RGBA, P, LA, PA, …) before
+            # encoding, or PIL raises ``OSError: cannot write mode <X> as JPEG``. Uploaded PNGs
+            # commonly hit this.
+            if img.mode not in ("L", "RGB", "CMYK"):
+                img = img.convert("RGB")
             # Make the thumbnail
             orig_width, orig_height = img.size
             width = size["width"]
