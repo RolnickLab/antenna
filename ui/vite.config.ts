@@ -60,5 +60,14 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
+    preview: {
+      // Hosts allowed when serving the built app with `vite preview` behind a
+      // reverse proxy (e.g. a hosted preview deployment). Comma-separated.
+      // When unset, Vite's default localhost-only behaviour is preserved, so
+      // local development is unaffected.
+      allowedHosts: env.PREVIEW_ALLOWED_HOSTS
+        ? env.PREVIEW_ALLOWED_HOSTS.split(',').map((host) => host.trim())
+        : undefined,
+    },
   }
 })
