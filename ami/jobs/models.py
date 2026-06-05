@@ -672,6 +672,22 @@ class MLJob(JobType):
         job.save()
 
 
+# Human-readable param names for the regroup stage, surfaced both on the
+# standalone RegroupEventsJob and on DataStorageSyncJob's regroup stage. The
+# stable retrieval key is the slugify(name) form (e.g. "captures-grouped"),
+# produced by JobProgress.make_key — see _REGROUP_STAGE_PARAM_KEYS in
+# ami.main.models for the corresponding kwarg map.
+REGROUP_STAGE_PARAM_NAMES = (
+    "Captures grouped",
+    "Events created",
+    "Events touched",
+    "Empty events deleted",
+    "Duplicate timestamps",
+    "Ungrouped captures",
+    "Captures missing timestamp",
+)
+
+
 class DataStorageSyncJob(JobType):
     """
     Sync captures from the deployment's data source, then regroup them into
@@ -702,16 +718,8 @@ class DataStorageSyncJob(JobType):
         job.progress.add_stage_param(cls.key, "Failed", 0)
 
         job.progress.add_stage(cls.regroup_stage_name, key=cls.regroup_stage_key)
-        for param_key in (
-            "captures_grouped",
-            "events_created",
-            "events_touched",
-            "events_deleted_empty",
-            "duplicate_timestamps",
-            "ungrouped_captures",
-            "no_timestamp_captures",
-        ):
-            job.progress.add_stage_param(cls.regroup_stage_key, param_key, 0)
+        for param_name in REGROUP_STAGE_PARAM_NAMES:
+            job.progress.add_stage_param(cls.regroup_stage_key, param_name, 0)
 
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
@@ -888,16 +896,8 @@ class RegroupEventsJob(JobType):
             raise ValueError("No deployment provided for regroup events job")
 
         job.progress.add_stage(cls.name, key=cls.key)
-        for param_key in (
-            "captures_grouped",
-            "events_created",
-            "events_touched",
-            "events_deleted_empty",
-            "duplicate_timestamps",
-            "ungrouped_captures",
-            "no_timestamp_captures",
-        ):
-            job.progress.add_stage_param(cls.key, param_key, 0)
+        for param_name in REGROUP_STAGE_PARAM_NAMES:
+            job.progress.add_stage_param(cls.key, param_name, 0)
 
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()

@@ -1657,23 +1657,27 @@ def _group_images_into_events_locked(
     audit_event_lengths(deployment)
 
     # Surface stats to the Jobs UI when this regroup is wrapped in a job.
-    # ungrouped_captures = images with valid timestamps that didn't land in any event
-    # (should be 0 unless an event delete races a capture insert; useful signal).
+    # "Ungrouped captures" = images with valid timestamps that didn't land in
+    # any event (should be 0 unless an event delete races a capture insert;
+    # useful signal). Param NAMES below are the human-readable labels shown
+    # in the Jobs UI; stable retrieval keys are the slugify(name) forms (e.g.
+    # "captures-grouped"). See REGROUP_STAGE_PARAM_NAMES in ami.jobs.models.
     if job and stage_key:
-        ungrouped_captures = (
+        ungrouped_captures_count = (
             SourceImage.objects.filter(deployment=deployment, event__isnull=True).exclude(timestamp=None).count()
         )
-        no_timestamp_captures = SourceImage.objects.filter(deployment=deployment, timestamp=None).count()
-        job.progress.update_stage(
-            stage_key,
-            captures_grouped=len(image_timestamps),
-            events_created=events_created_count,
-            events_touched=len(touched_event_pks),
-            events_deleted_empty=events_deleted_empty,
-            duplicate_timestamps=duplicate_timestamp_count,
-            ungrouped_captures=ungrouped_captures,
-            no_timestamp_captures=no_timestamp_captures,
-        )
+        no_timestamp_captures_count = SourceImage.objects.filter(deployment=deployment, timestamp=None).count()
+        regroup_stats = {
+            "Captures grouped": len(image_timestamps),
+            "Events created": events_created_count,
+            "Events touched": len(touched_event_pks),
+            "Empty events deleted": events_deleted_empty,
+            "Duplicate timestamps": duplicate_timestamp_count,
+            "Ungrouped captures": ungrouped_captures_count,
+            "Captures missing timestamp": no_timestamp_captures_count,
+        }
+        for param_name, value in regroup_stats.items():
+            job.progress.add_or_update_stage_param(stage_key, param_name, value)
         job.update_progress()
         job.save()
 

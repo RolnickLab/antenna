@@ -1575,9 +1575,14 @@ class TestRegroupEventsJob(TestCase):
         stage = job.progress.get_stage(RegroupEventsJob.key)
         self.assertEqual(stage.status, JobState.SUCCESS)
         self.assertEqual(stage.progress, 1)
+        # Retrieval keys are slugify(name) with `-` → `_` (see python_slugify in
+        # ami.jobs.models). Names are the human labels shown in the Jobs UI.
         params = {p.key: p.value for p in stage.params}
         self.assertGreaterEqual(params["events_created"], 1, "should report at least one Event created")
         self.assertGreaterEqual(params["captures_grouped"], 1)
+        names = {p.name for p in stage.params}
+        self.assertIn("Captures grouped", names)
+        self.assertIn("Events created", names)
         # Real Events exist in the DB.
         self.assertGreaterEqual(Event.objects.filter(deployment=self.deployment).count(), 1)
 
@@ -1631,6 +1636,9 @@ class TestDataStorageSyncJobIncludesRegroupStage(TestCase):
         params = {p.key: p.value for p in regroup_stage.params}
         self.assertIn("events_created", params)
         self.assertIn("captures_grouped", params)
+        names = {p.name for p in regroup_stage.params}
+        self.assertIn("Captures grouped", names)
+        self.assertIn("Events created", names)
 
     def test_sync_job_regroup_failure_propagates(self):
         from unittest.mock import patch

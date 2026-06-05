@@ -206,4 +206,4 @@ class Command(BaseCommand):
                 f"\n  Stage '{stage.name}' ({stage.key}): status={stage.status} progress={stage.progress}"
             )
             for param in stage.params or []:
-                self.stdout.write(f"    {param.key}: {param.value}")
+                self.stdout.write(f"    {param.name} [{param.key}]: {param.value}")
