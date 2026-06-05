@@ -26,6 +26,7 @@ from typing import Any, Protocol
 
 import pydantic
 from django.contrib import admin, messages
+from django.db import transaction
 from django.db.models import Model
 from django.db.models.query import QuerySet
 from django.http import HttpRequest, HttpResponse
@@ -114,16 +115,22 @@ def default_build_jobs(
     if errors:
         raise ConfigValidationErrors(errors)
 
+    # Create all Jobs in one transaction so the operation stays all-or-nothing even
+    # if a create fails mid-loop. (Admin requests are already atomic via
+    # ATOMIC_REQUESTS, but this helper may also be called outside a request — e.g. a
+    # management command — where there's no ambient transaction.) Job.enqueue() uses
+    # transaction.on_commit, so enqueues fire only once the block commits.
     job_pks: list[int] = []
-    for obj, model in validated:
-        job = Job.objects.create(
-            name=name_resolver(task_cls, obj),
-            project=project_resolver(obj),
-            job_type_key="post_processing",
-            params={"task": task_cls.key, "config": model.dict()},
-        )
-        job.enqueue()
-        job_pks.append(job.pk)
+    with transaction.atomic():
+        for obj, model in validated:
+            job = Job.objects.create(
+                name=name_resolver(task_cls, obj),
+                project=project_resolver(obj),
+                job_type_key="post_processing",
+                params={"task": task_cls.key, "config": model.dict()},
+            )
+            job.enqueue()
+            job_pks.append(job.pk)
     return job_pks
 
 
@@ -140,6 +147,8 @@ def render_confirmation(
 ) -> TemplateResponse:
     """Render the shared intermediate confirmation page for ``task_cls``."""
     opts = model_admin.model._meta
+    # Resolve the selection once; count from the materialized list (one query, not two).
+    selected_pks = [str(pk) for pk in queryset.values_list("pk", flat=True)]
     return TemplateResponse(
         request,
         CONFIRMATION_TEMPLATE,
@@ -148,8 +157,8 @@ def render_confirmation(
             "title": title,
             "task_label": task_cls.name,
             "form": form,
-            "selected_count": queryset.count(),
-            "selected_pks": [str(pk) for pk in queryset.values_list("pk", flat=True)],
+            "selected_count": len(selected_pks),
+            "selected_pks": selected_pks,
             "action_name": action_name,
             "submit_label": submit_label,
             "changelist_url": reverse(f"admin:{opts.app_label}_{opts.model_name}_changelist"),
@@ -252,10 +261,13 @@ def make_post_processing_action(
             queryset=queryset,
             task_cls=task_cls,
             form_field_names=set(form.fields),
-            scope_resolver=scope_resolver,
             project_resolver=project_resolver,
             name_resolver=name_resolver,
         )
+        # Only forward scope_resolver when set. A custom build_jobs supplied without
+        # a scope_resolver should not receive a None it might try to call.
+        if scope_resolver is not None:
+            kwargs["scope_resolver"] = scope_resolver
         try:
             job_pks = runner(**kwargs)
         except ConfigValidationErrors as exc:

@@ -1,4 +1,5 @@
 import abc
+import inspect
 import logging
 import typing
 from typing import Any, Optional
@@ -29,6 +30,11 @@ class BasePostProcessingTask(abc.ABC):
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
+        # Only enforce the contract on concrete tasks. An abstract intermediary
+        # (e.g. a shared mixin with an unimplemented abstractmethod) may legitimately
+        # defer key/name/config_schema to its concrete subclasses.
+        if inspect.isabstract(cls):
+            return
         required_attrs = ["key", "name", "config_schema"]
         for attr in required_attrs:
             if not hasattr(cls, attr) or getattr(cls, attr) is None:

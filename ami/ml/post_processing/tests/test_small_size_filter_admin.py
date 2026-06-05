@@ -43,7 +43,8 @@ class TestSmallSizeFilterIntermediatePage(_SmallSizeFilterAdminCase):
     def test_renders_intermediate_page_without_confirm(self):
         response = self._post({})
         self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Run Small Size Filter", response.content)
+        # Labels derive from SmallSizeFilterTask.name ("Small size filter").
+        self.assertIn(b"Run Small size filter", response.content)
         # The form's field is named size_threshold; the rendered <input> uses that name.
         self.assertIn(b'name="size_threshold"', response.content)
         # No Job created on the GET-equivalent step.

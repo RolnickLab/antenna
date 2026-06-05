@@ -664,9 +664,6 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
         name_resolver=lambda task_cls, collection: (
             f"Post-processing: {task_cls.name} on Capture Set {collection.pk}"
         ),
-        description="Run Small Size Filter post-processing task (async)",
-        title="Run Small Size Filter",
-        submit_label="Run Small Size Filter",
     )
 
     actions = [

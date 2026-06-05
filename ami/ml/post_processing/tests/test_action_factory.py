@@ -6,7 +6,8 @@ injection, project FK), schema-error mapping back onto form fields, and the
 ``build_jobs`` override hook used by tasks with a non-default row→Job mapping.
 """
 import pytest
-from django.test import TestCase
+from django.contrib import admin as django_admin
+from django.test import RequestFactory, TestCase
 
 from ami.jobs.models import Job
 from ami.main.models import SourceImageCollection
@@ -94,6 +95,19 @@ class TestDefaultBuildJobs(TestCase):
         self.assertEqual(Job.objects.filter(job_type_key="post_processing").count(), 0)
 
 
+class _StubAdmin:
+    """Minimal ModelAdmin stand-in for invoking an action outside the admin site."""
+
+    model = SourceImageCollection
+    admin_site = django_admin.site
+
+    def __init__(self) -> None:
+        self.messages: list[tuple[str, object]] = []
+
+    def message_user(self, request, message, level=None, **kwargs) -> None:
+        self.messages.append((message, level))
+
+
 class TestBuildJobsOverrideHook(TestCase):
     def setUp(self) -> None:
         self.project, _ = setup_test_project(reuse=False)
@@ -111,5 +125,22 @@ class TestBuildJobsOverrideHook(TestCase):
             SmallSizeFilterActionForm,
             build_jobs=custom_build_jobs,
         )
-        self.assertEqual(action.__name__, "run_small_size_filter")
         # build_jobs supplied, so scope_resolver is optional (no ValueError on construction).
+        self.assertEqual(action.__name__, "run_small_size_filter")
+
+        # Actually invoke the action through the confirm leg so the custom runner runs.
+        request = RequestFactory().post("/", data={"confirm": "yes", "size_threshold": "0.001"})
+        admin_stub = _StubAdmin()
+        queryset = SourceImageCollection.objects.filter(pk=self.collection.pk)
+
+        result = action(admin_stub, request, queryset)
+
+        # Success leg returns None and reports the pks the custom runner produced.
+        self.assertIsNone(result)
+        self.assertTrue(calls, "custom build_jobs was never invoked")
+        self.assertEqual(calls["task_cls"], SmallSizeFilterTask)
+        self.assertEqual(calls["config"], {"size_threshold": 0.001})
+        # scope_resolver was not supplied, so it must not be forwarded as None.
+        self.assertNotIn("scope_resolver", calls)
+        self.assertEqual(len(admin_stub.messages), 1)
+        self.assertIn("[101, 102]", admin_stub.messages[0][0])
