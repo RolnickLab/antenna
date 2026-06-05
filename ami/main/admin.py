@@ -1,23 +1,19 @@
 from typing import Any
 
-import pydantic
 from django.contrib import admin
 from django.db import models
 from django.db.models.query import QuerySet
 from django.http.request import HttpRequest
-from django.http.response import HttpResponse
 from django.template.defaultfilters import filesizeformat
-from django.template.response import TemplateResponse
-from django.urls import reverse
 from django.utils.formats import number_format
 from guardian.admin import GuardedModelAdmin
 
 import ami.utils
 from ami import tasks
-from ami.jobs.models import Job
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
+from ami.ml.post_processing.admin.actions import make_post_processing_action
 from ami.ml.post_processing.admin.small_size_filter_form import SmallSizeFilterActionForm
-from ami.ml.post_processing.small_size_filter import SmallSizeFilterConfig
+from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
 from ami.ml.tasks import remove_duplicate_classifications
 
 from .models import (
@@ -657,68 +653,21 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
             f"Populating {len(queued_tasks)} capture set(s) background tasks: {queued_tasks}.",
         )
 
-    @admin.action(description="Run Small Size Filter post-processing task (async)")
-    def run_small_size_filter(
-        self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]
-    ) -> HttpResponse | None:
-        if request.POST.get("confirm"):
-            form = SmallSizeFilterActionForm(request.POST)
-            if not form.is_valid():
-                return self._render_small_size_filter_confirmation(request, queryset, form)
-
-            cfg = form.to_config()
-            jobs = []
-            for collection in queryset:
-                try:
-                    validated = SmallSizeFilterConfig(
-                        **cfg,
-                        source_image_collection_id=collection.pk,
-                    )
-                except pydantic.ValidationError as exc:
-                    self.message_user(
-                        request,
-                        f"Bad config for capture set {collection.pk}: {exc}",
-                        level="error",
-                    )
-                    continue
-                job = Job.objects.create(
-                    name=f"Post-processing: SmallSizeFilter on Capture Set {collection.pk}",
-                    project=collection.project,
-                    job_type_key="post_processing",
-                    params={"task": "small_size_filter", "config": validated.dict()},
-                )
-                job.enqueue()
-                jobs.append(job.pk)
-
-            self.message_user(request, f"Queued Small Size Filter for {len(jobs)} capture set(s). Jobs: {jobs}")
-            return None
-
-        return self._render_small_size_filter_confirmation(request, queryset, SmallSizeFilterActionForm())
-
-    def _render_small_size_filter_confirmation(
-        self,
-        request: HttpRequest,
-        queryset: QuerySet[SourceImageCollection],
-        form: SmallSizeFilterActionForm,
-    ) -> TemplateResponse:
-        return TemplateResponse(
-            request,
-            "admin/post_processing/confirmation.html",
-            {
-                **self.admin_site.each_context(request),
-                "title": "Run Small Size Filter",
-                "task_label": "Small Size Filter",
-                "form": form,
-                "selected_count": queryset.count(),
-                "selected_pks": [str(pk) for pk in queryset.values_list("pk", flat=True)],
-                "action_name": "run_small_size_filter",
-                "submit_label": "Run Small Size Filter",
-                "changelist_url": reverse("admin:main_sourceimagecollection_changelist"),
-                "model_meta": self.model._meta,
-                "opts": self.model._meta,
-                "action_checkbox_name": admin.helpers.ACTION_CHECKBOX_NAME,
-            },
-        )
+    # Built from the shared post-processing action factory: renders an intermediate
+    # confirmation page with the task's knob form, validates each selection against
+    # SmallSizeFilterConfig, then enqueues one Job per capture set. New post-processing
+    # tasks declare their own trigger the same way (task class + form + scope_resolver).
+    run_small_size_filter = make_post_processing_action(
+        SmallSizeFilterTask,
+        SmallSizeFilterActionForm,
+        scope_resolver=lambda collection: {"source_image_collection_id": collection.pk},
+        name_resolver=lambda task_cls, collection: (
+            f"Post-processing: {task_cls.name} on Capture Set {collection.pk}"
+        ),
+        description="Run Small Size Filter post-processing task (async)",
+        title="Run Small Size Filter",
+        submit_label="Run Small Size Filter",
+    )
 
     actions = [
         populate_collection,

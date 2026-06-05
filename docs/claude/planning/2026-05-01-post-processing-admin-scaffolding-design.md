@@ -5,6 +5,18 @@
 **Branch:** `feat/post-processing-admin-scaffolding`
 **Author:** Michael Bunsen (with Claude Opus 4.7)
 
+> **Update (2026-06-04):** Following review feedback, the admin controller glue
+> was abstracted rather than left as per-task copy-paste. The confirm/render/
+> validate/enqueue flow now lives in `ami/ml/post_processing/admin/actions.py`
+> as `make_post_processing_action(task_cls, form_class, scope_resolver=..., build_jobs=...)`.
+> Each task declares only what varies (task class, knob form, row→Job mapping);
+> tasks that don't fit one-Job-per-row (e.g. #1272's per-project event
+> partitioning) pass a custom `build_jobs` callable. Config validation is owned
+> solely by the task's pydantic `config_schema` — the knob form no longer
+> re-encodes the bounds, and schema errors are mapped back onto the form for
+> inline display. This supersedes the "module-private `_render_confirmation`,
+> lift later" plan in the "Admin Action Rewrite" section below.
+
 ## Context
 
 `ami/ml/post_processing/` currently ships one task on main: `SmallSizeFilterTask` (PR #954, merged). Two open PRs add more post-processing tasks and each independently grew its own admin-trigger plumbing:

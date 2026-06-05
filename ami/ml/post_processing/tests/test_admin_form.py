@@ -1,4 +1,12 @@
-"""Tests for ``BasePostProcessingActionForm`` + concrete ``SmallSizeFilterActionForm``."""
+"""Tests for ``BasePostProcessingActionForm`` + concrete ``SmallSizeFilterActionForm``.
+
+The knob form only declares field presentation; the valid range for
+``size_threshold`` is owned by ``SmallSizeFilterConfig`` (the schema), not the
+form. Bound enforcement therefore lives in ``test_base_schema.py`` and in the
+admin-action flow (``test_small_size_filter_admin.py`` /
+``test_action_factory.py``), not here.
+"""
+from django import forms
 from django.test import TestCase
 
 from ami.ml.post_processing.admin.forms import BasePostProcessingActionForm
@@ -6,8 +14,6 @@ from ami.ml.post_processing.admin.small_size_filter_form import SmallSizeFilterA
 
 
 class _OneFieldForm(BasePostProcessingActionForm):
-    from django import forms
-
     threshold = forms.FloatField(initial=0.5)
 
 
@@ -28,19 +34,16 @@ class TestSmallSizeFilterActionForm(TestCase):
         self.assertTrue(form.is_valid())
         self.assertEqual(form.to_config(), {"size_threshold": 0.001})
 
-    def test_threshold_above_one_rejected(self):
-        form = SmallSizeFilterActionForm(data={"size_threshold": "1.5"})
+    def test_non_numeric_threshold_rejected_at_form_layer(self):
+        # Type coercion is still the form's job; range is not.
+        form = SmallSizeFilterActionForm(data={"size_threshold": "not-a-number"})
         self.assertFalse(form.is_valid())
         self.assertIn("size_threshold", form.errors)
 
-    def test_threshold_zero_rejected(self):
-        # 0.0 is excluded (open interval); django's min_value=0.0 admits zero,
-        # so the clean_size_threshold check is the gate.
-        form = SmallSizeFilterActionForm(data={"size_threshold": "0.0"})
-        self.assertFalse(form.is_valid())
-        self.assertIn("size_threshold", form.errors)
-
-    def test_threshold_at_one_rejected(self):
-        form = SmallSizeFilterActionForm(data={"size_threshold": "1.0"})
-        self.assertFalse(form.is_valid())
-        self.assertIn("size_threshold", form.errors)
+    def test_out_of_range_threshold_passes_form_but_is_rejected_by_schema(self):
+        # The form no longer enforces the (0, 1) bound — that is the schema's job.
+        # An out-of-range value is a valid float, so the form accepts it; the admin
+        # action then rejects it when validating against SmallSizeFilterConfig.
+        form = SmallSizeFilterActionForm(data={"size_threshold": "2.0"})
+        self.assertTrue(form.is_valid())
+        self.assertEqual(form.to_config(), {"size_threshold": 2.0})

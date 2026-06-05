@@ -1,3 +1,4 @@
+{% for error in form.non_field_errors %}<p class="errornote">{{ error }}</p>{% endfor %}
 {% for field in form %}
   <div class="form-row">
     {{ field.label_tag }}
