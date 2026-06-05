@@ -967,10 +967,14 @@ class Deployment(BaseModel):
                 job.update_progress()
         else:
             # Caller (e.g. DataStorageSyncJob) is responsible for running regroup as
-            # an explicit stage. Skip Deployment.save's autoregroup but still refresh
-            # cached counts so the deployment row reflects new file totals.
+            # an explicit stage. Skip Deployment.save's autoregroup but still
+            # refresh cached counts and realign child Event/Occurrence/SourceImage
+            # project pointers — those normally run inside Deployment.save's
+            # update_calculated_fields branch, which we bypass here.
             self.save(regroup_async=False, update_calculated_fields=False)
             self.update_calculated_fields(save=True)
+            if self.project_id:
+                self.update_children()
 
         return total_files
 

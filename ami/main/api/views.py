@@ -372,7 +372,13 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         from ami.jobs.models import Job, RegroupEventsJob
 
         deployment: Deployment = self.get_object()
-        assert deployment.project
+        if deployment.project_id is None:
+            # Schema allows it (project FK is nullable) but every Job carries a
+            # project and the regroup uses project.session_time_gap_seconds, so
+            # a project-less deployment can't run this endpoint.
+            raise api_exceptions.ValidationError(
+                detail={"deployment": "Deployment has no project; cannot enqueue regroup."}
+            )
 
         job = Job.objects.create(
             name=f"Regroup sessions for deployment {deployment.pk}",
