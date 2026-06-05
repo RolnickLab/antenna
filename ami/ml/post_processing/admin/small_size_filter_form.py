@@ -20,7 +20,7 @@ class SmallSizeFilterActionForm(BasePostProcessingActionForm):
         initial=SmallSizeFilterConfig.__fields__["size_threshold"].default,
         help_text=(
             "Minimum bounding-box area as a fraction of the source image area "
-            "(width × height). Detections smaller than this are flagged as "
+            "(width x height). Detections smaller than this are flagged as "
             "'Not identifiable'. Must be between 0 and 1 (exclusive). "
             "Default 0.0008 ≈ 0.08% of frame area."
         ),

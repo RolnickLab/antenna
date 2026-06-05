@@ -59,7 +59,7 @@ Admin is **not** the long-term primary trigger surface for post-processing — R
 
 ## Module Layout
 
-```
+```text
 ami/ml/post_processing/
 ├── base.py                           # MODIFIED — +config_schema contract
 ├── registry.py                       # unchanged

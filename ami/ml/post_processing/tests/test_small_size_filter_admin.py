@@ -52,6 +52,16 @@ class TestSmallSizeFilterIntermediatePage(_SmallSizeFilterAdminCase):
             0,
         )
 
+    def test_select_across_is_refused_without_creating_jobs(self):
+        # "Select all across pages" would serialize the whole table into hidden
+        # inputs; the action refuses it instead of rendering an unbounded form.
+        response = self._post({"confirm": "yes", "size_threshold": "0.001", "select_across": "1"})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            Job.objects.filter(project=self.project, job_type_key="post_processing").count(),
+            0,
+        )
+
     def test_invalid_threshold_rerenders_form_with_error(self):
         response = self._post({"confirm": "yes", "size_threshold": "2.0"})
         self.assertEqual(response.status_code, 200)
