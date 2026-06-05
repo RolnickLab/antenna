@@ -23,6 +23,29 @@ Every call to the AI model API incurs a cost and requires electricity. Be smart 
 - Do NOT include "Generated with Claude Code" in commit messages
 - ALWAYS include "Co-Authored-By: Claude <noreply@anthropic.com>" at the end of commit messages
 
+## Pull Request Conventions
+
+These conventions keep PR titles and descriptions readable for the whole team — product, QA, ops, and engineers who have not seen the diff. The PR template lives at `.github/pull_request_template.md`; the rules below are the parts treated as mandatory.
+
+### Title: lead with the user-facing effect
+
+A title states what the change does for a user, operator, or system, in plain language. It should make sense to someone who has not opened the diff.
+
+- **Effect first, mechanism second.** Push the "how" (serializers, querysets, cache internals, env var names) into the body.
+  - Avoid: `emit storage URL direct from serializer when cache is warm`
+  - Prefer: `Store and serve full URLs instead of hitting the web server`
+- **Bare sentence-case imperative.** Concrete verb first (Add, Allow, Speed up, Filter, Require, Improve, Stop, Show). No Conventional-Commit prefix (`feat:` / `fix:` / `chore:`) in the title, no code or module names, and no ticket number (reference it in the body with `Closes #N`).
+- **Capture the whole PR's purpose, not just the most visible change.** When a PR establishes a pattern, framework, or cleanup that later work builds on, name that intent rather than titling the PR after the one example that demonstrates it. A second clause is fine: "Add cancel button to jobs & establish the pattern for future buttons".
+
+### Body: a Summary and a List of Changes are mandatory
+
+Every PR body opens with:
+
+1. **`## Summary`** — a short, plain-language paragraph stating the purpose of the change and its effect for the user, operator, or system. Written so the whole team can read it; implementation detail belongs in `## Detailed Description` below.
+2. **`### List of Changes`** — a numbered list or a table. Each change has, at minimum, a plain user-effect description. Optionally add a column for the technical/implementation detail, plus any other helpful columns (affected area, risk, migration). Lead with the user-effect; do not reduce it to a bare list of class or method names.
+
+For background and a worked dataset behind these conventions, see `docs/claude/analysis/pr-title-renames.md`.
+
 ## Project Overview
 
 Antenna is an Automated Monitoring of Insects ML Platform. It's a collaborative platform for processing and reviewing images from automated insect monitoring stations, maintaining metadata, and orchestrating multiple machine learning pipelines for analysis.

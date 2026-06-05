@@ -1,0 +1,80 @@
+1331	mihow	2026-06-04T23:13:52Z	perf(thumbnails): emit storage URL direct from serializer when cache is warm	Option for thumbnails: store and serve full URLs instead of hitting server
+1322	mihow	2026-05-27T18:45:33Z	perf(ml): bulk-query Collect-stage filter to unstall large-collection jobs	Improve the filter stage during job preparation, fix for large capture sets
+1317	mihow	2026-05-26T20:36:51Z	feat(taxa): per-taxon verification & agreement counts + verified filter (#1316)	Add verification status to Taxa views
+1314	mihow	2026-05-20T21:44:53Z	docs: dev-box live testing pattern + reprocess flag interaction	docs: dev-box live testing pattern + reprocess flag interaction [abandoned]
+1312	mihow	2026-05-27T13:20:57Z	fix(ml): create null detection markers only after real saves succeed	Don't mark images as processed too soon
+1311	mihow	2026-05-20T00:22:11Z	fix(newrelic): restore per-env app_name in ini — NEW_RELIC_APP_NAME env var doesn't override	fix(newrelic): make app_name env-var-driven (drop from ini)
+1311	mihow	2026-05-20T01:27:53Z	fix(newrelic): make app_name env-var-driven (drop from ini)	fix(monitoring): allow distinguishing data from different deployments in New Relic
+1308	mihow	2026-05-27T13:20:13Z	feat(ui): live stats panel in occurrence list sidebar	Show stats panel in occurrence list sidebar
+1307	mihow	2026-05-14T20:01:57Z	feat(occurrence-stats): add /occurrences/stats/human-model-agreement/ endpoint	Endpoint for stats about verified occurrences
+1307	mihow	2026-05-15T06:44:15Z	Endpoint for stats about verified occurrences	feat(occurrence-stats): /occurrences/stats/model-agreement/ endpoint
+1307	mihow	2026-05-15T06:50:44Z	feat(occurrence-stats): /occurrences/stats/model-agreement/ endpoint	Endpoint for stats about verified occurrences
+1301	mihow	2026-05-13T22:38:32Z	Denormalize SourceImageCollection counts as cached columns	Speed up the capture set list view
+1301	mihow	2026-05-27T13:19:40Z	Speed up the capture set list view	Speed up the capture set list view - introduce the CachedCount field
+1301	mihow	2026-05-28T18:41:42Z	Speed up the capture set list view - introduce the CachedCount field	Speed up the capture set list view
+1300	mihow	2026-05-12T18:24:24Z	perf(api): rewrite collection counts as subqueries; trim capture list SELECT	Speed up the captures list view
+1292	mihow	2026-05-05T00:32:25Z	feat(projects): wire session_time_gap_seconds into event grouping	Allow users to customize the time gap between sessions
+1289	mihow	2026-06-04T23:49:34Z	feat(post-processing): admin scaffolding precursor (pydantic schema, form base, parameterized template)	Let admins set the size threshold when running the small size filter
+1289	mihow	2026-06-04T23:52:52Z	Let admins set the size threshold when running the small size filter	Trigger, configure, and track post-processing filters from the Django admin
+1289	mihow	2026-06-05T00:03:47Z	Trigger, configure, and track post-processing filters from the Django admin	Framework for admins to trigger and review post-processing methods
+1286	mihow	2026-05-01T00:39:54Z	fix(jobs): show collect stage progress + add deferred job_type_key migration	fix(jobs): show collect stage progress
+1276	mihow	2026-04-29T22:17:10Z	fix(jobs): reaper checks Redis directly via all_tasks_processed	fix(jobs): fix dangling jobs from going to revoked
+1274	mihow	2026-04-30T00:19:18Z	fix(occurrences): prefetch detection paths and classifications in list view	fix(occurrences): remove all n+1 queries from occurrence API 
+1261	mihow	2026-04-21T07:21:24Z	fix(jobs): drop select_for_update in _update_job_progress to break row-lock contention	fix(jobs): disable job logging behind feature flag
+1261	mihow	2026-04-21T20:37:37Z	fix(jobs): disable job logging behind feature flag	fix(jobs): fixes for concurrent ML processing jobs
+1257	mihow	2026-04-20T06:50:42Z	feat(celery): split tasks across three queues to prevent cross-task starvation	feat: assign different categories of background tasks to separate queues
+1244	mihow	2026-04-17T06:44:48Z	fix(jobs): reconcile async jobs stuck on NATS-lost images	fix(jobs): mark failed or lost images as failed so job can finish
+1244	mihow	2026-04-17T06:44:58Z	fix(jobs): mark failed or lost images as failed so job can finish	fix(jobs): mark failed or lost images as failed so job can be marked complete
+1235	mihow	2026-04-15T19:03:28Z	fix(jobs): stop bumping partial progress to 100%, reap stalled jobs after 10 min	fix(jobs): don't fail jobs prematurely, but fail stalled jobs sooner (3 days -> 10 min)
+1234	mihow	2026-04-15T18:18:19Z	fix(jobs): ack NATS after results-stage SREM; defer task_failure for in-flight async jobs	fix(jobs): prevent jobs from hanging in STARTED state with no progress
+1231	mihow	2026-04-15T00:18:09Z	fix(jobs): retry on transient Redis errors instead of failing the job	fix(jobs): retry on Redis blips instead of failing the job
+1231	mihow	2026-04-15T00:18:18Z	fix(jobs): retry on Redis blips instead of failing the job	fix: retry on Redis blips instead of failing the job
+1228	mihow	2026-04-15T00:22:24Z	fix(celery): bump worker concurrency default to 16	fix(celery): update worker concurrency defaults
+1227	mihow	2026-04-14T14:54:23Z	feat(jobs): schedule periodic stale-job reconcile + NATS consumer snapshots	feat(jobs): schedule periodic stale-job check
+1222	mihow	2026-04-12T00:37:08Z	feat(nats): surface queue lifecycle events on the per-job logger (#1220)	feat(jobs): make NATS queue activity visible in async ML job logs
+1214	mihow	2026-04-14T00:52:36Z	feat(exports): add machine prediction, verification, and detection fields	feat: change humans core to None, add prediction and identification fields to CSV export
+1214	mihow	2026-04-14T17:04:31Z	feat: change humans core to None, add prediction and identification fields to CSV export	feat: change humans scores to None, add prediction and identification fields to CSV export
+1214	mihow	2026-04-15T00:11:01Z	feat: change humans scores to None, add prediction and identification fields to CSV export	feat: change human scores to None, add prediction and identification fields to CSV export
+1214	mihow	2026-04-17T05:37:01Z	feat: change human scores to None, add prediction and identification fields to CSV export	feat: add additional prediction and identification fields to CSV export
+1198	mihow	2026-04-01T19:06:27Z	feat(ui): processing service details project context and optional endpoint URL	fix(ui): processing service details link and endpoint URL in form
+1197	mihow	2026-04-02T18:35:33Z	refactor(jobs): change /tasks endpoint from GET to POST	refactor(jobs): change /tasks and /results endpoints for ML jobs
+1169	mihow	2026-03-03T08:44:12Z	fix: revoke stale jobs instead of cycling through PENDING	fix: revoke stale jobs to "revoked" status instead of "pending"
+1146	mihow	2026-02-27T02:29:30Z	Rename ProcessingService last_checked fields to last_seen	PSv2: Show online / offline status for async processing services
+1146	mihow	2026-03-26T00:47:27Z	PSv2: Show online / offline status for async processing services	PSv2: Preparation for showing status of async processing services
+1135	mihow	2026-02-17T07:21:37Z	fix: prevent NATS connection flooding and stale job task fetching	fix: PSv2 follow-up fixes from integration tests
+1125	mihow	2026-02-10T00:03:31Z	refactor: use is_complete() and dispatch_mode in job progress handler	PSv2 cleanup: use is_complete() and dispatch_mode in job progress handler
+1110	mihow	2026-01-31T10:06:43Z	feat: Add model-level permissions framework	feat: Add model-level permissions framework (rebase test - no not merge)
+1104	mihow	2026-01-30T03:28:32Z	Refactor taxa list endpoints to use through model	Refactor taxa list endpoints to follow the project-user membership API
+1097	mihow	2026-01-22T09:01:21Z	Optimize role creation signal with schema version tracking	[Draft] Optimize role creation signal with schema version tracking
+1097	mihow	2026-02-24T23:22:14Z	[Draft] Optimize role creation signal with schema version tracking	[Draft] Speed up the role assignments after every migration run
+1024	mihow	2025-10-30T23:38:18Z	feat: add Docker healthcheck and auto-restart for Celery workers	Docker healthcheck and auto-restart for Celery workers
+992	mihow	2025-11-18T22:16:55Z	[Draft] Add general detector + global moth model	Add general detector + global moth model
+992	mihow	2025-11-18T22:17:04Z	Add general detector + global moth model	Add general detector + global moth model to example pipeline
+940	mihow	2025-09-04T07:15:35Z	Feat/taxa covers and references	Taxon cover images and external references
+939	mihow	2025-09-04T07:17:37Z	Update command for importing taxa from external list	Update command for importing taxa from external lists
+909	mihow	2025-07-31T06:58:35Z	Feat/quickstart prototype auto process	Auto-process manually uploaded images (if enabled)
+905	mihow	2025-07-22T23:59:06Z	Configure default related models with new projects	Configure default related models for new projects
+894	mihow	2025-07-04T21:50:03Z	Advanced collection filters	Advanced collection filters - DELETE
+858	mihow	2025-07-07T22:56:30Z	[Draft] Incorporate size information into clustering	[Draft] Filter images before clustering
+857	mihow	2026-03-02T05:52:54Z	[Draft] Taxon rank classifications	[Draft] Taxon rank classifications ("rank roll-ups")
+853	mihow	2025-05-17T18:18:09Z	Clean up global vs project taxa & API responses	Clean up global vs. project taxa & API responses
+837	mihow	2025-05-12T06:29:47Z	[Draft] Update Occurrence model to determine best examples 	Update Occurrence model to determine best examples 
+837	mihow	2025-05-13T15:11:47Z	Update Occurrence model to determine best examples 	Update Occurrence model to save best examples 
+837	mihow	2025-05-13T15:12:12Z	Update Occurrence model to save best examples 	Update Occurrence model to determine & save best examples 
+821	mihow	2025-04-30T04:01:00Z	Support for saving Classification embeddings 	Support for saving Classification embeddings (redo)
+821	mihow	2025-04-30T04:01:09Z	Support for saving Classification embeddings (redo)	Support for saving Classification embeddings (re-merge)
+820	mihow	2025-04-30T05:59:56Z	[Do not merge] OOD Features	[Do Not Merge] OOD Features
+820	mihow	2025-11-21T03:31:47Z	[Do Not Merge] OOD Features	[Integration] OOD Features
+820	mihow	2025-11-21T03:32:00Z	[Integration] OOD Features	[integration] OOD Features
+814	mihow	2025-04-30T05:45:55Z	[Draft] Save and display OOD scores	Save and display OOD scores
+792	mihow	2025-04-03T19:53:43Z	fix: enable basic type checking for Python by default in project	Enable basic type checking for Python by default in VS Code project
+759	mihow	2025-03-05T05:32:04Z	Feat/faster taxa backend	Fix taxa pages
+719	mihow	2025-03-07T08:05:15Z	Fix/reprocessing existing results	Fix reprocessing of existing results
+688	mihow	2025-01-22T03:19:35Z	Fix/celery workers	Fix background tasks from disappearing 
+635	mihow	2025-01-13T22:32:19Z	Save all scores from prediction results	Refactoring of ML pipeline results
+635	mihow	2025-01-13T22:33:17Z	Refactoring of ML pipeline results	Refactor and enhancements to saving of ML pipeline results
+634	mihow	2025-04-03T00:20:01Z	[Draft] Framework for exporting data	[Draft] Framework for exporting data (with initial data formats)
+576	mihow	2024-09-16T21:53:49Z	Feat/ml backend template	[Draft] Template for an ML backend in the compose stack
+576	mihow	2024-10-17T22:22:42Z	[Draft] Template for an ML backend in the compose stack	Template for an ML backend in the compose stack
+573	mihow	2024-09-13T02:22:35Z	Fixes for duplicate classifications and old species in list view	Fixes for duplicate classifications and other optimizations
+502	mihow	2024-08-12T05:47:14Z	[Draft] Complete full stack environment for dev & CI	Complete full stack environment for dev & CI
