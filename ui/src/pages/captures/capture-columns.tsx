@@ -3,6 +3,7 @@ import { Capture } from 'data-services/models/capture'
 import {
   BasicTableCell,
   CellTheme,
+  DateTableCell,
   ImageCellTheme,
   ImageTableCell,
   TableColumn,
@@ -150,6 +151,12 @@ export const columns = ({
     name: translate(STRING.FIELD_LABEL_PATH),
     sortField: 'path',
     renderCell: (item: Capture) => <BasicTableCell value={item.path} />,
+  },
+  {
+    id: 'last-processed',
+    name: translate(STRING.FIELD_LABEL_LAST_PROCESSED),
+    sortField: 'last_processed',
+    renderCell: (item: Capture) => <DateTableCell date={item.lastProcessed} />,
   },
   {
     id: 'occurrences',

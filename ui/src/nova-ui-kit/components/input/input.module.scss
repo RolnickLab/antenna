@@ -11,7 +11,7 @@
 
 .error {
   display: block;
-  @include body-small();
+  @include body-small;
   color: var(--color-destructive);
   text-align: right;
   margin-left: 8px;
@@ -23,7 +23,7 @@
 
 .description {
   display: block;
-  @include body-small();
+  @include body-small;
   color: var(--color-muted-foreground);
   font-style: italic;
   word-break: break-word;
@@ -46,7 +46,7 @@
   border-radius: 6px;
   height: 48px;
   padding: 0 16px;
-  @include body-small();
+  @include body-small;
   background-color: var(--color-generic-white);
   color: var(--color-foreground);
   border: 1px solid var(--color-border);

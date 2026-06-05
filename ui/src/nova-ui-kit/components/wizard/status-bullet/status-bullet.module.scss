@@ -7,7 +7,7 @@
   border-radius: 12px;
   background-color: var(--color-secondary);
   padding-top: 2px;
-  @include body-small();
+  @include body-small;
   font-weight: 600;
   color: var(--color-generic-white);
 

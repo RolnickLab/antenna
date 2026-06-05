@@ -12,7 +12,7 @@
   z-index: 50;
 
   h1 {
-    @include body-xlarge();
+    @include body-xlarge;
     margin: 0;
 
     &:not(:last-child) {
@@ -21,7 +21,7 @@
   }
 
   p {
-    @include body-small();
+    @include body-small;
     margin: 0;
 
     &:not(:last-child) {

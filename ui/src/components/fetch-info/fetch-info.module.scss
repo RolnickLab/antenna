@@ -10,7 +10,7 @@
   }
 
   span {
-    @include body-small();
+    @include body-small;
     font-weight: 600;
     color: var(--color-muted-foreground);
   }
