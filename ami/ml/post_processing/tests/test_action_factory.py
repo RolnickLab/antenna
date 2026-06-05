@@ -86,12 +86,28 @@ class TestDefaultBuildJobs(TestCase):
         self.assertIn("size_threshold", fields)
         self.assertEqual(Job.objects.filter(job_type_key="post_processing").count(), 0)
 
-    def test_all_or_nothing_when_one_row_is_invalid(self):
+    def test_create_failure_midway_rolls_back_all_jobs(self):
+        # Validation passes for both rows, so we reach the creation loop. Force a
+        # failure while creating the *second* Job and assert the first one is rolled
+        # back — i.e. the transaction.atomic() wrap makes creation all-or-nothing.
+        # Without it, the first INSERT would leak before the failure.
         good = SourceImageCollection.objects.create(project=self.project, name="good")
-        qs = SourceImageCollection.objects.filter(pk__in=[self.collection.pk, good.pk])
-        # size_threshold out of range fails for every row -> nothing created.
-        with pytest.raises(ConfigValidationErrors):
-            default_build_jobs(**_ssf_kwargs(qs, {"size_threshold": 5.0}))
+        qs = SourceImageCollection.objects.filter(pk__in=[self.collection.pk, good.pk]).order_by("pk")
+
+        seen: list[int] = []
+
+        def exploding_name_resolver(task_cls, obj):
+            seen.append(obj.pk)
+            if len(seen) == 2:
+                raise RuntimeError("boom while creating the second job")
+            return f"SSF {obj.pk}"
+
+        kwargs = _ssf_kwargs(qs, {"size_threshold": 0.001})
+        kwargs["name_resolver"] = exploding_name_resolver
+
+        with pytest.raises(RuntimeError):
+            default_build_jobs(**kwargs)
+
         self.assertEqual(Job.objects.filter(job_type_key="post_processing").count(), 0)
 
 

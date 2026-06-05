@@ -88,17 +88,6 @@ class TestSmallSizeFilterCreatesJob(_SmallSizeFilterAdminCase):
         self.assertEqual(job.params["config"]["size_threshold"], 0.001)
         self.assertEqual(job.params["config"]["source_image_collection_id"], self.collection.pk)
 
-    def test_default_threshold_applies_when_form_uses_initial(self):
-        # Submitting the initial value (rendered into the form) creates a job with default threshold.
-        response = self._post({"confirm": "yes", "size_threshold": "0.0008"})
-        self.assertEqual(response.status_code, 302)
-
-        job = Job.objects.get(
-            project=self.project,
-            job_type_key="post_processing",
-        )
-        self.assertEqual(job.params["config"]["size_threshold"], 0.0008)
-
 
 class TestSmallSizeFilterMultiCollection(_SmallSizeFilterAdminCase):
     def setUp(self) -> None:

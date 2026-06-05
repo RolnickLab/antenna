@@ -1,4 +1,7 @@
 """Tests for the pydantic ``config_schema`` contract on ``BasePostProcessingTask``."""
+import abc
+import inspect
+
 import pydantic
 import pytest
 from django.test import TestCase
@@ -19,6 +22,19 @@ class TestConfigSchemaContract(TestCase):
 
                 def run(self) -> None:
                     pass
+
+    def test_abstract_subclass_is_not_required_to_declare_contract(self):
+        # An abstract intermediary (leaves an abstractmethod unimplemented) may defer
+        # key/name/config_schema to its concrete subclasses without raising.
+        class AbstractFilter(BasePostProcessingTask):
+            @abc.abstractmethod
+            def filter_step(self) -> None:
+                ...
+
+            def run(self) -> None:  # pragma: no cover - never instantiated
+                pass
+
+        self.assertTrue(inspect.isabstract(AbstractFilter))
 
     def test_valid_config_builds_basemodel_instance(self):
         task = SmallSizeFilterTask(source_image_collection_id=1, size_threshold=0.001)
