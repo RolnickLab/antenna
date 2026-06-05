@@ -1,3 +1,4 @@
+import datetime
 from typing import Any
 
 from django.contrib import admin
@@ -135,11 +136,11 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         "name",
         "project",
         "data_source_uri",
-        "captures_count",
-        "captures_size",
-        "events_count",
-        "start_date",
-        "end_date",
+        "captures_count_display",
+        "captures_size_display",
+        "events_count_display",
+        "first_date",
+        "last_date",
     )
 
     search_fields = (
@@ -147,27 +148,32 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         "name",
     )
 
-    def start_date(self, obj) -> str | None:
-        result = SourceImage.objects.filter(event__deployment=obj).aggregate(
-            models.Min("timestamp"),
-        )
-        return result["timestamp__min"].date() if result["timestamp__min"] else None
+    # The previous custom start_date / end_date / events_count / captures_count
+    # methods each ran a live aggregate per row (`SourceImage.aggregate(Min/Max)`,
+    # `obj.events.count()`), making this list view ~O(rows × 4 expensive
+    # queries) — unusable on stacks with deployments holding >100k captures.
+    # Deployment already denormalizes captures_count, events_count,
+    # data_source_total_size, first_capture_timestamp and last_capture_timestamp
+    # (refreshed by update_calculated_fields); read those instead.
+    @admin.display(description="First date", ordering="first_capture_timestamp")
+    def first_date(self, obj: Deployment) -> datetime.date | None:
+        return obj.first_date()
 
-    def end_date(self, obj) -> str | None:
-        result = SourceImage.objects.filter(deployment=obj).aggregate(
-            models.Max("timestamp"),
-        )
-        return result["timestamp__max"].date() if result["timestamp__max"] else None
+    @admin.display(description="Last date", ordering="last_capture_timestamp")
+    def last_date(self, obj: Deployment) -> datetime.date | None:
+        return obj.last_date()
 
-    def events_count(self, obj) -> str | None:
-        return number_format(obj.events.count(), force_grouping=True, use_l10n=True)
+    @admin.display(description="Events", ordering="events_count")
+    def events_count_display(self, obj: Deployment) -> str:
+        return number_format(obj.events_count or 0, force_grouping=True, use_l10n=True)
 
-    def captures_size(self, obj) -> str | None:
-        return filesizeformat(obj.data_source_total_size)
+    @admin.display(description="Captures", ordering="captures_count")
+    def captures_count_display(self, obj: Deployment) -> str:
+        return number_format(obj.captures_count or 0, force_grouping=True, use_l10n=True)
 
-    def captures_count(self, obj) -> str | None:
-        total_files = obj.data_source_total_files
-        return number_format(total_files, force_grouping=True, use_l10n=True)
+    @admin.display(description="Size", ordering="data_source_total_size")
+    def captures_size_display(self, obj: Deployment) -> str:
+        return filesizeformat(obj.data_source_total_size or 0)
 
     # list action that runs deployment.import_captures and displays a message
     # https://docs.djangoproject.com/en/3.2/ref/contrib/admin/actions/#writing-action-functions
