@@ -1527,12 +1527,12 @@ def _group_images_into_events_locked(
     )
     duplicate_timestamp_count = dupes.count()
     if duplicate_timestamp_count:
-        values = "\n".join(
-            [f'{d.strftime("%Y-%m-%d %H:%M:%S")} x{c}' for d, c in dupes.values_list("timestamp", "count")]
+        sample = "\n".join(
+            f'{d.strftime("%Y-%m-%d %H:%M:%S")} x{c}' for d, c in dupes.values_list("timestamp", "count")[:20]
         )
         logger.warning(
-            f"Found {len(values)} images with the same timestamp in deployment '{deployment}'. "
-            f"Only one image will be used for each timestamp for each event."
+            f"Found {duplicate_timestamp_count} duplicate-timestamp groups in deployment '{deployment}'. "
+            f"Only one image will be used per timestamp for each event. First 20:\n{sample}"
         )
 
     image_timestamps = list(
@@ -1550,6 +1550,7 @@ def _group_images_into_events_locked(
     )
 
     events = []
+    events_created_count = 0
     touched_event_pks: set[int] = set()
     for group in timestamp_groups:
         if not len(group):
@@ -1568,12 +1569,14 @@ def _group_images_into_events_locked(
 
         # Creating events & assigning images
         group_by = start_date.date()
-        event, _ = Event.objects.get_or_create(
+        event, was_created = Event.objects.get_or_create(
             deployment=deployment,
             group_by=group_by,
             defaults={"start": start_date, "end": end_date},
         )
         events.append(event)
+        if was_created:
+            events_created_count += 1
         touched_event_pks.add(event.pk)
 
         # Track events currently holding these captures — they'll lose captures
@@ -1664,7 +1667,7 @@ def _group_images_into_events_locked(
         job.progress.update_stage(
             stage_key,
             captures_grouped=len(image_timestamps),
-            events_created=len(events),
+            events_created=events_created_count,
             events_touched=len(touched_event_pks),
             events_deleted_empty=events_deleted_empty,
             duplicate_timestamps=duplicate_timestamp_count,
