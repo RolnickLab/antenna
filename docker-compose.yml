@@ -62,10 +62,11 @@ services:
       - django
     environment:
       - API_PROXY_TARGET=http://django:8000
-      # Hostnames allowed by `vite preview` when serving the built UI behind a
-      # reverse proxy on a non-localhost host (comma-separated). Unset = Vite's
-      # localhost-only default.
-      # - PREVIEW_ALLOWED_HOSTS=preview.example.com
+      # Hostnames the Vite server accepts when the UI is reached on a
+      # non-localhost host (reverse proxy / Tailscale name), comma-separated.
+      # Covers both `vite preview` (this service) and `yarn start` (ui-dev).
+      # Unset = Vite's localhost-only default.
+      # - UI_ALLOWED_HOSTS=ui.example.com
 
   ui-dev:
     profiles:
@@ -89,10 +90,9 @@ services:
     environment:
       - API_PROXY_TARGET=http://django:8000
       - CHOKIDAR_USEPOLLING=true
-      # Hostnames allowed by the `vite`/`yarn start` dev server when accessing
-      # it on a non-localhost host, e.g. a Tailscale name (comma-separated).
-      # Unset = Vite's localhost-only default.
-      # - DEV_ALLOWED_HOSTS=my-machine.tailnet.ts.net
+      # See UI_ALLOWED_HOSTS note on the `ui` service above. Set this when
+      # reaching the dev server on a non-localhost host (e.g. a Tailscale name).
+      # - UI_ALLOWED_HOSTS=my-machine.tailnet.ts.net
 
   redis:
     image: redis:6

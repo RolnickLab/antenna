@@ -23,10 +23,15 @@ export default defineConfig(({ mode }) => {
   // Set the third parameter to '' to load all env regardless of the `VITE_` prefix.
   const env = loadEnv(mode, process.cwd(), '')
 
-  // Parse a comma-separated list of hostnames into the array Vite expects for
-  // `allowedHosts`. Empty/whitespace entries (e.g. a trailing comma) are
-  // dropped. Returns undefined when nothing is configured so Vite keeps its
-  // default localhost-only behaviour.
+  // UI_ALLOWED_HOSTS declares the hostnames both Vite servers accept when the
+  // app is reached on a non-localhost host (a reverse proxy, or a Tailscale
+  // name): the dev server (`vite` / `yarn start`, via `server.allowedHosts`)
+  // and the preview server (`vite preview`, via `preview.allowedHosts`). A
+  // container only runs one of those, so a single variable covers both.
+  //
+  // Parse a comma-separated list into the array Vite expects. Empty/whitespace
+  // entries (e.g. a trailing comma) are dropped. Returns undefined when nothing
+  // is configured so Vite keeps its default localhost-only behaviour.
   const parseAllowedHosts = (value?: string) => {
     const hosts = value
       ?.split(',')
@@ -61,10 +66,7 @@ export default defineConfig(({ mode }) => {
     server: {
       open: true,
       port: 3000,
-      // Hosts allowed when serving the dev server (`vite` / `yarn start`)
-      // behind a reverse proxy or on a non-localhost hostname (e.g. a
-      // Tailscale name). Comma-separated; unset keeps Vite's localhost default.
-      allowedHosts: parseAllowedHosts(env.DEV_ALLOWED_HOSTS),
+      allowedHosts: parseAllowedHosts(env.UI_ALLOWED_HOSTS),
       proxy: {
         '/api': {
           target: env.API_PROXY_TARGET || 'http://localhost:8000',
@@ -77,11 +79,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     preview: {
-      // Hosts allowed when serving the built app with `vite preview` behind a
-      // reverse proxy (e.g. a hosted preview deployment). Comma-separated.
-      // When unset, Vite's default localhost-only behaviour is preserved, so
-      // local development is unaffected.
-      allowedHosts: parseAllowedHosts(env.PREVIEW_ALLOWED_HOSTS),
+      allowedHosts: parseAllowedHosts(env.UI_ALLOWED_HOSTS),
     },
   }
 })

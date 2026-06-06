@@ -54,12 +54,9 @@ By default the app will try to connect to http://localhost:8000 for the backend 
 
 #### Allowed hosts
 
-Recent versions of Vite reject requests whose `Host` header isn't `localhost`, which breaks serving the UI on a custom hostname (a reverse proxy, or a Tailscale name). When you need to reach the UI on such a host, declare the allowed hostnames (comma-separated; a leading-dot entry like `.example.com` matches all subdomains):
+Recent versions of Vite reject requests whose `Host` header isn't `localhost`, which breaks serving the UI on a custom hostname (a reverse proxy, or a Tailscale name). When you need to reach the UI on such a host, set `UI_ALLOWED_HOSTS` to the allowed hostnames (comma-separated; a leading-dot entry like `.example.com` matches all subdomains).
 
-- `DEV_ALLOWED_HOSTS` — for the dev server (`yarn start` / `vite`).
-- `PREVIEW_ALLOWED_HOSTS` — for the production preview server (`yarn preview` / `vite preview`).
-
-Both are unset by default, preserving Vite's localhost-only behaviour for local development.
+The same variable covers both Vite servers — the dev server (`yarn start` / `vite`) and the production preview server (`yarn preview` / `vite preview`) — so it works regardless of which one a given container runs. It is unset by default, preserving Vite's localhost-only behaviour for local development.
 
 ## Nova UI Kit
 
