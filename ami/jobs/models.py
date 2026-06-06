@@ -751,6 +751,21 @@ class DataStorageSyncJob(JobType):
         events = group_images_into_events(job.deployment, job=job, stage_key=cls.regroup_stage_key)
         job.logger.info(f"Deployment {job.deployment} now has {len(events)} events after sync regroup.")
 
+        # The lock-miss branch in group_images_into_events returns []. If we
+        # just synced new captures, that means those captures are now sitting
+        # ungrouped because a concurrent regroup held the lock. They will be
+        # picked up by the next Deployment.save autoregroup (e.g. the next
+        # sync) — but flag it loudly on this Job so an admin watching this run
+        # sees what happened rather than a silently-empty regroup stage.
+        sync_total_files = job.progress.get_stage_param(cls.key, "total_files").value or 0
+        if not events and sync_total_files:
+            job.logger.warning(
+                f"Sync added {sync_total_files} files but the regroup stage was skipped because "
+                f"another regroup is in progress for deployment {job.deployment.pk}. The new captures "
+                f"will be grouped by the next sync or save. If this keeps happening, check the Jobs "
+                f"list for a stuck regroup_events task."
+            )
+
         job.progress.update_stage(cls.regroup_stage_key, status=JobState.SUCCESS, progress=1)
         job.update_status(JobState.SUCCESS)
         job.finished_at = datetime.datetime.now()
