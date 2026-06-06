@@ -44,7 +44,22 @@ Every PR body opens with:
 1. **`## Summary`** — a short, plain-language paragraph stating the purpose of the change and its effect for the user, operator, or system. Written so the whole team can read it; implementation detail belongs in `## Detailed Description` below.
 2. **`### List of Changes`** — a numbered list or a table. Each change has, at minimum, a plain user-effect description. Optionally add a column for the technical/implementation detail, plus any other helpful columns (affected area, risk, migration). Lead with the user-effect; do not reduce it to a bare list of class or method names.
 
-For background and a worked dataset behind these conventions, see `docs/claude/analysis/pr-title-renames.md`.
+### Examples
+
+Real titles from this repository, drafted mechanism-first and then rewritten to lead with the effect:
+
+| Drafted (mechanism) | Rewritten (effect) |
+|----|----|
+| `perf(api): rewrite collection counts as subqueries; trim capture list SELECT` | Speed up the captures list view |
+| `perf(thumbnails): emit storage URL direct from serializer when cache is warm` | Option for thumbnails: store and serve full URLs instead of hitting the server |
+| `feat(projects): wire session_time_gap_seconds into event grouping` | Allow users to customize the time gap between sessions |
+| `fix(jobs): ack NATS after results-stage SREM; defer task_failure for in-flight async jobs` | Prevent jobs from hanging in STARTED state with no progress |
+| `fix(newrelic): make app_name env-var-driven (drop from ini)` | Allow distinguishing data from different deployments in New Relic |
+
+A few patterns worth copying:
+
+- **Name the framework, not the demo.** `feat(post-processing): admin scaffolding precursor (pydantic schema, form base, parameterized template)` became *Framework for admins to trigger and review post-processing methods* — the title captures the capability, not the one example that exercises it.
+- **Don't ship the branch-name auto-title.** `gh pr create` pre-fills the title from the branch slug, so titles like `Feat/taxa-covers` or `Fix/celery workers` slip through. Rewrite them: the latter became *Fix background tasks from disappearing*.
 
 ## Project Overview
 
