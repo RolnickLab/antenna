@@ -52,6 +52,15 @@ Now you can navigate to the following URL: http://localhost:3000
 
 By default the app will try to connect to http://localhost:8000 for the backend API. Use the env var `API_PROXY_TARGET` to change this. You can create multiple `.env` files in the `ui/` directory for different environments or configurations. For example, use `yarn start --mode staging` to load `.env.staging` and point the `API_PROXY_TARGET` to a remote backend.
 
+#### Allowed hosts
+
+Recent versions of Vite reject requests whose `Host` header isn't `localhost`, which breaks serving the UI on a custom hostname (a reverse proxy, or a Tailscale name). When you need to reach the UI on such a host, declare the allowed hostnames (comma-separated; a leading-dot entry like `.example.com` matches all subdomains):
+
+- `DEV_ALLOWED_HOSTS` — for the dev server (`yarn start` / `vite`).
+- `PREVIEW_ALLOWED_HOSTS` — for the production preview server (`yarn preview` / `vite preview`).
+
+Both are unset by default, preserving Vite's localhost-only behaviour for local development.
+
 ## Nova UI Kit
 
 This is our design system. This code is centralized in the `src/nova-ui-kit` directory and defines the visual language used across the application. It includes colors, typography, responsive breakpoints, and reusable UI primitives.
