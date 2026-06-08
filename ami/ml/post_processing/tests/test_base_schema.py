@@ -48,13 +48,27 @@ class TestConfigSchemaContract(TestCase):
         config: SmallSizeFilterConfig = task.config  # type: ignore[assignment]
         self.assertEqual(config.size_threshold, 0.0008)
 
+    def test_occurrence_scope_is_accepted(self):
+        # The discriminated scope: an occurrence id is a valid alternative to a
+        # collection id (the per-occurrence / dev trigger).
+        task = SmallSizeFilterTask(occurrence_id=7)
+        config: SmallSizeFilterConfig = task.config  # type: ignore[assignment]
+        self.assertEqual(config.occurrence_id, 7)
+        self.assertIsNone(config.source_image_collection_id)
+
+    def test_both_scopes_at_once_raises(self):
+        # Exactly one scope must be set; supplying both is ambiguous.
+        with pytest.raises(pydantic.ValidationError):
+            SmallSizeFilterTask(source_image_collection_id=1, occurrence_id=7)
+
+    def test_no_scope_raises(self):
+        # Neither scope set — nothing identifies which detections to examine.
+        with pytest.raises(pydantic.ValidationError):
+            SmallSizeFilterTask(size_threshold=0.001)
+
     def test_invalid_config_raises_at_init(self):
         with pytest.raises(pydantic.ValidationError):
             SmallSizeFilterTask(source_image_collection_id=1, size_threshold=2.0)
-
-    def test_missing_required_field_raises(self):
-        with pytest.raises(pydantic.ValidationError):
-            SmallSizeFilterTask(size_threshold=0.001)
 
     def test_unknown_keys_rejected(self):
         with pytest.raises(pydantic.ValidationError):

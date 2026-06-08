@@ -8,7 +8,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from ami.jobs.models import Job
-from ami.main.models import SourceImageCollection
+from ami.main.models import Occurrence, SourceImageCollection
 from ami.tests.fixtures.main import setup_test_project
 from ami.users.models import User
 
@@ -87,6 +87,37 @@ class TestSmallSizeFilterCreatesJob(_SmallSizeFilterAdminCase):
         self.assertEqual(job.params["task"], "small_size_filter")
         self.assertEqual(job.params["config"]["size_threshold"], 0.001)
         self.assertEqual(job.params["config"]["source_image_collection_id"], self.collection.pk)
+
+
+class TestSmallSizeFilterOccurrenceScope(TestCase):
+    """The per-occurrence trigger on OccurrenceAdmin uses the same factory with an
+    ``occurrence_id`` scope — the fast spot/dev path for iterating on a filter."""
+
+    def setUp(self) -> None:
+        self.superuser = User.objects.create_superuser(email="ssfocc@example.com", password="x")
+        self.client = Client()
+        self.client.force_login(self.superuser)
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.occurrence = Occurrence.objects.create(project=self.project, deployment=self.deployment)
+
+    def test_valid_post_creates_one_job_scoped_to_the_occurrence(self):
+        url = reverse("admin:main_occurrence_changelist")
+        response = self.client.post(
+            url,
+            data={
+                "action": "run_small_size_filter",
+                django_admin.helpers.ACTION_CHECKBOX_NAME: [str(self.occurrence.pk)],
+                "confirm": "yes",
+                "size_threshold": "0.001",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        job = Job.objects.get(project=self.project, job_type_key="post_processing")
+        self.assertEqual(job.params["task"], "small_size_filter")
+        self.assertEqual(job.params["config"]["occurrence_id"], self.occurrence.pk)
+        # Collection scope stays absent so the schema's exactly-one-scope rule holds.
+        self.assertIsNone(job.params["config"].get("source_image_collection_id"))
 
 
 class TestSmallSizeFilterMultiCollection(_SmallSizeFilterAdminCase):

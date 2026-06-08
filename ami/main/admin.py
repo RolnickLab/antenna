@@ -415,6 +415,19 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
     def detections_count(self, obj) -> int:
         return obj.detections_count
 
+    # Per-occurrence post-processing trigger. Same factory as the capture-set
+    # action on SourceImageCollectionAdmin, scoped to one occurrence — the fast
+    # spot/dev path for iterating on a filter without running a whole collection.
+    # New per-occurrence tasks add their own action here the same way.
+    run_small_size_filter = make_post_processing_action(
+        SmallSizeFilterTask,
+        SmallSizeFilterActionForm,
+        scope_resolver=lambda occurrence: {"occurrence_id": occurrence.pk},
+        name_resolver=lambda task_cls, occurrence: (f"Post-processing: {task_cls.name} on Occurrence {occurrence.pk}"),
+    )
+
+    actions = [run_small_size_filter]
+
     ordering = ("-created_at",)
 
     # Add classifications as inline

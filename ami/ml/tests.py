@@ -1414,6 +1414,74 @@ class TestPostProcessingTasks(TestCase):
                 f"Occurrence {occurrence.pk} should have its determination set to 'Not identifiable'.",
             )
 
+    def test_occurrence_scope_only_touches_that_occurrence(self):
+        """Per-occurrence scope: running with ``occurrence_id`` flags only that
+        occurrence's detections and leaves sibling occurrences untouched."""
+        detections = []
+        for image in self.collection.images.all():
+            det = Detection.objects.create(
+                source_image=image,
+                bbox=[0, 0, 10, 10],  # small
+                created_at=datetime.datetime.now(datetime.timezone.utc),
+            )
+            det.associate_new_occurrence()
+            detections.append(det)
+        self.assertGreaterEqual(len(detections), 2)
+
+        target = detections[0]
+        SmallSizeFilterTask(occurrence_id=target.occurrence_id, size_threshold=0.01).run()
+
+        not_identifiable_taxon = Taxon.objects.get(name="Not identifiable")
+        self.assertEqual(
+            Classification.objects.filter(detection=target, taxon=not_identifiable_taxon).count(),
+            1,
+            "The scoped occurrence's detection should be flagged.",
+        )
+        for other in detections[1:]:
+            self.assertFalse(
+                Classification.objects.filter(detection=other, taxon=not_identifiable_taxon).exists(),
+                f"Detection {other.pk} outside the scoped occurrence should be untouched.",
+            )
+
+    def test_run_reports_stage_metrics_on_job(self):
+        """The task surfaces ``detections_checked`` / ``detections_flagged`` /
+        ``occurrences_updated`` as stage params on its Job so an operator can see
+        what a run examined and changed without reading the log."""
+        from ami.jobs.models import Job
+
+        for image in self.collection.images.all():
+            Detection.objects.create(
+                source_image=image,
+                bbox=[0, 0, 10, 10],  # small → flagged
+                created_at=datetime.datetime.now(datetime.timezone.utc),
+            ).associate_new_occurrence()
+        total = Detection.objects.filter(source_image__in=self.collection.images.all()).count()
+        self.assertGreater(total, 0)
+
+        job = Job.objects.create(
+            project=self.project,
+            name="stage metrics test",
+            job_type_key="post_processing",
+            params={
+                "task": "small_size_filter",
+                "config": {"source_image_collection_id": self.collection.pk, "size_threshold": 0.01},
+            },
+        )
+        job.progress.add_stage("Post Processing", key="post_processing")
+        job.save()
+
+        SmallSizeFilterTask(
+            job=job,
+            source_image_collection_id=self.collection.pk,
+            size_threshold=0.01,
+        ).run()
+
+        job.refresh_from_db()
+        params = {p.name: p.value for p in job.progress.get_stage("post_processing").params}
+        self.assertEqual(params.get("detections_checked"), total)
+        self.assertEqual(params.get("detections_flagged"), total)  # every detection is small
+        self.assertGreaterEqual(params.get("occurrences_updated"), 1)
+
 
 class TestTaskStateManager(TestCase):
     """Test TaskStateManager for job progress tracking."""

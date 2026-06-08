@@ -81,6 +81,26 @@ class BasePostProcessingTask(abc.ABC):
             # No job object — fallback to plain logging
             self.logger.info(f"[{self.name}] Progress {progress:.0%}")
 
+    def report_stage_metrics(self, metrics: dict[str, Any]):
+        """Surface human-readable counters on the job's post-processing stage.
+
+        Each ``{label: value}`` pair becomes a stage parameter visible on the Jobs
+        admin page (e.g. ``{"Detections checked": 540, "Flagged": 12}``), so an
+        operator can see what a run examined and changed without reading the log.
+        Labels may contain spaces; pass them as dict keys rather than kwargs.
+
+        Falls back to a single log line when running jobless (tests, management
+        commands), so the same call site works in both contexts.
+        """
+        if not self.job:
+            self.logger.info(f"[{self.name}] " + ", ".join(f"{k}: {v}" for k, v in metrics.items()))
+            return
+
+        stage_key = self.job.job_type_key
+        for label, value in metrics.items():
+            self.job.progress.add_or_update_stage_param(stage_key, label, value)
+        self.job.save(update_fields=["progress"])
+
     @abc.abstractmethod
     def run(self) -> None:
         """
