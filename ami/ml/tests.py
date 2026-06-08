@@ -1480,7 +1480,9 @@ class TestPostProcessingTasks(TestCase):
         params = {p.name: p.value for p in job.progress.get_stage("post_processing").params}
         self.assertEqual(params.get("detections_checked"), total)
         self.assertEqual(params.get("detections_flagged"), total)  # every detection is small
-        self.assertGreaterEqual(params.get("occurrences_updated"), 1)
+        # Each detection has its own occurrence here, so the deduped occurrence
+        # count equals the detection count.
+        self.assertEqual(params.get("occurrences_updated"), total)
 
 
 class TestTaskStateManager(TestCase):

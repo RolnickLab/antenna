@@ -85,6 +85,9 @@ class SmallSizeFilterTask(BasePostProcessingTask):
         detections_to_update: set[Detection] = set()
         occcurrences_to_update: set[Occurrence] = set()
         modified_detections = 0
+        # Track occurrence ids across flush batches so an occurrence whose detections
+        # span more than one batch is counted once, not once per batch.
+        updated_occurrence_ids: set[int] = set()
         modified_occurrences = 0
         checked = 0
 
@@ -149,7 +152,9 @@ class SmallSizeFilterTask(BasePostProcessingTask):
                 self.logger.info(f"Updating {len(occcurrences_to_update)} occurrences")
                 for occ in occcurrences_to_update:
                     occ.save(update_determination=True)
-                modified_occurrences += len(occcurrences_to_update)
+                    if occ.pk is not None:
+                        updated_occurrence_ids.add(occ.pk)
+                modified_occurrences = len(updated_occurrence_ids)
                 occcurrences_to_update.clear()
 
                 progress = i / total if total > 0 else 1.0
