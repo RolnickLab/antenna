@@ -1930,6 +1930,14 @@ class SourceImageQuerySet(BaseQuerySet):
         processed_exists = models.Exists(Detection.objects.filter(source_image_id=models.OuterRef("pk")))
         return self.annotate(was_processed=processed_exists)
 
+    def with_thumbnails(self):
+        """Prefetch ``thumbnails`` so :meth:`SourceImage.thumbnail_urls` is O(1)/row.
+
+        Required for any list endpoint that surfaces thumbnail URLs; without it
+        the per-row URL lookup collapses to N+1 against ``main_sourceimagethumbnail``.
+        """
+        return self.prefetch_related("thumbnails")
+
 
 class SourceImageManager(models.Manager.from_queryset(SourceImageQuerySet)):
     pass
@@ -2240,6 +2248,56 @@ class SourceImage(BaseModel):
             custom_perms.add(Project.Permissions.RUN_SINGLE_IMAGE_JOB)
         return list(custom_perms)
 
+    def thumbnail_urls(self, request: Request | None = None) -> dict[str, str]:
+        """Per-label ``{label: url}`` for this capture's thumbnails.
+
+        Warm path: cached :class:`SourceImageThumbnail` row exists at the
+        configured width and is not source-changed → direct storage URL,
+        browser bypasses Django for the fetch.
+
+        Cold/stale path: route URL into :class:`~ami.main.api.views.SourceImageThumbnailViewSet`,
+        which triggers lazy (re)generation via
+        :meth:`find_or_generate_thumbnail_for_label`.
+
+        Source-changed check mirrors the predicate the generator uses so
+        a re-uploaded image self-heals through the cold path even though
+        we no longer HEAD storage on every request.
+
+        Callers MUST go through :meth:`SourceImageQuerySet.with_thumbnails`
+        (or equivalent ``prefetch_related("thumbnails")``) or the per-row
+        ``self.thumbnails.all()`` read collapses to N+1.
+        """
+        # Local import dodges any models ↔ serializers cycle at module load time.
+        from ami.base.serializers import reverse_with_params
+
+        sizes = settings.THUMBNAILS["SIZES"]
+        rows: dict[str, "SourceImageThumbnail"] = {t.label: t for t in self.thumbnails.all()}
+
+        out: dict[str, str] = {}
+        for label, spec in sizes.items():
+            row = rows.get(label)
+            source_changed = (
+                row is not None
+                and self.last_modified is not None
+                and row.last_modified is not None
+                and row.last_modified < self.last_modified
+            )
+            warm = row is not None and row.path and row.width == spec["width"] and not source_changed
+            if warm:
+                out[label] = default_storage.url(row.path)
+            else:
+                # Qualified ``api:`` namespace so the call works when ``request`` is
+                # ``None`` (mgmt commands, template tags). With a real request, DRF
+                # would resolve the namespace from ``request.resolver_match``;
+                # qualified works in both modes.
+                out[label] = reverse_with_params(
+                    "api:sourceimagethumbnail-detail",
+                    args=(self.pk,),
+                    request=request,
+                    params={"label": label},
+                )
+        return out
+
     def find_or_generate_thumbnail_for_label(self, label):
         try:
             thumb = self.thumbnails.get(label=label)
@@ -2255,7 +2313,12 @@ class SourceImage(BaseModel):
         source_changed = (
             self.last_modified is not None and thumb is not None and thumb.last_modified < self.last_modified
         )
-        if not thumb or thumb.width != size["width"] or source_changed or not default_storage.exists(thumb.path):
+        # No ``default_storage.exists(thumb.path)`` here: HEAD-per-request on remote storage
+        # is expensive, and the cached row is the warm signal. We do NOT currently detect or
+        # repair the narrow case of an orphan row (DB row points at a blob deleted out of
+        # band); a missing blob shows a broken ``<img>`` until the row is removed and the
+        # next request regenerates.
+        if not thumb or not thumb.path or thumb.width != size["width"] or source_changed:
             img = PIL.Image.open(BytesIO(fetch_image_content(self.public_url(raise_errors=True))))
             # JPEG only supports L, RGB, CMYK. Convert anything else (RGBA, P, LA, PA, …) before
             # encoding, or PIL raises ``OSError: cannot write mode <X> as JPEG``. Uploaded PNGs
@@ -2272,7 +2335,11 @@ class SourceImage(BaseModel):
             img.thumbnail(new_size)
 
             buffer = BytesIO()
-            img.save(buffer, format="JPEG")
+            # ``progressive=True`` lets the browser paint a coarse preview as bytes arrive
+            # instead of waiting for the full file. ``optimize=True`` adds a Huffman pass
+            # for slightly smaller files on the cold encode path. ``quality=82`` lands above
+            # Pillow's default 75 — closer to visually-lossless on screen-sized thumbnails.
+            img.save(buffer, format="JPEG", progressive=True, optimize=True, quality=82)
             contents = buffer.getvalue()
             file_size = len(contents)
 

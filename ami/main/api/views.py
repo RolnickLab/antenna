@@ -412,9 +412,10 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
                 Prefetch(
                     "captures",
                     queryset=SourceImage.objects.order_by("-size").select_related(
-                        "deployment",
-                        "deployment__data_source",
-                    )[:num_example_captures],
+                        "deployment", "deployment__data_source"
+                    )
+                    # Required by SourceImage.thumbnail_urls — drops N+1 on the nested serializer.
+                    .with_thumbnails()[:num_example_captures],
                     to_attr="example_captures",
                 )
             )
@@ -593,11 +594,11 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             self.require_project = True
         project = self.get_active_project()
 
-        queryset = queryset.select_related(
-            "event",
-            "deployment",
-            "deployment__data_source",
-        ).order_by("timestamp")
+        queryset = (
+            queryset.select_related("event", "deployment", "deployment__data_source")
+            # Required by SourceImage.thumbnail_urls — drops N+1 on SourceImageThumbnailSerializer.
+            .with_thumbnails().order_by("timestamp")
+        )
 
         if self.action == "list":
             # It's cumbersome to override the default list view, so customize the queryset here

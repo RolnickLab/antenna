@@ -319,25 +319,23 @@ class TestImageThumbnailViews(TestCase):
         delete-then-recreate (which under concurrent gen destroyed the other
         racer's row and storage blob).
 
-        Triggers the regen path by deleting the storage blob out from under the
-        cached row, then re-requesting. Asserts the row's primary key is
-        preserved (proving ``update_or_create`` UPDATE was used, not a fresh
-        INSERT after a DELETE).
+        Triggers the regen path by bumping the source image's ``last_modified``
+        forward so the freshness check fires, then re-requests. Asserts the
+        row's primary key is preserved (proving ``update_or_create`` UPDATE
+        was used, not a fresh INSERT after a DELETE).
         """
-        from django.core.files.storage import default_storage
-
         # First request populates the cache.
         response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
         self.assertEqual(response.status_code, 302)
         original_thumb = self.first_capture.thumbnails.get(label="small")
         original_pk = original_thumb.pk
-        original_path = original_thumb.path
 
-        # Storage blob disappears (could happen via TTL eviction, manual cleanup,
-        # or a backing-store outage). This forces the regen branch via
-        # ``not default_storage.exists(thumb.path)``.
-        default_storage.delete(original_path)
-        self.assertFalse(default_storage.exists(original_path))
+        # Bump the source mtime so the freshness check (``thumb.last_modified <
+        # self.last_modified``) flips to True and forces the regen branch. The
+        # warm-path code no longer HEADs the storage blob, so a missing-blob test
+        # would not trigger regen.
+        self.first_capture.last_modified = timezone.now() + datetime.timedelta(minutes=1)
+        self.first_capture.save()
 
         # Regen must reuse the same row and not raise on the (source_image, label)
         # UniqueConstraint.
@@ -387,6 +385,36 @@ class TestImageThumbnailViews(TestCase):
         self.assertEqual(response.status_code, 302)
         thumb = self.first_capture.thumbnails.get(label="small")
         self.assertEqual(thumb.width, 240)
+
+    def test_thumbnail_jpeg_is_progressive(self):
+        """Generated thumbnails must be progressive JPEGs.
+
+        Progressive encoding reorders the scan from top-to-bottom into
+        coarse-then-detail passes so the browser paints a low-resolution
+        preview as the first bytes arrive instead of waiting for the whole
+        file. Pillow surfaces this via ``Image.open(...).info['progression']``
+        (set to 1 for progressive, absent or 0 for baseline). The 1024px
+        medium label is where it actually matters perceptually, so check
+        that one — small is small enough to fit in a single TCP roundtrip
+        regardless.
+        """
+        from django.core.files.storage import default_storage
+
+        # Generate via the redirect viewset so we hit the real save path.
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/?label=medium")
+        self.assertEqual(response.status_code, 302)
+
+        thumb = self.first_capture.thumbnails.get(label="medium")
+        with default_storage.open(thumb.path, "rb") as fh:
+            decoded = Image.open(fh)
+            decoded.load()
+            # PIL JPEG plugin sets ``progression`` to 1 for progressive scans;
+            # baseline JPEGs have either no key or 0. Assert truthy to cover
+            # both representations.
+            self.assertTrue(
+                decoded.info.get("progression"),
+                f"Expected progressive JPEG, got info={decoded.info!r}",
+            )
 
     @override_settings(THUMBNAILS=NEW_THUMBNAIL_SETTINGS)
     def test_thumbnail_settings_change_regenerates(self):
@@ -475,6 +503,106 @@ class TestImageThumbnailViews(TestCase):
         thumb.delete()
 
         self.assertFalse(default_storage.exists(path), "pre_delete signal must clean the storage blob")
+
+    def test_serializer_emits_storage_url_when_thumb_row_exists(self):
+        """Warm-path optimization: when a SourceImageThumbnail row exists with the
+        configured width, the serializer must emit ``default_storage.url(row.path)``
+        directly instead of the lazy-regen route URL. This is the whole point of
+        the direct-URLs change — every cached thumbnail must skip Django on the
+        warm path.
+        """
+        from django.core.files.storage import default_storage
+
+        # Pre-create a thumbnail row whose width matches THUMBNAILS['SIZES']['small'].
+        configured_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
+        self.first_capture.thumbnails.create(
+            path="thumbnails/cached/abc.jpg", label="small", width=configured_width, height=180, size=42
+        )
+
+        response = self.client.get(f"/api/v2/captures/{self.first_capture.pk}/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        small_url = response.json()["thumbnails"]["small"]
+
+        # ``small`` should be the storage URL, not the route URL.
+        expected_storage_url = default_storage.url("thumbnails/cached/abc.jpg")
+        self.assertEqual(small_url, expected_storage_url)
+        # ``medium`` has no cached row → falls back to the route URL.
+        self.assertURLEqual(
+            response.json()["thumbnails"]["medium"], f"{self.base_url}{self.first_capture.pk}/?label=medium"
+        )
+
+    def test_serializer_falls_back_to_route_url_when_width_is_stale(self):
+        """If the cached row's width no longer matches the configured size (settings
+        changed since last gen), emit the route URL so the next browser fetch
+        triggers lazy regen via the redirect viewset.
+        """
+        configured_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
+        self.first_capture.thumbnails.create(
+            path="thumbnails/stale/abc.jpg",
+            label="small",
+            width=configured_width + 100,  # mismatch — settings changed
+            height=180,
+            size=42,
+        )
+
+        response = self.client.get(f"/api/v2/captures/{self.first_capture.pk}/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        # Stale width → emit route URL so the redirect viewset can regenerate.
+        self.assertURLEqual(
+            response.json()["thumbnails"]["small"], f"{self.base_url}{self.first_capture.pk}/?label=small"
+        )
+
+    def test_serializer_falls_back_to_route_url_when_source_changed(self):
+        """If the source image was re-uploaded after the cached row was
+        generated (``source.last_modified > row.last_modified``), the serializer
+        must emit the route URL so the next browser fetch regenerates via the
+        redirect viewset. Mirrors the predicate the generator already uses.
+
+        Guards https://github.com/RolnickLab/antenna/pull/1331#discussion_r3373715397.
+        """
+        configured_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
+        # Row generated at T0. ``last_modified`` is ``auto_now_add`` so set
+        # ``self.first_capture.last_modified`` to a later timestamp via UPDATE
+        # below to flip the staleness predicate.
+        self.first_capture.thumbnails.create(
+            path="thumbnails/preupload/abc.jpg", label="small", width=configured_width, height=180, size=42
+        )
+        # Source bytes were re-uploaded after the cached row was written.
+        SourceImage.objects.filter(pk=self.first_capture.pk).update(
+            last_modified=timezone.now() + datetime.timedelta(minutes=1)
+        )
+
+        response = self.client.get(f"/api/v2/captures/{self.first_capture.pk}/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        # Source-changed → emit route URL so the redirect viewset regenerates.
+        self.assertURLEqual(
+            response.json()["thumbnails"]["small"], f"{self.base_url}{self.first_capture.pk}/?label=small"
+        )
+
+    def test_thumbnail_urls_model_method_emits_warm_and_route(self):
+        """``SourceImage.thumbnail_urls`` is the single source of truth for the
+        per-label URL contract: warm storage URL when a cached row exists at
+        the configured width, route URL otherwise.
+
+        Exercising the model method directly keeps the contract regression-tested
+        even if the serializer surface changes (e.g. a future template tag or
+        management command that needs the same dict).
+        """
+        from django.core.files.storage import default_storage
+
+        configured_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
+        self.first_capture.thumbnails.create(
+            path="thumbnails/cached/direct.jpg", label="small", width=configured_width, height=180, size=42
+        )
+
+        urls = self.first_capture.thumbnail_urls(request=None)
+
+        # Warm path → direct storage URL for the cached label.
+        self.assertEqual(urls["small"], default_storage.url("thumbnails/cached/direct.jpg"))
+        # Cold path → route URL for labels without a cached row. With ``request=None``
+        # the URL is path-only (no scheme/host) — matches DRF's reverse() contract.
+        self.assertIn(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/", urls["medium"])
+        self.assertIn("label=medium", urls["medium"])
 
 
 class TestImageGrouping(TestCase):

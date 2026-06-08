@@ -1,6 +1,5 @@
 import datetime
 
-from django.conf import settings
 from django.db.models import QuerySet
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
@@ -74,20 +73,17 @@ class UserNestedSerializer(DefaultSerializer):
 
 
 class SourceImageThumbnailSerializer(DefaultSerializer):
+    """Adds a ``thumbnails`` field. Delegates the warm/cold URL choice to
+    :meth:`SourceImage.thumbnail_urls`. Viewsets MUST use
+    :meth:`SourceImageQuerySet.with_thumbnails` to avoid N+1.
+    """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["thumbnails"] = serializers.SerializerMethodField()
 
-    def get_thumbnails(self, obj: SourceImage) -> dict | None:
-        return {
-            label: reverse_with_params(
-                "sourceimagethumbnail-detail",
-                args=(obj.pk,),
-                request=self.context.get("request"),
-                params={"label": label},
-            )
-            for label in settings.THUMBNAILS["SIZES"]
-        }
+    def get_thumbnails(self, obj: SourceImage) -> dict[str, str]:
+        return obj.thumbnail_urls(request=self.context.get("request"))
 
 
 class SourceImageNestedSerializer(DefaultSerializer):
