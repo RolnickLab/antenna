@@ -552,6 +552,29 @@ class TestImageThumbnailViews(TestCase):
             response.json()["thumbnails"]["small"], f"{self.base_url}{self.first_capture.pk}/?label=small"
         )
 
+    def test_serializer_treats_pil_rounded_width_as_warm(self):
+        """PIL.Image.thumbnail() preserves aspect ratio by shrinking, so a row
+        whose stored width is 1 or 2 pixels below the configured spec (typical
+        PIL output) must still be treated as warm. Without the tolerance every
+        cold hit on a small thumb would regen-loop forever and the warm path
+        would never fire in production.
+        """
+        from django.core.files.storage import default_storage
+
+        configured_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
+        # Stored width 1px below spec — what PIL actually produces for many sources.
+        self.first_capture.thumbnails.create(
+            path="thumbnails/pilround/abc.jpg",
+            label="small",
+            width=configured_width - 1,
+            height=180,
+            size=42,
+        )
+        response = self.client.get(f"/api/v2/captures/{self.first_capture.pk}/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        # Within tolerance → emit storage URL, not route URL.
+        self.assertEqual(response.json()["thumbnails"]["small"], default_storage.url("thumbnails/pilround/abc.jpg"))
+
     def test_serializer_falls_back_to_route_url_when_source_changed(self):
         """If the source image was re-uploaded after the cached row was
         generated (``source.last_modified > row.last_modified``), the serializer

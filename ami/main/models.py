@@ -1943,6 +1943,15 @@ class SourceImageManager(models.Manager.from_queryset(SourceImageQuerySet)):
     pass
 
 
+# PIL.Image.thumbnail() preserves aspect ratio by shrinking, so the output
+# width can be off by a pixel or two from the configured spec (e.g. spec=240,
+# actual=239). Treat rows within this tolerance as matching the current spec
+# in both the warm-path emitter (thumbnail_urls) and the regen gate
+# (find_or_generate_thumbnail_for_label). Without this every cold hit on a
+# small thumb would regen-loop forever.
+_THUMBNAIL_WIDTH_TOLERANCE = 2
+
+
 @final
 class SourceImage(BaseModel):
     """A single image captured during a monitoring session"""
@@ -2282,7 +2291,12 @@ class SourceImage(BaseModel):
                 and row.last_modified is not None
                 and row.last_modified < self.last_modified
             )
-            warm = row is not None and row.path and row.width == spec["width"] and not source_changed
+            # PIL.Image.thumbnail preserves aspect ratio and may round the output
+            # dimensions down by a pixel or two vs the spec (e.g. spec=240 → actual
+            # 239). Use a small tolerance so existing rows aren't treated as stale
+            # by every warm-check; the same tolerance is applied in the regen gate.
+            width_match = row is not None and abs(row.width - spec["width"]) <= _THUMBNAIL_WIDTH_TOLERANCE
+            warm = row is not None and row.path and width_match and not source_changed
             if warm:
                 out[label] = default_storage.url(row.path)
             else:
@@ -2318,7 +2332,8 @@ class SourceImage(BaseModel):
         # repair the narrow case of an orphan row (DB row points at a blob deleted out of
         # band); a missing blob shows a broken ``<img>`` until the row is removed and the
         # next request regenerates.
-        if not thumb or not thumb.path or thumb.width != size["width"] or source_changed:
+        width_drifted = abs(thumb.width - size["width"]) > _THUMBNAIL_WIDTH_TOLERANCE if thumb else False
+        if not thumb or not thumb.path or width_drifted or source_changed:
             img = PIL.Image.open(BytesIO(fetch_image_content(self.public_url(raise_errors=True))))
             # JPEG only supports L, RGB, CMYK. Convert anything else (RGBA, P, LA, PA, …) before
             # encoding, or PIL raises ``OSError: cannot write mode <X> as JPEG``. Uploaded PNGs
