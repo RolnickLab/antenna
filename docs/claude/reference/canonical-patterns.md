@@ -10,7 +10,7 @@ canonical but was undocumented.
 | Pattern | Where | Use for |
 |---|---|---|
 | `SingleParamSerializer` | `ami/base/serializers.py:108` (usage: `ami/base/views.py:47`) | Validating individual GET params — returns 400 on bad input instead of a 500 |
-| `url_boolean_param()` | `ami/utils/fields.py:5` (usage: `ami/jobs/views.py:126`) | Boolean query params, e.g. `?incomplete_only=true` |
+| `url_boolean_param()` | `ami/utils/fields.py:5` (usage: `ami/jobs/views.py:165`) | Boolean query params, e.g. `?incomplete_only=true` |
 | `ProjectMixin` / `require_project` | `ami/base/views.py:67-96` | Project scoping on viewsets. Set `require_project` explicitly on every new viewset; `get_active_project()` raises 400/404 for you |
 | Permission base classes | `ami/base/permissions.py:20` (`IsActiveStaffOrReadOnly`), `:118` (`IsProjectMemberOrReadOnly`), `:147` (`ObjectPermission`) | Object-level enforcement. `ObjectPermission` delegates to the model's `check_permission()`. DRF calls `check_object_permissions()` via `get_object()` — never look up objects by raw pk |
 | `apply_default_filters()` | `ami/main/models.py:3118` (OccurrenceQuerySet) | All occurrence-related querysets — combines score thresholds + hierarchical taxa lists. Respects `apply_defaults=false` |

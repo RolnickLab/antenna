@@ -8,14 +8,14 @@ When working in a git worktree (e.g. `.claude/worktrees/<branch>/`), the worktre
 
 #### Option A — Bind-mount worktree subdirs into main stack (preferred for code-only changes)
 
-Main `docker-compose.yml` mounts `.:/app:z`. You **cannot** override the `/app` mount itself (Docker keeps both, the broader one wins for path resolution), but you **can** mount a deeper path on top of it. Add to `/home/michael/Projects/AMI/antenna/docker-compose.override.yml` (note: that file is a symlink to `docker-compose.override-example.yml` by default — break the symlink first by `rm`-ing it, then write a real file copying the example contents):
+Main `docker-compose.yml` mounts `.:/app:z`. You **cannot** override the `/app` mount itself (Docker keeps both, the broader one wins for path resolution), but you **can** mount a deeper path on top of it. Add to the repo-root `docker-compose.override.yml` (note: that file is a symlink to `docker-compose.override-example.yml` by default — break the symlink first by `rm`-ing it, then write a real file copying the example contents):
 
 ```yaml
 services:
   django:
     volumes:
       - ./compose/local/django/start:/start  # keep existing entries from example
-      - /home/michael/Projects/AMI/antenna/.claude/worktrees/<branch>/ami:/app/ami:z
+      - ./.claude/worktrees/<branch>/ami:/app/ami:z
   # add same mount to celeryworker if Celery code changed
 ```
 

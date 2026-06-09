@@ -1,4 +1,4 @@
-# docs/claude/ Index
+# docs/claude Index
 
 Searchable index of agent-oriented docs in this repository. Search this file first
 (`grep -i "keyword" docs/claude/INDEX.md`) before exploring the codebase from scratch.

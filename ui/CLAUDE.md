@@ -25,8 +25,8 @@ in `src/design-system/` — check there before writing a new component.
 
 ## Mutations & async state
 
-- Disable mutation buttons while the request is in flight (React Query `isLoading` /
-  `isPending`). A fast double-click must not enqueue duplicate jobs.
+- Disable mutation buttons while the request is in flight (React Query v4 exposes this
+  as `isLoading` on the mutation). A fast double-click must not enqueue duplicate jobs.
 - Don't seed `useState` from a value that arrives asynchronously — it won't update when
   the data lands. Derive from props/query data, or sync with an effect.
 - Handle empty and null states explicitly — API fields can be null even when the

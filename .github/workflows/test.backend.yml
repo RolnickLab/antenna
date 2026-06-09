@@ -49,7 +49,7 @@ jobs:
         run: docker compose -f docker-compose.ci.yml run --rm django python manage.py migrate
 
       - name: Check for missing migrations
-        run: docker compose -f docker-compose.ci.yml run --rm django python manage.py makemigrations --check --dry-run
+        run: docker compose -f docker-compose.ci.yml run --rm django python manage.py makemigrations --check --dry-run --noinput
 
       - name: Run Django Tests
         run: docker compose -f docker-compose.ci.yml run --rm django python manage.py test
