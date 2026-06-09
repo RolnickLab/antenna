@@ -440,6 +440,170 @@ class TestImageGrouping(TestCase):
         # No occurrence should be left pointing at a deleted/missing event.
         assert Occurrence.objects.filter(deployment=self.deployment, event__isnull=True).count() == 0
 
+    def _create_burst(self, start: datetime.datetime, n: int, interval_minutes: int = 5):
+        """Create ``n`` captures spaced ``interval_minutes`` apart starting at ``start``."""
+        import pathlib
+        import uuid
+
+        for i in range(n):
+            SourceImage.objects.create(
+                deployment=self.deployment,
+                timestamp=start + datetime.timedelta(minutes=i * interval_minutes),
+                path=pathlib.Path("test") / f"{uuid.uuid4().hex[:8]}_burst_{i}.jpg",
+            )
+
+    def test_cross_midnight_bursts_split_by_short_gap(self):
+        """
+        User-reported pattern: a "night" with a multi-hour off-window between
+        bursts that crosses midnight gets split into two separate Events at
+        the default 2 h gap, because the second burst's start_date is on the
+        next calendar day. Bumping ``max_time_gap`` past the off-window
+        merges both bursts into a single timestamp_group whose start_date
+        determines the group_by date, yielding one Event.
+        """
+        # Burst A: 22:00–22:25 on day N
+        self._create_burst(datetime.datetime(2023, 8, 5, 22, 0), n=6, interval_minutes=5)
+        # Burst B: 01:00–01:25 on day N+1 (off-window = 2 h 35 min, crosses midnight)
+        self._create_burst(datetime.datetime(2023, 8, 6, 1, 0), n=6, interval_minutes=5)
+
+        # Default 2 h gap → splits into two Events on different dates.
+        events_default = group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(hours=2),
+        )
+        assert len(events_default) == 2, f"expected 2 Events at 2h gap, got {len(events_default)}"
+
+        # 4 h gap (off-window 2h35m < 4h) → single timestamp_group → one Event.
+        events_widened = group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(hours=4),
+        )
+        assert len(events_widened) == 1, f"expected 1 Event at 4h gap, got {len(events_widened)}"
+
+    def test_same_date_bursts_merge_regardless_of_gap(self):
+        """
+        Inverse of the above: bursts that DON'T cross midnight collide on
+        ``group_by = start_date.date()`` even when the gap setting would
+        split them into separate timestamp_groups. This is the #904 caveat
+        — sub-day session-splits are masked by date-keyed Event reuse.
+        Documenting current behavior so a future fix (e.g. noon-to-noon
+        keying) has a regression target.
+        """
+        # Two bursts on the SAME calendar date with a 1 h 35 min off-window between.
+        self._create_burst(datetime.datetime(2023, 8, 5, 20, 0), n=6, interval_minutes=5)
+        self._create_burst(datetime.datetime(2023, 8, 5, 22, 0), n=6, interval_minutes=5)
+
+        # 1 h gap → splits into two timestamp_groups, but both start_date.date()
+        # is 2023-08-05 → get_or_create collides → ONE Event.
+        # group_images_into_events returns one entry per timestamp_group (with
+        # duplicates when groups reuse the same Event), so assert on the DB count.
+        group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(hours=1),
+        )
+        db_event_count = Event.objects.filter(deployment=self.deployment).count()
+        assert db_event_count == 1, f"expected 1 Event due to date collision, got {db_event_count}"
+
+    def test_session_time_gap_seconds_is_used_when_no_explicit_gap(self):
+        """
+        When ``max_time_gap`` is not passed, ``group_images_into_events``
+        falls back to ``deployment.project.session_time_gap_seconds``. Verify
+        the project setting actually drives the split decision.
+        """
+        # Same cross-midnight burst pattern as the first test.
+        self._create_burst(datetime.datetime(2023, 8, 5, 22, 0), n=6, interval_minutes=5)
+        self._create_burst(datetime.datetime(2023, 8, 6, 1, 0), n=6, interval_minutes=5)
+
+        # Project setting at 2 h (= 7200 s) → splits across midnight.
+        self.project.session_time_gap_seconds = 2 * 60 * 60
+        self.project.save()
+        # Bust the cached deployment.project relation so the function reads the new value.
+        self.deployment.refresh_from_db()
+        group_images_into_events(deployment=self.deployment)
+        count_2h = Event.objects.filter(deployment=self.deployment).count()
+        assert count_2h == 2, f"expected 2 Events at project setting 7200s, got {count_2h}"
+
+        # Project setting at 4 h (= 14400 s) → off-window 2h35m fits → single Event.
+        self.project.session_time_gap_seconds = 4 * 60 * 60
+        self.project.save()
+        self.deployment.refresh_from_db()
+        group_images_into_events(deployment=self.deployment)
+        count_4h = Event.objects.filter(deployment=self.deployment).count()
+        assert count_4h == 1, f"expected 1 Event at project setting 14400s, got {count_4h}"
+
+    def test_invalid_session_time_gap_falls_back_to_default(self):
+        """
+        Non-positive (0 or negative) ``session_time_gap_seconds`` would
+        otherwise split every timestamp into its own Event. Guard by falling
+        back to the historical 120-minute default and logging a warning.
+        """
+        self._create_burst(datetime.datetime(2023, 8, 5, 22, 0), n=6, interval_minutes=5)
+        self._create_burst(datetime.datetime(2023, 8, 6, 1, 0), n=6, interval_minutes=5)
+
+        for bad_value in (0, -1, -7200):
+            Event.objects.filter(deployment=self.deployment).delete()
+            self.project.session_time_gap_seconds = bad_value
+            self.project.save()
+            self.deployment.refresh_from_db()
+            group_images_into_events(deployment=self.deployment)
+            count = Event.objects.filter(deployment=self.deployment).count()
+            # Default 120-min gap on this cross-midnight pattern → 2 Events,
+            # NOT 12 (which is what bad_value=0 would produce without the guard).
+            assert count == 2, f"expected 2 Events at gap={bad_value} (default fallback), got {count}"
+
+    def test_regroup_is_idempotent_under_concurrent_calls(self):
+        """
+        ``group_images_into_events`` holds a per-deployment cache lock so
+        concurrent calls (admin, API action, autoregroup-on-save, sync-stage)
+        collapse to a single in-flight run. The second call should return an
+        empty list without creating any Events.
+        """
+        from django.core.cache import cache
+
+        lock_key = f"regroup_events:lock:deployment:{self.deployment.pk}"
+        # Make sure no stale lock from a prior test leaks in.
+        cache.delete(lock_key)
+
+        self._create_burst(datetime.datetime(2023, 8, 5, 22, 0), n=6, interval_minutes=5)
+        Event.objects.filter(deployment=self.deployment).delete()
+
+        # Pre-take the lock with a token we control.
+        cache.add(lock_key, "other-run-token", timeout=60)
+        try:
+            result = group_images_into_events(deployment=self.deployment)
+        finally:
+            cache.delete(lock_key)
+
+        assert result == [], "Locked run should return empty list"
+        assert Event.objects.filter(deployment=self.deployment).count() == 0, "Locked run should not create Events"
+
+        # Without the pre-taken lock, the next call should run normally and release the lock.
+        events = group_images_into_events(deployment=self.deployment)
+        assert len(events) >= 1, "Unlocked run should produce Events"
+        assert cache.get(lock_key) is None, "Lock should be released after the function returns"
+
+    def test_regroup_lock_release_does_not_clobber_a_newer_owner(self):
+        """
+        Token-based lock release: if our run takes longer than the lock TTL and
+        another caller acquires the same key with a fresh token, our ``finally``
+        block must not delete the other caller's lock.
+        """
+        from django.core.cache import cache
+
+        from ami.main.models import _regroup_lock
+
+        lock_key = f"regroup_events:lock:deployment:{self.deployment.pk}"
+        cache.delete(lock_key)
+
+        with _regroup_lock(self.deployment.pk) as acquired:
+            assert acquired, "Should acquire the lock on first try"
+            # Simulate the TTL expiring and a newer caller taking the lock.
+            cache.set(lock_key, "newer-owner-token", timeout=60)
+
+        # Our `finally` ran. The newer owner's lock should still be there.
+        assert cache.get(lock_key) == "newer-owner-token", "Expired-lock release must not clobber the newer owner"
+        cache.delete(lock_key)
+
     def test_pruning_empty_events(self):
         from ami.main.models import delete_empty_events
 
