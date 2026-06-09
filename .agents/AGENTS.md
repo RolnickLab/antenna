@@ -423,7 +423,7 @@ These map 1:1 to the most frequent review findings across this repo's history. R
 
 ### Frontend change
 
-- [ ] Follow `ui/CLAUDE.md` (loads automatically when editing files under `ui/`).
+- [ ] Follow `ui/AGENTS.md` (symlinked as `ui/CLAUDE.md`, auto-loads when editing files under `ui/`).
 
 ### Before requesting review (any PR)
 
@@ -539,7 +539,7 @@ npm run build                    # Production build
 - `docs/claude/reference/query-patterns.md` - DB schema table, indexes, prefetch patterns, QuerySet method catalog
 - `.agents/DATABASE_SCHEMA.md` - Visual ERD (Mermaid)
 - `.agents/USER_PERMISSION_ROLES.md` - Permission roles reference
-- `ui/CLAUDE.md` - Frontend conventions (i18n, types, mutations, naming, active lint rules)
+- `ui/AGENTS.md` (symlinked as `ui/CLAUDE.md`) - Frontend conventions (i18n, types, mutations, naming, active lint rules)
 
 ## Automated Review Bots (CodeRabbit, Copilot)
 

@@ -55,4 +55,4 @@ archived.
 | `.agents/AGENTS.md` (symlinked as `CLAUDE.md`) | Main agent instructions: rules, checklists, invariants, commands |
 | `.agents/DATABASE_SCHEMA.md` | Visual ERD (Mermaid) organized by domain layers |
 | `.agents/USER_PERMISSION_ROLES.md` | Permission roles reference |
-| `ui/CLAUDE.md` | Frontend conventions (i18n, types, mutations, naming, active lint rules) |
+| `ui/AGENTS.md` (symlinked as `ui/CLAUDE.md`) | Frontend conventions (i18n, types, mutations, naming, active lint rules) |
