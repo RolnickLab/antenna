@@ -1931,12 +1931,35 @@ class SourceImageQuerySet(BaseQuerySet):
         return self.annotate(was_processed=processed_exists)
 
     def with_thumbnails(self):
-        """Prefetch ``thumbnails`` so :meth:`SourceImage.thumbnail_urls` is O(1)/row.
+        """Prefetch ``thumbnails`` with ``is_source_changed`` so
+        :meth:`SourceImage.thumbnail_urls` is O(1)/row.
 
         Required for any list endpoint that surfaces thumbnail URLs; without it
-        the per-row URL lookup collapses to N+1 against ``main_sourceimagethumbnail``.
+        every row triggers a separate SELECT on ``main_sourceimagethumbnail``.
+
+        The ``is_source_changed`` annotation flags thumbnail rows whose
+        ``last_modified`` predates the source's, pushing the staleness predicate
+        into the prefetch SQL so :meth:`SourceImage.thumbnail_urls` stays pure
+        URL-formatting. ``NULL < x`` is ``NULL`` in SQL, which the ``CASE``
+        treats as the ``False`` default — matching the inline check this
+        replaces, which also returned ``False`` when either side was ``None``.
         """
-        return self.prefetch_related("thumbnails")
+        # ``apps.get_model`` instead of a direct import — ``SourceImageThumbnail``
+        # is defined later in this module, so a top-level import would be circular.
+        from django.apps import apps
+
+        thumbnail_model = apps.get_model("main", "SourceImageThumbnail")
+        thumbnails_qs = thumbnail_model.objects.annotate(
+            is_source_changed=models.Case(
+                models.When(
+                    last_modified__lt=models.F("source_image__last_modified"),
+                    then=models.Value(True),
+                ),
+                default=models.Value(False),
+                output_field=models.BooleanField(),
+            )
+        )
+        return self.prefetch_related(models.Prefetch("thumbnails", queryset=thumbnails_qs))
 
 
 class SourceImageManager(models.Manager.from_queryset(SourceImageQuerySet)):
@@ -2105,7 +2128,7 @@ class SourceImage(BaseModel):
         ``SourceImageQuerySet.with_was_processed()``). Falls back to a DB query otherwise.
 
         Do not call in bulk without the annotation — use ``with_was_processed()``
-        on the queryset instead to avoid N+1 queries.
+        on the queryset instead so each row does not trigger its own DB query.
 
         :param algorithm_key: If provided, only detections from this algorithm are checked.
                               The annotation does not filter by algorithm; per-algorithm
@@ -2268,37 +2291,28 @@ class SourceImage(BaseModel):
         which triggers lazy (re)generation via
         :meth:`find_or_generate_thumbnail_for_label`.
 
-        Source-changed check mirrors the predicate the generator uses so
-        a re-uploaded image self-heals through the cold path even though
-        we no longer HEAD storage on every request.
-
-        Callers MUST go through :meth:`SourceImageQuerySet.with_thumbnails`
-        (or equivalent ``prefetch_related("thumbnails")``) or the per-row
-        ``self.thumbnails.all()`` read collapses to N+1.
+        Callers MUST go through :meth:`SourceImageQuerySet.with_thumbnails` —
+        without it the per-row ``self.thumbnails.all()`` read fires its own
+        SELECT and the ``is_source_changed`` annotation is missing
+        (``AttributeError`` on the warm-path check).
         """
         # Local import dodges any models ↔ serializers cycle at module load time.
         from ami.base.serializers import reverse_with_params
 
         sizes = settings.THUMBNAILS["SIZES"]
-        rows: dict[str, "SourceImageThumbnail"] = {t.label: t for t in self.thumbnails.all()}
+        thumbs: dict[str, "SourceImageThumbnail"] = {t.label: t for t in self.thumbnails.all()}
 
         out: dict[str, str] = {}
         for label, spec in sizes.items():
-            row = rows.get(label)
-            source_changed = (
-                row is not None
-                and self.last_modified is not None
-                and row.last_modified is not None
-                and row.last_modified < self.last_modified
-            )
+            thumb = thumbs.get(label)
             # PIL.Image.thumbnail preserves aspect ratio and may round the output
             # dimensions down by a pixel or two vs the spec (e.g. spec=240 → actual
             # 239). Use a small tolerance so existing rows aren't treated as stale
             # by every warm-check; the same tolerance is applied in the regen gate.
-            width_match = row is not None and abs(row.width - spec["width"]) <= _THUMBNAIL_WIDTH_TOLERANCE
-            warm = row is not None and row.path and width_match and not source_changed
+            width_match = thumb is not None and abs(thumb.width - spec["width"]) <= _THUMBNAIL_WIDTH_TOLERANCE
+            warm = thumb is not None and thumb.path and width_match and not thumb.is_source_changed
             if warm:
-                out[label] = default_storage.url(row.path)
+                out[label] = default_storage.url(thumb.path)
             else:
                 # Qualified ``api:`` namespace so the call works when ``request`` is
                 # ``None`` (mgmt commands, template tags). With a real request, DRF
@@ -2327,11 +2341,9 @@ class SourceImage(BaseModel):
         source_changed = (
             self.last_modified is not None and thumb is not None and thumb.last_modified < self.last_modified
         )
-        # No ``default_storage.exists(thumb.path)`` here: HEAD-per-request on remote storage
-        # is expensive, and the cached row is the warm signal. We do NOT currently detect or
-        # repair the narrow case of an orphan row (DB row points at a blob deleted out of
-        # band); a missing blob shows a broken ``<img>`` until the row is removed and the
-        # next request regenerates.
+        # Cached row is the warm signal — no HEAD against storage on the regen check.
+        # Orphan rows (DB row whose blob was deleted out of band) show a broken ``<img>``
+        # until something removes the row and the next request regenerates.
         width_drifted = abs(thumb.width - size["width"]) > _THUMBNAIL_WIDTH_TOLERANCE if thumb else False
         if not thumb or not thumb.path or width_drifted or source_changed:
             img = PIL.Image.open(BytesIO(fetch_image_content(self.public_url(raise_errors=True))))

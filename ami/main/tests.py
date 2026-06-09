@@ -618,7 +618,10 @@ class TestImageThumbnailViews(TestCase):
             path="thumbnails/cached/direct.jpg", label="small", width=configured_width, height=180, size=42
         )
 
-        urls = self.first_capture.thumbnail_urls(request=None)
+        # Re-fetch through ``with_thumbnails()`` to satisfy the prefetch contract
+        # (the ``is_source_changed`` annotation comes from there).
+        capture = SourceImage.objects.with_thumbnails().get(pk=self.first_capture.pk)
+        urls = capture.thumbnail_urls(request=None)
 
         # Warm path → direct storage URL for the cached label.
         self.assertEqual(urls["small"], default_storage.url("thumbnails/cached/direct.jpg"))
