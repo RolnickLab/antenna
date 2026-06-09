@@ -62,6 +62,15 @@ A few patterns worth copying:
 - **Name the framework, not the demo.** `feat(post-processing): admin scaffolding precursor (pydantic schema, form base, parameterized template)` became *Framework for admins to trigger and review post-processing methods* — the title captures the capability, not the one example that exercises it.
 - **Don't ship the branch-name auto-title.** `gh pr create` pre-fills the title from the branch slug, so titles like `Feat/taxa-covers` or `Fix/celery workers` slip through. Rewrite them: the latter became *Fix background tasks from disappearing*.
 
+## Writing Comments, Docstrings, and PR Text
+
+A confident but wrong comment is worse than no comment — future developers and agents read it as established fact and build on it. Match confidence to evidence.
+
+- **Keep the load-bearing fact; cut unverified mechanism.** A reader changing a constant should not have to trust a paragraph of speculation. State what the code does and the one reason that matters.
+- **Label guesses as guesses.** Use "best-guess", "not measured", "appears to" for anything you have not tested or profiled. Never state a hunch in the authoritative voice.
+- **Short, then link.** Point to the PR or issue for the long reasoning (`See #1231`) instead of embedding it as truth. A PR thread is dated and discussable; an inline comment reads as eternal fact.
+- **In PR descriptions, distinguish measured from inferred.** Numbers from a profiler, logs, or `ps` are measurements; numbers from reading code are estimates. Say which.
+
 ## Project Overview
 
 Antenna is an Automated Monitoring of Insects ML Platform. It's a collaborative platform for processing and reviewing images from automated insect monitoring stations, maintaining metadata, and orchestrating multiple machine learning pipelines for analysis.
