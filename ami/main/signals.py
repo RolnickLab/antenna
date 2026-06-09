@@ -2,11 +2,11 @@ import logging
 
 from django.contrib.auth.models import Group
 from django.db import transaction
-from django.db.models.signals import m2m_changed, post_save, pre_delete, pre_save
+from django.db.models.signals import m2m_changed, post_delete, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from guardian.shortcuts import assign_perm
 
-from ami.main.models import Project
+from ami.main.models import Detection, Project, SourceImageCollection
 from ami.main.tasks import refresh_project_cached_counts
 from ami.users.roles import BasicMember, ProjectManager, create_roles_for_project
 
@@ -197,3 +197,40 @@ def exclude_taxa_updated(sender, instance: Project, action, **kwargs):
     if action in ["post_add", "post_remove", "post_clear"]:
         logger.info(f"Exclude taxa updated for project {instance.pk} (action={action})")
         refresh_cached_counts_for_project(instance)
+
+
+# ============================================================================
+# SourceImageCollection Denormalized Counts
+# ============================================================================
+#
+# Detection writes can fan out to many collections (one SourceImage may belong
+# to multiple collections). The queryset's ``update_cached_counts()`` method
+# dedupes per-(model, pk) across the transaction via a per-connection set, so
+# a 10k-row pipeline save fires the recompute task at most once per affected
+# collection instead of once per detection. Bulk write paths that bypass
+# signals (``bulk_create``, ``bulk_update``, raw SQL) still drift the cached
+# counts; ``pipeline.save_results()`` explicitly recomputes for the ML path.
+# Generic periodic drift reconciliation across all CachedCountField models is
+# tracked as a follow-up (see docs/claude/planning/cached-counts-reconcile-followup.md).
+
+
+@receiver(m2m_changed, sender=SourceImageCollection.images.through)
+def update_collection_counts_on_m2m(sender, instance, action, **kwargs):
+    """Recompute denormalized counts when images are added to or removed from a collection."""
+    if action in ("post_add", "post_remove", "post_clear"):
+        instance.update_cached_counts()
+
+
+@receiver(post_save, sender=Detection)
+@receiver(post_delete, sender=Detection)
+def update_collection_counts_on_detection_change(sender, instance, **kwargs):
+    """Schedule a collection-counts refresh for every collection containing the affected SourceImage.
+
+    The queryset method's per-(model, pk) dedup means tight per-row Detection
+    write loops fan out to at most one task per affected collection.
+    ``bulk_create`` / ``bulk_update`` skip signals entirely — those rely on
+    the periodic reconciliation task to repair drift.
+    """
+    if not instance.source_image_id:
+        return
+    SourceImageCollection.objects.filter(images__id=instance.source_image_id).update_cached_counts()

@@ -32,7 +32,7 @@ from rest_framework.request import Request
 import ami.tasks
 import ami.utils
 from ami.base.fields import DateStringField
-from ami.base.models import BaseModel, BaseQuerySet
+from ami.base.models import BaseModel, BaseQuerySet, CachedCountField
 from ami.main import charts
 from ami.main.models_future.filters import (
     build_occurrence_default_filters_q,
@@ -759,11 +759,11 @@ class Deployment(BaseModel):
     # data_source_last_check_notes = models.TextField(max_length=255, blank=True, null=True)
 
     # Pre-calculated values
-    events_count = models.IntegerField(blank=True, null=True)
-    occurrences_count = models.IntegerField(blank=True, null=True)
-    captures_count = models.IntegerField(blank=True, null=True)
-    detections_count = models.IntegerField(blank=True, null=True)
-    taxa_count = models.IntegerField(blank=True, null=True)
+    events_count = CachedCountField(blank=True, null=True)
+    occurrences_count = CachedCountField(blank=True, null=True)
+    captures_count = CachedCountField(blank=True, null=True)
+    detections_count = CachedCountField(blank=True, null=True)
+    taxa_count = CachedCountField(blank=True, null=True)
     first_capture_timestamp = models.DateTimeField(blank=True, null=True)
     last_capture_timestamp = models.DateTimeField(blank=True, null=True)
 
@@ -1160,9 +1160,9 @@ class Event(BaseModel):
     occurrences: models.QuerySet["Occurrence"]
 
     # Pre-calculated values
-    captures_count = models.IntegerField(blank=True, null=True)
-    detections_count = models.IntegerField(blank=True, null=True)
-    occurrences_count = models.IntegerField(blank=True, null=True)
+    captures_count = CachedCountField(blank=True, null=True)
+    detections_count = CachedCountField(blank=True, null=True)
+    occurrences_count = CachedCountField(blank=True, null=True)
     calculated_fields_updated_at = models.DateTimeField(blank=True, null=True)
 
     class Meta:
@@ -1947,7 +1947,7 @@ class SourceImage(BaseModel):
     test_image = models.BooleanField(default=False)
 
     # Precaclulated values
-    detections_count = models.IntegerField(null=True, blank=True)
+    detections_count = CachedCountField(null=True, blank=True)
 
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="captures")
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="captures")
@@ -4311,32 +4311,6 @@ _SOURCE_IMAGE_SAMPLING_METHODS = [
 
 
 class SourceImageCollectionQuerySet(BaseQuerySet):
-    def with_source_images_count(self):
-        return self.annotate(
-            source_images_count=models.Count(
-                "images",
-                distinct=True,
-            )
-        )
-
-    def with_source_images_with_detections_count(self):
-        return self.annotate(
-            source_images_with_detections_count=models.Count(
-                "images",
-                filter=(~models.Q(images__detections__bbox__isnull=True) & ~models.Q(images__detections__bbox=[])),
-                distinct=True,
-            )
-        )
-
-    def with_source_images_processed_count(self):
-        return self.annotate(
-            source_images_processed_count=models.Count(
-                "images",
-                filter=models.Q(images__detections__isnull=False),
-                distinct=True,
-            )
-        )
-
     def with_source_images_processed_by_algorithm_count(self, algorithm_id: int):
         return self.annotate(
             source_images_processed_by_algorithm_count=models.Count(
@@ -4423,6 +4397,12 @@ class SourceImageCollection(BaseModel):
         default=dict,
     )
 
+    # Denormalized counts. Kept in sync via m2m_changed and pipeline-completion
+    # hooks. Reads are O(1).
+    source_images_count = CachedCountField(default=0)
+    source_images_with_detections_count = CachedCountField(default=0)
+    source_images_processed_count = CachedCountField(default=0)
+
     objects = SourceImageCollectionManager()
 
     jobs: models.QuerySet["Job"]
@@ -4437,19 +4417,6 @@ class SourceImageCollection(BaseModel):
     def dataset_type(self):
         return self.infer_dataset_type()
 
-    def source_images_count(self) -> int | None:
-        # This should always be pre-populated using queryset annotations
-        # return self.images.count()
-        return None
-
-    def source_images_with_detections_count(self) -> int | None:
-        # This should always be pre-populated using queryset annotations
-        return None
-
-    def source_images_processed_count(self) -> int | None:
-        # This should always be pre-populated using queryset annotations
-        return None
-
     def occurrences_count(self) -> int | None:
         # This should always be pre-populated using queryset annotations
         return None
@@ -4457,6 +4424,39 @@ class SourceImageCollection(BaseModel):
     def taxa_count(self) -> int | None:
         # This should always be pre-populated using queryset annotations
         return None
+
+    def get_source_image_counts(self) -> dict[str, int]:
+        """Return the 3 source-image counts as a dict. Single aggregate query; does not write to the DB."""
+        valid_det = Detection.objects.filter(source_image=models.OuterRef("pk")).exclude(NULL_DETECTIONS_FILTER)
+        any_det = Detection.objects.filter(source_image=models.OuterRef("pk"))
+        counts = self.images.annotate(
+            _has_any_det=Exists(any_det),
+            _has_valid_det=Exists(valid_det),
+        ).aggregate(
+            source_images_count=models.Count("id"),
+            source_images_processed_count=models.Count("id", filter=models.Q(_has_any_det=True)),
+            source_images_with_detections_count=models.Count("id", filter=models.Q(_has_valid_det=True)),
+        )
+        return counts
+
+    def update_calculated_fields(self, save: bool = False) -> None:
+        """Recompute the 3 denormalized source-image count columns.
+
+        Persists via ``.filter(pk=).update(**counts)`` rather than ``.save()``
+        — cached-count refreshes shouldn't bump ``updated_at`` (semantically the
+        entity hasn't been modified) and shouldn't re-fire ``post_save``, which
+        on this model would re-enter ``m2m_changed`` if the handler later does
+        anything with ``self.images``. Deployment / Event / SourceImage take a
+        different path (``self.save(update_calculated_fields=False)``) because
+        their ``update_calculated_fields`` also writes non-cached fields that
+        downstream save-handlers expect to see updated.
+        """
+        counts = self.get_source_image_counts()
+        self.source_images_count = counts["source_images_count"]
+        self.source_images_processed_count = counts["source_images_processed_count"]
+        self.source_images_with_detections_count = counts["source_images_with_detections_count"]
+        if save:
+            SourceImageCollection.objects.filter(pk=self.pk).update(**counts)
 
     def get_queryset(
         self,

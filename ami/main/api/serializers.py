@@ -1259,6 +1259,12 @@ class SourceImageCollectionSerializer(DefaultSerializer):
             "created_at",
             "updated_at",
         ]
+        # Denormalized columns kept in sync by signals; never client-writable.
+        read_only_fields = [
+            "source_images_count",
+            "source_images_with_detections_count",
+            "source_images_processed_count",
+        ]
 
     def get_permissions(self, instance, instance_data):
         request: Request = self.context["request"]

@@ -6,7 +6,7 @@ from io import BytesIO
 from django.contrib.auth.models import AnonymousUser
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection, models
-from django.test import TestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings
 from guardian.shortcuts import assign_perm, get_perms, remove_perm
 from PIL import Image
 from rest_framework import status
@@ -3315,12 +3315,11 @@ class TestSourceImageListQueryCount(APITestCase):
         for key in ("id", "url", "size_display", "deployment", "event", "detections_count", "path"):
             self.assertIn(key, row, f"missing field {key!r} in list response")
         self.assertIsNotNone(row["deployment"]["name"])
-        # No lazy-load queries should fire after the main list SELECT.
-        # 1 list select + 1 detection prefetch (no, not in this call) + savepoints.
+        # After the main list SELECT, only prefetch + savepoint queries should fire; no per-row lazy loads.
         self.assertLessEqual(
             len(ctx.captured_queries),
             6,
-            f"Unexpected extra queries — likely lazy-load from deferred field: {len(ctx.captured_queries)}",
+            f"Unexpected extra queries (likely lazy-load from a deferred field): {len(ctx.captured_queries)}",
         )
 
 
@@ -3362,6 +3361,201 @@ class TestTaxonListQueryCount(APITestCase):
         large = self._list_query_count(limit=25)
         print(f"\n[AUDIT] Taxon list: limit=5 -> {small}q, limit=25 -> {large}q")
         self.assertLessEqual(large, small + 5, f"Taxon list scaling: {small} -> {large} (likely N+1)")
+
+
+@override_settings(CACHALOT_ENABLED=False)
+class TestSourceImageCollectionListQueryCount(APITestCase):
+    """Audit SourceImageCollectionViewSet.list query counts.
+
+    The three source-image counts are denormalized as columns on
+    SourceImageCollection (see migration 0085). The viewset no longer needs
+    per-row count subqueries, so list, with_counts, and ordering paths all run
+    against the column directly.
+
+    Cachalot disabled so we measure cold query count, not warm cache.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=25)
+        create_occurrences(deployment=self.deployment, num=25, determination_score=0.9)
+
+        images = list(SourceImage.objects.filter(deployment=self.deployment))
+        # 30 collections so `limit=25` exercises a real page boundary; per-row
+        # subquery scaling regressions only show up once the page has >1 row.
+        for i in range(30):
+            c = SourceImageCollection.objects.create(
+                name=f"qcount-collection-{i}",
+                project=self.project,
+                method="manual",
+                kwargs={"image_ids": [img.pk for img in images]},
+            )
+            c.images.set(images)
+
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        self.user = User.objects.create_user(
+            email="qcount-collection@insectai.org", is_staff=False, is_superuser=False
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def _list_query_count(self, url: str) -> int:
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.content)
+        return len(ctx.captured_queries)
+
+    def test_list_query_count_does_not_scale_with_page_size(self):
+        small = self._list_query_count(f"/api/v2/captures/collections/?project_id={self.project.pk}&limit=1")
+        large = self._list_query_count(f"/api/v2/captures/collections/?project_id={self.project.pk}&limit=25")
+        print(f"\n[AUDIT] Collection list: limit=1 -> {small}q, limit=25 -> {large}q")
+        self.assertLessEqual(large, small + 2, f"Collection list scaling: {small} -> {large} (likely N+1)")
+
+    def test_list_query_count_with_counts(self):
+        url = f"/api/v2/captures/collections/?project_id={self.project.pk}&with_counts=true&limit=25"
+        # warmups equalise pool state / auth
+        self.client.get(url)
+        self.client.get(url)
+        count = self._list_query_count(url)
+        print(f"\n[AUDIT] Collection list with_counts=true limit=25 -> {count}q")
+        # 3 source-image counts now read from columns; with_counts only adds the
+        # occurrences/taxa subquery annotations.
+        self.assertLessEqual(count, 10, f"Collection list with_counts too many queries: {count}")
+
+    def test_list_query_count_ordering_by_annotated_count(self):
+        url = f"/api/v2/captures/collections/?project_id={self.project.pk}" f"&limit=25&ordering=-source_images_count"
+        self.client.get(url)
+        self.client.get(url)
+        count = self._list_query_count(url)
+        print(f"\n[AUDIT] Collection list ordered by source_images_count limit=25 -> {count}q")
+        # Sort uses the cached column directly, so no extra subquery is added.
+        self.assertLessEqual(count, 10, f"Collection list ordered by count too many queries: {count}")
+
+
+@override_settings(CELERY_TASK_ALWAYS_EAGER=True, CELERY_TASK_EAGER_PROPAGATES=True)
+class TestSourceImageCollectionCountsDenormalize(TransactionTestCase):
+    """Verify denormalized count columns stay in sync via signals and bulk hooks.
+
+    Uses ``TransactionTestCase`` + eager Celery so ``transaction.on_commit``
+    callbacks (registered by the signal handlers) actually fire inside the
+    test body and the dispatched ``recompute_cached_counts_task`` runs inline.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=5)
+        self.images = list(SourceImage.objects.filter(deployment=self.deployment))
+        self.collection = SourceImageCollection.objects.create(
+            name="denorm-test",
+            project=self.project,
+            method="manual",
+            kwargs={"image_ids": [img.pk for img in self.images]},
+        )
+
+    def _refresh(self):
+        self.collection.refresh_from_db()
+
+    def test_count_updates_on_image_add(self):
+        self.collection.images.set(self.images)
+        self._refresh()
+        self.assertEqual(self.collection.source_images_count, len(self.images))
+
+    def test_count_decrements_on_image_remove(self):
+        self.collection.images.set(self.images)
+        self.collection.images.remove(self.images[0])
+        self._refresh()
+        self.assertEqual(self.collection.source_images_count, len(self.images) - 1)
+
+    def test_with_detections_count_updates_on_detection_create(self):
+        self.collection.images.set(self.images)
+        Detection.objects.create(
+            source_image=self.images[0],
+            timestamp=self.images[0].timestamp,
+            bbox=[10, 10, 20, 20],
+            path="detections/d1.jpg",
+        )
+        self._refresh()
+        self.assertEqual(self.collection.source_images_with_detections_count, 1)
+        self.assertEqual(self.collection.source_images_processed_count, 1)
+
+    def test_with_detections_count_decrements_on_detection_delete(self):
+        self.collection.images.set(self.images)
+        det = Detection.objects.create(
+            source_image=self.images[0],
+            timestamp=self.images[0].timestamp,
+            bbox=[10, 10, 20, 20],
+            path="detections/d1.jpg",
+        )
+        det.delete()
+        self._refresh()
+        self.assertEqual(self.collection.source_images_with_detections_count, 0)
+        self.assertEqual(self.collection.source_images_processed_count, 0)
+
+    def test_null_bbox_detection_processed_but_no_with_detections(self):
+        """A null-bbox detection marks the image as processed but not 'with detections'."""
+        self.collection.images.set(self.images)
+        Detection.objects.create(
+            source_image=self.images[0],
+            timestamp=self.images[0].timestamp,
+            bbox=None,
+            path="detections/null.jpg",
+        )
+        self._refresh()
+        self.assertEqual(self.collection.source_images_processed_count, 1)
+        self.assertEqual(self.collection.source_images_with_detections_count, 0)
+
+    def test_update_calculated_fields_recomputes_from_scratch(self):
+        self.collection.images.set(self.images)
+        Detection.objects.create(
+            source_image=self.images[0],
+            timestamp=self.images[0].timestamp,
+            bbox=[10, 10, 20, 20],
+            path="detections/d1.jpg",
+        )
+        SourceImageCollection.objects.filter(pk=self.collection.pk).update(
+            source_images_count=999,
+            source_images_processed_count=999,
+            source_images_with_detections_count=999,
+        )
+        self.collection.refresh_from_db()
+        self.collection.update_calculated_fields(save=True)
+        self._refresh()
+        self.assertEqual(self.collection.source_images_count, len(self.images))
+        self.assertEqual(self.collection.source_images_with_detections_count, 1)
+
+    def test_get_source_image_counts_returns_dict_without_writes(self):
+        self.collection.images.set(self.images)
+        Detection.objects.create(
+            source_image=self.images[0],
+            timestamp=self.images[0].timestamp,
+            bbox=[10, 10, 20, 20],
+            path="detections/d1.jpg",
+        )
+        SourceImageCollection.objects.filter(pk=self.collection.pk).update(
+            source_images_count=0,
+            source_images_processed_count=0,
+            source_images_with_detections_count=0,
+        )
+        self.collection.refresh_from_db()
+        counts = self.collection.get_source_image_counts()
+        self.assertEqual(
+            counts,
+            {
+                "source_images_count": len(self.images),
+                "source_images_processed_count": 1,
+                "source_images_with_detections_count": 1,
+            },
+        )
+        # Confirm the DB row was not updated.
+        self.collection.refresh_from_db()
+        self.assertEqual(self.collection.source_images_count, 0)
 
 
 class TestProjectDefaultTaxaFilter(APITestCase):

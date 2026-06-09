@@ -7,6 +7,23 @@ import ami.tasks
 from ami.users.models import User
 
 
+class CachedCountField(models.IntegerField):
+    """Denormalized count of related rows.
+
+    Marker subclass so cached aggregate columns can be discovered via
+    ``Model._meta.get_fields()`` + ``isinstance(f, CachedCountField)`` by
+    future cross-cutting tasks (admin display, periodic drift
+    reconciliation). Column type is unchanged
+    from ``IntegerField`` — the AlterField migrations that introduce this
+    subclass are no-op SQL. Mixing ``CachedCountField`` and plain
+    ``IntegerField`` on the same model is fine, but a future contributor
+    adding a non-cached IntegerField next to a cached one will see an
+    AlterField in their migration; that's expected, not a bug.
+    """
+
+    description = "Cached count of related rows"
+
+
 def has_one_to_many_project_relation(model: type[models.Model]) -> bool:
     """
     Returns True if the model has any ForeignKey or OneToOneField relationship to Project.
@@ -40,6 +57,29 @@ def has_many_to_many_project_relation(model: type[models.Model]) -> bool:
 
 
 class BaseQuerySet(QuerySet):
+    def update_cached_counts(self, run_async: bool = True) -> None:
+        """Recompute cached count columns for every row in the queryset.
+
+        With ``run_async=True`` (default), each row is queued for recompute
+        via ``ami.base.cached_counts.schedule_recompute`` and dispatched as
+        a single ``recompute_cached_counts_task`` per ``(model, pk)`` after
+        the surrounding transaction commits. Repeated calls within the same
+        transaction dedupe through a per-connection set.
+
+        With ``run_async=False``, each row is loaded and recomputed inline.
+        Suitable for Celery-worker contexts (reconcile task, ML pipeline
+        finalize) where the caller has already taken the latency hit.
+        """
+        from ami.base.cached_counts import schedule_recompute
+
+        model_label = self.model._meta.label
+        for pk in self.values_list("pk", flat=True):
+            if run_async:
+                schedule_recompute(model_label, pk)
+            else:
+                instance = self.model.objects.get(pk=pk)
+                instance.update_calculated_fields(save=True)
+
     def visible_for_user(self, user: User | AnonymousUser) -> QuerySet:
         """
         Filter queryset to include only objects whose related draft projects
@@ -165,6 +205,24 @@ class BaseModel(models.Model):
     def update_calculated_fields(self, *args, **kwargs):
         """Update calculated fields specific to each model."""
         pass
+
+    def update_cached_counts(self, run_async: bool = True) -> None:
+        """Recompute this row's cached count columns.
+
+        With ``run_async=True`` (default), schedule a Celery task to run
+        after the surrounding transaction commits. Per-(model, pk) dedup
+        on the active DB connection collapses repeated calls within the
+        same transaction into a single task.
+
+        With ``run_async=False``, recompute inline by calling
+        ``update_calculated_fields(save=True)`` directly.
+        """
+        from ami.base.cached_counts import schedule_recompute
+
+        if run_async:
+            schedule_recompute(self._meta.label, self.pk)
+            return
+        self.update_calculated_fields(save=True)
 
     def _get_object_perms(self, user):
         """

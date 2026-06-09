@@ -817,13 +817,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     Endpoint for viewing capture sets or samples of captures.
     """
 
-    queryset = (
-        SourceImageCollection.objects.all()
-        .with_source_images_count()  # type: ignore
-        .with_source_images_with_detections_count()
-        .with_source_images_processed_count()
-        .prefetch_related("jobs")
-    )
+    queryset = SourceImageCollection.objects.all().prefetch_related("jobs")
     serializer_class = SourceImageCollectionSerializer
     permission_classes = [
         ObjectPermission,
