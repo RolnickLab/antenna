@@ -898,6 +898,11 @@ class RegroupEventsJob(JobType):
     SUCCESS/FAILURE (100%). Summary stats (events created/touched/deleted,
     duplicates, ungrouped captures) are written to the stage params by
     ``group_images_into_events`` itself before it returns. Closes #1157, #1158.
+
+    Scope: grouping only. Propagating ``project_id`` to children lives on
+    ``Deployment.save()`` via ``update_children()`` — save the deployment
+    after moving it to push the new ``project_id`` down. Bare
+    ``ami.tasks.regroup_events`` has the same scope.
     """
 
     name = "Regroup sessions"

@@ -1431,7 +1431,10 @@ def audit_event_lengths(deployment: Deployment):
 DEFAULT_MAX_EVENT_DURATION = datetime.timedelta(hours=24)
 
 
-REGROUP_LOCK_TTL_SECONDS = 60 * 60  # matches ami.tasks Celery soft_time_limit for regroup
+# Regroup should finish in seconds, so keep this short: if a worker is killed
+# before its finally-block releases the lock, the TTL caps how long it stays held.
+# Matches the soft_time_limit on ami.tasks.regroup_events.
+REGROUP_LOCK_TTL_SECONDS = 10 * 60
 
 
 @contextlib.contextmanager
@@ -1440,6 +1443,12 @@ def _regroup_lock(deployment_id: int):
     Acquire a per-deployment lock for regrouping. Token-based release —
     the lock is only deleted if the value we wrote is still there, so an
     expired-then-reacquired-by-someone-else lock doesn't get clobbered.
+
+    Released cleanly on graceful exit and on any exception that propagates
+    out of the `with` block (including Celery's `SoftTimeLimitExceeded`).
+    Not released on hard worker death (OS SIGKILL, OOM-kill, pod eviction):
+    the token lives only in process memory, so a finally block that never
+    runs leaves the lock entry sitting until the TTL expires.
 
     Yields True if acquired (caller should proceed), False if another run
     already holds it (caller should short-circuit).
@@ -1671,8 +1680,16 @@ def _group_images_into_events_locked(
             SourceImage.objects.filter(deployment=deployment, event__isnull=True).exclude(timestamp=None).count()
         )
         no_timestamp_captures_count = SourceImage.objects.filter(deployment=deployment, timestamp=None).count()
+        # Count actual SourceImage rows assigned to an event, not the count of
+        # distinct timestamps in image_timestamps — two captures can share a
+        # timestamp (duplicate_timestamp_count tracks this) and the UPDATE above
+        # assigns both to the same event, so a distinct-timestamp count would
+        # understate the work done.
+        captures_grouped_count = (
+            SourceImage.objects.filter(deployment=deployment, event__isnull=False).exclude(timestamp=None).count()
+        )
         regroup_stats = {
-            "Captures grouped": len(image_timestamps),
+            "Captures grouped": captures_grouped_count,
             "Events created": events_created_count,
             "Events touched": len(touched_event_pks),
             "Empty events deleted": events_deleted_empty,
