@@ -110,6 +110,7 @@ Silent-bug classes that reviewers have caught repeatedly. None of these are visi
 - **Raise, don't return sentinels.** Failure paths raise exceptions (or surface DRF 4xx via serializer validation) — never return an empty/None "success" response on error.
 - **No `assert` in production code.** Assertions are stripped under `python -O`. Raise explicit exceptions.
 - **Model change ⇒ migration in the same PR.** Run `python manage.py makemigrations --check --dry-run` before pushing (CI enforces this). A missing migration discovered mid-branch that belongs to main gets its own PR branched from main.
+- **Changing `VALID_JOB_TYPES` requires a migration.** `Job.job_type_key` builds its `choices` from the registry, so adding/renaming a job type changes the field definition. The migration is state-only (no schema change), but Django still requires it, and it is easy to miss because nothing in the database schema changes.
 
 ## Development Commands
 
