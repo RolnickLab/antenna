@@ -359,6 +359,45 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         else:
             raise api_exceptions.ValidationError(detail="Deployment must have a data source to sync captures from")
 
+    @action(detail=True, methods=["post"], name="regroup-sessions", url_path="regroup-sessions")
+    def regroup_sessions(self, _request, pk=None) -> Response:
+        """
+        Queue a ``RegroupEventsJob`` to regroup the deployment's source images into sessions.
+
+        Uses the project's ``session_time_gap_seconds`` setting to determine
+        the maximum gap between consecutive images before a new session is started.
+
+        (Sessions are stored as ``Event`` records internally.)
+        """
+        from ami.jobs.models import Job, RegroupEventsJob
+
+        deployment: Deployment = self.get_object()
+        if deployment.project_id is None:
+            # Schema allows it (project FK is nullable) but every Job carries a
+            # project and the regroup uses project.session_time_gap_seconds, so
+            # a project-less deployment can't run this endpoint.
+            raise api_exceptions.ValidationError(
+                detail={"deployment": "Deployment has no project; cannot enqueue regroup."}
+            )
+
+        job = Job.objects.create(
+            name=f"Regroup sessions for deployment {deployment.pk}",
+            deployment=deployment,
+            project=deployment.project,
+            job_type_key=RegroupEventsJob.key,
+        )
+        job.enqueue()
+        msg = f"Queued regroup sessions for deployment {deployment.pk} (job {job.pk})"
+        logger.info(msg)
+        return Response(
+            {
+                "job_id": job.pk,
+                "deployment_id": deployment.pk,
+                "project_id": deployment.project.pk,
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
+
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
