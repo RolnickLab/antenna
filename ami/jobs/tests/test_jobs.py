@@ -9,18 +9,21 @@ from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
 from ami.jobs.models import (
+    DataStorageSyncJob,
     Job,
     JobDispatchMode,
     JobLog,
     JobProgress,
     JobState,
     MLJob,
+    RegroupEventsJob,
     SourceImageCollectionPopulateJob,
 )
-from ami.main.models import Project, SourceImage, SourceImageCollection
+from ami.main.models import Deployment, Event, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.orchestration.jobs import queue_images_to_nats
+from ami.tests.fixtures.main import create_captures
 from ami.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -1539,3 +1542,119 @@ class TestListEndpointHeartbeat(APITestCase):
         # may be set by the creation-time get_status() ping, but should be unchanged
         # after the task runs.
         self.assertEqual(sync_service.last_seen, sync_last_seen_before)
+
+
+class TestRegroupEventsJob(TestCase):
+    """
+    Cover the user-visible behaviour of the new RegroupEventsJob:
+    - Runs end-to-end against real captures, produces Events.
+    - Reports summary stats on the regroup stage.
+    - Surfaces a regroup failure as Job FAILURE so admins can see it in the UI.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.project = Project.objects.create(name="Regroup Job Project")
+        self.deployment = Deployment.objects.create(name="Regroup Job Deployment", project=self.project)
+        # Two nightly bursts → at least 2 Events expected
+        create_captures(deployment=self.deployment, num_nights=2, images_per_night=4, interval_minutes=2)
+
+    def test_regroup_job_runs_end_to_end_and_reports_stats(self):
+        Event.objects.filter(deployment=self.deployment).delete()
+        job = Job.objects.create(
+            name="Regroup test",
+            deployment=self.deployment,
+            project=self.project,
+            job_type_key=RegroupEventsJob.key,
+        )
+        job.run()
+        job.refresh_from_db()
+
+        self.assertEqual(job.status, JobState.SUCCESS.value)
+        # Stage and stats are populated.
+        stage = job.progress.get_stage(RegroupEventsJob.key)
+        self.assertEqual(stage.status, JobState.SUCCESS)
+        self.assertEqual(stage.progress, 1)
+        # Retrieval keys are slugify(name) with `-` → `_` (see python_slugify in
+        # ami.jobs.models). Names are the human labels shown in the Jobs UI.
+        params = {p.key: p.value for p in stage.params}
+        self.assertGreaterEqual(params["events_created"], 1, "should report at least one Event created")
+        self.assertGreaterEqual(params["captures_grouped"], 1)
+        names = {p.name for p in stage.params}
+        self.assertIn("Captures grouped", names)
+        self.assertIn("Events created", names)
+        # Real Events exist in the DB.
+        self.assertGreaterEqual(Event.objects.filter(deployment=self.deployment).count(), 1)
+
+    def test_regroup_job_failure_propagates(self):
+        """
+        When ``group_images_into_events`` raises, the JobType propagates so the
+        Celery wrapper records FAILURE. Verifies the regroup-after-sync silent-
+        failure pain (#1157) cannot happen in the Job path.
+        """
+        from unittest.mock import patch
+
+        job = Job.objects.create(
+            name="Regroup failure test",
+            deployment=self.deployment,
+            project=self.project,
+            job_type_key=RegroupEventsJob.key,
+        )
+        with patch("ami.main.models.group_images_into_events", side_effect=RuntimeError("boom")):
+            with self.assertRaises(RuntimeError):
+                job.run()
+
+
+class TestDataStorageSyncJobIncludesRegroupStage(TestCase):
+    """
+    The sync Job now runs grouping as an explicit second stage so logs land on
+    the same Job row and a regroup failure flips the Job to FAILURE rather than
+    silently succeeding (#1157).
+    """
+
+    def test_sync_job_adds_regroup_stage(self):
+        project = Project.objects.create(name="Sync Job Project")
+        deployment = Deployment.objects.create(name="Sync Job Deployment", project=project)
+        create_captures(deployment=deployment, num_nights=1, images_per_night=3, interval_minutes=2)
+
+        # Patch the inner sync call so we don't need S3; the grouping stage is what we're testing.
+        from unittest.mock import patch
+
+        with patch.object(Deployment, "sync_captures", return_value=3):
+            job = Job.objects.create(
+                name="Sync test",
+                deployment=deployment,
+                project=project,
+                job_type_key=DataStorageSyncJob.key,
+            )
+            job.run()
+            job.refresh_from_db()
+
+        self.assertEqual(job.status, JobState.SUCCESS.value)
+        regroup_stage = job.progress.get_stage(DataStorageSyncJob.regroup_stage_key)
+        self.assertEqual(regroup_stage.status, JobState.SUCCESS)
+        params = {p.key: p.value for p in regroup_stage.params}
+        self.assertIn("events_created", params)
+        self.assertIn("captures_grouped", params)
+        names = {p.name for p in regroup_stage.params}
+        self.assertIn("Captures grouped", names)
+        self.assertIn("Events created", names)
+
+    def test_sync_job_regroup_failure_propagates(self):
+        from unittest.mock import patch
+
+        project = Project.objects.create(name="Sync Job Failure Project")
+        deployment = Deployment.objects.create(name="Sync Job Failure Deployment", project=project)
+
+        job = Job.objects.create(
+            name="Sync regroup failure",
+            deployment=deployment,
+            project=project,
+            job_type_key=DataStorageSyncJob.key,
+        )
+        with patch.object(Deployment, "sync_captures", return_value=0), patch(
+            "ami.main.models.group_images_into_events",
+            side_effect=RuntimeError("regroup blew up"),
+        ):
+            with self.assertRaises(RuntimeError):
+                job.run()

@@ -86,8 +86,15 @@ def populate_collection(collection_id: int) -> None:
     collection.populate_sample()
 
 
-# Task to group images into events
-@celery_app.task(soft_time_limit=one_hour, time_limit=one_hour + 60)
+# Task to group images into events. Kept as a thin Celery wrapper for
+# the Deployment.save() autoregroup path (which fires too often to spawn a Job).
+# The new RegroupEventsJob is the user-facing entry point — see ami/jobs/models.py.
+# Idempotency lives inside group_images_into_events() itself (see _regroup_lock),
+# so every caller — this task, the JobType, the admin bulk action, the autoregroup —
+# is protected without each having to wrap the call in a lock.
+# Regroup finishes in seconds; short limits keep the lock TTL short.
+# See REGROUP_LOCK_TTL_SECONDS in ami.main.models for the matching value.
+@celery_app.task(soft_time_limit=10 * 60, time_limit=11 * 60)
 def regroup_events(deployment_id: int) -> None:
     from ami.main.models import Deployment, group_images_into_events
 
@@ -98,7 +105,13 @@ def regroup_events(deployment_id: int) -> None:
         return
     logger.info(f"Grouping captures for {deployment}")
     events = group_images_into_events(deployment)
-    logger.info(f"{deployment} now has {len(events)} events")
+    if events:
+        logger.info(f"{deployment} now has {len(events)} events")
+    else:
+        # Empty return = lock-miss short-circuit (see _regroup_lock); the WARNING
+        # from group_images_into_events above explains why. Don't log "now has 0
+        # events" — it's misleading: nothing was reset.
+        logger.info(f"{deployment} regroup skipped — see warning above")
 
 
 @celery_app.task(soft_time_limit=one_hour, time_limit=one_hour + 60)
