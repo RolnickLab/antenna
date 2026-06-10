@@ -6,7 +6,7 @@ import django.db.models.deletion
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("main", "0088_detection_det_srcimg_created_idx"),
+        ("main", "0090_session_time_gap_seconds_help_text"),
     ]
 
     operations = [
