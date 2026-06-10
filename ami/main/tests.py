@@ -2230,6 +2230,7 @@ class TestRolePermissions(APITestCase):
         self._assign_roles()
         capture_id = self.project.occurrences.first().detections.first().source_image.pk
         occurrence_id = self.project.occurrences.first().pk
+        taxon_id = self.project.occurrences.first().determination_id
         endpoints = {
             "collection": "/api/v2/captures/collections/",
             "site": "/api/v2/deployments/sites/",
@@ -2264,7 +2265,7 @@ class TestRolePermissions(APITestCase):
             "device": {"description": "New Device", "name": "Device 1", "project": self.project.pk},
             "storage": {"name": "New Storage", "project": self.project.pk, "bucket": "test-bucket"},
             "job": {"delay": "1", "name": "Test Job", "project_id": self.project.pk},
-            "identification": {"occurrence_id": occurrence_id, "taxon_id": "5", "comment": "Identifier comment"},
+            "identification": {"occurrence_id": occurrence_id, "taxon_id": taxon_id, "comment": "Identifier comment"},
             "project": {"name": "New Project", "description": "This is a test project."},
         }
 
