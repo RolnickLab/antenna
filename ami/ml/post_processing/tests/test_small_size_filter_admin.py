@@ -2,31 +2,38 @@
 
 Covers the intermediate confirmation page, the per-collection Job creation,
 the schema-validated config payload, and form-error re-render.
+
+Fixtures are intentionally minimal: bare Project/Collection/Occurrence rows,
+created once per class via ``setUpTestData``. The admin flow only reads FKs —
+it never touches captures, taxa, or events — so the full ``setup_test_project``
+fixture (storage source, deployment, processing service per call) is wasted
+cost here and was what made this module the slowest part of the suite.
 """
 from django.contrib import admin as django_admin
 from django.test import Client, TestCase
 from django.urls import reverse
 
 from ami.jobs.models import Job
-from ami.main.models import Occurrence, SourceImageCollection
-from ami.tests.fixtures.main import setup_test_project
+from ami.main.models import Occurrence, Project, SourceImageCollection
 from ami.users.models import User
 
 
 class _SmallSizeFilterAdminCase(TestCase):
-    def setUp(self) -> None:
-        self.superuser = User.objects.create_superuser(
-            email="ssfadmin@example.com",
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.superuser = User.objects.create_superuser(
+            email=f"ssfadmin+{cls.__name__}@example.com",
             password="x",
         )
-        self.client = Client()
-        self.client.force_login(self.superuser)
-
-        self.project, self.deployment = setup_test_project(reuse=False)
-        self.collection = SourceImageCollection.objects.create(
-            project=self.project,
+        cls.project = Project.objects.create(name=f"SSF admin test ({cls.__name__})")
+        cls.collection = SourceImageCollection.objects.create(
+            project=cls.project,
             name="SSF admin test collection",
         )
+
+    def setUp(self) -> None:
+        self.client = Client()
+        self.client.force_login(self.superuser)
 
     def _post(self, data: dict, pks: list[int] | None = None):
         url = reverse("admin:main_sourceimagecollection_changelist")
@@ -93,12 +100,15 @@ class TestSmallSizeFilterOccurrenceScope(TestCase):
     """The per-occurrence trigger on OccurrenceAdmin uses the same factory with an
     ``occurrence_id`` scope — the fast spot/dev path for iterating on a filter."""
 
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.superuser = User.objects.create_superuser(email="ssfocc@example.com", password="x")
+        cls.project = Project.objects.create(name="SSF occurrence-scope test")
+        cls.occurrence = Occurrence.objects.create(project=cls.project)
+
     def setUp(self) -> None:
-        self.superuser = User.objects.create_superuser(email="ssfocc@example.com", password="x")
         self.client = Client()
         self.client.force_login(self.superuser)
-        self.project, self.deployment = setup_test_project(reuse=False)
-        self.occurrence = Occurrence.objects.create(project=self.project, deployment=self.deployment)
 
     def test_valid_post_creates_one_job_scoped_to_the_occurrence(self):
         url = reverse("admin:main_occurrence_changelist")
@@ -121,12 +131,13 @@ class TestSmallSizeFilterOccurrenceScope(TestCase):
 
 
 class TestSmallSizeFilterMultiCollection(_SmallSizeFilterAdminCase):
-    def setUp(self) -> None:
-        super().setUp()
+    @classmethod
+    def setUpTestData(cls) -> None:
+        super().setUpTestData()
         # Second collection in a different project.
-        self.other_project, _ = setup_test_project(reuse=False)
-        self.other_collection = SourceImageCollection.objects.create(
-            project=self.other_project,
+        cls.other_project = Project.objects.create(name="SSF admin test (other project)")
+        cls.other_collection = SourceImageCollection.objects.create(
+            project=cls.other_project,
             name="Other collection",
         )
 

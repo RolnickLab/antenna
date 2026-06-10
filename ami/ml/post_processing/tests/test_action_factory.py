@@ -4,13 +4,17 @@ Covers the generic glue in ``ami/ml/post_processing/admin/actions.py``: the
 action's registered name, the default one-Job-per-row builder (task key, scope
 injection, project FK), schema-error mapping back onto form fields, and the
 ``build_jobs`` override hook used by tasks with a non-default row→Job mapping.
+
+DB-backed classes build a bare Project/Collection once per class via
+``setUpTestData`` — the factory only reads FKs, so the heavier
+``setup_test_project`` fixture is unnecessary.
 """
 import pytest
 from django.contrib import admin as django_admin
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory, SimpleTestCase, TestCase
 
 from ami.jobs.models import Job
-from ami.main.models import SourceImageCollection
+from ami.main.models import Project, SourceImageCollection
 from ami.ml.post_processing.admin.actions import (
     ConfigValidationErrors,
     default_build_jobs,
@@ -18,7 +22,6 @@ from ami.ml.post_processing.admin.actions import (
 )
 from ami.ml.post_processing.admin.small_size_filter_form import SmallSizeFilterActionForm
 from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
-from ami.tests.fixtures.main import setup_test_project
 
 
 def _ssf_kwargs(queryset, config):
@@ -36,7 +39,9 @@ def _ssf_kwargs(queryset, config):
     )
 
 
-class TestActionRegistration(TestCase):
+class TestActionRegistration(SimpleTestCase):
+    """Factory construction is pure function-building — no DB involved."""
+
     def test_action_name_is_run_plus_task_key(self):
         action = make_post_processing_action(
             SmallSizeFilterTask,
@@ -60,9 +65,10 @@ class TestActionRegistration(TestCase):
 
 
 class TestDefaultBuildJobs(TestCase):
-    def setUp(self) -> None:
-        self.project, _ = setup_test_project(reuse=False)
-        self.collection = SourceImageCollection.objects.create(project=self.project, name="c1")
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.project = Project.objects.create(name="Factory default_build_jobs test")
+        cls.collection = SourceImageCollection.objects.create(project=cls.project, name="c1")
 
     def test_creates_one_job_per_row_with_task_key_and_scope(self):
         qs = SourceImageCollection.objects.filter(pk=self.collection.pk)
@@ -125,9 +131,10 @@ class _StubAdmin:
 
 
 class TestBuildJobsOverrideHook(TestCase):
-    def setUp(self) -> None:
-        self.project, _ = setup_test_project(reuse=False)
-        self.collection = SourceImageCollection.objects.create(project=self.project, name="c1")
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.project = Project.objects.create(name="Factory build_jobs hook test")
+        cls.collection = SourceImageCollection.objects.create(project=cls.project, name="c1")
 
     def test_custom_build_jobs_is_used_instead_of_default(self):
         calls = {}

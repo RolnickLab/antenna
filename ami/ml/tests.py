@@ -1324,24 +1324,29 @@ class TestAlgorithmCategoryMaps(TestCase):
 
 
 class TestPostProcessingTasks(TestCase):
-    def setUp(self):
-        # Create test project, deployment, and default setup
-        self.project, self.deployment = setup_test_project()
-        create_taxa(project=self.project)
-        self._create_images_with_dimensions(deployment=self.deployment)
-        group_images_into_events(deployment=self.deployment)
+    @classmethod
+    def setUpTestData(cls):
+        # Project, taxa, images, events, and the collection are read-only from the
+        # tests' point of view — build them once per class. Detections (and the
+        # task runs that mutate them) happen per-test inside each test's
+        # rolled-back transaction.
+        cls.project, cls.deployment = setup_test_project()
+        create_taxa(project=cls.project)
+        cls._create_images_with_dimensions(deployment=cls.deployment)
+        group_images_into_events(deployment=cls.deployment)
 
         # Create a simple SourceImageCollection for testing
-        self.collection = SourceImageCollection.objects.create(
+        cls.collection = SourceImageCollection.objects.create(
             name="Test PostProcessing Collection",
-            project=self.project,
+            project=cls.project,
             method="manual",
-            kwargs={"image_ids": list(self.deployment.captures.values_list("pk", flat=True))},
+            kwargs={"image_ids": list(cls.deployment.captures.values_list("pk", flat=True))},
         )
-        self.collection.populate_sample()
+        cls.collection.populate_sample()
 
+    @classmethod
     def _create_images_with_dimensions(
-        self,
+        cls,
         deployment,
         num_images: int = 5,
         width: int = 640,
