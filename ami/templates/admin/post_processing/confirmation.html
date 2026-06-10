@@ -1,0 +1,37 @@
+{% extends "admin/base_site.html" %}
+
+{% load i18n admin_urls %}
+
+{% block title %}
+  {{ title }} | {{ site_title|default:_("Django site admin") }}
+{% endblock title %}
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+    › <a href="{{ changelist_url }}">{{ model_meta.verbose_name_plural|capfirst }}</a>
+    › {{ title }}
+  </div>
+{% endblock breadcrumbs %}
+{% block content %}
+  <form method="post">
+    {% csrf_token %}
+    {% block intro %}
+      <p>
+        You are about to run <strong>{{ task_label }}</strong> on
+        <strong>{{ selected_count }}</strong> selected
+        {{ model_meta.verbose_name }}{{ selected_count|pluralize }}.
+      </p>
+    {% endblock intro %}
+    <fieldset>
+      <legend>{% translate "Parameters" %}</legend>
+      {% include "admin/post_processing/_form_fieldset.html" with form=form %}
+    </fieldset>
+    {% for pk in selected_pks %}<input type="hidden" name="_selected_action" value="{{ pk }}" />{% endfor %}
+    <input type="hidden" name="action" value="{{ action_name }}" />
+    <input type="hidden" name="confirm" value="1" />
+    <div class="submit-row">
+      <input type="submit" value="{{ submit_label|default:title }}" />
+      <a href="{{ changelist_url }}">{% translate 'Cancel' %}</a>
+    </div>
+  </form>
+{% endblock content %}

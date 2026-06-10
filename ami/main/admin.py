@@ -13,6 +13,9 @@ import ami.utils
 from ami import tasks
 from ami.jobs.models import Job
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
+from ami.ml.post_processing.admin.actions import make_post_processing_action
+from ami.ml.post_processing.admin.small_size_filter_form import SmallSizeFilterActionForm
+from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
 from ami.ml.tasks import remove_duplicate_classifications
 
 from .models import (
@@ -456,6 +459,19 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
     def detections_count(self, obj) -> int:
         return obj.detections_count
 
+    # Per-occurrence post-processing trigger. Same factory as the capture-set
+    # action on SourceImageCollectionAdmin, scoped to one occurrence — the fast
+    # spot/dev path for iterating on a filter without running a whole collection.
+    # New per-occurrence tasks add their own action here the same way.
+    run_small_size_filter = make_post_processing_action(
+        SmallSizeFilterTask,
+        SmallSizeFilterActionForm,
+        scope_resolver=lambda occurrence: {"occurrence_id": occurrence.pk},
+        name_resolver=lambda task_cls, occurrence: (f"Post-processing: {task_cls.name} on Occurrence {occurrence.pk}"),
+    )
+
+    actions = [run_small_size_filter]
+
     ordering = ("-created_at",)
 
     # Add classifications as inline
@@ -694,25 +710,18 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
             f"Populating {len(queued_tasks)} capture set(s) background tasks: {queued_tasks}.",
         )
 
-    @admin.action(description="Run Small Size Filter post-processing task (async)")
-    def run_small_size_filter(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
-        jobs = []
-        for collection in queryset:
-            job = Job.objects.create(
-                name=f"Post-processing: SmallSizeFilter on Capture Set {collection.pk}",
-                project=collection.project,
-                job_type_key="post_processing",
-                params={
-                    "task": "small_size_filter",
-                    "config": {
-                        "source_image_collection_id": collection.pk,
-                    },
-                },
-            )
-            job.enqueue()
-            jobs.append(job.pk)
-
-        self.message_user(request, f"Queued Small Size Filter for {queryset.count()} capture set(s). Jobs: {jobs}")
+    # Built from the shared post-processing action factory: renders an intermediate
+    # confirmation page with the task's knob form, validates each selection against
+    # SmallSizeFilterConfig, then enqueues one Job per capture set. New post-processing
+    # tasks declare their own trigger the same way (task class + form + scope_resolver).
+    run_small_size_filter = make_post_processing_action(
+        SmallSizeFilterTask,
+        SmallSizeFilterActionForm,
+        scope_resolver=lambda collection: {"source_image_collection_id": collection.pk},
+        name_resolver=lambda task_cls, collection: (
+            f"Post-processing: {task_cls.name} on Capture Set {collection.pk}"
+        ),
+    )
 
     actions = [
         populate_collection,
