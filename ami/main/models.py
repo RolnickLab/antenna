@@ -2092,6 +2092,31 @@ class SourceImageQuerySet(BaseQuerySet):
         processed_exists = models.Exists(Detection.objects.filter(source_image_id=models.OuterRef("pk")))
         return self.annotate(was_processed=processed_exists)
 
+    def with_thumbnails(self):
+        """Prefetch ``thumbnails`` with an ``is_source_changed`` annotation,
+        required by :meth:`SourceImage.thumbnail_urls` — without it every row
+        fires its own SELECT on ``main_sourceimagethumbnail``.
+
+        ``NULL < x`` is ``NULL`` in SQL; the ``CASE`` default maps it to
+        ``False`` (no signal of change), matching the generator's predicate.
+        """
+        # ``SourceImageThumbnail`` is defined later in this module; a top-level
+        # import would be circular.
+        from django.apps import apps
+
+        thumbnail_model = apps.get_model("main", "SourceImageThumbnail")
+        thumbnails_qs = thumbnail_model.objects.annotate(
+            is_source_changed=models.Case(
+                models.When(
+                    last_modified__lt=models.F("source_image__last_modified"),
+                    then=models.Value(True),
+                ),
+                default=models.Value(False),
+                output_field=models.BooleanField(),
+            )
+        )
+        return self.prefetch_related(models.Prefetch("thumbnails", queryset=thumbnails_qs))
+
 
 class SourceImageManager(models.Manager.from_queryset(SourceImageQuerySet)):
     pass
@@ -2247,7 +2272,7 @@ class SourceImage(BaseModel):
         ``SourceImageQuerySet.with_was_processed()``). Falls back to a DB query otherwise.
 
         Do not call in bulk without the annotation — use ``with_was_processed()``
-        on the queryset instead to avoid N+1 queries.
+        on the queryset instead so each row does not trigger its own DB query.
 
         :param algorithm_key: If provided, only detections from this algorithm are checked.
                               The annotation does not filter by algorithm; per-algorithm
@@ -2398,6 +2423,43 @@ class SourceImage(BaseModel):
         if Project.Permissions.RUN_SINGLE_IMAGE_JOB in perms:
             custom_perms.add(Project.Permissions.RUN_SINGLE_IMAGE_JOB)
         return list(custom_perms)
+
+    def thumbnail_urls(self, request: Request | None = None) -> dict[str, str]:
+        """Per-label ``{label: url}`` for this capture's thumbnails.
+
+        Warm (cached row at the spec width, source unchanged) → direct storage
+        URL. Cold/stale → route URL into the thumbnail viewset, which
+        (re)generates lazily.
+
+        Callers must use :meth:`SourceImageQuerySet.with_thumbnails`: it
+        prevents per-row SELECTs and provides the ``is_source_changed``
+        annotation this method requires (``AttributeError`` without it).
+        """
+        # Local import avoids a models ↔ serializers cycle at module load time.
+        from ami.base.serializers import reverse_with_params
+
+        sizes = settings.THUMBNAILS["SIZES"]
+        thumbs: dict[str, "SourceImageThumbnail"] = {t.label: t for t in self.thumbnails.all()}
+
+        out: dict[str, str] = {}
+        for label, spec in sizes.items():
+            thumb = thumbs.get(label)
+            # ``thumb.width`` stores the requested spec width (see the generator), so
+            # strict equality works; legacy encoder-width rows read stale and self-heal.
+            width_match = thumb is not None and thumb.width == spec["width"]
+            warm = thumb is not None and thumb.path and width_match and not thumb.is_source_changed
+            if warm:
+                out[label] = default_storage.url(thumb.path)
+            else:
+                # Qualified ``api:`` namespace so this also resolves when ``request``
+                # is None (management commands, template tags).
+                out[label] = reverse_with_params(
+                    "api:sourceimagethumbnail-detail",
+                    args=(self.pk,),
+                    request=request,
+                    params={"label": label},
+                )
+        return out
 
     def find_or_generate_thumbnail_for_label(self, label):
         try:
