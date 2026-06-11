@@ -1965,10 +1965,8 @@ def create_source_image_from_upload(
         checksum_algorithm=checksum_algorithm,
         width=width,
         height=height,
-        # Parity with the S3-sync path (which copies the object's LastModified header into
-        # this field). Without it the field is None for uploaded captures, which breaks
-        # downstream consumers that compare source mtime against derived-artifact mtime
-        # (e.g. SourceImage.find_or_generate_thumbnail_for_label).
+        # The sync path stores the object's LastModified header here; set it on
+        # upload too so source-vs-derivative freshness checks have a value.
         last_modified=timezone.now(),
         test_image=True,
         uploaded_by=request.user if request else None,
@@ -2133,12 +2131,9 @@ class SourceImage(BaseModel):
     timestamp = models.DateTimeField(null=True, blank=True, db_index=True)
     width = models.IntegerField(null=True, blank=True)
     height = models.IntegerField(null=True, blank=True)
-    # These four track metadata about the source image file as it lives in storage.
-    # Values are normally populated server-side by the sync flow
-    # (POST /api/v2/deployments/<pk>/sync/ → DataStorageSyncJob) and the upload
-    # handler, but stay writable in the API so a project owner can create
-    # SourceImage entries manually via an API client when needed. The admin marks
-    # them as ``readonly_fields`` so they can't be edited by mistake through the UI.
+    # File metadata read from the source file in storage, populated by the sync
+    # flow and upload handler. Writable in the API for manual SourceImage
+    # creation; read-only in the admin.
     size = models.BigIntegerField(
         null=True,
         blank=True,
