@@ -429,6 +429,18 @@ CELERY_REDIS_BACKEND_HEALTH_CHECK_INTERVAL = 30  # Check health every 30s
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_ENABLE_PREFETCH_COUNT_REDUCTION = True
 
+# Fair scheduling for the prefork pool.
+# https://docs.celeryq.dev/en/stable/userguide/configuration.html#worker-pool-optimization
+# Under the default scheduler the master process pre-assigns prefetched
+# messages to specific prefork children at delivery time, so a long task
+# pinned to one child causes head-of-line blocking even when sibling
+# children are idle. Fair mode holds prefetched messages in a shared buffer
+# and hands one to a child only when that child is genuinely idle, which
+# matters for queues that mix heterogeneous-duration tasks (notably ``jobs``,
+# where ``run_job`` can sit inside ``filter_processed_images`` for minutes).
+# See RolnickLab/antenna#1323.
+CELERY_WORKER_POOL_OPTIMIZATION = "fair"
+
 # Split Celery work across three queues so one class of task can't starve
 # another. Staging/production/worker compose files each run a dedicated
 # worker service per queue; local/CI use a single worker consuming all queues.

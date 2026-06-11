@@ -626,6 +626,107 @@ class TestTaskFailureGuard(TransactionTestCase):
         mock_cleanup.assert_called_once()
 
 
+class TestRunJobEarlyGuard(TransactionTestCase):
+    """
+    run_job early-guard regression tests.
+
+    With ``acks_late=True`` and ``reject_on_worker_lost=True`` on the task,
+    the broker will redeliver a run_job message if a worker dies mid-task
+    (SIGKILL, OOM, deploy roll). The early-guard at the top of ``run_job``
+    short-circuits when the Job is already in a terminal state or being
+    cancelled, so a redelivery — or a cancel-and-retry race — does not
+    re-run side effects. See RolnickLab/antenna#1323.
+    """
+
+    def setUp(self):
+        cache.clear()
+        self.project = Project.objects.create(name="run_job guard project")
+        self.pipeline = Pipeline.objects.create(name="run_job guard pipeline", slug="run-job-guard-pipeline")
+        self.pipeline.projects.add(self.project)
+        self.collection = SourceImageCollection.objects.create(name="run_job guard collection", project=self.project)
+
+    def tearDown(self):
+        cache.clear()
+
+    def _make_job(self, status: JobState) -> Job:
+        job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name=f"run_job guard {status}",
+            pipeline=self.pipeline,
+            source_image_collection=self.collection,
+        )
+        job.status = status
+        job.save()
+        return job
+
+    def test_skips_when_job_already_revoked(self):
+        """Redelivery after the user cancelled and the job settled to REVOKED."""
+        from ami.jobs.tasks import run_job
+
+        job = self._make_job(JobState.REVOKED)
+
+        with patch.object(Job, "run") as mock_run:
+            result = run_job.apply(kwargs={"job_id": job.pk})
+
+        self.assertTrue(result.successful(), msg=f"task should succeed, got {result.state}: {result.traceback}")
+        mock_run.assert_not_called()
+
+    def test_skips_when_job_canceling(self):
+        """Cancel arrived after the message was already in the prefetch buffer."""
+        from ami.jobs.tasks import run_job
+
+        job = self._make_job(JobState.CANCELING)
+
+        with patch.object(Job, "run") as mock_run:
+            result = run_job.apply(kwargs={"job_id": job.pk})
+
+        self.assertTrue(result.successful(), msg=f"task should succeed, got {result.state}: {result.traceback}")
+        mock_run.assert_not_called()
+
+    def test_skips_when_job_already_success(self):
+        """Redelivery after the job actually completed (e.g. ack lost in transit)."""
+        from ami.jobs.tasks import run_job
+
+        job = self._make_job(JobState.SUCCESS)
+
+        with patch.object(Job, "run") as mock_run:
+            result = run_job.apply(kwargs={"job_id": job.pk})
+
+        self.assertTrue(result.successful(), msg=f"task should succeed, got {result.state}: {result.traceback}")
+        mock_run.assert_not_called()
+
+    def test_runs_when_job_pending(self):
+        """Contract pair: a healthy first-delivery still calls Job.run()."""
+        from ami.jobs.tasks import run_job
+
+        job = self._make_job(JobState.PENDING)
+
+        with patch.object(Job, "run") as mock_run:
+            run_job.apply(kwargs={"job_id": job.pk})
+
+        mock_run.assert_called_once()
+
+    def test_prerun_signal_does_not_clobber_revoked_status(self):
+        """
+        Regression: the ``task_prerun`` signal would otherwise call
+        ``update_job_status(state="PENDING")`` and overwrite a REVOKED/CANCELING
+        status before the ``run_job`` early-guard reads it. With the prerun
+        guard in place, the status survives the signal, the early-guard fires,
+        and ``Job.run()`` is not called.
+        """
+        from ami.jobs.tasks import run_job
+
+        job = self._make_job(JobState.REVOKED)
+
+        with patch.object(Job, "run") as mock_run:
+            run_job.apply(kwargs={"job_id": job.pk})
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.REVOKED)
+        mock_run.assert_not_called()
+
+
 class TestResultEndpointWithError(APITestCase):
     """Integration test for the result API endpoint with error results."""
 

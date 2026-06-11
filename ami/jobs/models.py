@@ -529,6 +529,28 @@ class MLJob(JobType):
             progress=1,
         )
 
+        # Mid-bootstrap cancel guard. ``collect_images`` above can run for many
+        # minutes on large collections (S3 list + DB joins), and the user may
+        # cancel during that window. ``Job.cancel()`` for ASYNC_API does
+        # ``revoke(terminate=False)`` to avoid SIGKILL'ing this worker, then
+        # writes REVOKED + tears down the NATS stream / Redis state. Without
+        # this check we would (a) clobber the cancel's REVOKED via the next
+        # full ``job.save()`` and (b) proceed to ``queue_images_to_nats``,
+        # recreating the stream the cancel just deleted and dispatching real
+        # GPU work to ADC for a revoked job. Refresh is read-only against the
+        # ``status`` column; the in-memory ``progress`` mutations from the
+        # collect stage are intentionally dropped on the bail path because the
+        # job is settled — no further progress writes make sense. Covers
+        # ASYNC_API (NATS dispatch) and SYNC paths (Celery sub-tasks in
+        # ``process_images``); INTERNAL jobs benefit too. See
+        # RolnickLab/antenna#1323.
+        db_status = Job.objects.values_list("status", flat=True).get(pk=job.pk)
+        if db_status in JobState.final_states() or db_status == JobState.CANCELING:
+            job.logger.info(
+                f"Job {job.pk} settled to {db_status} during bootstrap; " f"skipping dispatch of {len(images)} images"
+            )
+            return
+
         # End image collection stage
         job.save()
 
@@ -1143,6 +1165,21 @@ class Job(BaseModel):
         if save:
             self.save()
 
+    def is_settled(self) -> bool:
+        """Return True when the job is in a terminal state or being cancelled.
+
+        Used by every code path that must not start (or continue) work for a
+        job whose lifecycle has effectively ended: the ``run_job`` early-guard
+        (after acks_late redelivery), the ``MLJob.run`` mid-bootstrap cancel
+        check (before ``queue_images_to_nats`` dispatches GPU work to ADC),
+        the prerun signal handler (so a redelivered or canceled message does
+        not get its status reset to PENDING), and ``_fail_job``. Centralized
+        so the predicate stays in one place — adding a new "do not resume"
+        status only requires touching :meth:`JobState.final_states` or this
+        method.
+        """
+        return self.status in JobState.final_states() or self.status == JobState.CANCELING
+
     def run(self):
         """
         Run the job.
@@ -1169,25 +1206,39 @@ class Job(BaseModel):
 
     def cancel(self):
         """
-        Cancel a job. For async_api jobs, clean up NATS/Redis resources
-        and transition through CANCELING → REVOKED. For other jobs,
-        revoke the Celery task.
+        Cancel a job.
+
+        For ASYNC_API jobs the long-running work is on remote ADC workers via
+        NATS, not in the local ``run_job`` celery task — by the time the user
+        clicks cancel, ``run_job`` has usually already finished
+        ``queue_images_to_nats`` and returned. Tearing down the NATS stream +
+        Redis state (``cleanup_async_job_if_needed``) is what actually stops
+        further work: ADC stops being delivered tasks, and any in-flight
+        result handlers see no Redis state and fast-fail. Calling
+        ``revoke(terminate=True)`` on the (likely-done) run_job would SIGTERM
+        the worker child if it happens to still be inside the bootstrap (e.g.
+        a slow ``filter_processed_images`` for a huge collection), which
+        prior to ``acks_late`` was an unrecoverable message loss. We revoke
+        without terminate so a not-yet-started copy is dropped without
+        killing in-flight bootstrap; the in-flight copy then notices
+        ``status == CANCELING`` via the early-guard in ``run_job`` next time
+        it's invoked (e.g. on redelivery) and bails out cleanly.
+
+        For INTERNAL / SYNC_API jobs the celery task body owns the entire
+        job lifecycle, so terminating it remains the only way to stop
+        active work.
         """
         self.status = JobState.CANCELING
         self.save()
 
+        is_async_api = self.dispatch_mode == JobDispatchMode.ASYNC_API
         if self.task_id:
             task = run_job.AsyncResult(self.task_id)
             if task:
-                task.revoke(terminate=True)
-            if self.dispatch_mode == JobDispatchMode.ASYNC_API:
-                # For async jobs we need to set the status to revoked here since the task already
-                # finished (it only queues the images).
-                self.status = JobState.REVOKED
-                self.save()
-        else:
-            self.status = JobState.REVOKED
-            self.save()
+                task.revoke(terminate=not is_async_api)
+
+        self.status = JobState.REVOKED
+        self.save()
 
         cleanup_async_job_if_needed(self)
 
