@@ -892,11 +892,9 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
         except exceptions.ObjectDoesNotExist as e:
             raise api_exceptions.NotFound(detail=f"{e}")
         response = redirect(default_storage.url(thumb.path))
-        # Redirects are not browser-cached by default, so without this header every
-        # page view re-pays the round trip to this endpoint per thumbnail. Kept well
-        # below the shortest presigned-URL lifetime (django-storages
-        # AWS_QUERYSTRING_EXPIRE defaults to 3600s) so a cached redirect never points
-        # at an expired signature.
+        # Redirects aren't browser-cached by default. max-age stays well below the
+        # presigned-URL lifetime (AWS_QUERYSTRING_EXPIRE default 3600s) so a cached
+        # redirect never points at an expired signature.
         response["Cache-Control"] = "private, max-age=300"
         return response
 
