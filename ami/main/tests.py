@@ -399,6 +399,36 @@ class TestImageThumbnailViews(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
 
+    def test_thumbnail_row_stores_spec_width_not_encoder_output(self):
+        """``PIL.Image.thumbnail()`` preserves aspect ratio and can emit a width
+        1-2px below the requested spec (e.g. 239 for a 240 spec). The row must
+        record the spec width — it identifies which configured size the row
+        satisfies — otherwise the strict-equality regen gate treats the row as
+        stale and regenerates on every request. See #1331.
+        """
+        from unittest import mock
+
+        original_thumbnail = Image.Image.thumbnail
+
+        def rounding_thumbnail(img, size, *args, **kwargs):
+            # Simulate Pillow's aspect-preserving rounding landing 1px under spec.
+            original_thumbnail(img, (size[0] - 1, size[1]), *args, **kwargs)
+
+        with mock.patch.object(Image.Image, "thumbnail", rounding_thumbnail):
+            response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        spec_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
+        self.assertEqual(thumb.width, spec_width)
+        first_gen_marker = thumb.last_modified
+
+        # Second request must reuse the cached row. A regen force-bumps
+        # ``last_modified``, so an unchanged value proves the gate held.
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        refreshed = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(refreshed.last_modified, first_gen_marker)
+
     def test_captures_response_includes_thumbnail_urls(self):
         response = self.client.get(f"/api/v2/captures/{self.first_capture.pk}/?project_id={self.project.pk}")
         self.assertEqual(response.status_code, 200)

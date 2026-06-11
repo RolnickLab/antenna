@@ -2460,13 +2460,17 @@ class SourceImage(BaseModel):
             # the same race, destroyed the other racer's just-created row and storage
             # blob. Both bugs go away by replacing the delete-then-create with a single
             # atomic upsert.
-            width, height = img.size
+            # ``width`` records the *requested* spec width, not the encoder's output.
+            # PIL's aspect-preserving rounding can emit e.g. 239 for a 240 spec, and the
+            # regen gate above compares this field against the spec with strict equality —
+            # storing the encoder output makes affected rows regenerate on every request.
+            # ``height`` keeps the actual encoded value (informational, never compared).
             thumb, _created = self.thumbnails.update_or_create(
                 label=label,
                 defaults={
                     "path": thumbnail_path,
-                    "width": width,
-                    "height": height,
+                    "width": size["width"],
+                    "height": img.size[1],
                     "size": file_size,
                 },
             )
