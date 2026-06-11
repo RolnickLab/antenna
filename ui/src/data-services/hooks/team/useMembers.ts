@@ -14,11 +14,7 @@ const convertServerRecord = (record: ServerMember): Member => ({
   id: `${record.id}`,
   image: record.user.image,
   name: record.user.name,
-  role: {
-    description: record.role_description,
-    id: record.role,
-    name: record.role_display_name,
-  },
+  role: record.role,
   updatedAt: record.updated_at ? new Date(record.updated_at) : undefined,
   userId: `${record.user.id}`,
 })
