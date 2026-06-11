@@ -2095,21 +2095,15 @@ class SourceImageQuerySet(BaseQuerySet):
         return self.annotate(was_processed=processed_exists)
 
     def with_thumbnails(self):
-        """Prefetch ``thumbnails`` with ``is_source_changed`` so
-        :meth:`SourceImage.thumbnail_urls` is O(1)/row.
+        """Prefetch ``thumbnails`` with an ``is_source_changed`` annotation,
+        required by :meth:`SourceImage.thumbnail_urls` — without it every row
+        fires its own SELECT on ``main_sourceimagethumbnail``.
 
-        Required for any list endpoint that surfaces thumbnail URLs; without it
-        every row triggers a separate SELECT on ``main_sourceimagethumbnail``.
-
-        The ``is_source_changed`` annotation flags thumbnail rows whose
-        ``last_modified`` predates the source's, pushing the staleness predicate
-        into the prefetch SQL so :meth:`SourceImage.thumbnail_urls` stays pure
-        URL-formatting. ``NULL < x`` is ``NULL`` in SQL, which the ``CASE``
-        treats as the ``False`` default — matching the inline check this
-        replaces, which also returned ``False`` when either side was ``None``.
+        ``NULL < x`` is ``NULL`` in SQL; the ``CASE`` default maps it to
+        ``False`` (no signal of change), matching the generator's predicate.
         """
-        # ``apps.get_model`` instead of a direct import — ``SourceImageThumbnail``
-        # is defined later in this module, so a top-level import would be circular.
+        # ``SourceImageThumbnail`` is defined later in this module; a top-level
+        # import would be circular.
         from django.apps import apps
 
         thumbnail_model = apps.get_model("main", "SourceImageThumbnail")
@@ -2438,20 +2432,15 @@ class SourceImage(BaseModel):
     def thumbnail_urls(self, request: Request | None = None) -> dict[str, str]:
         """Per-label ``{label: url}`` for this capture's thumbnails.
 
-        Warm path: cached :class:`SourceImageThumbnail` row exists at the
-        configured width and is not source-changed → direct storage URL,
-        browser bypasses Django for the fetch.
+        Warm (cached row at the spec width, source unchanged) → direct storage
+        URL. Cold/stale → route URL into the thumbnail viewset, which
+        (re)generates lazily.
 
-        Cold/stale path: route URL into :class:`~ami.main.api.views.SourceImageThumbnailViewSet`,
-        which triggers lazy (re)generation via
-        :meth:`find_or_generate_thumbnail_for_label`.
-
-        Callers MUST go through :meth:`SourceImageQuerySet.with_thumbnails` —
-        without it the per-row ``self.thumbnails.all()`` read fires its own
-        SELECT and the ``is_source_changed`` annotation is missing
-        (``AttributeError`` on the warm-path check).
+        Callers must use :meth:`SourceImageQuerySet.with_thumbnails`: it
+        prevents per-row SELECTs and provides the ``is_source_changed``
+        annotation this method requires (``AttributeError`` without it).
         """
-        # Local import dodges any models ↔ serializers cycle at module load time.
+        # Local import avoids a models ↔ serializers cycle at module load time.
         from ami.base.serializers import reverse_with_params
 
         sizes = settings.THUMBNAILS["SIZES"]
@@ -2460,19 +2449,15 @@ class SourceImage(BaseModel):
         out: dict[str, str] = {}
         for label, spec in sizes.items():
             thumb = thumbs.get(label)
-            # ``thumb.width`` records the requested spec width (see the generator),
-            # so strict equality is the staleness check. Legacy rows that stored the
-            # encoder output (e.g. 239 for a 240 spec) read as stale here and fall
-            # back to the route URL, which regenerates them once.
+            # ``thumb.width`` stores the requested spec width (see the generator), so
+            # strict equality works; legacy encoder-width rows read stale and self-heal.
             width_match = thumb is not None and thumb.width == spec["width"]
             warm = thumb is not None and thumb.path and width_match and not thumb.is_source_changed
             if warm:
                 out[label] = default_storage.url(thumb.path)
             else:
-                # Qualified ``api:`` namespace so the call works when ``request`` is
-                # ``None`` (mgmt commands, template tags). With a real request, DRF
-                # would resolve the namespace from ``request.resolver_match``;
-                # qualified works in both modes.
+                # Qualified ``api:`` namespace so this also resolves when ``request``
+                # is None (management commands, template tags).
                 out[label] = reverse_with_params(
                     "api:sourceimagethumbnail-detail",
                     args=(self.pk,),

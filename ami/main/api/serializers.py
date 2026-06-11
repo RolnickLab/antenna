@@ -73,10 +73,8 @@ class UserNestedSerializer(DefaultSerializer):
 
 
 class SourceImageThumbnailSerializer(DefaultSerializer):
-    """Adds a ``thumbnails`` field. Delegates the warm/cold URL choice to
-    :meth:`SourceImage.thumbnail_urls`. Viewsets MUST use
-    :meth:`SourceImageQuerySet.with_thumbnails` so each row does not trigger a
-    separate SELECT on ``main_sourceimagethumbnail``.
+    """Adds a ``thumbnails`` field via :meth:`SourceImage.thumbnail_urls`.
+    Viewsets must apply :meth:`SourceImageQuerySet.with_thumbnails`.
     """
 
     def __init__(self, *args, **kwargs):

@@ -453,8 +453,7 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
                     queryset=SourceImage.objects.order_by("-size").select_related(
                         "deployment", "deployment__data_source"
                     )
-                    # Required by SourceImage.thumbnail_urls — without this each row triggers a separate
-                    # SELECT on main_sourceimagethumbnail from the nested serializer.
+                    # Required by SourceImage.thumbnail_urls in the nested serializer.
                     .with_thumbnails()[:num_example_captures],
                     to_attr="example_captures",
                 )
@@ -636,8 +635,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
 
         queryset = (
             queryset.select_related("event", "deployment", "deployment__data_source")
-            # Required by SourceImage.thumbnail_urls — without this each row triggers a separate
-            # SELECT on main_sourceimagethumbnail from SourceImageThumbnailSerializer.
+            # Required by SourceImage.thumbnail_urls in SourceImageThumbnailSerializer.
             .with_thumbnails().order_by("timestamp")
         )
 
