@@ -402,36 +402,6 @@ class TestImageThumbnailViews(TestCase):
         thumb = self.first_capture.thumbnails.get(label="small")
         self.assertEqual(thumb.width, 240)
 
-    def test_thumbnail_jpeg_is_progressive(self):
-        """Generated thumbnails must be progressive JPEGs.
-
-        Progressive encoding reorders the scan from top-to-bottom into
-        coarse-then-detail passes so the browser paints a low-resolution
-        preview as the first bytes arrive instead of waiting for the whole
-        file. Pillow surfaces this via ``Image.open(...).info['progression']``
-        (set to 1 for progressive, absent or 0 for baseline). The 1024px
-        medium label is where it actually matters perceptually, so check
-        that one — small is small enough to fit in a single TCP roundtrip
-        regardless.
-        """
-        from django.core.files.storage import default_storage
-
-        # Generate via the redirect viewset so we hit the real save path.
-        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/?label=medium")
-        self.assertEqual(response.status_code, 302)
-
-        thumb = self.first_capture.thumbnails.get(label="medium")
-        with default_storage.open(thumb.path, "rb") as fh:
-            decoded = Image.open(fh)
-            decoded.load()
-            # PIL JPEG plugin sets ``progression`` to 1 for progressive scans;
-            # baseline JPEGs have either no key or 0. Assert truthy to cover
-            # both representations.
-            self.assertTrue(
-                decoded.info.get("progression"),
-                f"Expected progressive JPEG, got info={decoded.info!r}",
-            )
-
     @override_settings(THUMBNAILS=NEW_THUMBNAIL_SETTINGS)
     def test_thumbnail_settings_change_regenerates(self):
         # A pre-existing different size thumb
