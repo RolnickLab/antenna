@@ -255,6 +255,17 @@ class TestImageThumbnailViews(TestCase):
         self.assertEqual(thumb.height, 768)
         self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
 
+    def test_thumbnail_blank_path_row_regenerates(self):
+        """A row with an empty ``path`` (failed or interrupted generation) must
+        trigger regeneration, not redirect to the storage root.
+        """
+        self.first_capture.thumbnails.create(path="", label="small", width=240, height=180, size=0)
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertTrue(thumb.path)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
     def test_thumbnail_redirect_is_browser_cacheable(self):
         """The 302 must carry Cache-Control so browsers reuse the redirect across
         page views instead of re-paying the round trip per thumbnail per view.

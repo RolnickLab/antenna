@@ -2423,7 +2423,7 @@ class SourceImage(BaseModel):
         # check. Orphan rows (a DB row whose blob was deleted out of band) show a
         # broken ``<img>`` until something removes the row and the next request
         # regenerates.
-        if not thumb or thumb.width != size["width"] or source_changed:
+        if not thumb or not thumb.path or thumb.width != size["width"] or source_changed:
             img = PIL.Image.open(BytesIO(fetch_image_content(self.public_url(raise_errors=True))))
             # JPEG only supports L, RGB, CMYK. Convert anything else (RGBA, P, LA, PA, …) before
             # encoding, or PIL raises ``OSError: cannot write mode <X> as JPEG``. Uploaded PNGs
