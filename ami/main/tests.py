@@ -255,6 +255,14 @@ class TestImageThumbnailViews(TestCase):
         self.assertEqual(thumb.height, 768)
         self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
 
+    def test_thumbnail_redirect_is_browser_cacheable(self):
+        """The 302 must carry Cache-Control so browsers reuse the redirect across
+        page views instead of re-paying the round trip per thumbnail per view.
+        """
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Cache-Control"], "private, max-age=300")
+
     def test_thumbnail_new_with_invalid_size(self):
         response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/?label=typo")
         self.assertEqual(response.status_code, 400)
