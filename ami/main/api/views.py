@@ -863,9 +863,8 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
     permission_classes = [ObjectPermission]
 
     def list(self, request):
-        # The route exists for ``/captures/thumbnails/<pk>/?label=...`` only. Listing has
-        # no defined semantics (which capture's thumbnails?), so return a proper 405 with
-        # the Allow header rather than a fake 404.
+        # Only ``/captures/thumbnails/<pk>/?label=...`` is defined; listing has no
+        # meaning here (which capture's thumbnails?), so 405 rather than a fake 404.
         raise api_exceptions.MethodNotAllowed(
             method="GET", detail="Listing thumbnails is not supported; request a single capture's thumbnail by pk."
         )
@@ -873,8 +872,7 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
     def retrieve(self, request, pk=None):
         _sizes = settings.THUMBNAILS["SIZES"]
         if not _sizes:
-            # Misconfiguration. Without ``next(iter(...), None)`` the default-label path
-            # raised ``StopIteration`` and surfaced as a 500. Return a clear API error.
+            # Empty THUMBNAILS['SIZES'] is a misconfiguration — clear API error, not a 500.
             raise api_exceptions.NotFound(detail="No thumbnail sizes are configured (settings.THUMBNAILS['SIZES']).")
 
         label = self.request.query_params.get("label") or next(iter(_sizes))

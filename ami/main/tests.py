@@ -300,12 +300,10 @@ class TestImageThumbnailViews(TestCase):
         self.assertTrue(self.first_capture.last_modified > thumb.last_modified)
         response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
         self.assertEqual(self.first_capture.thumbnails.count(), 1)
-        # Row is reused via update_or_create — the previous delete-then-create flow
-        # would have allocated a new PK and destroyed any concurrent racer's row.
+        # The upsert must reuse the existing row (same PK).
         refreshed = self.first_capture.thumbnails.get(label="small")
         self.assertEqual(refreshed.pk, original_pk)
-        # Freshness marker is force-bumped on regen so the next request doesn't
-        # re-trigger regen forever (auto_now_add fires only on INSERT, not UPDATE).
+        # Regen must force-bump last_modified (auto_now_add fires only on INSERT).
         self.assertGreater(refreshed.last_modified, original_thumb_last_modified)
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers["Location"], f"/media/{refreshed.path}")
