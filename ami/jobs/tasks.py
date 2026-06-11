@@ -909,9 +909,10 @@ def check_stale_jobs(minutes: int | None = None, dry_run: bool = False) -> list[
 
     For each stale job, checks Celery for a terminal task status. REVOKED is
     always trusted. For async_api jobs, SUCCESS and FAILURE are only accepted
-    when job.progress.is_complete() — NATS workers may still be delivering
-    results after the Celery task finishes. All other cases result in revocation.
-    Async resources (NATS/Redis) are cleaned up in both branches.
+    when AsyncJobStateManager.all_tasks_processed() reports True (i.e. the
+    Redis pending sets are drained). When Redis state is absent, falls back to
+    job.progress.is_complete(). All other cases result in revocation. Async
+    resources (NATS/Redis) are cleaned up in both branches.
 
     Returns a list of dicts describing what was done to each job.
     """
@@ -961,12 +962,25 @@ def check_stale_jobs(minutes: int | None = None, dry_run: bool = False) -> list[
                     # Treat as unknown state — job will be revoked below.
 
             # Only trust terminal Celery states. For async_api jobs, SUCCESS and
-            # FAILURE are only accepted when progress is complete — NATS workers may
-            # still be delivering results after the Celery task finishes.
+            # FAILURE are only accepted when all NATS tasks are processed — workers
+            # may still be delivering results after the Celery task finishes.
+            # Consult Redis (source of truth for SREM completeness) directly rather
+            # than Job.progress.is_complete(), which mirrors a JSONB blob racy under
+            # concurrent _update_job_progress writes since #1261.
             is_terminal = celery_state in states.READY_STATES
             is_async_api = job.dispatch_mode == JobDispatchMode.ASYNC_API
-            if is_async_api and celery_state in {states.SUCCESS, states.FAILURE} and not job.progress.is_complete():
-                is_terminal = False
+            if is_async_api and celery_state in {states.SUCCESS, states.FAILURE}:
+                processed = AsyncJobStateManager(job.pk).all_tasks_processed()
+                if processed is False:
+                    is_terminal = False
+                elif processed is None:
+                    logger.warning(
+                        "Reaper for job %s: Redis state absent, falling back to " "progress.is_complete()",
+                        job.pk,
+                    )
+                    if not job.progress.is_complete():
+                        is_terminal = False
+                # processed is True -> trust Celery's terminal state
 
             previous_status = job.status
             if is_terminal:
