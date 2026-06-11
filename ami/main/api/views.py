@@ -2,13 +2,15 @@ import datetime
 import logging
 from statistics import mode
 
+from django.conf import settings
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
+from django.core.files.storage import default_storage
 from django.db import models
 from django.db.models import OuterRef, Prefetch, Q, Subquery
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
@@ -849,6 +851,47 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             return Response({"collection": collection.pk, "total_images": collection.images.count()})
         else:
             raise api_exceptions.ValidationError(detail="Source image must be associated with a project")
+
+
+class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
+    """
+    Endpoint for capture thumbnails
+    """
+
+    queryset = SourceImage.objects.all()
+
+    permission_classes = [ObjectPermission]
+
+    def list(self, request):
+        # Only ``/captures/thumbnails/<pk>/?label=...`` is defined; listing has no
+        # meaning here (which capture's thumbnails?), so 405 rather than a fake 404.
+        raise api_exceptions.MethodNotAllowed(
+            method="GET", detail="Listing thumbnails is not supported; request a single capture's thumbnail by pk."
+        )
+
+    def retrieve(self, request, pk=None):
+        _sizes = settings.THUMBNAILS["SIZES"]
+        if not _sizes:
+            # Empty THUMBNAILS['SIZES'] is a misconfiguration — clear API error, not a 500.
+            raise api_exceptions.NotFound(detail="No thumbnail sizes are configured (settings.THUMBNAILS['SIZES']).")
+
+        label = self.request.query_params.get("label") or next(iter(_sizes))
+        size = _sizes.get(label, None)
+        if size is None:
+            raise api_exceptions.ValidationError(
+                detail=f"Invalid thumbnail size label provided: {label} not in {', '.join(_sizes.keys())}"
+            )
+        obj: SourceImage = self.get_object()
+        try:
+            thumb = obj.find_or_generate_thumbnail_for_label(label)
+        except exceptions.ObjectDoesNotExist as e:
+            raise api_exceptions.NotFound(detail=f"{e}")
+        response = redirect(default_storage.url(thumb.path))
+        # Redirects aren't browser-cached by default. max-age stays well below the
+        # presigned-URL lifetime (AWS_QUERYSTRING_EXPIRE default 3600s) so a cached
+        # redirect never points at an expired signature.
+        response["Cache-Control"] = "private, max-age=300"
+        return response
 
 
 class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):

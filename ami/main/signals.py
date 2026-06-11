@@ -1,12 +1,13 @@
 import logging
 
 from django.contrib.auth.models import Group
+from django.core.files.storage import default_storage
 from django.db import transaction
 from django.db.models.signals import m2m_changed, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from guardian.shortcuts import assign_perm
 
-from ami.main.models import Project
+from ami.main.models import Project, SourceImageThumbnail
 from ami.main.tasks import refresh_project_cached_counts
 from ami.users.roles import BasicMember, ProjectManager, create_roles_for_project
 
@@ -113,6 +114,22 @@ def delete_project_groups(sender, instance, **kwargs):
     prefix = f"{instance.pk}_"
     # Find and delete all groups that start with {project_id}_
     Group.objects.filter(name__startswith=prefix).delete()
+
+
+@receiver(pre_delete, sender=SourceImageThumbnail)
+def delete_thumbnail_storage_blob(sender, instance, **kwargs):
+    """Delete the storage blob when a thumbnail row is deleted (directly or via
+    CASCADE from its capture) — no other code path reaps it. Best-effort:
+    failures are logged, never re-raised, so the row delete always completes.
+    """
+    if not instance.path:
+        return
+    try:
+        default_storage.delete(instance.path)
+    except Exception as e:
+        logger.warning(
+            f"Could not delete storage blob {instance.path} for SourceImageThumbnail " f"id={instance.pk}: {e}"
+        )
 
 
 # ============================================================================
