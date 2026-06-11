@@ -2505,11 +2505,11 @@ class SourceImage(BaseModel):
         source_changed = (
             self.last_modified is not None and thumb is not None and thumb.last_modified < self.last_modified
         )
-        # Cached row is the warm signal — no HEAD against storage on the regen check.
-        # Orphan rows (DB row whose blob was deleted out of band) show a broken ``<img>``
-        # until something removes the row and the next request regenerates.
-        width_drifted = abs(thumb.width - size["width"]) > _THUMBNAIL_WIDTH_TOLERANCE if thumb else False
-        if not thumb or not thumb.path or width_drifted or source_changed:
+        # The cached row is the warm signal — no storage HEAD request on the regen
+        # check. Orphan rows (a DB row whose blob was deleted out of band) show a
+        # broken ``<img>`` until something removes the row and the next request
+        # regenerates.
+        if not thumb or not thumb.path or thumb.width != size["width"] or source_changed:
             img = PIL.Image.open(BytesIO(fetch_image_content(self.public_url(raise_errors=True))))
             # JPEG only supports L, RGB, CMYK. Convert anything else (RGBA, P, LA, PA, …) before
             # encoding, or PIL raises ``OSError: cannot write mode <X> as JPEG``. Uploaded PNGs
@@ -2526,10 +2526,6 @@ class SourceImage(BaseModel):
             img.thumbnail(new_size)
 
             buffer = BytesIO()
-            # ``progressive=True`` lets the browser paint a coarse preview as bytes arrive
-            # instead of waiting for the full file. ``optimize=True`` adds a Huffman pass
-            # for slightly smaller files on the cold encode path. ``quality=82`` lands above
-            # Pillow's default 75 — closer to visually-lossless on screen-sized thumbnails.
             img.save(buffer, format="JPEG", progressive=True, optimize=True, quality=82)
             contents = buffer.getvalue()
             file_size = len(contents)
@@ -2554,13 +2550,17 @@ class SourceImage(BaseModel):
             # the same race, destroyed the other racer's just-created row and storage
             # blob. Both bugs go away by replacing the delete-then-create with a single
             # atomic upsert.
-            width, height = img.size
+            # ``width`` records the *requested* spec width, not the encoder's output.
+            # PIL's aspect-preserving rounding can emit e.g. 239 for a 240 spec, and the
+            # regen gate above compares this field against the spec with strict equality —
+            # storing the encoder output makes affected rows regenerate on every request.
+            # ``height`` keeps the actual encoded value (informational, never compared).
             thumb, _created = self.thumbnails.update_or_create(
                 label=label,
                 defaults={
                     "path": thumbnail_path,
-                    "width": width,
-                    "height": height,
+                    "width": size["width"],
+                    "height": img.size[1],
                     "size": file_size,
                 },
             )

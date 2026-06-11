@@ -255,6 +255,25 @@ class TestImageThumbnailViews(TestCase):
         self.assertEqual(thumb.height, 768)
         self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
 
+    def test_thumbnail_blank_path_row_regenerates(self):
+        """A row with an empty ``path`` (failed or interrupted generation) must
+        trigger regeneration, not redirect to the storage root.
+        """
+        self.first_capture.thumbnails.create(path="", label="small", width=240, height=180, size=0)
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertTrue(thumb.path)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_redirect_is_browser_cacheable(self):
+        """The 302 must carry Cache-Control so browsers reuse the redirect across
+        page views instead of re-paying the round trip per thumbnail per view.
+        """
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Cache-Control"], "private, max-age=300")
+
     def test_thumbnail_new_with_invalid_size(self):
         response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/?label=typo")
         self.assertEqual(response.status_code, 400)
@@ -319,10 +338,11 @@ class TestImageThumbnailViews(TestCase):
         delete-then-recreate (which under concurrent gen destroyed the other
         racer's row and storage blob).
 
-        Triggers the regen path by bumping the source image's ``last_modified``
-        forward so the freshness check fires, then re-requests. Asserts the
-        row's primary key is preserved (proving ``update_or_create`` UPDATE
-        was used, not a fresh INSERT after a DELETE).
+        Triggers the regen path by making the cached row's width stale (as if
+        ``settings.THUMBNAILS`` changed since generation), then re-requesting.
+        Asserts the row's primary key is preserved (proving
+        ``update_or_create`` UPDATE was used, not a fresh INSERT after a
+        DELETE).
         """
         # First request populates the cache.
         response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
@@ -330,12 +350,8 @@ class TestImageThumbnailViews(TestCase):
         original_thumb = self.first_capture.thumbnails.get(label="small")
         original_pk = original_thumb.pk
 
-        # Bump the source mtime so the freshness check (``thumb.last_modified <
-        # self.last_modified``) flips to True and forces the regen branch. The
-        # warm-path code no longer HEADs the storage blob, so a missing-blob test
-        # would not trigger regen.
-        self.first_capture.last_modified = timezone.now() + datetime.timedelta(minutes=1)
-        self.first_capture.save()
+        # Make the cached row stale so the regen branch fires.
+        self.first_capture.thumbnails.filter(label="small").update(width=9999)
 
         # Regen must reuse the same row and not raise on the (source_image, label)
         # UniqueConstraint.
@@ -426,6 +442,36 @@ class TestImageThumbnailViews(TestCase):
         self.assertEqual(thumb.width, 300)
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_row_stores_spec_width_not_encoder_output(self):
+        """``PIL.Image.thumbnail()`` preserves aspect ratio and can emit a width
+        1-2px below the requested spec (e.g. 239 for a 240 spec). The row must
+        record the spec width — it identifies which configured size the row
+        satisfies — otherwise the strict-equality regen gate treats the row as
+        stale and regenerates on every request. See #1331.
+        """
+        from unittest import mock
+
+        original_thumbnail = Image.Image.thumbnail
+
+        def rounding_thumbnail(img, size, *args, **kwargs):
+            # Simulate Pillow's aspect-preserving rounding landing 1px under spec.
+            original_thumbnail(img, (size[0] - 1, size[1]), *args, **kwargs)
+
+        with mock.patch.object(Image.Image, "thumbnail", rounding_thumbnail):
+            response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        spec_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
+        self.assertEqual(thumb.width, spec_width)
+        first_gen_marker = thumb.last_modified
+
+        # Second request must reuse the cached row. A regen force-bumps
+        # ``last_modified``, so an unchanged value proves the gate held.
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        refreshed = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(refreshed.last_modified, first_gen_marker)
 
     def test_captures_response_includes_thumbnail_urls(self):
         response = self.client.get(f"/api/v2/captures/{self.first_capture.pk}/?project_id={self.project.pk}")
