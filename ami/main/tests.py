@@ -598,17 +598,15 @@ class TestImageThumbnailViews(TestCase):
             response.json()["thumbnails"]["small"], f"{self.base_url}{self.first_capture.pk}/?label=small"
         )
 
-    def test_serializer_treats_pil_rounded_width_as_warm(self):
-        """PIL.Image.thumbnail() preserves aspect ratio by shrinking, so a row
-        whose stored width is 1 or 2 pixels below the configured spec (typical
-        PIL output) must still be treated as warm. Without the tolerance every
-        cold hit on a small thumb would regen-loop forever and the warm path
-        would never fire in production.
+    def test_serializer_treats_legacy_encoder_width_row_as_stale(self):
+        """Rows written before the spec-width fix stored PIL's rounded output
+        (e.g. 239 for a 240 spec). The warm-check compares against the spec
+        with strict equality, so such rows must fall back to the route URL —
+        the redirect viewset regenerates them once and they store the spec
+        width from then on.
         """
-        from django.core.files.storage import default_storage
-
         configured_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
-        # Stored width 1px below spec — what PIL actually produces for many sources.
+        # Stored width 1px below spec — what the generator used to record.
         self.first_capture.thumbnails.create(
             path="thumbnails/pilround/abc.jpg",
             label="small",
@@ -618,8 +616,10 @@ class TestImageThumbnailViews(TestCase):
         )
         response = self.client.get(f"/api/v2/captures/{self.first_capture.pk}/?project_id={self.project.pk}")
         self.assertEqual(response.status_code, 200)
-        # Within tolerance → emit storage URL, not route URL.
-        self.assertEqual(response.json()["thumbnails"]["small"], default_storage.url("thumbnails/pilround/abc.jpg"))
+        # Legacy width → route URL so the next browser fetch self-heals the row.
+        self.assertURLEqual(
+            response.json()["thumbnails"]["small"], f"{self.base_url}{self.first_capture.pk}/?label=small"
+        )
 
     def test_serializer_falls_back_to_route_url_when_source_changed(self):
         """If the source image was re-uploaded after the cached row was

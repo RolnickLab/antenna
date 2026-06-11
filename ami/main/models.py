@@ -2130,15 +2130,6 @@ class SourceImageManager(models.Manager.from_queryset(SourceImageQuerySet)):
     pass
 
 
-# PIL.Image.thumbnail() preserves aspect ratio by shrinking, so the output
-# width can be off by a pixel or two from the configured spec (e.g. spec=240,
-# actual=239). Treat rows within this tolerance as matching the current spec
-# in both the warm-path emitter (thumbnail_urls) and the regen gate
-# (find_or_generate_thumbnail_for_label). Without this every cold hit on a
-# small thumb would regen-loop forever.
-_THUMBNAIL_WIDTH_TOLERANCE = 2
-
-
 @final
 class SourceImage(BaseModel):
     """A single image captured during a monitoring session"""
@@ -2469,11 +2460,11 @@ class SourceImage(BaseModel):
         out: dict[str, str] = {}
         for label, spec in sizes.items():
             thumb = thumbs.get(label)
-            # PIL.Image.thumbnail preserves aspect ratio and may round the output
-            # dimensions down by a pixel or two vs the spec (e.g. spec=240 → actual
-            # 239). Use a small tolerance so existing rows aren't treated as stale
-            # by every warm-check; the same tolerance is applied in the regen gate.
-            width_match = thumb is not None and abs(thumb.width - spec["width"]) <= _THUMBNAIL_WIDTH_TOLERANCE
+            # ``thumb.width`` records the requested spec width (see the generator),
+            # so strict equality is the staleness check. Legacy rows that stored the
+            # encoder output (e.g. 239 for a 240 spec) read as stale here and fall
+            # back to the route URL, which regenerates them once.
+            width_match = thumb is not None and thumb.width == spec["width"]
             warm = thumb is not None and thumb.path and width_match and not thumb.is_source_changed
             if warm:
                 out[label] = default_storage.url(thumb.path)
