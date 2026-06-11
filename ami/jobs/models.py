@@ -414,12 +414,20 @@ class JobLogHandler(logging.Handler):
         # Append-only insert on the JobLog child table. Unlike the legacy
         # jobs_job.logs JSONB update path, this does not contend with
         # _update_job_progress on the parent row.
+        #
+        # Wrap in a savepoint so a failed INSERT (schema drift, FK violation,
+        # DB hiccup) rolls back only this statement instead of poisoning the
+        # surrounding ATOMIC_REQUESTS transaction. Without the savepoint,
+        # every subsequent query in the same request raises
+        # TransactionManagementError and the view returns 500 — even though
+        # the except below swallows the original error.
         try:
-            JobLog.objects.create(
-                job_id=self.job.pk,
-                level=record.levelname,
-                message=self.format(record),
-            )
+            with transaction.atomic(savepoint=True):
+                JobLog.objects.create(
+                    job_id=self.job.pk,
+                    level=record.levelname,
+                    message=self.format(record),
+                )
         except Exception as e:
             logger.error(f"Failed to save log for job #{self.job.pk}: {e}")
 
