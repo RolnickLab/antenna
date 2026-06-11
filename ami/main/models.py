@@ -2412,22 +2412,17 @@ class SourceImage(BaseModel):
         size = settings.THUMBNAILS["SIZES"].get(label)
         prefix = settings.THUMBNAILS["STORAGE_PREFIX"]
 
-        # ``self.last_modified`` tracks the source bytes' mtime (S3 LastModified on the
-        # sync path; upload time on the upload path). It can still be None on legacy rows
-        # synced before upload backfill — treat that as "no signal of source change, trust
-        # the cached thumb" rather than raising ``TypeError`` on ``datetime < None``.
+        # ``self.last_modified`` can be None on legacy rows synced before upload
+        # backfill — treat None as "no signal of change", not an error.
         source_changed = (
             self.last_modified is not None and thumb is not None and thumb.last_modified < self.last_modified
         )
-        # The cached row is the warm signal — no storage HEAD request on the regen
-        # check. Orphan rows (a DB row whose blob was deleted out of band) show a
-        # broken ``<img>`` until something removes the row and the next request
-        # regenerates.
+        # The row is trusted without a storage existence check; an orphan row (blob
+        # deleted out of band) shows a broken image until the row is removed.
         if not thumb or not thumb.path or thumb.width != size["width"] or source_changed:
             img = PIL.Image.open(BytesIO(fetch_image_content(self.public_url(raise_errors=True))))
-            # JPEG only supports L, RGB, CMYK. Convert anything else (RGBA, P, LA, PA, …) before
-            # encoding, or PIL raises ``OSError: cannot write mode <X> as JPEG``. Uploaded PNGs
-            # commonly hit this.
+            # JPEG only supports L, RGB, CMYK — convert other modes (e.g. RGBA PNGs)
+            # or PIL raises ``OSError: cannot write mode <X> as JPEG``.
             if img.mode not in ("L", "RGB", "CMYK"):
                 img = img.convert("RGB")
             # Make the thumbnail
@@ -2444,31 +2439,19 @@ class SourceImage(BaseModel):
             contents = buffer.getvalue()
             file_size = len(contents)
 
-            # Snapshot the previously cached blob path so we can clean it up post-update.
-            # Done before writing the new blob so the cleanup at the end reflects the
-            # row's prior state, not its post-update state.
+            # Snapshot the prior blob path before the upsert, for cleanup below.
             prior_path = self.thumbnails.filter(label=label).values_list("path", flat=True).first()
 
-            # Write to storage. Backends that overwrite an existing key (boto3 with
-            # AWS_S3_FILE_OVERWRITE=True) return the same key; backends that suffix on
-            # collision (FileSystemStorage default) return a new path. Either way we
-            # record whatever the backend returned.
+            # Storage backends may overwrite the key in place or suffix on collision —
+            # record whichever path the backend returns.
             buffer.seek(0)
             thumbnail_key = f"{prefix}capture_{self.pk}/{label}.jpg"
             thumbnail_path = default_storage.save(thumbnail_key, buffer)
 
-            # ``update_or_create`` handles the (source_image, label) UniqueConstraint
-            # under concurrent gen: if a parallel request just inserted the row, Django
-            # catches the IntegrityError on INSERT and falls back to a UPDATE. The
-            # previous code did a pre-save ``filter(...).delete()`` loop that, under
-            # the same race, destroyed the other racer's just-created row and storage
-            # blob. Both bugs go away by replacing the delete-then-create with a single
-            # atomic upsert.
-            # ``width`` records the *requested* spec width, not the encoder's output.
-            # PIL's aspect-preserving rounding can emit e.g. 239 for a 240 spec, and the
-            # regen gate above compares this field against the spec with strict equality —
-            # storing the encoder output makes affected rows regenerate on every request.
-            # ``height`` keeps the actual encoded value (informational, never compared).
+            # Atomic upsert: concurrent generation races on the (source_image, label)
+            # unique constraint. ``width`` stores the requested spec width, not the
+            # encoder output — PIL's rounding (e.g. 239 for a 240 spec) would otherwise
+            # fail the strict regen gate above on every request. ``height`` is informational.
             thumb, _created = self.thumbnails.update_or_create(
                 label=label,
                 defaults={
@@ -2478,20 +2461,13 @@ class SourceImage(BaseModel):
                     "size": file_size,
                 },
             )
-            # ``SourceImageThumbnail.last_modified`` is declared ``auto_now_add=True``
-            # which fires only on INSERT; on UPDATE, Django's pre_save callback leaves
-            # the existing value in place. Without this force-bump the freshness check
-            # ``thumb.last_modified < self.last_modified`` would stay True after every
-            # regen and trigger regen on every subsequent request. Use ``QuerySet.update``
-            # to bypass the field's auto_now_add semantic on UPDATE.
+            # ``last_modified`` is ``auto_now_add`` (set on INSERT only) — force-bump it
+            # on UPDATE or the freshness check re-triggers regen on every request.
             if not _created:
                 type(thumb).objects.filter(pk=thumb.pk).update(last_modified=timezone.now())
                 thumb.refresh_from_db(fields=["last_modified"])
 
-            # Best-effort cleanup of the file the row pointed at before this regen.
-            # Skipped when the backend overwrote in place (prior_path == thumbnail_path)
-            # or when there was no prior row. A failure here only leaves an orphan blob;
-            # it must not break the response.
+            # Best-effort cleanup of the replaced blob; failure must not break the response.
             if prior_path and prior_path != thumbnail_path:
                 try:
                     default_storage.delete(prior_path)

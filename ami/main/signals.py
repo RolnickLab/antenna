@@ -118,16 +118,9 @@ def delete_project_groups(sender, instance, **kwargs):
 
 @receiver(pre_delete, sender=SourceImageThumbnail)
 def delete_thumbnail_storage_blob(sender, instance, **kwargs):
-    """Best-effort cleanup of the storage blob backing a SourceImageThumbnail row.
-
-    Fires on both explicit row deletes and CASCADE deletes from the parent
-    SourceImage. A thumbnail row is a pure derivative of source + width — the
-    blob is dead weight in storage once the row is gone, and there is no other
-    code path that reaps it.
-
-    Failures here are logged but never re-raised: the row delete must still
-    complete (callers that delete a SourceImage do not want a transient storage
-    error to leave them with a half-deleted graph).
+    """Delete the storage blob when a thumbnail row is deleted (directly or via
+    CASCADE from its capture) — no other code path reaps it. Best-effort:
+    failures are logged, never re-raised, so the row delete always completes.
     """
     if not instance.path:
         return
