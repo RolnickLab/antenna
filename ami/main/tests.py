@@ -319,25 +319,20 @@ class TestImageThumbnailViews(TestCase):
         delete-then-recreate (which under concurrent gen destroyed the other
         racer's row and storage blob).
 
-        Triggers the regen path by deleting the storage blob out from under the
-        cached row, then re-requesting. Asserts the row's primary key is
-        preserved (proving ``update_or_create`` UPDATE was used, not a fresh
-        INSERT after a DELETE).
+        Triggers the regen path by making the cached row's width stale (as if
+        ``settings.THUMBNAILS`` changed since generation), then re-requesting.
+        Asserts the row's primary key is preserved (proving
+        ``update_or_create`` UPDATE was used, not a fresh INSERT after a
+        DELETE).
         """
-        from django.core.files.storage import default_storage
-
         # First request populates the cache.
         response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
         self.assertEqual(response.status_code, 302)
         original_thumb = self.first_capture.thumbnails.get(label="small")
         original_pk = original_thumb.pk
-        original_path = original_thumb.path
 
-        # Storage blob disappears (could happen via TTL eviction, manual cleanup,
-        # or a backing-store outage). This forces the regen branch via
-        # ``not default_storage.exists(thumb.path)``.
-        default_storage.delete(original_path)
-        self.assertFalse(default_storage.exists(original_path))
+        # Make the cached row stale so the regen branch fires.
+        self.first_capture.thumbnails.filter(label="small").update(width=9999)
 
         # Regen must reuse the same row and not raise on the (source_image, label)
         # UniqueConstraint.
