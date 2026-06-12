@@ -303,6 +303,21 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         _, t = t(f"TIME: Updated job {job_id} progress in PROCESS stage progress to {progress_info.percentage*100}%")
         job = Job.objects.get(pk=job_id)
         job.logger.info(f"Processing pipeline result for job {job_id}, reply_subject: {reply_subject}")
+        # Audit: warn if the worker echoed back a config that no longer matches what
+        # Antenna would send today (e.g. ProjectPipelineConfig was edited mid-job, or
+        # the worker is stale / serving an older job). Logged only — no enforcement.
+        if pipeline_result and pipeline_result.config is not None and job.pipeline:
+            try:
+                echoed_config = dict(pipeline_result.config)
+                current_config = dict(job.pipeline.get_config(project_id=job.project.pk))
+                if echoed_config != current_config:
+                    job.logger.warning(
+                        f"Pipeline config drift on job {job_id}: worker used {echoed_config}, "
+                        f"current Antenna config is {current_config}"
+                    )
+            except Exception as e:
+                # Audit must not break result processing.
+                job.logger.warning(f"Pipeline config audit failed for job {job_id}: {e}")
         job.logger.info(
             f" Job {job_id} progress: {progress_info.processed}/{progress_info.total} images processed "
             f"({progress_info.percentage*100}%), {progress_info.remaining} remaining, {progress_info.failed} failed, "
