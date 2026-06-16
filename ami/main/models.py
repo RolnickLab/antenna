@@ -2429,20 +2429,19 @@ class SourceImage(BaseModel):
         Warm (cached row valid for the spec) → direct storage URL. Cold/stale →
         route URL into the thumbnail viewset, which (re)generates lazily.
 
-        Requires prefetched ``thumbnails`` (use :meth:`SourceImageQuerySet.with_thumbnails`);
-        the guard below turns a forgotten prefetch into a loud error instead of a
-        silent per-row N+1.
+        The warm path needs prefetched ``thumbnails``
+        (:meth:`SourceImageQuerySet.with_thumbnails`). Without the prefetch — a
+        freshly created instance in a write response, or a caller that skipped
+        ``with_thumbnails`` — every label falls back to the route URL without
+        querying. This never lazily loads per object (which would be an N+1 in
+        list contexts); list endpoints must apply ``with_thumbnails`` to get the
+        warm storage URLs, and the list query-count tests pin that.
         """
-        # TODO: drop this guard once django-zen-queries enforces prefetch globally.
-        if "thumbnails" not in getattr(self, "_prefetched_objects_cache", {}):
-            raise RuntimeError(
-                "thumbnail_urls() requires prefetched thumbnails — call via SourceImageQuerySet.with_thumbnails()."
-            )
-
         # Local import avoids a models ↔ serializers cycle at module load time.
         from ami.base.serializers import reverse_with_params
 
-        thumbs: dict[str, "SourceImageThumbnail"] = {t.label: t for t in self.thumbnails.all()}
+        prefetched = "thumbnails" in getattr(self, "_prefetched_objects_cache", {})
+        thumbs: dict[str, "SourceImageThumbnail"] = {t.label: t for t in self.thumbnails.all()} if prefetched else {}
 
         out: dict[str, str] = {}
         for label, spec in settings.THUMBNAILS["SIZES"].items():

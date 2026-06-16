@@ -644,12 +644,23 @@ class TestImageThumbnailViews(TestCase):
         self.assertIn(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/", urls["medium"])
         self.assertIn("label=medium", urls["medium"])
 
-    def test_thumbnail_urls_requires_prefetch(self):
-        """``thumbnail_urls`` fails loud without prefetched thumbnails rather than
-        silently firing a per-row SELECT (an N+1 in list contexts)."""
+    def test_thumbnail_urls_without_prefetch_emits_route_urls_without_querying(self):
+        """Without prefetched thumbnails, ``thumbnail_urls`` must not fire a
+        per-object SELECT (an N+1 in list contexts) — it falls back to route URLs.
+        A cached row exists here, but the un-prefetched call must ignore it rather
+        than query for it."""
+        configured_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
+        self.first_capture.thumbnails.create(
+            path="thumbnails/cached/noprefetch.jpg", label="small", width=configured_width, height=180, size=42
+        )
+
         capture = SourceImage.objects.get(pk=self.first_capture.pk)
-        with self.assertRaises(RuntimeError):
-            capture.thumbnail_urls(request=None)
+        with self.assertNumQueries(0):
+            urls = capture.thumbnail_urls(request=None)
+
+        # Cached row ignored (not prefetched) → route URL, not the storage URL.
+        self.assertIn(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/", urls["small"])
+        self.assertIn("label=small", urls["small"])
 
 
 class TestImageGrouping(TestCase):
