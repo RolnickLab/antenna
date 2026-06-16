@@ -587,3 +587,7 @@ DEFAULT_EXCLUDE_TAXA = env.list("DEFAULT_EXCLUDE_TAXA", default=[])  # type: ign
 # preserves existing behavior; deployments seeing contention can set to False
 # until the append-only ``JobLog`` child table (PR #1259) is in place.
 JOB_LOG_PERSIST_ENABLED = env.bool("JOB_LOG_PERSIST_ENABLED", default=True)  # type: ignore[no-untyped-call]
+
+
+# Sizes for Source Image Thumbnails
+THUMBNAILS = {"STORAGE_PREFIX": "thumbnails/", "SIZES": {"small": {"width": 240}, "medium": {"width": 1024}}}

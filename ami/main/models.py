@@ -44,7 +44,7 @@ from ami.main.models_future.filters import (
 from ami.main.models_future.projects import ProjectSettingsMixin
 from ami.ml.schemas import BoundingBox
 from ami.users.models import User
-from ami.utils.media import calculate_file_checksum, extract_timestamp
+from ami.utils.media import calculate_file_checksum, extract_timestamp, fetch_image_content
 from ami.utils.requests import get_apply_default_filters_flag, get_default_classification_threshold
 from ami.utils.schemas import OrderedEnum
 
@@ -1965,6 +1965,9 @@ def create_source_image_from_upload(
         checksum_algorithm=checksum_algorithm,
         width=width,
         height=height,
+        # The sync path stores the object's LastModified header here; set it on
+        # upload too so source-vs-derivative freshness checks have a value.
+        last_modified=timezone.now(),
         test_image=True,
         uploaded_by=request.user if request else None,
     )
@@ -2103,10 +2106,31 @@ class SourceImage(BaseModel):
     timestamp = models.DateTimeField(null=True, blank=True, db_index=True)
     width = models.IntegerField(null=True, blank=True)
     height = models.IntegerField(null=True, blank=True)
-    size = models.BigIntegerField(null=True, blank=True)
-    last_modified = models.DateTimeField(null=True, blank=True)
-    checksum = models.CharField(max_length=255, blank=True, null=True)
-    checksum_algorithm = models.CharField(max_length=255, blank=True, null=True)
+    # File metadata read from the source file in storage, populated by the sync
+    # flow and upload handler. Writable in the API for manual SourceImage
+    # creation; read-only in the admin.
+    size = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="Size of the image file in bytes, read from the source file in image storage.",
+    )
+    last_modified = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the image file was last modified, read from the source file in image storage.",
+    )
+    checksum = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Checksum of the image file, read from the source file in image storage.",
+    )
+    checksum_algorithm = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Algorithm used for the checksum (e.g. MD5, SHA256).",
+    )
     uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     test_image = models.BooleanField(default=False)
 
@@ -2375,6 +2399,77 @@ class SourceImage(BaseModel):
             custom_perms.add(Project.Permissions.RUN_SINGLE_IMAGE_JOB)
         return list(custom_perms)
 
+    def find_or_generate_thumbnail_for_label(self, label):
+        try:
+            thumb = self.thumbnails.get(label=label)
+        except SourceImageThumbnail.DoesNotExist:
+            thumb = None
+        size = settings.THUMBNAILS["SIZES"].get(label)
+        prefix = settings.THUMBNAILS["STORAGE_PREFIX"]
+
+        # ``self.last_modified`` can be None on legacy rows synced before upload
+        # backfill — treat None as "no signal of change", not an error.
+        source_changed = (
+            self.last_modified is not None and thumb is not None and thumb.last_modified < self.last_modified
+        )
+        # The row is trusted without a storage existence check; an orphan row (blob
+        # deleted out of band) shows a broken image until the row is removed.
+        if not thumb or not thumb.path or thumb.width != size["width"] or source_changed:
+            img = PIL.Image.open(BytesIO(fetch_image_content(self.public_url(raise_errors=True))))
+            # JPEG only supports L, RGB, CMYK — convert other modes (e.g. RGBA PNGs)
+            # or PIL raises ``OSError: cannot write mode <X> as JPEG``.
+            if img.mode not in ("L", "RGB", "CMYK"):
+                img = img.convert("RGB")
+            # Make the thumbnail
+            orig_width, orig_height = img.size
+            width = size["width"]
+            height = size.get("height", None)
+            if not height:
+                height = int(orig_height * (width / float(orig_width)))
+            new_size = (width, height)
+            img.thumbnail(new_size)
+
+            buffer = BytesIO()
+            img.save(buffer, format="JPEG", progressive=True, optimize=True, quality=82)
+            contents = buffer.getvalue()
+            file_size = len(contents)
+
+            # Snapshot the prior blob path before the upsert, for cleanup below.
+            prior_path = self.thumbnails.filter(label=label).values_list("path", flat=True).first()
+
+            # Storage backends may overwrite the key in place or suffix on collision —
+            # record whichever path the backend returns.
+            buffer.seek(0)
+            thumbnail_key = f"{prefix}capture_{self.pk}/{label}.jpg"
+            thumbnail_path = default_storage.save(thumbnail_key, buffer)
+
+            # Atomic upsert: concurrent generation races on the (source_image, label)
+            # unique constraint. ``width`` stores the requested spec width, not the
+            # encoder output — PIL's rounding (e.g. 239 for a 240 spec) would otherwise
+            # fail the strict regen gate above on every request. ``height`` is informational.
+            thumb, _created = self.thumbnails.update_or_create(
+                label=label,
+                defaults={
+                    "path": thumbnail_path,
+                    "width": size["width"],
+                    "height": img.size[1],
+                    "size": file_size,
+                },
+            )
+            # ``last_modified`` is ``auto_now_add`` (set on INSERT only) — force-bump it
+            # on UPDATE or the freshness check re-triggers regen on every request.
+            if not _created:
+                type(thumb).objects.filter(pk=thumb.pk).update(last_modified=timezone.now())
+                thumb.refresh_from_db(fields=["last_modified"])
+
+            # Best-effort cleanup of the replaced blob; failure must not break the response.
+            if prior_path and prior_path != thumbnail_path:
+                try:
+                    default_storage.delete(prior_path)
+                except Exception as e:
+                    logger.warning(f"Could not delete prior thumbnail blob at {prior_path}: {e}")
+        return thumb
+
     class Meta:
         ordering = ("deployment", "event", "timestamp")
 
@@ -2562,6 +2657,34 @@ def sample_captures_by_nth(
     for event in events:
         qs = qs.filter(event=event).order_by("timestamp")
         yield from qs[::nth]
+
+
+@final
+class SourceImageThumbnail(BaseModel):
+    """A thumbnail cache of a SourceImage"""
+
+    path = models.CharField(max_length=255, blank=True)
+    label = models.CharField(max_length=255)
+    width = models.IntegerField(null=True, blank=True)
+    height = models.IntegerField(null=True, blank=True)
+    size = models.BigIntegerField(null=True, blank=True)
+    last_modified = models.DateTimeField(null=True, blank=True, auto_now_add=True)
+
+    # CASCADE: thumbnails are pure derivatives of their source. SET_NULL leaves
+    # orphan rows + dangling storage blobs forever and nothing else reaps them.
+    # The pre_delete signal in ``ami.main.signals`` cleans the storage blob.
+    source_image = models.ForeignKey(SourceImage, on_delete=models.CASCADE, related_name="thumbnails")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source_image", "label"],
+                name="unique_source_image_thumbnail_label",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["source_image", "label"]),
+        ]
 
 
 # @final

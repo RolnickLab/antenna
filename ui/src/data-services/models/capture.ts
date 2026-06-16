@@ -167,6 +167,20 @@ export class Capture {
     return this._capture.event?.name ?? ''
   }
 
+  get thumbnail_small(): string {
+    if (this._capture.thumbnails && this._capture.thumbnails.small) {
+      return this._capture.thumbnails.small
+    }
+    return this._capture.url
+  }
+
+  get thumbnail_medium(): string {
+    if (this._capture.thumbnails && this._capture.thumbnails.medium) {
+      return this._capture.thumbnails.medium
+    }
+    return this._capture.url
+  }
+
   get src(): string {
     return this._capture.url
   }
