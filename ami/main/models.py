@@ -1309,7 +1309,8 @@ class Event(BaseModel):
         # Ideally this would be an annotated field, rather than an additional query.
         # raise NotImplementedError("This is added an annotated field, it should not be called directly.")
         # return SourceImage.objects.filter(event=self).order_by("timestamp").first().with_detections()
-        return SourceImage.objects.filter(event=self).order_by("timestamp").first()
+        # with_thumbnails() satisfies the thumbnail_urls prefetch contract for the nested serializer.
+        return SourceImage.objects.filter(event=self).order_by("timestamp").with_thumbnails().first()
 
     def summary_data(self):
         """
@@ -2093,29 +2094,10 @@ class SourceImageQuerySet(BaseQuerySet):
         return self.annotate(was_processed=processed_exists)
 
     def with_thumbnails(self):
-        """Prefetch ``thumbnails`` with an ``is_source_changed`` annotation,
-        required by :meth:`SourceImage.thumbnail_urls` — without it every row
-        fires its own SELECT on ``main_sourceimagethumbnail``.
-
-        ``NULL < x`` is ``NULL`` in SQL; the ``CASE`` default maps it to
-        ``False`` (no signal of change), matching the generator's predicate.
+        """Prefetch ``thumbnails`` so :meth:`SourceImage.thumbnail_urls` decides
+        warm/cold in memory instead of firing a SELECT per row.
         """
-        # ``SourceImageThumbnail`` is defined later in this module; a top-level
-        # import would be circular.
-        from django.apps import apps
-
-        thumbnail_model = apps.get_model("main", "SourceImageThumbnail")
-        thumbnails_qs = thumbnail_model.objects.annotate(
-            is_source_changed=models.Case(
-                models.When(
-                    last_modified__lt=models.F("source_image__last_modified"),
-                    then=models.Value(True),
-                ),
-                default=models.Value(False),
-                output_field=models.BooleanField(),
-            )
-        )
-        return self.prefetch_related(models.Prefetch("thumbnails", queryset=thumbnails_qs))
+        return self.prefetch_related("thumbnails")
 
 
 class SourceImageManager(models.Manager.from_queryset(SourceImageQuerySet)):
@@ -2424,31 +2406,48 @@ class SourceImage(BaseModel):
             custom_perms.add(Project.Permissions.RUN_SINGLE_IMAGE_JOB)
         return list(custom_perms)
 
+    def thumbnail_is_valid(self, spec: dict, thumb: "SourceImageThumbnail | None") -> bool:
+        """Whether ``thumb`` satisfies ``spec`` and need not be regenerated.
+
+        ``thumb.width`` stores the requested spec width (see the generator), so the
+        comparison is strict equality; legacy encoder-width rows read invalid and
+        self-heal on next generation. A None ``last_modified`` on either side means
+        "no signal of change" (matches ``NULL < x`` → ``False`` in SQL).
+        """
+        if thumb is None or not thumb.path or thumb.width != spec["width"]:
+            return False
+        source_changed = (
+            self.last_modified is not None
+            and thumb.last_modified is not None
+            and thumb.last_modified < self.last_modified
+        )
+        return not source_changed
+
     def thumbnail_urls(self, request: Request | None = None) -> dict[str, str]:
         """Per-label ``{label: url}`` for this capture's thumbnails.
 
-        Warm (cached row at the spec width, source unchanged) → direct storage
-        URL. Cold/stale → route URL into the thumbnail viewset, which
-        (re)generates lazily.
+        Warm (cached row valid for the spec) → direct storage URL. Cold/stale →
+        route URL into the thumbnail viewset, which (re)generates lazily.
 
-        Callers must use :meth:`SourceImageQuerySet.with_thumbnails`: it
-        prevents per-row SELECTs and provides the ``is_source_changed``
-        annotation this method requires (``AttributeError`` without it).
+        Requires prefetched ``thumbnails`` (use :meth:`SourceImageQuerySet.with_thumbnails`);
+        the guard below turns a forgotten prefetch into a loud error instead of a
+        silent per-row N+1.
         """
+        # TODO: drop this guard once django-zen-queries enforces prefetch globally.
+        if "thumbnails" not in getattr(self, "_prefetched_objects_cache", {}):
+            raise RuntimeError(
+                "thumbnail_urls() requires prefetched thumbnails — call via SourceImageQuerySet.with_thumbnails()."
+            )
+
         # Local import avoids a models ↔ serializers cycle at module load time.
         from ami.base.serializers import reverse_with_params
 
-        sizes = settings.THUMBNAILS["SIZES"]
         thumbs: dict[str, "SourceImageThumbnail"] = {t.label: t for t in self.thumbnails.all()}
 
         out: dict[str, str] = {}
-        for label, spec in sizes.items():
+        for label, spec in settings.THUMBNAILS["SIZES"].items():
             thumb = thumbs.get(label)
-            # ``thumb.width`` stores the requested spec width (see the generator), so
-            # strict equality works; legacy encoder-width rows read stale and self-heal.
-            width_match = thumb is not None and thumb.width == spec["width"]
-            warm = thumb is not None and thumb.path and width_match and not thumb.is_source_changed
-            if warm:
+            if self.thumbnail_is_valid(spec, thumb):
                 out[label] = default_storage.url(thumb.path)
             else:
                 # Qualified ``api:`` namespace so this also resolves when ``request``
@@ -2469,14 +2468,9 @@ class SourceImage(BaseModel):
         size = settings.THUMBNAILS["SIZES"].get(label)
         prefix = settings.THUMBNAILS["STORAGE_PREFIX"]
 
-        # ``self.last_modified`` can be None on legacy rows synced before upload
-        # backfill — treat None as "no signal of change", not an error.
-        source_changed = (
-            self.last_modified is not None and thumb is not None and thumb.last_modified < self.last_modified
-        )
         # The row is trusted without a storage existence check; an orphan row (blob
         # deleted out of band) shows a broken image until the row is removed.
-        if not thumb or not thumb.path or thumb.width != size["width"] or source_changed:
+        if not self.thumbnail_is_valid(size, thumb):
             img = PIL.Image.open(BytesIO(fetch_image_content(self.public_url(raise_errors=True))))
             # JPEG only supports L, RGB, CMYK — convert other modes (e.g. RGBA PNGs)
             # or PIL raises ``OSError: cannot write mode <X> as JPEG``.

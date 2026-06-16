@@ -633,7 +633,7 @@ class TestImageThumbnailViews(TestCase):
         )
 
         # Re-fetch through ``with_thumbnails()`` to satisfy the prefetch contract
-        # (the ``is_source_changed`` annotation comes from there).
+        # (thumbnail_urls raises without prefetched thumbnails).
         capture = SourceImage.objects.with_thumbnails().get(pk=self.first_capture.pk)
         urls = capture.thumbnail_urls(request=None)
 
@@ -643,6 +643,13 @@ class TestImageThumbnailViews(TestCase):
         # the URL is path-only (no scheme/host) — matches DRF's reverse() contract.
         self.assertIn(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/", urls["medium"])
         self.assertIn("label=medium", urls["medium"])
+
+    def test_thumbnail_urls_requires_prefetch(self):
+        """``thumbnail_urls`` fails loud without prefetched thumbnails rather than
+        silently firing a per-row SELECT (an N+1 in list contexts)."""
+        capture = SourceImage.objects.get(pk=self.first_capture.pk)
+        with self.assertRaises(RuntimeError):
+            capture.thumbnail_urls(request=None)
 
 
 class TestImageGrouping(TestCase):
