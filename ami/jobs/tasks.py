@@ -632,10 +632,9 @@ def _update_job_progress(
             progress=progress_percentage,
             **state_params,
         )
-        if job.progress.is_complete():
-            job.status = complete_state
+        became_complete = job.progress.is_complete()
+        if became_complete:
             job.progress.summary.status = complete_state
-            job.finished_at = datetime.datetime.now()  # Use naive datetime in local time
         job.logger.info(f"Updated job {job_id} progress in stage '{stage}' to {progress_percentage*100}%")
         # Narrow the write to the fields we actually mutated. Without this, a full
         # save() would overwrite `logs` and any other field on the instance
@@ -644,7 +643,33 @@ def _update_job_progress(
         # JobLogHandler) could be clobbered by a stale read-modify-write.
         # `updated_at` is listed explicitly because Django skips `auto_now` bumps
         # when `update_fields` is provided. See PR #1261 review feedback.
-        job.save(update_fields=["progress", "status", "finished_at", "updated_at"])
+        #
+        # NOTE: the overall `status` and `finished_at` columns are intentionally
+        # NOT written here. A blob-style `save(update_fields=[..., "status", ...])`
+        # writes whatever `status` this transaction read at the top of the block,
+        # so a slower/stale worker can regress an already-terminal status (set by a
+        # faster worker, the stale-job reaper, or a cancel) back to STARTED — which
+        # also makes the job claimable again via `/next`, starving newer work. The
+        # terminal transition is performed separately below as a guarded, atomic
+        # UPDATE. See issue #1337.
+        job.save(update_fields=["progress", "updated_at"])
+        if became_complete:
+            # Conditional terminal transition: flip to the terminal state only from
+            # a pre-terminal status, as a single statement-scope UPDATE. This cannot
+            # be clobbered by a slower worker's stale read-modify-write, and — unlike
+            # the `select_for_update` removed in #1261 — it holds no
+            # transaction-length row lock, so it does not reintroduce that
+            # contention. A job a concurrent worker, the reaper, or a cancel already
+            # moved to a terminal or CANCELING state is left untouched (we do not
+            # resurrect a revoked/cancelled job into SUCCESS). See issue #1337.
+            now = datetime.datetime.now()  # Use naive datetime in local time
+            transitioned = Job.objects.filter(
+                pk=job_id,
+                status__in=[JobState.CREATED, JobState.PENDING, JobState.STARTED, JobState.RETRY],
+            ).update(status=complete_state, finished_at=now)
+            if transitioned:
+                job.status = complete_state
+                job.finished_at = now
         try:
             _log_job_throughput(job, stage)
         except Exception as e:

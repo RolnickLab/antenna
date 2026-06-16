@@ -16,7 +16,7 @@ from rest_framework.test import APITestCase
 
 from ami.base.serializers import reverse_with_params
 from ami.jobs.models import Job, JobDispatchMode, JobState, MLJob
-from ami.jobs.tasks import process_nats_pipeline_result
+from ami.jobs.tasks import _update_job_progress, process_nats_pipeline_result
 from ami.main.models import Detection, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Algorithm, Pipeline
 from ami.ml.models.algorithm import AlgorithmTaskType
@@ -1229,3 +1229,85 @@ class TestMarkLostImagesFailed(TransactionTestCase):
 
         job.refresh_from_db()
         self.assertEqual(job.status, JobState.SUCCESS.value)
+
+
+class TestConditionalTerminalTransition(TransactionTestCase):
+    """Regression tests for issue #1337.
+
+    `_update_job_progress` used to write the overall `job.status` as part of the
+    same `save(update_fields=[..., "status", ...])` that persisted the progress
+    blob. Because #1261 dropped the `select_for_update` that serialized these
+    writes, a slower/stale worker could regress an already-terminal status back
+    to STARTED (or overwrite a REVOKED/cancelled job with SUCCESS). A wrongly
+    non-terminal status also makes the job claimable again via `/next`, starving
+    newer work. The fix performs the terminal transition as a guarded atomic
+    UPDATE that only fires from a pre-terminal status.
+    """
+
+    def setUp(self):
+        cache.clear()
+        self.project = Project.objects.create(name="Terminal Transition Project")
+        self.pipeline = Pipeline.objects.create(name="TT Pipeline", slug="tt-pipeline")
+        self.pipeline.projects.add(self.project)
+        self.collection = SourceImageCollection.objects.create(name="TT Collection", project=self.project)
+        self.job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="Terminal Transition Job",
+            pipeline=self.pipeline,
+            source_image_collection=self.collection,
+            dispatch_mode=JobDispatchMode.ASYNC_API,
+            status=JobState.STARTED,
+        )
+
+    def tearDown(self):
+        cache.clear()
+
+    def _complete_all_stages(self):
+        """Drive an MLJob's stages (collect, process, results) to 100% SUCCESS."""
+        for stage in ("collect", "process", "results"):
+            _update_job_progress(self.job.pk, stage=stage, progress_percentage=1.0, complete_state=JobState.SUCCESS)
+
+    @patch("ami.jobs.tasks.cleanup_async_job_if_needed")
+    def test_completion_does_not_resurrect_revoked_job(self, _mock_cleanup):
+        """A completing worker must not flip a REVOKED job back to SUCCESS."""
+        # Bring the job to the brink of completion (collect + process done, but not
+        # results), so the eventual results update is the call that completes it.
+        _update_job_progress(self.job.pk, stage="collect", progress_percentage=1.0, complete_state=JobState.SUCCESS)
+        _update_job_progress(self.job.pk, stage="process", progress_percentage=1.0, complete_state=JobState.SUCCESS)
+
+        # The reaper (or a cancel) wins the race and marks the job terminal.
+        Job.objects.filter(pk=self.job.pk).update(status=JobState.REVOKED)
+
+        # A late results batch lands and computes is_complete()=True.
+        _update_job_progress(self.job.pk, stage="results", progress_percentage=1.0, complete_state=JobState.SUCCESS)
+
+        self.job.refresh_from_db()
+        # Status stays REVOKED — the guarded UPDATE only fires from a pre-terminal
+        # state, so the job is not resurrected.
+        self.assertEqual(self.job.status, JobState.REVOKED.value)
+        # The progress blob was still written, so the work is recorded as complete
+        # even though the status was (correctly) left terminal.
+        self.assertTrue(self.job.progress.is_complete())
+
+    @patch("ami.jobs.tasks.cleanup_async_job_if_needed")
+    def test_completion_sets_success_from_active_state(self, _mock_cleanup):
+        """A job still in an active state transitions to SUCCESS with finished_at set."""
+        self.assertEqual(self.job.status, JobState.STARTED.value)
+
+        self._complete_all_stages()
+
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.status, JobState.SUCCESS.value)
+        self.assertIsNotNone(self.job.finished_at)
+
+    @patch("ami.jobs.tasks.cleanup_async_job_if_needed")
+    def test_incomplete_update_never_writes_overall_status(self, _mock_cleanup):
+        """A non-terminal progress update must not touch the overall job.status."""
+        Job.objects.filter(pk=self.job.pk).update(status=JobState.REVOKED)
+
+        # A single non-completing stage update (job has other stages still at 0%).
+        _update_job_progress(self.job.pk, stage="collect", progress_percentage=0.5, complete_state=JobState.SUCCESS)
+
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.status, JobState.REVOKED.value)
