@@ -128,8 +128,8 @@ const Content = ({ session }: { session: SessionDetails }) => {
       >
         {user.loggedIn ? <Process capture={activeCapture} /> : null}
       </PageHeader>
-      <div className="grid grid-cols-1 gap-4 mt-6 md:grid-cols-[auto_1fr] md:gap-6">
-        <Box className="order-last p-2 bg-background rounded-lg md:order-first md:p-4 md:rounded-xl">
+      <div className="grid grid-cols-1 gap-4 mt-6 xl:grid-cols-[auto_1fr] md:gap-6">
+        <Box className="order-last p-2 bg-background rounded-lg xl:order-first md:p-4 md:rounded-xl">
           <Tabs.Root defaultValue={TABS.SESSION}>
             <Tabs.List>
               <Tabs.Trigger
@@ -175,7 +175,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
             />
           </div>
           <div className="flex flex-col flex-wrap justify-between gap-2 p-2 border-t border-border md:flex-row md:p-6">
-            <div className="min-h-8 flex-1 flex items-center gap-2">
+            <div className="min-h-8 flex-1 flex items-center justify-center gap-2 md:justify-start">
               {activeCapture ? (
                 <>
                   <span className="pt-0.5 text-muted-foreground truncate">
@@ -207,14 +207,14 @@ const Content = ({ session }: { session: SessionDetails }) => {
                 </span>
               )}
             </div>
-            <div className="flex items-center md:justify-center">
+            <div className="flex items-center justify-center">
               <CaptureNavigation
                 activeCapture={activeCapture}
                 timeline={timeline}
                 setActiveCaptureId={setActiveCaptureId}
               />
             </div>
-            <div className="flex-1 flex items-center gap-2 md:justify-end">
+            <div className="flex-1 flex items-center justify-center gap-2 md:justify-end">
               <ZoomSettings transformRef={transformRef} />
               <ViewSettings
                 onSettingsChange={setSettings}
@@ -223,7 +223,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
             </div>
           </div>
         </div>
-        <div className="p-2 bg-background rounded-lg border border-border overflow-hidden md:col-span-2 md:p-4">
+        <div className="p-2 bg-background rounded-lg border border-border overflow-hidden xl:col-span-2 md:p-4">
           <ActivityPlot
             session={session}
             setActiveCaptureId={setActiveCaptureId}
