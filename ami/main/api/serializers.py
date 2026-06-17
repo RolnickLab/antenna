@@ -79,15 +79,19 @@ class SourceImageThumbnailSerializer(DefaultSerializer):
         self.fields["thumbnails"] = serializers.SerializerMethodField()
 
     def get_thumbnails(self, obj: SourceImage) -> dict | None:
-        # Draft (non-public) projects are not routed through the thumbnail endpoint.
-        # The endpoint is auth-gated, but the frontend loads thumbnails via an
-        # anonymous <img> tag, which cannot send an Authorization header, so a draft
-        # project's thumbnails would return 401 and render broken. Returning None
-        # makes the frontend fall back to the capture's presigned source URL (the
+        # Draft (non-public) projects: omit the thumbnail-endpoint URLs so the
+        # frontend falls back to the capture's presigned source URL (the
         # pre-thumbnail-layer behavior), which authenticates via its own signature
-        # and stays private. Generated thumbnails are also written to public default
-        # storage, so they must not be produced for non-public projects until
-        # per-project thumbnail storage exists. See PR #1306.
+        # and stays private. The endpoint is auth-gated, but the frontend loads
+        # thumbnails via an anonymous <img> tag that cannot send an Authorization
+        # header, so a draft project's thumbnails would otherwise return 401 and
+        # render broken.
+        #
+        # Note: this only stops the UI from generating/serving thumbnails for draft
+        # projects; the endpoint itself is unchanged, so an authenticated caller can
+        # still trigger generation into public default storage. Enforcing that at the
+        # endpoint (and moving thumbnails to per-project storage) is the follow-up.
+        # See PR #1306.
         if self._project_is_draft(obj.project_id):
             return None
         return {
