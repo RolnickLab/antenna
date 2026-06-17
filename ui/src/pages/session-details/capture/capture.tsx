@@ -8,7 +8,11 @@ import {
   TABS,
 } from 'pages/occurrence-details/occurrence-details'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { TransformComponent, TransformWrapper } from 'react-zoom-pan-pinch'
+import {
+  ReactZoomPanPinchRef,
+  TransformComponent,
+  TransformWrapper,
+} from 'react-zoom-pan-pinch'
 import { SCORE_THRESHOLDS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { useActiveOccurrences } from '../hooks/useActiveOccurrences'
@@ -29,6 +33,7 @@ interface CaptureProps {
   height: number | null
   showDetections?: boolean
   src?: string
+  transformRef: React.RefObject<ReactZoomPanPinchRef>
   width: number | null
 }
 
@@ -38,6 +43,7 @@ export const Capture = ({
   height,
   showDetections,
   src,
+  transformRef,
   width,
 }: CaptureProps) => {
   const [naturalSize, setNaturalSize] = useState<{
@@ -120,7 +126,7 @@ export const Capture = ({
 
   return (
     <div className="relative w-full" style={{ aspectRatio: ratio }}>
-      <TransformWrapper>
+      <TransformWrapper ref={transformRef}>
         <TransformComponent
           contentClass="!w-full !h-full"
           wrapperClass="!w-full !h-full"

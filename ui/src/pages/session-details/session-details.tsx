@@ -13,9 +13,10 @@ import {
   Tabs,
 } from 'nova-ui-kit'
 import { cn } from 'nova-ui-kit/utils'
-import { useContext, useEffect, useState } from 'react'
+import { useContext, useEffect, useRef, useState } from 'react'
 import { Helmet } from 'react-helmet-async'
 import { useParams } from 'react-router-dom'
+import { ReactZoomPanPinchRef } from 'react-zoom-pan-pinch'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { STRING, translate } from 'utils/language'
 import { useUser } from 'utils/user/userContext'
@@ -31,6 +32,7 @@ import { SessionPlots } from './session-plots'
 import { StarButton } from './star-button'
 import { TimelineSlider } from './timeline-slider/timeline-slider'
 import { ViewSettings } from './view-settings'
+import { ZoomSettings } from './zoom-settings'
 
 const TABS = {
   SESSION: 'session',
@@ -83,6 +85,7 @@ export const SessionDetailsPage = () => {
 const Content = ({ session }: { session: SessionDetails }) => {
   // Settings
   const [poll, setPoll] = useState(false)
+  const transformRef = useRef<ReactZoomPanPinchRef>(null)
   const [settings, setSettings] = useState({
     defaultFilters: true,
     showDetections: true,
@@ -166,7 +169,8 @@ const Content = ({ session }: { session: SessionDetails }) => {
               detections={activeCapture?.detections ?? []}
               height={activeCapture?.height ?? session.firstCapture.height}
               showDetections={settings.showDetections}
-              src={activeCapture?.thumbnailMedium}
+              src={activeCapture?.url}
+              transformRef={transformRef}
               width={activeCapture?.width ?? session.firstCapture.width}
             />
           </div>
@@ -210,7 +214,8 @@ const Content = ({ session }: { session: SessionDetails }) => {
                 setActiveCaptureId={setActiveCaptureId}
               />
             </div>
-            <div className="flex-1 flex items-center md:justify-end">
+            <div className="flex-1 flex items-center gap-2 md:justify-end">
+              <ZoomSettings transformRef={transformRef} />
               <ViewSettings
                 onSettingsChange={setSettings}
                 settings={settings}
