@@ -1,6 +1,7 @@
 import { MinusIcon, PlusIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
+import { BasicTooltip, Button } from 'nova-ui-kit'
 import { ReactZoomPanPinchRef } from 'react-zoom-pan-pinch'
+import { STRING, translate } from 'utils/language'
 
 export const ZoomSettings = ({
   transformRef,
@@ -13,21 +14,26 @@ export const ZoomSettings = ({
       size="small"
       variant="ghost"
     >
-      <span>Reset</span>
+      <span>{translate(STRING.RESET)}</span>
     </Button>
-    <Button
-      aria-label="Zoom in"
-      onClick={() => transformRef.current?.zoomIn()}
-      size="icon"
-    >
-      <PlusIcon className="w-4 h-4" />
-    </Button>
-    <Button
-      aria-label="Zoom out"
-      onClick={() => transformRef.current?.zoomOut()}
-      size="icon"
-    >
-      <MinusIcon className="w-4 h-4" />
-    </Button>
+
+    <BasicTooltip content={translate(STRING.ZOOM_IN)}>
+      <Button
+        aria-label={translate(STRING.ZOOM_IN)}
+        onClick={() => transformRef.current?.zoomIn()}
+        size="icon"
+      >
+        <PlusIcon className="w-4 h-4" />
+      </Button>
+    </BasicTooltip>
+    <BasicTooltip content={translate(STRING.ZOOM_OUT)}>
+      <Button
+        aria-label={translate(STRING.ZOOM_OUT)}
+        onClick={() => transformRef.current?.zoomOut()}
+        size="icon"
+      >
+        <MinusIcon className="w-4 h-4" />
+      </Button>
+    </BasicTooltip>
   </>
 )
