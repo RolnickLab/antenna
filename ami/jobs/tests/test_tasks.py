@@ -1765,12 +1765,15 @@ class TestCancelCompletionRace(TransactionTestCase):
 
 
 class TestCheckStaleJobsReaperGuard(TransactionTestCase):
-    """Reaper guard for async_api jobs: the reaper consults Redis directly
-    (AsyncJobStateManager.all_tasks_processed) rather than
-    Job.progress.is_complete() to decide whether a Celery SUCCESS on a stale
-    job is trustworthy. This class verifies the Redis-direct path, the
-    absent-state fallback to progress.is_complete() with a WARNING log, and
-    that sync_api jobs are unaffected by the guard."""
+    """Reaper guard for async_api jobs: a SUCCESS Celery state is only accepted
+    when AsyncJobStateManager.all_tasks_processed() reports True. The earlier
+    guard read Job.progress.is_complete() — racy under concurrent
+    _update_job_progress writes since #1261 dropped select_for_update. A
+    production job once landed REVOKED with NATS+Redis fully drained because a
+    slower committer clobbered the SUCCESS write. This class verifies the new
+    Redis-direct path, the unavailable-state fallback to progress.is_complete()
+    with a WARNING, that Celery FAILURE is not fast-pathed to a terminal
+    FAILURE for async_api jobs, and that sync_api jobs are unaffected."""
 
     def setUp(self):
         cache.clear()
@@ -1905,7 +1908,7 @@ class TestCheckStaleJobsReaperGuard(TransactionTestCase):
 
         job.refresh_from_db()
         self.assertEqual(job.status, JobState.SUCCESS.value)
-        self.assertTrue(any("Redis state absent" in m for m in cm.output))
+        self.assertTrue(any("Redis state unavailable" in m for m in cm.output))
 
     @patch("celery.result.AsyncResult")
     def test_async_celery_success_redis_absent_progress_incomplete_lands_revoked(self, mock_async_result):
@@ -1925,7 +1928,7 @@ class TestCheckStaleJobsReaperGuard(TransactionTestCase):
 
         job.refresh_from_db()
         self.assertEqual(job.status, JobState.REVOKED.value)
-        self.assertTrue(any("Redis state absent" in m for m in cm.output))
+        self.assertTrue(any("Redis state unavailable" in m for m in cm.output))
 
     @patch("celery.result.AsyncResult")
     def test_sync_api_celery_success_lands_success_without_redis_check(self, mock_async_result):
@@ -1954,3 +1957,37 @@ class TestCheckStaleJobsReaperGuard(TransactionTestCase):
 
         job.refresh_from_db()
         self.assertEqual(job.status, JobState.SUCCESS.value)
+
+    @patch("celery.result.AsyncResult")
+    def test_async_celery_failure_redis_drained_lands_revoked_not_failure(self, mock_async_result):
+        """A Celery FAILURE on an async_api job is never fast-pathed to a
+        terminal FAILURE here, even when Redis reports the pending sets drained.
+
+        update_job_failure() deliberately defers post-queue run_job failures for
+        async_api jobs to the async result handler, which decides the terminal
+        outcome from the final processed/failed counts against FAILURE_THRESHOLD
+        (a drained-but-failed task can still resolve to SUCCESS). The reaper must
+        not pre-empt that by forcing FAILURE, so the stale job is REVOKED instead.
+        """
+        from ami.jobs.tasks import check_stale_jobs
+
+        job = self._stale_async_job(task_id="reaper-failure-task")
+        ids = [str(i) for i in range(10)]
+        manager = AsyncJobStateManager(job.pk)
+        manager.initialize_job(ids)
+        manager.update_state(set(ids), stage="process")
+        manager.update_state(set(ids), stage="results")
+        self._mark_stale(job)
+
+        from celery import states as celery_states
+
+        mock_async_result.return_value.state = celery_states.FAILURE
+
+        check_stale_jobs()
+
+        job.refresh_from_db()
+        self.assertEqual(
+            job.status,
+            JobState.REVOKED.value,
+            f"Celery FAILURE must not be forced to terminal FAILURE for async_api; got {job.status}",
+        )

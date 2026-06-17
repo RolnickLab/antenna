@@ -975,11 +975,15 @@ def check_stale_jobs(minutes: int | None = None, dry_run: bool = False) -> list[
     healthy. Default cutoff is :attr:`Job.STALLED_JOBS_MAX_MINUTES`.
 
     For each stale job, checks Celery for a terminal task status. REVOKED is
-    always trusted. For async_api jobs, SUCCESS and FAILURE are only accepted
-    when AsyncJobStateManager.all_tasks_processed() reports True (i.e. the
-    Redis pending sets are drained). When Redis state is absent, falls back to
-    job.progress.is_complete(). All other cases result in revocation. Async
-    resources (NATS/Redis) are cleaned up in both branches.
+    always trusted. For async_api jobs, only SUCCESS is fast-pathed to a
+    terminal status, and only when AsyncJobStateManager.all_tasks_processed()
+    reports True (i.e. the Redis pending sets are drained); when Redis state is
+    unavailable it falls back to job.progress.is_complete(). Celery FAILURE is
+    not trusted for async_api jobs — update_job_failure() defers the terminal
+    outcome to the async result handler (FAILURE_THRESHOLD logic), so a stale
+    FAILED async_api job is revoked rather than forced to FAILURE. All other
+    cases result in revocation. Async resources (NATS/Redis) are cleaned up in
+    both branches.
 
     Returns a list of dicts describing what was done to each job.
     """
@@ -1028,33 +1032,54 @@ def check_stale_jobs(minutes: int | None = None, dry_run: bool = False) -> list[
                     )
                     # Treat as unknown state — job will be revoked below.
 
-            # Only trust terminal Celery states. For async_api jobs, SUCCESS and
-            # FAILURE are only accepted when all NATS tasks are processed — workers
-            # may still be delivering results after the Celery task finishes.
-            # Consult Redis (source of truth for SREM completeness) directly rather
-            # than Job.progress.is_complete(), which mirrors a JSONB blob racy under
-            # concurrent _update_job_progress writes since #1261.
+            # Only trust terminal Celery states. For async_api jobs, a SUCCESS
+            # Celery state is only accepted when all NATS tasks are processed —
+            # workers may still be delivering results after the Celery task
+            # finishes. Consult Redis (source of truth for SREM completeness)
+            # directly rather than Job.progress.is_complete(), which mirrors a
+            # JSONB blob racy under concurrent _update_job_progress writes since
+            # #1261.
+            #
+            # Celery FAILURE is deliberately NOT fast-pathed to a terminal
+            # status here: update_job_failure() defers post-queue run_job
+            # failures for async_api jobs to the async result handler, which
+            # decides the terminal outcome from the final processed/failed
+            # counts against FAILURE_THRESHOLD (a drained-but-failed Celery task
+            # can still resolve to SUCCESS). Trusting Celery FAILURE here would
+            # force the job to FAILURE and bypass that threshold logic, so a
+            # stale async_api job whose Celery task ended FAILURE falls through
+            # to the revoke branch instead.
             is_terminal = celery_state in states.READY_STATES
             is_async_api = job.dispatch_mode == JobDispatchMode.ASYNC_API
-            if is_async_api and celery_state in {states.SUCCESS, states.FAILURE}:
+            if is_async_api and celery_state == states.SUCCESS:
                 processed = AsyncJobStateManager(job.pk).all_tasks_processed()
                 if processed is False:
                     is_terminal = False
                 elif processed is None:
                     logger.warning(
-                        "Reaper for job %s: Redis state absent, falling back to " "progress.is_complete()",
+                        "Reaper for job %s: Redis state unavailable, falling back to " "progress.is_complete()",
                         job.pk,
                     )
                     if not job.progress.is_complete():
                         is_terminal = False
-                # processed is True -> trust Celery's terminal state
+                # processed is True -> trust Celery SUCCESS
+            elif is_async_api and celery_state == states.FAILURE:
+                # Don't treat Celery FAILURE as authoritative for async_api jobs
+                # (see comment above); revoke instead of forcing FAILURE.
+                is_terminal = False
 
             previous_status = job.status
             if is_terminal:
                 if not dry_run:
                     job.update_status(celery_state, save=False)
                     job.finished_at = datetime.datetime.now()
-                    job.save()
+                    # Narrow the write to the fields the reaper actually mutates.
+                    # A full save() would re-write the whole row from the snapshot
+                    # fetched at select_for_update() time, clobbering `logs` and
+                    # `progress.errors` that a concurrent _update_job_progress (no
+                    # row lock since #1261) may commit. update_status() touches
+                    # status + progress.summary.status, so `progress` is included.
+                    job.save(update_fields=["status", "progress", "finished_at", "updated_at"])
             else:
                 # Per-job diagnostic: surface enough state at revoke time that an
                 # operator can answer "why was this stalled?" without grepping
@@ -1076,7 +1101,10 @@ def check_stale_jobs(minutes: int | None = None, dry_run: bool = False) -> list[
                 if not dry_run:
                     job.update_status(JobState.REVOKED, save=False)
                     job.finished_at = datetime.datetime.now()
-                    job.save()
+                    # See note on the terminal branch above: narrow the write so
+                    # the reaper doesn't clobber a concurrent progress writer's
+                    # `logs` / `progress.errors`.
+                    job.save(update_fields=["status", "progress", "finished_at", "updated_at"])
 
         # Async resource cleanup runs outside the transaction — it makes network
         # calls (NATS/Redis) that should not hold the DB row lock.
