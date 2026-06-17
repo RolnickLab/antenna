@@ -519,6 +519,69 @@ class TestImageThumbnailViews(TestCase):
         self.assertFalse(default_storage.exists(path), "pre_delete signal must clean the storage blob")
 
 
+class TestThumbnailDraftProjectVisibility(APITestCase):
+    """PR #1306 follow-up: draft (non-public) projects must not route thumbnails
+    through the auth-gated thumbnail endpoint.
+
+    The frontend loads thumbnails via an anonymous ``<img>`` tag, which cannot send
+    an Authorization header, so a draft project's gated thumbnail endpoint returns
+    401 and the image renders broken. The serializer omits thumbnail URLs for draft
+    projects so the frontend falls back to the capture's presigned source URL (the
+    pre-thumbnail-layer behavior). Public projects keep server-generated thumbnails.
+    """
+
+    def setUp(self) -> None:
+        self.superuser = User.objects.create_superuser(email="thumb-draft-admin@insectai.org", password="secret")
+        # Superuser can view captures of a draft project; we assert on the serialized
+        # ``thumbnails`` field, which is independent of who is viewing.
+        self.client.force_authenticate(self.superuser)
+        return super().setUp()
+
+    def _make_project_with_captures(self, draft: bool):
+        project, deployment = setup_test_project(reuse=False)
+        if draft:
+            project.draft = True
+            project.save(update_fields=["draft"])
+        captures = create_captures_from_files(deployment=deployment)
+        return project, deployment, [c[0] for c in captures]
+
+    def test_public_project_returns_thumbnail_urls(self):
+        project, _, captures = self._make_project_with_captures(draft=False)
+        response = self.client.get(f"/api/v2/captures/{captures[0].pk}/?project_id={project.pk}")
+        self.assertEqual(response.status_code, 200)
+        thumbnails = response.json()["thumbnails"]
+        self.assertIsNotNone(thumbnails)
+        self.assertIn("small", thumbnails)
+
+    def test_draft_project_omits_thumbnail_urls(self):
+        project, _, captures = self._make_project_with_captures(draft=True)
+        response = self.client.get(f"/api/v2/captures/{captures[0].pk}/?project_id={project.pk}")
+        self.assertEqual(response.status_code, 200)
+        rec = response.json()
+        # No thumbnail endpoint URLs -> frontend falls back to the presigned source URL.
+        self.assertIsNone(rec["thumbnails"])
+        self.assertTrue(rec["url"], "presigned source URL must still be provided for fallback")
+
+    def test_draft_check_is_memoized_not_per_capture(self):
+        """The draft lookup must run at most once per project, not once per capture row."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        project, _, captures = self._make_project_with_captures(draft=True)
+        self.assertGreater(len(captures), 1, "need a multi-row fixture to detect an N+1")
+
+        url = f"/api/v2/captures/?project_id={project.pk}"
+        self.client.get(url)  # warm content-type / cachalot caches
+
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertGreater(len(response.json()["results"]), 1)
+
+        draft_queries = [q for q in ctx.captured_queries if '"main_project"' in q["sql"] and "draft" in q["sql"]]
+        self.assertLessEqual(len(draft_queries), 1, f"draft lookup ran {len(draft_queries)} times (N+1)")
+
+
 class TestImageGrouping(TestCase):
     def setUp(self) -> None:
         print(f"Currently active database: {connection.settings_dict}")

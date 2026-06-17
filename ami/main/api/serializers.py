@@ -79,6 +79,17 @@ class SourceImageThumbnailSerializer(DefaultSerializer):
         self.fields["thumbnails"] = serializers.SerializerMethodField()
 
     def get_thumbnails(self, obj: SourceImage) -> dict | None:
+        # Draft (non-public) projects are not routed through the thumbnail endpoint.
+        # The endpoint is auth-gated, but the frontend loads thumbnails via an
+        # anonymous <img> tag, which cannot send an Authorization header, so a draft
+        # project's thumbnails would return 401 and render broken. Returning None
+        # makes the frontend fall back to the capture's presigned source URL (the
+        # pre-thumbnail-layer behavior), which authenticates via its own signature
+        # and stays private. Generated thumbnails are also written to public default
+        # storage, so they must not be produced for non-public projects until
+        # per-project thumbnail storage exists. See PR #1306.
+        if self._project_is_draft(obj.project_id):
+            return None
         return {
             label: reverse_with_params(
                 "sourceimagethumbnail-detail",
@@ -88,6 +99,20 @@ class SourceImageThumbnailSerializer(DefaultSerializer):
             )
             for label in settings.THUMBNAILS["SIZES"]
         }
+
+    def _project_is_draft(self, project_id: int | None) -> bool:
+        # Memoize per distinct project on this serializer instance: a list of N
+        # captures sharing one project costs one query, not N (the captures
+        # queryset does not select_related the SourceImage.project FK).
+        if project_id is None:
+            return False
+        cache = getattr(self, "_draft_project_cache", None)
+        if cache is None:
+            cache = {}
+            self._draft_project_cache = cache
+        if project_id not in cache:
+            cache[project_id] = Project.objects.filter(pk=project_id, draft=True).exists()
+        return cache[project_id]
 
 
 class SourceImageNestedSerializer(DefaultSerializer):
