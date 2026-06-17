@@ -1302,6 +1302,41 @@ class TestConditionalTerminalTransition(TransactionTestCase):
         self.assertIsNotNone(self.job.finished_at)
 
     @patch("ami.jobs.tasks.cleanup_async_job_if_needed")
+    def test_completion_does_not_flip_summary_status_of_revoked_job(self, _mock_cleanup):
+        """A completing batch for an already-REVOKED job must not flip the
+        UI-facing `progress.summary.status` to SUCCESS.
+
+        Regression for the Copilot finding on PR #1338: even though the guarded
+        UPDATE correctly leaves the top-level `status` column at REVOKED, the
+        progress blob's `summary.status` was being advanced to `complete_state`
+        and persisted by the same save(), so the UI (which reads the JSONB)
+        showed SUCCESS while the job was actually REVOKED — the exact
+        two-sources-of-truth disagreement this PR exists to prevent.
+        """
+        # Bring the job to the brink of completion (collect + process done).
+        _update_job_progress(self.job.pk, stage="collect", progress_percentage=1.0, complete_state=JobState.SUCCESS)
+        _update_job_progress(self.job.pk, stage="process", progress_percentage=1.0, complete_state=JobState.SUCCESS)
+
+        # The reaper (or a cancel) wins the race and marks the job terminal.
+        # Use update_status() — the real revoke path — so BOTH the status column
+        # and the JSONB summary.status are set to REVOKED, exactly the state a
+        # cancelled/revoked job is in when a late batch arrives.
+        self.job.refresh_from_db()
+        self.job.update_status(JobState.REVOKED)
+
+        # A late results batch lands and computes is_complete()=True.
+        _update_job_progress(self.job.pk, stage="results", progress_percentage=1.0, complete_state=JobState.SUCCESS)
+
+        self.job.refresh_from_db()
+        # Both sources of truth must agree on the terminal state: the status
+        # column stays REVOKED AND the JSONB summary.status is NOT flipped to
+        # SUCCESS.
+        self.assertEqual(self.job.status, JobState.REVOKED.value)
+        self.assertEqual(self.job.progress.summary.status, JobState.REVOKED)
+        # The stage-level progress was still recorded as complete.
+        self.assertTrue(self.job.progress.is_complete())
+
+    @patch("ami.jobs.tasks.cleanup_async_job_if_needed")
     def test_incomplete_update_never_writes_overall_status(self, _mock_cleanup):
         """A non-terminal progress update must not touch the overall job.status."""
         Job.objects.filter(pk=self.job.pk).update(status=JobState.REVOKED)
