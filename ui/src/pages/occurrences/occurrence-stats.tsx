@@ -20,13 +20,7 @@ const pctText = (value: number, count?: number) => {
 // Label + info tooltip. The tooltip carries the exact counts and the longer
 // explanation so the row itself stays uncluttered. Text styles match the
 // filter controls (body-overline-small).
-const StatLabel = ({
-  label,
-  tooltip,
-}: {
-  label: string
-  tooltip: string
-}) => (
+const StatLabel = ({ label, tooltip }: { label: string; tooltip: string }) => (
   <div className="min-h-6 flex items-center gap-1">
     <span className="body-overline-small font-bold text-muted-foreground">
       {label}
