@@ -526,8 +526,8 @@ class TestThumbnailDraftProjectVisibility(APITestCase):
     The frontend loads thumbnails via an anonymous ``<img>`` tag, which cannot send
     an Authorization header, so a draft project's gated thumbnail endpoint returns
     401 and the image renders broken. The serializer omits thumbnail URLs for draft
-    projects so the frontend falls back to the capture's presigned source URL (the
-    pre-thumbnail-layer behavior). Public projects keep server-generated thumbnails.
+    projects so the frontend falls back to the capture's source URL (``capture.url``,
+    the pre-thumbnail-layer behavior). Public projects keep server-generated thumbnails.
     """
 
     def setUp(self) -> None:
@@ -558,9 +558,9 @@ class TestThumbnailDraftProjectVisibility(APITestCase):
         response = self.client.get(f"/api/v2/captures/{captures[0].pk}/?project_id={project.pk}")
         self.assertEqual(response.status_code, 200)
         rec = response.json()
-        # No thumbnail endpoint URLs -> frontend falls back to the presigned source URL.
+        # No thumbnail endpoint URLs -> frontend falls back to the capture's source URL.
         self.assertIsNone(rec["thumbnails"])
-        self.assertTrue(rec["url"], "presigned source URL must still be provided for fallback")
+        self.assertTrue(rec["url"], "source URL must still be provided for fallback")
 
     @override_settings(CACHALOT_ENABLED=False)
     def test_thumbnails_check_does_not_fetch_project_per_capture(self):

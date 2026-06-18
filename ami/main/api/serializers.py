@@ -79,8 +79,6 @@ class SourceImageThumbnailSerializer(DefaultSerializer):
         self.fields["thumbnails"] = serializers.SerializerMethodField()
 
     def get_thumbnails(self, obj: SourceImage) -> dict | None:
-        # No thumbnail-endpoint URLs for projects that don't allow them (see
-        # Project.thumbnails_enabled); the frontend falls back to the presigned source URL.
         if obj.project is None or not obj.project.thumbnails_enabled:
             return None
         return {
