@@ -319,6 +319,17 @@ class Project(ProjectSettingsMixin, BaseModel):
         if self.owner and not self.members.filter(id=self.owner.pk).exists():
             self.members.add(self.owner)
 
+    @property
+    def thumbnails_enabled(self) -> bool:
+        """Whether captures in this project should expose server-generated thumbnail URLs.
+
+        Draft projects aren't anonymously readable, and the thumbnail endpoint is loaded
+        via an anonymous <img> tag that can't authenticate, so it would 401. Proxy for
+        "anonymous can retrieve captures"; revisit if visibility decouples from `draft`.
+        Serving thumbnails for private projects is tracked in #1341.
+        """
+        return not self.draft
+
     def deployments_count(self) -> int:
         return self.deployments.count()
 

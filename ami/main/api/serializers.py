@@ -79,6 +79,8 @@ class SourceImageThumbnailSerializer(DefaultSerializer):
         self.fields["thumbnails"] = serializers.SerializerMethodField()
 
     def get_thumbnails(self, obj: SourceImage) -> dict | None:
+        if obj.project is None or not obj.project.thumbnails_enabled:
+            return None
         return {
             label: reverse_with_params(
                 "sourceimagethumbnail-detail",
