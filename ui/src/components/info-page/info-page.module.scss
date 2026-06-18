@@ -30,7 +30,7 @@
   margin: 0 auto;
 
   h1 {
-    @include heading-small();
+    @include heading-small;
     margin: 0;
 
     &:not(:last-child) {
@@ -39,7 +39,7 @@
   }
 
   h2 {
-    @include body-xlarge();
+    @include body-xlarge;
     margin: 0;
 
     &:not(:last-child) {
@@ -48,7 +48,7 @@
   }
 
   h3 {
-    @include body-base();
+    @include body-base;
     font-weight: 600;
     margin: 0;
 
@@ -58,7 +58,7 @@
   }
 
   p {
-    @include body-base();
+    @include body-base;
     margin: 0;
 
     &:not(:last-child) {
@@ -81,7 +81,7 @@
 
     li {
       display: list-item;
-      @include body-base();
+      @include body-base;
 
       &:not(:last-child) {
         margin-bottom: 8px;
@@ -97,7 +97,7 @@
 
     li {
       display: list-item;
-      @include body-base();
+      @include body-base;
 
       &:not(:last-child) {
         margin-bottom: 8px;
@@ -108,7 +108,7 @@
       margin: 0 0 8px;
 
       li {
-        @include body-xlarge();
+        @include body-xlarge;
 
         h2 {
           display: inline;

@@ -46,11 +46,11 @@
   word-break: break-word;
 
   &.medium {
-    @include body-small();
+    @include body-small;
   }
 
   &.large {
-    @include body-base();
+    @include body-base;
 
     &:not(:last-child) {
       margin-bottom: 2px;
@@ -62,10 +62,10 @@
   color: var(--color-neutral-600);
 
   &.medium {
-    @include body-small();
+    @include body-small;
   }
 
   &.large {
-    @include body-small();
+    @include body-small;
   }
 }

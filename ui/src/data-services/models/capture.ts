@@ -96,6 +96,12 @@ export class Capture {
     })
   }
 
+  get lastProcessed(): Date | undefined {
+    return this._capture.last_processed
+      ? new Date(this._capture.last_processed)
+      : undefined
+  }
+
   get deploymentId(): string | undefined {
     return this._capture.deployment
       ? `${this._capture.deployment.id}`
@@ -159,6 +165,20 @@ export class Capture {
 
   get sessionLabel(): string {
     return this._capture.event?.name ?? ''
+  }
+
+  get thumbnail_small(): string {
+    if (this._capture.thumbnails && this._capture.thumbnails.small) {
+      return this._capture.thumbnails.small
+    }
+    return this._capture.url
+  }
+
+  get thumbnail_medium(): string {
+    if (this._capture.thumbnails && this._capture.thumbnails.medium) {
+      return this._capture.thumbnails.medium
+    }
+    return this._capture.url
   }
 
   get src(): string {

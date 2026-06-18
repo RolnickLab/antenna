@@ -1,7 +1,6 @@
 import { Columns3CogIcon } from 'lucide-react'
 import { BasicTooltip, Button, Checkbox, Popover } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
-import styles from './column-settings.module.scss'
 
 interface ColumnSettingsProps {
   columns: { id: string; name: string }[]
@@ -27,29 +26,27 @@ export const ColumnSettings = ({
         </Button>
       </Popover.Trigger>
     </BasicTooltip>
-    <Popover.Content className={styles.wrapper} align="end" side="bottom">
-      <div>
-        <span className={styles.description}>
-          {translate(STRING.TABLE_COLUMNS)}
-        </span>
-        <div className={styles.settings}>
-          {columns.map((column) =>
-            column.name.length ? (
-              <Checkbox
-                key={column.id}
-                checked={columnSettings[column.id]}
-                id={column.id}
-                label={column.name}
-                onCheckedChange={(checked) => {
-                  onColumnSettingsChange({
-                    ...columnSettings,
-                    [column.id]: checked,
-                  })
-                }}
-              />
-            ) : null
-          )}
-        </div>
+    <Popover.Content className="grid gap-4" align="end" side="bottom">
+      <span className="body-base font-semibold text-muted-foreground">
+        {translate(STRING.TABLE_COLUMNS)}
+      </span>
+      <div className="grid gap-2">
+        {columns.map((column) =>
+          column.name.length ? (
+            <Checkbox
+              key={column.id}
+              checked={columnSettings[column.id]}
+              id={column.id}
+              label={column.name}
+              onCheckedChange={(checked) => {
+                onColumnSettingsChange({
+                  ...columnSettings,
+                  [column.id]: checked,
+                })
+              }}
+            />
+          ) : null
+        )}
       </div>
     </Popover.Content>
   </Popover.Root>

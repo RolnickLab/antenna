@@ -1,12 +1,15 @@
+import copy
 import datetime
 import logging
 import typing
 from io import BytesIO
 
+from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection, models
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from guardian.shortcuts import assign_perm, get_perms, remove_perm
 from PIL import Image
 from rest_framework import status
@@ -38,7 +41,14 @@ from ami.main.models import (
 from ami.ml.models.pipeline import Pipeline
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
-from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
+from ami.tests.fixtures.main import (
+    create_captures,
+    create_captures_from_files,
+    create_detections,
+    create_occurrences,
+    create_taxa,
+    setup_test_project,
+)
 from ami.tests.fixtures.storage import populate_bucket
 from ami.users.models import User
 from ami.users.roles import BasicMember, Identifier, MLDataManager, ProjectManager, create_roles_for_project
@@ -208,6 +218,383 @@ class TestProjectSetup(TestCase):
                     config.enabled,
                     f"Pipeline {config.pipeline.name} should not be enabled for project {project_two.name}.",
                 )
+
+
+NEW_THUMBNAIL_SETTINGS = copy.deepcopy(settings.THUMBNAILS)
+NEW_THUMBNAIL_SETTINGS["SIZES"]["small"]["width"] = 300
+
+
+class TestImageThumbnailViews(TestCase):
+    base_url = "http://testserver/api/v2/captures/thumbnails/"
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project()
+
+        self.captures = create_captures_from_files(deployment=self.deployment)
+        self.first_capture = self.captures[0][0]
+
+        return super().setUp()
+
+    def test_thumbnail_no_list(self):
+        response = self.client.get("/api/v2/captures/thumbnails/")
+        self.assertEqual(response.status_code, 405)
+
+    def test_thumbnail_new(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(thumb.width, 240)
+        self.assertEqual(thumb.height, 180)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_new_with_size(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/?label=medium")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="medium")
+        self.assertEqual(thumb.width, 1024)
+        self.assertEqual(thumb.height, 768)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_blank_path_row_regenerates(self):
+        """A row with an empty ``path`` (failed or interrupted generation) must
+        trigger regeneration, not redirect to the storage root.
+        """
+        self.first_capture.thumbnails.create(path="", label="small", width=240, height=180, size=0)
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertTrue(thumb.path)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_redirect_is_browser_cacheable(self):
+        """The 302 must carry Cache-Control so browsers reuse the redirect across
+        page views instead of re-paying the round trip per thumbnail per view.
+        """
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Cache-Control"], "private, max-age=300")
+
+    def test_thumbnail_new_with_invalid_size(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/?label=typo")
+        self.assertEqual(response.status_code, 400)
+
+    def test_thumbnail_exists(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        t_id = self.first_capture.thumbnails.first().pk
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(self.first_capture.thumbnails.count(), 1)
+        self.assertEqual(self.first_capture.thumbnails.first().pk, t_id)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_exists_newer_modified_source(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.first()
+        original_pk = thumb.pk
+        original_thumb_last_modified = thumb.last_modified
+        self.first_capture.last_modified = datetime.datetime.now()
+        self.first_capture.save()
+        self.assertTrue(self.first_capture.last_modified > thumb.last_modified)
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(self.first_capture.thumbnails.count(), 1)
+        # The upsert must reuse the existing row (same PK).
+        refreshed = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(refreshed.pk, original_pk)
+        # Regen must force-bump last_modified (auto_now_add fires only on INSERT).
+        self.assertGreater(refreshed.last_modified, original_thumb_last_modified)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], f"/media/{refreshed.path}")
+
+    def test_thumbnail_source_last_modified_none_does_not_crash(self):
+        """Legacy SourceImage rows synced before the upload backfill have last_modified=None.
+
+        Once a thumbnail row exists, the regen check used to raise
+        ``TypeError: '<' not supported between instances of 'datetime.datetime' and 'NoneType'``
+        on every subsequent request. Now the comparison should treat None as "no signal of
+        source change" and reuse the cached thumb.
+        """
+        # First request generates the thumb (last_modified=None at this point is fine because
+        # the short-circuit on ``not thumb`` doesn't reach the comparison).
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        thumb_id = self.first_capture.thumbnails.first().pk
+
+        # Simulate a legacy row with no source mtime.
+        SourceImage.objects.filter(pk=self.first_capture.pk).update(last_modified=None)
+
+        # Second request must reuse the cached thumb, not raise.
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.first_capture.thumbnails.count(), 1)
+        self.assertEqual(self.first_capture.thumbnails.first().pk, thumb_id)
+
+    def test_thumbnail_regen_reuses_row_via_upsert(self):
+        """Regenerating an existing thumbnail must upsert into the same row, not
+        delete-then-recreate (which under concurrent gen destroyed the other
+        racer's row and storage blob).
+
+        Triggers the regen path by making the cached row's width stale (as if
+        ``settings.THUMBNAILS`` changed since generation), then re-requesting.
+        Asserts the row's primary key is preserved (proving
+        ``update_or_create`` UPDATE was used, not a fresh INSERT after a
+        DELETE).
+        """
+        # First request populates the cache.
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        original_thumb = self.first_capture.thumbnails.get(label="small")
+        original_pk = original_thumb.pk
+
+        # Make the cached row stale so the regen branch fires.
+        self.first_capture.thumbnails.filter(label="small").update(width=9999)
+
+        # Regen must reuse the same row and not raise on the (source_image, label)
+        # UniqueConstraint.
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.first_capture.thumbnails.filter(label="small").count(), 1)
+        self.assertEqual(self.first_capture.thumbnails.get(label="small").pk, original_pk)
+
+    def test_upload_handler_backfills_last_modified(self):
+        """``create_source_image_from_upload`` must set ``last_modified`` so uploaded
+        captures match the parity of S3-synced ones and can be invalidated when re-uploaded.
+        """
+        from ami.main.models import create_source_image_from_upload
+
+        png = BytesIO()
+        Image.new("RGB", (320, 240), (255, 0, 0)).save(png, format="JPEG")
+        png.seek(0)
+        upload = SimpleUploadedFile("20200101000000-test.jpg", png.read(), content_type="image/jpeg")
+        before = timezone.now()
+        captured = create_source_image_from_upload(image=upload, deployment=self.deployment, process_now=False)
+        after = timezone.now()
+
+        self.assertIsNotNone(captured.last_modified)
+        self.assertGreaterEqual(captured.last_modified, before)
+        self.assertLessEqual(captured.last_modified, after)
+
+    @override_settings(THUMBNAILS={"STORAGE_PREFIX": "thumbnails/", "SIZES": {}})
+    def test_thumbnail_empty_sizes_returns_clear_error(self):
+        """If THUMBNAILS['SIZES'] is empty the endpoint must return a clear API error,
+        not 500 with ``StopIteration`` from ``next(iter(empty))``.
+        """
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 404)
+        self.assertIn(b"No thumbnail sizes", response.content)
+
+    def test_thumbnail_non_rgb_source_converts(self):
+        """RGBA/P/etc. source images must be converted to RGB before JPEG encode."""
+        from unittest import mock
+
+        rgba_buf = BytesIO()
+        Image.new("RGBA", (320, 240), (255, 0, 0, 128)).save(rgba_buf, format="PNG")
+        rgba_bytes = rgba_buf.getvalue()
+
+        with mock.patch("ami.main.models.fetch_image_content", return_value=rgba_bytes):
+            response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(thumb.width, 240)
+
+    @override_settings(THUMBNAILS=NEW_THUMBNAIL_SETTINGS)
+    def test_thumbnail_settings_change_regenerates(self):
+        # A pre-existing different size thumb
+        self.first_capture.thumbnails.create(path="thumbs/test", label="small", width=240, height=180, size=0)
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(self.first_capture.thumbnails.count(), 1)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(thumb.width, 300)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_row_stores_spec_width_not_encoder_output(self):
+        """``PIL.Image.thumbnail()`` preserves aspect ratio and can emit a width
+        1-2px below the requested spec (e.g. 239 for a 240 spec). The row must
+        record the spec width — it identifies which configured size the row
+        satisfies — otherwise the strict-equality regen gate treats the row as
+        stale and regenerates on every request. See #1331.
+        """
+        from unittest import mock
+
+        original_thumbnail = Image.Image.thumbnail
+
+        def rounding_thumbnail(img, size, *args, **kwargs):
+            # Simulate Pillow's aspect-preserving rounding landing 1px under spec.
+            original_thumbnail(img, (size[0] - 1, size[1]), *args, **kwargs)
+
+        with mock.patch.object(Image.Image, "thumbnail", rounding_thumbnail):
+            response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        spec_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
+        self.assertEqual(thumb.width, spec_width)
+        first_gen_marker = thumb.last_modified
+
+        # Second request must reuse the cached row. A regen force-bumps
+        # ``last_modified``, so an unchanged value proves the gate held.
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        refreshed = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(refreshed.last_modified, first_gen_marker)
+
+    def test_captures_response_includes_thumbnail_urls(self):
+        response = self.client.get(f"/api/v2/captures/{self.first_capture.pk}/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        rec = response.json()
+        self.assertIn("thumbnails", rec)
+        self.assertURLEqual(rec["thumbnails"]["small"], f"{self.base_url}{self.first_capture.pk}/?label=small")
+        self.assertURLEqual(rec["thumbnails"]["medium"], f"{self.base_url}{self.first_capture.pk}/?label=medium")
+
+    def test_captures_list_response_includes_thumbnail_urls(self):
+        response = self.client.get(f"/api/v2/captures/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        capture_json = response.json()["results"][0]
+        self.assertIn("thumbnails", capture_json)
+        self.assertURLEqual(
+            capture_json["thumbnails"]["small"], f"{self.base_url}{self.first_capture.pk}/?label=small"
+        )
+        self.assertURLEqual(
+            capture_json["thumbnails"]["medium"], f"{self.base_url}{self.first_capture.pk}/?label=medium"
+        )
+
+    def test_session_example_captures_response_includes_thumbnail_urls(self):
+        response = self.client.get(f"/api/v2/events/?deployment={self.deployment.pk}")
+        self.assertEqual(response.status_code, 200)
+        capture_json = response.json()["results"][0]["example_captures"][0]
+        self.assertIn("thumbnails", capture_json)
+        self.assertURLEqual(capture_json["thumbnails"]["small"], f"{self.base_url}{capture_json['id']}/?label=small")
+        self.assertURLEqual(capture_json["thumbnails"]["medium"], f"{self.base_url}{capture_json['id']}/?label=medium")
+
+    def test_session_first_capture_response_includes_thumbnail_urls(self):
+        response = self.client.get(f"/api/v2/events/{self.deployment.events.all()[0].pk}/")
+        self.assertEqual(response.status_code, 200)
+        capture_json = response.json()["first_capture"]
+        self.assertIn("thumbnails", capture_json)
+        self.assertURLEqual(capture_json["thumbnails"]["small"], f"{self.base_url}{capture_json['id']}/?label=small")
+        self.assertURLEqual(capture_json["thumbnails"]["medium"], f"{self.base_url}{capture_json['id']}/?label=medium")
+
+    def test_source_image_delete_cascades_to_thumbnails(self):
+        """Deleting a SourceImage must cascade-delete its SourceImageThumbnail rows.
+
+        The previous SET_NULL FK left orphan rows (and their storage blobs) forever
+        with no reaper. CASCADE + the pre_delete signal in ami.main.signals together
+        guarantee the row is gone and the blob is cleaned up.
+        """
+        from ami.main.models import SourceImageThumbnail
+
+        # Pre-populate two thumbnail rows for the capture.
+        for label, width in [("small", 240), ("medium", 1024)]:
+            self.first_capture.thumbnails.create(
+                path=f"thumbnails/cascadetest_{label}.jpg", label=label, width=width, height=180, size=42
+            )
+        capture_pk = self.first_capture.pk
+        self.assertEqual(SourceImageThumbnail.objects.filter(source_image_id=capture_pk).count(), 2)
+
+        # Delete the parent capture.
+        self.first_capture.delete()
+
+        # Thumbnail rows must be gone via CASCADE.
+        self.assertEqual(SourceImageThumbnail.objects.filter(source_image_id=capture_pk).count(), 0)
+
+    def test_thumbnail_delete_removes_storage_blob(self):
+        """The pre_delete signal must call default_storage.delete on the row's path.
+
+        Covers both explicit row deletes and CASCADE deletes — the signal fires for
+        both. Use FileSystemStorage's exists() to verify the blob is gone.
+        """
+        from django.core.files.base import ContentFile
+        from django.core.files.storage import default_storage
+
+        # Plant a real blob in storage and wire up a row pointing at it.
+        path = default_storage.save("thumbnails/signal_test.jpg", ContentFile(b"\x00\x01\x02\x03"))
+        self.assertTrue(default_storage.exists(path))
+
+        thumb = self.first_capture.thumbnails.create(path=path, label="small", width=240, height=180, size=4)
+        thumb.delete()
+
+        self.assertFalse(default_storage.exists(path), "pre_delete signal must clean the storage blob")
+
+
+class TestThumbnailDraftProjectVisibility(APITestCase):
+    """PR #1306 follow-up: draft (non-public) projects must not route thumbnails
+    through the auth-gated thumbnail endpoint.
+
+    The frontend loads thumbnails via an anonymous ``<img>`` tag, which cannot send
+    an Authorization header, so a draft project's gated thumbnail endpoint returns
+    401 and the image renders broken. The serializer omits thumbnail URLs for draft
+    projects so the frontend falls back to the capture's source URL (``capture.url``,
+    the pre-thumbnail-layer behavior). Public projects keep server-generated thumbnails.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.superuser = User.objects.create_superuser(email="thumb-draft-admin@insectai.org", password="secret")
+        # Superuser can view captures of a draft project; we assert on the serialized
+        # ``thumbnails`` field, which is independent of who is viewing.
+        self.client.force_authenticate(self.superuser)
+
+    def _make_project_with_captures(self, draft: bool):
+        project, deployment = setup_test_project(reuse=False)
+        if draft:
+            project.draft = True
+            project.save(update_fields=["draft"])
+        captures = create_captures_from_files(deployment=deployment)
+        return project, deployment, [c[0] for c in captures]
+
+    def test_public_project_returns_thumbnail_urls(self):
+        project, _, captures = self._make_project_with_captures(draft=False)
+        response = self.client.get(f"/api/v2/captures/{captures[0].pk}/?project_id={project.pk}")
+        self.assertEqual(response.status_code, 200)
+        thumbnails = response.json()["thumbnails"]
+        self.assertIsNotNone(thumbnails)
+        self.assertIn("small", thumbnails)
+
+    def test_draft_project_omits_thumbnail_urls(self):
+        project, _, captures = self._make_project_with_captures(draft=True)
+        response = self.client.get(f"/api/v2/captures/{captures[0].pk}/?project_id={project.pk}")
+        self.assertEqual(response.status_code, 200)
+        rec = response.json()
+        # No thumbnail endpoint URLs -> frontend falls back to the capture's source URL.
+        self.assertIsNone(rec["thumbnails"])
+        self.assertTrue(rec["url"], "source URL must still be provided for fallback")
+
+    @override_settings(CACHALOT_ENABLED=False)
+    def test_thumbnails_check_does_not_fetch_project_per_capture(self):
+        """Reading ``project.thumbnails_enabled`` per capture must not trigger a query.
+
+        The list queryset ``select_related("project")`` so the FK is populated via the
+        main JOIN. Without it the serializer would lazy-load ``obj.project`` once per
+        capture row — an N+1. We assert no standalone per-row fetch of the project
+        table occurs. Query caching is disabled so the count reflects real DB hits.
+        """
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        project, _, captures = self._make_project_with_captures(draft=True)
+        self.assertGreater(len(captures), 1, "need a multi-row fixture to detect an N+1")
+
+        url = f"/api/v2/captures/?project_id={project.pk}"
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertGreater(len(response.json()["results"]), 1, "need >1 result row to detect an N+1")
+
+        # A lazy-load of ``obj.project`` reads the project table as the primary FROM
+        # (``SELECT ... FROM main_project WHERE id = ?``); the JOINed list query does
+        # not. Match without quoted identifiers so it is not tied to one DB backend.
+        per_row_project_fetches = [
+            q for q in ctx.captured_queries if "from main_project" in q["sql"].lower().replace('"', "")
+        ]
+        self.assertEqual(
+            len(per_row_project_fetches),
+            0,
+            f"project table fetched {len(per_row_project_fetches)} times across "
+            f"{len(captures)} captures (expected 0 via select_related)",
+        )
 
 
 class TestImageGrouping(TestCase):
@@ -433,6 +820,170 @@ class TestImageGrouping(TestCase):
 
         # No occurrence should be left pointing at a deleted/missing event.
         assert Occurrence.objects.filter(deployment=self.deployment, event__isnull=True).count() == 0
+
+    def _create_burst(self, start: datetime.datetime, n: int, interval_minutes: int = 5):
+        """Create ``n`` captures spaced ``interval_minutes`` apart starting at ``start``."""
+        import pathlib
+        import uuid
+
+        for i in range(n):
+            SourceImage.objects.create(
+                deployment=self.deployment,
+                timestamp=start + datetime.timedelta(minutes=i * interval_minutes),
+                path=pathlib.Path("test") / f"{uuid.uuid4().hex[:8]}_burst_{i}.jpg",
+            )
+
+    def test_cross_midnight_bursts_split_by_short_gap(self):
+        """
+        User-reported pattern: a "night" with a multi-hour off-window between
+        bursts that crosses midnight gets split into two separate Events at
+        the default 2 h gap, because the second burst's start_date is on the
+        next calendar day. Bumping ``max_time_gap`` past the off-window
+        merges both bursts into a single timestamp_group whose start_date
+        determines the group_by date, yielding one Event.
+        """
+        # Burst A: 22:00–22:25 on day N
+        self._create_burst(datetime.datetime(2023, 8, 5, 22, 0), n=6, interval_minutes=5)
+        # Burst B: 01:00–01:25 on day N+1 (off-window = 2 h 35 min, crosses midnight)
+        self._create_burst(datetime.datetime(2023, 8, 6, 1, 0), n=6, interval_minutes=5)
+
+        # Default 2 h gap → splits into two Events on different dates.
+        events_default = group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(hours=2),
+        )
+        assert len(events_default) == 2, f"expected 2 Events at 2h gap, got {len(events_default)}"
+
+        # 4 h gap (off-window 2h35m < 4h) → single timestamp_group → one Event.
+        events_widened = group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(hours=4),
+        )
+        assert len(events_widened) == 1, f"expected 1 Event at 4h gap, got {len(events_widened)}"
+
+    def test_same_date_bursts_merge_regardless_of_gap(self):
+        """
+        Inverse of the above: bursts that DON'T cross midnight collide on
+        ``group_by = start_date.date()`` even when the gap setting would
+        split them into separate timestamp_groups. This is the #904 caveat
+        — sub-day session-splits are masked by date-keyed Event reuse.
+        Documenting current behavior so a future fix (e.g. noon-to-noon
+        keying) has a regression target.
+        """
+        # Two bursts on the SAME calendar date with a 1 h 35 min off-window between.
+        self._create_burst(datetime.datetime(2023, 8, 5, 20, 0), n=6, interval_minutes=5)
+        self._create_burst(datetime.datetime(2023, 8, 5, 22, 0), n=6, interval_minutes=5)
+
+        # 1 h gap → splits into two timestamp_groups, but both start_date.date()
+        # is 2023-08-05 → get_or_create collides → ONE Event.
+        # group_images_into_events returns one entry per timestamp_group (with
+        # duplicates when groups reuse the same Event), so assert on the DB count.
+        group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(hours=1),
+        )
+        db_event_count = Event.objects.filter(deployment=self.deployment).count()
+        assert db_event_count == 1, f"expected 1 Event due to date collision, got {db_event_count}"
+
+    def test_session_time_gap_seconds_is_used_when_no_explicit_gap(self):
+        """
+        When ``max_time_gap`` is not passed, ``group_images_into_events``
+        falls back to ``deployment.project.session_time_gap_seconds``. Verify
+        the project setting actually drives the split decision.
+        """
+        # Same cross-midnight burst pattern as the first test.
+        self._create_burst(datetime.datetime(2023, 8, 5, 22, 0), n=6, interval_minutes=5)
+        self._create_burst(datetime.datetime(2023, 8, 6, 1, 0), n=6, interval_minutes=5)
+
+        # Project setting at 2 h (= 7200 s) → splits across midnight.
+        self.project.session_time_gap_seconds = 2 * 60 * 60
+        self.project.save()
+        # Bust the cached deployment.project relation so the function reads the new value.
+        self.deployment.refresh_from_db()
+        group_images_into_events(deployment=self.deployment)
+        count_2h = Event.objects.filter(deployment=self.deployment).count()
+        assert count_2h == 2, f"expected 2 Events at project setting 7200s, got {count_2h}"
+
+        # Project setting at 4 h (= 14400 s) → off-window 2h35m fits → single Event.
+        self.project.session_time_gap_seconds = 4 * 60 * 60
+        self.project.save()
+        self.deployment.refresh_from_db()
+        group_images_into_events(deployment=self.deployment)
+        count_4h = Event.objects.filter(deployment=self.deployment).count()
+        assert count_4h == 1, f"expected 1 Event at project setting 14400s, got {count_4h}"
+
+    def test_invalid_session_time_gap_falls_back_to_default(self):
+        """
+        Non-positive (0 or negative) ``session_time_gap_seconds`` would
+        otherwise split every timestamp into its own Event. Guard by falling
+        back to the historical 120-minute default and logging a warning.
+        """
+        self._create_burst(datetime.datetime(2023, 8, 5, 22, 0), n=6, interval_minutes=5)
+        self._create_burst(datetime.datetime(2023, 8, 6, 1, 0), n=6, interval_minutes=5)
+
+        for bad_value in (0, -1, -7200):
+            Event.objects.filter(deployment=self.deployment).delete()
+            self.project.session_time_gap_seconds = bad_value
+            self.project.save()
+            self.deployment.refresh_from_db()
+            group_images_into_events(deployment=self.deployment)
+            count = Event.objects.filter(deployment=self.deployment).count()
+            # Default 120-min gap on this cross-midnight pattern → 2 Events,
+            # NOT 12 (which is what bad_value=0 would produce without the guard).
+            assert count == 2, f"expected 2 Events at gap={bad_value} (default fallback), got {count}"
+
+    def test_regroup_is_idempotent_under_concurrent_calls(self):
+        """
+        ``group_images_into_events`` holds a per-deployment cache lock so
+        concurrent calls (admin, API action, autoregroup-on-save, sync-stage)
+        collapse to a single in-flight run. The second call should return an
+        empty list without creating any Events.
+        """
+        from django.core.cache import cache
+
+        lock_key = f"regroup_events:lock:deployment:{self.deployment.pk}"
+        # Make sure no stale lock from a prior test leaks in.
+        cache.delete(lock_key)
+
+        self._create_burst(datetime.datetime(2023, 8, 5, 22, 0), n=6, interval_minutes=5)
+        Event.objects.filter(deployment=self.deployment).delete()
+
+        # Pre-take the lock with a token we control.
+        cache.add(lock_key, "other-run-token", timeout=60)
+        try:
+            result = group_images_into_events(deployment=self.deployment)
+        finally:
+            cache.delete(lock_key)
+
+        assert result == [], "Locked run should return empty list"
+        assert Event.objects.filter(deployment=self.deployment).count() == 0, "Locked run should not create Events"
+
+        # Without the pre-taken lock, the next call should run normally and release the lock.
+        events = group_images_into_events(deployment=self.deployment)
+        assert len(events) >= 1, "Unlocked run should produce Events"
+        assert cache.get(lock_key) is None, "Lock should be released after the function returns"
+
+    def test_regroup_lock_release_does_not_clobber_a_newer_owner(self):
+        """
+        Token-based lock release: if our run takes longer than the lock TTL and
+        another caller acquires the same key with a fresh token, our ``finally``
+        block must not delete the other caller's lock.
+        """
+        from django.core.cache import cache
+
+        from ami.main.models import _regroup_lock
+
+        lock_key = f"regroup_events:lock:deployment:{self.deployment.pk}"
+        cache.delete(lock_key)
+
+        with _regroup_lock(self.deployment.pk) as acquired:
+            assert acquired, "Should acquire the lock on first try"
+            # Simulate the TTL expiring and a newer caller taking the lock.
+            cache.set(lock_key, "newer-owner-token", timeout=60)
+
+        # Our `finally` ran. The newer owner's lock should still be there.
+        assert cache.get(lock_key) == "newer-owner-token", "Expired-lock release must not clobber the newer owner"
+        cache.delete(lock_key)
 
     def test_pruning_empty_events(self):
         from ami.main.models import delete_empty_events
@@ -1390,6 +1941,89 @@ class TestProjectRequiredOnListEndpoints(APITestCase):
                 self.assertEqual(response.status_code, status.HTTP_200_OK, path)
 
 
+class TestCapturesProcessedFilter(APITestCase):
+    """
+    The captures list distinguishes two related filters:
+
+    - ``?processed=true|false`` (the UI "Processing status" filter): a capture is
+      "processed" when it has *any* Detection row, including the null markers that
+      record a "processed, found nothing" result.
+    - ``?has_detections=true|false``: a capture has *real* detections (a detection
+      with a bounding box). Null markers are excluded.
+
+    Fixture: 4 captures — 2 with a real detection, 1 with only a null marker
+    (processed but found nothing), 1 untouched. So:
+        processed=true       -> 3   has_detections=true  -> 2
+        processed=false      -> 1   has_detections=false -> 2
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.captures = create_captures(self.deployment, num_nights=1, images_per_night=4)
+        # Two captures get a real detection (bounding box present).
+        for capture in self.captures[:2]:
+            create_detections(capture, bboxes=[(0.1, 0.1, 0.2, 0.2)])
+        # One capture gets only a null marker: processed, but nothing found.
+        Detection.objects.create(
+            source_image=self.captures[2],
+            bbox=None,
+            timestamp=self.captures[2].timestamp,
+        )
+        # self.captures[3] is left untouched (never processed).
+        self.user = User.objects.create_user(email="proc-filter@insectai.org", is_staff=True)  # type: ignore
+        self.client.force_authenticate(user=self.user)
+        self.list_url = f"/api/v2/captures/?project_id={self.project.pk}"
+        return super().setUp()
+
+    def _count(self, query: str = "") -> int:
+        response = self.client.get(f"{self.list_url}{query}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.json()["count"]
+
+    def test_processed_counts_null_markers(self):
+        # The null-marker capture counts as processed (2 real + 1 marker); its
+        # complement is the single untouched capture.
+        self.assertEqual(self._count("&processed=true"), 3)
+        self.assertEqual(self._count("&processed=false"), 1)
+
+    def test_has_detections_excludes_null_markers(self):
+        # Only the 2 real-detection captures; the processed-but-empty capture
+        # falls on the has_detections=false side.
+        self.assertEqual(self._count("&has_detections=true"), 2)
+        self.assertEqual(self._count("&has_detections=false"), 2)
+
+
+class TestCapturesLastProcessed(APITestCase):
+    """
+    The captures list annotates and can order by ``last_processed`` — the most
+    recent detection created_at for each capture. Captures that were never
+    processed expose ``last_processed = None``.
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.captures = create_captures(self.deployment, num_nights=1, images_per_night=2)
+        # First capture is processed (has a detection); the second is left untouched.
+        create_detections(self.captures[0], bboxes=[(0.1, 0.1, 0.2, 0.2)])
+        self.user = User.objects.create_user(email="cap-lastproc@insectai.org", is_staff=True)  # type: ignore
+        self.client.force_authenticate(user=self.user)
+        self.url = f"/api/v2/captures/?project_id={self.project.pk}"
+        return super().setUp()
+
+    def _row(self, data: dict, capture_id: int) -> dict:
+        return next(c for c in data["results"] if c["id"] == capture_id)
+
+    def test_last_processed_annotated_and_orderable(self):
+        # One request exercises the annotation, the serializer field, and the
+        # ordering registration together.
+        response = self.client.get(f"{self.url}&ordering=-last_processed")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        # Processed capture has a timestamp; the untouched one is null.
+        self.assertIsNotNone(self._row(data, self.captures[0].pk)["last_processed"])
+        self.assertIsNone(self._row(data, self.captures[1].pk)["last_processed"])
+
+
 class TestProjectOwnerAutoAssignment(APITestCase):
     def setUp(self) -> None:
         self.user_1 = User.objects.create_user(email="testuser@insectai.org", is_staff=True, is_superuser=True)
@@ -1716,6 +2350,7 @@ class TestRolePermissions(APITestCase):
         self._assign_roles()
         capture_id = self.project.occurrences.first().detections.first().source_image.pk
         occurrence_id = self.project.occurrences.first().pk
+        taxon_id = self.project.occurrences.first().determination_id
         endpoints = {
             "collection": "/api/v2/captures/collections/",
             "site": "/api/v2/deployments/sites/",
@@ -1750,7 +2385,7 @@ class TestRolePermissions(APITestCase):
             "device": {"description": "New Device", "name": "Device 1", "project": self.project.pk},
             "storage": {"name": "New Storage", "project": self.project.pk, "bucket": "test-bucket"},
             "job": {"delay": "1", "name": "Test Job", "project_id": self.project.pk},
-            "identification": {"occurrence_id": occurrence_id, "taxon_id": "5", "comment": "Identifier comment"},
+            "identification": {"occurrence_id": occurrence_id, "taxon_id": taxon_id, "comment": "Identifier comment"},
             "project": {"name": "New Project", "description": "This is a test project."},
         }
 

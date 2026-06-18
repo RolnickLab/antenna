@@ -1,4 +1,5 @@
 import collections
+import contextlib
 import datetime
 import functools
 import logging
@@ -6,6 +7,7 @@ import textwrap
 import time
 import typing
 import urllib.parse
+import uuid
 from io import BytesIO
 from typing import Final, final  # noqa: F401
 
@@ -42,7 +44,7 @@ from ami.main.models_future.filters import (
 from ami.main.models_future.projects import ProjectSettingsMixin
 from ami.ml.schemas import BoundingBox
 from ami.users.models import User
-from ami.utils.media import calculate_file_checksum, extract_timestamp
+from ami.utils.media import calculate_file_checksum, extract_timestamp, fetch_image_content
 from ami.utils.requests import get_apply_default_filters_flag, get_default_classification_threshold
 from ami.utils.schemas import OrderedEnum
 
@@ -96,6 +98,11 @@ DEFAULT_RANKS = sorted(
 )
 
 NULL_DETECTIONS_FILTER = Q(bbox__isnull=True) | Q(bbox=[])
+
+
+def bbox_is_null(bbox) -> bool:
+    """In-memory equivalent of NULL_DETECTIONS_FILTER for already-fetched bbox values."""
+    return bbox is None or bbox == []
 
 
 def get_media_url(path: str) -> str:
@@ -312,6 +319,17 @@ class Project(ProjectSettingsMixin, BaseModel):
         if self.owner and not self.members.filter(id=self.owner.pk).exists():
             self.members.add(self.owner)
 
+    @property
+    def thumbnails_enabled(self) -> bool:
+        """Whether captures in this project should expose server-generated thumbnail URLs.
+
+        Draft projects aren't anonymously readable, and the thumbnail endpoint is loaded
+        via an anonymous <img> tag that can't authenticate, so it would 401. Proxy for
+        "anonymous can retrieve captures"; revisit if visibility decouples from `draft`.
+        Serving thumbnails for private projects is tracked in #1341.
+        """
+        return not self.draft
+
     def deployments_count(self) -> int:
         return self.deployments.count()
 
@@ -415,6 +433,7 @@ class Project(ProjectSettingsMixin, BaseModel):
         RUN_SINGLE_IMAGE_JOB = "run_single_image_ml_job"
         RUN_POPULATE_CAPTURES_COLLECTION_JOB = "run_populate_captures_collection_job"
         RUN_DATA_STORAGE_SYNC_JOB = "run_data_storage_sync_job"
+        RUN_REGROUP_EVENTS_JOB = "run_regroup_events_job"
         RUN_DATA_EXPORT_JOB = "run_data_export_job"
         RUN_POST_PROCESSING_JOB = "run_post_processing_job"
         DELETE_JOB = "delete_job"
@@ -424,6 +443,7 @@ class Project(ProjectSettingsMixin, BaseModel):
         DELETE_DEPLOYMENT = "delete_deployment"
         UPDATE_DEPLOYMENT = "update_deployment"
         SYNC_DEPLOYMENT = "sync_deployment"
+        REGROUP_SESSIONS_DEPLOYMENT = "regroup_sessions_deployment"
 
         # Collection permissions
         CREATE_COLLECTION = "create_sourceimagecollection"
@@ -495,6 +515,7 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("run_ml_job", "Can run/retry/cancel ML jobs"),
             ("run_populate_captures_collection_job", "Can run/retry/cancel Populate Collection jobs"),
             ("run_data_storage_sync_job", "Can run/retry/cancel Data Storage Sync jobs"),
+            ("run_regroup_events_job", "Can run/retry/cancel Regroup Events jobs"),
             ("run_data_export_job", "Can run/retry/cancel Data Export jobs"),
             ("run_single_image_ml_job", "Can process a single capture"),
             ("run_post_processing_job", "Can run/retry/cancel Post-Processing jobs"),
@@ -504,6 +525,7 @@ class Project(ProjectSettingsMixin, BaseModel):
             ("delete_deployment", "Can delete a deployment"),
             ("update_deployment", "Can update a deployment"),
             ("sync_deployment", "Can sync images to a deployment"),
+            ("regroup_sessions_deployment", "Can regroup deployment captures into sessions"),
             # Collection permissions
             ("create_sourceimagecollection", "Can create a collection"),
             ("update_sourceimagecollection", "Can update a collection"),
@@ -846,8 +868,20 @@ class Deployment(BaseModel):
         else:
             return filesizeformat(self.data_source_total_size)
 
-    def sync_captures(self, batch_size=1000, regroup_events_per_batch=False, job: "Job | None" = None) -> int:
-        """Import images from the deployment's data source"""
+    def sync_captures(
+        self,
+        batch_size=1000,
+        regroup_events_per_batch=False,
+        regroup_after=True,
+        job: "Job | None" = None,
+    ) -> int:
+        """
+        Import images from the deployment's data source.
+
+        Set ``regroup_after=False`` when the caller (e.g. ``DataStorageSyncJob``)
+        will run regrouping as a tracked stage of its own so the work is visible
+        in the Jobs UI instead of buried inside ``Deployment.save()``.
+        """
 
         deployment = self
         assert deployment.data_source, f"Deployment {deployment.name} has no data source configured"
@@ -929,18 +963,29 @@ class Deployment(BaseModel):
 
         # @TODO decide if we should delete SourceImages that are no longer in the data source
 
-        if job:
-            job.logger.info("Saving and recalculating sessions for deployment")
-            job.progress.update_stage(job.job_type().key, progress=1)
-            job.progress.add_stage("Update deployment cache")
-            job.update_progress()
+        if regroup_after:
+            if job:
+                job.logger.info("Saving and recalculating sessions for deployment")
+                job.progress.update_stage(job.job_type().key, progress=1)
+                job.progress.add_stage("Update deployment cache")
+                job.update_progress()
 
-        # If new images were added, ensure the regroup happens now, not queued as an async task.
-        self.save(regroup_async=False)
+            # If new images were added, ensure the regroup happens now, not queued as an async task.
+            self.save(regroup_async=False)
 
-        if job:
-            job.progress.update_stage("Update deployment cache", progress=1)
-            job.update_progress()
+            if job:
+                job.progress.update_stage("Update deployment cache", progress=1)
+                job.update_progress()
+        else:
+            # Caller (e.g. DataStorageSyncJob) is responsible for running regroup as
+            # an explicit stage. Skip Deployment.save's autoregroup but still
+            # refresh cached counts and realign child Event/Occurrence/SourceImage
+            # project pointers — those normally run inside Deployment.save's
+            # update_calculated_fields branch, which we bypass here.
+            self.save(regroup_async=False, update_calculated_fields=False)
+            self.update_calculated_fields(save=True)
+            if self.project_id:
+                self.update_children()
 
         return total_files
 
@@ -1397,12 +1442,105 @@ def audit_event_lengths(deployment: Deployment):
 DEFAULT_MAX_EVENT_DURATION = datetime.timedelta(hours=24)
 
 
+# Regroup should finish in seconds, so keep this short: if a worker is killed
+# before its finally-block releases the lock, the TTL caps how long it stays held.
+# Matches the soft_time_limit on ami.tasks.regroup_events.
+REGROUP_LOCK_TTL_SECONDS = 10 * 60
+
+
+@contextlib.contextmanager
+def _regroup_lock(deployment_id: int):
+    """
+    Acquire a per-deployment lock for regrouping. Token-based release —
+    the lock is only deleted if the value we wrote is still there, so an
+    expired-then-reacquired-by-someone-else lock doesn't get clobbered.
+
+    Released cleanly on graceful exit and on any exception that propagates
+    out of the `with` block (including Celery's `SoftTimeLimitExceeded`).
+    Not released on hard worker death (OS SIGKILL, OOM-kill, pod eviction):
+    the token lives only in process memory, so a finally block that never
+    runs leaves the lock entry sitting until the TTL expires.
+
+    Yields True if acquired (caller should proceed), False if another run
+    already holds it (caller should short-circuit).
+    """
+    from django.core.cache import cache
+
+    lock_key = f"regroup_events:lock:deployment:{deployment_id}"
+    token = uuid.uuid4().hex
+    acquired = cache.add(lock_key, token, timeout=REGROUP_LOCK_TTL_SECONDS)
+    try:
+        yield acquired
+    finally:
+        if acquired:
+            current = cache.get(lock_key)
+            if current == token:
+                cache.delete(lock_key)
+
+
 def group_images_into_events(
     deployment: Deployment,
-    max_time_gap=datetime.timedelta(minutes=120),
+    max_time_gap: datetime.timedelta | None = None,
     delete_empty=True,
     max_event_duration: datetime.timedelta | None = DEFAULT_MAX_EVENT_DURATION,
+    job: "Job | None" = None,
+    stage_key: str | None = None,
 ) -> list[Event]:
+    """
+    Group a deployment's captures into Events based on timestamp gaps.
+
+    Holds a per-deployment cache lock so concurrent calls (autoregroup-on-save,
+    manual API/admin trigger, sync-time regroup) collapse to a single in-flight
+    run rather than racing on the same rows. If the lock is already held, this
+    function logs and returns an empty list without touching the DB.
+
+    When ``job`` and ``stage_key`` are passed, summary stats (events created,
+    events touched, duplicate-timestamp count, ungrouped captures) are written
+    to the named stage so the Jobs UI can surface them. Pure callers (e.g.
+    ``Deployment.save`` autoregroup, ``sync_captures`` per-batch) leave both
+    arguments at ``None``.
+    """
+    with _regroup_lock(deployment.pk) as acquired:
+        if not acquired:
+            msg = f"group_images_into_events skipped for deployment {deployment.pk}: another regroup is in progress."
+            if job:
+                job.logger.warning(msg)
+            else:
+                logger.warning(msg)
+            return []
+
+        return _group_images_into_events_locked(
+            deployment,
+            max_time_gap=max_time_gap,
+            delete_empty=delete_empty,
+            max_event_duration=max_event_duration,
+            job=job,
+            stage_key=stage_key,
+        )
+
+
+def _group_images_into_events_locked(
+    deployment: Deployment,
+    max_time_gap: datetime.timedelta | None,
+    delete_empty: bool,
+    max_event_duration: datetime.timedelta | None,
+    job: "Job | None",
+    stage_key: str | None,
+) -> list[Event]:
+    if max_time_gap is None:
+        default_gap = datetime.timedelta(minutes=120)
+        if deployment.project_id:
+            gap_seconds = deployment.project.session_time_gap_seconds
+            if gap_seconds is None or gap_seconds <= 0:
+                logger.warning(
+                    f"Project {deployment.project_id} has invalid session_time_gap_seconds "
+                    f"({gap_seconds!r}); falling back to default {default_gap}"
+                )
+                max_time_gap = default_gap
+            else:
+                max_time_gap = datetime.timedelta(seconds=gap_seconds)
+        else:
+            max_time_gap = default_gap
     # Log a warning if multiple SourceImages have the same timestamp
     dupes = (
         SourceImage.objects.filter(deployment=deployment)
@@ -1411,13 +1549,14 @@ def group_images_into_events(
         .filter(count__gt=1)
         .exclude(timestamp=None)
     )
-    if dupes.count():
-        values = "\n".join(
-            [f'{d.strftime("%Y-%m-%d %H:%M:%S")} x{c}' for d, c in dupes.values_list("timestamp", "count")]
+    duplicate_timestamp_count = dupes.count()
+    if duplicate_timestamp_count:
+        sample = "\n".join(
+            f'{d.strftime("%Y-%m-%d %H:%M:%S")} x{c}' for d, c in dupes.values_list("timestamp", "count")[:20]
         )
         logger.warning(
-            f"Found {len(values)} images with the same timestamp in deployment '{deployment}'. "
-            f"Only one image will be used for each timestamp for each event."
+            f"Found {duplicate_timestamp_count} duplicate-timestamp groups in deployment '{deployment}'. "
+            f"Only one image will be used per timestamp for each event. First 20:\n{sample}"
         )
 
     image_timestamps = list(
@@ -1435,6 +1574,7 @@ def group_images_into_events(
     )
 
     events = []
+    events_created_count = 0
     touched_event_pks: set[int] = set()
     for group in timestamp_groups:
         if not len(group):
@@ -1453,12 +1593,14 @@ def group_images_into_events(
 
         # Creating events & assigning images
         group_by = start_date.date()
-        event, _ = Event.objects.get_or_create(
+        event, was_created = Event.objects.get_or_create(
             deployment=deployment,
             group_by=group_by,
             defaults={"start": start_date, "end": end_date},
         )
         events.append(event)
+        if was_created:
+            events_created_count += 1
         touched_event_pks.add(event.pk)
 
         # Track events currently holding these captures — they'll lose captures
@@ -1517,9 +1659,10 @@ def group_images_into_events(
     if touched_event_pks:
         update_calculated_fields_for_events(pks=list(touched_event_pks))
 
+    events_deleted_empty = 0
     if delete_empty:
         logger.info("Deleting empty events for deployment")
-        delete_empty_events(deployment=deployment)
+        events_deleted_empty = delete_empty_events(deployment=deployment)
 
     for event in events:
         # Set the width and height of all images in each event based on the first image
@@ -1536,6 +1679,39 @@ def group_images_into_events(
     deployment.update_calculated_fields(save=True)
 
     audit_event_lengths(deployment)
+
+    # Surface stats to the Jobs UI when this regroup is wrapped in a job.
+    # "Ungrouped captures" = images with valid timestamps that didn't land in
+    # any event (should be 0 unless an event delete races a capture insert;
+    # useful signal). Param NAMES below are the human-readable labels shown
+    # in the Jobs UI; stable retrieval keys are the slugify(name) forms (e.g.
+    # "captures-grouped"). See REGROUP_STAGE_PARAM_NAMES in ami.jobs.models.
+    if job and stage_key:
+        ungrouped_captures_count = (
+            SourceImage.objects.filter(deployment=deployment, event__isnull=True).exclude(timestamp=None).count()
+        )
+        no_timestamp_captures_count = SourceImage.objects.filter(deployment=deployment, timestamp=None).count()
+        # Count actual SourceImage rows assigned to an event, not the count of
+        # distinct timestamps in image_timestamps — two captures can share a
+        # timestamp (duplicate_timestamp_count tracks this) and the UPDATE above
+        # assigns both to the same event, so a distinct-timestamp count would
+        # understate the work done.
+        captures_grouped_count = (
+            SourceImage.objects.filter(deployment=deployment, event__isnull=False).exclude(timestamp=None).count()
+        )
+        regroup_stats = {
+            "Captures grouped": captures_grouped_count,
+            "Events created": events_created_count,
+            "Events touched": len(touched_event_pks),
+            "Empty events deleted": events_deleted_empty,
+            "Duplicate timestamps": duplicate_timestamp_count,
+            "Ungrouped captures": ungrouped_captures_count,
+            "Captures missing timestamp": no_timestamp_captures_count,
+        }
+        for param_name, value in regroup_stats.items():
+            job.progress.add_or_update_stage_param(stage_key, param_name, value)
+        job.update_progress()
+        job.save()
 
     return events
 
@@ -1584,9 +1760,11 @@ def deployment_events_need_update(deployment: Deployment) -> bool:
     return needs_update
 
 
-def delete_empty_events(deployment: Deployment, dry_run=False):
+def delete_empty_events(deployment: Deployment, dry_run=False) -> int:
     """
     Delete events that have no images, occurrences or other related records.
+
+    Returns the number of events deleted (or that would be deleted, for dry runs).
     """
 
     # @TODO Search all models that have a foreign key to Event
@@ -1605,12 +1783,14 @@ def delete_empty_events(deployment: Deployment, dry_run=False):
         .filter(num_images=0, num_occurrences=0)
     )
 
+    count = events.count()
     if dry_run:
         for event in events:
             logger.debug(f"Would delete event {event} (dry run)")
     else:
-        logger.info(f"Deleting {events.count()} empty events")
+        logger.info(f"Deleting {count} empty events")
         events.delete()
+    return count
 
 
 def sample_events(deployment: Deployment, day_interval: int = 3) -> typing.Generator[Event, None, None]:
@@ -1796,6 +1976,9 @@ def create_source_image_from_upload(
         checksum_algorithm=checksum_algorithm,
         width=width,
         height=height,
+        # The sync path stores the object's LastModified header here; set it on
+        # upload too so source-vs-derivative freshness checks have a value.
+        last_modified=timezone.now(),
         test_image=True,
         uploaded_by=request.user if request else None,
     )
@@ -1934,10 +2117,31 @@ class SourceImage(BaseModel):
     timestamp = models.DateTimeField(null=True, blank=True, db_index=True)
     width = models.IntegerField(null=True, blank=True)
     height = models.IntegerField(null=True, blank=True)
-    size = models.BigIntegerField(null=True, blank=True)
-    last_modified = models.DateTimeField(null=True, blank=True)
-    checksum = models.CharField(max_length=255, blank=True, null=True)
-    checksum_algorithm = models.CharField(max_length=255, blank=True, null=True)
+    # File metadata read from the source file in storage, populated by the sync
+    # flow and upload handler. Writable in the API for manual SourceImage
+    # creation; read-only in the admin.
+    size = models.BigIntegerField(
+        null=True,
+        blank=True,
+        help_text="Size of the image file in bytes, read from the source file in image storage.",
+    )
+    last_modified = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the image file was last modified, read from the source file in image storage.",
+    )
+    checksum = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Checksum of the image file, read from the source file in image storage.",
+    )
+    checksum_algorithm = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Algorithm used for the checksum (e.g. MD5, SHA256).",
+    )
     uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     test_image = models.BooleanField(default=False)
 
@@ -2206,6 +2410,77 @@ class SourceImage(BaseModel):
             custom_perms.add(Project.Permissions.RUN_SINGLE_IMAGE_JOB)
         return list(custom_perms)
 
+    def find_or_generate_thumbnail_for_label(self, label):
+        try:
+            thumb = self.thumbnails.get(label=label)
+        except SourceImageThumbnail.DoesNotExist:
+            thumb = None
+        size = settings.THUMBNAILS["SIZES"].get(label)
+        prefix = settings.THUMBNAILS["STORAGE_PREFIX"]
+
+        # ``self.last_modified`` can be None on legacy rows synced before upload
+        # backfill — treat None as "no signal of change", not an error.
+        source_changed = (
+            self.last_modified is not None and thumb is not None and thumb.last_modified < self.last_modified
+        )
+        # The row is trusted without a storage existence check; an orphan row (blob
+        # deleted out of band) shows a broken image until the row is removed.
+        if not thumb or not thumb.path or thumb.width != size["width"] or source_changed:
+            img = PIL.Image.open(BytesIO(fetch_image_content(self.public_url(raise_errors=True))))
+            # JPEG only supports L, RGB, CMYK — convert other modes (e.g. RGBA PNGs)
+            # or PIL raises ``OSError: cannot write mode <X> as JPEG``.
+            if img.mode not in ("L", "RGB", "CMYK"):
+                img = img.convert("RGB")
+            # Make the thumbnail
+            orig_width, orig_height = img.size
+            width = size["width"]
+            height = size.get("height", None)
+            if not height:
+                height = int(orig_height * (width / float(orig_width)))
+            new_size = (width, height)
+            img.thumbnail(new_size)
+
+            buffer = BytesIO()
+            img.save(buffer, format="JPEG", progressive=True, optimize=True, quality=82)
+            contents = buffer.getvalue()
+            file_size = len(contents)
+
+            # Snapshot the prior blob path before the upsert, for cleanup below.
+            prior_path = self.thumbnails.filter(label=label).values_list("path", flat=True).first()
+
+            # Storage backends may overwrite the key in place or suffix on collision —
+            # record whichever path the backend returns.
+            buffer.seek(0)
+            thumbnail_key = f"{prefix}capture_{self.pk}/{label}.jpg"
+            thumbnail_path = default_storage.save(thumbnail_key, buffer)
+
+            # Atomic upsert: concurrent generation races on the (source_image, label)
+            # unique constraint. ``width`` stores the requested spec width, not the
+            # encoder output — PIL's rounding (e.g. 239 for a 240 spec) would otherwise
+            # fail the strict regen gate above on every request. ``height`` is informational.
+            thumb, _created = self.thumbnails.update_or_create(
+                label=label,
+                defaults={
+                    "path": thumbnail_path,
+                    "width": size["width"],
+                    "height": img.size[1],
+                    "size": file_size,
+                },
+            )
+            # ``last_modified`` is ``auto_now_add`` (set on INSERT only) — force-bump it
+            # on UPDATE or the freshness check re-triggers regen on every request.
+            if not _created:
+                type(thumb).objects.filter(pk=thumb.pk).update(last_modified=timezone.now())
+                thumb.refresh_from_db(fields=["last_modified"])
+
+            # Best-effort cleanup of the replaced blob; failure must not break the response.
+            if prior_path and prior_path != thumbnail_path:
+                try:
+                    default_storage.delete(prior_path)
+                except Exception as e:
+                    logger.warning(f"Could not delete prior thumbnail blob at {prior_path}: {e}")
+        return thumb
+
     class Meta:
         ordering = ("deployment", "event", "timestamp")
 
@@ -2393,6 +2668,34 @@ def sample_captures_by_nth(
     for event in events:
         qs = qs.filter(event=event).order_by("timestamp")
         yield from qs[::nth]
+
+
+@final
+class SourceImageThumbnail(BaseModel):
+    """A thumbnail cache of a SourceImage"""
+
+    path = models.CharField(max_length=255, blank=True)
+    label = models.CharField(max_length=255)
+    width = models.IntegerField(null=True, blank=True)
+    height = models.IntegerField(null=True, blank=True)
+    size = models.BigIntegerField(null=True, blank=True)
+    last_modified = models.DateTimeField(null=True, blank=True, auto_now_add=True)
+
+    # CASCADE: thumbnails are pure derivatives of their source. SET_NULL leaves
+    # orphan rows + dangling storage blobs forever and nothing else reaps them.
+    # The pre_delete signal in ``ami.main.signals`` cleans the storage blob.
+    source_image = models.ForeignKey(SourceImage, on_delete=models.CASCADE, related_name="thumbnails")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source_image", "label"],
+                name="unique_source_image_thumbnail_label",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["source_image", "label"]),
+        ]
 
 
 # @final
@@ -2846,6 +3149,11 @@ class Detection(BaseModel):
         ordering = [
             "frame_num",
             "timestamp",
+        ]
+        indexes = [
+            # Supports the "last processed" subquery on the captures list: the
+            # latest detection created_at per source image (index scan, top 1).
+            models.Index(fields=["source_image", "-created_at"], name="det_srcimg_created_idx"),
         ]
 
     def best_classification(self):

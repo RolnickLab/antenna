@@ -5,7 +5,7 @@
 }
 
 .dialogTrigger {
-  @include body-base();
+  @include body-base;
   color: var(--color-primary);
   font-weight: 600;
 
