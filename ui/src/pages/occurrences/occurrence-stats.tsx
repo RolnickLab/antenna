@@ -1,5 +1,7 @@
+import { ChevronsUpDown } from 'lucide-react'
 import { useModelAgreement } from 'data-services/hooks/occurrences/stats/useModelAgreement'
-import { Box } from 'nova-ui-kit'
+import { Box, Button, Collapsible, InfoTooltip } from 'nova-ui-kit'
+import { ReactNode } from 'react'
 
 interface OccurrenceStatsProps {
   projectId?: string
@@ -9,14 +11,33 @@ interface OccurrenceStatsProps {
 const clampPct = (value: number) =>
   Math.round(Math.min(Math.max(value, 0), 1) * 100)
 
+// Label + optional info tooltip. Text styles match the filter controls
+// (body-overline-small) so the Stats and Filters panels read as one family.
+const StatLabel = ({
+  label,
+  tooltip,
+}: {
+  label: string
+  tooltip?: string
+}) => (
+  <div className="min-h-6 flex items-center gap-1">
+    <span className="body-overline-small font-bold text-muted-foreground">
+      {label}
+    </span>
+    {tooltip ? <InfoTooltip text={tooltip} /> : null}
+  </div>
+)
+
 const StatBar = ({
   label,
+  tooltip,
   value,
   count,
 }: {
   label: string
+  tooltip?: string
   value: number
-  // Optional raw count shown alongside the percentage, e.g. "0% (23)". Useful
+  // Optional raw count shown alongside the percentage, e.g. "0% (52)". Useful
   // when the percentage rounds to 0 but the underlying count is non-zero.
   count?: number
 }) => {
@@ -24,11 +45,9 @@ const StatBar = ({
 
   return (
     <div className="space-y-2">
-      <span className="body-overline font-bold text-muted-foreground">
-        {label}
-      </span>
+      <StatLabel label={label} tooltip={tooltip} />
       <div className="flex items-center gap-3">
-        <div className="h-2 flex-1 rounded-full bg-muted">
+        <div className="h-2 flex-1 rounded-full bg-border">
           <div
             className="h-2 rounded-full bg-primary transition-all"
             style={{ width: `${pct}%` }}
@@ -63,6 +82,7 @@ const StatBar = ({
 // render.
 const AgreementBar = ({
   label,
+  tooltip,
   value,
   count,
   total,
@@ -70,6 +90,7 @@ const AgreementBar = ({
   ciHigh,
 }: {
   label: string
+  tooltip?: string
   value: number
   count?: number
   total?: number
@@ -87,12 +108,10 @@ const AgreementBar = ({
 
   return (
     <div className="space-y-2">
-      <span className="body-overline font-bold text-muted-foreground">
-        {label}
-      </span>
+      <StatLabel label={label} tooltip={tooltip} />
       <div className="space-y-1">
         <div className="flex items-center gap-3">
-          <div className="h-3 flex-1 rounded-full bg-muted relative overflow-hidden">
+          <div className="h-3 flex-1 rounded-full bg-border relative overflow-hidden">
             {hasCi ? (
               <>
                 <div
@@ -145,9 +164,11 @@ const AgreementBar = ({
 // "—" (kappa is undefined for empty or single-category sets).
 const SignedBar = ({
   label,
+  tooltip,
   value,
 }: {
   label: string
+  tooltip?: string
   value: number | null
 }) => {
   const v = value === null ? null : Math.min(Math.max(value, -1), 1)
@@ -156,11 +177,9 @@ const SignedBar = ({
 
   return (
     <div className="space-y-2">
-      <span className="body-overline font-bold text-muted-foreground">
-        {label}
-      </span>
+      <StatLabel label={label} tooltip={tooltip} />
       <div className="flex items-center gap-3">
-        <div className="h-2 flex-1 rounded-full bg-muted relative">
+        <div className="h-2 flex-1 rounded-full bg-border relative">
           {/* zero marker */}
           <div className="absolute h-2 w-px bg-foreground/40 left-1/2" />
           {v !== null ? (
@@ -177,6 +196,28 @@ const SignedBar = ({
     </div>
   )
 }
+
+// Tooltip copy. The agreement metrics share the same denominator caveat — they
+// are measured only on verified occurrences that also carry a model
+// prediction, which is why their "k of n" total can be smaller than the
+// verified count above.
+const TOOLTIP = {
+  verified:
+    'Occurrences a person has reviewed and confirmed, as a share of all occurrences in the current filter.',
+  agreedExact:
+    "How often the model's top prediction exactly matches the confirmed taxon. Measured only on verified occurrences that also have a model prediction.",
+  agreedAnyRank:
+    "How often the model's prediction matches the confirmed taxon at any rank — e.g. the right genus, even if the species differs. Measured only on verified occurrences that also have a model prediction.",
+  kappa:
+    "Agreement beyond what random chance would produce. 0 means chance level, 1 means perfect agreement. Based on exact-taxon matches.",
+}
+
+const StatsShell = ({ children }: { children: ReactNode }) => (
+  <Box className="w-full h-min shrink-0 p-2 rounded-lg md:w-72 md:p-4 md:rounded-xl no-print">
+    <span className="body-overline font-bold">Stats</span>
+    <div className="mt-4 space-y-6">{children}</div>
+  </Box>
+)
 
 // Live verified / agreement stats for the occurrence list. Threads the same
 // filter array the list view sends so the numbers always match the result set.
@@ -200,59 +241,86 @@ export const OccurrenceStats = ({
     return null
   }
 
+  if (isLoading || !data) {
+    return (
+      <StatsShell>
+        <div className="h-12 animate-pulse rounded-md bg-muted" />
+        <div className="h-12 animate-pulse rounded-md bg-muted" />
+      </StatsShell>
+    )
+  }
+
   const hasCoarser =
-    data?.agreement_coarsest_rank != null &&
-    data?.agreed_coarser_rank_pct !== null
+    data.agreement_coarsest_rank != null &&
+    data.agreed_coarser_rank_pct !== null
 
   return (
-    <Box className="w-full h-min shrink-0 p-2 rounded-lg md:w-72 md:p-4 md:rounded-xl no-print">
-      <span className="body-overline font-bold">Stats</span>
-      <div className="mt-4 space-y-6">
-        {isLoading || !data ? (
-          <>
-            <div className="h-12 animate-pulse rounded-md bg-muted" />
-            <div className="h-12 animate-pulse rounded-md bg-muted" />
-            <div className="h-12 animate-pulse rounded-md bg-muted" />
-            <div className="h-12 animate-pulse rounded-md bg-muted" />
-          </>
-        ) : (
-          <>
-            <StatBar
-              label="Verified occurrences"
-              value={data.verified_pct}
-              count={data.verified_count}
-            />
-            <AgreementBar
-              label="Agreement (exact taxon)"
-              value={data.agreed_exact_pct}
-              count={data.agreed_exact_count}
-              total={data.verified_with_prediction_count}
-              ciLow={data.agreed_exact_ci_low}
-              ciHigh={data.agreed_exact_ci_high}
-            />
-            <AgreementBar
-              label="Agreement (any rank)"
-              value={data.agreed_any_rank_pct}
-              count={data.agreed_any_rank_count}
-              total={data.verified_with_prediction_count}
-              ciLow={data.agreed_any_rank_ci_low}
-              ciHigh={data.agreed_any_rank_ci_high}
-            />
-            {hasCoarser ? (
-              <AgreementBar
-                label={`Agreement (≥ ${data.agreement_coarsest_rank})`}
-                value={data.agreed_coarser_rank_pct as number}
-                count={data.agreed_coarser_rank_count as number}
-                total={data.verified_with_prediction_count}
-              />
-            ) : null}
-            <SignedBar
-              label="Cohen's κ (beyond chance)"
-              value={data.cohens_kappa}
-            />
-          </>
-        )}
+    <StatsShell>
+      {/* First metrics stay visible so the headline numbers are always there. */}
+      <div className="space-y-2">
+        <StatBar
+          label="Verified occurrences"
+          tooltip={TOOLTIP.verified}
+          value={data.verified_pct}
+          count={data.verified_count}
+        />
+        {data.no_prediction_count > 0 ? (
+          <p className="body-small text-muted-foreground">
+            {data.verified_with_prediction_count.toLocaleString()} of{' '}
+            {data.verified_count.toLocaleString()} have a model prediction to
+            compare against.
+          </p>
+        ) : null}
       </div>
-    </Box>
+
+      <AgreementBar
+        label="Agreement (any rank)"
+        tooltip={TOOLTIP.agreedAnyRank}
+        value={data.agreed_any_rank_pct}
+        count={data.agreed_any_rank_count}
+        total={data.verified_with_prediction_count}
+        ciLow={data.agreed_any_rank_ci_low}
+        ciHigh={data.agreed_any_rank_ci_high}
+      />
+
+      {/* Detailed metrics collapsed by default to reduce clutter next to the
+          filter controls. */}
+      <Collapsible.Root className="space-y-6" defaultOpen={false}>
+        <Collapsible.Trigger asChild>
+          <Button
+            className="w-full justify-between px-0 text-muted-foreground"
+            size="small"
+            variant="ghost"
+          >
+            <span className="body-overline-small font-bold">More detail</span>
+            <ChevronsUpDown className="h-4 w-4" />
+          </Button>
+        </Collapsible.Trigger>
+        <Collapsible.Content className="space-y-6">
+          <AgreementBar
+            label="Agreement (exact taxon)"
+            tooltip={TOOLTIP.agreedExact}
+            value={data.agreed_exact_pct}
+            count={data.agreed_exact_count}
+            total={data.verified_with_prediction_count}
+            ciLow={data.agreed_exact_ci_low}
+            ciHigh={data.agreed_exact_ci_high}
+          />
+          {hasCoarser ? (
+            <AgreementBar
+              label={`Agreement (≥ ${data.agreement_coarsest_rank})`}
+              value={data.agreed_coarser_rank_pct as number}
+              count={data.agreed_coarser_rank_count as number}
+              total={data.verified_with_prediction_count}
+            />
+          ) : null}
+          <SignedBar
+            label="Cohen's κ (beyond chance)"
+            tooltip={TOOLTIP.kappa}
+            value={data.cohens_kappa}
+          />
+        </Collapsible.Content>
+      </Collapsible.Root>
+    </StatsShell>
   )
 }
