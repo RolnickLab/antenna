@@ -563,41 +563,37 @@ class TestThumbnailDraftProjectVisibility(APITestCase):
         self.assertTrue(rec["url"], "presigned source URL must still be provided for fallback")
 
     @override_settings(CACHALOT_ENABLED=False)
-    def test_draft_check_is_memoized_not_per_capture(self):
-        """The draft lookup must run exactly once per project, not once per capture row.
+    def test_thumbnails_check_does_not_fetch_project_per_capture(self):
+        """Reading ``project.thumbnails_enabled`` per capture must not trigger a query.
 
-        Without memoization the serializer would issue one ``draft`` lookup per
-        capture (an N+1). Query caching is disabled here so the count reflects real
-        DB hits rather than a warmed cache (otherwise a true N+1 could be masked by
-        cachalot serving the repeated lookup from cache).
+        The list queryset ``select_related("project")`` so the FK is populated via the
+        main JOIN. Without it the serializer would lazy-load ``obj.project`` once per
+        capture row — an N+1. We assert no standalone per-row fetch of the project
+        table occurs. Query caching is disabled so the count reflects real DB hits.
         """
-        from django.core.cache import cache
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
 
         project, _, captures = self._make_project_with_captures(draft=True)
         self.assertGreater(len(captures), 1, "need a multi-row fixture to detect an N+1")
 
-        cache.clear()
         url = f"/api/v2/captures/?project_id={project.pk}"
         with CaptureQueriesContext(connection) as ctx:
             response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertGreater(len(response.json()["results"]), 1, "need >1 result row to detect an N+1")
 
-        # Target the memoized `Project.objects.filter(pk=..., draft=True).exists()`
-        # specifically: an existence probe (``LIMIT 1``) against the project table
-        # filtering on ``draft``. Match case-insensitively and without quoted
-        # identifiers so the predicate is not tied to one DB backend's SQL dialect.
-        draft_lookups = [
-            q
-            for q in ctx.captured_queries
-            if "main_project" in q["sql"].lower() and "draft" in q["sql"].lower() and "limit 1" in q["sql"].lower()
+        # A lazy-load of ``obj.project`` reads the project table as the primary FROM
+        # (``SELECT ... FROM main_project WHERE id = ?``); the JOINed list query does
+        # not. Match without quoted identifiers so it is not tied to one DB backend.
+        per_row_project_fetches = [
+            q for q in ctx.captured_queries if "from main_project" in q["sql"].lower().replace('"', "")
         ]
         self.assertEqual(
-            len(draft_lookups),
-            1,
-            f"draft lookup ran {len(draft_lookups)} times across {len(captures)} captures (expected memoized to 1)",
+            len(per_row_project_fetches),
+            0,
+            f"project table fetched {len(per_row_project_fetches)} times across "
+            f"{len(captures)} captures (expected 0 via select_related)",
         )
 
 

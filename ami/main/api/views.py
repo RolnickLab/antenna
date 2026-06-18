@@ -636,6 +636,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             "event",
             "deployment",
             "deployment__data_source",
+            "project",  # thumbnails serializer reads project.thumbnails_enabled per row
         ).order_by("timestamp")
 
         if self.action == "list":

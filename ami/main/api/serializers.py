@@ -79,20 +79,12 @@ class SourceImageThumbnailSerializer(DefaultSerializer):
         self.fields["thumbnails"] = serializers.SerializerMethodField()
 
     def get_thumbnails(self, obj: SourceImage) -> dict | None:
-        # Draft (non-public) projects: omit the thumbnail-endpoint URLs so the
-        # frontend falls back to the capture's presigned source URL (the
-        # pre-thumbnail-layer behavior), which authenticates via its own signature
-        # and stays private. The endpoint is auth-gated, but the frontend loads
-        # thumbnails via an anonymous <img> tag that cannot send an Authorization
-        # header, so a draft project's thumbnails would otherwise return 401 and
-        # render broken.
-        #
-        # Note: this only stops the UI from generating/serving thumbnails for draft
-        # projects; the endpoint itself is unchanged, so an authenticated caller can
-        # still trigger generation into public default storage. Enforcing that at the
-        # endpoint (and moving thumbnails to per-project storage) is the follow-up.
-        # See PR #1306.
-        if self._project_is_draft(obj.project_id):
+        # Projects that aren't anonymously readable (draft) get no thumbnail-endpoint
+        # URLs, so the frontend falls back to the capture's presigned source URL. The
+        # endpoint is auth-gated and the frontend loads it via an anonymous <img> tag
+        # that can't send an Authorization header, so it would otherwise 401. Interim
+        # fix; serving thumbnails for private projects is tracked in #1341.
+        if obj.project is None or not obj.project.thumbnails_enabled:
             return None
         return {
             label: reverse_with_params(
@@ -103,20 +95,6 @@ class SourceImageThumbnailSerializer(DefaultSerializer):
             )
             for label in settings.THUMBNAILS["SIZES"]
         }
-
-    def _project_is_draft(self, project_id: int | None) -> bool:
-        # Memoize per distinct project on this serializer instance: a list of N
-        # captures sharing one project costs one query, not N (the captures
-        # queryset does not select_related the SourceImage.project FK).
-        if project_id is None:
-            return False
-        cache = getattr(self, "_draft_project_cache", None)
-        if cache is None:
-            cache = {}
-            self._draft_project_cache = cache
-        if project_id not in cache:
-            cache[project_id] = Project.objects.filter(pk=project_id, draft=True).exists()
-        return cache[project_id]
 
 
 class SourceImageNestedSerializer(DefaultSerializer):
