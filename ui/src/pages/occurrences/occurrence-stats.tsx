@@ -11,164 +11,125 @@ interface OccurrenceStatsProps {
 const clampPct = (value: number) =>
   Math.round(Math.min(Math.max(value, 0), 1) * 100)
 
-// Label + optional info tooltip. Text styles match the filter controls
-// (body-overline-small) so the Stats and Filters panels read as one family.
+// "<1%" reads better than "0%" when the count is non-zero but rounds down.
+const pctText = (value: number, count?: number) => {
+  const pct = clampPct(value)
+  return pct === 0 && count ? '<1%' : `${pct}%`
+}
+
+// Label + info tooltip. The tooltip carries the exact counts and the longer
+// explanation so the row itself stays uncluttered. Text styles match the
+// filter controls (body-overline-small).
 const StatLabel = ({
   label,
   tooltip,
 }: {
   label: string
-  tooltip?: string
+  tooltip: string
 }) => (
   <div className="min-h-6 flex items-center gap-1">
     <span className="body-overline-small font-bold text-muted-foreground">
       {label}
     </span>
-    {tooltip ? <InfoTooltip text={tooltip} /> : null}
+    <InfoTooltip text={tooltip} />
   </div>
 )
 
-const StatBar = ({
+// Simple progress bar: gray track + primary fill from the left. `fill` is the
+// point estimate (0–1); `valueText` is the headline shown beside the bar (the
+// CI range for agreement metrics, the raw percentage for verified). One shape
+// for every non-signed metric — no separate CI whisker visualization.
+const Bar = ({
   label,
   tooltip,
-  value,
-  count,
+  fill,
+  valueText,
 }: {
   label: string
-  tooltip?: string
-  value: number
-  // Optional raw count shown alongside the percentage, e.g. "0% (52)". Useful
-  // when the percentage rounds to 0 but the underlying count is non-zero.
-  count?: number
-}) => {
-  const pct = clampPct(value)
-
-  return (
-    <div className="space-y-2">
-      <StatLabel label={label} tooltip={tooltip} />
-      <div className="flex items-center gap-3">
-        <div className="h-2 flex-1 rounded-full bg-border">
-          <div
-            className="h-2 rounded-full bg-primary transition-all"
-            style={{ width: `${pct}%` }}
-          />
-        </div>
-        <span className="body-base tabular-nums">
-          {pct}%
-          {count !== undefined ? (
-            <span className="text-muted-foreground">
-              {' '}
-              ({count.toLocaleString()})
-            </span>
-          ) : null}
-        </span>
+  tooltip: string
+  fill: number
+  valueText: ReactNode
+}) => (
+  <div className="space-y-2">
+    <StatLabel label={label} tooltip={tooltip} />
+    <div className="flex items-center gap-3">
+      <div className="h-2 flex-1 rounded-full bg-border">
+        <div
+          className="h-2 rounded-full bg-primary transition-all"
+          style={{ width: `${clampPct(fill)}%` }}
+        />
       </div>
+      <span className="body-base tabular-nums whitespace-nowrap">
+        {valueText}
+      </span>
     </div>
-  )
-}
+  </div>
+)
 
-// Combined point estimate + Wilson 95% CI in one bar so the uncertainty is
-// adjacent to the number it qualifies (more visible than the previous
-// separate-row RangeBar). Layout per row:
-//
-//   Label
-//   [ ━━━━┃══════╋══════┃━━━━ ]   pct% (k of n)   low–high% CI
-//          ^cap  ^point  ^cap
-//
-// The full track is 0–100%. The CI band is a translucent fill from low to
-// high. Small vertical caps mark the CI bounds (error-bar whiskers). A solid
-// vertical line marks the point estimate. When CI bounds are absent (e.g.
-// `agreed_coarser_rank` has no CI in the BE response), just the bar + point
-// render.
+// Agreement bar: solid primary fill to the point estimate, with a translucent
+// diagonal-hatch band over the 95% CI range (ciLow–ciHigh) layered on top to
+// signal the estimate is fuzzy. The hatch extends past the solid fill into the
+// gray track, conveying that the true value could plausibly sit higher (or
+// lower). currentColor + text-primary avoids hardcoding the theme color.
 const AgreementBar = ({
   label,
   tooltip,
   value,
-  count,
-  total,
   ciLow,
   ciHigh,
+  valueText,
 }: {
   label: string
-  tooltip?: string
+  tooltip: string
   value: number
-  count?: number
-  total?: number
   ciLow?: number | null
   ciHigh?: number | null
+  valueText: ReactNode
 }) => {
-  const pct = clampPct(value)
-  const hasCi =
-    ciLow !== null &&
-    ciLow !== undefined &&
-    ciHigh !== null &&
-    ciHigh !== undefined
+  const hasCi = ciLow != null && ciHigh != null
   const lowPct = hasCi ? clampPct(ciLow as number) : 0
   const highPct = hasCi ? clampPct(ciHigh as number) : 0
 
   return (
     <div className="space-y-2">
       <StatLabel label={label} tooltip={tooltip} />
-      <div className="space-y-1">
-        <div className="flex items-center gap-3">
-          <div className="h-3 flex-1 rounded-full bg-border relative overflow-hidden">
-            {hasCi ? (
-              <>
-                <div
-                  className="absolute top-0 h-3 bg-primary/40"
-                  style={{
-                    left: `${lowPct}%`,
-                    width: `${Math.max(highPct - lowPct, 0.5)}%`,
-                  }}
-                  aria-label="95% confidence interval"
-                />
-                <div
-                  className="absolute top-0 h-3 w-[2px] bg-primary"
-                  style={{ left: `calc(${lowPct}% - 1px)` }}
-                />
-                <div
-                  className="absolute top-0 h-3 w-[2px] bg-primary"
-                  style={{ left: `calc(${highPct}% - 1px)` }}
-                />
-              </>
-            ) : null}
+      <div className="flex items-center gap-3">
+        <div className="h-2 flex-1 rounded-full bg-border relative overflow-hidden">
+          <div
+            className="absolute inset-y-0 left-0 rounded-full bg-primary"
+            style={{ width: `${clampPct(value)}%` }}
+          />
+          {hasCi ? (
             <div
-              className="absolute top-[-2px] h-[16px] w-[3px] rounded-sm bg-foreground transition-all"
-              style={{ left: `calc(${pct}% - 1.5px)` }}
-              aria-label="point estimate"
+              className="absolute inset-y-0 text-primary opacity-70"
+              style={{
+                left: `${lowPct}%`,
+                width: `${Math.max(highPct - lowPct, 1)}%`,
+                backgroundImage:
+                  'repeating-linear-gradient(45deg, currentColor 0, currentColor 1.5px, transparent 1.5px, transparent 4px)',
+              }}
+              aria-label="95% confidence interval"
             />
-          </div>
-          <span className="body-base tabular-nums whitespace-nowrap">
-            {pct}%
-            {count !== undefined ? (
-              <span className="text-muted-foreground">
-                {total !== undefined
-                  ? ` (${count.toLocaleString()} of ${total.toLocaleString()})`
-                  : ` (${count.toLocaleString()})`}
-              </span>
-            ) : null}
-          </span>
+          ) : null}
         </div>
-        {hasCi ? (
-          <div className="body-small tabular-nums text-muted-foreground">
-            95% CI {lowPct}–{highPct}%
-          </div>
-        ) : null}
+        <span className="body-base tabular-nums whitespace-nowrap">
+          {valueText}
+        </span>
       </div>
     </div>
   )
 }
 
-// Signed bar for a value in [-1, 1] (Cohen's kappa). 0 sits at the visual
-// midpoint; positive values fill rightward, negative fill leftward. Null →
-// "—" (kappa is undefined for empty or single-category sets).
+// Signed bar for Cohen's kappa in [-1, 1]. 0 sits at the visual midpoint;
+// positive fills rightward, negative leftward. Null → "—" (kappa is undefined
+// for empty or single-category sets).
 const SignedBar = ({
   label,
   tooltip,
   value,
 }: {
   label: string
-  tooltip?: string
+  tooltip: string
   value: number | null
 }) => {
   const v = value === null ? null : Math.min(Math.max(value, -1), 1)
@@ -197,19 +158,35 @@ const SignedBar = ({
   )
 }
 
-// Tooltip copy. The agreement metrics share the same denominator caveat — they
-// are measured only on verified occurrences that also carry a model
-// prediction, which is why their "k of n" total can be smaller than the
-// verified count above.
-const TOOLTIP = {
-  verified:
-    'Occurrences a person has reviewed and confirmed, as a share of all occurrences in the current filter.',
-  agreedExact:
-    "How often the model's top prediction exactly matches the confirmed taxon. Measured only on verified occurrences that also have a model prediction.",
-  agreedAnyRank:
-    "How often the model's prediction matches the confirmed taxon at any rank — e.g. the right genus, even if the species differs. Measured only on verified occurrences that also have a model prediction.",
-  kappa:
-    "Agreement beyond what random chance would produce. 0 means chance level, 1 means perfect agreement. Based on exact-taxon matches.",
+// Headline beside an agreement bar: the 95% CI range when present, otherwise
+// the point estimate. Exact counts live in the tooltip.
+const ciRangeText = (
+  pct: number,
+  ciLow?: number | null,
+  ciHigh?: number | null
+) => {
+  if (
+    ciLow !== null &&
+    ciLow !== undefined &&
+    ciHigh !== null &&
+    ciHigh !== undefined
+  ) {
+    return `${clampPct(ciLow)}–${clampPct(ciHigh)}%`
+  }
+  return `${clampPct(pct)}%`
+}
+
+// CI suffix for tooltip text, e.g. " 95% CI 83–94%." Empty when absent.
+const ciTooltip = (ciLow?: number | null, ciHigh?: number | null) => {
+  if (
+    ciLow !== null &&
+    ciLow !== undefined &&
+    ciHigh !== null &&
+    ciHigh !== undefined
+  ) {
+    return ` 95% CI ${clampPct(ciLow)}–${clampPct(ciHigh)}%.`
+  }
+  return ''
 }
 
 const StatsShell = ({ children }: { children: ReactNode }) => (
@@ -250,41 +227,50 @@ export const OccurrenceStats = ({
     )
   }
 
+  const denom = data.verified_with_prediction_count.toLocaleString()
   const hasCoarser =
     data.agreement_coarsest_rank != null &&
     data.agreed_coarser_rank_pct !== null
 
+  // Dynamic tooltip copy carrying the exact counts.
+  const verifiedTooltip =
+    `${data.verified_count.toLocaleString()} of ${data.total_occurrences.toLocaleString()} occurrences in the current filter are human-verified.` +
+    (data.no_prediction_count > 0
+      ? ` ${denom} of those have a model prediction to compare against.`
+      : '')
+  const exactTooltip =
+    `The model's top prediction exactly matched the confirmed taxon for ` +
+    `${data.agreed_exact_count.toLocaleString()} of ${denom} verified occurrences with a prediction ` +
+    `(${clampPct(data.agreed_exact_pct)}%).` +
+    ciTooltip(data.agreed_exact_ci_low, data.agreed_exact_ci_high)
+  const anyRankTooltip =
+    `The model's prediction matched the confirmed taxon at any rank (e.g. the right genus, ` +
+    `even if the species differs) for ${data.agreed_any_rank_count.toLocaleString()} of ${denom} ` +
+    `(${clampPct(data.agreed_any_rank_pct)}%).` +
+    ciTooltip(data.agreed_any_rank_ci_low, data.agreed_any_rank_ci_high)
+
   return (
     <StatsShell>
-      {/* First metrics stay visible so the headline numbers are always there. */}
-      <div className="space-y-2">
-        <StatBar
-          label="Verified occurrences"
-          tooltip={TOOLTIP.verified}
-          value={data.verified_pct}
-          count={data.verified_count}
-        />
-        {data.no_prediction_count > 0 ? (
-          <p className="body-small text-muted-foreground">
-            {data.verified_with_prediction_count.toLocaleString()} of{' '}
-            {data.verified_count.toLocaleString()} have a model prediction to
-            compare against.
-          </p>
-        ) : null}
-      </div>
-
-      <AgreementBar
-        label="Agreement (any rank)"
-        tooltip={TOOLTIP.agreedAnyRank}
-        value={data.agreed_any_rank_pct}
-        count={data.agreed_any_rank_count}
-        total={data.verified_with_prediction_count}
-        ciLow={data.agreed_any_rank_ci_low}
-        ciHigh={data.agreed_any_rank_ci_high}
+      <Bar
+        label="Verified occurrences"
+        tooltip={verifiedTooltip}
+        fill={data.verified_pct}
+        valueText={pctText(data.verified_pct, data.verified_count)}
       />
 
-      {/* Detailed metrics collapsed by default to reduce clutter next to the
-          filter controls. */}
+      <AgreementBar
+        label="Agreement (exact taxon)"
+        tooltip={exactTooltip}
+        value={data.agreed_exact_pct}
+        ciLow={data.agreed_exact_ci_low}
+        ciHigh={data.agreed_exact_ci_high}
+        valueText={ciRangeText(
+          data.agreed_exact_pct,
+          data.agreed_exact_ci_low,
+          data.agreed_exact_ci_high
+        )}
+      />
+
       <Collapsible.Root className="space-y-6" defaultOpen={false}>
         <Collapsible.Trigger asChild>
           <Button
@@ -292,31 +278,40 @@ export const OccurrenceStats = ({
             size="small"
             variant="ghost"
           >
-            <span className="body-overline-small font-bold">More detail</span>
+            <span className="body-overline-small font-bold">More</span>
             <ChevronsUpDown className="h-4 w-4" />
           </Button>
         </Collapsible.Trigger>
         <Collapsible.Content className="space-y-6">
           <AgreementBar
-            label="Agreement (exact taxon)"
-            tooltip={TOOLTIP.agreedExact}
-            value={data.agreed_exact_pct}
-            count={data.agreed_exact_count}
-            total={data.verified_with_prediction_count}
-            ciLow={data.agreed_exact_ci_low}
-            ciHigh={data.agreed_exact_ci_high}
+            label="Agreement (any rank)"
+            tooltip={anyRankTooltip}
+            value={data.agreed_any_rank_pct}
+            ciLow={data.agreed_any_rank_ci_low}
+            ciHigh={data.agreed_any_rank_ci_high}
+            valueText={ciRangeText(
+              data.agreed_any_rank_pct,
+              data.agreed_any_rank_ci_low,
+              data.agreed_any_rank_ci_high
+            )}
           />
           {hasCoarser ? (
-            <AgreementBar
+            <Bar
               label={`Agreement (≥ ${data.agreement_coarsest_rank})`}
-              value={data.agreed_coarser_rank_pct as number}
-              count={data.agreed_coarser_rank_count as number}
-              total={data.verified_with_prediction_count}
+              tooltip={
+                `The model agreed with the confirmed taxon at ${data.agreement_coarsest_rank} ` +
+                `or coarser for ${(
+                  data.agreed_coarser_rank_count as number
+                ).toLocaleString()} of ${denom} ` +
+                `(${clampPct(data.agreed_coarser_rank_pct as number)}%).`
+              }
+              fill={data.agreed_coarser_rank_pct as number}
+              valueText={`${clampPct(data.agreed_coarser_rank_pct as number)}%`}
             />
           ) : null}
           <SignedBar
             label="Cohen's κ (beyond chance)"
-            tooltip={TOOLTIP.kappa}
+            tooltip="Agreement beyond what random chance would produce, on exact-taxon matches. 0 means chance level, 1 means perfect agreement."
             value={data.cohens_kappa}
           />
         </Collapsible.Content>
