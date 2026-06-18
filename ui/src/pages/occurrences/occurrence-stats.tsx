@@ -60,11 +60,13 @@ const Bar = ({
   </div>
 )
 
-// Agreement bar: solid primary fill to the point estimate, with a translucent
-// diagonal-hatch band over the 95% CI range (ciLow–ciHigh) layered on top to
-// signal the estimate is fuzzy. The hatch extends past the solid fill into the
-// gray track, conveying that the true value could plausibly sit higher (or
-// lower). currentColor + text-primary avoids hardcoding the theme color.
+// Agreement bar: a solid "confident floor" fills up to the lower 95% CI bound,
+// then a diagonal hatch covers the CI range (ciLow–ciHigh) — the uncertain zone
+// where the true value sits. The hatch is drawn over the gray track, not over
+// the solid fill, so it stays visible regardless of where the point estimate
+// lands (a near-100% point estimate previously hid blue-on-blue hatching).
+// currentColor + text-primary avoids hardcoding the theme color. With no CI
+// (e.g. coarser-rank), it falls back to a plain solid fill to the point value.
 const AgreementBar = ({
   label,
   tooltip,
@@ -89,22 +91,32 @@ const AgreementBar = ({
       <StatLabel label={label} tooltip={tooltip} />
       <div className="flex items-center gap-3">
         <div className="h-2 flex-1 rounded-full bg-border relative overflow-hidden">
-          <div
-            className="absolute inset-y-0 left-0 rounded-full bg-primary"
-            style={{ width: `${clampPct(value)}%` }}
-          />
           {hasCi ? (
+            <>
+              {/* Confident floor: solid up to the lower CI bound. */}
+              <div
+                className="absolute inset-y-0 left-0 bg-primary"
+                style={{ width: `${lowPct}%` }}
+              />
+              {/* Uncertain zone: diagonal hatch across the CI range, over the
+                  gray track so it stays visible at any point estimate. */}
+              <div
+                className="absolute inset-y-0 text-primary"
+                style={{
+                  left: `${lowPct}%`,
+                  width: `${Math.max(highPct - lowPct, 1)}%`,
+                  backgroundImage:
+                    'repeating-linear-gradient(45deg, currentColor 0, currentColor 2px, transparent 2px, transparent 4px)',
+                }}
+                aria-label="95% confidence interval"
+              />
+            </>
+          ) : (
             <div
-              className="absolute inset-y-0 text-primary opacity-70"
-              style={{
-                left: `${lowPct}%`,
-                width: `${Math.max(highPct - lowPct, 1)}%`,
-                backgroundImage:
-                  'repeating-linear-gradient(45deg, currentColor 0, currentColor 1.5px, transparent 1.5px, transparent 4px)',
-              }}
-              aria-label="95% confidence interval"
+              className="absolute inset-y-0 left-0 bg-primary"
+              style={{ width: `${clampPct(value)}%` }}
             />
-          ) : null}
+          )}
         </div>
         <span className="body-base tabular-nums whitespace-nowrap">
           {valueText}
