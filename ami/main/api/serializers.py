@@ -79,11 +79,8 @@ class SourceImageThumbnailSerializer(DefaultSerializer):
         self.fields["thumbnails"] = serializers.SerializerMethodField()
 
     def get_thumbnails(self, obj: SourceImage) -> dict | None:
-        # Projects that aren't anonymously readable (draft) get no thumbnail-endpoint
-        # URLs, so the frontend falls back to the capture's presigned source URL. The
-        # endpoint is auth-gated and the frontend loads it via an anonymous <img> tag
-        # that can't send an Authorization header, so it would otherwise 401. Interim
-        # fix; serving thumbnails for private projects is tracked in #1341.
+        # No thumbnail-endpoint URLs for projects that don't allow them (see
+        # Project.thumbnails_enabled); the frontend falls back to the presigned source URL.
         if obj.project is None or not obj.project.thumbnails_enabled:
             return None
         return {
