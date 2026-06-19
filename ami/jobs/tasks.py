@@ -636,52 +636,29 @@ def _update_job_progress(
         job.logger.info(f"Updated job {job_id} progress in stage '{stage}' to {progress_percentage*100}%")
 
         if became_complete:
-            # Conditional terminal transition: flip to the terminal state only from
-            # a pre-terminal status, as a single statement-scope UPDATE. This cannot
-            # be clobbered by a slower worker's stale read-modify-write, and — unlike
-            # the `select_for_update` removed in #1261 — it holds no
-            # transaction-length row lock, so it does not reintroduce that
-            # contention. A job a concurrent worker, the reaper, or a cancel already
-            # moved to a terminal or CANCELING state is left untouched (we do not
-            # resurrect a revoked/cancelled job into SUCCESS). See issue #1337.
-            #
-            # The UPDATE runs BEFORE the progress blob is saved so the UI-facing
-            # `progress.summary.status` can be advanced to `complete_state` only
-            # when this transition actually fires. Otherwise an already-terminal
-            # job (REVOKED/FAILURE/CANCELING) would keep its correct top-level
-            # `status` column but have `summary.status` silently flipped to SUCCESS
-            # inside the JSONB — reintroducing the two-sources-of-truth disagreement
-            # this fix exists to prevent. See issue #1337.
-            now = datetime.datetime.now()  # Use naive datetime in local time
+            # Flip to terminal only from a non-terminal status, as one
+            # statement-scope UPDATE: a stale read-modify-write can't clobber it,
+            # and unlike the select_for_update removed in #1261 it holds no row
+            # lock. A job already moved to terminal/CANCELING (by another worker,
+            # the reaper, or a cancel) is left alone — we don't resurrect a
+            # revoked job into SUCCESS. See #1337.
+            now = datetime.datetime.now()  # naive, local time
             transitioned = Job.objects.filter(
                 pk=job_id,
-                status__in=[JobState.CREATED, JobState.PENDING, JobState.STARTED, JobState.RETRY],
+                status__in=JobState.finalizable_states(),
             ).update(status=complete_state, finished_at=now)
             if transitioned:
                 job.status = complete_state
                 job.finished_at = now
-                # Only now is it correct to advance the UI-facing summary status.
-                # On the no-transition path (already terminal/CANCELING) the blob's
-                # summary.status keeps whatever it was.
+                # Advance summary.status only when the transition fired, else an
+                # already-terminal job's JSONB would disagree with its column.
                 job.progress.summary.status = complete_state
 
-        # Narrow the write to the fields we actually mutated. Without this, a full
-        # save() would overwrite `logs` and any other field on the instance
-        # fetched at the top of this block — so a concurrent worker's append to
-        # `progress.errors` (via `_reconcile_lost_images`) or log line (via
-        # JobLogHandler) could be clobbered by a stale read-modify-write.
-        # `updated_at` is listed explicitly because Django skips `auto_now` bumps
-        # when `update_fields` is provided. See PR #1261 review feedback.
-        #
-        # NOTE: the overall `status` and `finished_at` columns are intentionally
-        # NOT written by this save(). A blob-style `save(update_fields=[..., "status", ...])`
-        # writes whatever `status` this transaction read at the top of the block,
-        # so a slower/stale worker can regress an already-terminal status (set by a
-        # faster worker, the stale-job reaper, or a cancel) back to STARTED — which
-        # also makes the job claimable again via `/next`, starving newer work. The
-        # terminal transition above is performed separately as a guarded, atomic
-        # UPDATE. This save() persists the stage-level progress changes (and, when
-        # the guarded UPDATE fired, the matching summary.status). See issue #1337.
+        # status/finished_at are deliberately NOT in this save() — only the
+        # guarded UPDATE above writes them. Folding them back in reopens #1337.
+        # Narrow update_fields so a concurrent append to progress.errors/logs
+        # isn't clobbered; updated_at explicit because auto_now skips when
+        # update_fields is given.
         job.save(update_fields=["progress", "updated_at"])
         try:
             _log_job_throughput(job, stage)

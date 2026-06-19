@@ -94,6 +94,12 @@ class JobState(str, OrderedEnum):
         """States where a job is actively processing and should serve tasks to workers."""
         return [cls.STARTED, cls.RETRY]
 
+    @classmethod
+    def finalizable_states(cls):
+        # running_states() minus CANCELING (don't resurrect a cancel in progress)
+        # and UNKNOWN (never served; shouldn't auto-finalize). See #1337.
+        return [cls.CREATED, cls.PENDING, cls.STARTED, cls.RETRY]
+
 
 def get_status_label(status: JobState, progress: float) -> str:
     """
