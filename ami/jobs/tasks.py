@@ -1404,7 +1404,21 @@ def update_job_status(sender, task_id, task, state: str, retval=None, **kwargs):
         )
         return
 
-    job.update_status(state)
+    # Route the terminal SUCCESS write through the guarded chokepoint (issue
+    # #1337): a stale task_postrun must not resurrect a job another writer (a
+    # cancel, the reaper, or _update_job_progress) already moved to a terminal
+    # state. Non-terminal celery states (STARTED, RETRY, ...) still flow through
+    # the dual-use update_status() unchanged.
+    if state == JobState.SUCCESS:
+        transitioned = job._guarded_status_update(
+            JobState.SUCCESS,
+            from_statuses=JobState.finalizable_states(),
+            set_finished=True,
+        )
+        if transitioned:
+            job.save(update_fields=["progress", "finished_at", "updated_at"])
+    else:
+        job.update_status(state)
 
     # Clean up async resources for revoked jobs
     if state == JobState.REVOKED:
@@ -1432,11 +1446,21 @@ def update_job_failure(sender, task_id, exception, *args, **kwargs):
         )
         return
 
-    job.update_status(JobState.FAILURE, save=False)
+    # Route the terminal FAILURE write through the guarded chokepoint (issue
+    # #1337): a run_job failure must not clobber a status another writer already
+    # moved to a terminal state (e.g. a job a cancel just REVOKED, or one the
+    # result handler already marked SUCCESS). If the guard no-ops we still log
+    # and run the teardown below.
+    transitioned = job._guarded_status_update(
+        JobState.FAILURE,
+        from_statuses=JobState.finalizable_states(),
+        set_finished=True,
+    )
 
     job.logger.error(f'Job #{job.pk} "{job.name}" failed: {exception}')
 
-    job.save()
+    if transitioned:
+        job.save(update_fields=["progress", "finished_at", "updated_at"])
 
     # Clean up async resources for failed jobs
     cleanup_async_job_if_needed(job)

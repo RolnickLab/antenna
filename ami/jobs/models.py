@@ -1178,9 +1178,23 @@ class Job(BaseModel):
         Cancel a job. For async_api jobs, clean up NATS/Redis resources
         and transition through CANCELING → REVOKED. For other jobs,
         revoke the Celery task.
+
+        The CANCELING and REVOKED writes go through the guarded chokepoint
+        (issue #1337) so a cancel cannot clobber a status another writer already
+        moved to a terminal state. If the job has already completed (SUCCESS) or
+        otherwise left the cancellable states, the guarded UPDATE no-ops and we
+        leave the status untouched — but we still revoke the Celery task and run
+        the NATS/Redis teardown below, since those resources may need releasing
+        regardless of the final status.
         """
-        self.status = JobState.CANCELING
-        self.save()
+        # CANCELING is a transient marker: only advance into it from a still-active
+        # state, never from an already-terminal one (don't un-finish a finished job).
+        canceling = self._guarded_status_update(
+            JobState.CANCELING,
+            from_statuses=JobState.finalizable_states(),
+        )
+        if canceling:
+            self.save(update_fields=["progress", "updated_at"])
 
         if self.task_id:
             task = run_job.AsyncResult(self.task_id)
@@ -1188,14 +1202,63 @@ class Job(BaseModel):
                 task.revoke(terminate=True)
             if self.dispatch_mode == JobDispatchMode.ASYNC_API:
                 # For async jobs we need to set the status to revoked here since the task already
-                # finished (it only queues the images).
-                self.status = JobState.REVOKED
-                self.save()
+                # finished (it only queues the images). CANCELING is included in the from-set so
+                # this completes the cancel's own CANCELING → REVOKED progression.
+                revoked = self._guarded_status_update(
+                    JobState.REVOKED,
+                    # CANCELING included so this completes the cancel's own progression.
+                    from_statuses=JobState.finalizable_states() + [JobState.CANCELING],
+                    set_finished=True,
+                )
+                if revoked:
+                    self.save(update_fields=["progress", "finished_at", "updated_at"])
         else:
-            self.status = JobState.REVOKED
-            self.save()
+            revoked = self._guarded_status_update(
+                JobState.REVOKED,
+                # CANCELING included so this completes the cancel's own progression.
+                from_statuses=JobState.finalizable_states() + [JobState.CANCELING],
+                set_finished=True,
+            )
+            if revoked:
+                self.save(update_fields=["progress", "finished_at", "updated_at"])
 
         cleanup_async_job_if_needed(self)
+
+    def _guarded_status_update(self, to_status, from_statuses, *, set_finished=False):
+        """Atomically move the job to ``to_status`` only if it is still in one of
+        ``from_statuses``.
+
+        This is a statement-scope ``UPDATE`` (it acquires no transaction-length
+        row lock, so it does not reintroduce the contention that #1261 removed)
+        whose ``status__in`` precondition a stale read-modify-write elsewhere
+        cannot clobber: if a concurrent writer has already moved the job to a
+        state outside ``from_statuses`` (e.g. another worker, the reaper, or a
+        cancel marked it terminal), the UPDATE matches zero rows and this call
+        is a no-op.
+
+        It is the single chokepoint for terminal status writes (issue #1337) and
+        mirrors the guard added to ``_update_job_progress`` in #1338. Callers are
+        responsible for persisting ``progress.summary.status`` into the JSONB
+        afterwards with a narrow ``save(update_fields=["progress", "updated_at"])``,
+        and only when this method reported that the transition fired.
+
+        Returns the number of rows updated (0 or 1). On a successful transition
+        the in-memory instance is advanced to match (``status``, optionally
+        ``finished_at``, and ``progress.summary.status``) so the caller can save
+        the progress blob without re-reading.
+        """
+        fields = {"status": to_status}
+        now = None
+        if set_finished:
+            now = datetime.datetime.now()  # Naive local time, matching finished_at writes elsewhere.
+            fields["finished_at"] = now
+        updated = Job.objects.filter(pk=self.pk, status__in=from_statuses).update(**fields)
+        if updated:
+            self.status = to_status
+            if set_finished:
+                self.finished_at = now
+            self.progress.summary.status = to_status
+        return updated
 
     def update_status(self, status=None, save=True):
         """
