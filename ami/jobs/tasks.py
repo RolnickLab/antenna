@@ -437,51 +437,38 @@ def _fail_job(job_id: int, reason: str) -> None:
 
 
 def _log_missing_state_context(job_id: int, stage: str) -> None:
-    """Log context when a result arrives but the job's Redis state is absent.
-
-    A missing total-images key is treated as fatal by the result handler, but it
-    conflates three cases: genuinely cleaned up (end of life), never seeded yet
-    (startup race), and wiped by a duplicate/redelivered run_job re-running
-    initialize_job. Record the job's age and status so we can tell which one is
-    actually happening before adding grace logic. Observation only; see #1337.
-    """
+    # Diagnostic for a missing progress-state key. Status + age separate the two
+    # cases: a terminal job means a late result arriving after the job finished
+    # (benign — e.g. a cancel already cleaned up the state); a still-running job
+    # with no state is the one worth investigating (state never seeded, or wiped
+    # by a re-dispatched run). Observation only; the fix is planned in #1337.
     from django.utils import timezone
 
     from ami.jobs.models import Job, JobState  # avoid circular import
 
     try:
-        row = Job.objects.values("status", "dispatch_mode", "created_at").get(pk=job_id)
+        row = Job.objects.values("status", "created_at").get(pk=job_id)
     except Job.DoesNotExist:
-        logger.warning("Missing Redis state for job %s (stage=%s) and the job row is gone. See #1337.", job_id, stage)
+        logger.warning("Job %s: progress state missing and the job no longer exists (stage=%s).", job_id, stage)
         return
 
     age = (timezone.now() - row["created_at"]).total_seconds() if row["created_at"] else None
     age_s = round(age, 1) if age is not None else None
 
     if row["status"] in JobState.final_states():
-        # Expected: an in-flight result arriving after the job already finished
-        # (e.g. a cancel deleted the Redis state). The _fail_job call below no-ops
-        # on a terminal job, so this is normal post-terminal cleanup, not an
-        # anomaly — info, not warning.
         logger.info(
-            "Ignoring in-flight result for already-terminal job %s (stage=%s, status=%s, age_s=%s). See #1337.",
+            "Job %s: result arrived after the job already finished (status=%s, stage=%s); ignoring.",
             job_id,
-            stage,
             row["status"],
-            age_s,
+            stage,
         )
     else:
-        # The job is NOT terminal but its state is gone — this is the case worth
-        # investigating. A small age points to a not-yet-seeded or redispatch
-        # race rather than genuine cleanup.
         logger.warning(
-            "Missing Redis state for non-terminal job %s (stage=%s): status=%s dispatch=%s age_s=%s. "
-            "Failing job. A small age points to a not-yet-seeded or redispatch race rather than genuine cleanup. "
-            "See #1337.",
+            "Job %s: progress state missing while the job is still running "
+            "(status=%s, stage=%s, age=%ss); marking it failed.",
             job_id,
-            stage,
             row["status"],
-            row["dispatch_mode"],
+            stage,
             age_s,
         )
 
@@ -706,19 +693,13 @@ def _update_job_progress(
                 # already-terminal job's JSONB would disagree with its column.
                 job.progress.summary.status = complete_state
             else:
-                # The work completed but the guard found the job already terminal/
-                # CANCELING, so the completion was not applied. Often legitimate (a
-                # user cancel or the reaper genuinely won the race), but a frequent
-                # occurrence signals a PREMATURE terminal verdict — e.g. the reaper
-                # revoked a slow-but-alive job and its results then landed. Logged so
-                # these false-positive terminals are visible instead of silently
-                # swallowed by the guard. Observation only; see #1337.
-                current = Job.objects.filter(pk=job_id).values_list("status", flat=True).first()
+                # Work completed but the guard found the job already terminal/CANCELING,
+                # so the completion was not applied. Usually legitimate (a cancel or the
+                # reaper won the race); if frequent it points to a premature terminal
+                # verdict. Observation only; see #1337.
                 logger.warning(
-                    "Job %s completed work after it was already terminal (status=%s); "
-                    "completion not applied. If frequent, the terminal verdict may be premature. See #1337.",
+                    "Job %s: work completed but the job was already in a terminal state; completion not applied.",
                     job_id,
-                    current,
                 )
 
         # status/finished_at are deliberately NOT in this save() — only the
