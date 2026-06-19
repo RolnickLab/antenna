@@ -447,22 +447,43 @@ def _log_missing_state_context(job_id: int, stage: str) -> None:
     """
     from django.utils import timezone
 
-    from ami.jobs.models import Job  # avoid circular import
+    from ami.jobs.models import Job, JobState  # avoid circular import
 
     try:
         row = Job.objects.values("status", "dispatch_mode", "created_at").get(pk=job_id)
-        age = (timezone.now() - row["created_at"]).total_seconds() if row["created_at"] else None
+    except Job.DoesNotExist:
+        logger.warning("Missing Redis state for job %s (stage=%s) and the job row is gone. See #1337.", job_id, stage)
+        return
+
+    age = (timezone.now() - row["created_at"]).total_seconds() if row["created_at"] else None
+    age_s = round(age, 1) if age is not None else None
+
+    if row["status"] in JobState.final_states():
+        # Expected: an in-flight result arriving after the job already finished
+        # (e.g. a cancel deleted the Redis state). The _fail_job call below no-ops
+        # on a terminal job, so this is normal post-terminal cleanup, not an
+        # anomaly — info, not warning.
+        logger.info(
+            "Ignoring in-flight result for already-terminal job %s (stage=%s, status=%s, age_s=%s). See #1337.",
+            job_id,
+            stage,
+            row["status"],
+            age_s,
+        )
+    else:
+        # The job is NOT terminal but its state is gone — this is the case worth
+        # investigating. A small age points to a not-yet-seeded or redispatch
+        # race rather than genuine cleanup.
         logger.warning(
-            "Missing Redis state for job %s (stage=%s): status=%s dispatch=%s age_s=%s. Failing job. "
-            "A small age points to a not-yet-seeded or redispatch race rather than genuine cleanup. See #1337.",
+            "Missing Redis state for non-terminal job %s (stage=%s): status=%s dispatch=%s age_s=%s. "
+            "Failing job. A small age points to a not-yet-seeded or redispatch race rather than genuine cleanup. "
+            "See #1337.",
             job_id,
             stage,
             row["status"],
             row["dispatch_mode"],
-            round(age, 1) if age is not None else None,
+            age_s,
         )
-    except Job.DoesNotExist:
-        logger.warning("Missing Redis state for job %s (stage=%s) and the job row is gone. See #1337.", job_id, stage)
 
 
 def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> bool:
