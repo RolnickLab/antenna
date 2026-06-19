@@ -447,19 +447,22 @@ def _log_missing_state_context(job_id: int, stage: str) -> None:
     from ami.jobs.models import Job, JobState  # avoid circular import
 
     try:
-        row = Job.objects.values("status", "created_at").get(pk=job_id)
+        job_values = Job.objects.values("status", "created_at").get(pk=job_id)
     except Job.DoesNotExist:
         logger.warning("Job %s: progress state missing and the job no longer exists (stage=%s).", job_id, stage)
         return
 
-    age = (timezone.now() - row["created_at"]).total_seconds() if row["created_at"] else None
+    age = (timezone.now() - job_values["created_at"]).total_seconds() if job_values["created_at"] else None
     age_s = round(age, 1) if age is not None else None
 
-    if row["status"] in JobState.final_states():
+    # Mirror _fail_job's no-op set: a job that is already terminal OR cancelling
+    # will not actually be failed, so a late result for it is expected cleanup,
+    # not an anomaly.
+    if job_values["status"] in {JobState.CANCELING, *JobState.final_states()}:
         logger.info(
             "Job %s: result arrived after the job already finished (status=%s, stage=%s); ignoring.",
             job_id,
-            row["status"],
+            job_values["status"],
             stage,
         )
     else:
@@ -467,7 +470,7 @@ def _log_missing_state_context(job_id: int, stage: str) -> None:
             "Job %s: progress state missing while the job is still running "
             "(status=%s, stage=%s, age=%ss); marking it failed.",
             job_id,
-            row["status"],
+            job_values["status"],
             stage,
             age_s,
         )
@@ -697,9 +700,10 @@ def _update_job_progress(
                 # so the completion was not applied. Usually legitimate (a cancel or the
                 # reaper won the race); if frequent it points to a premature terminal
                 # verdict. Observation only; see #1337.
-                logger.warning(
-                    "Job %s: work completed but the job was already in a terminal state; completion not applied.",
-                    job_id,
+                job.logger.warning(
+                    "Stage '%s' completed but the job was already in a terminal state; not applying %s.",
+                    stage,
+                    complete_state,
                 )
 
         # status/finished_at are deliberately NOT in this save() — only the
