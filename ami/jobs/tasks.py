@@ -282,6 +282,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         # State keys genuinely missing (the total-images key returned None).
         # Ack so NATS stops redelivering and fail the job — there's no state
         # left to reconcile against.
+        _log_missing_state_context(job_id, "process")
         _ack_task_via_nats(reply_subject, logger)
         _fail_job(job_id, "Job state keys not found in Redis (likely cleaned up concurrently)")
         return
@@ -364,6 +365,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
             # State keys genuinely missing (total-images key returned None). Ack
             # first so NATS stops redelivering a message whose state is gone,
             # then fail the job. Mirrors the stage=process missing-state path.
+            _log_missing_state_context(job_id, "results")
             _ack_task_via_nats(reply_subject, job.logger)
             _fail_job(job_id, "Job state keys not found in Redis (likely cleaned up concurrently)")
             return
@@ -432,6 +434,35 @@ def _fail_job(job_id: int, reason: str) -> None:
     except Job.DoesNotExist:
         logger.error(f"Cannot fail job {job_id}: not found")
         cleanup_async_job_resources(job_id)
+
+
+def _log_missing_state_context(job_id: int, stage: str) -> None:
+    """Log context when a result arrives but the job's Redis state is absent.
+
+    A missing total-images key is treated as fatal by the result handler, but it
+    conflates three cases: genuinely cleaned up (end of life), never seeded yet
+    (startup race), and wiped by a duplicate/redelivered run_job re-running
+    initialize_job. Record the job's age and status so we can tell which one is
+    actually happening before adding grace logic. Observation only; see #1337.
+    """
+    from django.utils import timezone
+
+    from ami.jobs.models import Job  # avoid circular import
+
+    try:
+        row = Job.objects.values("status", "dispatch_mode", "created_at").get(pk=job_id)
+        age = (timezone.now() - row["created_at"]).total_seconds() if row["created_at"] else None
+        logger.warning(
+            "Missing Redis state for job %s (stage=%s): status=%s dispatch=%s age_s=%s. Failing job. "
+            "A small age points to a not-yet-seeded or redispatch race rather than genuine cleanup. See #1337.",
+            job_id,
+            stage,
+            row["status"],
+            row["dispatch_mode"],
+            round(age, 1) if age is not None else None,
+        )
+    except Job.DoesNotExist:
+        logger.warning("Missing Redis state for job %s (stage=%s) and the job row is gone. See #1337.", job_id, stage)
 
 
 def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> bool:
@@ -653,6 +684,21 @@ def _update_job_progress(
                 # Advance summary.status only when the transition fired, else an
                 # already-terminal job's JSONB would disagree with its column.
                 job.progress.summary.status = complete_state
+            else:
+                # The work completed but the guard found the job already terminal/
+                # CANCELING, so the completion was not applied. Often legitimate (a
+                # user cancel or the reaper genuinely won the race), but a frequent
+                # occurrence signals a PREMATURE terminal verdict — e.g. the reaper
+                # revoked a slow-but-alive job and its results then landed. Logged so
+                # these false-positive terminals are visible instead of silently
+                # swallowed by the guard. Observation only; see #1337.
+                current = Job.objects.filter(pk=job_id).values_list("status", flat=True).first()
+                logger.warning(
+                    "Job %s completed work after it was already terminal (status=%s); "
+                    "completion not applied. If frequent, the terminal verdict may be premature. See #1337.",
+                    job_id,
+                    current,
+                )
 
         # status/finished_at are deliberately NOT in this save() — only the
         # guarded UPDATE above writes them. Folding them back in reopens #1337.
