@@ -1198,20 +1198,29 @@ class Job(BaseModel):
 
         if self.task_id:
             task = run_job.AsyncResult(self.task_id)
-            if task:
-                task.revoke(terminate=True)
             if self.dispatch_mode == JobDispatchMode.ASYNC_API:
-                # For async jobs we need to set the status to revoked here since the task already
-                # finished (it only queues the images). CANCELING is included in the from-set so
-                # this completes the cancel's own CANCELING → REVOKED progression.
+                # The local run_job only queues images and has almost always
+                # finished by now, so terminating it does nothing about the work
+                # running on the remote ADC workers — that is stopped by tearing
+                # down the NATS stream + Redis state in cleanup below. Revoke
+                # without terminate so we never SIGTERM the bootstrap mid-flight on
+                # the rare occasion it is still running. (folds antenna#1324)
+                if task:
+                    task.revoke()
+                # Set the status to revoked here. CANCELING is included in the
+                # from-set so this completes the cancel's own CANCELING → REVOKED
+                # progression.
                 revoked = self._guarded_status_update(
                     JobState.REVOKED,
-                    # CANCELING included so this completes the cancel's own progression.
                     from_statuses=JobState.finalizable_states() + [JobState.CANCELING],
                     set_finished=True,
                 )
                 if revoked:
                     self.save(update_fields=["progress", "finished_at", "updated_at"])
+            elif task:
+                # Sync / internal jobs do the actual work inside the celery task,
+                # so terminating it is the cancel mechanism.
+                task.revoke(terminate=True)
         else:
             revoked = self._guarded_status_update(
                 JobState.REVOKED,
@@ -1236,11 +1245,20 @@ class Job(BaseModel):
         cancel marked it terminal), the UPDATE matches zero rows and this call
         is a no-op.
 
-        It is the single chokepoint for terminal status writes (issue #1337) and
-        mirrors the guard added to ``_update_job_progress`` in #1338. Callers are
-        responsible for persisting ``progress.summary.status`` into the JSONB
-        afterwards with a narrow ``save(update_fields=["progress", "updated_at"])``,
-        and only when this method reported that the transition fired.
+        It is the chokepoint for the *lock-free* terminal writers — this method,
+        the result handler ``_update_job_progress`` (#1338), and the celery
+        task-signal handlers — which is why each carries the ``status__in``
+        precondition. The other two terminal writers take a row lock instead and
+        enforce the same no-resurrect invariant that way: ``_fail_job`` and the
+        stale-job reaper (``check_stale_jobs``) both run under
+        ``select_for_update`` and check for a terminal/CANCELING status before
+        writing (the reaper deliberately keeps a broader from-set so it can still
+        force a genuinely stuck job out of CANCELING/UNKNOWN — that is its role as
+        last resort). See issue #1337.
+
+        Callers are responsible for persisting ``progress.summary.status`` into
+        the JSONB afterwards with a narrow ``save(update_fields=["progress",
+        "updated_at"])``, and only when this method reported the transition fired.
 
         Returns the number of rows updated (0 or 1). On a successful transition
         the in-memory instance is advanced to match (``status``, optionally
