@@ -1404,7 +1404,21 @@ def update_job_status(sender, task_id, task, state: str, retval=None, **kwargs):
         )
         return
 
-    job.update_status(state)
+    # Write the terminal SUCCESS through the guarded helper (see #1337): it only
+    # transitions a job that is still in a non-terminal state, so a slow
+    # task_postrun cannot revive a job that a cancel, the stale-job reaper, or the
+    # result handler already finished. Non-terminal Celery states (STARTED,
+    # RETRY, ...) still go through update_status() unchanged.
+    if state == JobState.SUCCESS:
+        transitioned = job._guarded_status_update(
+            JobState.SUCCESS,
+            from_statuses=JobState.finalizable_states(),
+            set_finished=True,
+        )
+        if transitioned:
+            job.save(update_fields=["progress", "finished_at", "updated_at"])
+    else:
+        job.update_status(state)
 
     # Clean up async resources for revoked jobs
     if state == JobState.REVOKED:
@@ -1432,11 +1446,21 @@ def update_job_failure(sender, task_id, exception, *args, **kwargs):
         )
         return
 
-    job.update_status(JobState.FAILURE, save=False)
+    # Write the terminal FAILURE through the guarded helper (see #1337): it only
+    # transitions a job that is still in a non-terminal state, so a run_job
+    # failure cannot overwrite a status another writer already finished (e.g. a
+    # job a cancel just REVOKED, or one the result handler marked SUCCESS). If the
+    # guard makes no change we still log the error and run the teardown below.
+    transitioned = job._guarded_status_update(
+        JobState.FAILURE,
+        from_statuses=JobState.finalizable_states(),
+        set_finished=True,
+    )
 
     job.logger.error(f'Job #{job.pk} "{job.name}" failed: {exception}')
 
-    job.save()
+    if transitioned:
+        job.save(update_fields=["progress", "finished_at", "updated_at"])
 
     # Clean up async resources for failed jobs
     cleanup_async_job_if_needed(job)
