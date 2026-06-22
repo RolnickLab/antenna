@@ -434,7 +434,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
 
 
 def _describe_redis_target() -> str:
-    """Return a ``host:port/dbN`` string for the "default" Redis connection.
+    """Return a ``redis=host:port/dbN`` string for the "default" Redis connection.
 
     Logged at the start of every ``run_job`` so DB-index drift across hosts
     (the class of misconfig that manifests as silent ``process_nats_pipeline_result``

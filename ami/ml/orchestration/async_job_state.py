@@ -198,16 +198,20 @@ class AsyncJobStateManager:
         """
         One-line snapshot of what Redis actually holds for this job.
 
-        Called from the missing-state path in ``update_state`` and from
-        ``_fail_job`` so the FAILURE log and the UI ``progress.errors`` entry
-        distinguish the three common causes — DB mismatch across hosts, key
-        eviction, and never-initialized state — instead of a single hardcoded
-        "likely cleaned up concurrently" guess that all three collapse to.
+        Called from the missing-state path in ``update_state`` (the loud log)
+        and from the result handler in ``process_nats_pipeline_result``, which
+        folds the result into the reason it passes to ``_fail_job`` so the
+        FAILURE log and the UI ``progress.errors`` entry distinguish the three
+        common causes — DB mismatch across hosts, key eviction, and
+        never-initialized state — instead of a single hardcoded "likely cleaned
+        up concurrently" guess that all three collapse to.
 
-        Cost: the internal ``SCAN`` runs only on the failure path (once per
-        job-lifetime FAILURE), and the per-job key fanout is at most four
-        (pending:process, pending:results, failed, total), so the cost is
-        negligible compared to the FAILURE branch it only helps diagnose.
+        Cost: only ever runs on the missing-state failure path (at most twice
+        per job-lifetime FAILURE — once for the log, once for the reason
+        string). ``SCAN`` is O(keyspace) regardless of ``MATCH`` (MATCH filters
+        the returned keys, not the keys scanned), but on the rare failure path
+        that one extra full cursor walk is negligible next to the FAILURE it
+        helps diagnose.
 
         Intentionally defensive: any failure to collect diagnostics is
         swallowed, because the caller is already about to fail the job and
@@ -219,10 +223,11 @@ class AsyncJobStateManager:
             db = kwargs.get("db", "?")
             host = kwargs.get("host", "?")
             port = kwargs.get("port", "?")
-            # Cursor-safe SCAN over the job's keyspace — cheap even on a busy
-            # Redis because it's filtered server-side and the per-job fanout is
-            # at most a handful of keys (pending:process, pending:results,
-            # failed, total).
+            # Cursor-safe SCAN over the job's keyspace. SCAN walks the whole DB
+            # (MATCH only filters what's returned, not what's scanned), so this
+            # is acceptable precisely because it runs only on the rare
+            # missing-state failure path; the per-job fanout returned is at most
+            # a handful of keys (pending:process, pending:results, failed, total).
             keys = sorted(k.decode() if isinstance(k, bytes) else k for k in redis.scan_iter(match=self._pattern()))
             sizes: list[str] = []
             for key in keys:
