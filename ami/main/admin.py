@@ -14,7 +14,11 @@ from ami import tasks
 from ami.jobs.models import Job
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.ml.post_processing.admin.actions import make_post_processing_action
+from ami.ml.post_processing.admin.class_masking_form import ClassMaskingActionForm
+from ami.ml.post_processing.admin.rank_rollup_form import RankRollupActionForm
 from ami.ml.post_processing.admin.small_size_filter_form import SmallSizeFilterActionForm
+from ami.ml.post_processing.class_masking import ClassMaskingTask
+from ami.ml.post_processing.rank_rollup import RankRollupTask
 from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
 from ami.ml.tasks import remove_duplicate_classifications
 
@@ -552,6 +556,12 @@ class OccurrenceAdmin(IdSearchAdminMixin, admin.ModelAdmin[Occurrence]):
         scope_resolver=lambda occurrence: {"occurrence_id": occurrence.pk},
         name_resolver=lambda task_cls, occurrence: (f"Post-processing: {task_cls.name} on Occurrence {occurrence.pk}"),
     )
+    run_class_masking = make_post_processing_action(
+        ClassMaskingTask,
+        ClassMaskingActionForm,
+        scope_resolver=lambda occurrence: {"occurrence_id": occurrence.pk},
+        name_resolver=lambda task_cls, occurrence: (f"Post-processing: {task_cls.name} on Occurrence {occurrence.pk}"),
+    )
 
     @admin.action(description="Recompute determination from current classifications and identifications")
     def recompute_determination(self, request: HttpRequest, queryset: QuerySet[Any]) -> None:
@@ -568,7 +578,7 @@ class OccurrenceAdmin(IdSearchAdminMixin, admin.ModelAdmin[Occurrence]):
             count += 1
         self.message_user(request, f"Recomputed determination for {count} occurrence(s).")
 
-    actions = [run_small_size_filter, recompute_determination]
+    actions = [run_small_size_filter, run_class_masking, recompute_determination]
 
     # Order by -id (the indexed primary key) rather than -created_at, which has no
     # index and would force a full sort of the table to find the newest page. id
@@ -850,11 +860,29 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
             f"Post-processing: {task_cls.name} on Capture Set {collection.pk}"
         ),
     )
+    run_class_masking = make_post_processing_action(
+        ClassMaskingTask,
+        ClassMaskingActionForm,
+        scope_resolver=lambda collection: {"source_image_collection_id": collection.pk},
+        name_resolver=lambda task_cls, collection: (
+            f"Post-processing: {task_cls.name} on Capture Set {collection.pk}"
+        ),
+    )
+    run_rank_rollup = make_post_processing_action(
+        RankRollupTask,
+        RankRollupActionForm,
+        scope_resolver=lambda collection: {"source_image_collection_id": collection.pk},
+        name_resolver=lambda task_cls, collection: (
+            f"Post-processing: {task_cls.name} on Capture Set {collection.pk}"
+        ),
+    )
 
     actions = [
         populate_collection,
         populate_collection_async,
         run_small_size_filter,
+        run_class_masking,
+        run_rank_rollup,
     ]
 
     # Hide images many-to-many field from form. This would list all source images in the database.
