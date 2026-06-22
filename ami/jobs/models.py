@@ -1234,31 +1234,39 @@ class Job(BaseModel):
         cleanup_async_job_if_needed(self)
 
     def _guarded_status_update(self, to_status, from_statuses, *, set_finished=False):
-        """Atomically move the job to ``to_status`` only if it is still in one of
-        ``from_statuses``.
+        """Move the job to ``to_status`` only if it is still in one of
+        ``from_statuses``, in a single atomic step.
 
-        This is a statement-scope ``UPDATE`` (it acquires no transaction-length
-        row lock, so it does not reintroduce the contention that #1261 removed)
-        whose ``status__in`` precondition a stale read-modify-write elsewhere
-        cannot clobber: if a concurrent writer has already moved the job to a
-        state outside ``from_statuses`` (e.g. another worker, the reaper, or a
-        cancel marked it terminal), the UPDATE matches zero rows and this call
-        is a no-op.
+        Why this exists: a job's status is written from several places, and for
+        async (pull-based) jobs the result batches that drive those writes arrive
+        concurrently. Without a guard each writer reads the whole job row, edits
+        it, and writes it back, so a slower writer working from a stale copy can
+        overwrite a status another writer already advanced. That made a finished
+        job look like it was running again, or flipped a cancelled/failed job to
+        SUCCESS. Because a lot of behaviour keys off job status — whether the job
+        is still handed out for more work, whether its resources get cleaned up,
+        what the UI shows — those wrong statuses were not cosmetic; they caused
+        knock-on bugs. See issue #1337.
 
-        It is the chokepoint for the *lock-free* terminal writers — this method,
-        the result handler ``_update_job_progress`` (#1338), and the celery
-        task-signal handlers — which is why each carries the ``status__in``
-        precondition. The other two terminal writers take a row lock instead and
-        enforce the same no-resurrect invariant that way: ``_fail_job`` and the
-        stale-job reaper (``check_stale_jobs``) both run under
-        ``select_for_update`` and check for a terminal/CANCELING status before
-        writing (the reaper deliberately keeps a broader from-set so it can still
-        force a genuinely stuck job out of CANCELING/UNKNOWN — that is its role as
-        last resort). See issue #1337.
+        The guard is a single conditional ``UPDATE ... WHERE status IN
+        (from_statuses)``. It holds no transaction-length row lock (so it does not
+        reintroduce the contention #1261 removed): if a concurrent writer has
+        already moved the job out of ``from_statuses``, the UPDATE matches zero
+        rows and this call is a no-op, leaving that writer's status intact.
 
-        Callers are responsible for persisting ``progress.summary.status`` into
-        the JSONB afterwards with a narrow ``save(update_fields=["progress",
-        "updated_at"])``, and only when this method reported the transition fired.
+        The lock-free status writers all go through this method — it, the result
+        handler ``_update_job_progress`` (#1338), and the two Celery task-signal
+        handlers — which is why each passes a ``from_statuses`` precondition. The
+        remaining two writers enforce the same "don't revive a finished job" rule
+        under a row lock instead: ``_fail_job`` and the stale-job reaper
+        (``check_stale_jobs``) run under ``select_for_update`` and check the
+        current status before writing. The reaper deliberately keeps a broader
+        from-set so it can still force a genuinely stuck job out of
+        CANCELING/UNKNOWN — that is its role as the last resort.
+
+        Caller contract: persist ``progress.summary.status`` into the JSONB
+        afterwards with a narrow ``save(update_fields=["progress", "updated_at"])``,
+        and only when this method reports the transition fired.
 
         Returns the number of rows updated (0 or 1). On a successful transition
         the in-memory instance is advanced to match (``status``, optionally
