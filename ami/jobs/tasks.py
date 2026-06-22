@@ -1008,6 +1008,76 @@ def check_stale_jobs(minutes: int | None = None, dry_run: bool = False) -> list[
 
     results = []
     for pk in stale_pks:
+        # Phase 1 — gather external Celery/Redis state WITHOUT holding the row
+        # lock. Both the Celery result lookup and the Redis completeness check
+        # are network round-trips; doing them under select_for_update() would
+        # extend the lock hold time and block the lock-free result handler that
+        # also writes this row (its guarded UPDATE since #1261). We re-check and
+        # write under a short lock in Phase 2 below.
+        try:
+            job = Job.objects.get(
+                pk=pk,
+                status__in=JobState.running_states(),
+                updated_at__lt=cutoff,
+            )
+        except Job.DoesNotExist:
+            # Another concurrent run already handled this job, or it progressed.
+            continue
+
+        celery_state = None
+        if job.task_id:
+            try:
+                celery_state = AsyncResult(job.task_id).state
+            except Exception:
+                logger.warning(
+                    "Failed to fetch Celery state for stale job %s (task_id=%s)",
+                    job.pk,
+                    job.task_id,
+                    exc_info=True,
+                )
+                # Treat as unknown state — job will be revoked below.
+
+        # Only trust terminal Celery states. For async_api jobs, a SUCCESS
+        # Celery state is only accepted when all NATS tasks are processed —
+        # workers may still be delivering results after the Celery task
+        # finishes. Consult Redis (source of truth for SREM completeness)
+        # directly rather than Job.progress.is_complete(), which mirrors a
+        # JSONB blob racy under concurrent _update_job_progress writes since
+        # #1261.
+        #
+        # Celery FAILURE is deliberately NOT fast-pathed to a terminal
+        # status here: update_job_failure() defers post-queue run_job
+        # failures for async_api jobs to the async result handler, which
+        # decides the terminal outcome from the final processed/failed
+        # counts against FAILURE_THRESHOLD (a drained-but-failed Celery task
+        # can still resolve to SUCCESS). Trusting Celery FAILURE here would
+        # force the job to FAILURE and bypass that threshold logic, so a
+        # stale async_api job whose Celery task ended FAILURE falls through
+        # to the revoke branch instead.
+        is_terminal = celery_state in states.READY_STATES
+        is_async_api = job.dispatch_mode == JobDispatchMode.ASYNC_API
+        if is_async_api and celery_state == states.SUCCESS:
+            processed = AsyncJobStateManager(job.pk).all_tasks_processed()
+            if processed is False:
+                is_terminal = False
+            elif processed is None:
+                logger.warning(
+                    "Reaper for job %s: Redis state unavailable, falling back to " "progress.is_complete()",
+                    job.pk,
+                )
+                if not job.progress.is_complete():
+                    is_terminal = False
+            # processed is True -> trust Celery SUCCESS
+        elif is_async_api and celery_state == states.FAILURE:
+            # Don't treat Celery FAILURE as authoritative for async_api jobs
+            # (see comment above); revoke instead of forcing FAILURE.
+            is_terminal = False
+
+        # Phase 2 — short locked transaction. Re-fetch under select_for_update()
+        # with the same staleness predicate: if the job progressed or was
+        # finalized while we were off the lock doing Celery/Redis I/O, the row no
+        # longer matches and we skip it. Otherwise the Phase 1 decision still
+        # holds and we persist it. No network I/O happens under this lock.
         with transaction.atomic():
             try:
                 job = Job.objects.select_for_update().get(
@@ -1016,57 +1086,7 @@ def check_stale_jobs(minutes: int | None = None, dry_run: bool = False) -> list[
                     updated_at__lt=cutoff,
                 )
             except Job.DoesNotExist:
-                # Another concurrent run already handled this job.
                 continue
-
-            celery_state = None
-            if job.task_id:
-                try:
-                    celery_state = AsyncResult(job.task_id).state
-                except Exception:
-                    logger.warning(
-                        "Failed to fetch Celery state for stale job %s (task_id=%s)",
-                        job.pk,
-                        job.task_id,
-                        exc_info=True,
-                    )
-                    # Treat as unknown state — job will be revoked below.
-
-            # Only trust terminal Celery states. For async_api jobs, a SUCCESS
-            # Celery state is only accepted when all NATS tasks are processed —
-            # workers may still be delivering results after the Celery task
-            # finishes. Consult Redis (source of truth for SREM completeness)
-            # directly rather than Job.progress.is_complete(), which mirrors a
-            # JSONB blob racy under concurrent _update_job_progress writes since
-            # #1261.
-            #
-            # Celery FAILURE is deliberately NOT fast-pathed to a terminal
-            # status here: update_job_failure() defers post-queue run_job
-            # failures for async_api jobs to the async result handler, which
-            # decides the terminal outcome from the final processed/failed
-            # counts against FAILURE_THRESHOLD (a drained-but-failed Celery task
-            # can still resolve to SUCCESS). Trusting Celery FAILURE here would
-            # force the job to FAILURE and bypass that threshold logic, so a
-            # stale async_api job whose Celery task ended FAILURE falls through
-            # to the revoke branch instead.
-            is_terminal = celery_state in states.READY_STATES
-            is_async_api = job.dispatch_mode == JobDispatchMode.ASYNC_API
-            if is_async_api and celery_state == states.SUCCESS:
-                processed = AsyncJobStateManager(job.pk).all_tasks_processed()
-                if processed is False:
-                    is_terminal = False
-                elif processed is None:
-                    logger.warning(
-                        "Reaper for job %s: Redis state unavailable, falling back to " "progress.is_complete()",
-                        job.pk,
-                    )
-                    if not job.progress.is_complete():
-                        is_terminal = False
-                # processed is True -> trust Celery SUCCESS
-            elif is_async_api and celery_state == states.FAILURE:
-                # Don't treat Celery FAILURE as authoritative for async_api jobs
-                # (see comment above); revoke instead of forcing FAILURE.
-                is_terminal = False
 
             previous_status = job.status
             if is_terminal:
