@@ -169,9 +169,10 @@ class AsyncJobStateManager:
             # the same symptom: DB-index mismatch across hosts, key eviction, and
             # never-initialized state.
             logger.warning(
-                "Job %s state missing in Redis (stage=%s): %s",
+                "Job %s state missing in Redis (stage=%s, target=%s): %s",
                 self.job_id,
                 stage,
+                self.connection_target(),
                 self.diagnose_missing_state(),
             )
             return None
@@ -195,33 +196,36 @@ class AsyncJobStateManager:
 
     def diagnose_missing_state(self) -> str:
         """
-        One-line snapshot of what Redis actually holds for this job.
+        One-line, log-safe snapshot of what Redis holds for this job.
 
-        Called from the missing-state path in ``update_state`` (the loud log)
-        and from the result handler in ``process_nats_pipeline_result``, which
-        folds the result into the reason it passes to ``_fail_job`` so the
-        FAILURE log and the UI ``progress.errors`` entry distinguish the three
-        common causes — DB mismatch across hosts, key eviction, and
-        never-initialized state — instead of a single hardcoded "likely cleaned
-        up concurrently" guess that all three collapse to.
+        Reports the Redis DB index and the per-job keys (with set cardinalities) so a
+        missing-state FAILURE distinguishes its three common causes — DB-index mismatch
+        across processes, key eviction, and never-initialized state — instead of a single
+        hardcoded "likely cleaned up concurrently" guess that all three collapse to.
 
-        Cost: only ever runs on the missing-state failure path (at most twice
-        per job-lifetime FAILURE — once for the log, once for the reason
-        string). ``SCAN`` is O(keyspace) regardless of ``MATCH`` (MATCH filters
-        the returned keys, not the keys scanned), but on the rare failure path
-        that one extra full cursor walk is negligible next to the FAILURE it
-        helps diagnose.
+        The Redis host/port is deliberately omitted here: this string is surfaced in the
+        job's public ``progress.errors`` (via the reason passed to ``_fail_job``), and the
+        host identifies internal infrastructure. The DB index is the load-bearing signal for
+        the mismatch case and is safe to expose. Operators who need the host see it in the
+        server-side warning ``update_state`` logs via ``connection_target()``.
 
-        Intentionally defensive: any failure to collect diagnostics is
-        swallowed, because the caller is already about to fail the job and
-        an exception from diagnostics would mask the original cause.
+        Called from the missing-state path in ``update_state`` (the loud log) and from the
+        result handler in ``process_nats_pipeline_result``.
+
+        Cost: only ever runs on the missing-state failure path (at most twice per
+        job-lifetime FAILURE — once for the log, once for the reason string). ``SCAN`` is
+        O(keyspace) regardless of ``MATCH`` (MATCH filters the returned keys, not the keys
+        scanned), but on the rare failure path that one extra full cursor walk is negligible
+        next to the FAILURE it helps diagnose.
+
+        Intentionally defensive: any failure to collect diagnostics is swallowed, because the
+        caller is already about to fail the job and an exception from diagnostics would mask
+        the original cause.
         """
         try:
             redis = self._get_redis()
             kwargs = getattr(redis.connection_pool, "connection_kwargs", {}) or {}
             db = kwargs.get("db", "?")
-            host = kwargs.get("host", "?")
-            port = kwargs.get("port", "?")
             keys = sorted(k.decode() if isinstance(k, bytes) else k for k in redis.scan_iter(match=self._pattern()))
             sizes: list[str] = []
             for key in keys:
@@ -233,9 +237,25 @@ class AsyncJobStateManager:
                 except RedisError:
                     sizes.append(f"{key}=<err>")
             keys_summary = ", ".join(sizes) if sizes else "<none>"
-            return f"redis={host}:{port}/db{db} keys_for_job={keys_summary}"
+            return f"redis db{db}: keys_for_job={keys_summary}"
         except Exception as e:
             return f"(diagnostics failed: {e})"
+
+    def connection_target(self) -> str:
+        """
+        Redis target as ``host:port/dbN``, for server-side operator logs only.
+
+        Names the internal Redis host, so this must NOT go into job logs or
+        ``progress.errors`` — use :meth:`diagnose_missing_state` for anything surfaced to
+        the user. Kept separate so the host stays in operator-facing logs (where the
+        cross-host DB-drift diagnosis needs it) without leaking to the public job view.
+        """
+        try:
+            redis = self._get_redis()
+            kwargs = getattr(redis.connection_pool, "connection_kwargs", {}) or {}
+            return f"{kwargs.get('host', '?')}:{kwargs.get('port', '?')}/db{kwargs.get('db', '?')}"
+        except Exception as e:
+            return f"(unavailable: {e})"
 
     def _pattern(self) -> str:
         return f"job:{self.job_id}:*"

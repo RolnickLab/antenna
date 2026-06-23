@@ -1745,15 +1745,35 @@ class TestTaskStateManager(TestCase):
     def test_diagnose_missing_state_when_never_initialized(self):
         """
         Diagnostic string for the "never initialized" case: no keys are
-        present under ``job:{id}:*``. Output must still name the Redis host
-        and DB so cross-host DB drift is distinguishable from eviction and
-        truly-never-initialized state in one log line.
+        present under ``job:{id}:*``. The public string names the Redis DB
+        index (so cross-process DB drift is distinguishable from eviction and
+        truly-never-initialized state) but must NOT name the Redis host: it is
+        surfaced in the job's public progress.errors.
         """
         # initialize_job has NOT been called; nothing under job:123:*.
         diagnosis = self.manager.diagnose_missing_state()
-        self.assertIn("redis=", diagnosis)
-        self.assertIn("/db", diagnosis)
+        self.assertIn("db", diagnosis)
         self.assertIn("keys_for_job=<none>", diagnosis)
+
+    def test_diagnose_missing_state_omits_host_but_connection_target_keeps_it(self):
+        """
+        The public diagnostic must not leak the internal Redis host/port, but the
+        operator-only connection_target() must still carry host:port/db for the
+        server-side cross-host DB-drift diagnosis.
+        """
+        kwargs = self.manager._get_redis().connection_pool.connection_kwargs
+        host = str(kwargs.get("host", ""))
+
+        public = self.manager.diagnose_missing_state()
+        target = self.manager.connection_target()
+
+        # The leak is the host:port connection detail, so assert the host:port pattern is
+        # absent from the public string (not the bare host substring — the public string
+        # legitimately contains the word "redis").
+        if host:
+            self.assertNotIn(f"{host}:", public)
+            self.assertIn(f"{host}:", target)
+        self.assertIn("/db", target)
 
     def test_diagnose_missing_state_lists_present_keys(self):
         """
