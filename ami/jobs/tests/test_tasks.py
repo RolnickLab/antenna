@@ -348,14 +348,69 @@ class TestProcessNatsPipelineResultError(TransactionTestCase):
 
         mock_ack.assert_called_once()
         mock_fail.assert_called_once()
-        # Reason string now leads with the stage and embeds a live Redis
-        # snapshot (DB index + key listing from diagnose_missing_state) so the
-        # failure cause — DB-index drift, eviction, or never-initialized —
-        # is visible in the FAILURE log instead of the previous single
-        # hardcoded "likely cleaned up concurrently" guess.
+        # The reason string passed to _fail_job identifies the stage and embeds
+        # a live Redis snapshot (from diagnose_missing_state) so the FAILURE
+        # log and UI progress.errors distinguish DB-index drift, eviction, and
+        # never-initialized state rather than collapsing them into one message.
         args, _ = mock_fail.call_args
         self.assertIn("Job state missing from Redis", args[1])
         self.assertIn("stage=process", args[1])
+
+    @patch("ami.jobs.tasks._fail_job")
+    @patch("ami.jobs.tasks._ack_task_via_nats")
+    @patch("ami.jobs.tasks.TaskQueueManager")
+    def test_genuinely_missing_state_results_stage_acks_and_fails_job(self, mock_manager_class, mock_ack, mock_fail):
+        """
+        Mirror of test_genuinely_missing_state_acks_and_fails_job for the
+        stage=results path (tasks.py lines 378-388). When the total-images key
+        is gone at the results-stage update_state call, the task must ack NATS
+        to stop redelivery and fail the job — there is no state to reconcile.
+        The reason string must identify stage=results.
+        """
+        self._setup_mock_nats(mock_manager_class)
+
+        # save_results requires at least one algorithm on the pipeline.
+        detection_algorithm = Algorithm.objects.create(
+            name="results-missing-state-detector",
+            key="results-missing-state-detector",
+            task_type=AlgorithmTaskType.LOCALIZATION,
+        )
+        self.pipeline.algorithms.add(detection_algorithm)
+
+        # Use a success result so the process-stage path succeeds and
+        # save_results runs before the results-stage update_state is reached.
+        success_data = PipelineResultsResponse(
+            pipeline="test-pipeline",
+            algorithms={},
+            total_time=1.0,
+            source_images=[SourceImageResponse(id=str(self.images[0].pk), url="http://example.com/test_image_0.jpg")],
+            detections=[],
+            errors=None,
+        ).dict()
+
+        real_update_state = AsyncJobStateManager.update_state
+
+        def none_on_results_stage(self_inner, processed_image_ids, stage, failed_image_ids=None):
+            if stage == "results":
+                return None
+            return real_update_state(self_inner, processed_image_ids, stage, failed_image_ids)
+
+        with patch.object(AsyncJobStateManager, "update_state", none_on_results_stage):
+            process_nats_pipeline_result(
+                job_id=self.job.pk,
+                result_data=success_data,
+                reply_subject="reply.missing-results",
+            )
+
+        mock_ack.assert_called_once()
+        mock_fail.assert_called_once()
+        # The reason string passed to _fail_job identifies the stage and embeds
+        # a live Redis snapshot (from diagnose_missing_state) so the FAILURE
+        # log and UI progress.errors distinguish DB-index drift, eviction, and
+        # never-initialized state rather than collapsing them into one message.
+        args, _ = mock_fail.call_args
+        self.assertIn("Job state missing from Redis", args[1])
+        self.assertIn("stage=results", args[1])
 
     @patch("ami.jobs.tasks._ack_task_via_nats")
     @patch("ami.jobs.tasks.TaskQueueManager")
