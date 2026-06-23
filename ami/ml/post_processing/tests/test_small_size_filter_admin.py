@@ -78,8 +78,8 @@ class TestSmallSizeFilterIntermediatePage(_SmallSizeFilterAdminCase):
             Job.objects.filter(project=self.project, job_type_key="post_processing").count(),
             0,
         )
-        # Error class present in rendered template.
-        self.assertIn(b"errornote", response.content)
+        # Field error rendered inline (Django's errorlist, not the page-level errornote banner).
+        self.assertIn(b"errorlist", response.content)
 
 
 class TestSmallSizeFilterCreatesJob(_SmallSizeFilterAdminCase):

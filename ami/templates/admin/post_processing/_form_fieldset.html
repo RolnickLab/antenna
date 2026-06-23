@@ -1,9 +1,9 @@
-{% for error in form.non_field_errors %}<p class="errornote">{{ error }}</p>{% endfor %}
+{{ form.non_field_errors }}
 {% for field in form %}
   <div class="form-row">
     {{ field.label_tag }}
     {{ field }}
     {% if field.help_text %}<p class="help">{{ field.help_text }}</p>{% endif %}
-    {% for error in field.errors %}<p class="errornote">{{ error }}</p>{% endfor %}
+    {{ field.errors }}
   </div>
 {% endfor %}

@@ -232,11 +232,11 @@ def make_post_processing_action(
                 submit_label=resolved_submit,
             )
 
-        # "Select all across pages" hands us the entire filtered table as the
-        # queryset and would serialize every pk into hidden inputs on the
-        # confirmation page (a huge POST body, possibly over request limits).
-        # This admin trigger is for explicit, bounded selections; refuse the
-        # across-pages case rather than render an unbounded form.
+        # "Select all across pages" applies the action to the entire filtered
+        # table rather than the rows the operator explicitly picked. Refuse it:
+        # post-processing runs should act on a bounded, deliberately-selected set,
+        # and rendering every matching pk as a hidden input would also overflow
+        # POST size limits on a large table.
         if request.POST.get("select_across") == "1":
             model_admin.message_user(
                 request,
