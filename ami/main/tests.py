@@ -6009,3 +6009,294 @@ class TestTaxaVerification(APITestCase):
         rows = self._list_by_name(f"{self.list_url}&collection={collection.pk}")
         # 2 verified cardui occurrences, not 3 — the duplicate detection must not double-count.
         self.assertEqual(rows["Vanessa cardui"]["verified_count"], 2)
+
+
+class TestDetectionNullMarker(TestCase):
+    """
+    Covers the null-marker abstraction added for Issue #1310 follow-up:
+    Detection.is_null_marker, Detection.build_null_marker, and
+    DetectionQuerySet.valid() / .null_markers().
+    """
+
+    def setUp(self):
+        from ami.ml.models.algorithm import Algorithm
+
+        self.project = Project.objects.create(name="Null Marker Test Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.source_image = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            path="nullmarker-test.jpg",
+        )
+        self.algorithm = Algorithm.objects.create(name="test-detector", key="test-detector", task_type="detection")
+
+    def test_is_null_marker_for_bbox_none(self):
+        det = Detection.objects.create(
+            source_image=self.source_image,
+            bbox=None,
+            detection_algorithm=self.algorithm,
+        )
+        self.assertTrue(det.is_null_marker)
+
+    def test_is_null_marker_false_for_real_detection(self):
+        det = Detection.objects.create(
+            source_image=self.source_image,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+        )
+        self.assertFalse(det.is_null_marker)
+
+    def test_build_null_marker_sets_canonical_fields(self):
+        det = Detection.build_null_marker(self.source_image, self.algorithm)
+        self.assertIsNone(det.bbox)
+        self.assertEqual(det.source_image, self.source_image)
+        self.assertEqual(det.detection_algorithm, self.algorithm)
+        # timestamp is intentionally not set on the builder — Detection.save() backfills
+        # it from the source image's capture time, so the marker sorts by capture time
+        # rather than processing time.
+        self.assertIsNone(det.timestamp)
+        self.assertTrue(det.is_null_marker)
+
+    def test_valid_and_null_markers_are_disjoint_and_complete(self):
+        real = Detection.objects.create(
+            source_image=self.source_image,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+        )
+        null_marker = Detection.objects.create(
+            source_image=self.source_image,
+            bbox=None,
+            detection_algorithm=self.algorithm,
+        )
+        scoped = Detection.objects.filter(source_image=self.source_image)
+        valid_pks = set(scoped.valid().values_list("pk", flat=True))
+        null_pks = set(scoped.null_markers().values_list("pk", flat=True))
+        self.assertEqual(valid_pks, {real.pk})
+        self.assertEqual(null_pks, {null_marker.pk})
+        self.assertEqual(valid_pks & null_pks, set())
+
+
+class TestOccurrenceValidQuerySet(TestCase):
+    """
+    Covers OccurrenceQuerySet.valid() tightening for Issue #1310:
+    excludes occurrences with no real detections and occurrences missing a
+    determination, in addition to the existing detections__isnull=True
+    exclusion.
+    """
+
+    def setUp(self):
+        from ami.main.models import Taxon
+        from ami.ml.models.algorithm import Algorithm
+
+        self.project = Project.objects.create(name="Occurrence Valid Test Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.event = Event.objects.create(
+            project=self.project,
+            deployment=self.deployment,
+            group_by="2024-01-01",
+            start=datetime.datetime(2024, 1, 1, 0, 0),
+        )
+        self.source_image = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            path="occvalid-test.jpg",
+        )
+        self.algorithm = Algorithm.objects.create(name="valid-detector", key="valid-detector", task_type="detection")
+        self.taxon = Taxon.objects.create(name="Occurrence Valid Test Taxon")
+
+    def _make_occurrence_with_real_detection(self) -> Occurrence:
+        occ = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+        )
+        Detection.objects.create(
+            source_image=self.source_image,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+            occurrence=occ,
+        )
+        return occ
+
+    def _make_occurrence_with_only_null_detection(self) -> Occurrence:
+        occ = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+        )
+        Detection.objects.create(
+            source_image=self.source_image,
+            bbox=None,
+            detection_algorithm=self.algorithm,
+            occurrence=occ,
+        )
+        return occ
+
+    def _make_occurrence_with_null_determination(self) -> Occurrence:
+        occ = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=None,
+        )
+        Detection.objects.create(
+            source_image=self.source_image,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+            occurrence=occ,
+        )
+        return occ
+
+    def test_valid_returns_only_real_with_determination(self):
+        real = self._make_occurrence_with_real_detection()
+        null_only = self._make_occurrence_with_only_null_detection()
+        no_determination = self._make_occurrence_with_null_determination()
+
+        valid_qs = Occurrence.objects.filter(project=self.project).valid()
+        valid_pks = set(valid_qs.values_list("pk", flat=True))
+
+        self.assertIn(real.pk, valid_pks)
+        self.assertNotIn(null_only.pk, valid_pks)
+        self.assertNotIn(no_determination.pk, valid_pks)
+
+
+class TestCleanupNullOnlyOccurrencesCommand(TestCase):
+    """
+    Covers ami/main/management/commands/cleanup_null_only_occurrences.py.
+    Verifies dry-run reports counts without deleting and --commit deletes
+    phantom occurrences and dangling null markers, leaving valid rows alone.
+    """
+
+    def setUp(self):
+        from ami.main.models import Taxon
+        from ami.ml.models.algorithm import Algorithm
+
+        self.project = Project.objects.create(name="Cleanup Cmd Test Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.event = Event.objects.create(
+            project=self.project,
+            deployment=self.deployment,
+            group_by="2024-01-01",
+            start=datetime.datetime(2024, 1, 1, 0, 0),
+        )
+        self.algorithm = Algorithm.objects.create(
+            name="cleanup-detector", key="cleanup-detector", task_type="detection"
+        )
+        self.taxon = Taxon.objects.create(name="Cleanup Test Taxon")
+
+        self.img_with_real = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            path="with-real.jpg",
+        )
+        self.img_only_null = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            path="only-null.jpg",
+        )
+
+        self.valid_occurrence = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+        )
+        self.real_detection = Detection.objects.create(
+            source_image=self.img_with_real,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+            occurrence=self.valid_occurrence,
+        )
+        self.null_on_processed_image = Detection.objects.create(
+            source_image=self.img_with_real,
+            bbox=None,
+            detection_algorithm=self.algorithm,
+        )
+
+        self.phantom_occurrence = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+        )
+        self.phantom_null = Detection.objects.create(
+            source_image=self.img_only_null,
+            bbox=None,
+            detection_algorithm=self.algorithm,
+            occurrence=self.phantom_occurrence,
+        )
+
+        # A different (partial-write) shape: an occurrence with a real detection but a
+        # missing determination. Occurrence.valid() excludes it (determination IS NULL),
+        # but the cleanup command must NOT delete it — doing so would SET_NULL the real
+        # detection's occurrence FK and strand a classified detection on an image that
+        # filter_processed_images then skips forever. The command's phantom predicate is
+        # deliberately narrower than valid() to spare exactly this case.
+        self.img_real_no_determination = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            path="real-no-determination.jpg",
+        )
+        self.occ_real_no_determination = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=None,
+        )
+        self.real_detection_no_determination = Detection.objects.create(
+            source_image=self.img_real_no_determination,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+            occurrence=self.occ_real_no_determination,
+        )
+
+    def _call_command(self, *args):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command("cleanup_null_only_occurrences", *args, stdout=out)
+        return out.getvalue()
+
+    def test_dry_run_reports_counts_without_deleting(self):
+        output = self._call_command(f"--project={self.project.pk}")
+        self.assertIn("Phantom occurrences", output)
+        self.assertIn("Dangling null-marker detections", output)
+        self.assertIn("Dry run", output)
+        self.assertTrue(Occurrence.objects.filter(pk=self.phantom_occurrence.pk).exists())
+        self.assertTrue(Detection.objects.filter(pk=self.phantom_null.pk).exists())
+
+    def test_commit_deletes_phantoms_and_dangling_null_markers(self):
+        self._call_command(f"--project={self.project.pk}", "--commit")
+        self.assertFalse(Occurrence.objects.filter(pk=self.phantom_occurrence.pk).exists())
+        self.assertFalse(Detection.objects.filter(pk=self.phantom_null.pk).exists())
+        self.assertTrue(Occurrence.objects.filter(pk=self.valid_occurrence.pk).exists())
+        self.assertTrue(Detection.objects.filter(pk=self.real_detection.pk).exists())
+        self.assertTrue(
+            Detection.objects.filter(pk=self.null_on_processed_image.pk).exists(),
+            "Null markers on images with at least one real detection must be kept",
+        )
+        self.assertTrue(
+            Occurrence.objects.filter(pk=self.occ_real_no_determination.pk).exists(),
+            "Occurrence with a real detection but a missing determination is a partial-write "
+            "shape, not Issue #1310 debris — it must be preserved, not deleted",
+        )
+        self.real_detection_no_determination.refresh_from_db()
+        self.assertEqual(
+            self.real_detection_no_determination.occurrence_id,
+            self.occ_real_no_determination.pk,
+            "The real detection must keep its occurrence FK — deleting the occurrence would "
+            "SET_NULL it and strand the detection",
+        )
+
+    def test_commit_is_idempotent(self):
+        self._call_command(f"--project={self.project.pk}", "--commit")
+        second_run = self._call_command(f"--project={self.project.pk}", "--commit")
+        self.assertIn("Nothing to clean up", second_run)
