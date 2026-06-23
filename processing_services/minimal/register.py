@@ -17,7 +17,7 @@ to use API keys — the PS record is derived from the key itself and
 pick the PS from the key.
 
 Env vars are read via `os.environ[...]` without fallbacks — the .env file is
-expected to provide them. See `processing_services/.env.example`.
+expected to provide them. See `processing_services/minimal/.env.dev`.
 """
 
 import logging
