@@ -461,9 +461,8 @@ def _fail_job(job_id: int, reason: str) -> None:
             if job.status in (JobState.CANCELING, *JobState.final_states()):
                 return
             # Mirror the reason into progress.errors so the UI surfaces it
-            # alongside the FAILURE state. Previously the reason lived only in
-            # job.logger, which meant the UI showed errors=[] and operators had
-            # to dig into Celery worker logs to find out why a job died.
+            # alongside the FAILURE status. Operators can see the cause in the
+            # job detail view without digging through Celery worker logs.
             try:
                 job.progress.errors.append(reason)
             except Exception:

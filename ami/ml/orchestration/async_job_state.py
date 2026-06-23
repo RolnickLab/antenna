@@ -165,10 +165,9 @@ class AsyncJobStateManager:
         if total_raw is None:
             # Loud diagnostic before the silent None return. The caller will mark
             # the job FAILURE based on this result, so the operator needs to see
-            # *why* the total key is gone. Distinguishes three different causes
-            # that previously all surfaced as the same hardcoded "likely cleaned
-            # up concurrently" reason string: Redis DB mismatch across hosts,
-            # key eviction, and genuinely-never-initialized state.
+            # *why* the total key is gone. Distinguishes three causes that map to
+            # the same symptom: DB-index mismatch across hosts, key eviction, and
+            # never-initialized state.
             logger.warning(
                 "Job %s state missing in Redis (stage=%s): %s",
                 self.job_id,
@@ -223,11 +222,6 @@ class AsyncJobStateManager:
             db = kwargs.get("db", "?")
             host = kwargs.get("host", "?")
             port = kwargs.get("port", "?")
-            # Cursor-safe SCAN over the job's keyspace. SCAN walks the whole DB
-            # (MATCH only filters what's returned, not what's scanned), so this
-            # is acceptable precisely because it runs only on the rare
-            # missing-state failure path; the per-job fanout returned is at most
-            # a handful of keys (pending:process, pending:results, failed, total).
             keys = sorted(k.decode() if isinstance(k, bytes) else k for k in redis.scan_iter(match=self._pattern()))
             sizes: list[str] = []
             for key in keys:
