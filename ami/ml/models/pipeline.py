@@ -545,9 +545,11 @@ def get_or_create_detection(
     ), f"Detection belongs to a different source image: {detection_repr}"
 
     if serialized_bbox is None:
-        # Null detection: algorithm-specific lookup so different pipelines don't share sentinels.
-        # Use bbox__isnull=True because JSONField filter(bbox=None) matches JSON null literal,
-        # not SQL NULL which is what Detection(bbox=None) stores.
+        # existing_detection := the null-marker sentinel already recorded for this image+algorithm
+        # (or None if there is none yet). The lookup is algorithm-specific so different pipelines
+        # don't share sentinels, and narrowed to .null_markers() rather than a bare filter: a null
+        # response has no bbox to match on, so without .null_markers() the (image, algorithm) filter
+        # would also return real detections, and .first() could reuse one as if it were the sentinel.
         assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
         try:
             detection_algo = algorithms_known[detection_resp.algorithm.key]
@@ -557,13 +559,19 @@ def get_or_create_detection(
                 "The processing service must declare it in the /info endpoint. "
                 f"Known algorithms: {list(algorithms_known.keys())}"
             ) from err
-        existing_detection = Detection.objects.filter(
-            source_image=source_image,
-            bbox__isnull=True,
-            detection_algorithm=detection_algo,
-        ).first()
+        existing_detection = (
+            Detection.objects.filter(
+                source_image=source_image,
+                detection_algorithm=detection_algo,
+            )
+            .null_markers()
+            .first()
+        )
     else:
-        # Real detection: algorithm-agnostic — same bbox = same physical detection
+        # existing_detection := the detection with this exact bbox on this image (or None). The
+        # match is algorithm-agnostic — the same bounding box on the same image is the same physical
+        # detection regardless of which algorithm found it, so a bbox match is a duplicate to reuse.
+        # A specific bbox can't match a null marker (bbox IS NULL), so sentinels are excluded here.
         existing_detection = Detection.objects.filter(
             source_image=source_image,
             bbox=serialized_bbox,
@@ -1058,15 +1066,6 @@ def save_results(
             "Algorithms and category maps must be registered before processing, using /info endpoint."
         )
 
-    # Ensure all images have detections
-    # if not, add a NULL detection (empty bbox) to the results
-    null_detections = create_null_detections_for_undetected_images(
-        results=results,
-        detection_algorithm=detection_algorithm,
-        logger=job_logger,
-    )
-    results.detections = results.detections + null_detections
-
     detections = create_detections(
         detections=results.detections,
         algorithms_known=algorithms_known,
@@ -1104,6 +1103,22 @@ def save_results(
     deployment_ids = {img.deployment_id for img in source_images if img.deployment_id}
     for deployment in Deployment.objects.filter(pk__in=deployment_ids):
         deployment.update_calculated_fields(save=True)
+
+    # Mark images with no real detections as processed by creating null-bbox sentinels.
+    # Issue #1310: MUST be the final write. Persisting a null marker is the signal that
+    # filter_processed_images uses to skip an image on future runs, so it can only be
+    # written after every step that might fail has succeeded. Any raise earlier in the
+    # pipeline leaves the image unmarked so it gets retried on the next run.
+    null_detection_responses = create_null_detections_for_undetected_images(
+        results=results,
+        detection_algorithm=detection_algorithm,
+        logger=job_logger,
+    )
+    create_detections(
+        detections=null_detection_responses,
+        algorithms_known=algorithms_known,
+        logger=job_logger,
+    )
 
     total_time = time.time() - start_time
     job_logger.info(f"Saved results from pipeline {pipeline} in {total_time:.2f} seconds")

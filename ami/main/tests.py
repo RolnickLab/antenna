@@ -1,12 +1,15 @@
+import copy
 import datetime
 import logging
 import typing
 from io import BytesIO
 
+from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection, models
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from guardian.shortcuts import assign_perm, get_perms, remove_perm
 from PIL import Image
 from rest_framework import status
@@ -40,6 +43,7 @@ from ami.ml.models.processing_service import ProcessingService
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.tests.fixtures.main import (
     create_captures,
+    create_captures_from_files,
     create_detections,
     create_occurrences,
     create_taxa,
@@ -214,6 +218,383 @@ class TestProjectSetup(TestCase):
                     config.enabled,
                     f"Pipeline {config.pipeline.name} should not be enabled for project {project_two.name}.",
                 )
+
+
+NEW_THUMBNAIL_SETTINGS = copy.deepcopy(settings.THUMBNAILS)
+NEW_THUMBNAIL_SETTINGS["SIZES"]["small"]["width"] = 300
+
+
+class TestImageThumbnailViews(TestCase):
+    base_url = "http://testserver/api/v2/captures/thumbnails/"
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project()
+
+        self.captures = create_captures_from_files(deployment=self.deployment)
+        self.first_capture = self.captures[0][0]
+
+        return super().setUp()
+
+    def test_thumbnail_no_list(self):
+        response = self.client.get("/api/v2/captures/thumbnails/")
+        self.assertEqual(response.status_code, 405)
+
+    def test_thumbnail_new(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(thumb.width, 240)
+        self.assertEqual(thumb.height, 180)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_new_with_size(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/?label=medium")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="medium")
+        self.assertEqual(thumb.width, 1024)
+        self.assertEqual(thumb.height, 768)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_blank_path_row_regenerates(self):
+        """A row with an empty ``path`` (failed or interrupted generation) must
+        trigger regeneration, not redirect to the storage root.
+        """
+        self.first_capture.thumbnails.create(path="", label="small", width=240, height=180, size=0)
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertTrue(thumb.path)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_redirect_is_browser_cacheable(self):
+        """The 302 must carry Cache-Control so browsers reuse the redirect across
+        page views instead of re-paying the round trip per thumbnail per view.
+        """
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Cache-Control"], "private, max-age=300")
+
+    def test_thumbnail_new_with_invalid_size(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/?label=typo")
+        self.assertEqual(response.status_code, 400)
+
+    def test_thumbnail_exists(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        t_id = self.first_capture.thumbnails.first().pk
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(self.first_capture.thumbnails.count(), 1)
+        self.assertEqual(self.first_capture.thumbnails.first().pk, t_id)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_exists_newer_modified_source(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.first()
+        original_pk = thumb.pk
+        original_thumb_last_modified = thumb.last_modified
+        self.first_capture.last_modified = datetime.datetime.now()
+        self.first_capture.save()
+        self.assertTrue(self.first_capture.last_modified > thumb.last_modified)
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(self.first_capture.thumbnails.count(), 1)
+        # The upsert must reuse the existing row (same PK).
+        refreshed = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(refreshed.pk, original_pk)
+        # Regen must force-bump last_modified (auto_now_add fires only on INSERT).
+        self.assertGreater(refreshed.last_modified, original_thumb_last_modified)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], f"/media/{refreshed.path}")
+
+    def test_thumbnail_source_last_modified_none_does_not_crash(self):
+        """Legacy SourceImage rows synced before the upload backfill have last_modified=None.
+
+        Once a thumbnail row exists, the regen check used to raise
+        ``TypeError: '<' not supported between instances of 'datetime.datetime' and 'NoneType'``
+        on every subsequent request. Now the comparison should treat None as "no signal of
+        source change" and reuse the cached thumb.
+        """
+        # First request generates the thumb (last_modified=None at this point is fine because
+        # the short-circuit on ``not thumb`` doesn't reach the comparison).
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        thumb_id = self.first_capture.thumbnails.first().pk
+
+        # Simulate a legacy row with no source mtime.
+        SourceImage.objects.filter(pk=self.first_capture.pk).update(last_modified=None)
+
+        # Second request must reuse the cached thumb, not raise.
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.first_capture.thumbnails.count(), 1)
+        self.assertEqual(self.first_capture.thumbnails.first().pk, thumb_id)
+
+    def test_thumbnail_regen_reuses_row_via_upsert(self):
+        """Regenerating an existing thumbnail must upsert into the same row, not
+        delete-then-recreate (which under concurrent gen destroyed the other
+        racer's row and storage blob).
+
+        Triggers the regen path by making the cached row's width stale (as if
+        ``settings.THUMBNAILS`` changed since generation), then re-requesting.
+        Asserts the row's primary key is preserved (proving
+        ``update_or_create`` UPDATE was used, not a fresh INSERT after a
+        DELETE).
+        """
+        # First request populates the cache.
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        original_thumb = self.first_capture.thumbnails.get(label="small")
+        original_pk = original_thumb.pk
+
+        # Make the cached row stale so the regen branch fires.
+        self.first_capture.thumbnails.filter(label="small").update(width=9999)
+
+        # Regen must reuse the same row and not raise on the (source_image, label)
+        # UniqueConstraint.
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.first_capture.thumbnails.filter(label="small").count(), 1)
+        self.assertEqual(self.first_capture.thumbnails.get(label="small").pk, original_pk)
+
+    def test_upload_handler_backfills_last_modified(self):
+        """``create_source_image_from_upload`` must set ``last_modified`` so uploaded
+        captures match the parity of S3-synced ones and can be invalidated when re-uploaded.
+        """
+        from ami.main.models import create_source_image_from_upload
+
+        png = BytesIO()
+        Image.new("RGB", (320, 240), (255, 0, 0)).save(png, format="JPEG")
+        png.seek(0)
+        upload = SimpleUploadedFile("20200101000000-test.jpg", png.read(), content_type="image/jpeg")
+        before = timezone.now()
+        captured = create_source_image_from_upload(image=upload, deployment=self.deployment, process_now=False)
+        after = timezone.now()
+
+        self.assertIsNotNone(captured.last_modified)
+        self.assertGreaterEqual(captured.last_modified, before)
+        self.assertLessEqual(captured.last_modified, after)
+
+    @override_settings(THUMBNAILS={"STORAGE_PREFIX": "thumbnails/", "SIZES": {}})
+    def test_thumbnail_empty_sizes_returns_clear_error(self):
+        """If THUMBNAILS['SIZES'] is empty the endpoint must return a clear API error,
+        not 500 with ``StopIteration`` from ``next(iter(empty))``.
+        """
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 404)
+        self.assertIn(b"No thumbnail sizes", response.content)
+
+    def test_thumbnail_non_rgb_source_converts(self):
+        """RGBA/P/etc. source images must be converted to RGB before JPEG encode."""
+        from unittest import mock
+
+        rgba_buf = BytesIO()
+        Image.new("RGBA", (320, 240), (255, 0, 0, 128)).save(rgba_buf, format="PNG")
+        rgba_bytes = rgba_buf.getvalue()
+
+        with mock.patch("ami.main.models.fetch_image_content", return_value=rgba_bytes):
+            response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(thumb.width, 240)
+
+    @override_settings(THUMBNAILS=NEW_THUMBNAIL_SETTINGS)
+    def test_thumbnail_settings_change_regenerates(self):
+        # A pre-existing different size thumb
+        self.first_capture.thumbnails.create(path="thumbs/test", label="small", width=240, height=180, size=0)
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(self.first_capture.thumbnails.count(), 1)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(thumb.width, 300)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_row_stores_spec_width_not_encoder_output(self):
+        """``PIL.Image.thumbnail()`` preserves aspect ratio and can emit a width
+        1-2px below the requested spec (e.g. 239 for a 240 spec). The row must
+        record the spec width — it identifies which configured size the row
+        satisfies — otherwise the strict-equality regen gate treats the row as
+        stale and regenerates on every request. See #1331.
+        """
+        from unittest import mock
+
+        original_thumbnail = Image.Image.thumbnail
+
+        def rounding_thumbnail(img, size, *args, **kwargs):
+            # Simulate Pillow's aspect-preserving rounding landing 1px under spec.
+            original_thumbnail(img, (size[0] - 1, size[1]), *args, **kwargs)
+
+        with mock.patch.object(Image.Image, "thumbnail", rounding_thumbnail):
+            response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        spec_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
+        self.assertEqual(thumb.width, spec_width)
+        first_gen_marker = thumb.last_modified
+
+        # Second request must reuse the cached row. A regen force-bumps
+        # ``last_modified``, so an unchanged value proves the gate held.
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        refreshed = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(refreshed.last_modified, first_gen_marker)
+
+    def test_captures_response_includes_thumbnail_urls(self):
+        response = self.client.get(f"/api/v2/captures/{self.first_capture.pk}/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        rec = response.json()
+        self.assertIn("thumbnails", rec)
+        self.assertURLEqual(rec["thumbnails"]["small"], f"{self.base_url}{self.first_capture.pk}/?label=small")
+        self.assertURLEqual(rec["thumbnails"]["medium"], f"{self.base_url}{self.first_capture.pk}/?label=medium")
+
+    def test_captures_list_response_includes_thumbnail_urls(self):
+        response = self.client.get(f"/api/v2/captures/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        capture_json = response.json()["results"][0]
+        self.assertIn("thumbnails", capture_json)
+        self.assertURLEqual(
+            capture_json["thumbnails"]["small"], f"{self.base_url}{self.first_capture.pk}/?label=small"
+        )
+        self.assertURLEqual(
+            capture_json["thumbnails"]["medium"], f"{self.base_url}{self.first_capture.pk}/?label=medium"
+        )
+
+    def test_session_example_captures_response_includes_thumbnail_urls(self):
+        response = self.client.get(f"/api/v2/events/?deployment={self.deployment.pk}")
+        self.assertEqual(response.status_code, 200)
+        capture_json = response.json()["results"][0]["example_captures"][0]
+        self.assertIn("thumbnails", capture_json)
+        self.assertURLEqual(capture_json["thumbnails"]["small"], f"{self.base_url}{capture_json['id']}/?label=small")
+        self.assertURLEqual(capture_json["thumbnails"]["medium"], f"{self.base_url}{capture_json['id']}/?label=medium")
+
+    def test_session_first_capture_response_includes_thumbnail_urls(self):
+        response = self.client.get(f"/api/v2/events/{self.deployment.events.all()[0].pk}/")
+        self.assertEqual(response.status_code, 200)
+        capture_json = response.json()["first_capture"]
+        self.assertIn("thumbnails", capture_json)
+        self.assertURLEqual(capture_json["thumbnails"]["small"], f"{self.base_url}{capture_json['id']}/?label=small")
+        self.assertURLEqual(capture_json["thumbnails"]["medium"], f"{self.base_url}{capture_json['id']}/?label=medium")
+
+    def test_source_image_delete_cascades_to_thumbnails(self):
+        """Deleting a SourceImage must cascade-delete its SourceImageThumbnail rows.
+
+        The previous SET_NULL FK left orphan rows (and their storage blobs) forever
+        with no reaper. CASCADE + the pre_delete signal in ami.main.signals together
+        guarantee the row is gone and the blob is cleaned up.
+        """
+        from ami.main.models import SourceImageThumbnail
+
+        # Pre-populate two thumbnail rows for the capture.
+        for label, width in [("small", 240), ("medium", 1024)]:
+            self.first_capture.thumbnails.create(
+                path=f"thumbnails/cascadetest_{label}.jpg", label=label, width=width, height=180, size=42
+            )
+        capture_pk = self.first_capture.pk
+        self.assertEqual(SourceImageThumbnail.objects.filter(source_image_id=capture_pk).count(), 2)
+
+        # Delete the parent capture.
+        self.first_capture.delete()
+
+        # Thumbnail rows must be gone via CASCADE.
+        self.assertEqual(SourceImageThumbnail.objects.filter(source_image_id=capture_pk).count(), 0)
+
+    def test_thumbnail_delete_removes_storage_blob(self):
+        """The pre_delete signal must call default_storage.delete on the row's path.
+
+        Covers both explicit row deletes and CASCADE deletes — the signal fires for
+        both. Use FileSystemStorage's exists() to verify the blob is gone.
+        """
+        from django.core.files.base import ContentFile
+        from django.core.files.storage import default_storage
+
+        # Plant a real blob in storage and wire up a row pointing at it.
+        path = default_storage.save("thumbnails/signal_test.jpg", ContentFile(b"\x00\x01\x02\x03"))
+        self.assertTrue(default_storage.exists(path))
+
+        thumb = self.first_capture.thumbnails.create(path=path, label="small", width=240, height=180, size=4)
+        thumb.delete()
+
+        self.assertFalse(default_storage.exists(path), "pre_delete signal must clean the storage blob")
+
+
+class TestThumbnailDraftProjectVisibility(APITestCase):
+    """PR #1306 follow-up: draft (non-public) projects must not route thumbnails
+    through the auth-gated thumbnail endpoint.
+
+    The frontend loads thumbnails via an anonymous ``<img>`` tag, which cannot send
+    an Authorization header, so a draft project's gated thumbnail endpoint returns
+    401 and the image renders broken. The serializer omits thumbnail URLs for draft
+    projects so the frontend falls back to the capture's source URL (``capture.url``,
+    the pre-thumbnail-layer behavior). Public projects keep server-generated thumbnails.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.superuser = User.objects.create_superuser(email="thumb-draft-admin@insectai.org", password="secret")
+        # Superuser can view captures of a draft project; we assert on the serialized
+        # ``thumbnails`` field, which is independent of who is viewing.
+        self.client.force_authenticate(self.superuser)
+
+    def _make_project_with_captures(self, draft: bool):
+        project, deployment = setup_test_project(reuse=False)
+        if draft:
+            project.draft = True
+            project.save(update_fields=["draft"])
+        captures = create_captures_from_files(deployment=deployment)
+        return project, deployment, [c[0] for c in captures]
+
+    def test_public_project_returns_thumbnail_urls(self):
+        project, _, captures = self._make_project_with_captures(draft=False)
+        response = self.client.get(f"/api/v2/captures/{captures[0].pk}/?project_id={project.pk}")
+        self.assertEqual(response.status_code, 200)
+        thumbnails = response.json()["thumbnails"]
+        self.assertIsNotNone(thumbnails)
+        self.assertIn("small", thumbnails)
+
+    def test_draft_project_omits_thumbnail_urls(self):
+        project, _, captures = self._make_project_with_captures(draft=True)
+        response = self.client.get(f"/api/v2/captures/{captures[0].pk}/?project_id={project.pk}")
+        self.assertEqual(response.status_code, 200)
+        rec = response.json()
+        # No thumbnail endpoint URLs -> frontend falls back to the capture's source URL.
+        self.assertIsNone(rec["thumbnails"])
+        self.assertTrue(rec["url"], "source URL must still be provided for fallback")
+
+    @override_settings(CACHALOT_ENABLED=False)
+    def test_thumbnails_check_does_not_fetch_project_per_capture(self):
+        """Reading ``project.thumbnails_enabled`` per capture must not trigger a query.
+
+        The list queryset ``select_related("project")`` so the FK is populated via the
+        main JOIN. Without it the serializer would lazy-load ``obj.project`` once per
+        capture row — an N+1. We assert no standalone per-row fetch of the project
+        table occurs. Query caching is disabled so the count reflects real DB hits.
+        """
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        project, _, captures = self._make_project_with_captures(draft=True)
+        self.assertGreater(len(captures), 1, "need a multi-row fixture to detect an N+1")
+
+        url = f"/api/v2/captures/?project_id={project.pk}"
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertGreater(len(response.json()["results"]), 1, "need >1 result row to detect an N+1")
+
+        # A lazy-load of ``obj.project`` reads the project table as the primary FROM
+        # (``SELECT ... FROM main_project WHERE id = ?``); the JOINed list query does
+        # not. Match without quoted identifiers so it is not tied to one DB backend.
+        per_row_project_fetches = [
+            q for q in ctx.captured_queries if "from main_project" in q["sql"].lower().replace('"', "")
+        ]
+        self.assertEqual(
+            len(per_row_project_fetches),
+            0,
+            f"project table fetched {len(per_row_project_fetches)} times across "
+            f"{len(captures)} captures (expected 0 via select_related)",
+        )
 
 
 class TestImageGrouping(TestCase):
@@ -1969,6 +2350,7 @@ class TestRolePermissions(APITestCase):
         self._assign_roles()
         capture_id = self.project.occurrences.first().detections.first().source_image.pk
         occurrence_id = self.project.occurrences.first().pk
+        taxon_id = self.project.occurrences.first().determination_id
         endpoints = {
             "collection": "/api/v2/captures/collections/",
             "site": "/api/v2/deployments/sites/",
@@ -2003,7 +2385,7 @@ class TestRolePermissions(APITestCase):
             "device": {"description": "New Device", "name": "Device 1", "project": self.project.pk},
             "storage": {"name": "New Storage", "project": self.project.pk, "bucket": "test-bucket"},
             "job": {"delay": "1", "name": "Test Job", "project_id": self.project.pk},
-            "identification": {"occurrence_id": occurrence_id, "taxon_id": "5", "comment": "Identifier comment"},
+            "identification": {"occurrence_id": occurrence_id, "taxon_id": taxon_id, "comment": "Identifier comment"},
             "project": {"name": "New Project", "description": "This is a test project."},
         }
 
@@ -5627,3 +6009,294 @@ class TestTaxaVerification(APITestCase):
         rows = self._list_by_name(f"{self.list_url}&collection={collection.pk}")
         # 2 verified cardui occurrences, not 3 — the duplicate detection must not double-count.
         self.assertEqual(rows["Vanessa cardui"]["verified_count"], 2)
+
+
+class TestDetectionNullMarker(TestCase):
+    """
+    Covers the null-marker abstraction added for Issue #1310 follow-up:
+    Detection.is_null_marker, Detection.build_null_marker, and
+    DetectionQuerySet.valid() / .null_markers().
+    """
+
+    def setUp(self):
+        from ami.ml.models.algorithm import Algorithm
+
+        self.project = Project.objects.create(name="Null Marker Test Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.source_image = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            path="nullmarker-test.jpg",
+        )
+        self.algorithm = Algorithm.objects.create(name="test-detector", key="test-detector", task_type="detection")
+
+    def test_is_null_marker_for_bbox_none(self):
+        det = Detection.objects.create(
+            source_image=self.source_image,
+            bbox=None,
+            detection_algorithm=self.algorithm,
+        )
+        self.assertTrue(det.is_null_marker)
+
+    def test_is_null_marker_false_for_real_detection(self):
+        det = Detection.objects.create(
+            source_image=self.source_image,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+        )
+        self.assertFalse(det.is_null_marker)
+
+    def test_build_null_marker_sets_canonical_fields(self):
+        det = Detection.build_null_marker(self.source_image, self.algorithm)
+        self.assertIsNone(det.bbox)
+        self.assertEqual(det.source_image, self.source_image)
+        self.assertEqual(det.detection_algorithm, self.algorithm)
+        # timestamp is intentionally not set on the builder — Detection.save() backfills
+        # it from the source image's capture time, so the marker sorts by capture time
+        # rather than processing time.
+        self.assertIsNone(det.timestamp)
+        self.assertTrue(det.is_null_marker)
+
+    def test_valid_and_null_markers_are_disjoint_and_complete(self):
+        real = Detection.objects.create(
+            source_image=self.source_image,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+        )
+        null_marker = Detection.objects.create(
+            source_image=self.source_image,
+            bbox=None,
+            detection_algorithm=self.algorithm,
+        )
+        scoped = Detection.objects.filter(source_image=self.source_image)
+        valid_pks = set(scoped.valid().values_list("pk", flat=True))
+        null_pks = set(scoped.null_markers().values_list("pk", flat=True))
+        self.assertEqual(valid_pks, {real.pk})
+        self.assertEqual(null_pks, {null_marker.pk})
+        self.assertEqual(valid_pks & null_pks, set())
+
+
+class TestOccurrenceValidQuerySet(TestCase):
+    """
+    Covers OccurrenceQuerySet.valid() tightening for Issue #1310:
+    excludes occurrences with no real detections and occurrences missing a
+    determination, in addition to the existing detections__isnull=True
+    exclusion.
+    """
+
+    def setUp(self):
+        from ami.main.models import Taxon
+        from ami.ml.models.algorithm import Algorithm
+
+        self.project = Project.objects.create(name="Occurrence Valid Test Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.event = Event.objects.create(
+            project=self.project,
+            deployment=self.deployment,
+            group_by="2024-01-01",
+            start=datetime.datetime(2024, 1, 1, 0, 0),
+        )
+        self.source_image = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            path="occvalid-test.jpg",
+        )
+        self.algorithm = Algorithm.objects.create(name="valid-detector", key="valid-detector", task_type="detection")
+        self.taxon = Taxon.objects.create(name="Occurrence Valid Test Taxon")
+
+    def _make_occurrence_with_real_detection(self) -> Occurrence:
+        occ = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+        )
+        Detection.objects.create(
+            source_image=self.source_image,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+            occurrence=occ,
+        )
+        return occ
+
+    def _make_occurrence_with_only_null_detection(self) -> Occurrence:
+        occ = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+        )
+        Detection.objects.create(
+            source_image=self.source_image,
+            bbox=None,
+            detection_algorithm=self.algorithm,
+            occurrence=occ,
+        )
+        return occ
+
+    def _make_occurrence_with_null_determination(self) -> Occurrence:
+        occ = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=None,
+        )
+        Detection.objects.create(
+            source_image=self.source_image,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+            occurrence=occ,
+        )
+        return occ
+
+    def test_valid_returns_only_real_with_determination(self):
+        real = self._make_occurrence_with_real_detection()
+        null_only = self._make_occurrence_with_only_null_detection()
+        no_determination = self._make_occurrence_with_null_determination()
+
+        valid_qs = Occurrence.objects.filter(project=self.project).valid()
+        valid_pks = set(valid_qs.values_list("pk", flat=True))
+
+        self.assertIn(real.pk, valid_pks)
+        self.assertNotIn(null_only.pk, valid_pks)
+        self.assertNotIn(no_determination.pk, valid_pks)
+
+
+class TestCleanupNullOnlyOccurrencesCommand(TestCase):
+    """
+    Covers ami/main/management/commands/cleanup_null_only_occurrences.py.
+    Verifies dry-run reports counts without deleting and --commit deletes
+    phantom occurrences and dangling null markers, leaving valid rows alone.
+    """
+
+    def setUp(self):
+        from ami.main.models import Taxon
+        from ami.ml.models.algorithm import Algorithm
+
+        self.project = Project.objects.create(name="Cleanup Cmd Test Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.event = Event.objects.create(
+            project=self.project,
+            deployment=self.deployment,
+            group_by="2024-01-01",
+            start=datetime.datetime(2024, 1, 1, 0, 0),
+        )
+        self.algorithm = Algorithm.objects.create(
+            name="cleanup-detector", key="cleanup-detector", task_type="detection"
+        )
+        self.taxon = Taxon.objects.create(name="Cleanup Test Taxon")
+
+        self.img_with_real = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            path="with-real.jpg",
+        )
+        self.img_only_null = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            path="only-null.jpg",
+        )
+
+        self.valid_occurrence = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+        )
+        self.real_detection = Detection.objects.create(
+            source_image=self.img_with_real,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+            occurrence=self.valid_occurrence,
+        )
+        self.null_on_processed_image = Detection.objects.create(
+            source_image=self.img_with_real,
+            bbox=None,
+            detection_algorithm=self.algorithm,
+        )
+
+        self.phantom_occurrence = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+        )
+        self.phantom_null = Detection.objects.create(
+            source_image=self.img_only_null,
+            bbox=None,
+            detection_algorithm=self.algorithm,
+            occurrence=self.phantom_occurrence,
+        )
+
+        # A different (partial-write) shape: an occurrence with a real detection but a
+        # missing determination. Occurrence.valid() excludes it (determination IS NULL),
+        # but the cleanup command must NOT delete it — doing so would SET_NULL the real
+        # detection's occurrence FK and strand a classified detection on an image that
+        # filter_processed_images then skips forever. The command's phantom predicate is
+        # deliberately narrower than valid() to spare exactly this case.
+        self.img_real_no_determination = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            path="real-no-determination.jpg",
+        )
+        self.occ_real_no_determination = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=None,
+        )
+        self.real_detection_no_determination = Detection.objects.create(
+            source_image=self.img_real_no_determination,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+            occurrence=self.occ_real_no_determination,
+        )
+
+    def _call_command(self, *args):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command("cleanup_null_only_occurrences", *args, stdout=out)
+        return out.getvalue()
+
+    def test_dry_run_reports_counts_without_deleting(self):
+        output = self._call_command(f"--project={self.project.pk}")
+        self.assertIn("Phantom occurrences", output)
+        self.assertIn("Dangling null-marker detections", output)
+        self.assertIn("Dry run", output)
+        self.assertTrue(Occurrence.objects.filter(pk=self.phantom_occurrence.pk).exists())
+        self.assertTrue(Detection.objects.filter(pk=self.phantom_null.pk).exists())
+
+    def test_commit_deletes_phantoms_and_dangling_null_markers(self):
+        self._call_command(f"--project={self.project.pk}", "--commit")
+        self.assertFalse(Occurrence.objects.filter(pk=self.phantom_occurrence.pk).exists())
+        self.assertFalse(Detection.objects.filter(pk=self.phantom_null.pk).exists())
+        self.assertTrue(Occurrence.objects.filter(pk=self.valid_occurrence.pk).exists())
+        self.assertTrue(Detection.objects.filter(pk=self.real_detection.pk).exists())
+        self.assertTrue(
+            Detection.objects.filter(pk=self.null_on_processed_image.pk).exists(),
+            "Null markers on images with at least one real detection must be kept",
+        )
+        self.assertTrue(
+            Occurrence.objects.filter(pk=self.occ_real_no_determination.pk).exists(),
+            "Occurrence with a real detection but a missing determination is a partial-write "
+            "shape, not Issue #1310 debris — it must be preserved, not deleted",
+        )
+        self.real_detection_no_determination.refresh_from_db()
+        self.assertEqual(
+            self.real_detection_no_determination.occurrence_id,
+            self.occ_real_no_determination.pk,
+            "The real detection must keep its occurrence FK — deleting the occurrence would "
+            "SET_NULL it and strand the detection",
+        )
+
+    def test_commit_is_idempotent(self):
+        self._call_command(f"--project={self.project.pk}", "--commit")
+        second_run = self._call_command(f"--project={self.project.pk}", "--commit")
+        self.assertIn("Nothing to clean up", second_run)

@@ -86,8 +86,8 @@ export const Capture = ({
         const boxWidth = boxRight - boxLeft
         const boxHeight = boxBottom - boxTop
 
-        const _width = naturalSize?.width ?? width
-        const _height = naturalSize?.height ?? height
+        const _width = width ?? naturalSize?.width
+        const _height = height ?? naturalSize?.height
 
         if (!_width || !_height) {
           return result
