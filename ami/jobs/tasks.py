@@ -146,13 +146,15 @@ def run_job(self, job_id: int) -> None:
         raise e
         # self.retry(exc=e, countdown=1, max_retries=1)
     else:
-        # Log the Redis target at task start so cross-host DB-index drift surfaces
-        # in every job's log without needing to know where to look. The cluster
-        # convention is DB 0 = cache, DB 1 = Celery results (see
-        # config/settings/base.py); the Job state manager also uses the "default"
-        # connection, so every worker in the pool must agree on the DB number or
-        # initialize_job writes to one DB while update_state reads from another.
-        job.logger.info(f"Running job {job} on {_describe_redis_target()}")
+        # Log the Redis DB index at task start so cross-host DB-index drift — the misconfig
+        # that surfaces as silent process_nats_pipeline_result FAILUREs on whichever worker
+        # reads state from the wrong DB — is visible per job. Every host's "default" Redis
+        # connection (the one the job state manager uses) must select the same DB number, or
+        # initialize_job and update_state operate on different DBs. The public job log carries
+        # only the DB index; the full host:port goes to the server log, since the host names
+        # internal infrastructure.
+        job.logger.info(f"Running job {job} on Redis db {_redis_db_index()}")
+        logger.info("Job %s Redis target: %s", job.pk, _describe_redis_target())
         try:
             job.run()
         except Exception as e:
@@ -433,13 +435,29 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         job.logger.error(error)
 
 
+def _redis_db_index() -> str:
+    """Return just the DB index of the "default" Redis connection (e.g. ``"1"``).
+
+    Safe for the public job log: the DB index is the load-bearing signal for diagnosing
+    cross-host DB drift, without exposing the internal Redis host. Pair with
+    :func:`_describe_redis_target` (host:port, server logs only) when an operator needs the host.
+    """
+    try:
+        from django_redis import get_redis_connection
+
+        redis = get_redis_connection("default")
+        kwargs = getattr(redis.connection_pool, "connection_kwargs", {}) or {}
+        return str(kwargs.get("db", "?"))
+    except Exception as e:
+        return f"(unavailable: {e})"
+
+
 def _describe_redis_target() -> str:
     """Return a ``redis=host:port/dbN`` string for the "default" Redis connection.
 
-    Logged at the start of every ``run_job`` so DB-index drift across hosts
-    (the class of misconfig that manifests as silent ``process_nats_pipeline_result``
-    FAILUREs on whichever worker happens to read state from the wrong DB) is
-    visible in each job's log without requiring a separate diagnostic.
+    For server-side logs only — it names the internal Redis host, so it must not reach the
+    public job log (use :func:`_redis_db_index` there). Logged server-side at ``run_job`` start
+    so an operator can resolve a DB-index drift to a specific host.
     """
     try:
         from django_redis import get_redis_connection
@@ -465,9 +483,11 @@ def _fail_job(job_id: int, reason: str) -> None:
             # job detail view without digging through Celery worker logs.
             try:
                 job.progress.errors.append(reason)
-            except Exception:
-                # Don't let diagnostic-write failures mask the original FAILURE.
-                pass
+            except Exception as e:
+                # Don't let a diagnostic-write failure mask the original FAILURE, but record
+                # that the reason could not be attached so the swallow is observable — otherwise
+                # the UI silently loses the cause this PR exists to surface.
+                logger.warning("Job %s: could not append failure reason to progress.errors: %s", job_id, e)
             job.update_status(JobState.FAILURE, save=False)
             job.finished_at = datetime.datetime.now()
             job.save(update_fields=["status", "progress", "finished_at"])

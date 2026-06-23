@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from django.core.cache import cache
-from django.test import TransactionTestCase
+from django.test import SimpleTestCase, TransactionTestCase
 from rest_framework.test import APITestCase
 
 from ami.base.serializers import reverse_with_params
@@ -1910,3 +1910,28 @@ class TestCancelCompletionRace(TransactionTestCase):
             JobState.REVOKED.value,
             f"late completion resurrected a REVOKED job to {self.job.status!r}",
         )
+
+
+class TestRedisTargetLogging(SimpleTestCase):
+    """The per-job Redis-target log must not leak the internal Redis host.
+
+    run_job logs the Redis DB index to the public job log (via _redis_db_index) and the full
+    host:port only to the server log (via _describe_redis_target). The host names internal
+    infrastructure, so it must never reach the public job log / progress.errors. This pins the
+    split that a prior leak (host:port in the public job log) slipped through without.
+    """
+
+    def test_public_db_index_omits_host_and_port(self):
+        from ami.jobs.tasks import _redis_db_index
+
+        out = _redis_db_index()
+        self.assertNotIn(":", out, "DB index must not contain a host:port")
+        self.assertNotIn("redis=", out)
+
+    def test_server_target_includes_host_and_port(self):
+        from ami.jobs.tasks import _describe_redis_target
+
+        out = _describe_redis_target()
+        self.assertTrue(out.startswith("redis="))
+        self.assertIn(":", out)
+        self.assertIn("/db", out)
