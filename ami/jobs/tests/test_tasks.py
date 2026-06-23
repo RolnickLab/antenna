@@ -1993,3 +1993,57 @@ class TestCheckStaleJobsReaperGuard(TransactionTestCase):
             JobState.REVOKED.value,
             f"Celery FAILURE must not be forced to terminal FAILURE for async_api; got {job.status}",
         )
+
+    @patch("celery.result.AsyncResult")
+    def test_phase2_skip_when_job_finalized_between_phases(self, mock_async_result):
+        """A job finalized by another writer between Phase 1 and Phase 2 is skipped.
+
+        Phase 1 reads the job as stale and decides it is terminal (Celery SUCCESS,
+        Redis drained). Between Phase 1's decision and Phase 2's select_for_update
+        re-fetch, a concurrent writer moves the job to SUCCESS. Phase 2's predicate
+        (status__in=running_states()) no longer matches, so Job.DoesNotExist is
+        raised and the reaper skips the job without further modification. The status
+        the concurrent writer set must survive unchanged.
+        """
+        from ami.jobs.tasks import check_stale_jobs
+        from ami.ml.orchestration.async_job_state import AsyncJobStateManager as _ASM
+
+        job = self._stale_async_job(task_id="reaper-phase2-skip-task")
+        ids = [str(i) for i in range(5)]
+        manager = AsyncJobStateManager(job.pk)
+        manager.initialize_job(ids)
+        manager.update_state(set(ids), stage="process")
+        manager.update_state(set(ids), stage="results")
+        self._mark_stale(job)
+
+        from celery import states as celery_states
+
+        mock_async_result.return_value.state = celery_states.SUCCESS
+
+        # During Phase 1, when all_tasks_processed() is called, simulate a
+        # concurrent writer finalizing the job to SUCCESS. The reaper's Phase-2
+        # select_for_update will then find the job outside running_states() and
+        # skip it.
+        real_all_tasks_processed = _ASM.all_tasks_processed
+
+        def finalizing_all_tasks_processed(self_asm):
+            result = real_all_tasks_processed(self_asm)
+            # Side effect: another writer finalizes the job while the reaper
+            # has not yet entered its Phase-2 lock.
+            Job.objects.filter(pk=self_asm.job_id).update(
+                status=JobState.SUCCESS,
+                updated_at=datetime.datetime.now(),
+            )
+            return result
+
+        with patch.object(_ASM, "all_tasks_processed", side_effect=finalizing_all_tasks_processed, autospec=True):
+            check_stale_jobs()
+
+        job.refresh_from_db()
+        # The concurrent writer's SUCCESS must survive: the reaper skipped the
+        # job in Phase 2 rather than applying its own status write.
+        self.assertEqual(
+            job.status,
+            JobState.SUCCESS.value,
+            f"Phase-2 skip must leave the concurrent writer's status intact; got {job.status}",
+        )
