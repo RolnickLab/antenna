@@ -3273,7 +3273,7 @@ class OccurrenceQuerySet(BaseQuerySet):
         a determination set.
 
         Excludes:
-          - Occurrences with no detections at all (orphans)
+          - Occurrences with no detections at all (empty occurrences)
           - Occurrences whose only detections are null-marker sentinels (Issue #1310:
             field bug created phantom occurrences with no real bounding box backing
             them)

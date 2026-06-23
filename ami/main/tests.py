@@ -6180,7 +6180,7 @@ class TestCleanupNullOnlyOccurrencesCommand(TestCase):
     """
     Covers ami/main/management/commands/cleanup_null_only_occurrences.py.
     Verifies dry-run reports counts without deleting and --commit deletes
-    phantom occurrences and orphan null markers, leaving valid rows alone.
+    phantom occurrences and dangling null markers, leaving valid rows alone.
     """
 
     def setUp(self):
@@ -6244,6 +6244,30 @@ class TestCleanupNullOnlyOccurrencesCommand(TestCase):
             occurrence=self.phantom_occurrence,
         )
 
+        # Second phantom shape: a real detection but no determination. valid()
+        # excludes occurrences with determination=NULL, so the command must
+        # treat this as a phantom too — it exercises the other exclusion arm,
+        # distinct from phantom_occurrence (which is excluded for having no real
+        # detection).
+        self.img_no_determination = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            path="no-determination.jpg",
+        )
+        self.phantom_no_determination = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=None,
+        )
+        self.real_detection_no_determination = Detection.objects.create(
+            source_image=self.img_no_determination,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+            occurrence=self.phantom_no_determination,
+        )
+
     def _call_command(self, *args):
         from io import StringIO
 
@@ -6256,12 +6280,12 @@ class TestCleanupNullOnlyOccurrencesCommand(TestCase):
     def test_dry_run_reports_counts_without_deleting(self):
         output = self._call_command(f"--project={self.project.pk}")
         self.assertIn("Phantom occurrences", output)
-        self.assertIn("Orphan null-marker detections", output)
+        self.assertIn("Dangling null-marker detections", output)
         self.assertIn("Dry run", output)
         self.assertTrue(Occurrence.objects.filter(pk=self.phantom_occurrence.pk).exists())
         self.assertTrue(Detection.objects.filter(pk=self.phantom_null.pk).exists())
 
-    def test_commit_deletes_phantoms_and_orphan_null_markers(self):
+    def test_commit_deletes_phantoms_and_dangling_null_markers(self):
         self._call_command(f"--project={self.project.pk}", "--commit")
         self.assertFalse(Occurrence.objects.filter(pk=self.phantom_occurrence.pk).exists())
         self.assertFalse(Detection.objects.filter(pk=self.phantom_null.pk).exists())
@@ -6270,6 +6294,10 @@ class TestCleanupNullOnlyOccurrencesCommand(TestCase):
         self.assertTrue(
             Detection.objects.filter(pk=self.null_on_processed_image.pk).exists(),
             "Null markers on images with at least one real detection must be kept",
+        )
+        self.assertFalse(
+            Occurrence.objects.filter(pk=self.phantom_no_determination.pk).exists(),
+            "Occurrence with a real detection but no determination must be deleted as a phantom",
         )
 
     def test_commit_is_idempotent(self):

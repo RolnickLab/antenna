@@ -1,5 +1,5 @@
 """
-Delete phantom Occurrences and orphan null-marker Detections left by the Issue #1310
+Delete phantom Occurrences and dangling null-marker Detections left by the Issue #1310
 field bug, on a per-project basis.
 
 The bug created two categories of rows that should never have been persisted:
@@ -22,7 +22,7 @@ from ami.main.models import Detection, Occurrence, Project
 
 
 class Command(BaseCommand):
-    help = "Delete phantom Occurrences and orphan null-marker Detections (Issue #1310)."
+    help = "Delete phantom Occurrences and dangling null-marker Detections (Issue #1310)."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -51,7 +51,7 @@ class Command(BaseCommand):
         phantom_occs = all_occs.exclude(pk__in=valid_occs.values("pk"))
 
         has_valid_detection = Detection.objects.valid().filter(source_image_id=OuterRef("source_image_id"))
-        orphan_null_markers = (
+        dangling_null_markers = (
             Detection.objects.filter(source_image__project=project)
             .null_markers()
             .annotate(_has_valid=Exists(has_valid_detection))
@@ -59,11 +59,11 @@ class Command(BaseCommand):
         )
 
         phantom_count = phantom_occs.count()
-        null_count = orphan_null_markers.count()
+        null_count = dangling_null_markers.count()
 
         self.stdout.write(f"Project #{project.pk} ({project.name}):")
         self.stdout.write(f"  Phantom occurrences (no valid detection or null determination): {phantom_count}")
-        self.stdout.write(f"  Orphan null-marker detections on images with no real detections: {null_count}")
+        self.stdout.write(f"  Dangling null-marker detections on images with no real detections: {null_count}")
 
         if phantom_count == 0 and null_count == 0:
             self.stdout.write(self.style.SUCCESS("Nothing to clean up."))
@@ -74,7 +74,7 @@ class Command(BaseCommand):
             return
 
         with transaction.atomic():
-            orphan_null_markers.delete()
+            dangling_null_markers.delete()
             phantom_occs.delete()
 
         # Report the pre-calculated counts of the rows we targeted directly. The tuple from
@@ -82,5 +82,5 @@ class Command(BaseCommand):
         # phantom occurrence's detections), which would inflate the numbers and confuse the
         # operator about what the command actually targeted.
         self.stdout.write(
-            self.style.SUCCESS(f"Deleted {phantom_count} phantom occurrences and {null_count} orphan null markers.")
+            self.style.SUCCESS(f"Deleted {phantom_count} phantom occurrences and {null_count} dangling null markers.")
         )
