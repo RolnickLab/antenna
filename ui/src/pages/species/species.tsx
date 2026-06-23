@@ -32,6 +32,21 @@ import { useSort } from 'utils/useSort'
 import { columns } from './species-columns'
 import { SpeciesGallery } from './species-gallery'
 
+// Taxa-list filters that also apply to the occurrence list. When the user drills
+// into a taxon's occurrences via a bubble link, these are carried over so the
+// occurrence list stays scoped to the same station / session / device / site /
+// verification selection instead of resetting to every occurrence of the taxon.
+const CARRY_OVER_FILTER_FIELDS = [
+  'event',
+  'deployment',
+  'deployment__device',
+  'deployment__research_site',
+  'verified',
+  'taxa_list_id',
+  'not_taxa_list_id',
+  'apply_defaults',
+]
+
 export const Species = () => {
   const { projectId, id } = useParams()
   const { project } = useProjectDetails(projectId as string, true)
@@ -58,6 +73,16 @@ export const Species = () => {
   const { selectedView, setSelectedView } = useSelectedView('table')
   const { taxaLists = [] } = useTaxaLists({ projectId: projectId as string })
   const { tags = [] } = useTags({ projectId: projectId as string })
+  const carryFilters = useMemo(
+    () =>
+      filters.reduce<Record<string, string>>((acc, filter) => {
+        if (filter.value && CARRY_OVER_FILTER_FIELDS.includes(filter.field)) {
+          acc[filter.field] = filter.value
+        }
+        return acc
+      }, {}),
+    [filters]
+  )
   const pageTitle = useMemo(() => {
     const taxaListFilter = filters.find(
       (filter) => filter.field === 'taxa_list_id'
@@ -77,6 +102,8 @@ export const Species = () => {
         <FilterSection defaultOpen>
           <FilterControl field="event" readonly />
           <FilterControl field="deployment" />
+          <FilterControl field="deployment__device" />
+          <FilterControl field="deployment__research_site" />
           <FilterControl field="taxon" />
           {taxaLists.length > 0 && (
             <>
@@ -135,6 +162,7 @@ export const Species = () => {
               columns={columns({
                 projectId: projectId as string,
                 featureFlags: project?.featureFlags,
+                carryFilters,
               }).filter((column) => !!columnSettings[column.id])}
               error={error}
               isLoading={!id && isLoading}

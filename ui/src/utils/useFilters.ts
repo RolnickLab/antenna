@@ -77,6 +77,14 @@ export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
     },
   },
   {
+    label: 'Device',
+    field: 'deployment__device',
+  },
+  {
+    label: 'Site',
+    field: 'deployment__research_site',
+  },
+  {
     label: 'End date',
     field: 'date_end',
     validate: (value) => {
