@@ -2,7 +2,6 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("ml", "0026_make_processing_service_endpoint_url_nullable"),
     ]
