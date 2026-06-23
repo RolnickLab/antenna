@@ -546,9 +546,8 @@ def get_or_create_detection(
 
     if serialized_bbox is None:
         # Null marker: algorithm-specific lookup so different pipelines don't share sentinels.
-        # Use .null_markers() so legacy bbox=[] sentinels from older runs are also matched and
-        # re-used instead of producing duplicate rows. Detection.NULL_BBOX is the canonical
-        # sentinel value used for new writes; .null_markers() recognises both forms.
+        # Narrow to .null_markers() (rather than a bare filter) so an existing sentinel for this
+        # image+algorithm is re-used instead of matching a real detection or creating a duplicate.
         assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
         try:
             detection_algo = algorithms_known[detection_resp.algorithm.key]

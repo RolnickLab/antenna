@@ -6038,14 +6038,6 @@ class TestDetectionNullMarker(TestCase):
         )
         self.assertTrue(det.is_null_marker)
 
-    def test_is_null_marker_for_bbox_empty_list_legacy(self):
-        det = Detection.objects.create(
-            source_image=self.source_image,
-            bbox=[],
-            detection_algorithm=self.algorithm,
-        )
-        self.assertTrue(det.is_null_marker)
-
     def test_is_null_marker_false_for_real_detection(self):
         det = Detection.objects.create(
             source_image=self.source_image,
@@ -6071,21 +6063,16 @@ class TestDetectionNullMarker(TestCase):
             bbox=[0.0, 0.0, 1.0, 1.0],
             detection_algorithm=self.algorithm,
         )
-        null_via_none = Detection.objects.create(
+        null_marker = Detection.objects.create(
             source_image=self.source_image,
             bbox=None,
-            detection_algorithm=self.algorithm,
-        )
-        null_via_empty = Detection.objects.create(
-            source_image=self.source_image,
-            bbox=[],
             detection_algorithm=self.algorithm,
         )
         scoped = Detection.objects.filter(source_image=self.source_image)
         valid_pks = set(scoped.valid().values_list("pk", flat=True))
         null_pks = set(scoped.null_markers().values_list("pk", flat=True))
         self.assertEqual(valid_pks, {real.pk})
-        self.assertEqual(null_pks, {null_via_none.pk, null_via_empty.pk})
+        self.assertEqual(null_pks, {null_marker.pk})
         self.assertEqual(valid_pks & null_pks, set())
 
 
@@ -6244,28 +6231,29 @@ class TestCleanupNullOnlyOccurrencesCommand(TestCase):
             occurrence=self.phantom_occurrence,
         )
 
-        # Second phantom shape: a real detection but no determination. valid()
-        # excludes occurrences with determination=NULL, so the command must
-        # treat this as a phantom too — it exercises the other exclusion arm,
-        # distinct from phantom_occurrence (which is excluded for having no real
-        # detection).
-        self.img_no_determination = SourceImage.objects.create(
+        # A different (partial-write) shape: an occurrence with a real detection but a
+        # missing determination. Occurrence.valid() excludes it (determination IS NULL),
+        # but the cleanup command must NOT delete it — doing so would SET_NULL the real
+        # detection's occurrence FK and strand a classified detection on an image that
+        # filter_processed_images then skips forever. The command's phantom predicate is
+        # deliberately narrower than valid() to spare exactly this case.
+        self.img_real_no_determination = SourceImage.objects.create(
             deployment=self.deployment,
             project=self.project,
             event=self.event,
-            path="no-determination.jpg",
+            path="real-no-determination.jpg",
         )
-        self.phantom_no_determination = Occurrence.objects.create(
+        self.occ_real_no_determination = Occurrence.objects.create(
             project=self.project,
             event=self.event,
             deployment=self.deployment,
             determination=None,
         )
         self.real_detection_no_determination = Detection.objects.create(
-            source_image=self.img_no_determination,
+            source_image=self.img_real_no_determination,
             bbox=[0.0, 0.0, 1.0, 1.0],
             detection_algorithm=self.algorithm,
-            occurrence=self.phantom_no_determination,
+            occurrence=self.occ_real_no_determination,
         )
 
     def _call_command(self, *args):
@@ -6295,9 +6283,17 @@ class TestCleanupNullOnlyOccurrencesCommand(TestCase):
             Detection.objects.filter(pk=self.null_on_processed_image.pk).exists(),
             "Null markers on images with at least one real detection must be kept",
         )
-        self.assertFalse(
-            Occurrence.objects.filter(pk=self.phantom_no_determination.pk).exists(),
-            "Occurrence with a real detection but no determination must be deleted as a phantom",
+        self.assertTrue(
+            Occurrence.objects.filter(pk=self.occ_real_no_determination.pk).exists(),
+            "Occurrence with a real detection but a missing determination is a partial-write "
+            "shape, not Issue #1310 debris — it must be preserved, not deleted",
+        )
+        self.real_detection_no_determination.refresh_from_db()
+        self.assertEqual(
+            self.real_detection_no_determination.occurrence_id,
+            self.occ_real_no_determination.pk,
+            "The real detection must keep its occurrence FK — deleting the occurrence would "
+            "SET_NULL it and strand the detection",
         )
 
     def test_commit_is_idempotent(self):

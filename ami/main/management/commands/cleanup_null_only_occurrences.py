@@ -3,8 +3,8 @@ Delete phantom Occurrences and dangling null-marker Detections left by the Issue
 field bug, on a per-project basis.
 
 The bug created two categories of rows that should never have been persisted:
-- Occurrence rows with no real detections (or with determination=NULL), surfaced as
-  ghost rows in the API.
+- Occurrence rows with no real detections (their only detections are null-marker
+  sentinels, or they have none at all), surfaced as ghost rows in the API.
 - Detection rows that mark a SourceImage as "processed" while no real detections
   exist for it — these prevent filter_processed_images from re-yielding the image
   on the next ML run.
@@ -47,8 +47,17 @@ class Command(BaseCommand):
             raise CommandError(f"Project {project_id} does not exist") from err
 
         all_occs = Occurrence.objects.filter(project=project)
-        valid_occs = all_occs.valid()
-        phantom_occs = all_occs.exclude(pk__in=valid_occs.values("pk"))
+        # Phantom = an occurrence with NO real (valid) detection backing it: its only detections
+        # are null-marker sentinels, or it has none at all. This is the Issue #1310 debris.
+        #
+        # Deliberately narrower than Occurrence.valid(): valid() ALSO excludes occurrences whose
+        # determination is null, but an occurrence that has a real detection and merely a missing
+        # determination is a different (partial-write) shape, not #1310 debris. Deleting it would
+        # SET_NULL the real detection's occurrence FK (Detection.occurrence is on_delete=SET_NULL),
+        # stranding a classified detection on an image that filter_processed_images then skips
+        # forever. Those are left for a separate, targeted repair.
+        has_valid_detection = Exists(Detection.objects.valid().filter(occurrence_id=OuterRef("pk")))
+        phantom_occs = all_occs.exclude(has_valid_detection)
 
         has_valid_detection = Detection.objects.valid().filter(source_image_id=OuterRef("source_image_id"))
         dangling_null_markers = (
@@ -62,7 +71,7 @@ class Command(BaseCommand):
         null_count = dangling_null_markers.count()
 
         self.stdout.write(f"Project #{project.pk} ({project.name}):")
-        self.stdout.write(f"  Phantom occurrences (no valid detection or null determination): {phantom_count}")
+        self.stdout.write(f"  Phantom occurrences (no real detection backing them): {phantom_count}")
         self.stdout.write(f"  Dangling null-marker detections on images with no real detections: {null_count}")
 
         if phantom_count == 0 and null_count == 0:

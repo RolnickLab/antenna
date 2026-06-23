@@ -97,12 +97,10 @@ DEFAULT_RANKS = sorted(
     ]
 )
 
-NULL_DETECTIONS_FILTER = Q(bbox__isnull=True) | Q(bbox=[])
-
 
 def bbox_is_null(bbox) -> bool:
-    """In-memory equivalent of NULL_DETECTIONS_FILTER for already-fetched bbox values."""
-    return bbox is None or bbox == []
+    """In-memory equivalent of null_detections_q() for an already-fetched bbox value."""
+    return bbox is None
 
 
 def null_detections_q(prefix: str = "") -> Q:
@@ -111,8 +109,16 @@ def null_detections_q(prefix: str = "") -> Q:
     for use across relations (e.g. null_detections_q("images__detections__") for an
     aggregate filter on a parent table). For Detection queries directly, prefer
     Detection.objects.null_markers() / .valid() instead.
+
+    Null markers are stored as SQL NULL (bbox IS NULL); that is the only sentinel form.
     """
-    return Q(**{f"{prefix}bbox__isnull": True}) | Q(**{f"{prefix}bbox": []})
+    return Q(**{f"{prefix}bbox__isnull": True})
+
+
+# Single source of truth for "this Detection is a null marker", shared by
+# DetectionQuerySet.valid() / .null_markers(). Defined via null_detections_q() so the
+# constant and the helper cannot drift apart.
+NULL_DETECTIONS_FILTER = null_detections_q()
 
 
 def get_media_url(path: str) -> str:
@@ -3130,14 +3136,13 @@ class Detection(BaseModel):
 
     NULL_BBOX = None
     """Canonical bbox value for null markers (rows that record 'an algorithm ran but
-    found nothing'). Use Detection.build_null_marker() to construct them. The legacy
-    bbox=[] form is still recognised by .null_markers() / .is_null_marker for
-    backwards compatibility with historical rows."""
+    found nothing'). Null markers are stored as SQL NULL; use Detection.build_null_marker()
+    to construct them."""
 
     @property
     def is_null_marker(self) -> bool:
         """True for sentinel rows representing 'no detections found by this algorithm.'"""
-        return self.bbox is None or self.bbox == []
+        return self.bbox is None
 
     @classmethod
     def build_null_marker(cls, source_image, detection_algorithm) -> "Detection":
