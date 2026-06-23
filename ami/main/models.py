@@ -1336,8 +1336,15 @@ class Event(BaseModel):
         # Ideally this would be an annotated field, rather than an additional query.
         # raise NotImplementedError("This is added an annotated field, it should not be called directly.")
         # return SourceImage.objects.filter(event=self).order_by("timestamp").first().with_detections()
-        # with_thumbnails() satisfies the thumbnail_urls prefetch contract for the nested serializer.
-        return SourceImage.objects.filter(event=self).order_by("timestamp").with_thumbnails().first()
+        # with_thumbnails() satisfies the thumbnail_urls prefetch contract for the nested serializer;
+        # select_related("project") feeds its project.thumbnails_enabled guard without an extra query.
+        return (
+            SourceImage.objects.filter(event=self)
+            .select_related("project")
+            .order_by("timestamp")
+            .with_thumbnails()
+            .first()
+        )
 
     def summary_data(self):
         """

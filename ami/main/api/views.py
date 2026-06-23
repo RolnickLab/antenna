@@ -450,7 +450,9 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
                 Prefetch(
                     "captures",
                     queryset=SourceImage.objects.order_by("-size").select_related(
-                        "deployment", "deployment__data_source"
+                        "deployment",
+                        "deployment__data_source",
+                        "project",  # nested thumbnail serializer reads project.thumbnails_enabled
                     )
                     # Required by SourceImage.thumbnail_urls in the nested serializer.
                     .with_thumbnails()[:num_example_captures],
