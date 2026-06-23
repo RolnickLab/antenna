@@ -97,12 +97,28 @@ DEFAULT_RANKS = sorted(
     ]
 )
 
-NULL_DETECTIONS_FILTER = Q(bbox__isnull=True) | Q(bbox=[])
-
 
 def bbox_is_null(bbox) -> bool:
-    """In-memory equivalent of NULL_DETECTIONS_FILTER for already-fetched bbox values."""
-    return bbox is None or bbox == []
+    """In-memory equivalent of null_detections_q() for an already-fetched bbox value."""
+    return bbox is None
+
+
+def null_detections_q(prefix: str = "") -> Q:
+    """
+    Return a Q expression matching null-marker Detection rows, optionally prefixed
+    for use across relations (e.g. null_detections_q("images__detections__") for an
+    aggregate filter on a parent table). For Detection queries directly, prefer
+    Detection.objects.null_markers() / .valid() instead.
+
+    Null markers are stored as SQL NULL (bbox IS NULL); that is the only sentinel form.
+    """
+    return Q(**{f"{prefix}bbox__isnull": True})
+
+
+# Single source of truth for "this Detection is a null marker", shared by
+# DetectionQuerySet.valid() / .null_markers(). Defined via null_detections_q() so the
+# constant and the helper cannot drift apart.
+NULL_DETECTIONS_FILTER = null_detections_q()
 
 
 def get_media_url(path: str) -> str:
@@ -318,6 +334,17 @@ class Project(ProjectSettingsMixin, BaseModel):
         """Add owner to members if they are not already a member"""
         if self.owner and not self.members.filter(id=self.owner.pk).exists():
             self.members.add(self.owner)
+
+    @property
+    def thumbnails_enabled(self) -> bool:
+        """Whether captures in this project should expose server-generated thumbnail URLs.
+
+        Draft projects aren't anonymously readable, and the thumbnail endpoint is loaded
+        via an anonymous <img> tag that can't authenticate, so it would 401. Proxy for
+        "anonymous can retrieve captures"; revisit if visibility decouples from `draft`.
+        Serving thumbnails for private projects is tracked in #1341.
+        """
+        return not self.draft
 
     def deployments_count(self) -> int:
         return self.deployments.count()
@@ -825,7 +852,7 @@ class Deployment(BaseModel):
         was processed and no detections were found) to stay consistent with
         ``SourceImage.get_detections_count`` and ``Event.get_detections_count``.
         """
-        qs = Detection.objects.filter(source_image__deployment=self).exclude(NULL_DETECTIONS_FILTER)
+        qs = Detection.objects.filter(source_image__deployment=self).valid()
         filter_q = build_occurrence_default_filters_q(
             project=self.project,
             request=None,
@@ -1260,7 +1287,7 @@ class Event(BaseModel):
         Excludes null-bbox placeholder detections to stay consistent with
         ``SourceImage.get_detections_count`` and ``Deployment.get_detections_count``.
         """
-        qs = Detection.objects.filter(source_image__event=self).exclude(NULL_DETECTIONS_FILTER)
+        qs = Detection.objects.filter(source_image__event=self).valid()
         filter_q = build_occurrence_default_filters_q(
             project=self.project,
             request=None,
@@ -2234,7 +2261,7 @@ class SourceImage(BaseModel):
         Excludes detections without bounding boxes — those are placeholder records
         indicating the image was successfully processed and no detections were found.
         """
-        qs = self.detections.exclude(NULL_DETECTIONS_FILTER)
+        qs = self.detections.all().valid()
         project = self.project
         if not project:
             return qs.distinct().count()
@@ -2562,7 +2589,7 @@ def update_detection_counts(
     if null_only:
         qs = qs.filter(detections_count__isnull=True)
 
-    detection_qs = Detection.objects.filter(source_image_id=models.OuterRef("pk")).exclude(NULL_DETECTIONS_FILTER)
+    detection_qs = Detection.objects.filter(source_image_id=models.OuterRef("pk")).valid()
     if project is not None:
         filter_q = build_occurrence_default_filters_q(
             project=project,
@@ -3068,7 +3095,23 @@ class Classification(BaseModel):
 
 
 class DetectionQuerySet(BaseQuerySet):
-    def null_detections(self):
+    def valid(self):
+        """
+        Detections suitable for consumer queries — excludes null-marker sentinels.
+
+        Null markers are rows that record "an algorithm ran against this image and
+        found nothing." Consumers asking "give me detections" should always go
+        through .valid(). Future predicates to fold in here: soft-delete tombstones,
+        detections missing an algorithm reference, detections missing classifications.
+        """
+        return self.exclude(NULL_DETECTIONS_FILTER)
+
+    def null_markers(self):
+        """
+        Sentinel rows that record "this algorithm ran against this image and found
+        nothing." Only relevant for SourceImage-level "has this been processed?"
+        questions. Detection consumers should use .valid() instead.
+        """
         return self.filter(NULL_DETECTIONS_FILTER)
 
 
@@ -3145,6 +3188,25 @@ class Detection(BaseModel):
     detection_algorithm_id: int
 
     objects = DetectionManager()
+
+    NULL_BBOX = None
+    """Canonical bbox value for null markers (rows that record 'an algorithm ran but
+    found nothing'). Null markers are stored as SQL NULL; use Detection.build_null_marker()
+    to construct them."""
+
+    @property
+    def is_null_marker(self) -> bool:
+        """True for sentinel rows representing 'no detections found by this algorithm.'"""
+        return self.bbox is None
+
+    @classmethod
+    def build_null_marker(cls, source_image, detection_algorithm) -> "Detection":
+        """Construct (without saving) a null-marker Detection for the given image+algorithm."""
+        return cls(
+            source_image=source_image,
+            bbox=cls.NULL_BBOX,
+            detection_algorithm=detection_algorithm,
+        )
 
     def get_bbox(self):
         if self.bbox:
@@ -3266,7 +3328,20 @@ class Detection(BaseModel):
 
 class OccurrenceQuerySet(BaseQuerySet):
     def valid(self):
-        return self.exclude(detections__isnull=True)
+        """
+        Occurrences fit to surface in API responses: at least one real detection AND
+        a determination set.
+
+        Excludes:
+          - Occurrences with no detections at all (empty occurrences)
+          - Occurrences whose only detections are null-marker sentinels (Issue #1310:
+            field bug created phantom occurrences with no real bounding box backing
+            them)
+          - Occurrences with determination__isnull=True (no taxonomic identification,
+            same field bug shape)
+        """
+        has_valid_detection = Exists(Detection.objects.valid().filter(occurrence_id=OuterRef("pk")))
+        return self.filter(has_valid_detection).exclude(determination__isnull=True)
 
     def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
@@ -4665,7 +4740,7 @@ class SourceImageCollectionQuerySet(BaseQuerySet):
         return self.annotate(
             source_images_with_detections_count=models.Count(
                 "images",
-                filter=(~models.Q(images__detections__bbox__isnull=True) & ~models.Q(images__detections__bbox=[])),
+                filter=~null_detections_q("images__detections__"),
                 distinct=True,
             )
         )
@@ -5057,10 +5132,11 @@ class SourceImageCollection(BaseModel):
         return captures
 
     def sample_detections_only(self):
-        """Sample all source images with detections"""
+        """Sample all source images with at least one real (non-null-marker) detection."""
 
         qs = self.get_queryset()
-        return qs.filter(detections__isnull=False).distinct()
+        valid_detection_image_ids = Detection.objects.valid().values("source_image_id")
+        return qs.filter(pk__in=valid_detection_image_ids).distinct()
 
     def sample_full(
         self,

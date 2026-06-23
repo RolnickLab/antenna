@@ -81,7 +81,11 @@ class SourceImageThumbnailSerializer(DefaultSerializer):
         super().__init__(*args, **kwargs)
         self.fields["thumbnails"] = serializers.SerializerMethodField()
 
-    def get_thumbnails(self, obj: SourceImage) -> dict[str, str]:
+    def get_thumbnails(self, obj: SourceImage) -> dict[str, str] | None:
+        # Draft projects aren't anonymously readable, so the <img>-loaded thumbnail
+        # URLs would 401; signal "no thumbnails" and let the UI fall back to capture.url.
+        if obj.project is None or not obj.project.thumbnails_enabled:
+            return None
         return obj.thumbnail_urls(request=self.context.get("request"))
 
 

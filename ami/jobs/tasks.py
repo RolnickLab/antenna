@@ -282,6 +282,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
         # State keys genuinely missing (the total-images key returned None).
         # Ack so NATS stops redelivering and fail the job — there's no state
         # left to reconcile against.
+        _log_missing_state_context(job_id, "process")
         _ack_task_via_nats(reply_subject, logger)
         _fail_job(job_id, "Job state keys not found in Redis (likely cleaned up concurrently)")
         return
@@ -364,6 +365,7 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
             # State keys genuinely missing (total-images key returned None). Ack
             # first so NATS stops redelivering a message whose state is gone,
             # then fail the job. Mirrors the stage=process missing-state path.
+            _log_missing_state_context(job_id, "results")
             _ack_task_via_nats(reply_subject, job.logger)
             _fail_job(job_id, "Job state keys not found in Redis (likely cleaned up concurrently)")
             return
@@ -432,6 +434,46 @@ def _fail_job(job_id: int, reason: str) -> None:
     except Job.DoesNotExist:
         logger.error(f"Cannot fail job {job_id}: not found")
         cleanup_async_job_resources(job_id)
+
+
+def _log_missing_state_context(job_id: int, stage: str) -> None:
+    # Diagnostic for a missing progress-state key. Status + age separate the two
+    # cases: a terminal job means a late result arriving after the job finished
+    # (benign — e.g. a cancel already cleaned up the state); a still-running job
+    # with no state is the one worth investigating (state never seeded, or wiped
+    # by a re-dispatched run). Observation only; the fix is planned in #1337.
+    from django.utils import timezone
+
+    from ami.jobs.models import Job, JobState  # avoid circular import
+
+    try:
+        job_values = Job.objects.values("status", "created_at").get(pk=job_id)
+    except Job.DoesNotExist:
+        logger.warning("Job %s: progress state missing and the job no longer exists (stage=%s).", job_id, stage)
+        return
+
+    age = (timezone.now() - job_values["created_at"]).total_seconds() if job_values["created_at"] else None
+    age_s = round(age, 1) if age is not None else None
+
+    # Mirror _fail_job's no-op set: a job that is already terminal OR cancelling
+    # will not actually be failed, so a late result for it is expected cleanup,
+    # not an anomaly.
+    if job_values["status"] in {JobState.CANCELING, *JobState.final_states()}:
+        logger.info(
+            "Job %s: result arrived after the job already finished (status=%s, stage=%s); ignoring.",
+            job_id,
+            job_values["status"],
+            stage,
+        )
+    else:
+        logger.warning(
+            "Job %s: progress state missing while the job is still running "
+            "(status=%s, stage=%s, age=%ss); marking it failed.",
+            job_id,
+            job_values["status"],
+            stage,
+            age_s,
+        )
 
 
 def _ack_task_via_nats(reply_subject: str, job_logger: logging.Logger) -> bool:
@@ -632,19 +674,44 @@ def _update_job_progress(
             progress=progress_percentage,
             **state_params,
         )
-        if job.progress.is_complete():
-            job.status = complete_state
-            job.progress.summary.status = complete_state
-            job.finished_at = datetime.datetime.now()  # Use naive datetime in local time
+        became_complete = job.progress.is_complete()
         job.logger.info(f"Updated job {job_id} progress in stage '{stage}' to {progress_percentage*100}%")
-        # Narrow the write to the fields we actually mutated. Without this, a full
-        # save() would overwrite `logs` and any other field on the instance
-        # fetched at the top of this block — so a concurrent worker's append to
-        # `progress.errors` (via `_reconcile_lost_images`) or log line (via
-        # JobLogHandler) could be clobbered by a stale read-modify-write.
-        # `updated_at` is listed explicitly because Django skips `auto_now` bumps
-        # when `update_fields` is provided. See PR #1261 review feedback.
-        job.save(update_fields=["progress", "status", "finished_at", "updated_at"])
+
+        if became_complete:
+            # Flip to terminal only from a non-terminal status, as one
+            # statement-scope UPDATE: a stale read-modify-write can't clobber it,
+            # and unlike the select_for_update removed in #1261 it holds no row
+            # lock. A job already moved to terminal/CANCELING (by another worker,
+            # the reaper, or a cancel) is left alone — we don't resurrect a
+            # revoked job into SUCCESS. See #1337.
+            now = datetime.datetime.now()  # naive, local time
+            transitioned = Job.objects.filter(
+                pk=job_id,
+                status__in=JobState.finalizable_states(),
+            ).update(status=complete_state, finished_at=now)
+            if transitioned:
+                job.status = complete_state
+                job.finished_at = now
+                # Advance summary.status only when the transition fired, else an
+                # already-terminal job's JSONB would disagree with its column.
+                job.progress.summary.status = complete_state
+            else:
+                # Work completed but the guard found the job already terminal/CANCELING,
+                # so the completion was not applied. Usually legitimate (a cancel or the
+                # reaper won the race); if frequent it points to a premature terminal
+                # verdict. Observation only; see #1337.
+                job.logger.warning(
+                    "Stage '%s' completed but the job was already in a terminal state; not applying %s.",
+                    stage,
+                    complete_state,
+                )
+
+        # status/finished_at are deliberately NOT in this save() — only the
+        # guarded UPDATE above writes them. Folding them back in reopens #1337.
+        # Narrow update_fields so a concurrent append to progress.errors/logs
+        # isn't clobbered; updated_at explicit because auto_now skips when
+        # update_fields is given.
+        job.save(update_fields=["progress", "updated_at"])
         try:
             _log_job_throughput(job, stage)
         except Exception as e:
@@ -1337,7 +1404,21 @@ def update_job_status(sender, task_id, task, state: str, retval=None, **kwargs):
         )
         return
 
-    job.update_status(state)
+    # Write the terminal SUCCESS through the guarded helper (see #1337): it only
+    # transitions a job that is still in a non-terminal state, so a slow
+    # task_postrun cannot revive a job that a cancel, the stale-job reaper, or the
+    # result handler already finished. Non-terminal Celery states (STARTED,
+    # RETRY, ...) still go through update_status() unchanged.
+    if state == JobState.SUCCESS:
+        transitioned = job._guarded_status_update(
+            JobState.SUCCESS,
+            from_statuses=JobState.finalizable_states(),
+            set_finished=True,
+        )
+        if transitioned:
+            job.save(update_fields=["progress", "finished_at", "updated_at"])
+    else:
+        job.update_status(state)
 
     # Clean up async resources for revoked jobs
     if state == JobState.REVOKED:
@@ -1365,11 +1446,21 @@ def update_job_failure(sender, task_id, exception, *args, **kwargs):
         )
         return
 
-    job.update_status(JobState.FAILURE, save=False)
+    # Write the terminal FAILURE through the guarded helper (see #1337): it only
+    # transitions a job that is still in a non-terminal state, so a run_job
+    # failure cannot overwrite a status another writer already finished (e.g. a
+    # job a cancel just REVOKED, or one the result handler marked SUCCESS). If the
+    # guard makes no change we still log the error and run the teardown below.
+    transitioned = job._guarded_status_update(
+        JobState.FAILURE,
+        from_statuses=JobState.finalizable_states(),
+        set_finished=True,
+    )
 
     job.logger.error(f'Job #{job.pk} "{job.name}" failed: {exception}')
 
-    job.save()
+    if transitioned:
+        job.save(update_fields=["progress", "finished_at", "updated_at"])
 
     # Clean up async resources for failed jobs
     cleanup_async_job_if_needed(job)
