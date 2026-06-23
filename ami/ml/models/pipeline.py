@@ -545,11 +545,9 @@ def get_or_create_detection(
     ), f"Detection belongs to a different source image: {detection_repr}"
 
     if serialized_bbox is None:
-        # existing_detection := the null-marker sentinel already recorded for this image+algorithm
-        # (or None if there is none yet). The lookup is algorithm-specific so different pipelines
-        # don't share sentinels, and narrowed to .null_markers() rather than a bare filter: a null
-        # response has no bbox to match on, so without .null_markers() the (image, algorithm) filter
-        # would also return real detections, and .first() could reuse one as if it were the sentinel.
+        # existing_detection := the null-marker sentinel for this (image, algorithm), or None.
+        # .null_markers() is required: a null response has no bbox to match on, so a bare
+        # (image, algorithm) filter would also return real detections for .first() to pick.
         assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
         try:
             detection_algo = algorithms_known[detection_resp.algorithm.key]
@@ -568,10 +566,8 @@ def get_or_create_detection(
             .first()
         )
     else:
-        # existing_detection := the detection with this exact bbox on this image (or None). The
-        # match is algorithm-agnostic — the same bounding box on the same image is the same physical
-        # detection regardless of which algorithm found it, so a bbox match is a duplicate to reuse.
-        # A specific bbox can't match a null marker (bbox IS NULL), so sentinels are excluded here.
+        # existing_detection := the detection with this exact bbox on this image, or None
+        # (algorithm-agnostic, per the docstring — same bbox = same physical detection).
         existing_detection = Detection.objects.filter(
             source_image=source_image,
             bbox=serialized_bbox,
