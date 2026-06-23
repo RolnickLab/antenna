@@ -1,6 +1,5 @@
 import datetime
 
-from django.conf import settings
 from django.db.models import QuerySet
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
@@ -74,22 +73,20 @@ class UserNestedSerializer(DefaultSerializer):
 
 
 class SourceImageThumbnailSerializer(DefaultSerializer):
+    """Adds a ``thumbnails`` field via :meth:`SourceImage.thumbnail_urls`.
+    Viewsets must apply :meth:`SourceImageQuerySet.with_thumbnails`.
+    """
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["thumbnails"] = serializers.SerializerMethodField()
 
-    def get_thumbnails(self, obj: SourceImage) -> dict | None:
+    def get_thumbnails(self, obj: SourceImage) -> dict[str, str] | None:
+        # Draft projects aren't anonymously readable, so the <img>-loaded thumbnail
+        # URLs would 401; signal "no thumbnails" and let the UI fall back to capture.url.
         if obj.project is None or not obj.project.thumbnails_enabled:
             return None
-        return {
-            label: reverse_with_params(
-                "sourceimagethumbnail-detail",
-                args=(obj.pk,),
-                request=self.context.get("request"),
-                params={"label": label},
-            )
-            for label in settings.THUMBNAILS["SIZES"]
-        }
+        return obj.thumbnail_urls(request=self.context.get("request"))
 
 
 class SourceImageNestedSerializer(DefaultSerializer):

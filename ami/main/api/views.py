@@ -452,7 +452,10 @@ class EventViewSet(DefaultViewSet, ProjectMixin):
                     queryset=SourceImage.objects.order_by("-size").select_related(
                         "deployment",
                         "deployment__data_source",
-                    )[:num_example_captures],
+                        "project",  # nested thumbnail serializer reads project.thumbnails_enabled
+                    )
+                    # Required by SourceImage.thumbnail_urls in the nested serializer.
+                    .with_thumbnails()[:num_example_captures],
                     to_attr="example_captures",
                 )
             )
@@ -631,12 +634,16 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             self.require_project = True
         project = self.get_active_project()
 
-        queryset = queryset.select_related(
-            "event",
-            "deployment",
-            "deployment__data_source",
-            "project",  # thumbnails serializer reads project.thumbnails_enabled per row
-        ).order_by("timestamp")
+        queryset = (
+            queryset.select_related(
+                "event",
+                "deployment",
+                "deployment__data_source",
+                "project",  # SourceImageThumbnailSerializer reads project.thumbnails_enabled per row
+            )
+            # with_thumbnails prefetches the rows SourceImage.thumbnail_urls needs for warm storage URLs.
+            .with_thumbnails().order_by("timestamp")
+        )
 
         if self.action == "list":
             # It's cumbersome to override the default list view, so customize the queryset here
