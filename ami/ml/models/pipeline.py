@@ -233,10 +233,15 @@ def collect_images(
     """
     task_logger = logger
     if job_id:
-        from ami.jobs.models import Job
+        from ami.jobs.models import Job, JobState
 
         job = Job.objects.get(pk=job_id)
         task_logger = job.logger
+        # Persist the collect stage as STARTED for every path: the filtered branch's throttle
+        # below updates only `progress` (never status), and reprocess-all has no loop at all,
+        # so without this neither path reports STARTED while collection runs.
+        job.progress.update_stage("collect", status=JobState.STARTED, progress=0)
+        job.save(update_fields=["progress", "updated_at"])
     else:
         job = None
 
