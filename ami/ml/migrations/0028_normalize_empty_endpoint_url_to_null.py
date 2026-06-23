@@ -7,6 +7,7 @@ def normalize_empty_endpoint_url(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
+
     dependencies = [
         ("ml", "0027_rename_last_checked_to_last_seen"),
     ]
