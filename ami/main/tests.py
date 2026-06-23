@@ -6300,3 +6300,40 @@ class TestCleanupNullOnlyOccurrencesCommand(TestCase):
         self._call_command(f"--project={self.project.pk}", "--commit")
         second_run = self._call_command(f"--project={self.project.pk}", "--commit")
         self.assertIn("Nothing to clean up", second_run)
+class TestEnsureDefaultProjectSeed(TestCase):
+    """
+    The ensure_default_project bootstrap seeds a small, reachable image collection so the
+    minimal v2 worker has real images to process out of the box (the worker opens each image
+    and reads its pixel dimensions, so path-only rows are not enough). Pins that the seed
+    creates a non-empty collection and that re-running is idempotent (does not re-seed).
+    """
+
+    def test_seeds_a_nonempty_collection_with_reachable_images(self):
+        from django.core.management import call_command
+
+        call_command("ensure_default_project", "--project-name", "Seed Test Project")
+
+        project = Project.objects.get(name="Seed Test Project")
+        collection = SourceImageCollection.objects.get(project=project, name="Default Collection")
+        self.assertGreater(collection.images.count(), 0, "seed must create a non-empty collection")
+        # Images are attached to a deployment with a data source, so they are reachable
+        # (pixels live in the object store) rather than path-only placeholders.
+        seeded = SourceImage.objects.filter(deployment__project=project)
+        self.assertTrue(seeded.exists())
+        self.assertTrue(all(img.deployment_id is not None for img in seeded))
+
+    def test_seed_is_idempotent(self):
+        from django.core.management import call_command
+
+        call_command("ensure_default_project", "--project-name", "Seed Test Project")
+        before = SourceImage.objects.filter(deployment__project__name="Seed Test Project").count()
+        call_command("ensure_default_project", "--project-name", "Seed Test Project")
+        after = SourceImage.objects.filter(deployment__project__name="Seed Test Project").count()
+        self.assertEqual(before, after, "second run must skip seeding when images already exist")
+
+    def test_skip_seed_flag_creates_no_images(self):
+        from django.core.management import call_command
+
+        call_command("ensure_default_project", "--project-name", "No Seed Project", "--skip-seed")
+        project = Project.objects.get(name="No Seed Project")
+        self.assertFalse(SourceImage.objects.filter(deployment__project=project).exists())
