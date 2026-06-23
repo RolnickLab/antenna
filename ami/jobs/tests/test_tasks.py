@@ -1808,8 +1808,10 @@ class TestCheckStaleJobsReaperGuard(TransactionTestCase):
         job.refresh_from_db()
 
     def _set_progress_clobbered(self, job: Job, total: int, processed: int) -> None:
-        """Mimic the incident's Job.progress shape: process stage at processed/total
-        with status STARTED, even though Redis was actually fully drained."""
+        """Write a progress blob that looks mid-flight (process stage at processed/total,
+        status STARTED) even though the caller has already drained all pending ids from
+        Redis. Simulates a concurrent writer clobbering the completion record between
+        the SREM that drained the last id and the DB save that would have recorded it."""
         progress = job.progress
         collect = progress.get_stage("collect")
         collect.progress = 1.0
@@ -1840,9 +1842,9 @@ class TestCheckStaleJobsReaperGuard(TransactionTestCase):
 
     @patch("celery.result.AsyncResult")
     def test_async_celery_success_redis_empty_progress_clobbered_lands_success(self, mock_async_result):
-        """The incident case. Pre-fix, this came back REVOKED because the reaper
-        consulted progress.is_complete() (False, due to clobber). Post-fix,
-        Redis says all_tasks_processed() → True, so SUCCESS is honored."""
+        """When Redis pending sets are drained but progress.is_complete() returns False
+        (because a concurrent writer clobbered the completion record), the reaper trusts
+        the Redis result and lands SUCCESS rather than REVOKED."""
         from ami.jobs.tasks import check_stale_jobs
 
         job = self._stale_async_job()
