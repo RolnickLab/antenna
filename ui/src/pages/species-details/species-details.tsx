@@ -141,7 +141,7 @@ export const SpeciesDetails = ({
                         to: APP_ROUTES.TAXA({
                           projectId: projectId as string,
                         }),
-                        filters: { taxon: species.id },
+                        filters: { ...carryFilters, taxon: species.id },
                       })}
                     />
                   </InfoBlockField>

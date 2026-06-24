@@ -285,14 +285,14 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   }
 }
 
-// Taxa-list filters that also apply to the occurrence list. When the user opens a
-// taxon's occurrences — from a count in the taxa table or from the taxon detail panel —
-// these carry over so the occurrence list stays scoped to the same station, session,
-// device, site, taxa-list, and verification selection instead of resetting to every
-// occurrence of the taxon. The list is an explicit allow-list rather than the whole
-// query string so taxa-only state (sort order, page number, "show unobserved taxa")
-// does not leak into the occurrence URL.
-export const TAXA_OCCURRENCE_CARRY_OVER_FIELDS = [
+// Taxa-list filters that also apply to the lists a taxon links into — the occurrence
+// list (occurrence and verified counts) and the child-taxa list. When the user follows
+// one of those links, from a count in the taxa table or from the taxon detail panel,
+// these carry over so the destination stays scoped to the same station, session, device,
+// site, taxa-list, and verification selection instead of resetting. The list is an
+// explicit allow-list rather than the whole query string so source-only state (sort
+// order, page number, "show unobserved taxa") does not leak into the destination URL.
+export const CARRY_OVER_FILTER_FIELDS = [
   'event',
   'deployment',
   'deployment__device',
@@ -307,18 +307,15 @@ export const buildCarryOverFilters = (
   filters: { field: string; value?: string }[]
 ): Record<string, string> =>
   filters.reduce<Record<string, string>>((acc, filter) => {
-    if (
-      filter.value &&
-      TAXA_OCCURRENCE_CARRY_OVER_FIELDS.includes(filter.field)
-    ) {
+    if (filter.value && CARRY_OVER_FILTER_FIELDS.includes(filter.field)) {
       acc[filter.field] = filter.value
     }
     return acc
   }, {})
 
-// The active taxa-list filters that should carry into the occurrence list, as a plain
-// object ready to spread into a `getAppRoute({ filters })` call. Used by both the taxa
-// table rows and the taxon detail panel so the two stay in sync.
+// The active taxa-list filters that should carry into a linked list, as a plain object
+// ready to spread into a `getAppRoute({ filters })` call. Used by the taxa table rows
+// and the taxon detail panel so every entry point stays in sync.
 export const useCarryOverFilters = (): Record<string, string> => {
   const { filters } = useFilters()
   return useMemo(() => buildCarryOverFilters(filters), [filters])
