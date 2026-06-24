@@ -6087,6 +6087,15 @@ class TestDeviceAndSiteFilters(APITestCase):
             res = self.client.get(f"/api/v2/taxa/?project_id={self.project.pk}&{param}=999999")
             self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND, param)
 
+    def test_non_integer_id_returns_400_not_500(self):
+        # A malformed id must be a client error on both endpoints, not an unhandled 500.
+        # The taxa view validates the id before the existence lookup; the occurrence view
+        # gets the same 400 from django-filter. Both must agree.
+        for endpoint in ("taxa", "occurrences"):
+            for param in ("deployment__device", "deployment__research_site"):
+                res = self.client.get(f"/api/v2/{endpoint}/?project_id={self.project.pk}&{param}=abc")
+                self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST, f"{endpoint}?{param}=abc")
+
 
 class TestDetectionNullMarker(TestCase):
     """

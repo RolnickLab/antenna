@@ -1784,6 +1784,11 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         except exceptions.ObjectDoesNotExist as e:
             # Raise a 404 if any of the related objects don't exist
             raise NotFound(detail=str(e))
+        except (ValueError, TypeError):
+            # A non-integer id (e.g. ?deployment__device=abc) is a client error. Return a
+            # 400 instead of letting the .get(id=...) lookup surface an unhandled 500, so
+            # this endpoint matches the 400 the occurrence list returns for the same input.
+            raise api_exceptions.ValidationError(detail="Filter ids must be integers.")
 
         return filters
 
