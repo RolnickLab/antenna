@@ -111,7 +111,7 @@ export const Occurrences = () => {
             <DefaultFiltersControl field="apply_defaults" />
           </FilterSection>
           <FilterSection
-            title="More filters"
+            title={translate(STRING.MORE_FILTERS)}
             defaultOpen={someActive(
               [
                 'collection',
