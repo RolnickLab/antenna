@@ -146,13 +146,10 @@ def run_job(self, job_id: int) -> None:
         raise e
         # self.retry(exc=e, countdown=1, max_retries=1)
     else:
-        # Log the Redis DB index at task start so cross-host DB-index drift — the misconfig
-        # that surfaces as silent process_nats_pipeline_result FAILUREs on whichever worker
-        # reads state from the wrong DB — is visible per job. Every host's "default" Redis
-        # connection (the one the job state manager uses) must select the same DB number, or
-        # initialize_job and update_state operate on different DBs. The public job log carries
-        # only the DB index; the full host:port goes to the server log, since the host names
-        # internal infrastructure.
+        # Log the Redis DB index at task start so cross-host DB-index drift is visible per job
+        # (workers reading state from a different DB than run_job wrote it to fail silently in
+        # process_nats_pipeline_result). Public log carries only the DB index; host:port goes
+        # to the server log, since the host names internal infrastructure.
         job.logger.info(f"Running job {job} on Redis db {_redis_db_index()}")
         logger.info("Job %s Redis target: %s", job.pk, _describe_redis_target())
         try:
@@ -289,12 +286,10 @@ def process_nats_pipeline_result(self, job_id: int, result_data: dict, reply_sub
     if not progress_info:
         # State keys genuinely missing (the total-images key returned None).
         # Ack so NATS stops redelivering and fail the job — there's no state
-        # left to reconcile against. The reason string is built from a live
-        # Redis snapshot (DB index, keys present under job:{id}:*) so the
-        # FAILURE log and the UI progress.errors entry name the actual cause
-        # instead of the previous hardcoded "likely cleaned up concurrently"
-        # guess — which conflated DB-index misconfig, eviction, and genuine
-        # concurrent cleanup into a single misleading string.
+        # left to reconcile against. The reason is built from a live Redis
+        # snapshot (DB index, keys present under job:{id}:*) so the FAILURE log
+        # and the UI progress.errors entry name the actual cause (DB-index
+        # misconfig vs eviction vs concurrent cleanup).
         _log_missing_state_context(job_id, "process")
         _ack_task_via_nats(reply_subject, logger)
         _fail_job(
