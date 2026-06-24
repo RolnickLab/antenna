@@ -26,7 +26,11 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'
-import { useCarryOverFilters, useFilters } from 'utils/useFilters'
+import {
+  FILTERS_TO_OCCURRENCES,
+  useCarryOverFilters,
+  useFilters,
+} from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
@@ -59,7 +63,7 @@ export const Species = () => {
   const { selectedView, setSelectedView } = useSelectedView('table')
   const { taxaLists = [] } = useTaxaLists({ projectId: projectId as string })
   const { tags = [] } = useTags({ projectId: projectId as string })
-  const carryFilters = useCarryOverFilters()
+  const carryFilters = useCarryOverFilters(FILTERS_TO_OCCURRENCES)
   const pageTitle = useMemo(() => {
     const taxaListFilter = filters.find(
       (filter) => filter.field === 'taxa_list_id'

@@ -285,38 +285,73 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   }
 }
 
-// Taxa-list filters that also apply to the lists a taxon links into — the occurrence
-// list (occurrence and verified counts) and the child-taxa list. When the user follows
-// one of those links, from a count in the taxa table or from the taxon detail panel,
-// these carry over so the destination stays scoped to the same station, session, device,
-// site, taxa-list, and verification selection instead of resetting. The list is an
-// explicit allow-list rather than the whole query string so source-only state (sort
-// order, page number, "show unobserved taxa") does not leak into the destination URL.
-export const CARRY_OVER_FILTER_FIELDS = [
+// Filter carry-over between list views, keyed by DESTINATION.
+//
+// Each constant is the set of filter fields the destination list understands. The source
+// is implicit: when a link is followed, whichever of these fields is currently active in
+// the source view is carried into the destination URL, so the destination keeps the same
+// scope (station, device, site, verification, ...) instead of resetting. Listing the
+// destination's own fields — rather than copying the whole query string — keeps
+// source-only state (sort order, page number, or a filter the destination does not
+// support) out of the URL. Any view that links to a destination reuses its set, so the
+// behavior stays consistent no matter where the link is.
+
+export const FILTERS_TO_OCCURRENCES = [
+  'detections__source_image',
   'event',
+  'taxon',
+  'taxa_list_id',
+  'not_taxa_list_id',
+  'verified',
+  'verified_by_me',
+  'collection',
+  'date_start',
+  'date_end',
   'deployment',
   'deployment__device',
   'deployment__research_site',
-  'verified',
-  'taxa_list_id',
-  'not_taxa_list_id',
+  'algorithm',
+  'not_algorithm',
   'apply_defaults',
 ]
 
+export const FILTERS_TO_TAXA = [
+  'event',
+  'taxon',
+  'taxa_list_id',
+  'not_taxa_list_id',
+  'verified',
+  'include_unobserved',
+  'deployment',
+  'deployment__device',
+  'deployment__research_site',
+  'tag_id',
+  'not_tag_id',
+  'apply_defaults',
+]
+
+// Intersect the active filters with the fields the destination list understands, as a
+// plain object ready to spread into a `getAppRoute({ filters })` call.
 export const buildCarryOverFilters = (
-  filters: { field: string; value?: string }[]
+  filters: { field: string; value?: string }[],
+  fields: string[]
 ): Record<string, string> =>
   filters.reduce<Record<string, string>>((acc, filter) => {
-    if (filter.value && CARRY_OVER_FILTER_FIELDS.includes(filter.field)) {
+    if (filter.value && fields.includes(filter.field)) {
       acc[filter.field] = filter.value
     }
     return acc
   }, {})
 
-// The active taxa-list filters that should carry into a linked list, as a plain object
-// ready to spread into a `getAppRoute({ filters })` call. Used by the taxa table rows
-// and the taxon detail panel so every entry point stays in sync.
-export const useCarryOverFilters = (): Record<string, string> => {
+// Hook form of buildCarryOverFilters: pass the destination's field set (e.g.
+// FILTERS_TO_OCCURRENCES). Reads the active filters of the current view, so any link into
+// that destination — from any source view — carries a consistent set.
+export const useCarryOverFilters = (
+  fields: string[]
+): Record<string, string> => {
   const { filters } = useFilters()
-  return useMemo(() => buildCarryOverFilters(filters), [filters])
+  return useMemo(
+    () => buildCarryOverFilters(filters, fields),
+    [filters, fields]
+  )
 }

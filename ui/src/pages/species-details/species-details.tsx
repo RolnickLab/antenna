@@ -20,7 +20,11 @@ import { APP_ROUTES } from 'utils/constants'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
-import { useCarryOverFilters } from 'utils/useFilters'
+import {
+  FILTERS_TO_OCCURRENCES,
+  FILTERS_TO_TAXA,
+  useCarryOverFilters,
+} from 'utils/useFilters'
 import { UserPermission } from 'utils/user/types'
 import styles from './species-details.module.scss'
 
@@ -41,7 +45,8 @@ export const SpeciesDetails = ({
   const { projectId } = useParams()
   const navigate = useNavigate()
   const { project } = useProjectDetails(projectId as string, true)
-  const carryFilters = useCarryOverFilters()
+  const occurrenceFilters = useCarryOverFilters(FILTERS_TO_OCCURRENCES)
+  const taxaFilters = useCarryOverFilters(FILTERS_TO_TAXA)
   const canUpdate = species.userPermissions.includes(UserPermission.Update)
   const hasChildren = species.rank !== 'SPECIES'
 
@@ -141,7 +146,7 @@ export const SpeciesDetails = ({
                         to: APP_ROUTES.TAXA({
                           projectId: projectId as string,
                         }),
-                        filters: { ...carryFilters, taxon: species.id },
+                        filters: { ...taxaFilters, taxon: species.id },
                       })}
                     />
                   </InfoBlockField>
@@ -156,7 +161,7 @@ export const SpeciesDetails = ({
                       to: APP_ROUTES.OCCURRENCES({
                         projectId: projectId as string,
                       }),
-                      filters: { ...carryFilters, taxon: species.id },
+                      filters: { ...occurrenceFilters, taxon: species.id },
                     })}
                   />
                 </InfoBlockField>
@@ -168,7 +173,7 @@ export const SpeciesDetails = ({
                         projectId: projectId as string,
                       }),
                       filters: {
-                        ...carryFilters,
+                        ...occurrenceFilters,
                         taxon: species.id,
                         verified: 'true',
                       },
