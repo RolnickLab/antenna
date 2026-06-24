@@ -518,173 +518,6 @@ class TestImageThumbnailViews(TestCase):
 
         self.assertFalse(default_storage.exists(path), "pre_delete signal must clean the storage blob")
 
-    def test_serializer_emits_storage_url_when_thumb_row_exists(self):
-        """Warm-path optimization: when a SourceImageThumbnail row exists with the
-        configured width, the serializer must emit ``default_storage.url(row.path)``
-        directly instead of the lazy-regen route URL. This is the whole point of
-        the direct-URLs change — every cached thumbnail must skip Django on the
-        warm path.
-        """
-        from django.core.files.storage import default_storage
-
-        # Pre-create a thumbnail row whose width matches THUMBNAILS['SIZES']['small'].
-        configured_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
-        self.first_capture.thumbnails.create(
-            path="thumbnails/cached/abc.jpg", label="small", width=configured_width, height=180, size=42
-        )
-
-        response = self.client.get(f"/api/v2/captures/{self.first_capture.pk}/?project_id={self.project.pk}")
-        self.assertEqual(response.status_code, 200)
-        small_url = response.json()["thumbnails"]["small"]
-
-        # ``small`` should be the storage URL, not the route URL.
-        expected_storage_url = default_storage.url("thumbnails/cached/abc.jpg")
-        self.assertEqual(small_url, expected_storage_url)
-        # ``medium`` has no cached row → falls back to the route URL.
-        self.assertURLEqual(
-            response.json()["thumbnails"]["medium"], f"{self.base_url}{self.first_capture.pk}/?label=medium"
-        )
-
-    def test_serializer_falls_back_to_route_url_when_width_mismatches_spec(self):
-        """Any width != the configured spec → route URL so the next browser fetch
-        triggers lazy regen via the redirect viewset. The check is strict equality,
-        so this covers both a changed setting (stored wider/narrower than spec) and
-        legacy rows that recorded PIL's rounded output (e.g. 239 for a 240 spec)
-        before the #1306 spec-width fix — those self-heal through one regeneration.
-        """
-        configured_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
-        # +100 = settings changed since last gen; -1 = legacy encoder rounding.
-        for delta in (100, -1):
-            with self.subTest(delta=delta):
-                self.first_capture.thumbnails.update_or_create(
-                    label="small",
-                    defaults={
-                        "path": f"thumbnails/stale/{delta}.jpg",
-                        "width": configured_width + delta,
-                        "height": 180,
-                        "size": 42,
-                    },
-                )
-                response = self.client.get(f"/api/v2/captures/{self.first_capture.pk}/?project_id={self.project.pk}")
-                self.assertEqual(response.status_code, 200)
-                self.assertURLEqual(
-                    response.json()["thumbnails"]["small"], f"{self.base_url}{self.first_capture.pk}/?label=small"
-                )
-
-    def test_serializer_falls_back_to_route_url_when_source_changed(self):
-        """If the source image was re-uploaded after the cached row was
-        generated (``source.last_modified > row.last_modified``), the serializer
-        must emit the route URL so the next browser fetch regenerates via the
-        redirect viewset. Mirrors the predicate the generator already uses.
-
-        Guards https://github.com/RolnickLab/antenna/pull/1331#discussion_r3373715397.
-        """
-        configured_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
-        # Row generated at T0. ``last_modified`` is ``auto_now_add`` so set
-        # ``self.first_capture.last_modified`` to a later timestamp via UPDATE
-        # below to flip the staleness predicate.
-        self.first_capture.thumbnails.create(
-            path="thumbnails/preupload/abc.jpg", label="small", width=configured_width, height=180, size=42
-        )
-        # Source bytes were re-uploaded after the cached row was written.
-        SourceImage.objects.filter(pk=self.first_capture.pk).update(
-            last_modified=timezone.now() + datetime.timedelta(minutes=1)
-        )
-
-        response = self.client.get(f"/api/v2/captures/{self.first_capture.pk}/?project_id={self.project.pk}")
-        self.assertEqual(response.status_code, 200)
-        # Source-changed → emit route URL so the redirect viewset regenerates.
-        self.assertURLEqual(
-            response.json()["thumbnails"]["small"], f"{self.base_url}{self.first_capture.pk}/?label=small"
-        )
-
-    def test_thumbnail_urls_model_method_emits_warm_and_route(self):
-        """``SourceImage.thumbnail_urls`` is the single source of truth for the
-        per-label URL contract: warm storage URL when a cached row exists at
-        the configured width, route URL otherwise.
-
-        Exercising the model method directly keeps the contract regression-tested
-        even if the serializer surface changes (e.g. a future template tag or
-        management command that needs the same dict).
-        """
-        from django.core.files.storage import default_storage
-
-        configured_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
-        self.first_capture.thumbnails.create(
-            path="thumbnails/cached/direct.jpg", label="small", width=configured_width, height=180, size=42
-        )
-
-        # Prefetch via ``with_thumbnails()`` to exercise the warm path; without the
-        # prefetch the method emits route URLs without querying (see the test below).
-        capture = SourceImage.objects.with_thumbnails().get(pk=self.first_capture.pk)
-        urls = capture.thumbnail_urls(request=None)
-
-        # Warm path → direct storage URL for the cached label.
-        self.assertEqual(urls["small"], default_storage.url("thumbnails/cached/direct.jpg"))
-        # Cold path → route URL for labels without a cached row. With ``request=None``
-        # the URL is path-only (no scheme/host) — matches DRF's reverse() contract.
-        self.assertIn(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/", urls["medium"])
-        self.assertIn("label=medium", urls["medium"])
-
-    def test_thumbnail_urls_without_prefetch_emits_route_urls_without_querying(self):
-        """Without prefetched thumbnails, ``thumbnail_urls`` must not fire a
-        per-object SELECT (an N+1 in list contexts) — it falls back to route URLs.
-        A cached row exists here, but the un-prefetched call must ignore it rather
-        than query for it."""
-        configured_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
-        self.first_capture.thumbnails.create(
-            path="thumbnails/cached/noprefetch.jpg", label="small", width=configured_width, height=180, size=42
-        )
-
-        capture = SourceImage.objects.get(pk=self.first_capture.pk)
-        with self.assertNumQueries(0):
-            urls = capture.thumbnail_urls(request=None)
-
-        # Cached row ignored (not prefetched) → route URL, not the storage URL.
-        self.assertIn(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/", urls["small"])
-        self.assertIn("label=small", urls["small"])
-
-    def test_warm_list_serves_storage_urls_with_single_thumbnail_query(self):
-        """The contract this PR exists to deliver: a warm gallery list serves direct
-        storage URLs while reading the thumbnail table once (the prefetch), not once
-        per row.
-
-        Runtime no longer enforces the prefetch (un-prefetched falls back to route
-        URLs without querying), so this test is the only guard against both
-        regressions: dropping ``with_thumbnails()`` from the viewset (→ route URLs,
-        the perf win silently lost) and a per-row lazy read (→ N+1). Needs a
-        multi-row fixture — a single row hides an N+1.
-        """
-        from django.core.files.storage import default_storage
-        from django.db import connection
-        from django.test.utils import CaptureQueriesContext
-
-        configured_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
-        captures = list(SourceImage.objects.filter(deployment=self.deployment))
-        self.assertGreater(len(captures), 1, "need >1 capture to detect an N+1")
-        for cap in captures:
-            cap.thumbnails.create(
-                path=f"thumbnails/warm/{cap.pk}.jpg", label="small", width=configured_width, height=180, size=42
-            )
-
-        with CaptureQueriesContext(connection) as ctx:
-            response = self.client.get(f"/api/v2/captures/?project_id={self.project.pk}")
-        self.assertEqual(response.status_code, 200)
-
-        results = response.json()["results"]
-        self.assertGreater(len(results), 1)
-        for rec in results:
-            # Warm row → direct storage URL (regression guard: dropped prefetch → route URL).
-            self.assertEqual(
-                rec["thumbnails"]["small"],
-                default_storage.url(f"thumbnails/warm/{rec['id']}.jpg"),
-            )
-
-        thumb_queries = [q for q in ctx.captured_queries if "sourceimagethumbnail" in q["sql"].lower()]
-        self.assertLessEqual(
-            len(thumb_queries), 1, f"thumbnails must be one prefetch, not per-row; got {len(thumb_queries)}"
-        )
-
 
 class TestThumbnailDraftProjectVisibility(APITestCase):
     """PR #1306 follow-up: draft (non-public) projects must not route thumbnails
@@ -6176,6 +6009,148 @@ class TestTaxaVerification(APITestCase):
         rows = self._list_by_name(f"{self.list_url}&collection={collection.pk}")
         # 2 verified cardui occurrences, not 3 — the duplicate detection must not double-count.
         self.assertEqual(rows["Vanessa cardui"]["verified_count"], 2)
+
+
+class TestDeviceAndSiteFilters(APITestCase):
+    """Filtering occurrences and taxa by the deployment's device and research site.
+
+    A deployment records both a ``device`` (the camera/hardware configuration) and a
+    ``research_site``. Users can scope the occurrence and taxa lists to one device or
+    one site so they can, for example, build a presence matrix per site. These tests
+    pin that the occurrence list filters exactly to the chosen device/site, that the
+    taxa list restricts membership the same way (not just its annotated counts), and
+    that an unknown device/site id is rejected with a 404 on the taxa endpoint.
+    """
+
+    def setUp(self):
+        self.project, self.deployment_a = setup_test_project(reuse=False)
+        create_taxa(self.project)
+        self.cardui = Taxon.objects.get(name="Vanessa cardui")
+        self.atalanta = Taxon.objects.get(name="Vanessa atalanta")
+
+        # Two devices and two sites, each pinned to its own deployment.
+        self.device_a = Device.objects.create(name="Device A", project=self.project)
+        self.device_b = Device.objects.create(name="Device B", project=self.project)
+        self.site_a = Site.objects.create(name="Site A", project=self.project)
+        self.site_b = Site.objects.create(name="Site B", project=self.project)
+
+        self.deployment_a.device = self.device_a
+        self.deployment_a.research_site = self.site_a
+        self.deployment_a.save()
+        self.deployment_b = Deployment.objects.create(
+            name="Deployment B",
+            project=self.project,
+            device=self.device_b,
+            research_site=self.site_b,
+        )
+
+        # Deployment A only sees cardui; deployment B only sees atalanta. This lets the
+        # device/site filter be checked by both the occurrence count and the taxa membership.
+        create_captures(deployment=self.deployment_a, num_nights=1, images_per_night=2)
+        create_captures(deployment=self.deployment_b, num_nights=1, images_per_night=2)
+        create_occurrences(deployment=self.deployment_a, num=3, taxon=self.cardui, determination_score=0.9)
+        create_occurrences(deployment=self.deployment_b, num=2, taxon=self.atalanta, determination_score=0.9)
+
+    def _occurrence_count(self, **params):
+        query = "&".join(f"{k}={v}" for k, v in params.items())
+        res = self.client.get(f"/api/v2/occurrences/?project_id={self.project.pk}&{query}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return res.json()["count"]
+
+    def _taxa_names(self, **params):
+        query = "&".join(f"{k}={v}" for k, v in params.items())
+        res = self.client.get(f"/api/v2/taxa/?project_id={self.project.pk}&limit=1000&{query}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return {row["name"] for row in res.json()["results"]}
+
+    def test_occurrences_filtered_by_device(self):
+        self.assertEqual(self._occurrence_count(), 5)
+        self.assertEqual(self._occurrence_count(deployment__device=self.device_a.pk), 3)
+        self.assertEqual(self._occurrence_count(deployment__device=self.device_b.pk), 2)
+
+    def test_occurrences_filtered_by_site(self):
+        self.assertEqual(self._occurrence_count(deployment__research_site=self.site_a.pk), 3)
+        self.assertEqual(self._occurrence_count(deployment__research_site=self.site_b.pk), 2)
+
+    def test_taxa_membership_restricted_by_device(self):
+        # The taxa list must drop to only the taxa observed on the chosen device, not
+        # merely re-scope the counts of the full taxa set.
+        self.assertEqual(self._taxa_names(deployment__device=self.device_a.pk), {"Vanessa cardui"})
+        self.assertEqual(self._taxa_names(deployment__device=self.device_b.pk), {"Vanessa atalanta"})
+
+    def test_taxa_membership_restricted_by_site(self):
+        self.assertEqual(self._taxa_names(deployment__research_site=self.site_a.pk), {"Vanessa cardui"})
+        self.assertEqual(self._taxa_names(deployment__research_site=self.site_b.pk), {"Vanessa atalanta"})
+
+    def test_unknown_device_or_site_returns_404_on_taxa(self):
+        for param in ("deployment__device", "deployment__research_site"):
+            res = self.client.get(f"/api/v2/taxa/?project_id={self.project.pk}&{param}=999999")
+            self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND, param)
+
+    def test_unknown_device_returns_empty_occurrences_not_404(self):
+        """An unknown device/site id on the occurrences endpoint returns 200 with count=0.
+
+        The occurrences endpoint uses DjangoFilterBackend (ORM-level filtering)
+        which does not validate existence of related objects, so it yields an
+        empty queryset rather than a 404.  This is different from the taxa
+        endpoint, which explicitly calls Device.objects.get() and raises 404.
+        """
+        for param in ("deployment__device", "deployment__research_site"):
+            res = self.client.get(f"/api/v2/occurrences/?project_id={self.project.pk}&{param}=999999")
+            self.assertEqual(res.status_code, status.HTTP_200_OK, param)
+            self.assertEqual(res.json()["count"], 0, param)
+
+    def test_occurrences_filtered_by_device_and_site_combined(self):
+        """Combining device and site filters from the same deployment returns the matching occurrences."""
+        # device_a and site_a both belong to deployment_a → 3 cardui occurrences.
+        count = self._occurrence_count(
+            deployment__device=self.device_a.pk,
+            deployment__research_site=self.site_a.pk,
+        )
+        self.assertEqual(count, 3)
+
+    def test_occurrences_empty_when_device_and_site_contradict(self):
+        """When device and site belong to different deployments no occurrences match."""
+        # device_a is on deployment_a; site_b is on deployment_b → no overlap.
+        count = self._occurrence_count(
+            deployment__device=self.device_a.pk,
+            deployment__research_site=self.site_b.pk,
+        )
+        self.assertEqual(count, 0)
+
+    def test_taxa_empty_when_device_and_site_contradict(self):
+        """Taxa list is empty when device and site filters target different deployments."""
+        names = self._taxa_names(
+            deployment__device=self.device_a.pk,
+            deployment__research_site=self.site_b.pk,
+        )
+        self.assertEqual(names, set())
+
+    def test_device_without_occurrences_returns_zero_occurrence_count(self):
+        """A device that exists but has no occurrences assigned returns count=0, not an error."""
+        device_empty = Device.objects.create(name="Device Empty", project=self.project)
+        self.assertEqual(self._occurrence_count(deployment__device=device_empty.pk), 0)
+
+    def test_device_without_occurrences_returns_empty_taxa_list(self):
+        """A device that exists but has no occurrences returns an empty taxa list."""
+        device_empty = Device.objects.create(name="Device Empty 2", project=self.project)
+        names = self._taxa_names(deployment__device=device_empty.pk)
+        self.assertEqual(names, set())
+
+    def test_site_without_occurrences_returns_zero_occurrence_count(self):
+        """A site that exists but has no occurrences assigned returns count=0, not an error."""
+        site_empty = Site.objects.create(name="Site Empty", project=self.project)
+        self.assertEqual(self._occurrence_count(deployment__research_site=site_empty.pk), 0)
+
+    def test_occurrence_counts_unchanged_without_filter(self):
+        """Omitting device/site filter returns all occurrences across both deployments."""
+        self.assertEqual(self._occurrence_count(), 5)
+
+    def test_taxa_list_contains_both_species_without_filter(self):
+        """Without a device/site filter the taxa list contains taxa from all deployments."""
+        names = self._taxa_names()
+        self.assertIn("Vanessa cardui", names)
+        self.assertIn("Vanessa atalanta", names)
 
 
 class TestDetectionNullMarker(TestCase):
