@@ -26,11 +26,8 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'
-import {
-  FILTERS_TO_OCCURRENCES,
-  useCarryOverFilters,
-  useFilters,
-} from 'utils/useFilters'
+import { useCarryOverFilters, useFilters } from 'utils/useFilters'
+import { FILTERS_TO_OCCURRENCES } from 'pages/occurrences/occurrence-filters'
 import { usePagination } from 'utils/usePagination'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'

@@ -1,6 +1,7 @@
 import { isBefore, isValid } from 'date-fns'
 import { useMemo } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
+import { buildCarryOverFilters } from './buildCarryOverFilters'
 import { APP_ROUTES } from './constants'
 import { STRING, translate } from './language'
 import { SEARCH_PARAM_KEY_PAGE } from './usePagination'
@@ -285,65 +286,7 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   }
 }
 
-// Filter carry-over between list views, keyed by DESTINATION.
-//
-// Each constant is the set of filter fields the destination list understands. The source
-// is implicit: when a link is followed, whichever of these fields is currently active in
-// the source view is carried into the destination URL, so the destination keeps the same
-// scope (station, device, site, verification, ...) instead of resetting. Listing the
-// destination's own fields — rather than copying the whole query string — keeps
-// source-only state (sort order, page number, or a filter the destination does not
-// support) out of the URL. Any view that links to a destination reuses its set, so the
-// behavior stays consistent no matter where the link is.
-
-export const FILTERS_TO_OCCURRENCES = [
-  'detections__source_image',
-  'event',
-  'taxon',
-  'taxa_list_id',
-  'not_taxa_list_id',
-  'verified',
-  'verified_by_me',
-  'collection',
-  'date_start',
-  'date_end',
-  'deployment',
-  'deployment__device',
-  'deployment__research_site',
-  'algorithm',
-  'not_algorithm',
-  'apply_defaults',
-]
-
-export const FILTERS_TO_TAXA = [
-  'event',
-  'taxon',
-  'taxa_list_id',
-  'not_taxa_list_id',
-  'verified',
-  'include_unobserved',
-  'deployment',
-  'deployment__device',
-  'deployment__research_site',
-  'tag_id',
-  'not_tag_id',
-  'apply_defaults',
-]
-
-// Intersect the active filters with the fields the destination list understands, as a
-// plain object ready to spread into a `getAppRoute({ filters })` call.
-export const buildCarryOverFilters = (
-  filters: { field: string; value?: string }[],
-  fields: string[]
-): Record<string, string> =>
-  filters.reduce<Record<string, string>>((acc, filter) => {
-    if (filter.value && fields.includes(filter.field)) {
-      acc[filter.field] = filter.value
-    }
-    return acc
-  }, {})
-
-// Hook form of buildCarryOverFilters: pass the destination's field set (e.g.
+// Hook form of buildCarryOverFilters: pass the destination's carry contract (e.g.
 // FILTERS_TO_OCCURRENCES). Reads the active filters of the current view, so any link into
 // that destination — from any source view — carries a consistent set.
 export const useCarryOverFilters = (

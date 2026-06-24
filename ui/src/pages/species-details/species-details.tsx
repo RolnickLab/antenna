@@ -20,11 +20,9 @@ import { APP_ROUTES } from 'utils/constants'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
-import {
-  FILTERS_TO_OCCURRENCES,
-  FILTERS_TO_TAXA,
-  useCarryOverFilters,
-} from 'utils/useFilters'
+import { useCarryOverFilters } from 'utils/useFilters'
+import { FILTERS_TO_OCCURRENCES } from 'pages/occurrences/occurrence-filters'
+import { FILTERS_TO_TAXA } from 'pages/species/species-filters'
 import { UserPermission } from 'utils/user/types'
 import styles from './species-details.module.scss'
 
