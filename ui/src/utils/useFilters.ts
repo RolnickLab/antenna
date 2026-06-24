@@ -1,4 +1,5 @@
 import { isBefore, isValid } from 'date-fns'
+import { useMemo } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { APP_ROUTES } from './constants'
 import { STRING, translate } from './language'
@@ -282,4 +283,43 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
     clearFilter,
     filters,
   }
+}
+
+// Taxa-list filters that also apply to the occurrence list. When the user opens a
+// taxon's occurrences — from a count in the taxa table or from the taxon detail panel —
+// these carry over so the occurrence list stays scoped to the same station, session,
+// device, site, taxa-list, and verification selection instead of resetting to every
+// occurrence of the taxon. The list is an explicit allow-list rather than the whole
+// query string so taxa-only state (sort order, page number, "show unobserved taxa")
+// does not leak into the occurrence URL.
+export const TAXA_OCCURRENCE_CARRY_OVER_FIELDS = [
+  'event',
+  'deployment',
+  'deployment__device',
+  'deployment__research_site',
+  'verified',
+  'taxa_list_id',
+  'not_taxa_list_id',
+  'apply_defaults',
+]
+
+export const buildCarryOverFilters = (
+  filters: { field: string; value?: string }[]
+): Record<string, string> =>
+  filters.reduce<Record<string, string>>((acc, filter) => {
+    if (
+      filter.value &&
+      TAXA_OCCURRENCE_CARRY_OVER_FIELDS.includes(filter.field)
+    ) {
+      acc[filter.field] = filter.value
+    }
+    return acc
+  }, {})
+
+// The active taxa-list filters that should carry into the occurrence list, as a plain
+// object ready to spread into a `getAppRoute({ filters })` call. Used by both the taxa
+// table rows and the taxon detail panel so the two stay in sync.
+export const useCarryOverFilters = (): Record<string, string> => {
+  const { filters } = useFilters()
+  return useMemo(() => buildCarryOverFilters(filters), [filters])
 }

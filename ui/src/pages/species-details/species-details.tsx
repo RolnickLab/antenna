@@ -20,6 +20,7 @@ import { APP_ROUTES } from 'utils/constants'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
+import { useCarryOverFilters } from 'utils/useFilters'
 import { UserPermission } from 'utils/user/types'
 import styles from './species-details.module.scss'
 
@@ -40,6 +41,7 @@ export const SpeciesDetails = ({
   const { projectId } = useParams()
   const navigate = useNavigate()
   const { project } = useProjectDetails(projectId as string, true)
+  const carryFilters = useCarryOverFilters()
   const canUpdate = species.userPermissions.includes(UserPermission.Update)
   const hasChildren = species.rank !== 'SPECIES'
 
@@ -154,7 +156,7 @@ export const SpeciesDetails = ({
                       to: APP_ROUTES.OCCURRENCES({
                         projectId: projectId as string,
                       }),
-                      filters: { taxon: species.id },
+                      filters: { ...carryFilters, taxon: species.id },
                     })}
                   />
                 </InfoBlockField>
@@ -165,7 +167,11 @@ export const SpeciesDetails = ({
                       to: APP_ROUTES.OCCURRENCES({
                         projectId: projectId as string,
                       }),
-                      filters: { taxon: species.id, verified: 'true' },
+                      filters: {
+                        ...carryFilters,
+                        taxon: species.id,
+                        verified: 'true',
+                      },
                     })}
                   />
                 </InfoBlockField>

@@ -25,27 +25,12 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'
-import { useFilters } from 'utils/useFilters'
+import { useCarryOverFilters, useFilters } from 'utils/useFilters'
 import { usePagination } from 'utils/usePagination'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
 import { columns } from './species-columns'
 import { SpeciesGallery } from './species-gallery'
-
-// Taxa-list filters that also apply to the occurrence list. When the user drills
-// into a taxon's occurrences via a bubble link, these are carried over so the
-// occurrence list stays scoped to the same station / session / device / site /
-// verification selection instead of resetting to every occurrence of the taxon.
-const CARRY_OVER_FILTER_FIELDS = [
-  'event',
-  'deployment',
-  'deployment__device',
-  'deployment__research_site',
-  'verified',
-  'taxa_list_id',
-  'not_taxa_list_id',
-  'apply_defaults',
-]
 
 export const Species = () => {
   const { projectId, id } = useParams()
@@ -73,16 +58,7 @@ export const Species = () => {
   const { selectedView, setSelectedView } = useSelectedView('table')
   const { taxaLists = [] } = useTaxaLists({ projectId: projectId as string })
   const { tags = [] } = useTags({ projectId: projectId as string })
-  const carryFilters = useMemo(
-    () =>
-      filters.reduce<Record<string, string>>((acc, filter) => {
-        if (filter.value && CARRY_OVER_FILTER_FIELDS.includes(filter.field)) {
-          acc[filter.field] = filter.value
-        }
-        return acc
-      }, {}),
-    [filters]
-  )
+  const carryFilters = useCarryOverFilters()
   const pageTitle = useMemo(() => {
     const taxaListFilter = filters.find(
       (filter) => filter.field === 'taxa_list_id'
