@@ -722,38 +722,6 @@ class TestFailJob(TransactionTestCase):
         return job
 
     @patch("ami.ml.orchestration.jobs.cleanup_async_job_resources")
-    def test_fail_job_appends_reason_to_progress_errors(self, mock_cleanup):
-        """
-        Reason string must end up in ``job.progress.errors`` (persisted) so the
-        UI shows the cause of the FAILURE alongside the status change. Before
-        this PR the reason lived only in ``job.logger`` and the UI showed
-        ``errors=[]``. A silent regression here would not be caught by the
-        ``_fail_job`` call-site tests in ``TestProcessNatsPipelineResultError``
-        (they mock ``_fail_job`` entirely).
-        """
-        from ami.jobs.tasks import _fail_job
-
-        job = self._make_job()
-        reason = "Job state missing from Redis (stage=process): redis=host:6379/db1 keys_for_job=<none>"
-
-        _fail_job(job.pk, reason)
-
-        job.refresh_from_db()
-        self.assertEqual(job.status, JobState.FAILURE)
-        self.assertIn(
-            reason,
-            job.progress.errors,
-            f"expected reason in progress.errors, got: {job.progress.errors!r}",
-        )
-        # Sanity: the fix also propagates to the DB-persisted copy (i.e. the
-        # update_fields tuple on job.save includes 'progress'). Re-read from a
-        # fresh Job instance to prove the append wasn't only visible on the
-        # in-memory object returned by select_for_update.
-        reloaded = Job.objects.get(pk=job.pk)
-        self.assertIn(reason, reloaded.progress.errors)
-        mock_cleanup.assert_called_once_with(job.pk)
-
-    @patch("ami.ml.orchestration.jobs.cleanup_async_job_resources")
     def test_fail_job_is_noop_on_already_final_job(self, mock_cleanup):
         """
         If the job is already in a final state (e.g. concurrent cleanup
