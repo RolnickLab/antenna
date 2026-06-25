@@ -6367,3 +6367,44 @@ class OccurrenceAdminChangelistTest(TestCase):
         base = self.admin.get_queryset(self._request())
         results, _ = self.admin.get_search_results(self._request(), base, "Danaus")
         self.assertIn(occ.pk, set(results.values_list("pk", flat=True)))
+
+
+class DetectionAdminChangelistTest(TestCase):
+    """DetectionAdmin changelist counts classifications with a correlated subquery,
+    including the zero-classification case (Coalesced to 0). The grouped Count it
+    replaces could exhaust work_mem and error out on a large table."""
+
+    def setUp(self):
+        from django.contrib.admin.sites import AdminSite
+        from django.test import RequestFactory
+
+        from ami.main.admin import DetectionAdmin
+        from ami.ml.models import Algorithm
+        from ami.ml.models.algorithm import AlgorithmTaskType
+
+        self.admin = DetectionAdmin(Detection, AdminSite())
+        self.factory = RequestFactory()
+        self.superuser = User.objects.create_superuser(email="det-admin@insectai.org", password="x")  # type: ignore
+        self.project = Project.objects.create(name="Detection Admin Test Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.source_image = SourceImage.objects.create(
+            deployment=self.deployment, project=self.project, path="det-admin-test.jpg"
+        )
+        self.algorithm = Algorithm.objects.create(
+            name="det-admin-classifier", task_type=AlgorithmTaskType.CLASSIFICATION.value
+        )
+
+    def _request(self):
+        request = self.factory.get("/admin/main/detection/")
+        request.user = self.superuser
+        return request
+
+    def test_classifications_count_counts_per_detection_including_zero(self):
+        two = Detection.objects.create(source_image=self.source_image, bbox=[0, 0, 1, 1])
+        for _ in range(2):
+            Classification.objects.create(detection=two, algorithm=self.algorithm, timestamp=timezone.now())
+        zero = Detection.objects.create(source_image=self.source_image, bbox=[0, 0, 1, 1])
+
+        by_pk = {d.pk: d.classifications_count for d in self.admin.get_queryset(self._request())}
+        self.assertEqual(by_pk[two.pk], 2)
+        self.assertEqual(by_pk[zero.pk], 0)

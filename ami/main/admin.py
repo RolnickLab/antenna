@@ -381,6 +381,9 @@ class ClassificationInline(admin.TabularInline):
 class DetectionInline(admin.TabularInline):
     model = Detection
     extra = 0
+    # Link each row to its Detection change page, where the classifications
+    # inline shows which algorithms (including post-processing) were applied.
+    show_change_link = True
     fields = (
         "detection_algorithm",
         "source_image",
@@ -414,9 +417,25 @@ class DetectionAdmin(admin.ModelAdmin[Detection]):
     autocomplete_fields = ("source_image", "occurrence")
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
-        qs = super().get_queryset(request)
-        return qs.select_related("source_image", "occurrence").annotate(
-            classifications_count=models.Count("classifications"),
+        from django.db.models.functions import Coalesce
+
+        qs = super().get_queryset(request).select_related("source_image", "occurrence")
+        # Correlated subquery instead of Count("classifications") + GROUP BY. The
+        # grouped aggregate over the whole detection x classification join must run
+        # before ORDER BY ... LIMIT can take a page, which on a large table is slow
+        # enough to exhaust work_mem and error out. The subquery runs only for the
+        # rows on the page. Coalesce maps "no classifications" to 0.
+        classifications_count = (
+            Classification.objects.filter(detection=models.OuterRef("pk"))
+            .order_by()
+            .values("detection")
+            .annotate(c=models.Count("*"))
+            .values("c")
+        )
+        return qs.annotate(
+            classifications_count=Coalesce(
+                models.Subquery(classifications_count, output_field=models.IntegerField()), 0
+            )
         )
 
     @admin.display(
@@ -426,7 +445,9 @@ class DetectionAdmin(admin.ModelAdmin[Detection]):
     def classifications_count(self, obj) -> int:
         return obj.classifications_count
 
-    ordering = ("-created_at",)
+    # Order by -id (indexed PK) rather than -created_at, which has no index and
+    # forces a full sort of the table to find the newest page.
+    ordering = ("-id",)
 
     inlines = [ClassificationInline]
 
