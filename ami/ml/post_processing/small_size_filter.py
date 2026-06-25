@@ -151,8 +151,13 @@ class SmallSizeFilterTask(BasePostProcessingTask):
 
                 self.logger.info(f"Updating {len(occcurrences_to_update)} occurrences")
                 for occ in occcurrences_to_update:
+                    # Count an occurrence only when flagging its detection actually
+                    # changes the determination. Re-saving recomputes it in place, so
+                    # an occurrence pinned to a human identification keeps its taxon
+                    # and must not inflate the metric.
+                    prev_determination_id = occ.determination_id
                     occ.save(update_determination=True)
-                    if occ.pk is not None:
+                    if occ.pk is not None and occ.determination_id != prev_determination_id:
                         updated_occurrence_ids.add(occ.pk)
                 modified_occurrences = len(updated_occurrence_ids)
                 occcurrences_to_update.clear()

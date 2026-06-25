@@ -13,11 +13,13 @@ from ami.main.models import (
     Deployment,
     Detection,
     Event,
+    Identification,
     Occurrence,
     Project,
     SourceImage,
     SourceImageCollection,
     Taxon,
+    TaxonRank,
     group_images_into_events,
 )
 from ami.ml.models import Algorithm, Pipeline, ProcessingService
@@ -1600,6 +1602,66 @@ class TestPostProcessingTasks(TestCase):
         # Each detection has its own occurrence here, so the deduped occurrence
         # count equals the detection count.
         self.assertEqual(params.get("occurrences_updated"), total)
+
+    def test_occurrences_updated_counts_only_changed_determinations(self):
+        """``occurrences_updated`` counts occurrences whose determination actually
+        changed, not every occurrence the filter re-saved.
+
+        An occurrence already pinned to a human identification keeps that
+        determination when its detection is flagged "Not identifiable", so it must
+        not inflate the metric. Only the un-identified occurrence, whose
+        determination flips, is counted.
+        """
+        from ami.jobs.models import Job
+
+        images = list(self.collection.images.all())
+        self.assertGreaterEqual(len(images), 2)
+
+        # Occurrence A: small detection, but a human identification pins the
+        # determination — flagging the detection does not change it.
+        human_taxon = Taxon.objects.create(name="Human-pinned species", rank=TaxonRank.SPECIES)
+        identifier = User.objects.create_user(email="identifier@insectai.org")  # type: ignore[attr-defined]
+        det_with_id = Detection.objects.create(
+            source_image=images[0],
+            bbox=[0, 0, 10, 10],
+            created_at=datetime.datetime.now(datetime.timezone.utc),
+        )
+        det_with_id.associate_new_occurrence()
+        Identification.objects.create(user=identifier, occurrence=det_with_id.occurrence, taxon=human_taxon)
+
+        # Occurrence B: small detection, no identification — its determination
+        # flips to "Not identifiable" and is the only real change.
+        det_plain = Detection.objects.create(
+            source_image=images[1],
+            bbox=[0, 0, 10, 10],
+            created_at=datetime.datetime.now(datetime.timezone.utc),
+        )
+        det_plain.associate_new_occurrence()
+
+        job = Job.objects.create(
+            project=self.project,
+            name="changed-determination metric test",
+            job_type_key="post_processing",
+            params={
+                "task": "small_size_filter",
+                "config": {"source_image_collection_id": self.collection.pk, "size_threshold": 0.01},
+            },
+        )
+        job.progress.add_stage("Post Processing", key="post_processing")
+        job.save()
+
+        SmallSizeFilterTask(
+            job=job,
+            source_image_collection_id=self.collection.pk,
+            size_threshold=0.01,
+        ).run()
+
+        job.refresh_from_db()
+        params = {p.name: p.value for p in job.progress.get_stage("post_processing").params}
+        # Both detections are flagged small, but only the un-identified
+        # occurrence's determination changes, so only it is counted.
+        self.assertEqual(params.get("detections_flagged"), 2)
+        self.assertEqual(params.get("occurrences_updated"), 1)
 
 
 class TestTaskStateManager(TestCase):
