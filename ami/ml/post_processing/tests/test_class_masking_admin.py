@@ -9,11 +9,22 @@ import pydantic
 from django.contrib import admin as django_admin
 from django.test import Client, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from ami.jobs.models import Job
-from ami.main.models import Occurrence, Project, SourceImageCollection, TaxaList
+from ami.main.models import (
+    Classification,
+    Deployment,
+    Detection,
+    Occurrence,
+    Project,
+    SourceImage,
+    SourceImageCollection,
+    TaxaList,
+)
 from ami.ml.models import Algorithm
 from ami.ml.models.algorithm import AlgorithmTaskType
+from ami.ml.post_processing.admin.class_masking_form import ClassMaskingActionForm
 from ami.ml.post_processing.class_masking import ClassMaskingConfig
 from ami.ml.post_processing.rank_rollup import RankRollupConfig
 from ami.users.models import User
@@ -75,6 +86,14 @@ class _PostProcessingAdminCase(TestCase):
         cls.algorithm = Algorithm.objects.create(
             name="PP admin classifier", task_type=AlgorithmTaskType.CLASSIFICATION.value
         )
+        # Wire the classifier to both scopes (the collection's image and the
+        # occurrence) so the class-mask form offers it — it only lists algorithms
+        # that actually produced classifications within the selection.
+        cls.deployment = Deployment.objects.create(project=cls.project, name="PP admin dep")
+        source_image = SourceImage.objects.create(deployment=cls.deployment, project=cls.project, path="pp-admin.jpg")
+        cls.collection.images.add(source_image)
+        detection = Detection.objects.create(source_image=source_image, bbox=[0, 0, 1, 1], occurrence=cls.occurrence)
+        Classification.objects.create(detection=detection, algorithm=cls.algorithm, timestamp=timezone.now())
 
     def setUp(self) -> None:
         self.client = Client()
@@ -148,3 +167,38 @@ class TestRankRollupAdmin(_PostProcessingAdminCase):
         self.assertEqual(job.params["task"], "rank_rollup")
         self.assertEqual(job.params["config"]["source_image_collection_id"], self.collection.pk)
         self.assertEqual(job.params["config"]["thresholds"]["SPECIES"], 0.8)
+
+
+class TestClassMaskingFormScopeFiltering(TestCase):
+    """The class-mask form offers only classifiers that actually produced
+    classifications within the selected scope, so an operator cannot pick an
+    algorithm whose masking would be a no-op for the chosen occurrence."""
+
+    @classmethod
+    def setUpTestData(cls) -> None:
+        cls.project = Project.objects.create(name="CM scope filter project")
+        cls.deployment = Deployment.objects.create(project=cls.project, name="dep")
+        cls.source_image = SourceImage.objects.create(
+            deployment=cls.deployment, project=cls.project, path="cm-scope.jpg"
+        )
+        cls.used = Algorithm.objects.create(name="used classifier", task_type=AlgorithmTaskType.CLASSIFICATION.value)
+        cls.unused = Algorithm.objects.create(
+            name="unused classifier", task_type=AlgorithmTaskType.CLASSIFICATION.value
+        )
+
+        cls.occurrence = Occurrence.objects.create(project=cls.project, deployment=cls.deployment)
+        detection = Detection.objects.create(
+            source_image=cls.source_image, bbox=[0, 0, 1, 1], occurrence=cls.occurrence
+        )
+        Classification.objects.create(detection=detection, algorithm=cls.used, timestamp=timezone.now())
+
+    def test_form_offers_only_algorithms_used_on_the_occurrence(self):
+        form = ClassMaskingActionForm(scope_queryset=Occurrence.objects.filter(pk=self.occurrence.pk))
+        offered = set(form.fields["algorithm_id"].queryset.values_list("pk", flat=True))
+        self.assertEqual(offered, {self.used.pk})
+
+    def test_form_without_scope_offers_all_classifiers(self):
+        form = ClassMaskingActionForm()
+        offered = set(form.fields["algorithm_id"].queryset.values_list("pk", flat=True))
+        self.assertIn(self.used.pk, offered)
+        self.assertIn(self.unused.pk, offered)
