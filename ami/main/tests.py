@@ -6408,3 +6408,14 @@ class DetectionAdminChangelistTest(TestCase):
         by_pk = {d.pk: d.classifications_count for d in self.admin.get_queryset(self._request())}
         self.assertEqual(by_pk[two.pk], 2)
         self.assertEqual(by_pk[zero.pk], 0)
+
+    def test_numeric_search_is_an_exact_id_lookup(self):
+        """An all-digit search term jumps straight to that detection by id."""
+        target = Detection.objects.create(source_image=self.source_image, bbox=[0, 0, 1, 1])
+        other = Detection.objects.create(source_image=self.source_image, bbox=[0, 0, 1, 1])
+
+        base = self.admin.get_queryset(self._request())
+        results, _ = self.admin.get_search_results(self._request(), base, str(target.pk))
+        pks = set(results.values_list("pk", flat=True))
+        self.assertEqual(pks, {target.pk})
+        self.assertNotIn(other.pk, pks)

@@ -415,6 +415,15 @@ class DetectionAdmin(admin.ModelAdmin[Detection]):
     )
 
     autocomplete_fields = ("source_image", "occurrence")
+    search_fields = ("source_image__path",)
+
+    def get_search_results(self, request: HttpRequest, queryset: QuerySet[Any], search_term: str):
+        """Let an all-digit search term jump straight to that detection by id;
+        other terms search the source image path."""
+        term = search_term.strip()
+        if term.isdigit():
+            return queryset.filter(pk=int(term)), False
+        return super().get_search_results(request, queryset, search_term)
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         from django.db.models.functions import Coalesce
