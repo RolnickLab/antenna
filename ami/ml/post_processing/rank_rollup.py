@@ -144,6 +144,20 @@ class RankRollupTask(BasePostProcessingTask):
                 new_score = None
                 scores_str = {t.name: s for t, s in taxon_scores.items()}
                 self.logger.info(f"Aggregated taxon scores: {scores_str}")
+                # The candidates at each rank are every taxon that accumulated
+                # score there — the global argmax across the whole distribution,
+                # not only ancestors of clf.taxon. For a confident classification
+                # the winner is its own lineage, but a diffuse, low-confidence
+                # distribution can spread enough mass across unrelated branches
+                # that the top taxon at a rank is not an ancestor of clf.taxon, so
+                # the roll-up reparents the detection to an unrelated family.
+                # TODO: decide the intended semantics:
+                #   - lineage-constrained: restrict candidates to ancestors of
+                #     clf.taxon (find_ancestor_by_parent_chain already yields them)
+                #     so a roll-up only ever generalizes the original prediction; or
+                #   - distribution roll-up: keep the global argmax but document it,
+                #     and reconsider whether applied_to -> this single clf is the
+                #     right provenance when the result is outside its lineage.
                 for rank in rollup_order:
                     threshold = thresholds.get(rank, 1.0)
                     candidates = {t: s for t, s in taxon_scores.items() if t.rank == rank}
