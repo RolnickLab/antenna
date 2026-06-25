@@ -12,6 +12,7 @@ DB-backed classes build a bare Project/Collection once per class via
 import pytest
 from django.contrib import admin as django_admin
 from django.test import RequestFactory, SimpleTestCase, TestCase
+from django.urls import reverse
 
 from ami.jobs.models import Job
 from ami.main.models import Project, SourceImageCollection
@@ -166,4 +167,9 @@ class TestBuildJobsOverrideHook(TestCase):
         # scope_resolver was not supplied, so it must not be forwarded as None.
         self.assertNotIn("scope_resolver", calls)
         self.assertEqual(len(admin_stub.messages), 1)
-        self.assertIn("[101, 102]", admin_stub.messages[0][0])
+        # The pks the custom runner produced are reported as links to each Job's
+        # admin change page.
+        message_body = admin_stub.messages[0][0]
+        self.assertIn(reverse("admin:jobs_job_change", args=[101]), message_body)
+        self.assertIn(">Job 101</a>", message_body)
+        self.assertIn(">Job 102</a>", message_body)

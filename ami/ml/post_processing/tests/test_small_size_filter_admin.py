@@ -95,6 +95,19 @@ class TestSmallSizeFilterCreatesJob(_SmallSizeFilterAdminCase):
         self.assertEqual(job.params["config"]["size_threshold"], 0.001)
         self.assertEqual(job.params["config"]["source_image_collection_id"], self.collection.pk)
 
+    def test_success_message_links_to_the_created_job(self):
+        """The post-run admin message links each created Job to its admin change
+        page so the operator can follow progress and read any failure reason."""
+        from django.contrib.messages import get_messages
+
+        response = self._post({"confirm": "yes", "size_threshold": "0.001"})
+        self.assertEqual(response.status_code, 302)
+        job = Job.objects.get(project=self.project, job_type_key="post_processing")
+
+        text = " ".join(str(message) for message in get_messages(response.wsgi_request))
+        self.assertIn(reverse("admin:jobs_job_change", args=[job.pk]), text)
+        self.assertIn(f">Job {job.pk}</a>", text)
+
 
 class TestSmallSizeFilterOccurrenceScope(TestCase):
     """The per-occurrence trigger on OccurrenceAdmin uses the same factory with an

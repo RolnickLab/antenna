@@ -32,6 +32,7 @@ from django.db.models.query import QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.template.response import TemplateResponse
 from django.urls import reverse
+from django.utils.html import format_html, format_html_join
 
 from ami.jobs.models import Job
 from ami.ml.post_processing.admin.forms import BasePostProcessingActionForm
@@ -275,9 +276,24 @@ def make_post_processing_action(
                 form.add_error(field, message)
             return _render(form)
 
+        # Link each created Job to its admin change page so the operator can
+        # follow progress and read any failure reason there. The admin URL is
+        # used because it is always reachable from this admin action; the public
+        # UI host is not reliably known in this context.
+        job_links = format_html_join(
+            ", ",
+            '<a href="{}">Job {}</a>',
+            ((request.build_absolute_uri(reverse("admin:jobs_job_change", args=[pk])), pk) for pk in job_pks),
+        )
         model_admin.message_user(
             request,
-            f"Queued {task_cls.name} for {len(job_pks)} {model_admin.model._meta.verbose_name}(s). Jobs: {job_pks}",
+            format_html(
+                "Queued {} for {} {}(s). {}",
+                task_cls.name,
+                len(job_pks),
+                model_admin.model._meta.verbose_name,
+                job_links,
+            ),
             level=messages.SUCCESS,
         )
         return None
