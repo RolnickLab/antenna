@@ -456,16 +456,26 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
     search_fields = ("determination__name", "determination__search_names")
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        from django.db.models.functions import Coalesce
+
         qs = super().get_queryset(request)
         qs = qs.select_related("determination", "project", "deployment", "event")
-        # Add detections count to queryset
-        qs = qs.annotate(detections_count=models.Count("detections"))
-        # Add min, max and avg detection__classifications counts to queryset
-        # qs = qs.annotate(
-        #     min_detection_classifications=models.Min("detections__classifications"),
-        #     max_detection_classifications=models.Max("detections__classifications"),
-        #     avg_detection_classifications=models.Avg("detections__classifications"),
-        # )
+        # Count detections with a correlated subquery instead of a JOIN + GROUP BY.
+        # A grouped count must aggregate the whole occurrence x detection join before
+        # the changelist's ORDER BY ... LIMIT can take a page, so it scans every row to
+        # show 25 (~15s on a 1.3M-row table). The subquery runs only for the rows that
+        # survive the limit. Coalesce maps "no detections" to 0 (a bare subquery is NULL,
+        # where the old JOIN count returned 0).
+        detections_count = (
+            Detection.objects.filter(occurrence=models.OuterRef("pk"))
+            .order_by()
+            .values("occurrence")
+            .annotate(c=models.Count("*"))
+            .values("c")
+        )
+        qs = qs.annotate(
+            detections_count=Coalesce(models.Subquery(detections_count, output_field=models.IntegerField()), 0)
+        )
         return qs
 
     @admin.display(
@@ -488,7 +498,22 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
 
     actions = [run_small_size_filter]
 
-    ordering = ("-created_at",)
+    # Order by -id (the indexed primary key) rather than -created_at, which has no
+    # index and would force a full sort of the table to find the newest page. id
+    # increases with insertion time, so newest-first is preserved.
+    ordering = ("-id",)
+
+    def get_search_results(self, request: HttpRequest, queryset: QuerySet[Any], search_term: str):
+        """Let an all-digit search term jump straight to that occurrence by id.
+
+        The text search box still covers determination names; a numeric term is
+        unambiguous (occurrence ids are numbers, taxon names are not), so it is
+        treated as an exact id lookup within the currently filtered queryset.
+        """
+        term = search_term.strip()
+        if term.isdigit():
+            return queryset.filter(pk=int(term)), False
+        return super().get_search_results(request, queryset, search_term)
 
     # Add classifications as inline
     inlines = [DetectionInline]

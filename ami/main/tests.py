@@ -6300,3 +6300,70 @@ class TestCleanupNullOnlyOccurrencesCommand(TestCase):
         self._call_command(f"--project={self.project.pk}", "--commit")
         second_run = self._call_command(f"--project={self.project.pk}", "--commit")
         self.assertIn("Nothing to clean up", second_run)
+
+
+class OccurrenceAdminChangelistTest(TestCase):
+    """OccurrenceAdmin changelist behavior: the detections_count subquery
+    annotation (including the zero-detection case) and the jump-to-occurrence-by-id
+    search. The changelist carries the per-occurrence post-processing trigger, so it
+    needs to stay both correct and usable on a large table."""
+
+    def setUp(self):
+        from django.contrib.admin.sites import AdminSite
+        from django.test import RequestFactory
+
+        from ami.main.admin import OccurrenceAdmin
+
+        self.admin = OccurrenceAdmin(Occurrence, AdminSite())
+        self.factory = RequestFactory()
+        self.superuser = User.objects.create_superuser(email="occ-admin@insectai.org", password="x")  # type: ignore
+        self.project = Project.objects.create(name="Occurrence Admin Test Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.source_image = SourceImage.objects.create(
+            deployment=self.deployment, project=self.project, path="occ-admin-test.jpg"
+        )
+
+    def _request(self):
+        request = self.factory.get("/admin/main/occurrence/")
+        request.user = self.superuser
+        return request
+
+    def _make_occurrence(self, num_detections: int) -> Occurrence:
+        occ = Occurrence.objects.create(project=self.project, deployment=self.deployment)
+        for _ in range(num_detections):
+            Detection.objects.create(source_image=self.source_image, bbox=[0, 0, 1, 1], occurrence=occ)
+        return occ
+
+    def test_detections_count_counts_per_occurrence_including_zero(self):
+        """The subquery annotation reports each occurrence's own detection count, and
+        Coalesce yields 0 (not NULL) for an occurrence with no detections."""
+        two = self._make_occurrence(2)
+        zero = self._make_occurrence(0)
+
+        by_pk = {o.pk: o.detections_count for o in self.admin.get_queryset(self._request())}
+        self.assertEqual(by_pk[two.pk], 2)
+        self.assertEqual(by_pk[zero.pk], 0)
+
+    def test_numeric_search_is_an_exact_id_lookup(self):
+        """An all-digit search term jumps straight to that occurrence by id."""
+        target = self._make_occurrence(1)
+        other = self._make_occurrence(1)
+
+        base = self.admin.get_queryset(self._request())
+        results, _ = self.admin.get_search_results(self._request(), base, str(target.pk))
+        pks = set(results.values_list("pk", flat=True))
+        self.assertEqual(pks, {target.pk})
+        self.assertNotIn(other.pk, pks)
+
+    def test_text_search_still_matches_determination_name(self):
+        """A non-numeric term falls through to the determination-name search (and does
+        not raise from trying to cast the term to the integer id field)."""
+        from ami.main.models import Taxon
+
+        occ = self._make_occurrence(1)
+        occ.determination = Taxon.objects.create(name="Danaus plexippus")
+        occ.save(update_determination=False)
+
+        base = self.admin.get_queryset(self._request())
+        results, _ = self.admin.get_search_results(self._request(), base, "Danaus")
+        self.assertIn(occ.pk, set(results.values_list("pk", flat=True)))
