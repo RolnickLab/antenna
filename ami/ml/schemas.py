@@ -238,9 +238,12 @@ class PipelineResultsResponse(pydantic.BaseModel):
         description=(
             "A dictionary of all algorithms used in the pipeline, including their class list and other "
             "metadata, keyed by the algorithm key. "
-            "DEPRECATED: Algorithms should only be provided in the ProcessingServiceInfoResponse."
+            "DEPRECATED: algorithms must be registered in advance through the processing service's /info "
+            "endpoint (ProcessingServiceInfoResponse). Algorithms supplied here are ignored. Registering "
+            "only through /info avoids the near-duplicate algorithm records that appear when the same "
+            "algorithm is reported with slightly different names (e.g. extra whitespace) across responses."
         ),
-        depreciated=True,
+        deprecated=True,
     )
     total_time: float
     source_images: list[SourceImageResponse]
