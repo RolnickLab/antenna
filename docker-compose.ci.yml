@@ -1,14 +1,28 @@
+# Ensure this launches a separate stack for CI testing to avoid conflicts with local dev setup:
+name: antenna-ci
+
+volumes:
+  ami_ci_postgres_data:
+    driver: local
+  minio_ci_data:
+    driver: local
+
 services:
   django: &django
     build:
       context: .
       dockerfile: ./compose/local/django/Dockerfile
-    image: ami_ci_django
+    volumes:
+      - .:/app:z
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - postgres
       - redis
       - minio-init
       - ml_backend
+      - rabbitmq
+      - nats
     env_file:
       - ./.envs/.ci/.django
       - ./.envs/.ci/.postgres
@@ -18,24 +32,45 @@ services:
     build:
       context: .
       dockerfile: ./compose/local/postgres/Dockerfile
+    volumes:
+      - ami_ci_postgres_data:/var/lib/postgresql/data
     env_file:
       - ./.envs/.ci/.postgres
 
   redis:
     image: redis:6
 
+  nats:
+    image: nats:2.10-alpine
+    container_name: ami_ci_nats
+    hostname: nats
+    command: ["-js", "-m", "8222"] # Enable JetStream and monitoring
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   celeryworker:
     <<: *django
-    image: ami_ci_celeryworker
+    depends_on:
+      - rabbitmq
     command: /start-celeryworker
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    env_file:
+      - ./.envs/.ci/.django
 
   minio:
     image: minio/minio:RELEASE.2024-11-07T00-52-20Z
     command: minio server --console-address ":9001" /data
+    volumes:
+      - "minio_ci_data:/data"
     env_file:
       - ./.envs/.ci/.django
     healthcheck:
-      test: [ "CMD", "mc", "ready", "local" ]
+      test: ["CMD", "mc", "ready", "local"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -45,7 +80,8 @@ services:
     env_file:
       - ./.envs/.ci/.django
     depends_on:
-      - minio
+      minio:
+        condition: service_healthy
     volumes:
       - ./compose/local/minio/init.sh:/etc/minio/init.sh
     entrypoint: /etc/minio/init.sh

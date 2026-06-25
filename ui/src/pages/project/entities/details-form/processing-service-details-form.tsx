@@ -7,7 +7,7 @@ import {
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
 import { ProcessingService } from 'data-services/models/processing-service'
-import { SaveButton } from 'design-system/components/button/save-button'
+import { SaveButton } from 'nova-ui-kit'
 import { ConnectionStatus } from 'pages/project/processing-services/connection-status'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'
@@ -15,7 +15,7 @@ import { useFormError } from 'utils/useFormError'
 import { DetailsFormProps, FormValues } from './types'
 
 type ProcessingServiceFormValues = FormValues & {
-  endpoint_url: string
+  endpoint_url?: string
 }
 
 const config: FormConfig = {
@@ -28,10 +28,8 @@ const config: FormConfig = {
   },
   endpoint_url: {
     label: 'Endpoint URL',
-    description: 'Processing service endpoint.',
-    rules: {
-      required: true,
-    },
+    description:
+      'Processing service endpoint. Leave empty for pull-mode services that register themselves.',
   },
   description: {
     label: translate(STRING.FIELD_LABEL_DESCRIPTION),
@@ -68,7 +66,7 @@ export const ProcessingServiceDetailsForm = ({
           name: values.name,
           description: values.description,
           customFields: {
-            endpoint_url: values.endpoint_url,
+            endpoint_url: values.endpoint_url || null,
           },
         })
       )}

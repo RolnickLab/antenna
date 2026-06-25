@@ -1,5 +1,4 @@
-import classNames from 'classnames'
-import { Tooltip } from 'design-system/components/tooltip/tooltip'
+import { Badge, BasicTooltip } from 'nova-ui-kit'
 import styles from './version-info.module.scss'
 
 const COPY = {
@@ -11,16 +10,13 @@ const COPY = {
 }
 
 export const VersionInfo = () => (
-  <div
-    className={classNames(styles.wrapper, {
-      [styles.deprecated]: (COPY.LABEL as string)
-        .toLowerCase()
-        .includes('deprecated'),
-    })}
-  >
-    <Tooltip content={COPY.INFO}>
-      <div className={styles.badge}>{COPY.LABEL}</div>
-    </Tooltip>
+  <div className={styles.wrapper}>
+    <BasicTooltip content={COPY.INFO}>
+      <Badge
+        deprecated={(COPY.LABEL as string).toLowerCase().includes('deprecated')}
+        label={COPY.LABEL}
+      />
+    </BasicTooltip>
     <span className={styles.version}>{COPY.VERSION}</span>
   </div>
 )

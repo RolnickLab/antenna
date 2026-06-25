@@ -1,5 +1,5 @@
 exclude: "^docs/|/migrations/|ui/"
-default_stages: [commit]
+default_stages: [pre-commit]
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -40,9 +40,14 @@ repos:
       - id: isort
 
   - repo: https://github.com/PyCQA/flake8
-    rev: 6.0.0
+    rev: 6.1.0
     hooks:
       - id: flake8
+        # Ensure flake8 reads the project's setup.cfg (pre-commit runs hooks
+        # from the hook repo directory which may contain its own .flake8).
+        # flake8 doesn't yet support pyproject.toml for config, so point to
+        # setup.cfg which contains our project flake8 settings.
+        args: ["--config=setup.cfg"]
 
   - repo: https://github.com/Riverside-Healthcare/djLint
     rev: v1.31.1

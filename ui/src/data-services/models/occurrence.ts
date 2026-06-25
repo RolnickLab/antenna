@@ -1,6 +1,6 @@
 import { getFormatedDateString } from 'utils/date/getFormatedDateString/getFormatedDateString'
-import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
+import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
 import { Taxon } from './taxa'
 
@@ -21,16 +21,16 @@ export class Occurrence {
       .map((src: string) => ({ src }))
   }
 
-  get createdAt(): string {
-    return getFormatedDateTimeString({
-      date: new Date(this._occurrence.created_at),
-    })
+  get createdAt(): Date {
+    return new Date(this._occurrence.created_at)
   }
 
-  get updatedAt(): string {
-    return getFormatedDateTimeString({
-      date: new Date(this._occurrence.updated_at),
-    })
+  get updatedAt(): Date | undefined {
+    if (!this._occurrence.updated_at) {
+      return undefined
+    }
+
+    return new Date(this._occurrence.updated_at)
   }
 
   get dateLabel(): string {
@@ -39,12 +39,14 @@ export class Occurrence {
     })
   }
 
-  get deploymentId(): string {
-    return `${this._occurrence.deployment.id}`
+  get deploymentId(): string | undefined {
+    return this._occurrence.deployment
+      ? `${this._occurrence.deployment.id}`
+      : undefined
   }
 
-  get deploymentLabel(): string {
-    return this._occurrence.deployment.name
+  get deploymentLabel(): string | undefined {
+    return this._occurrence.deployment?.name
   }
 
   get determinationId(): string {
@@ -102,9 +104,11 @@ export class Occurrence {
     return verifiedBy
       ? {
           id: `${verifiedBy.id}`,
-          name: verifiedBy.name?.length ? verifiedBy.name : 'Anonymous user',
+          name: verifiedBy.name?.length
+            ? verifiedBy.name
+            : translate(STRING.ANONYMOUS_USER),
         }
-      : { name: 'Unknown user' }
+      : { name: translate(STRING.ANONYMOUS_USER) }
   }
 
   get durationLabel(): string | undefined {

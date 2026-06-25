@@ -1,0 +1,2 @@
+class PipelineNotConfigured(ValueError):
+    pass

@@ -1,0 +1,43 @@
+.wrapper {
+  display: flex;
+  gap: 16px;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+.section {
+  min-width: 120px;
+
+  .title {
+    display: block;
+    @include body-small;
+    font-weight: 600;
+    color: var(--color-muted-foreground);
+    margin-bottom: 16px;
+  }
+
+  .subTitle {
+    display: block;
+    @include body-small;
+    font-weight: 600;
+    color: var(--color-muted-foreground);
+    margin: 16px 0 8px;
+  }
+
+  .info {
+    display: block;
+    @include body-small;
+    font-style: italic;
+    color: var(--color-muted-foreground);
+  }
+
+  .options {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+}
+
+.idButton {
+  justify-content: flex-start;
+}

@@ -1,4 +1,5 @@
 import { DeleteForm } from 'components/form/delete-form/delete-form'
+import { TaxonDetails } from 'components/taxon-details/taxon-details'
 import { useDeleteIdentification } from 'data-services/hooks/identifications/useDeleteIdentification'
 import {
   HumanIdentification as Identification,
@@ -10,13 +11,13 @@ import {
   Button,
   IdentificationCard,
   IdentificationDetails,
-  TaxonDetails,
 } from 'nova-ui-kit'
 import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getAppRoute } from 'utils/getAppRoute'
+import { STRING, translate } from 'utils/language'
 import { UserInfo, UserPermission } from 'utils/user/types'
 import { Agree } from '../agree/agree'
 
@@ -101,7 +102,7 @@ export const HumanIdentification = ({
                           )
                         : false
                     }
-                    agreeWith={{ predictionId: identification.id }}
+                    agreeWith={{ identificationId: identification.id }}
                     applied={identification.applied}
                     occurrenceId={occurrence.id}
                     taxonId={identification.taxon.id}
@@ -109,6 +110,7 @@ export const HumanIdentification = ({
                 )}
                 {showDelete && (
                   <Button
+                    aria-label={translate(STRING.DELETE)}
                     onClick={() => setDeleteIdOpen(true)}
                     size="icon"
                     variant="ghost"

@@ -13,7 +13,7 @@ export const stringToBoolean = (string?: string) => {
 }
 
 export const booleanToString = (value?: boolean) =>
-  value !== undefined ? `${value}` : ''
+  value !== undefined && value !== null ? `${value}` : ''
 
 // Help function to decide if a filter section should be open or not on page load
 export const someActive = (

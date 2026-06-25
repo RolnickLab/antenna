@@ -1,35 +1,80 @@
 import { isBefore, isValid } from 'date-fns'
-import { useSearchParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
+import { APP_ROUTES } from './constants'
 import { STRING, translate } from './language'
 import { SEARCH_PARAM_KEY_PAGE } from './usePagination'
 
-export const AVAILABLE_FILTERS: {
+interface FilterConfig {
   label: string
   field: string
+  tooltip?: {
+    text: string
+    link?: {
+      text: string
+      to: string
+    }
+  }
   validate?: (
     value?: string,
     filters?: { field: string; value?: string }[]
   ) => string | undefined
-}[] = [
+}
+
+export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
   {
     label: 'Include algorithm',
     field: 'algorithm',
+    tooltip: {
+      text: translate(STRING.TOOLTIP_ALGORITHM),
+      link: {
+        text: translate(STRING.NAV_ITEM_ALGORITHMS),
+        to: APP_ROUTES.ALGORITHMS({ projectId }),
+      },
+    },
   },
   {
-    label: translate(STRING.FIELD_LABEL_SCORE_THRESHOLD),
-    field: 'classification_threshold',
+    label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
+    field: 'collection', // This is for viewing occurrences by capture set. @TODO: Can we update this key to "capture_set_id" to streamline?
+    tooltip: {
+      text: translate(STRING.TOOLTIP_CAPTURE_SET),
+      link: {
+        text: translate(STRING.NAV_ITEM_CAPTURE_SETS),
+        to: APP_ROUTES.CAPTURE_SETS({ projectId }),
+      },
+    },
   },
   {
-    label: 'Collection',
-    field: 'collection', // This is for viewing Occurrences by collection
+    label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
+    field: 'source_image_collection', // This is for viewing jobs by capture set. @TODO: Can we update this key to "capture_set_id" to streamline?
+    tooltip: {
+      text: translate(STRING.TOOLTIP_CAPTURE_SET),
+      link: {
+        text: translate(STRING.NAV_ITEM_CAPTURE_SETS),
+        to: APP_ROUTES.CAPTURE_SETS({ projectId }),
+      },
+    },
   },
   {
-    label: 'Collection',
-    field: 'source_image_collection', // This is for viewing Jobs by collection. @TODO: Can we update this key to "collection" to streamline?
+    label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
+    field: 'collections', // This is for viewing captures by capture set. @TODO: Can we update this key to "capture_set_id" to streamline?
+    tooltip: {
+      text: translate(STRING.TOOLTIP_CAPTURE_SET),
+      link: {
+        text: translate(STRING.NAV_ITEM_CAPTURE_SETS),
+        to: APP_ROUTES.CAPTURE_SETS({ projectId }),
+      },
+    },
   },
   {
     label: 'Station',
     field: 'deployment',
+    tooltip: {
+      text: translate(STRING.TOOLTIP_DEPLOYMENT),
+      link: {
+        text: translate(STRING.NAV_ITEM_DEPLOYMENTS),
+        to: APP_ROUTES.DEPLOYMENTS({ projectId }),
+      },
+    },
   },
   {
     label: 'End date',
@@ -70,20 +115,55 @@ export const AVAILABLE_FILTERS: {
     },
   },
   {
-    label: 'Source image',
-    field: 'detections__source_image', // This is for viewing Occurrences by source image. @TODO: Can we update this key to "source_image" to streamline?
+    label: translate(STRING.FIELD_LABEL_CAPTURE),
+    field: 'detections__source_image', // This is for viewing occurrences by capture. @TODO: Can we update this key to "capture_id" to streamline?
+    tooltip: {
+      text: translate(STRING.TOOLTIP_CAPTURE),
+      link: {
+        text: translate(STRING.NAV_ITEM_CAPTURES),
+        to: APP_ROUTES.CAPTURES({ projectId }),
+      },
+    },
   },
   {
     label: 'Session',
     field: 'event',
+    tooltip: {
+      text: translate(STRING.TOOLTIP_SESSION),
+      link: {
+        text: translate(STRING.NAV_ITEM_SESSIONS),
+        to: APP_ROUTES.SESSIONS({ projectId }),
+      },
+    },
+  },
+  {
+    label: 'Processing status',
+    field: 'processed',
+    tooltip: {
+      text: 'Filter captures by whether they have been processed by a detection pipeline.',
+    },
   },
   {
     label: 'Pipeline',
     field: 'pipeline',
+    tooltip: {
+      text: translate(STRING.TOOLTIP_PIPELINE),
+      link: {
+        text: translate(STRING.NAV_ITEM_PIPELINES),
+        to: APP_ROUTES.PIPELINES({ projectId }),
+      },
+    },
   },
   {
     label: 'Exclude algorithm',
     field: 'not_algorithm',
+    tooltip: {
+      text: translate(STRING.TOOLTIP_ALGORITHM),
+      link: {
+        text: translate(STRING.NAV_ITEM_ALGORITHMS),
+        to: APP_ROUTES.ALGORITHMS({ projectId }),
+      },
+    },
   },
   {
     label: 'Include tag',
@@ -98,12 +178,16 @@ export const AVAILABLE_FILTERS: {
     field: 'taxon',
   },
   {
-    label: 'Taxa list',
+    label: 'Include taxa in list',
     field: 'taxa_list_id',
   },
   {
-    label: 'Source image',
-    field: 'source_image_single', // This is for viewing Jobs by source image. @TODO: Can we update this key to "source_image" to streamline?
+    label: 'Exclude taxa from list',
+    field: 'not_taxa_list_id',
+  },
+  {
+    label: translate(STRING.FIELD_LABEL_CAPTURE),
+    field: 'source_image_single', // This is for viewing jobs by capture. @TODO: Can we update this key to "capture_id" to streamline?
   },
   {
     label: 'Status',
@@ -126,15 +210,17 @@ export const AVAILABLE_FILTERS: {
     field: 'include_unobserved',
   },
   {
-    label: 'Best score threshold',
-    field: 'best_determination_score',
+    label: 'Default filters',
+    field: 'apply_defaults',
   },
 ]
 
 export const useFilters = (defaultFilters?: { [field: string]: string }) => {
+  const { projectId } = useParams()
   const [searchParams, setSearchParams] = useSearchParams()
+  const availableFilters = AVAILABLE_FILTERS(projectId as string)
 
-  const _filters = AVAILABLE_FILTERS.map(({ field, ...rest }) => {
+  const _filters = availableFilters.map(({ field, ...rest }) => {
     const value = searchParams.get(field) ?? defaultFilters?.[field]
 
     return {
@@ -157,7 +243,7 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   const activeFilters = filters.filter((filter) => !!filter.value?.length)
 
   const addFilter = (field: string, value: string) => {
-    if (AVAILABLE_FILTERS.some((filter) => filter.field === field)) {
+    if (availableFilters.some((filter) => filter.field === field)) {
       searchParams.set(field, value)
 
       // Reset page param if set, when filters are updated
@@ -170,7 +256,7 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
   }
 
   const clearFilter = (field: string) => {
-    if (AVAILABLE_FILTERS.some((filter) => filter.field === field)) {
+    if (availableFilters.some((filter) => filter.field === field)) {
       searchParams.delete(field)
 
       // Reset page param if set, when filters are updated

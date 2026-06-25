@@ -20,16 +20,102 @@ REDIS_URL=redis://redis:6379/0
 # Celery
 # ------------------------------------------------------------------------------
 
+# Worker concurrency (prefork pool size). Settings default is 8.
+# Recommended for production: 16 on an 8-core host — process_nats_pipeline_result
+# and create_detection_images are DB/Redis-bound, so ~2x cpu_count roughly matches
+# observed drain vs ingress on the antenna queue without saturating pgbouncer.
+# Tune higher only after confirming postgres connection-pool headroom.
+CELERY_WORKER_CONCURRENCY=16
+
+# Django
+# ------------------------------------------------------------------------------
+
+# Maximum in-memory request body size (integer, binary MiB — multiplied by 1024*1024).
+# Default is 100 MiB. Raise if ADC workers posting large ML result batches (detection +
+# classification payloads) return HTTP 413. global_moths_2024 batches have been
+# observed at 139–321 MiB on staging. Must be raised in lockstep with nginx client_max_body_size
+# on the fronting proxy — Django will never see a request nginx rejects.
+# See RolnickLab/antenna#1223 for the longer-term fix (incremental result posting).
+DJANGO_DATA_UPLOAD_MAX_MEMORY_MB=512
+
 # Flower
 CELERY_FLOWER_USER=
 CELERY_FLOWER_PASSWORD=
+
+# RabbitMQ
+CELERY_BROKER_URL=
+CELERY_RESULT_BACKEND=rpc:// # Use RabbitMQ for results backend
+RABBITMQ_DEFAULT_USER=
+RABBITMQ_DEFAULT_PASS=
+RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS=-rabbit consumer_timeout 604800000
 
 # Sendgrid
 SENDGRID_API_KEY=
 
 # Newrelic
+# ------------------------------------------------------------------------------
+# Common defaults live in config/newrelic.ini and are tuned for production
+# safety (apdex_f trace threshold, obfuscated SQL, 0.5s stack/explain).
+# Staging/demo opts into more aggressive tracing here.
+#
+# Identity / lifecycle
 NEW_RELIC_CONFIG_FILE=/app/config/newrelic.ini
 NEW_RELIC_ENVIRONMENT=development
+# NEW_RELIC_LICENSE_KEY=        # overrides license_key in ini (preferred — keep key out of repo)
+# NEW_RELIC_MONITOR_MODE=true   # set false to silence the agent without removing it
+#
+# REQUIRED per deploy — config/newrelic.ini intentionally does not set
+# app_name. Examples (use the "Antenna Backend (<env>)" pattern for any
+# new entity; the legacy "AMI Backend (Staging)" entity already exists
+# in NR and can keep that name for history continuity if desired):
+#   NEW_RELIC_APP_NAME=Antenna Backend (live)       # production
+#   NEW_RELIC_APP_NAME=Antenna Backend (Demo)       # demo
+#   NEW_RELIC_APP_NAME=Antenna Backend (Staging)    # staging (new entity)
+#   NEW_RELIC_APP_NAME=Antenna Backend (preview-N)  # ephemeral preview stacks
+# Missing → agent reports under the literal name "Python Application", which
+# is an easy-to-spot orphan rather than a silent merge into another env.
+NEW_RELIC_APP_NAME=Antenna Backend (development)
+# NEW_RELIC_LOG_LEVEL=info      # bump to debug only when reproducing an agent issue
+# NEW_RELIC_HIGH_SECURITY=false # true forces obfuscated SQL + drops request params, irreversible per app
+#
+# Apdex / trace thresholds — the headline knobs
+#
+# NEW_RELIC_APDEX_T sets the satisfactory response time (default 0.5s). The
+# `apdex_f` threshold used below is automatically 4*Apdex T (so ~2s by default).
+# Raise Apdex T if antenna's normal latency drifts upward and you want the
+# Apdex score to track user expectations rather than alert-floor noise.
+# NEW_RELIC_APDEX_T=0.5
+#
+# Staging / demo — maximum visibility, no cost pressure:
+# NEW_RELIC_TRANSACTION_TRACER_TRANSACTION_THRESHOLD=0.5
+# NEW_RELIC_TRANSACTION_TRACER_STACK_TRACE_THRESHOLD=0.1
+# NEW_RELIC_TRANSACTION_TRACER_EXPLAIN_THRESHOLD=0.1
+# NEW_RELIC_TRANSACTION_TRACER_RECORD_SQL=raw
+#
+# Production — conservative; ini defaults are already production-safe so most
+# lines below can stay commented. Uncomment only the ones you want explicit.
+# NEW_RELIC_TRANSACTION_TRACER_TRANSACTION_THRESHOLD=apdex_f
+# NEW_RELIC_TRANSACTION_TRACER_STACK_TRACE_THRESHOLD=0.5
+# NEW_RELIC_TRANSACTION_TRACER_EXPLAIN_THRESHOLD=0.5
+# NEW_RELIC_TRANSACTION_TRACER_RECORD_SQL=obfuscated
+#
+# Attributes / privacy
+# NEW_RELIC_ATTRIBUTES_INCLUDE=request.parameters.*
+#   Captures ?project_id=12&page=4 on traces. Audit GET params for tokens / PII
+#   first. Safe-ish on antenna (mostly numeric IDs + pagination).
+# NEW_RELIC_ATTRIBUTES_EXCLUDE=request.headers.authorization,request.headers.cookie
+#   Belt-and-braces if you turn on parameters and want to hard-strip auth.
+#
+# Logging — already enabled in ini; cap volume here if needed
+# NEW_RELIC_APPLICATION_LOGGING_ENABLED=true
+# NEW_RELIC_APPLICATION_LOGGING_FORWARDING_ENABLED=true
+# NEW_RELIC_APPLICATION_LOGGING_FORWARDING_MAX_SAMPLES_STORED=10000
+# NEW_RELIC_APPLICATION_LOGGING_METRICS_ENABLED=true
+#
+# Sampling caps — only touch if hitting the NR trace cap on a hot env
+# NEW_RELIC_TRANSACTION_EVENTS_MAX_SAMPLES_STORED=10000
+# NEW_RELIC_SPAN_EVENTS_MAX_SAMPLES_STORED=2000
+# NEW_RELIC_DISTRIBUTED_TRACING_ENABLED=true
 
 # Storage
 DJANGO_AWS_S3_CUSTOM_DOMAIN=
@@ -58,3 +144,7 @@ WEB_CONCURRENCY=4
 DEFAULT_PROCESSING_SERVICE_NAME="AMI Data Companion"
 DEFAULT_PROCESSING_SERVICE_ENDPOINT=https://ml.antenna.insectai.org/
 DEFAULT_PIPELINES_ENABLED=global_moths_2024,quebec_vermont_moths_2023,panama_moths_2023,uk_denmark_moths_2023
+
+# NATS
+# ------------------------------------------------------------------------------
+NATS_URL=nats://nats:4222

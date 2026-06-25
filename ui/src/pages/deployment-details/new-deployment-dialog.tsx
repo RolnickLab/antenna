@@ -1,8 +1,7 @@
 import { useCreateDeployment } from 'data-services/hooks/deployments/useCreateDeployment'
 import { DeploymentDetails } from 'data-services/models/deployment-details'
-import * as Dialog from 'design-system/components/dialog/dialog'
 import { PlusIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
+import { Button, Dialog } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
@@ -23,7 +22,7 @@ export const NewDeploymentDialog = () => {
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Dialog.Trigger>
+      <Dialog.Trigger asChild>
         <Button size="small" variant="outline">
           <PlusIcon className="w-4 h-4" />
           <span>{label}</span>

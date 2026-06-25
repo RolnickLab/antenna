@@ -3,18 +3,26 @@ import { FormField } from 'components/form/form-field'
 import {
   FormActions,
   FormError,
+  FormMessage,
   FormRow,
   FormSection,
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
-import { SaveButton } from 'design-system/components/button/save-button'
-import { Checkbox } from 'design-system/components/checkbox/checkbox'
-import { CollectionsPicker } from 'design-system/components/collections-picker'
-import { InputContent } from 'design-system/components/input/input'
+import { API_ROUTES } from 'data-services/constants'
+import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
+import {
+  Checkbox,
+  DocsLink,
+  EntityPicker,
+  InputContent,
+  SaveButton,
+} from 'nova-ui-kit'
+import { CaptureSetPicker } from 'nova-ui-kit/components/select/capture-set-picker'
 import { useForm } from 'react-hook-form'
+import { useParams } from 'react-router-dom'
+import { APP_ROUTES, DOCS_LINKS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
-import { PipelinesPicker } from './pipelines-picker'
 
 interface JobFormValues {
   delay: number
@@ -41,9 +49,15 @@ const config: FormConfig = {
   },
   pipeline: {
     label: translate(STRING.FIELD_LABEL_PIPELINE),
+    rules: {
+      required: true,
+    },
   },
   sourceImages: {
-    label: translate(STRING.FIELD_LABEL_SOURCE_IMAGES_COLLECTION),
+    label: translate(STRING.FIELD_LABEL_CAPTURE_SET),
+    rules: {
+      required: true,
+    },
   },
   startNow: {
     label: 'Start immediately',
@@ -61,6 +75,9 @@ export const JobDetailsForm = ({
   isSuccess?: boolean
   onSubmit: (data: JobFormValues) => void
 }) => {
+  const { projectId } = useParams()
+  const { project } = useProjectDetails(projectId as string, true)
+
   const {
     control,
     handleSubmit,
@@ -69,6 +86,7 @@ export const JobDetailsForm = ({
     defaultValues: {
       name: '',
       delay: 0,
+      pipeline: project?.settings.defaultProcessingPipeline?.id,
     },
     mode: 'onChange',
   })
@@ -83,14 +101,16 @@ export const JobDetailsForm = ({
           intro={translate(STRING.MESSAGE_COULD_NOT_SAVE)}
           message={errorMessage}
         />
-      ) : (
-        <FormError
-          inDialog
-          intro="Warning"
-          message="Batch processing is currently in development and problems are likely to occur. If you need data processed, we recommend to reach out to the team for support. Thank you for your patience!"
-        />
-      )}
+      ) : null}
       <FormSection>
+        <div className="flex flex-col items-end gap-4">
+          <FormMessage
+            message="Batch processing is currently in development and problems are likely to occur. If you need data processed, we recommend to reach out to the team for support. Thank you for your patience!"
+            theme="warning"
+            withIcon
+          />
+          <DocsLink href={DOCS_LINKS.PROCESSING_DATA} />
+        </div>
         <FormRow>
           <FormField
             name="name"
@@ -113,12 +133,25 @@ export const JobDetailsForm = ({
             render={({ field, fieldState }) => (
               <InputContent
                 description={config[field.name].description}
-                label={config[field.name].label}
+                label={
+                  config[field.name].rules?.required
+                    ? `${config[field.name].label} *`
+                    : config[field.name].label
+                }
                 error={fieldState.error?.message}
+                tooltip={{
+                  text: translate(STRING.TOOLTIP_CAPTURE_SET),
+                  link: {
+                    text: translate(STRING.NAV_ITEM_CAPTURE_SETS),
+                    to: APP_ROUTES.CAPTURE_SETS({
+                      projectId: projectId as string,
+                    }),
+                  },
+                }}
               >
-                <CollectionsPicker
-                  value={field.value}
+                <CaptureSetPicker
                   onValueChange={field.onChange}
+                  value={field.value}
                 />
               </InputContent>
             )}
@@ -130,12 +163,26 @@ export const JobDetailsForm = ({
             render={({ field, fieldState }) => (
               <InputContent
                 description={config[field.name].description}
-                label={config[field.name].label}
+                label={
+                  config[field.name].rules?.required
+                    ? `${config[field.name].label} *`
+                    : config[field.name].label
+                }
                 error={fieldState.error?.message}
+                tooltip={{
+                  text: translate(STRING.TOOLTIP_PIPELINE),
+                  link: {
+                    text: translate(STRING.NAV_ITEM_PIPELINES),
+                    to: APP_ROUTES.PIPELINES({
+                      projectId: projectId as string,
+                    }),
+                  },
+                }}
               >
-                <PipelinesPicker
-                  value={field.value}
+                <EntityPicker
+                  collection={API_ROUTES.PIPELINES}
                   onValueChange={field.onChange}
+                  value={field.value}
                 />
               </InputContent>
             )}
@@ -146,7 +193,7 @@ export const JobDetailsForm = ({
             <FormController
               name="startNow"
               control={control}
-              config={config.pipeline}
+              config={config.startNow}
               render={({ field }) => (
                 <Checkbox
                   checked={field.value ?? false}

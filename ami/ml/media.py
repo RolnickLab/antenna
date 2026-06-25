@@ -3,13 +3,13 @@ import logging
 import os
 
 import numpy as np
-import requests
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db.models import Exists, OuterRef, QuerySet
 from PIL import Image
 
 from ami.main.models import Detection, SourceImage
+from ami.utils.media import fetch_image_content
 
 logger = logging.getLogger(__name__)
 
@@ -23,12 +23,6 @@ def get_source_images_with_missing_detection_images(
     return queryset.filter(
         Exists(Detection.objects.filter(source_image=OuterRef("pk"), path__isnull=True))
     ).prefetch_related("detections", "deployment__project")[:batch_size]
-
-
-def fetch_image_content(url: str) -> bytes:
-    response = requests.get(url)
-    response.raise_for_status()
-    return response.content
 
 
 def load_source_image(source_image: SourceImage) -> np.ndarray:

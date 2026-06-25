@@ -1,6 +1,6 @@
 import { Gallery } from 'components/gallery/gallery'
 import { Project } from 'data-services/models/project'
-import { Card, CardSize } from 'design-system/components/card/card'
+import { Card, CardSize } from 'nova-ui-kit'
 import { useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -23,8 +23,9 @@ export const ProjectGallery = ({
               src: p.image,
             }
           : undefined,
-        title: p.name,
+        label: p.isDraft ? 'Draft' : undefined,
         subTitle: p.description,
+        title: p.name,
         to: APP_ROUTES.PROJECT_DETAILS({ projectId: p.id }),
       })),
     [projects]
@@ -33,21 +34,20 @@ export const ProjectGallery = ({
   return (
     <Gallery
       error={error}
-      cardSize={CardSize.Large}
       isLoading={isLoading}
       items={items}
       renderItem={(item) => (
         <Link key={item.id} to={item.to as string}>
           <Card
             key={item.id}
-            title={item.title}
-            subTitle={item.subTitle}
             image={item.image}
+            label={item.label}
             size={CardSize.Large}
+            subTitle={item.subTitle}
+            title={item.title}
           />
         </Link>
       )}
-      style={{ gridTemplateColumns: '1fr 1fr 1fr' }}
     />
   )
 }

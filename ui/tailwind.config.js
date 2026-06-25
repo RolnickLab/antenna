@@ -1,21 +1,28 @@
-import { CONSTANTS } from 'nova-ui-kit'
-import { BREAKPOINTS } from './src/components/constants'
+import plugin from 'tailwindcss/plugin'
+import { CONSTANTS } from './src/nova-ui-kit/constants'
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  content: ['./src/**/*.{ts,tsx}', './node_modules/nova-ui-kit/**/*.js'],
+  content: ['./src/**/*.{ts,tsx}'],
   theme: {
     colors: CONSTANTS.COLORS,
     screens: {
-      sm: `${BREAKPOINTS.SM}px`,
-      md: `${BREAKPOINTS.MD}px`,
-      lg: `${BREAKPOINTS.LG}px`,
-      xl: `${BREAKPOINTS.XL}px`,
+      sm: `${CONSTANTS.BREAKPOINTS.SM}px`,
+      md: `${CONSTANTS.BREAKPOINTS.MD}px`,
+      lg: `${CONSTANTS.BREAKPOINTS.LG}px`,
+      xl: `${CONSTANTS.BREAKPOINTS.XL}px`,
     },
     extend: {
       backgroundImage: CONSTANTS.GRADIENTS,
       colors: CONSTANTS.COLOR_THEME,
+      boxShadow: {
+        toolbar: '0px 4px 16px rgba(0, 0, 0, 0.1)',
+      },
     },
   },
-  plugins: [],
+  plugins: [
+    plugin(function ({ addVariant }) {
+      addVariant('hover-device', '@media (hover: hover)')
+    }),
+  ],
 }

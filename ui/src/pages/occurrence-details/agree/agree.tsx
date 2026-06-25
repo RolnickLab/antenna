@@ -1,7 +1,6 @@
 import { useCreateIdentification } from 'data-services/hooks/identifications/useCreateIdentification'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { AlertCircleIcon, CheckIcon, Loader2Icon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
+import { BasicTooltip, Button } from 'nova-ui-kit'
 import { useEffect } from 'react'
 import { STRING, translate } from 'utils/language'
 
@@ -12,6 +11,7 @@ interface AgreeProps {
     predictionId?: string
   }
   applied?: boolean
+  compact?: boolean
   occurrenceId: string
   taxonId: string
 }
@@ -20,6 +20,7 @@ export const Agree = ({
   agreed,
   agreeWith,
   applied,
+  compact,
   occurrenceId,
   taxonId,
 }: AgreeProps) => {
@@ -32,17 +33,28 @@ export const Agree = ({
 
   if (isSuccess || agreed) {
     return (
-      <Button disabled size="small" variant="outline">
+      <Button disabled size={compact ? 'icon' : 'small'} variant="outline">
         <CheckIcon className="w-4 h-4" />
-        <span>{translate(STRING.CONFIRMED)}</span>
+        {!compact ? <span>{translate(STRING.CONFIRMED)}</span> : null}
       </Button>
     )
   }
 
+  const label = applied ? translate(STRING.CONFIRM) : translate(STRING.APPLY_ID)
+  const tooltip = (() => {
+    if (error) {
+      return error
+    }
+
+    if (compact) {
+      return label
+    }
+  })()
+
   return (
-    <BasicTooltip asChild content={error}>
+    <BasicTooltip asChild content={tooltip}>
       <Button
-        size="small"
+        size={compact ? 'icon' : 'small'}
         variant="outline"
         onClick={() =>
           createIdentification({
@@ -56,10 +68,10 @@ export const Agree = ({
           <Loader2Icon className="w-4 h-4 animate-spin" />
         ) : error ? (
           <AlertCircleIcon className="w-4 h-4 text-destructive" />
-        ) : null}
-        <span>
-          {applied ? translate(STRING.CONFIRM) : translate(STRING.APPLY_ID)}
-        </span>
+        ) : (
+          <CheckIcon className="w-4 h-4" />
+        )}
+        {!compact ? <span>{label}</span> : null}
       </Button>
     </BasicTooltip>
   )

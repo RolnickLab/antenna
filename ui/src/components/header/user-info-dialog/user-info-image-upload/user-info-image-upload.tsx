@@ -1,6 +1,6 @@
-import { Button } from 'design-system/components/button/button'
-import { FileInput } from 'design-system/components/file-input/file-input'
-import { FileInputAccept } from 'design-system/components/file-input/types'
+import classNames from 'classnames'
+import { Loader2Icon } from 'lucide-react'
+import { Button, FileInput } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import { UserInfo } from 'utils/user/types'
 import styles from './user-info-image-upload.module.scss'
@@ -26,7 +26,7 @@ export const UserInfoImageUpload = ({
 
   return (
     <>
-      <div className={styles.container}>
+      <div className={classNames('mb-2 bg-primary-50', styles.container)}>
         <div className={styles.content}>
           {imageUrl ? (
             <>
@@ -34,22 +34,31 @@ export const UserInfoImageUpload = ({
               <ImageOverlay />
             </>
           ) : (
-            <span>{translate(STRING.MESSAGE_NO_IMAGE)}</span>
+            <span className="body-small text-muted-foreground">
+              {translate(STRING.MESSAGE_NO_IMAGE)}
+            </span>
           )}
         </div>
       </div>
       <FileInput
-        accept={FileInputAccept.Images}
+        accept="images"
         name="user-image"
         renderInput={(props) => (
           <Button
-            {...props}
-            label={
-              imageUrl
+            onClick={props.onClick}
+            size="small"
+            type="button"
+            variant="outline"
+          >
+            <span>
+              {imageUrl
                 ? translate(STRING.CHANGE_IMAGE)
-                : translate(STRING.CHOOSE_IMAGE)
-            }
-          />
+                : translate(STRING.CHOOSE_IMAGE)}
+            </span>
+            {props.loading ? (
+              <Loader2Icon className="w-4 h-4 ml-2 animate-spin" />
+            ) : null}
+          </Button>
         )}
         withClear
         onChange={(files) => onChange(files ? files[0] : null)}

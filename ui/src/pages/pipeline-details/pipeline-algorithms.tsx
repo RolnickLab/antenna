@@ -1,18 +1,21 @@
 import { Algorithm } from 'data-services/models/algorithm'
 import { Pipeline } from 'data-services/models/pipeline'
-import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import {
+  BasicTableCell,
+  CellTheme,
   Table,
   TableBackgroundTheme,
-} from 'design-system/components/table/table/table'
-import { CellTheme, TableColumn } from 'design-system/components/table/types'
+  TableColumn,
+} from 'nova-ui-kit'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 
-export const columns: (projectId: string) => TableColumn<Algorithm>[] = (
+export const columns = ({
+  projectId,
+}: {
   projectId: string
-) => [
+}): TableColumn<Algorithm>[] => [
   {
     id: 'name',
     name: translate(STRING.FIELD_LABEL_NAME),
@@ -50,7 +53,7 @@ export const PipelineAlgorithms = ({ pipeline }: { pipeline: Pipeline }) => {
     <Table
       backgroundTheme={TableBackgroundTheme.White}
       items={pipeline.algorithms}
-      columns={columns(projectId as string)}
+      columns={columns({ projectId: projectId as string })}
     />
   )
 }

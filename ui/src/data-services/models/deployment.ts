@@ -1,27 +1,24 @@
 import { getFormatedDateString } from 'utils/date/getFormatedDateString/getFormatedDateString'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { UserPermission } from 'utils/user/types'
+import { Entity } from './entity'
 import { Job } from './job'
 
 export type ServerDeployment = any // TODO: Update this type
 
-export class Deployment {
+export class Deployment extends Entity {
   private readonly _jobs: Job[] = []
 
   protected readonly _deployment: ServerDeployment
 
   public constructor(deployment: ServerDeployment) {
+    super(deployment)
+
     this._deployment = deployment
 
     if (this._deployment.jobs) {
       this._jobs = this._deployment.jobs.map((job: any) => new Job(job))
     }
-  }
-
-  get createdAt(): Date | undefined {
-    return this._deployment.created_at
-      ? new Date(this._deployment.created_at)
-      : undefined
   }
 
   get canDelete(): boolean {
@@ -38,15 +35,11 @@ export class Deployment {
     }
 
     return this._jobs.sort((j1: Job, j2: Job) => {
-      const date1 = new Date(j1.updatedAt as string)
-      const date2 = new Date(j2.updatedAt as string)
+      const time1 = j1.updatedAt?.getTime() ?? 0
+      const time2 = j2.updatedAt?.getTime() ?? 0
 
-      return date2.getTime() - date1.getTime()
+      return time2 - time1
     })[0]
-  }
-
-  get id(): string {
-    return `${this._deployment.id}`
   }
 
   get image(): string | undefined {
@@ -59,10 +52,6 @@ export class Deployment {
 
   get longitude(): number {
     return this._deployment.longitude
-  }
-
-  get name(): string {
-    return this._deployment.name
   }
 
   get numEvents(): number {
@@ -83,6 +72,18 @@ export class Deployment {
 
   get numTaxa(): number {
     return this._deployment.taxa_count
+  }
+
+  get device(): Entity | undefined {
+    if (this._deployment.device) {
+      return new Entity(this._deployment.device)
+    }
+  }
+
+  get researchSite(): Entity | undefined {
+    if (this._deployment.research_site) {
+      return new Entity(this._deployment.research_site)
+    }
   }
 
   get firstDateLabel(): string | undefined {

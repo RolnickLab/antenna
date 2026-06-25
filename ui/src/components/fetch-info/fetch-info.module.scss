@@ -1,7 +1,3 @@
-@import 'src/design-system/variables/colors.scss';
-@import 'src/design-system/variables/typography.scss';
-@import 'src/design-system/variables/variables.scss';
-
 .wrapper {
   height: 32px;
   display: flex;
@@ -14,13 +10,13 @@
   }
 
   span {
-    @include paragraph-x-small();
+    @include body-small;
     font-weight: 600;
-    color: $color-neutral-300;
+    color: var(--color-muted-foreground);
   }
 }
 
-@media only screen and (max-width: $small-screen-breakpoint) {
+@media only screen and (max-width: $breakpoint-md) {
   .wrapper {
     display: none;
   }

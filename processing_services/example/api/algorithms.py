@@ -42,15 +42,28 @@ class Algorithm:
     def run(self, inputs: list[SourceImage] | list[Detection]) -> list[Detection]:
         raise NotImplementedError("Subclasses must implement the run method")
 
-    algorithm_config_response = AlgorithmConfigResponse(
-        name="Base Algorithm",
-        key="base",
-        task_type="base",
-        description="A base class for all algorithms.",
-        version=1,
-        version_name="v1",
-        category_map=None,
-    )
+    def get_category_map(self) -> AlgorithmCategoryMapResponse:
+        return AlgorithmCategoryMapResponse(
+            data=[],
+            labels=[],
+            version="v1",
+            description="A model without labels.",
+            uri=None,
+        )
+
+    def get_algorithm_config_response(self) -> AlgorithmConfigResponse:
+        return AlgorithmConfigResponse(
+            name="Base Algorithm",
+            key="base",
+            task_type="base",
+            description="A base class for all algorithms.",
+            version=1,
+            version_name="v1",
+            category_map=self.get_category_map(),
+        )
+
+    def __init__(self):
+        self.algorithm_config_response = self.get_algorithm_config_response()
 
 
 class ZeroShotObjectDetector(Algorithm):
@@ -141,24 +154,36 @@ class ZeroShotObjectDetector(Algorithm):
 
         return detector_responses
 
-    algorithm_config_response = AlgorithmConfigResponse(
-        name="Zero Shot Object Detector",
-        key="zero-shot-object-detector",
-        task_type="detection",
-        description=(
-            "Huggingface Zero Shot Object Detection model."
-            "Produces both a bounding box and a candidate label classification for each detection."
-        ),
-        version=1,
-        version_name="v1",
-        category_map=None,
-    )
+    def get_category_map(self) -> AlgorithmCategoryMapResponse:
+        return AlgorithmCategoryMapResponse(
+            data=[{"index": i, "label": label} for i, label in enumerate(self.candidate_labels)],
+            labels=self.candidate_labels,
+            version="v1",
+            description="Candidate labels used for zero-shot object detection.",
+            uri=None,
+        )
+
+    def get_algorithm_config_response(self) -> AlgorithmConfigResponse:
+        return AlgorithmConfigResponse(
+            name="Zero Shot Object Detector",
+            key="zero-shot-object-detector",
+            task_type="detection",
+            description=(
+                "Huggingface Zero Shot Object Detection model."
+                "Produces both a bounding box and a candidate label classification for each detection."
+            ),
+            version=1,
+            version_name="v1",
+            category_map=self.get_category_map(),
+        )
 
 
 class HFImageClassifier(Algorithm):
     """
     A  local classifier that uses the Hugging Face pipeline to classify images.
     """
+
+    model_name: str = "google/vit-base-patch16-224"  # Vision Transformer model trained on ImageNet-1k
 
     def compile(self):
         saved_models_key = "hf_image_classifier"  # generate a key for each uniquely compiled algorithm
@@ -167,7 +192,7 @@ class HFImageClassifier(Algorithm):
             from transformers import pipeline
 
             logger.info(f"Compiling {self.algorithm_config_response.name} from scratch...")
-            self.model = pipeline("image-classification", model="google/vit-base-patch16-224")
+            self.model = pipeline("image-classification", model=self.model_name, device=get_best_device())
             SAVED_MODELS[saved_models_key] = self.model
         else:
             logger.info(f"Using saved model for {self.algorithm_config_response.name}...")
@@ -216,15 +241,55 @@ class HFImageClassifier(Algorithm):
 
         return detections_to_return
 
-    algorithm_config_response = AlgorithmConfigResponse(
-        name="HF Image Classifier",
-        key="hf-image-classifier",
-        task_type="classification",
-        description="HF ViT for image classification.",
-        version=1,
-        version_name="v1",
-        category_map=None,
-    )
+    def get_category_map(self) -> AlgorithmCategoryMapResponse:
+        """
+        Extract the category map from the model.
+        Returns an AlgorithmCategoryMapResponse with labels, data, and model information.
+        """
+        from transformers.models.auto.configuration_auto import AutoConfig
+
+        logger.info(f"Loading configuration for {self.model_name}")
+        config = AutoConfig.from_pretrained(self.model_name)
+
+        # Extract label information
+        if not hasattr(config, "id2label") or not config.id2label:
+            raise ValueError(
+                f"Cannot create category map for model {self.model_name}, no id2label mapping found in config"
+            )
+        else:
+            # Sort labels by index
+            # Ensure keys are strings for consistent access
+            id2label: dict[str, str] = {str(k): v for k, v in config.id2label.items()}
+            indices = sorted([int(k) for k in id2label.keys()])
+
+            # Create labels and data
+            labels = [id2label[str(i)] for i in indices]
+            data = [{"label": label, "index": idx} for idx, label in zip(indices, labels)]
+
+        # Build description
+        description_text = (
+            f"Vision Transformer model trained on ImageNet-1k. "
+            f"Contains {len(labels)} object classes. Model: {self.model_name}"
+        )
+
+        return AlgorithmCategoryMapResponse(
+            data=data,
+            labels=labels,
+            version="ImageNet-1k",
+            description=description_text,
+            uri=f"https://huggingface.co/{self.model_name}",
+        )
+
+    def get_algorithm_config_response(self) -> AlgorithmConfigResponse:
+        return AlgorithmConfigResponse(
+            name="HF Image Classifier",
+            key="hf-image-classifier",
+            task_type="classification",
+            description="HF ViT for image classification.",
+            version=1,
+            version_name="v1",
+            category_map=self.get_category_map(),
+        )
 
 
 class RandomSpeciesClassifier(Algorithm):

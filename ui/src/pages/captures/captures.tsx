@@ -1,0 +1,142 @@
+import { FilterControl } from 'components/filtering/filter-control'
+import { FilterSection } from 'components/filtering/filter-section'
+import { useCaptures } from 'data-services/hooks/captures/useCaptures'
+import { Grid2X2Icon, TableIcon } from 'lucide-react'
+import {
+  ColumnSettings,
+  PageFooter,
+  PageHeader,
+  PaginationBar,
+  SortControl,
+  Table,
+  ToggleGroup,
+} from 'nova-ui-kit'
+import { useState } from 'react'
+import { useParams } from 'react-router-dom'
+import { DOCS_LINKS } from 'utils/constants'
+import { STRING, translate } from 'utils/language'
+import { useColumnSettings } from 'utils/useColumnSettings'
+import { useFilters } from 'utils/useFilters'
+import { usePagination } from 'utils/usePagination'
+import { UserPermission } from 'utils/user/types'
+import { useSelectedView } from 'utils/useSelectedView'
+import { useSort } from 'utils/useSort'
+import { columns } from './capture-columns'
+import { CaptureGallery } from './capture-gallery'
+import { UploadImagesDialog } from './upload-images-dialog/upload-images-dialog'
+
+export const Captures = () => {
+  const [isUploadOpen, setIsUploadOpen] = useState(false)
+  const { projectId } = useParams()
+  const { columnSettings, setColumnSettings } = useColumnSettings('captures', {
+    thumbnail: true,
+    timestamp: true,
+    deployment: true,
+    session: true,
+    size: true,
+    dimensions: true,
+    filename: false,
+    path: false,
+    'last-processed': true,
+  })
+  const { selectedView, setSelectedView } = useSelectedView('table')
+  const { filters } = useFilters()
+  const { sort, setSort } = useSort({
+    field: 'timestamp',
+    order: 'desc',
+  })
+  const { pagination, setPage } = usePagination()
+  const countColumnVisible = columnSettings.occurrences || columnSettings.taxa
+  const sortByCountActive =
+    sort?.field === 'occurrences_count' || sort?.field === 'taxa_count'
+  const { captures, userPermissions, total, isLoading, isFetching, error } =
+    useCaptures({
+      projectId,
+      sort,
+      pagination,
+      filters,
+      withCounts: countColumnVisible || sortByCountActive, // Only fetch counts if needed since counts will slow down the response
+    })
+  const canCreate = userPermissions?.includes(UserPermission.Create)
+  const tableColumns = columns({ projectId: projectId as string })
+
+  return (
+    <div className="flex flex-col gap-6 md:flex-row">
+      <div className="space-y-6">
+        <FilterSection defaultOpen>
+          <FilterControl field="deployment" />
+          <FilterControl field="collections" />
+          <FilterControl field="processed" />
+        </FilterSection>
+      </div>
+      <div className="w-full overflow-hidden">
+        <PageHeader
+          tooltip={translate(STRING.TOOLTIP_CAPTURE)}
+          docsLink={DOCS_LINKS.UPLOADING_DATA}
+          isFetching={isFetching}
+          isLoading={isLoading}
+          subTitle={translate(STRING.RESULTS, { total })}
+          title={translate(STRING.NAV_ITEM_CAPTURES)}
+        >
+          <ToggleGroup
+            items={[
+              {
+                value: 'table',
+                label: translate(STRING.TAB_ITEM_TABLE),
+                Icon: TableIcon,
+              },
+              {
+                value: 'gallery',
+                label: translate(STRING.TAB_ITEM_GALLERY),
+                Icon: Grid2X2Icon,
+              },
+            ]}
+            value={selectedView}
+            onValueChange={setSelectedView}
+          />
+          {canCreate ? (
+            <UploadImagesDialog
+              isOpen={isUploadOpen}
+              setIsOpen={setIsUploadOpen}
+            />
+          ) : null}
+          <SortControl columns={tableColumns} setSort={setSort} sort={sort} />
+          <ColumnSettings
+            columns={tableColumns}
+            columnSettings={columnSettings}
+            onColumnSettingsChange={setColumnSettings}
+          />
+        </PageHeader>
+        {selectedView === 'table' && (
+          <Table
+            columns={tableColumns.filter(
+              (column) => column.id === 'actions' || !!columnSettings[column.id]
+            )}
+            error={error}
+            isLoading={isLoading}
+            items={captures}
+            onSortSettingsChange={setSort}
+            sortable
+            sortSettings={sort}
+          />
+        )}
+        {selectedView === 'gallery' && (
+          <CaptureGallery
+            captures={captures}
+            error={error}
+            isLoading={isLoading}
+          />
+        )}
+      </div>
+      <PageFooter>
+        {captures?.length ? (
+          <PaginationBar
+            pagination={pagination}
+            total={total}
+            setPage={setPage}
+          />
+        ) : null}
+      </PageFooter>
+    </div>
+  )
+}

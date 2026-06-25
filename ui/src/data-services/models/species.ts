@@ -1,4 +1,3 @@
-import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { UserPermission } from 'utils/user/types'
 import { Taxon } from './taxa'
 
@@ -14,6 +13,10 @@ export class Species extends Taxon {
     this._species = species
   }
 
+  get adminUrl(): string {
+    return `https://api.antenna.insectai.org/bereich/main/taxon/${this.id}` // TODO: Use dynamic admin URL based on environment?
+  }
+
   get coverImage(): { url: string; caption?: string } | undefined {
     if (!this._species.cover_image_url) {
       return undefined
@@ -25,20 +28,48 @@ export class Species extends Taxon {
     }
   }
 
-  get createdAt(): string {
-    return getFormatedDateTimeString({
-      date: new Date(this._species.created_at),
-    })
+  get coverImageCredit(): string | null {
+    return this._species.cover_image_credit || null
   }
 
-  get lastSeenLabel() {
+  get coverImageUrl(): string | null {
+    return this._species.cover_image_url || null
+  }
+
+  get createdAt(): Date {
+    return new Date(this._species.created_at)
+  }
+
+  get fieldguideId(): string | null {
+    return this._species.fieldguide_id || null
+  }
+
+  get fieldguideUrl(): string | undefined {
+    return this.fieldguideId
+      ? `https://leps.fieldguide.ai/categories?category=${this.fieldguideId}`
+      : undefined
+  }
+
+  get gbifUrl(): string {
+    return `https://www.gbif.org/occurrence/gallery?advanced=1&verbatim_scientific_name=${this.name}`
+  }
+
+  get iNaturalistId(): string | null {
+    return this._species.inat_taxon_id || null
+  }
+
+  get iNaturalistUrl(): string | undefined {
+    return this.iNaturalistId
+      ? `https://www.inaturalist.org/taxa/${this.iNaturalistId}`
+      : undefined
+  }
+
+  get lastSeen() {
     if (!this._species.last_detected) {
       return undefined
     }
 
-    const date = new Date(this._species.last_detected)
-
-    return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`
+    return new Date(this._species.last_detected)
   }
 
   get numDetections(): number {
@@ -49,16 +80,8 @@ export class Species extends Taxon {
     return this._species.occurrences_count ?? 0
   }
 
-  get gbifUrl(): string {
-    return `https://www.gbif.org/occurrence/gallery?advanced=1&verbatim_scientific_name=${this.name}`
-  }
-
-  get fieldguideUrl(): string | undefined {
-    if (!this._species.fieldguide_id) {
-      return undefined
-    }
-
-    return `https://leps.fieldguide.ai/categories?category=${this._species.fieldguide_id}`
+  get numVerified(): number {
+    return this._species.verified_count ?? 0
   }
 
   get score(): number | undefined {
@@ -85,10 +108,11 @@ export class Species extends Taxon {
     return tags.sort((t1: Tag, t2: Tag) => t1.id - t2.id)
   }
 
-  get updatedAt(): string {
-    return getFormatedDateTimeString({
-      date: new Date(this._species.updated_at),
-    })
+  get updatedAt(): Date | undefined {
+    if (!this._species.updated_at) {
+      return undefined
+    }
+    return new Date(this._species.updated_at)
   }
 
   get userPermissions(): UserPermission[] {

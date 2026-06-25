@@ -1,7 +1,6 @@
 import { getCompactDatespanString } from 'utils/date/getCompactDatespanString/getCompactDatespanString'
 import { getCompactTimespanString } from 'utils/date/getCompactTimespanString/getCompactTimespanString'
 import { getFormatedDateString } from 'utils/date/getFormatedDateString/getFormatedDateString'
-import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 
 export type ServerEvent = any // TODO: Update this type
@@ -15,7 +14,7 @@ export class Session {
 
     if (event.example_captures?.length) {
       this._exampleCaptures = event.example_captures?.map((capture: any) => ({
-        src: capture.url,
+        src: capture.thumbnails?.medium ?? capture.url,
       }))
     }
   }
@@ -101,15 +100,15 @@ export class Session {
     })
   }
 
-  get createdAt(): string {
-    return getFormatedDateTimeString({
-      date: new Date(this._event.created_at),
-    })
+  get createdAt(): Date {
+    return new Date(this._event.created_at)
   }
 
-  get updatedAt(): string {
-    return getFormatedDateTimeString({
-      date: new Date(this._event.updated_at),
-    })
+  get updatedAt(): Date | undefined {
+    if (!this._event.updated_at) {
+      return undefined
+    }
+
+    return new Date(this._event.updated_at)
   }
 }

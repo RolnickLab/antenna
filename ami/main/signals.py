@@ -1,13 +1,17 @@
 import logging
 
 from django.contrib.auth.models import Group
+from django.core.files.storage import default_storage
+from django.db import transaction
 from django.db.models.signals import m2m_changed, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from guardian.shortcuts import assign_perm
 
+from ami.main.models import Project, SourceImageThumbnail
+from ami.main.tasks import refresh_project_cached_counts
 from ami.users.roles import BasicMember, ProjectManager, create_roles_for_project
 
-from .models import Project, User
+from .models import User
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +38,7 @@ def set_project_owner_permissions(sender, instance, created, **kwargs):
 @receiver(post_save, sender=Project)
 def set_others_permissions(sender, instance, created, **kwargs):
     if created and instance.owner:
-        others_perms = [Project.Permissions.VIEW]
+        others_perms = [Project.Permissions.VIEW_PROJECT]
         # assign permissions for other users
         all_other_users = User.objects.exclude(id=instance.owner.id)
         for user in all_other_users:
@@ -110,3 +114,103 @@ def delete_project_groups(sender, instance, **kwargs):
     prefix = f"{instance.pk}_"
     # Find and delete all groups that start with {project_id}_
     Group.objects.filter(name__startswith=prefix).delete()
+
+
+@receiver(pre_delete, sender=SourceImageThumbnail)
+def delete_thumbnail_storage_blob(sender, instance, **kwargs):
+    """Delete the storage blob when a thumbnail row is deleted (directly or via
+    CASCADE from its capture) — no other code path reaps it. Best-effort:
+    failures are logged, never re-raised, so the row delete always completes.
+    """
+    if not instance.path:
+        return
+    try:
+        default_storage.delete(instance.path)
+    except Exception as e:
+        logger.warning(
+            f"Could not delete storage blob {instance.path} for SourceImageThumbnail " f"id={instance.pk}: {e}"
+        )
+
+
+# ============================================================================
+# Project Default Filters Update Signals
+# ============================================================================
+# These signals handle efficient updates to calculated fields for project-related
+# objects (such as Deployments and Events) whenever a project's default filter
+# values change.
+#
+# Specifically, they trigger recalculation of cached counts when:
+#   - The project's default score threshold is updated
+#   - The project's default include taxa are modified
+#   - The project's default exclude taxa are modified
+#
+# This ensures that cached counts (e.g., occurrences_count, taxa_count) remain
+# accurate and consistent with the active filter configuration for each project.
+# ============================================================================
+
+
+def refresh_cached_counts_for_project(project: Project):
+    """
+    Enqueue a Celery task to refresh cached counts for a project's Deployments
+    and Events after the surrounding transaction commits.
+
+    This fan-out can iterate hundreds of events and dozens of deployments, so
+    running it inline in the request/save path would block the caller. The
+    ``transaction.on_commit`` wrapper guarantees the task only runs if the
+    triggering save succeeds.
+    """
+    logger.info(f"Scheduling cached-count refresh for project {project.pk} ({project.name})")
+    transaction.on_commit(lambda: refresh_project_cached_counts.delay(project.pk))
+
+
+@receiver(pre_save, sender=Project)
+def cache_old_threshold(sender, instance, **kwargs):
+    """
+    Cache the previous default score threshold before saving the Project.
+
+    We do this because:
+      - In post_save, the instance already contains the NEW value.
+      - To detect whether the threshold actually changed, we must read the OLD
+        value from the database before the update happens.
+      - This allows us to accurately detect threshold changes and then trigger
+        recalculation of cached filtered counts (Events, Deployments, etc.).
+
+    The cached value is stored on the instance as `_old_threshold` so it can be
+    safely accessed in the post_save handler.
+    """
+    if instance.pk:
+        instance._old_threshold = Project.objects.get(pk=instance.pk).default_filters_score_threshold
+    else:
+        instance._old_threshold = None
+
+
+@receiver(post_save, sender=Project)
+def threshold_updated(sender, instance, **kwargs):
+    """
+    After saving the Project, compare the previously cached threshold with the new value.
+    If the default score threshold changed, we refresh all cached counts using the new filters.
+
+    This two-step (pre_save + post_save) pattern is required because:
+      - post_save instances already contain the updated value
+      - so the old threshold would be lost without caching it in pre_save
+    """
+    old_threshold = instance._old_threshold
+    new_threshold = instance.default_filters_score_threshold
+    if old_threshold is not None and old_threshold != new_threshold:
+        refresh_cached_counts_for_project(instance)
+
+
+@receiver(m2m_changed, sender=Project.default_filters_include_taxa.through)
+def include_taxa_updated(sender, instance: Project, action, **kwargs):
+    """Refresh cached counts when include taxa are modified."""
+    if action in ["post_add", "post_remove", "post_clear"]:
+        logger.info(f"Include taxa updated for project {instance.pk} (action={action})")
+        refresh_cached_counts_for_project(instance)
+
+
+@receiver(m2m_changed, sender=Project.default_filters_exclude_taxa.through)
+def exclude_taxa_updated(sender, instance: Project, action, **kwargs):
+    """Refresh cached counts when exclude taxa are modified."""
+    if action in ["post_add", "post_remove", "post_clear"]:
+        logger.info(f"Exclude taxa updated for project {instance.pk} (action={action})")
+        refresh_cached_counts_for_project(instance)

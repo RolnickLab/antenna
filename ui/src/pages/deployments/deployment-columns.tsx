@@ -1,23 +1,27 @@
+import { API_ROUTES } from 'data-services/constants'
 import { Deployment } from 'data-services/models/deployment'
-import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
-import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
-import { StatusTableCell } from 'design-system/components/table/status-table-cell/status-table-cell'
 import {
+  BasicTableCell,
   CellTheme,
+  DateTableCell,
   ImageCellTheme,
+  ImageTableCell,
+  StatusTableCell,
   TableColumn,
   TextAlign,
-} from 'design-system/components/table/types'
-import { DeleteDeploymentDialog } from 'pages/deployment-details/delete-deployment-dialog'
+  Toolbar,
+} from 'nova-ui-kit'
+import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
-import styles from './deployments.module.scss'
 
-export const columns: (projectId: string) => TableColumn<Deployment>[] = (
+export const columns = ({
+  projectId,
+}: {
   projectId: string
-) => [
+}): TableColumn<Deployment>[] => [
   {
     id: 'snapshot',
     name: translate(STRING.FIELD_LABEL_IMAGE),
@@ -50,13 +54,36 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
           keepSearchParams: true,
         })}
       >
-        <BasicTableCell value={item.name} theme={CellTheme.Primary} />
+        <BasicTableCell
+          value={item.name}
+          details={[`${translate(STRING.FIELD_LABEL_ID)}: ${item.id}`]}
+          theme={CellTheme.Primary}
+        />
       </Link>
     ),
   },
   {
+    id: 'device',
+    name: translate(STRING.FIELD_LABEL_DEVICE),
+    tooltip: translate(STRING.TOOLTIP_DEVICE),
+    renderCell: (item: Deployment) => (
+      <BasicTableCell value={item.device?.name} />
+    ),
+  },
+  {
+    id: 'site',
+    name: translate(STRING.FIELD_LABEL_SITE),
+    tooltip: translate(STRING.TOOLTIP_SITE),
+    renderCell: (item: Deployment) => (
+      <BasicTableCell value={item.researchSite?.name} />
+    ),
+  },
+  {
     id: 'status',
-    name: 'Latest job status',
+    name: translate(STRING.FIELD_LABEL_LATEST_JOB_STATUS),
+    tooltip: translate(STRING.TOOLTIP_LATEST_JOB_STATUS, {
+      type: translate(STRING.ENTITY_TYPE_DEPLOYMENT),
+    }),
     renderCell: (item: Deployment) => {
       if (!item.currentJob) {
         return <></>
@@ -74,6 +101,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
   {
     id: 'jobs',
     name: translate(STRING.FIELD_LABEL_JOBS),
+    tooltip: translate(STRING.TOOLTIP_JOB),
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -89,9 +117,29 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     ),
   },
   {
+    id: 'captures',
+    name: translate(STRING.FIELD_LABEL_CAPTURES),
+    tooltip: translate(STRING.TOOLTIP_CAPTURE),
+    sortField: 'captures_count',
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Deployment) => (
+      <Link
+        to={getAppRoute({
+          to: APP_ROUTES.CAPTURES({ projectId }),
+          filters: { deployment: item.id },
+        })}
+      >
+        <BasicTableCell value={item.numImages} theme={CellTheme.Bubble} />
+      </Link>
+    ),
+  },
+  {
     id: 'sessions',
     name: translate(STRING.FIELD_LABEL_SESSIONS),
-    sortField: 'numEvents',
+    tooltip: translate(STRING.TOOLTIP_SESSION),
+    sortField: 'events_count',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -107,18 +155,10 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     ),
   },
   {
-    id: 'captures',
-    name: translate(STRING.FIELD_LABEL_CAPTURES),
-    sortField: 'numImages',
-    styles: {
-      textAlign: TextAlign.Right,
-    },
-    renderCell: (item: Deployment) => <BasicTableCell value={item.numImages} />,
-  },
-  {
     id: 'occurrences',
     name: translate(STRING.FIELD_LABEL_OCCURRENCES),
-    sortField: 'numOccurrences',
+    tooltip: translate(STRING.TOOLTIP_OCCURRENCE),
+    sortField: 'occurrences_count',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -136,7 +176,7 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
   {
     id: 'taxa',
     name: translate(STRING.FIELD_LABEL_TAXA),
-    sortField: 'numTaxa',
+    sortField: 'taxa_count',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -152,9 +192,9 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     ),
   },
   {
-    id: 'firstDate',
+    id: 'first-date',
     name: translate(STRING.FIELD_LABEL_FIRST_DATE),
-    sortField: 'firstDate',
+    sortField: 'first_capture_timestamp',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -163,9 +203,9 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     ),
   },
   {
-    id: 'lastDate',
+    id: 'last-date',
     name: translate(STRING.FIELD_LABEL_LAST_DATE),
-    sortField: 'lastDate',
+    sortField: 'last_capture_timestamp',
     styles: {
       textAlign: TextAlign.Right,
     },
@@ -174,16 +214,31 @@ export const columns: (projectId: string) => TableColumn<Deployment>[] = (
     ),
   },
   {
+    id: 'created-at',
+    name: translate(STRING.FIELD_LABEL_CREATED_AT),
+    sortField: 'created_at',
+    renderCell: (item: Deployment) => <DateTableCell date={item.createdAt} />,
+  },
+  {
+    id: 'updated-at',
+    name: translate(STRING.FIELD_LABEL_UPDATED_AT),
+    sortField: 'updated_at',
+    renderCell: (item: Deployment) => <DateTableCell date={item.updatedAt} />,
+  },
+  {
     id: 'actions',
     name: '',
-    styles: {
-      padding: '16px',
-      width: '100%',
-    },
+    sticky: true,
     renderCell: (item: Deployment) => (
-      <div className={styles.deploymentActions}>
-        {item.canDelete && <DeleteDeploymentDialog id={item.id} />}
-      </div>
+      <Toolbar>
+        {item.canDelete && (
+          <DeleteEntityDialog
+            collection={API_ROUTES.DEPLOYMENTS}
+            id={item.id}
+            type={translate(STRING.ENTITY_TYPE_DEPLOYMENT)}
+          />
+        )}
+      </Toolbar>
     ),
   },
 ]

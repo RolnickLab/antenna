@@ -1,8 +1,7 @@
 import classNames from 'classnames'
 import { useCreateEntity } from 'data-services/hooks/entities/useCreateEntity'
-import * as Dialog from 'design-system/components/dialog/dialog'
 import { PlusIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
+import { Button, Dialog } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
@@ -13,13 +12,17 @@ import styles from './styles.module.scss'
 const CLOSE_TIMEOUT = 1000
 
 export const NewEntityDialog = ({
+  buttonSize = 'small',
+  buttonVariant = 'outline',
   collection,
-  type,
   isCompact,
+  type,
 }: {
+  buttonSize?: 'default' | 'small'
+  buttonVariant?: 'outline' | 'success'
   collection: string
-  type: string
   isCompact?: boolean
+  type: string
 }) => {
   const { projectId } = useParams()
   const [isOpen, setIsOpen] = useState(false)
@@ -39,8 +42,8 @@ export const NewEntityDialog = ({
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
-      <Dialog.Trigger>
-        <Button size="small" variant="outline">
+      <Dialog.Trigger asChild>
+        <Button size={buttonSize} variant={buttonVariant}>
           <PlusIcon className="w-4 h-4" />
           <span>{label}</span>
         </Button>
@@ -60,10 +63,12 @@ export const NewEntityDialog = ({
             isLoading={isLoading}
             isSuccess={isSuccess}
             onSubmit={(data) => {
-              createEntity({
+              const fieldValues = {
                 ...data,
                 projectId: projectId as string,
-              })
+              }
+
+              createEntity(fieldValues)
             }}
           />
         </div>

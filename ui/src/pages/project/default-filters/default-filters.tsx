@@ -1,7 +1,7 @@
 import classNames from 'classnames'
 import { useUpdateProjectSettings } from 'data-services/hooks/projects/useUpdateProjectSettings'
 import { ProjectDetails } from 'data-services/models/project-details'
-import styles from 'design-system/components/dialog/dialog.module.scss'
+import styles from 'nova-ui-kit/components/dialog/dialog.module.scss'
 import { DefaultFiltersForm } from 'pages/project-details/default-filters-form'
 import { useEffect } from 'react'
 import { useNavigate, useOutletContext } from 'react-router-dom'
@@ -16,7 +16,7 @@ export const DefaultFilters = () => {
   const { updateProjectSettings, isLoading, isSuccess, error } =
     useUpdateProjectSettings(project.id)
 
-  const canView = project.canUpdate && project.featureFlags.default_filters
+  const canView = project.canUpdate
 
   useEffect(() => {
     if (!canView) {

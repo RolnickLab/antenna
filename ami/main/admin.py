@@ -1,3 +1,4 @@
+import datetime
 from typing import Any
 
 from django.contrib import admin
@@ -10,6 +11,7 @@ from guardian.admin import GuardedModelAdmin
 
 import ami.utils
 from ami import tasks
+from ami.jobs.models import Job
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.ml.tasks import remove_duplicate_classifications
 
@@ -26,6 +28,7 @@ from .models import (
     Site,
     SourceImage,
     SourceImageCollection,
+    SourceImageThumbnail,
     Tag,
     TaxaList,
     Taxon,
@@ -71,12 +74,14 @@ class ProjectAdmin(GuardedModelAdmin):
         form.instance.ensure_owner_membership()
 
     list_display = ("name", "owner", "priority", "active", "created_at", "updated_at")
-    list_filter = ("active", "owner")
-    search_fields = ("name", "owner__email", "members__email")
-    filter_horizontal = ("members",)
+    list_filter = ("active",)
+    search_fields = ("name", "owner__email")
 
     inlines = [ProjectPipelineConfigInline]
-    autocomplete_fields = ("default_filters_include_taxa", "default_filters_exclude_taxa")
+    autocomplete_fields = ("owner", "default_filters_include_taxa", "default_filters_exclude_taxa")
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        return super().get_queryset(request).select_related("owner")
 
     fieldsets = (
         (
@@ -87,6 +92,7 @@ class ProjectAdmin(GuardedModelAdmin):
                     "description",
                     "priority",
                     "active",
+                    "draft",
                     "feature_flags",
                 )
             },
@@ -106,7 +112,7 @@ class ProjectAdmin(GuardedModelAdmin):
         (
             "Ownership & Access",
             {
-                "fields": ("owner", "members"),
+                "fields": ("owner",),
                 "classes": ("wide",),
             },
         ),
@@ -131,11 +137,11 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         "name",
         "project",
         "data_source_uri",
-        "captures_count",
-        "captures_size",
-        "events_count",
-        "start_date",
-        "end_date",
+        "captures_count_display",
+        "captures_size_display",
+        "events_count_display",
+        "first_date",
+        "last_date",
     )
 
     search_fields = (
@@ -143,41 +149,83 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         "name",
     )
 
-    def start_date(self, obj) -> str | None:
-        result = SourceImage.objects.filter(event__deployment=obj).aggregate(
-            models.Min("timestamp"),
-        )
-        return result["timestamp__min"].date() if result["timestamp__min"] else None
+    # The previous custom start_date / end_date / events_count / captures_count
+    # methods each ran a live aggregate per row (`SourceImage.aggregate(Min/Max)`,
+    # `obj.events.count()`), making this list view ~O(rows × 4 expensive
+    # queries) — unusable on stacks with deployments holding >100k captures.
+    # Deployment already denormalizes captures_count, events_count,
+    # data_source_total_size, first_capture_timestamp and last_capture_timestamp
+    # (refreshed by update_calculated_fields); read those instead.
+    @admin.display(description="First date", ordering="first_capture_timestamp")
+    def first_date(self, obj: Deployment) -> datetime.date | None:
+        return obj.first_date()
 
-    def end_date(self, obj) -> str | None:
-        result = SourceImage.objects.filter(deployment=obj).aggregate(
-            models.Max("timestamp"),
-        )
-        return result["timestamp__max"].date() if result["timestamp__max"] else None
+    @admin.display(description="Last date", ordering="last_capture_timestamp")
+    def last_date(self, obj: Deployment) -> datetime.date | None:
+        return obj.last_date()
 
-    def events_count(self, obj) -> str | None:
-        return number_format(obj.events.count(), force_grouping=True, use_l10n=True)
+    @admin.display(description="Events", ordering="events_count")
+    def events_count_display(self, obj: Deployment) -> str:
+        return number_format(obj.events_count or 0, force_grouping=True, use_l10n=True)
 
-    def captures_size(self, obj) -> str | None:
-        return filesizeformat(obj.data_source_total_size)
+    @admin.display(description="Captures", ordering="captures_count")
+    def captures_count_display(self, obj: Deployment) -> str:
+        return number_format(obj.captures_count or 0, force_grouping=True, use_l10n=True)
 
-    def captures_count(self, obj) -> str | None:
-        total_files = obj.data_source_total_files
-        return number_format(total_files, force_grouping=True, use_l10n=True)
+    @admin.display(description="Size", ordering="data_source_total_size")
+    def captures_size_display(self, obj: Deployment) -> str:
+        return filesizeformat(obj.data_source_total_size or 0)
 
     # list action that runs deployment.import_captures and displays a message
     # https://docs.djangoproject.com/en/3.2/ref/contrib/admin/actions/#writing-action-functions
-    @admin.action(description="Sync captures from deployment's data source (async)")
+    @admin.action(description="Sync captures from deployment's data source (Job)")
     def sync_captures(self, request: HttpRequest, queryset: QuerySet[Deployment]) -> None:
-        queued_tasks = [tasks.sync_source_images.delay(deployment.pk) for deployment in queryset]
-        msg = f"Syncing captures for {len(queued_tasks)} deployments in background: {queued_tasks}"
+        from ami.jobs.models import DataStorageSyncJob
+
+        queued_job_ids: list[int] = []
+        skipped: list[str] = []
+        for deployment in queryset:
+            if not deployment.project_id:
+                skipped.append(f"{deployment} (no project)")
+                continue
+            if not deployment.data_source_id:
+                skipped.append(f"{deployment} (no data source)")
+                continue
+            job = Job.objects.create(
+                name=f"Sync captures for deployment {deployment.pk}",
+                deployment=deployment,
+                project=deployment.project,
+                job_type_key=DataStorageSyncJob.key,
+            )
+            job.enqueue()
+            queued_job_ids.append(job.pk)
+        msg = f"Queued DataStorageSyncJob for {len(queued_job_ids)} deployments: {queued_job_ids}"
+        if skipped:
+            msg += f" — skipped: {', '.join(skipped)}"
         self.message_user(request, msg)
 
     # Action that regroups all captures in the deployment into events
-    @admin.action(description="Regroup captures into events (async)")
+    @admin.action(description="Regroup captures into sessions (Job)")
     def regroup_events(self, request: HttpRequest, queryset: QuerySet[Deployment]) -> None:
-        queued_tasks = [tasks.regroup_events.delay(deployment.pk) for deployment in queryset]
-        msg = f"Regrouping captures into events for {len(queued_tasks)} deployments in background: {queued_tasks}"
+        from ami.jobs.models import RegroupEventsJob
+
+        queued_job_ids: list[int] = []
+        skipped: list[str] = []
+        for deployment in queryset:
+            if not deployment.project_id:
+                skipped.append(f"{deployment} (no project)")
+                continue
+            job = Job.objects.create(
+                name=f"Regroup sessions for deployment {deployment.pk}",
+                deployment=deployment,
+                project=deployment.project,
+                job_type_key=RegroupEventsJob.key,
+            )
+            job.enqueue()
+            queued_job_ids.append(job.pk)
+        msg = f"Queued RegroupEventsJob for {len(queued_job_ids)} deployments: {queued_job_ids}"
+        if skipped:
+            msg += f" — skipped: {', '.join(skipped)}"
         self.message_user(request, msg)
 
     list_filter = ("project",)
@@ -264,6 +312,7 @@ class SourceImageAdmin(AdminBase):
         "checksum",
         "checksum_algorithm",
         "created_at",
+        "get_was_processed",
     )
 
     list_filter = (
@@ -279,8 +328,28 @@ class SourceImageAdmin(AdminBase):
         "path",
     )
 
+    # Populated from the source file during sync/upload; read-only here so
+    # operators don't clobber them. The API stays writable for fixups.
+    readonly_fields = ("size", "last_modified", "checksum", "checksum_algorithm")
+
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
-        return super().get_queryset(request).select_related("event", "deployment", "deployment__data_source")
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("event", "deployment", "deployment__data_source")
+            .with_was_processed()  # avoids N+1 from get_was_processed in list_display
+        )
+
+
+@admin.register(SourceImageThumbnail)
+class SourceImageThumbnailAdmin(AdminBase):
+    """Admin panel for ``SourceImageThumbnail`` model."""
+
+    list_display = ("source_image", "path", "label", "width", "height", "size")
+    list_filter = ("source_image__deployment__project", "source_image__deployment__data_source", "label")
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        return super().get_queryset(request).select_related("source_image", "source_image__deployment")
 
 
 class ClassificationInline(admin.TabularInline):
@@ -565,10 +634,30 @@ class SiteAdmin(admin.ModelAdmin[Site]):
 class S3StorageSourceAdmin(admin.ModelAdmin[S3StorageSource]):
     """Admin panel example for ``S3StorageSource`` model."""
 
-    list_display = ("name", "bucket", "prefix", "size", "total_files", "last_checked")
+    list_display = (
+        "name",
+        "uri",
+        "size",
+        "total_files",
+        "is_private",
+        "last_checked",
+        "project",
+        "updated_at",
+    )
 
     def size(self, obj) -> str:
         return filesizeformat(obj.total_size)
+
+    @admin.display(description="S3 URI", ordering="bucket")
+    def uri(self, obj) -> str:
+        return obj.uri()
+
+    @admin.display(boolean=True)
+    def is_private(self, obj) -> bool:
+        """
+        If a public base URL is set, the source is considered public.
+        """
+        return not bool(obj.public_base_url)
 
     @admin.action()
     def calculate_size_async(self, request: HttpRequest, queryset: QuerySet[S3StorageSource]) -> None:
@@ -585,6 +674,8 @@ class S3StorageSourceAdmin(admin.ModelAdmin[S3StorageSource]):
             source.count_files()
         self.message_user(request, f"File count calculated for {queryset.count()} source(s).")
 
+    list_filter = ("project", "bucket")
+
     actions = [calculate_size_async, count_files]
 
 
@@ -593,6 +684,7 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
     """Admin panel example for ``SourceImageCollection`` model."""
 
     list_display = ("name", "image_count", "method", "kwargs", "created_at", "updated_at")
+    list_filter = ("project",)
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         return super().get_queryset(request).annotate(image_count=models.Count("images"))
@@ -608,17 +700,41 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
     def populate_collection(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
         for collection in queryset:
             collection.populate_sample()
-        self.message_user(request, f"Populated {queryset.count()} collection(s).")
+        self.message_user(request, f"Populated {queryset.count()} capture set(s).")
 
     @admin.action()
     def populate_collection_async(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
         queued_tasks = [tasks.populate_collection.apply_async([collection.pk]) for collection in queryset]
         self.message_user(
             request,
-            f"Populating {len(queued_tasks)} collection(s) background tasks: {queued_tasks}.",
+            f"Populating {len(queued_tasks)} capture set(s) background tasks: {queued_tasks}.",
         )
 
-    actions = [populate_collection, populate_collection_async]
+    @admin.action(description="Run Small Size Filter post-processing task (async)")
+    def run_small_size_filter(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
+        jobs = []
+        for collection in queryset:
+            job = Job.objects.create(
+                name=f"Post-processing: SmallSizeFilter on Capture Set {collection.pk}",
+                project=collection.project,
+                job_type_key="post_processing",
+                params={
+                    "task": "small_size_filter",
+                    "config": {
+                        "source_image_collection_id": collection.pk,
+                    },
+                },
+            )
+            job.enqueue()
+            jobs.append(job.pk)
+
+        self.message_user(request, f"Queued Small Size Filter for {queryset.count()} capture set(s). Jobs: {jobs}")
+
+    actions = [
+        populate_collection,
+        populate_collection_async,
+        run_small_size_filter,
+    ]
 
     # Hide images many-to-many field from form. This would list all source images in the database.
     exclude = ("images",)

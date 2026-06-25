@@ -35,6 +35,9 @@ def get_image_timestamp_from_filename(img_path, raise_error=False) -> datetime.d
     >>> # Snapshot date format from Wingscape camera from Newfoundland
     >>> get_image_timestamp_from_filename("Project_20230801023001_4393.JPG").strftime(out_fmt)
     '2023-08-01 02:30:01'
+    >>> # 2-digit year format (e.g., Farmscape/NSCF cameras)
+    >>> get_image_timestamp_from_filename("NSCF----_250927194802_0017.JPG").strftime(out_fmt)
+    '2025-09-27 19:48:02'
 
     """
     name = pathlib.Path(img_path).stem
@@ -47,19 +50,30 @@ def get_image_timestamp_from_filename(img_path, raise_error=False) -> datetime.d
     two_groups_pattern = r"\d{8}[^\d]+\d{6}"  # YYYYMMDD*HHMMSS
     # Allow single non-digit delimiters within components, and one or more between DD and HH
     delimited_pattern = r"\d{4}[^\d]\d{2}[^\d]\d{2}[^\d]+\d{2}[^\d]\d{2}[^\d]\d{2}"  # YYYY*MM*DD*+HH*MM*SS
+    # 2-digit year: YYMMDDHHMMSS (12 consecutive digits, bounded by non-digits or string edges)
+    short_year_pattern = r"(?<!\d)\d{12}(?!\d)"  # YYMMDDHHMMSS
 
     # Combine patterns with OR '|' but keep them in their own groups
-    pattern = re.compile(f"({consecutive_pattern})|({two_groups_pattern})|({delimited_pattern})")
+    # Order matters: longer/more specific patterns first
+    pattern = re.compile(
+        f"({consecutive_pattern})|({two_groups_pattern})|({delimited_pattern})|({short_year_pattern})"
+    )
 
     match = pattern.search(name)
     if match:
         # Get the full string matched by any of the patterns
         matched_string = match.group(0)
-        # Remove all non-digit characters to create YYYYMMDDHHMMSS
+        # Remove all non-digit characters to create YYYYMMDDHHMMSS or YYMMDDHHMMSS
         consecutive_date_string = re.sub(r"[^\d]", "", matched_string)
 
+        # Determine format based on length (12 digits = 2-digit year, 14 = 4-digit year)
+        if len(consecutive_date_string) == 12:
+            fmt = "%y%m%d%H%M%S"
+        else:
+            fmt = strptime_format
+
         try:
-            date = datetime.datetime.strptime(consecutive_date_string, strptime_format)
+            date = datetime.datetime.strptime(consecutive_date_string, fmt)
         except ValueError:
             pass
 
@@ -98,9 +112,14 @@ def format_timedelta(duration: datetime.timedelta | None) -> str:
 def group_datetimes_by_gap(
     timestamps: list[datetime.datetime],
     max_time_gap=datetime.timedelta(minutes=120),
+    max_event_duration: datetime.timedelta | None = None,
 ) -> list[list[datetime.datetime]]:
     """
     Divide a list of timestamps into groups based on a maximum time gap.
+
+    When ``max_event_duration`` is set, a group is also split once it would
+    exceed that duration. This prevents continuous-monitoring deployments
+    (no quiet gap between nights) from producing a single multi-month group.
 
     >>> timestamps = [
     ...     datetime.datetime(2021, 1, 1, 0, 10, 0), # @TODO confirm the first gap is having an effect
@@ -131,6 +150,22 @@ def group_datetimes_by_gap(
     >>> result = group_datetimes_by_gap(timestamps, max_time_gap=datetime.timedelta(minutes=1))
     >>> len(result)
     10
+
+    Continuous-monitoring case: a long gap-free stream gets capped by
+    ``max_event_duration`` even when no gap exceeds ``max_time_gap``.
+
+    >>> continuous = [datetime.datetime(2021, 1, 1) + datetime.timedelta(minutes=5 * i) for i in range(24 * 12 * 3)]
+    >>> len(group_datetimes_by_gap(continuous, max_time_gap=datetime.timedelta(minutes=120)))
+    1
+    >>> groups = group_datetimes_by_gap(
+    ...     continuous,
+    ...     max_time_gap=datetime.timedelta(minutes=120),
+    ...     max_event_duration=datetime.timedelta(hours=24),
+    ... )
+    >>> len(groups)
+    3
+    >>> all((g[-1] - g[0]) <= datetime.timedelta(hours=24) for g in groups)
+    True
     """
     timestamps.sort()
     prev_timestamp: datetime.datetime | None = None
@@ -143,7 +178,12 @@ def group_datetimes_by_gap(
         else:
             delta = datetime.timedelta(0)
 
-        if delta >= max_time_gap:
+        split_by_gap = delta >= max_time_gap
+        split_by_duration = (
+            max_event_duration is not None and current_group and (timestamp - current_group[0]) > max_event_duration
+        )
+
+        if split_by_gap or split_by_duration:
             groups.append(current_group)
             current_group = []
 

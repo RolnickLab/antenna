@@ -1,14 +1,10 @@
-@import 'src/design-system/variables/variables.scss';
-@import 'src/design-system/variables/colors.scss';
-@import 'src/design-system/variables/typography.scss';
-
 .gallery {
   position: relative;
   display: grid;
   grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
   gap: 16px;
   width: 100%;
-  padding-top: 24px;
+  padding-top: 16px;
 
   &.loading {
     margin: 0;
@@ -27,21 +23,20 @@
   justify-content: center;
 }
 
-@media (max-width: $large-screen-breakpoint) {
+@media (max-width: $breakpoint-xl) {
   .gallery {
     grid-template-columns: 1fr 1fr 1fr !important;
   }
 }
 
-@media only screen and (max-width: $medium-screen-breakpoint) {
+@media only screen and (max-width: $breakpoint-lg) {
   .gallery {
     grid-template-columns: 1fr 1fr !important;
   }
 }
 
-@media only screen and (max-width: $small-screen-breakpoint) {
+@media only screen and (max-width: $breakpoint-md) {
   .gallery {
     grid-template-columns: 1fr !important;
-    padding-top: 16px;
   }
 }

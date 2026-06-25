@@ -6,7 +6,9 @@ from rest_framework import serializers
 from rest_framework.request import Request
 
 from ami.base.fields import DateStringField
+from ami.base.permissions import add_m2m_object_permissions
 from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer, reverse_with_params
+from ami.base.views import get_active_project
 from ami.jobs.models import Job
 from ami.main.models import Tag
 from ami.ml.models import Algorithm, Pipeline
@@ -70,6 +72,23 @@ class UserNestedSerializer(DefaultSerializer):
         ]
 
 
+class SourceImageThumbnailSerializer(DefaultSerializer):
+    """Adds a ``thumbnails`` field via :meth:`SourceImage.thumbnail_urls`.
+    Viewsets must apply :meth:`SourceImageQuerySet.with_thumbnails`.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["thumbnails"] = serializers.SerializerMethodField()
+
+    def get_thumbnails(self, obj: SourceImage) -> dict[str, str] | None:
+        # Draft projects aren't anonymously readable, so the <img>-loaded thumbnail
+        # URLs would 401; signal "no thumbnails" and let the UI fall back to capture.url.
+        if obj.project is None or not obj.project.thumbnails_enabled:
+            return None
+        return obj.thumbnail_urls(request=self.context.get("request"))
+
+
 class SourceImageNestedSerializer(DefaultSerializer):
     event_id = serializers.PrimaryKeyRelatedField(source="event", read_only=True)
 
@@ -88,7 +107,7 @@ class SourceImageNestedSerializer(DefaultSerializer):
         ]
 
 
-class ExampleSourceImageNestedSerializer(DefaultSerializer):
+class ExampleSourceImageNestedSerializer(SourceImageThumbnailSerializer):
     class Meta:
         model = SourceImage
         fields = [
@@ -263,6 +282,10 @@ class TaxonNoParentNestedSerializer(DefaultSerializer):
             "rank",
             "details",
             "gbif_taxon_key",
+            "fieldguide_id",
+            "inat_taxon_id",
+            "cover_image_url",
+            "cover_image_credit",
         ]
 
 
@@ -280,6 +303,7 @@ class ProjectListSerializer(DefaultSerializer):
             "created_at",
             "updated_at",
             "image",
+            "draft",
         ]
 
 
@@ -323,20 +347,45 @@ class ProjectSerializer(DefaultSerializer):
     feature_flags = serializers.SerializerMethodField()
     owner = UserNestedSerializer(read_only=True)
     settings = ProjectSettingsSerializer(source="*", required=False)
+    is_member = serializers.SerializerMethodField()
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Remove summary_data field if with_charts is False
+        if not self.context.get("with_charts", True):
+            self.fields.pop("summary_data", None)
 
     def get_feature_flags(self, obj):
         if obj.feature_flags:
             return obj.feature_flags.dict()
         return {}
 
+    def get_is_member(self, obj):
+        """Check if the current user is a member of this project."""
+        from ami.users.roles import Role
+
+        request = self.context["request"]
+        user = request.user
+
+        if not user or not user.is_authenticated:
+            return False
+
+        # Return True for superusers
+        if user.is_superuser:
+            return True
+
+        # Check if the user has any role in the project
+        return Role.user_has_any_role(user, obj)
+
     class Meta:
         model = Project
         fields = ProjectListSerializer.Meta.fields + [
             "deployments",
-            "summary_data",  # @TODO move to a 2nd request, it's too slow
+            "summary_data",  # Conditionally included based on with_charts query param
             "owner",
             "feature_flags",
             "settings",
+            "is_member",  # is the current user a member of this project
         ]
 
 
@@ -559,7 +608,7 @@ class TagSerializer(DefaultSerializer):
 class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
-    parents = TaxonNestedSerializer(read_only=True)
+    parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent")
     tags = serializers.SerializerMethodField()
 
@@ -577,10 +626,12 @@ class TaxonListSerializer(DefaultSerializer):
             "parents",
             "details",
             "occurrences_count",
+            "verified_count",
             "occurrences",
             "tags",
             "last_detected",
             "best_determination_score",
+            "cover_image_url",
             "created_at",
             "updated_at",
         ]
@@ -601,13 +652,23 @@ class TaxonListSerializer(DefaultSerializer):
         )
 
 
-class TaxaListSerializer(serializers.ModelSerializer):
+class TaxaListSerializer(DefaultSerializer):
     taxa = serializers.SerializerMethodField()
-    projects = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), many=True)
+    taxa_count = serializers.SerializerMethodField()
+    projects = serializers.SerializerMethodField()
 
     class Meta:
         model = TaxaList
-        fields = ["id", "name", "description", "taxa", "projects"]
+        fields = [
+            "id",
+            "name",
+            "description",
+            "taxa",
+            "taxa_count",
+            "projects",
+            "created_at",
+            "updated_at",
+        ]
 
     def get_taxa(self, obj):
         """
@@ -618,6 +679,43 @@ class TaxaListSerializer(serializers.ModelSerializer):
             request=self.context.get("request"),
             params={"taxa_list_id": obj.pk},
         )
+
+    def get_taxa_count(self, obj):
+        """
+        Return the number of taxa in this list.
+        Uses annotated_taxa_count if available (from ViewSet) for performance.
+        """
+        return getattr(obj, "annotated_taxa_count", obj.taxa.count())
+
+    def get_permissions(self, instance, instance_data):
+        request = self.context["request"]
+        project = get_active_project(request=request)
+        return add_m2m_object_permissions(request.user, instance, project, instance_data)
+
+    def get_projects(self, obj):
+        """
+        Return list of project IDs this taxa list belongs to.
+        This is read-only and managed by the server.
+        """
+        return list(obj.projects.values_list("id", flat=True))
+
+
+class TaxaListTaxonInputSerializer(serializers.Serializer):
+    """Serializer for adding a taxon to a taxa list."""
+
+    taxon_id = serializers.IntegerField(required=True)
+
+    def validate_taxon_id(self, value):
+        """Validate that the taxon exists."""
+        if not Taxon.objects.filter(id=value).exists():
+            raise serializers.ValidationError("Taxon does not exist.")
+        return value
+
+
+class TaxaListTaxonSerializer(TaxonNoParentNestedSerializer):
+    """Serializer for taxa in a taxa list (simplified taxon representation)."""
+
+    pass
 
 
 class CaptureTaxonSerializer(DefaultSerializer):
@@ -784,11 +882,16 @@ class TaxonSerializer(DefaultSerializer):
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent", write_only=True)
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
     tags = serializers.SerializerMethodField()
+    summary_data = serializers.SerializerMethodField()
 
     def get_tags(self, obj):
         # Use prefetched tags
         tag_list = getattr(obj, "prefetched_tags", [])
         return TagSerializer(tag_list, many=True, context=self.context).data
+
+    def get_summary_data(self, obj: Taxon):
+        project = get_active_project(request=self.context["request"], required=False)
+        return obj.summary_data(project)
 
     class Meta:
         model = Taxon
@@ -801,12 +904,19 @@ class TaxonSerializer(DefaultSerializer):
             "parents",
             "details",
             "occurrences_count",
+            "verified_count",
             "events_count",
             "occurrences",
             "gbif_taxon_key",
             "tags",
             "last_detected",
             "best_determination_score",
+            "fieldguide_id",
+            "inat_taxon_id",
+            "cover_image_url",
+            "cover_image_credit",
+            "summary_data",
+            "common_name_en",
         ]
 
 
@@ -916,6 +1026,7 @@ class CaptureDetectionsSerializer(DefaultSerializer):
             "bbox",
             "occurrence",
             "classifications",
+            "occurrence_meets_criteria",
         ]
 
     def get_classifications(self, obj) -> str:
@@ -998,12 +1109,14 @@ class DetectionSerializer(DefaultSerializer):
         ]
 
 
-class SourceImageListSerializer(DefaultSerializer):
+class SourceImageListSerializer(SourceImageThumbnailSerializer):
     detections_count = serializers.IntegerField(read_only=True)
     detections = CaptureDetectionsSerializer(many=True, read_only=True, source="filtered_detections")
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     project = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), required=False)
+    # Annotated in SourceImageViewSet.get_queryset (latest detection created_at).
+    last_processed = serializers.DateTimeField(read_only=True)
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
 
     class Meta:
@@ -1014,7 +1127,7 @@ class SourceImageListSerializer(DefaultSerializer):
             "deployment",
             "event",
             "url",
-            # "thumbnail",
+            "path",
             "timestamp",
             "width",
             "height",
@@ -1023,6 +1136,7 @@ class SourceImageListSerializer(DefaultSerializer):
             "detections_count",
             "occurrences_count",
             "taxa_count",
+            "last_processed",
             "detections",
             "project",
         ]
@@ -1153,6 +1267,7 @@ class SourceImageCollectionSerializer(DefaultSerializer):
             "source_images",
             "source_images_count",
             "source_images_with_detections_count",
+            "source_images_processed_count",
             "occurrences_count",
             "taxa_count",
             "description",
@@ -1220,11 +1335,16 @@ class OccurrenceIdentificationSerializer(DefaultSerializer):
 
 
 class OccurrenceListSerializer(DefaultSerializer):
+    # List cards render one cover image; detail subclass raises this to 100.
+    detection_images_limit: int | None = 1
+
     determination = CaptureTaxonSerializer(read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
+    detection_images = serializers.SerializerMethodField()
     determination_details = serializers.SerializerMethodField()
+    best_machine_prediction = serializers.SerializerMethodField()
     identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
 
     def get_permissions(self, instance, instance_data):
@@ -1263,32 +1383,38 @@ class OccurrenceListSerializer(DefaultSerializer):
             "detection_images",
             "determination_score",
             "determination_details",
+            "best_machine_prediction",
             "identifications",
             "created_at",
             "updated_at",
         ]
 
+    def get_detection_images(self, obj: Occurrence) -> list[str]:
+        from ami.main.models_future.occurrence import detection_image_urls_from_prefetch
+
+        return detection_image_urls_from_prefetch(obj, limit=self.detection_images_limit)
+
     def get_determination_details(self, obj: Occurrence):
-        # @TODO convert this to query methods to avoid N+1 queries.
-        # Currently at 100+ queries per page of 10 occurrences.
-        # Add a reusable method to the OccurrenceQuerySet class and call it from the ViewSet.
+        from ami.main.models_future.occurrence import best_identification_from_prefetch, best_prediction_from_prefetch
 
         context = self.context
-
         # Add this occurrence to the context so that the nested serializers can access it
         # the `parent` attribute is not available since we are manually instantiating the serializers
         context["occurrence"] = obj
 
         taxon = TaxonNestedSerializer(obj.determination, context=context).data if obj.determination else None
-        if obj.best_identification:
-            identification = OccurrenceIdentificationSerializer(obj.best_identification, context=context).data
+
+        best_ident = best_identification_from_prefetch(obj)
+        if best_ident:
+            identification = OccurrenceIdentificationSerializer(best_ident, context=context).data
         else:
             identification = None
 
-        if identification or not obj.best_prediction:
+        if identification:
             prediction = None
         else:
-            prediction = ClassificationNestedSerializer(obj.best_prediction, context=context).data
+            best_pred = best_prediction_from_prefetch(obj)
+            prediction = ClassificationNestedSerializer(best_pred, context=context).data if best_pred else None
 
         return dict(
             taxon=taxon,
@@ -1297,8 +1423,38 @@ class OccurrenceListSerializer(DefaultSerializer):
             score=obj.determination_score,
         )
 
+    def get_best_machine_prediction(self, obj: Occurrence) -> dict | None:
+        """Return the best machine prediction for this occurrence, or null if none exists.
+
+        Populated regardless of human verification status, so clients can always show
+        the ML result alongside a human-set determination.
+        """
+        from ami.main.models_future.occurrence import best_prediction_from_prefetch
+
+        context = self.context
+        context["occurrence"] = obj
+
+        prediction = best_prediction_from_prefetch(obj)
+        if not prediction:
+            return None
+
+        taxon_data = TaxonNestedSerializer(prediction.taxon, context=context).data if prediction.taxon else None
+        algorithm_data = None
+        if prediction.algorithm:
+            from ami.ml.serializers import AlgorithmNestedSerializer
+
+            algorithm_data = AlgorithmNestedSerializer(prediction.algorithm, context=context).data
+
+        return dict(
+            taxon=taxon_data,
+            algorithm=algorithm_data,
+            score=prediction.score,
+        )
+
 
 class OccurrenceSerializer(OccurrenceListSerializer):
+    detection_images_limit: int | None = 100
+
     determination = CaptureTaxonSerializer(read_only=True)
     detections = DetectionNestedSerializer(many=True, read_only=True)
     identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
@@ -1319,7 +1475,7 @@ class OccurrenceSerializer(OccurrenceListSerializer):
         ]
 
 
-class EventCaptureNestedSerializer(DefaultSerializer):
+class EventCaptureNestedSerializer(SourceImageThumbnailSerializer):
     """
     Load the first capture for an event. Or @TODO a single capture from the URL params.
     """
@@ -1454,6 +1610,7 @@ class EventTimelineIntervalSerializer(serializers.Serializer):
     captures_count = serializers.IntegerField()
     detections_count = serializers.IntegerField()
     detections_avg = serializers.IntegerField()
+    was_processed = serializers.BooleanField()
 
 
 class EventTimelineMetaSerializer(serializers.Serializer):
@@ -1581,3 +1738,161 @@ class StorageSourceSerializer(DefaultSerializer):
             "total_size",
             "last_checked",
         ]
+
+
+class UserIdentificationCountSerializer(DefaultSerializer):
+    """One row of the top-identifiers leaderboard.
+
+    Mirrors UserNestedSerializer's public fields (no email) and adds the
+    annotated `identification_count`.
+    """
+
+    identification_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "name",
+            "image",
+            "identification_count",
+        ]
+
+
+class TopIdentifiersResponseSerializer(serializers.Serializer):
+    """Scalar response for /occurrences/stats/top-identifiers/.
+
+    Wraps the leaderboard in a project-scoped envelope so the kind owns its
+    response shape (vs. the generic DRF paginator envelope). Future stats
+    kinds declare their own response serializer the same way — see
+    docs/claude/reference/api-stats-pattern.md.
+    """
+
+    project_id = serializers.IntegerField()
+    top_identifiers = UserIdentificationCountSerializer(many=True)
+
+
+class ModelAgreementSerializer(serializers.Serializer):
+    """Verified / agreement rates over the filtered Occurrence set.
+
+    `agreed_exact_count` is a subset of `agreed_any_rank_count` by
+    construction — an exact match implies the LCA is the taxon itself.
+    `*_pct` percentages are 0.0..1.0 (not 0..100).
+
+    Denominator note: `agreed_*_pct` divide by `comparable_count` — verified
+    occurrences that have BOTH a machine prediction and a human taxon, NOT by
+    `verified_count`. Two kinds of verified occurrence are excluded because they
+    can't agree or disagree: those with no machine prediction (`no_prediction_count`)
+    and those whose human identification has no taxon, e.g. a comment-only
+    verification (`verified_without_taxon_count`). Both are surfaced so the
+    consumer can see why `comparable_count` differs from `verified_count`.
+
+    Optional rank threshold: when the caller passes
+    `?agreement_coarsest_rank=FAMILY`, the response also includes
+    `agreed_coarser_rank_*` counting only LCAs at that rank or deeper. The
+    threshold rank is echoed in `agreement_coarsest_rank`. When the param is
+    absent, the coarser-rank fields are null and `agreement_coarsest_rank`
+    is null.
+    """
+
+    project_id = serializers.IntegerField()
+    total_occurrences = serializers.IntegerField()
+    verified_count = serializers.IntegerField(help_text="Occurrences with at least one non-withdrawn identification.")
+    verified_pct = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        help_text="verified_count / total_occurrences",
+    )
+    verified_with_prediction_count = serializers.IntegerField(
+        help_text="Verified occurrences that also have a machine prediction."
+    )
+    no_prediction_count = serializers.IntegerField(
+        help_text="Verified occurrences with no machine prediction (excluded from agreement denominator)."
+    )
+    verified_without_taxon_count = serializers.IntegerField(
+        help_text=(
+            "Verified occurrences that have a machine prediction but no human taxon "
+            "(e.g. comment-only identification). Excluded from the agreement denominator "
+            "since there is no human label to compare."
+        )
+    )
+    comparable_count = serializers.IntegerField(
+        help_text=(
+            "Verified occurrences with BOTH a machine prediction and a human taxon — the "
+            "denominator for all agreed_*_pct and the Wilson CIs. Equals "
+            "verified_with_prediction_count minus verified_without_taxon_count."
+        )
+    )
+    agreed_exact_count = serializers.IntegerField()
+    agreed_exact_pct = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        help_text="agreed_exact_count / comparable_count",
+    )
+    agreed_exact_ci_low = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        allow_null=True,
+        required=False,
+        help_text="Wilson 95% CI lower bound for agreed_exact_pct. Null when verified_with_prediction_count is 0.",
+    )
+    agreed_exact_ci_high = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        allow_null=True,
+        required=False,
+        help_text="Wilson 95% CI upper bound for agreed_exact_pct. Null when verified_with_prediction_count is 0.",
+    )
+    agreed_any_rank_count = serializers.IntegerField(
+        help_text="Exact matches plus disagreements whose LCA is at any real rank (UNKNOWN excluded)."
+    )
+    agreed_any_rank_pct = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        help_text="agreed_any_rank_count / verified_with_prediction_count",
+    )
+    agreed_any_rank_ci_low = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        allow_null=True,
+        required=False,
+        help_text="Wilson 95% CI lower bound for agreed_any_rank_pct. Null when verified_with_prediction_count is 0.",
+    )
+    agreed_any_rank_ci_high = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        allow_null=True,
+        required=False,
+        help_text="Wilson 95% CI upper bound for agreed_any_rank_pct. Null when verified_with_prediction_count is 0.",
+    )
+    cohens_kappa = serializers.FloatField(
+        min_value=-1.0,
+        max_value=1.0,
+        allow_null=True,
+        required=False,
+        help_text=(
+            "Cohen's kappa (exact-taxon) — human↔model agreement beyond chance. "
+            "Range [-1, 1]; negative is worse than chance. Null when there are no "
+            "doubly-classified occurrences or expected agreement is 1.0."
+        ),
+    )
+    agreement_coarsest_rank = serializers.CharField(
+        allow_null=True,
+        required=False,
+        help_text="Threshold rank from ?agreement_coarsest_rank query param. Null when the param is absent.",
+    )
+    agreed_coarser_rank_count = serializers.IntegerField(
+        allow_null=True,
+        required=False,
+        help_text=(
+            "Exact matches plus disagreements whose LCA is at `agreement_coarsest_rank` or deeper. "
+            "Null when no threshold was supplied."
+        ),
+    )
+    agreed_coarser_rank_pct = serializers.FloatField(
+        min_value=0.0,
+        max_value=1.0,
+        allow_null=True,
+        required=False,
+        help_text="agreed_coarser_rank_count / verified_with_prediction_count. Null when no threshold supplied.",
+    )

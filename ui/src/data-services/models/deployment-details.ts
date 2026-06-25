@@ -11,8 +11,8 @@ export type ServerNestedCapture = {
 
 export interface DeploymentFieldValues {
   dataSourceId?: string
-  dataSourceSubdir?: string
-  dataSourceRegex?: string
+  dataSourceSubdir?: string | null
+  dataSourceRegex?: string | null
   description: string
   deviceId?: string
   name: string
@@ -50,12 +50,6 @@ export class DeploymentDetails extends Deployment {
     }
   }
 
-  get device(): Entity | undefined {
-    if (this._deployment.device) {
-      return new Entity(this._deployment.device)
-    }
-  }
-
   get description(): string {
     return this._deployment.description
   }
@@ -74,11 +68,11 @@ export class DeploymentDetails extends Deployment {
     }
   }
 
-  get dataSourceSubdir(): string {
+  get dataSourceSubdir(): string | null {
     return this._deployment.data_source_subdir
   }
 
-  get dataSourceRegex(): string {
+  get dataSourceRegex(): string | null {
     return this._deployment.data_source_regex
   }
 

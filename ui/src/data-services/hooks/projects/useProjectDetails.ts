@@ -19,7 +19,7 @@ export const useProjectDetails = (
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<ProjectDetails>({
       queryKey: [API_ROUTES.PROJECTS, projectId],
-      url: `${API_URL}/${API_ROUTES.PROJECTS}/${projectId}/`,
+      url: `${API_URL}/${API_ROUTES.PROJECTS}/${projectId}/?with_charts=false`,
       staleTime: useInternalCache ? Infinity : undefined,
     })
 
