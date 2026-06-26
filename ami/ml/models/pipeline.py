@@ -8,6 +8,7 @@ if TYPE_CHECKING:
 
 import collections
 import dataclasses
+import itertools
 import logging
 import time
 import typing
@@ -23,7 +24,6 @@ from django_pydantic_field import SchemaField
 from ami.base.models import BaseModel, BaseQuerySet
 from ami.base.schemas import ConfigurableStage, default_stages
 from ami.main.models import (
-    NULL_DETECTIONS_FILTER,
     Classification,
     Deployment,
     Detection,
@@ -34,6 +34,7 @@ from ami.main.models import (
     TaxaList,
     Taxon,
     TaxonRank,
+    bbox_is_null,
     update_calculated_fields_for_events,
     update_occurrence_determination,
 )
@@ -57,10 +58,23 @@ from ami.utils.requests import create_session, extract_error_message_from_respon
 logger = logging.getLogger(__name__)
 
 
+FILTER_PROCESSED_BATCH_SIZE = 1000
+# Minimum wall-time (seconds) between in-loop Job.progress writes inside
+# filter_processed_images. The reaper's "no forward progress" heuristic keys off
+# job.updated_at, so we need to tick at least once per ~10min; 5s gives ample
+# headroom while still amortising the JSONB UPDATE across many chunks. Caps at
+# 0.99 so the caller still owns the final status=SUCCESS, progress=1 flip.
+COLLECT_PROGRESS_SAVE_INTERVAL_SECONDS = 5.0
+COLLECT_PROGRESS_MAX_FRACTION = 0.99
+
+
 def filter_processed_images(
     images: typing.Iterable[SourceImage],
     pipeline: Pipeline,
     task_logger: logging.Logger = logger,
+    batch_size: int = FILTER_PROCESSED_BATCH_SIZE,
+    job: Job | None = None,
+    total: int | None = None,
 ) -> typing.Iterable[SourceImage]:
     """
     Return only images that need to be processed by a given pipeline.
@@ -79,56 +93,131 @@ def filter_processed_images(
 
     Null detections are sentinels that mark an image as "processed, nothing found."
     They are excluded from classification checks so they don't trigger reprocessing.
+
+    Input images are processed in batches so the work scales as O(image_count /
+    batch_size) database round-trips instead of O(image_count). This keeps the
+    Collect stage well under the Celery broker's AMQP heartbeat window for the
+    large-collection case (see issue #1321).
     """
-    pipeline_algorithms = pipeline.algorithms.all()
+    if batch_size <= 0:
+        raise ValueError(f"batch_size must be > 0, got {batch_size}")
 
-    detection_type_keys = Algorithm.detection_task_types
-    detection_algorithms = pipeline_algorithms.filter(task_type__in=detection_type_keys)
-    if not detection_algorithms.exists():
+    pipeline_algorithms = list(pipeline.algorithms.all())
+    pipeline_algorithm_ids = [a.id for a in pipeline_algorithms]
+
+    detection_type_keys = set(Algorithm.detection_task_types)
+    has_detection_algorithm = any(a.task_type in detection_type_keys for a in pipeline_algorithms)
+    if not has_detection_algorithm:
         task_logger.warning(f"Pipeline {pipeline} has no detection algorithms saved. Will reprocess all images.")
-    classification_algorithms = pipeline_algorithms.exclude(task_type__in=detection_type_keys)
-    if not classification_algorithms.exists():
+    pipeline_classifier_ids = {a.id for a in pipeline_algorithms if a.task_type not in detection_type_keys}
+    if not pipeline_classifier_ids:
         task_logger.warning(f"Pipeline {pipeline} has no classification algorithms saved. Will reprocess all images.")
+        # set().issubset(anything) is vacuously True, so without this short-circuit
+        # every image with existing detections gets skipped by the subset check
+        # below — contradicting the warning above. Yield everything and exit.
+        yield from images
+        return
 
-    for image in images:
-        existing_detections = image.detections.filter(detection_algorithm__in=pipeline_algorithms)
-        if not existing_detections.exists():
-            task_logger.debug(f"Image {image} needs processing: has no existing detections from pipeline's detector")
-            # If there are no existing detections from this pipeline, send the image
-            yield image
-        elif not existing_detections.exclude(NULL_DETECTIONS_FILTER).exists():  # type: ignore
-            # All detections for this image are null (processed but nothing found) — skip
-            task_logger.debug(f"Image {image} has only null detections from pipeline {pipeline}, skipping!")
-            continue
-        elif existing_detections.exclude(NULL_DETECTIONS_FILTER).filter(classifications__isnull=True).exists():
-            # Check if any real detections (non-null) have no classifications
-            task_logger.debug(
-                f"Image {image} needs processing: has existing detections with no classifications "
-                "from pipeline {pipeline}"
+    image_iter = iter(images)
+    # Track how many of the input images we've inspected so far so we can emit
+    # a fractional `collect` progress to the Job row. Only used when both
+    # `job` and `total` are passed by the caller; legacy callers stay silent.
+    processed_count = 0
+    last_progress_save_monotonic = time.monotonic()
+    while True:
+        batch = list(itertools.islice(image_iter, batch_size))
+        if not batch:
+            return
+
+        batch_ids = [image.pk for image in batch]
+
+        images_with_pipeline_detection: set[int] = set()
+        real_pipeline_detections_per_image: dict[int, set[int]] = collections.defaultdict(set)
+        detection_rows = (
+            Detection.objects.filter(
+                source_image_id__in=batch_ids,
+                detection_algorithm_id__in=pipeline_algorithm_ids,
             )
-            yield image
-        else:
-            # If there are existing detections with classifications,
-            # Compare their classification algorithms to the current pipeline's algorithms
-            pipeline_algorithm_ids = set(classification_algorithms.values_list("id", flat=True))
-            detection_algorithm_ids = set(existing_detections.values_list("classifications__algorithm_id", flat=True))
+            .order_by()
+            .values_list("source_image_id", "id", "bbox")
+        )
+        for source_image_id, detection_id, bbox in detection_rows:
+            images_with_pipeline_detection.add(source_image_id)
+            if not bbox_is_null(bbox):
+                real_pipeline_detections_per_image[source_image_id].add(detection_id)
 
-            if not pipeline_algorithm_ids.issubset(detection_algorithm_ids):
+        classifier_ids_per_detection: dict[int, set[int]] = collections.defaultdict(set)
+        real_pipeline_detection_ids = [d for dets in real_pipeline_detections_per_image.values() for d in dets]
+        if real_pipeline_detection_ids:
+            classification_rows = (
+                Classification.objects.filter(detection_id__in=real_pipeline_detection_ids)
+                .order_by()
+                .values_list("detection_id", "algorithm_id")
+            )
+            for detection_id, algorithm_id in classification_rows:
+                classifier_ids_per_detection[detection_id].add(algorithm_id)
+
+        for image in batch:
+            image_id = image.pk
+
+            if image_id not in images_with_pipeline_detection:
                 task_logger.debug(
-                    f"Image {image} has existing detections that haven't been classified by the pipeline: {pipeline}:"
-                    f" {detection_algorithm_ids} vs {pipeline_algorithm_ids}"
-                    f"Since we do yet have a mechanism to reclassify detections, processing the image from scratch."
+                    f"Image {image} needs processing: has no existing detections from pipeline's detector"
                 )
-                # log all algorithms that are in the pipeline but not in the detection
-                missing_algos = pipeline_algorithm_ids - detection_algorithm_ids
+                yield image
+                continue
+
+            real_det_ids = real_pipeline_detections_per_image.get(image_id)
+            if not real_det_ids:
+                task_logger.debug(f"Image {image} has only null detections from pipeline {pipeline}, skipping!")
+                continue
+
+            if any(detection_id not in classifier_ids_per_detection for detection_id in real_det_ids):
+                task_logger.debug(
+                    f"Image {image} needs processing: has existing detections with no classifications "
+                    f"from pipeline {pipeline}"
+                )
+                yield image
+                continue
+
+            observed_classifier_ids: set[int] = set()
+            for detection_id in real_det_ids:
+                observed_classifier_ids.update(classifier_ids_per_detection[detection_id])
+
+            if not pipeline_classifier_ids.issubset(observed_classifier_ids):
+                missing_algos = pipeline_classifier_ids - observed_classifier_ids
+                task_logger.debug(
+                    f"Image {image} has existing detections that haven't been classified by the pipeline: {pipeline}: "
+                    f"{observed_classifier_ids} vs {pipeline_classifier_ids}. "
+                    f"Since we do not yet have a mechanism to reclassify detections, "
+                    f"processing the image from scratch."
+                )
                 task_logger.debug(f"Image #{image.pk} needs classification by pipeline's algorithms: {missing_algos}")
                 yield image
             else:
-                # If all detections have been classified by the pipeline, skip the image
                 task_logger.debug(
                     f"Image {image} has existing detections classified by the pipeline: {pipeline}, skipping!"
                 )
-                continue
+
+        # Throttled progress emit. Save only when both `job` and `total` are
+        # provided, the total is non-zero, and at least
+        # COLLECT_PROGRESS_SAVE_INTERVAL_SECONDS of wall time have passed since
+        # the last save. Capped at COLLECT_PROGRESS_MAX_FRACTION so the caller's
+        # final status=SUCCESS, progress=1 flip still owns the terminal value.
+        #
+        # `updated_at` is included in update_fields explicitly: Django only fires
+        # auto_now's pre_save hook for fields listed in update_fields, so without
+        # it the reaper's `Job.updated_at < cutoff` heuristic
+        # (`ami/jobs/tasks.py:929-944`) would not see this heartbeat and could
+        # still revoke the job mid-Collect.
+        processed_count += len(batch)
+        if job is not None and total:
+            now_monotonic = time.monotonic()
+            if now_monotonic - last_progress_save_monotonic >= COLLECT_PROGRESS_SAVE_INTERVAL_SECONDS:
+                fraction = min(processed_count / total, COLLECT_PROGRESS_MAX_FRACTION)
+                job.progress.update_stage("collect", progress=fraction)
+                job.save(update_fields=["progress", "updated_at"])
+                last_progress_save_monotonic = now_monotonic
 
 
 def collect_images(
@@ -144,20 +233,30 @@ def collect_images(
     """
     task_logger = logger
     if job_id:
-        from ami.jobs.models import Job
+        from ami.jobs.models import Job, JobState
 
         job = Job.objects.get(pk=job_id)
         task_logger = job.logger
+        # Persist the collect stage as STARTED for every path: the filtered branch's throttle
+        # below updates only `progress` (never status), and reprocess-all has no loop at all,
+        # so without this neither path reports STARTED while collection runs.
+        job.progress.update_stage("collect", status=JobState.STARTED, progress=0)
+        job.save(update_fields=["progress", "updated_at"])
     else:
         job = None
 
-    # Set source to first argument that is not None
+    # Set source to first argument that is not None. The collection- and
+    # deployment-backed branches prefetch the deployment + data_source joins so
+    # later calls to image.url() in queue_images_to_nats don't trigger N+1
+    # lookups (see issue #1321). The source_images branch passes the caller's
+    # iterable through unchanged — callers handing us a pre-built list are
+    # responsible for any prefetching they need.
     if collection:
-        images = collection.images.all()
+        images = collection.images.select_related("deployment__data_source")
     elif source_images:
         images = source_images
     elif deployment:
-        images = SourceImage.objects.filter(deployment=deployment)
+        images = SourceImage.objects.filter(deployment=deployment).select_related("deployment__data_source")
     else:
         raise ValueError("Must specify a collection, deployment or a list of images")
 
@@ -165,7 +264,19 @@ def collect_images(
     if pipeline and not reprocess_all_images:
         msg = f"Filtering images that have already been processed by pipeline {pipeline}"
         task_logger.info(msg)
-        images = list(filter_processed_images(images, pipeline, task_logger=task_logger))
+        # Pass `job` and `total` so filter_processed_images can emit throttled
+        # `collect` progress updates as it chews through the input — keeps the
+        # reaper "no forward progress" heuristic happy on large collections
+        # (issue #1321 follow-up).
+        images = list(
+            filter_processed_images(
+                images,
+                pipeline,
+                task_logger=task_logger,
+                job=job,
+                total=total_images,
+            )
+        )
     else:
         msg = "NOT filtering images that have already been processed"
         task_logger.info(msg)
@@ -439,9 +550,11 @@ def get_or_create_detection(
     ), f"Detection belongs to a different source image: {detection_repr}"
 
     if serialized_bbox is None:
-        # Null detection: algorithm-specific lookup so different pipelines don't share sentinels.
-        # Use bbox__isnull=True because JSONField filter(bbox=None) matches JSON null literal,
-        # not SQL NULL which is what Detection(bbox=None) stores.
+        # existing_detection := the null-marker sentinel already recorded for this image+algorithm
+        # (or None if there is none yet). The lookup is algorithm-specific so different pipelines
+        # don't share sentinels, and narrowed to .null_markers() rather than a bare filter: a null
+        # response has no bbox to match on, so without .null_markers() the (image, algorithm) filter
+        # would also return real detections, and .first() could reuse one as if it were the sentinel.
         assert detection_resp.algorithm, f"No detection algorithm was specified for detection {detection_repr}"
         try:
             detection_algo = algorithms_known[detection_resp.algorithm.key]
@@ -451,13 +564,19 @@ def get_or_create_detection(
                 "The processing service must declare it in the /info endpoint. "
                 f"Known algorithms: {list(algorithms_known.keys())}"
             ) from err
-        existing_detection = Detection.objects.filter(
-            source_image=source_image,
-            bbox__isnull=True,
-            detection_algorithm=detection_algo,
-        ).first()
+        existing_detection = (
+            Detection.objects.filter(
+                source_image=source_image,
+                detection_algorithm=detection_algo,
+            )
+            .null_markers()
+            .first()
+        )
     else:
-        # Real detection: algorithm-agnostic — same bbox = same physical detection
+        # existing_detection := the detection with this exact bbox on this image (or None). The
+        # match is algorithm-agnostic — the same bounding box on the same image is the same physical
+        # detection regardless of which algorithm found it, so a bbox match is a duplicate to reuse.
+        # A specific bbox can't match a null marker (bbox IS NULL), so sentinels are excluded here.
         existing_detection = Detection.objects.filter(
             source_image=source_image,
             bbox=serialized_bbox,
@@ -952,15 +1071,6 @@ def save_results(
             "Algorithms and category maps must be registered before processing, using /info endpoint."
         )
 
-    # Ensure all images have detections
-    # if not, add a NULL detection (empty bbox) to the results
-    null_detections = create_null_detections_for_undetected_images(
-        results=results,
-        detection_algorithm=detection_algorithm,
-        logger=job_logger,
-    )
-    results.detections = results.detections + null_detections
-
     detections = create_detections(
         detections=results.detections,
         algorithms_known=algorithms_known,
@@ -998,6 +1108,22 @@ def save_results(
     deployment_ids = {img.deployment_id for img in source_images if img.deployment_id}
     for deployment in Deployment.objects.filter(pk__in=deployment_ids):
         deployment.update_calculated_fields(save=True)
+
+    # Mark images with no real detections as processed by creating null-bbox sentinels.
+    # Issue #1310: MUST be the final write. Persisting a null marker is the signal that
+    # filter_processed_images uses to skip an image on future runs, so it can only be
+    # written after every step that might fail has succeeded. Any raise earlier in the
+    # pipeline leaves the image unmarked so it gets retried on the next run.
+    null_detection_responses = create_null_detections_for_undetected_images(
+        results=results,
+        detection_algorithm=detection_algorithm,
+        logger=job_logger,
+    )
+    create_detections(
+        detections=null_detection_responses,
+        algorithms_known=algorithms_known,
+        logger=job_logger,
+    )
 
     total_time = time.time() - start_time
     job_logger.info(f"Saved results from pipeline {pipeline} in {total_time:.2f} seconds")

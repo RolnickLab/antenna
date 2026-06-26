@@ -47,6 +47,10 @@ class JSONExporter(BaseExporter):
         return get_export_serializer()
 
     def get_queryset(self):
+        # OccurrenceSerializer (the export base class) calls strict prefetch
+        # helpers in `_best_prediction` / `_best_identification` /
+        # `get_detection_images`. Apply detail prefetches so those helpers
+        # find detections + nested classifications in the cache.
         return (
             Occurrence.objects.valid()  # type: ignore[union-attr]  Custom manager method
             .filter(project=self.project)
@@ -58,6 +62,7 @@ class JSONExporter(BaseExporter):
             .with_timestamps()  # type: ignore[union-attr]  Custom queryset method
             .with_detections_count()
             .with_identifications()
+            .with_detail_prefetches()  # type: ignore[union-attr]  Custom queryset method
         )
 
     def export(self):

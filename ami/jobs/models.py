@@ -94,6 +94,12 @@ class JobState(str, OrderedEnum):
         """States where a job is actively processing and should serve tasks to workers."""
         return [cls.STARTED, cls.RETRY]
 
+    @classmethod
+    def finalizable_states(cls):
+        # running_states() minus CANCELING (don't resurrect a cancel in progress)
+        # and UNKNOWN (never served; shouldn't auto-finalize). See #1337.
+        return [cls.CREATED, cls.PENDING, cls.STARTED, cls.RETRY]
+
 
 def get_status_label(status: JobState, progress: float) -> str:
     """
@@ -322,12 +328,79 @@ class JobLogs(pydantic.BaseModel):
     stderr: list[str] = pydantic.Field(default_factory=list, alias="stderr", title="Error messages")
 
 
+class JobLog(BaseModel):
+    """Append-only per-job log row.
+
+    Replaces the ``jobs_job.logs`` JSON-field UPDATE path that caused row-lock
+    contention under concurrent async_api load (issue #1256). Each log emit
+    becomes a cheap INSERT on this child table instead of a refresh+UPDATE of
+    the shared parent row. Legacy JSON-field logs are still served by the
+    serializer for jobs created before this table existed.
+    """
+
+    project_accessor = "job__project"
+
+    job = models.ForeignKey("Job", on_delete=models.CASCADE, related_name="log_entries")
+    level = models.CharField(max_length=20)
+    message = models.TextField()
+    # Freeform bag for future per-line metadata (stage, worker id, counters, ...)
+    # without requiring a schema migration. Kept nullable/empty-default so it
+    # costs nothing on existing rows.
+    context = models.JSONField(blank=True, default=dict)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+        indexes = [models.Index(fields=["job", "-created_at"])]
+
+
+JOB_LOG_LEVELS_STDERR = {"ERROR", "CRITICAL"}
+JOB_LOG_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
+JOB_LOGS_DEFAULT_LIMIT = 1000
+# Hard ceiling on a single read response. Keeps payload size bounded even when
+# a caller passes ``?logs_limit=...``. Real pagination ships separately with a
+# dedicated ``/jobs/logs/`` endpoint.
+JOB_LOGS_MAX_LIMIT = 5000
+
+
+def _legacy_logs_shape(job: "Job") -> dict[str, list[str]]:
+    legacy = getattr(job, "logs", None)
+    return {
+        "stdout": list(getattr(legacy, "stdout", []) or []),
+        "stderr": list(getattr(legacy, "stderr", []) or []),
+    }
+
+
+def serialize_job_logs(job: "Job", *, limit: int = JOB_LOGS_DEFAULT_LIMIT) -> dict[str, list[str]]:
+    """Return ``{stdout, stderr}`` in the shape the UI already parses.
+
+    Reads joined ``JobLog`` rows first (newest-first, capped at ``limit`` per
+    request — there is no per-job storage cap; the data integrity check
+    framework handles retention). Jobs created before the table existed and
+    jobs written while ``JOB_LOG_PERSIST_ENABLED=False`` have no rows and fall
+    back to the legacy ``jobs_job.logs`` JSON column so their UI log panel
+    stays populated.
+    """
+    entries = list(
+        JobLog.objects.filter(job_id=job.pk)
+        .only("created_at", "level", "message")
+        .order_by("-created_at", "-pk")[:limit]
+    )
+    if entries:
+        return {
+            "stdout": [
+                f"[{entry.created_at.strftime(JOB_LOG_TIMESTAMP_FORMAT)}] {entry.level} {entry.message}"
+                for entry in entries
+            ],
+            "stderr": [entry.message for entry in entries if entry.level in JOB_LOG_LEVELS_STDERR],
+        }
+
+    return _legacy_logs_shape(job)
+
+
 class JobLogHandler(logging.Handler):
     """
     Class for handling logs from a job and writing them to the job instance.
     """
-
-    max_log_length = 1000
 
     def __init__(self, job: "Job", *args, **kwargs):
         self.job = job
@@ -337,41 +410,24 @@ class JobLogHandler(logging.Handler):
         # Log to the current app logger (container stdout).
         logger.log(record.levelno, self.format(record))
 
-        # Gated by ``JOB_LOG_PERSIST_ENABLED`` (default True). Persisting every
-        # log line to ``jobs_job.logs`` becomes a row-lock contention point
-        # under concurrent async_api load — each call triggers
-        # ``UPDATE jobs_job SET logs = ...`` on the shared job row, and inside
-        # ``ATOMIC_REQUESTS`` a single batched ``/result`` POST stacks N such
-        # UPDATEs in one tx, blocking every ML worker on the same row for the
-        # duration of the request. Deployments hitting that pattern can set the
-        # flag to False to short-circuit here until PR #1259 lands an
-        # append-only ``JobLog`` child table. See issue #1256.
+        # Escape hatch: when False, skip the per-job DB write entirely. Container
+        # stdout still captures every line above, so ops observability is
+        # unchanged; only the per-job UI log view loses new entries for the
+        # duration the flag is off. Default is True. See issue #1256.
         if not getattr(settings, "JOB_LOG_PERSIST_ENABLED", True):
             return
 
-        # Write to the logs field on the job instance.
-        # Refresh from DB first to reduce the window for concurrent overwrites — each
-        # worker holds its own stale in-memory copy of `logs`, so without a refresh the
-        # last writer always wins and earlier entries are silently dropped.
-        # @TODO consider saving logs to the database periodically rather than on every log
+        # Append-only insert on the JobLog child table. Unlike the legacy
+        # jobs_job.logs JSONB update path, this does not contend with
+        # _update_job_progress on the parent row.
         try:
-            self.job.refresh_from_db(fields=["logs"])
-            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            msg = f"[{timestamp}] {record.levelname} {self.format(record)}"
-            if msg not in self.job.logs.stdout:
-                self.job.logs.stdout.insert(0, msg)
-
-            # Write a simpler copy of any errors to the errors field
-            if record.levelno >= logging.ERROR:
-                if record.message not in self.job.logs.stderr:
-                    self.job.logs.stderr.insert(0, record.message)
-
-            if len(self.job.logs.stdout) > self.max_log_length:
-                self.job.logs.stdout = self.job.logs.stdout[: self.max_log_length]
-
-            self.job.save(update_fields=["logs"], update_progress=False)
+            JobLog.objects.create(
+                job_id=self.job.pk,
+                level=record.levelname,
+                message=self.format(record),
+            )
         except Exception as e:
-            logger.error(f"Failed to save logs for job #{self.job.pk}: {e}")
+            logger.error(f"Failed to save log for job #{self.job.pk}: {e}")
 
 
 @dataclass
@@ -622,9 +678,37 @@ class MLJob(JobType):
         job.save()
 
 
+# Human-readable param names for the regroup stage, surfaced both on the
+# standalone RegroupEventsJob and on DataStorageSyncJob's regroup stage. The
+# stable retrieval key is the slugify(name) form (e.g. "captures-grouped"),
+# produced by JobProgress.make_key — see _REGROUP_STAGE_PARAM_KEYS in
+# ami.main.models for the corresponding kwarg map.
+REGROUP_STAGE_PARAM_NAMES = (
+    "Captures grouped",
+    "Events created",
+    "Events touched",
+    "Empty events deleted",
+    "Duplicate timestamps",
+    "Ungrouped captures",
+    "Captures missing timestamp",
+)
+
+
 class DataStorageSyncJob(JobType):
+    """
+    Sync captures from the deployment's data source, then regroup them into
+    sessions as a separate tracked stage.
+
+    The regroup stage runs inside this job (not via ``Deployment.save()``
+    autoregroup) so its logs land on the same Job row and a regroup failure
+    flips the Job to FAILURE. Previously a sync would silently succeed even
+    if the post-sync regroup raised — see #1157.
+    """
+
     name = "Data storage sync"
     key = "data_storage_sync"
+    regroup_stage_key = "regroup_sessions"
+    regroup_stage_name = "Regroup sessions"
 
     @classmethod
     def run(cls, job: "Job"):
@@ -633,10 +717,16 @@ class DataStorageSyncJob(JobType):
 
         This is meant to be called by an async task, not directly.
         """
+        from ami.main.models import group_images_into_events
 
-        job.progress.add_stage(cls.name)
+        job.progress.add_stage(cls.name, key=cls.key)
         job.progress.add_stage_param(cls.key, "Total files", 0)
         job.progress.add_stage_param(cls.key, "Failed", 0)
+
+        job.progress.add_stage(cls.regroup_stage_name, key=cls.regroup_stage_key)
+        for param_name in REGROUP_STAGE_PARAM_NAMES:
+            job.progress.add_stage_param(cls.regroup_stage_key, param_name, 0)
+
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
         job.finished_at = None
@@ -644,27 +734,46 @@ class DataStorageSyncJob(JobType):
 
         if not job.deployment:
             raise ValueError("No deployment provided for data storage sync job")
-        else:
-            job.logger.info(f"Syncing captures for deployment {job.deployment}")
-            job.progress.update_stage(
-                cls.key,
-                status=JobState.STARTED,
-                progress=0,
-                total_files=0,
+
+        job.logger.info(f"Syncing captures for deployment {job.deployment}")
+        job.progress.update_stage(
+            cls.key,
+            status=JobState.STARTED,
+            progress=0,
+            total_files=0,
+        )
+        job.save()
+
+        job.deployment.sync_captures(job=job, regroup_after=False)
+
+        job.logger.info(f"Finished syncing captures for deployment {job.deployment}")
+        job.progress.update_stage(cls.key, status=JobState.SUCCESS, progress=1)
+        job.save()
+
+        job.logger.info(f"Regrouping captures into sessions for deployment {job.deployment}")
+        job.progress.update_stage(cls.regroup_stage_key, status=JobState.STARTED, progress=0)
+        job.save()
+
+        events = group_images_into_events(job.deployment, job=job, stage_key=cls.regroup_stage_key)
+        job.logger.info(f"Deployment {job.deployment} now has {len(events)} events after sync regroup.")
+
+        # The lock-miss branch in group_images_into_events returns []. If we
+        # just synced new captures, that means those captures are now sitting
+        # ungrouped because a concurrent regroup held the lock. They will be
+        # picked up by the next Deployment.save autoregroup (e.g. the next
+        # sync) — but flag it loudly on this Job so an admin watching this run
+        # sees what happened rather than a silently-empty regroup stage.
+        sync_total_files = job.progress.get_stage_param(cls.key, "total_files").value or 0
+        if not events and sync_total_files:
+            job.logger.warning(
+                f"Sync added {sync_total_files} files but the regroup stage was skipped because "
+                f"another regroup is in progress for deployment {job.deployment.pk}. The new captures "
+                f"will be grouped by the next sync or save. If this keeps happening, check the Jobs "
+                f"list for a stuck regroup_events task."
             )
-            job.save()
 
-            job.deployment.sync_captures(job=job)
-
-            job.logger.info(f"Finished syncing captures for deployment {job.deployment}")
-            job.progress.update_stage(
-                cls.key,
-                status=JobState.SUCCESS,
-                progress=1,
-            )
-            job.update_status(JobState.SUCCESS)
-            job.save()
-
+        job.progress.update_stage(cls.regroup_stage_key, status=JobState.SUCCESS, progress=1)
+        job.update_status(JobState.SUCCESS)
         job.finished_at = datetime.datetime.now()
         job.save()
 
@@ -784,6 +893,54 @@ class PostProcessingJob(JobType):
         job.save()
 
 
+class RegroupEventsJob(JobType):
+    """
+    Regroup a deployment's captures into Events using the project's
+    ``session_time_gap_seconds`` setting.
+
+    Single-stage job: ``group_images_into_events`` is one mostly-atomic SQL
+    pass with no per-image Python loop, so we cannot report incremental %
+    progress meaningfully. Stage transitions are CREATED → STARTED (0%) →
+    SUCCESS/FAILURE (100%). Summary stats (events created/touched/deleted,
+    duplicates, ungrouped captures) are written to the stage params by
+    ``group_images_into_events`` itself before it returns. Closes #1157, #1158.
+
+    Scope: grouping only. Propagating ``project_id`` to children lives on
+    ``Deployment.save()`` via ``update_children()`` — save the deployment
+    after moving it to push the new ``project_id`` down. Bare
+    ``ami.tasks.regroup_events`` has the same scope.
+    """
+
+    name = "Regroup sessions"
+    key = "regroup_events"
+
+    @classmethod
+    def run(cls, job: "Job"):
+        from ami.main.models import group_images_into_events
+
+        if not job.deployment:
+            raise ValueError("No deployment provided for regroup events job")
+
+        job.progress.add_stage(cls.name, key=cls.key)
+        for param_name in REGROUP_STAGE_PARAM_NAMES:
+            job.progress.add_stage_param(cls.key, param_name, 0)
+
+        job.update_status(JobState.STARTED)
+        job.started_at = datetime.datetime.now()
+        job.finished_at = None
+        job.progress.update_stage(cls.key, status=JobState.STARTED, progress=0)
+        job.save()
+
+        job.logger.info(f"Regrouping captures for deployment {job.deployment}")
+        events = group_images_into_events(job.deployment, job=job, stage_key=cls.key)
+        job.logger.info(f"Deployment {job.deployment} now has {len(events)} events after regrouping.")
+
+        job.progress.update_stage(cls.key, status=JobState.SUCCESS, progress=1)
+        job.update_status(JobState.SUCCESS, save=False)
+        job.finished_at = datetime.datetime.now()
+        job.save()
+
+
 class UnknownJobType(JobType):
     name = "Unknown"
     key = "unknown"
@@ -797,6 +954,7 @@ VALID_JOB_TYPES = [
     MLJob,
     SourceImageCollectionPopulateJob,
     DataStorageSyncJob,
+    RegroupEventsJob,
     UnknownJobType,
     DataExportJob,
     PostProcessingJob,
@@ -853,7 +1011,15 @@ class Job(BaseModel):
     # @TODO can we use an Enum or Pydantic model for status?
     status = models.CharField(max_length=255, default=JobState.CREATED.name, choices=JobState.choices())
     progress: JobProgress = SchemaField(JobProgress, default=default_job_progress)
-    logs: JobLogs = SchemaField(JobLogs, default=JobLogs)
+    # DEPRECATED: per-line writes moved to the JobLog child table (issue #1256, PR #1259).
+    # Retained as a read-only fallback so jobs created before the migration still
+    # surface their stored logs in the UI. Will be dropped in a follow-up after
+    # the legacy rows are backfilled into JobLog. Do not write to this field.
+    logs: JobLogs = SchemaField(
+        JobLogs,
+        default=JobLogs,
+        help_text="DEPRECATED: read-only fallback for pre-#1259 jobs. Use the JobLog table for new writes.",
+    )
     params = models.JSONField(null=True, blank=True)
     result = models.JSONField(null=True, blank=True)
     task_id = models.CharField(max_length=255, null=True, blank=True)
@@ -1012,24 +1178,113 @@ class Job(BaseModel):
         Cancel a job. For async_api jobs, clean up NATS/Redis resources
         and transition through CANCELING → REVOKED. For other jobs,
         revoke the Celery task.
+
+        The CANCELING and REVOKED writes go through the guarded chokepoint
+        (issue #1337) so a cancel cannot clobber a status another writer already
+        moved to a terminal state. If the job has already completed (SUCCESS) or
+        otherwise left the cancellable states, the guarded UPDATE no-ops and we
+        leave the status untouched — but we still revoke the Celery task and run
+        the NATS/Redis teardown below, since those resources may need releasing
+        regardless of the final status.
         """
-        self.status = JobState.CANCELING
-        self.save()
+        # CANCELING is a transient marker: only advance into it from a still-active
+        # state, never from an already-terminal one (don't un-finish a finished job).
+        canceling = self._guarded_status_update(
+            JobState.CANCELING,
+            from_statuses=JobState.finalizable_states(),
+        )
+        if canceling:
+            self.save(update_fields=["progress", "updated_at"])
 
         if self.task_id:
             task = run_job.AsyncResult(self.task_id)
-            if task:
-                task.revoke(terminate=True)
             if self.dispatch_mode == JobDispatchMode.ASYNC_API:
-                # For async jobs we need to set the status to revoked here since the task already
-                # finished (it only queues the images).
-                self.status = JobState.REVOKED
-                self.save()
+                # The local run_job only queues images and has almost always
+                # finished by now, so terminating it does nothing about the work
+                # running on the remote ADC workers — that is stopped by tearing
+                # down the NATS stream + Redis state in cleanup below. Revoke
+                # without terminate so we never SIGTERM the bootstrap mid-flight on
+                # the rare occasion it is still running. (folds antenna#1324)
+                if task:
+                    task.revoke()
+                # Set the status to revoked here. CANCELING is included in the
+                # from-set so this completes the cancel's own CANCELING → REVOKED
+                # progression.
+                revoked = self._guarded_status_update(
+                    JobState.REVOKED,
+                    from_statuses=JobState.finalizable_states() + [JobState.CANCELING],
+                    set_finished=True,
+                )
+                if revoked:
+                    self.save(update_fields=["progress", "finished_at", "updated_at"])
+            elif task:
+                # Sync / internal jobs do the actual work inside the celery task,
+                # so terminating it is the cancel mechanism.
+                task.revoke(terminate=True)
         else:
-            self.status = JobState.REVOKED
-            self.save()
+            revoked = self._guarded_status_update(
+                JobState.REVOKED,
+                # CANCELING included so this completes the cancel's own progression.
+                from_statuses=JobState.finalizable_states() + [JobState.CANCELING],
+                set_finished=True,
+            )
+            if revoked:
+                self.save(update_fields=["progress", "finished_at", "updated_at"])
 
         cleanup_async_job_if_needed(self)
+
+    def _guarded_status_update(self, to_status, from_statuses, *, set_finished=False):
+        """Move the job to ``to_status`` only if it is still in one of
+        ``from_statuses``, in a single atomic step.
+
+        Why this exists: a job's status is written from several places, and for
+        async (pull-based) jobs the result batches that drive those writes arrive
+        concurrently. Without a guard each writer reads the whole job row, edits
+        it, and writes it back, so a slower writer working from a stale copy can
+        overwrite a status another writer already advanced. That made a finished
+        job look like it was running again, or flipped a cancelled/failed job to
+        SUCCESS. Because a lot of behaviour keys off job status — whether the job
+        is still handed out for more work, whether its resources get cleaned up,
+        what the UI shows — those wrong statuses were not cosmetic; they caused
+        knock-on bugs. See issue #1337.
+
+        The guard is a single conditional ``UPDATE ... WHERE status IN
+        (from_statuses)``. It holds no transaction-length row lock (so it does not
+        reintroduce the contention #1261 removed): if a concurrent writer has
+        already moved the job out of ``from_statuses``, the UPDATE matches zero
+        rows and this call is a no-op, leaving that writer's status intact.
+
+        The lock-free status writers all go through this method — it, the result
+        handler ``_update_job_progress`` (#1338), and the two Celery task-signal
+        handlers — which is why each passes a ``from_statuses`` precondition. The
+        remaining two writers enforce the same "don't revive a finished job" rule
+        under a row lock instead: ``_fail_job`` and the stale-job reaper
+        (``check_stale_jobs``) run under ``select_for_update`` and check the
+        current status before writing. The reaper deliberately keeps a broader
+        from-set so it can still force a genuinely stuck job out of
+        CANCELING/UNKNOWN — that is its role as the last resort.
+
+        Caller contract: persist ``progress.summary.status`` into the JSONB
+        afterwards with a narrow ``save(update_fields=["progress", "updated_at"])``,
+        and only when this method reports the transition fired.
+
+        Returns the number of rows updated (0 or 1). On a successful transition
+        the in-memory instance is advanced to match (``status``, optionally
+        ``finished_at``, and ``progress.summary.status``) so the caller can save
+        the progress blob without re-reading.
+        """
+        fields = {"status": to_status}
+        now = None
+        if set_finished:
+            now = datetime.datetime.now()  # Naive local time, matching finished_at writes elsewhere.
+            fields["finished_at"] = now
+        updated = Job.objects.filter(pk=self.pk, status__in=from_statuses).update(**fields)
+        if updated:
+            self.status = to_status
+            if set_finished:
+                self.finished_at = now
+            self.progress.summary.status = to_status
+        return updated
 
     def update_status(self, status=None, save=True):
         """

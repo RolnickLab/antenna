@@ -8,14 +8,29 @@ from rest_framework import status
 from rest_framework.test import APIRequestFactory, APITestCase
 
 from ami.base.serializers import reverse_with_params
-from ami.jobs.models import Job, JobDispatchMode, JobProgress, JobState, MLJob, SourceImageCollectionPopulateJob
-from ami.main.models import Project, SourceImage, SourceImageCollection
+from ami.jobs.models import (
+    DataStorageSyncJob,
+    Job,
+    JobDispatchMode,
+    JobLog,
+    JobProgress,
+    JobState,
+    MLJob,
+    RegroupEventsJob,
+    SourceImageCollectionPopulateJob,
+)
+from ami.main.models import Deployment, Event, Project, SourceImage, SourceImageCollection
 from ami.ml.models import Pipeline
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.orchestration.jobs import queue_images_to_nats
+from ami.tests.fixtures.main import create_captures
 from ami.users.models import User
 
 logger = logging.getLogger(__name__)
+
+
+def joined_job_log_messages(job: Job) -> str:
+    return "\n".join(JobLog.objects.filter(job=job).order_by("-created_at", "-pk").values_list("message", flat=True))
 
 
 class TestJobProgress(TestCase):
@@ -392,6 +407,17 @@ class TestJobView(APITestCase):
         # Verify we don't get the full results structure
         self.assertNotIn("details", data["results"][0])
 
+    def test_list_jobs_with_invalid_cutoff_hours_returns_400(self):
+        """``?cutoff_hours=abc`` must 400, not 500. Locks in the
+        ``SingleParamSerializer`` validation pattern in ``get_queryset``."""
+        self.client.force_authenticate(user=self.user)
+        url = reverse_with_params(
+            "api:job-list",
+            params={"project_id": self.project.pk, "cutoff_hours": "abc"},
+        )
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 400)
+
     def test_list_jobs_ids_only_pops_one(self):
         """`?ids_only=1` without an explicit limit returns one job (pop()-style handoff)."""
         self._create_job("Test job 2", start_now=False)
@@ -645,7 +671,7 @@ class TestJobView(APITestCase):
         self.assertEqual(resp.status_code, 200)
 
         job.refresh_from_db()
-        joined = "\n".join(job.logs.stdout)
+        joined = joined_job_log_messages(job)
         self.assertIn("Tasks fetched", joined)
         self.assertIn("requested=2", joined)
         self.assertIn("delivered=", joined)
@@ -666,7 +692,7 @@ class TestJobView(APITestCase):
         self.assertEqual(resp.json(), {"tasks": []})
 
         job.refresh_from_db()
-        joined = "\n".join(job.logs.stdout)
+        joined = joined_job_log_messages(job)
         self.assertIn("non-active job", joined)
         self.assertIn(f"status={JobState.SUCCESS}", joined)
 
@@ -705,7 +731,7 @@ class TestJobView(APITestCase):
         self.assertEqual(resp.status_code, 200)
 
         job.refresh_from_db()
-        joined = "\n".join(job.logs.stdout)
+        joined = joined_job_log_messages(job)
         self.assertIn("Queued pipeline result", joined)
         self.assertIn("mirrored-task-id", joined)
         self.assertIn("test.reply.logged", joined)
@@ -742,7 +768,7 @@ class TestJobView(APITestCase):
         self.assertEqual(resp.status_code, 200)
 
         job.refresh_from_db()
-        joined = "\n".join(job.logs.stdout)
+        joined = joined_job_log_messages(job)
         # Full token key must NOT appear anywhere in logs
         self.assertNotIn(token.key, joined)
         # Fingerprint (first 8 chars + ellipsis) MUST appear
@@ -769,7 +795,7 @@ class TestJobView(APITestCase):
 
         job.refresh_from_db()
         # No Tasks fetched line should appear in stdout for a zero-delivery poll
-        joined = "\n".join(job.logs.stdout)
+        joined = joined_job_log_messages(job)
         self.assertNotIn("Tasks fetched", joined)
 
     def test_tasks_fetch_nonzero_delivered_logs_to_stdout(self):
@@ -799,7 +825,7 @@ class TestJobView(APITestCase):
         self.assertEqual(len(resp.json()["tasks"]), 3)
 
         job.refresh_from_db()
-        joined = "\n".join(job.logs.stdout)
+        joined = joined_job_log_messages(job)
         self.assertIn("Tasks fetched", joined)
         self.assertIn("delivered=3", joined)
 
@@ -842,7 +868,7 @@ class TestJobThroughputLogging(TestCase):
         _log_job_throughput(self.job, "process")
 
         self.job.refresh_from_db()
-        joined = "\n".join(self.job.logs.stdout)
+        joined = joined_job_log_messages(self.job)
         self.assertIn("throughput", joined)
         self.assertIn("processed=10/100", joined)
         self.assertIn("rate=2.0 imgs/min", joined)
@@ -858,7 +884,7 @@ class TestJobThroughputLogging(TestCase):
         _log_job_throughput(self.job, "process")
 
         self.job.refresh_from_db()
-        joined = "\n".join(self.job.logs.stdout)
+        joined = joined_job_log_messages(self.job)
         self.assertNotIn("throughput", joined)
 
     def test_throughput_skipped_for_non_processing_stage(self):
@@ -873,7 +899,7 @@ class TestJobThroughputLogging(TestCase):
         _log_job_throughput(self.job, "delay")
 
         self.job.refresh_from_db()
-        joined = "\n".join(self.job.logs.stdout)
+        joined = joined_job_log_messages(self.job)
         self.assertNotIn("throughput", joined)
 
     def test_throughput_with_zero_processed_reports_unknown_eta(self):
@@ -888,10 +914,212 @@ class TestJobThroughputLogging(TestCase):
         _log_job_throughput(self.job, "process")
 
         self.job.refresh_from_db()
-        joined = "\n".join(self.job.logs.stdout)
+        joined = joined_job_log_messages(self.job)
         self.assertIn("processed=0/50", joined)
         self.assertIn("rate=0.0", joined)
         self.assertIn("ETA=unknown", joined)
+
+
+class TestJobLogPersistence(TestCase):
+    """Exercise the JobLog table / legacy-JSON fallback paths on JobLogHandler.emit."""
+
+    def setUp(self):
+        self.project = Project.objects.create(name="JobLog Test Project")
+        self.pipeline = Pipeline.objects.create(name="JobLog Pipeline", slug="joblog-pipeline")
+        self.pipeline.projects.add(self.project)
+        self.job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="JobLog emit test job",
+            pipeline=self.pipeline,
+        )
+
+    def test_emit_inserts_one_joblog_row_per_call(self):
+        self.job.logger.info("first")
+        self.job.logger.error("boom")
+
+        rows = list(JobLog.objects.filter(job=self.job).order_by("pk").values("level", "message"))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["level"], "INFO")
+        self.assertIn("first", rows[0]["message"])
+        self.assertEqual(rows[1]["level"], "ERROR")
+        self.assertIn("boom", rows[1]["message"])
+
+        # emit must not repopulate the legacy JSON column.
+        self.job.refresh_from_db(fields=["logs"])
+        self.assertEqual(self.job.logs.stdout, [])
+        self.assertEqual(self.job.logs.stderr, [])
+
+    def test_flag_disabled_short_circuits_emit(self):
+        from django.test import override_settings
+
+        with override_settings(JOB_LOG_PERSIST_ENABLED=False):
+            self.job.logger.info("suppressed")
+            self.job.logger.error("also suppressed")
+
+        self.assertFalse(JobLog.objects.filter(job=self.job).exists())
+        self.job.refresh_from_db(fields=["logs"])
+        self.assertEqual(self.job.logs.stdout, [])
+        self.assertEqual(self.job.logs.stderr, [])
+
+    def test_serialize_job_logs_reads_from_joblog_table(self):
+        from ami.jobs.serializers import serialize_job_logs
+
+        self.job.logger.info("hello world")
+        self.job.logger.error("something failed")
+
+        logs = serialize_job_logs(self.job)
+
+        self.assertEqual(len(logs["stdout"]), 2)
+        # Newest-first ordering.
+        self.assertIn("ERROR", logs["stdout"][0])
+        self.assertIn("something failed", logs["stdout"][0])
+        self.assertIn("INFO", logs["stdout"][1])
+        self.assertIn("hello world", logs["stdout"][1])
+        self.assertEqual(logs["stderr"], ["something failed"])
+
+    def test_serialize_job_logs_falls_back_to_legacy_json(self):
+        """A job with no JobLog rows but a populated ``logs`` JSON column (a
+        pre-migration job, or a job written under ``JOB_LOG_PERSIST_ENABLED=False``
+        after legacy data had been seeded) still renders through the serializer."""
+        from ami.jobs.models import JobLogs as JobLogsSchema
+        from ami.jobs.serializers import serialize_job_logs
+
+        self.job.logs = JobLogsSchema(stdout=["[2025-01-01 00:00:00] INFO legacy line"], stderr=["old error"])
+        self.job.save(update_fields=["logs"])
+        self.assertFalse(JobLog.objects.filter(job=self.job).exists())
+
+        logs = serialize_job_logs(self.job)
+
+        self.assertEqual(logs["stdout"], ["[2025-01-01 00:00:00] INFO legacy line"])
+        self.assertEqual(logs["stderr"], ["old error"])
+
+    def test_get_logs_list_action_skips_joblog_query(self):
+        """The ``get_logs`` method on JobListSerializer returns the legacy JSON
+        shape when the viewset action is ``list``. This avoids N+1 on joined
+        log rows and matches UI expectations (the list view does not render logs)."""
+        from unittest.mock import MagicMock
+
+        from ami.jobs.models import JobLogs as JobLogsSchema
+        from ami.jobs.serializers import JobListSerializer
+
+        self.job.logger.info("ignored in list view")
+        self.assertEqual(JobLog.objects.filter(job=self.job).count(), 1)
+
+        self.job.logs = JobLogsSchema(stdout=["legacy-only"], stderr=[])
+        self.job.save(update_fields=["logs"])
+
+        # Directly instantiate the serializer with a fake view context claiming
+        # the list action; confirms list responses do not hit JobLog rows.
+        fake_view = MagicMock()
+        fake_view.action = "list"
+        serializer = JobListSerializer(instance=self.job, context={"view": fake_view})
+        logs = serializer.get_logs(self.job)
+
+        self.assertEqual(logs["stdout"], ["legacy-only"])
+        self.assertEqual(logs["stderr"], [])
+
+    def test_get_logs_detail_action_reads_joblog_table(self):
+        from unittest.mock import MagicMock
+
+        from ami.jobs.serializers import JobListSerializer
+
+        self.job.logger.info("detail view reads me")
+
+        fake_view = MagicMock()
+        fake_view.action = "retrieve"
+        serializer = JobListSerializer(instance=self.job, context={"view": fake_view})
+        logs = serializer.get_logs(self.job)
+
+        self.assertEqual(len(logs["stdout"]), 1)
+        self.assertIn("detail view reads me", logs["stdout"][0])
+
+    def _make_detail_serializer(self, logs_limit: int | None = None):
+        # Mirror what JobViewSet.get_serializer_context produces for a
+        # detail (retrieve) action: ``logs_limit`` is the validated int (or
+        # None when the param was not passed).
+        from unittest.mock import MagicMock
+
+        from ami.jobs.serializers import JobListSerializer
+
+        fake_view = MagicMock()
+        fake_view.action = "retrieve"
+        return JobListSerializer(
+            instance=self.job,
+            context={"view": fake_view, "logs_limit": logs_limit},
+        )
+
+    def test_logs_limit_caps_response_size(self):
+        for i in range(5):
+            self.job.logger.info(f"line {i}")
+        self.assertEqual(JobLog.objects.filter(job=self.job).count(), 5)
+
+        serializer = self._make_detail_serializer(logs_limit=2)
+        logs = serializer.get_logs(self.job)
+
+        self.assertEqual(len(logs["stdout"]), 2)
+        # Newest-first.
+        self.assertIn("line 4", logs["stdout"][0])
+        self.assertIn("line 3", logs["stdout"][1])
+
+    def test_logs_limit_default_when_unset(self):
+        from ami.jobs.models import JOB_LOGS_DEFAULT_LIMIT
+
+        self.job.logger.info("only one")
+
+        serializer = self._make_detail_serializer(logs_limit=None)
+        logs = serializer.get_logs(self.job)
+
+        # Default kicks in (no truncation; 1 < 1000).
+        self.assertEqual(len(logs["stdout"]), 1)
+        self.assertGreaterEqual(JOB_LOGS_DEFAULT_LIMIT, 1)
+
+
+class TestJobLogsLimitHTTPValidation(APITestCase):
+    """``?logs_limit=`` validation runs at the view boundary, so a bad value
+    must produce HTTP 400 (not 500). Validated via the actual API path rather
+    than calling the serializer directly."""
+
+    def setUp(self):
+        self.project = Project.objects.create(name="logs_limit HTTP test")
+        self.job = Job.objects.create(
+            job_type_key=MLJob.key,
+            project=self.project,
+            name="logs_limit HTTP test job",
+        )
+        self.user = User.objects.create_user(  # type: ignore
+            email="logs-limit-validator@insectai.org",
+            is_staff=True,
+            is_active=True,
+            is_superuser=True,
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def _detail_url(self, **params) -> str:
+        return reverse_with_params("api:job-detail", args=[self.job.pk], params=params)
+
+    def test_valid_integer_returns_200(self):
+        # Sanity: a well-formed ``?logs_limit=`` does not 400 on its own.
+        resp = self.client.get(self._detail_url(project_id=self.project.pk, logs_limit=5))
+        self.assertEqual(resp.status_code, 200)
+
+    def test_non_integer_returns_400(self):
+        resp = self.client.get(self._detail_url(project_id=self.project.pk, logs_limit="abc"))
+        self.assertEqual(resp.status_code, 400)
+
+    def test_zero_returns_400(self):
+        resp = self.client.get(self._detail_url(project_id=self.project.pk, logs_limit=0))
+        self.assertEqual(resp.status_code, 400)
+
+    def test_negative_returns_400(self):
+        resp = self.client.get(self._detail_url(project_id=self.project.pk, logs_limit=-5))
+        self.assertEqual(resp.status_code, 400)
+
+    def test_above_max_returns_400(self):
+        from ami.jobs.models import JOB_LOGS_MAX_LIMIT
+
+        resp = self.client.get(self._detail_url(project_id=self.project.pk, logs_limit=JOB_LOGS_MAX_LIMIT + 1))
+        self.assertEqual(resp.status_code, 400)
 
 
 class TestJobDispatchModeFiltering(APITestCase):
@@ -1314,3 +1542,119 @@ class TestListEndpointHeartbeat(APITestCase):
         # may be set by the creation-time get_status() ping, but should be unchanged
         # after the task runs.
         self.assertEqual(sync_service.last_seen, sync_last_seen_before)
+
+
+class TestRegroupEventsJob(TestCase):
+    """
+    Cover the user-visible behaviour of the new RegroupEventsJob:
+    - Runs end-to-end against real captures, produces Events.
+    - Reports summary stats on the regroup stage.
+    - Surfaces a regroup failure as Job FAILURE so admins can see it in the UI.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.project = Project.objects.create(name="Regroup Job Project")
+        self.deployment = Deployment.objects.create(name="Regroup Job Deployment", project=self.project)
+        # Two nightly bursts → at least 2 Events expected
+        create_captures(deployment=self.deployment, num_nights=2, images_per_night=4, interval_minutes=2)
+
+    def test_regroup_job_runs_end_to_end_and_reports_stats(self):
+        Event.objects.filter(deployment=self.deployment).delete()
+        job = Job.objects.create(
+            name="Regroup test",
+            deployment=self.deployment,
+            project=self.project,
+            job_type_key=RegroupEventsJob.key,
+        )
+        job.run()
+        job.refresh_from_db()
+
+        self.assertEqual(job.status, JobState.SUCCESS.value)
+        # Stage and stats are populated.
+        stage = job.progress.get_stage(RegroupEventsJob.key)
+        self.assertEqual(stage.status, JobState.SUCCESS)
+        self.assertEqual(stage.progress, 1)
+        # Retrieval keys are slugify(name) with `-` → `_` (see python_slugify in
+        # ami.jobs.models). Names are the human labels shown in the Jobs UI.
+        params = {p.key: p.value for p in stage.params}
+        self.assertGreaterEqual(params["events_created"], 1, "should report at least one Event created")
+        self.assertGreaterEqual(params["captures_grouped"], 1)
+        names = {p.name for p in stage.params}
+        self.assertIn("Captures grouped", names)
+        self.assertIn("Events created", names)
+        # Real Events exist in the DB.
+        self.assertGreaterEqual(Event.objects.filter(deployment=self.deployment).count(), 1)
+
+    def test_regroup_job_failure_propagates(self):
+        """
+        When ``group_images_into_events`` raises, the JobType propagates so the
+        Celery wrapper records FAILURE. Verifies the regroup-after-sync silent-
+        failure pain (#1157) cannot happen in the Job path.
+        """
+        from unittest.mock import patch
+
+        job = Job.objects.create(
+            name="Regroup failure test",
+            deployment=self.deployment,
+            project=self.project,
+            job_type_key=RegroupEventsJob.key,
+        )
+        with patch("ami.main.models.group_images_into_events", side_effect=RuntimeError("boom")):
+            with self.assertRaises(RuntimeError):
+                job.run()
+
+
+class TestDataStorageSyncJobIncludesRegroupStage(TestCase):
+    """
+    The sync Job now runs grouping as an explicit second stage so logs land on
+    the same Job row and a regroup failure flips the Job to FAILURE rather than
+    silently succeeding (#1157).
+    """
+
+    def test_sync_job_adds_regroup_stage(self):
+        project = Project.objects.create(name="Sync Job Project")
+        deployment = Deployment.objects.create(name="Sync Job Deployment", project=project)
+        create_captures(deployment=deployment, num_nights=1, images_per_night=3, interval_minutes=2)
+
+        # Patch the inner sync call so we don't need S3; the grouping stage is what we're testing.
+        from unittest.mock import patch
+
+        with patch.object(Deployment, "sync_captures", return_value=3):
+            job = Job.objects.create(
+                name="Sync test",
+                deployment=deployment,
+                project=project,
+                job_type_key=DataStorageSyncJob.key,
+            )
+            job.run()
+            job.refresh_from_db()
+
+        self.assertEqual(job.status, JobState.SUCCESS.value)
+        regroup_stage = job.progress.get_stage(DataStorageSyncJob.regroup_stage_key)
+        self.assertEqual(regroup_stage.status, JobState.SUCCESS)
+        params = {p.key: p.value for p in regroup_stage.params}
+        self.assertIn("events_created", params)
+        self.assertIn("captures_grouped", params)
+        names = {p.name for p in regroup_stage.params}
+        self.assertIn("Captures grouped", names)
+        self.assertIn("Events created", names)
+
+    def test_sync_job_regroup_failure_propagates(self):
+        from unittest.mock import patch
+
+        project = Project.objects.create(name="Sync Job Failure Project")
+        deployment = Deployment.objects.create(name="Sync Job Failure Deployment", project=project)
+
+        job = Job.objects.create(
+            name="Sync regroup failure",
+            deployment=deployment,
+            project=project,
+            job_type_key=DataStorageSyncJob.key,
+        )
+        with patch.object(Deployment, "sync_captures", return_value=0), patch(
+            "ami.main.models.group_images_into_events",
+            side_effect=RuntimeError("regroup blew up"),
+        ):
+            with self.assertRaises(RuntimeError):
+                job.run()

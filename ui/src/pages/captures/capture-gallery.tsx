@@ -20,7 +20,7 @@ export const CaptureGallery = ({
     () =>
       captures.map((c) => ({
         id: c.id,
-        image: { src: c.src },
+        image: { src: c.thumbnailSmall },
         title: c.dateTimeLabel,
         to: c.sessionId
           ? getAppRoute({

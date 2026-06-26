@@ -1,8 +1,7 @@
 import classNames from 'classnames'
 import { ProjectDetails } from 'data-services/models/project-details'
-import { Badge } from 'design-system/components/badge/badge'
 import { ChevronRightIcon, PenIcon } from 'lucide-react'
-import { buttonVariants, Tooltip } from 'nova-ui-kit'
+import { Badge, buttonVariants, Tooltip } from 'nova-ui-kit'
 import { Fragment, ReactNode, useContext, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
@@ -25,7 +24,7 @@ export const Sidebar = ({ project }: { project: ProjectDetails }) => {
   }, [activeItem])
 
   return (
-    <div className="w-full h-min shrink-0 p-0 rounded-md border border-border overflow-hidden bg-background md:w-72">
+    <div className="w-full shrink-0 p-0 rounded-md border border-border overflow-hidden bg-background md:w-72">
       {project.image ? (
         <img src={project.image} alt="" />
       ) : (

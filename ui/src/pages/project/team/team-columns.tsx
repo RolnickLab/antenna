@@ -1,12 +1,14 @@
 import { Member } from 'data-services/models/member'
-import { Badge } from 'design-system/components/badge/badge'
-import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
-import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
-import { TableColumn } from 'design-system/components/table/types'
-import { Toolbar } from 'design-system/components/toolbar'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { InfoIcon, UserIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
+import {
+  Badge,
+  BasicTableCell,
+  BasicTooltip,
+  Button,
+  DateTableCell,
+  TableColumn,
+  Toolbar,
+} from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import { LeaveTeamDialog } from './leave-team-dialog'
 import { ManageAccessDialog } from './manage-access-dialog'
@@ -19,7 +21,6 @@ export const columns = ({
 }): TableColumn<Member>[] => [
   {
     id: 'user',
-    sortField: 'name',
     name: translate(STRING.FIELD_LABEL_USER),
     renderCell: (item: Member) => (
       <BasicTableCell>

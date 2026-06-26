@@ -1,5 +1,6 @@
 import { getFormatedDateString } from 'utils/date/getFormatedDateString/getFormatedDateString'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
+import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
 import { Taxon } from './taxa'
 
@@ -103,9 +104,11 @@ export class Occurrence {
     return verifiedBy
       ? {
           id: `${verifiedBy.id}`,
-          name: verifiedBy.name?.length ? verifiedBy.name : 'Anonymous user',
+          name: verifiedBy.name?.length
+            ? verifiedBy.name
+            : translate(STRING.ANONYMOUS_USER),
         }
-      : { name: 'Unknown user' }
+      : { name: translate(STRING.ANONYMOUS_USER) }
   }
 
   get durationLabel(): string | undefined {

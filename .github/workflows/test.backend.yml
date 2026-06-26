@@ -15,7 +15,7 @@ on:
     paths-ignore: ["docs/**", "ui/**"]
 
 concurrency:
-  group: ${{ github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -33,6 +33,9 @@ jobs:
       - name: Run pre-commit
         uses: pre-commit/action@v3.0.1
 
+      - name: Verify newrelic.ini function_trace symbols resolve
+        run: python scripts/check_newrelic_function_trace.py
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -44,6 +47,9 @@ jobs:
 
       - name: Run DB Migrations
         run: docker compose -f docker-compose.ci.yml run --rm django python manage.py migrate
+
+      - name: Check for missing migrations
+        run: docker compose -f docker-compose.ci.yml run --rm django python manage.py makemigrations --check --dry-run --noinput
 
       - name: Run Django Tests
         run: docker compose -f docker-compose.ci.yml run --rm django python manage.py test

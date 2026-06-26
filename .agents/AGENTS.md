@@ -9,6 +9,7 @@ Every call to the AI model API incurs a cost and requires electricity. Be smart 
 
 **Efficient Development Practices:**
 - Add learnings and gotchas to this file to avoid repeating mistakes and trial & error
+- Check `docs/claude/INDEX.md` for existing reference docs, runbooks, and plans before exploring the codebase from scratch
 - Ignore line length and type errors until the very end; use command line tools to fix those (black, flake8)
 - Always prefer command line tools to avoid expensive API requests (e.g., use git and jq instead of reading whole files)
 - Use bulk operations and prefetch patterns to minimize database queries
@@ -22,6 +23,53 @@ Every call to the AI model API incurs a cost and requires electricity. Be smart 
 **Git Commit Guidelines:**
 - Do NOT include "Generated with Claude Code" in commit messages
 - ALWAYS include "Co-Authored-By: Claude <noreply@anthropic.com>" at the end of commit messages
+
+## Pull Request Conventions
+
+These conventions keep PR titles and descriptions readable for the whole team — product, QA, ops, and engineers who have not seen the diff. The PR template lives at `.github/pull_request_template.md`; the rules below are the parts treated as mandatory.
+
+### Title: lead with the user-facing effect
+
+A title states what the change does for a user, operator, or system, in plain language. It should make sense to someone who has not opened the diff.
+
+- **Effect first, mechanism second.** Push the "how" (serializers, querysets, cache internals, env var names) into the body.
+  - Avoid: `emit storage URL direct from serializer when cache is warm`
+  - Prefer: `Store and serve full URLs instead of hitting the web server`
+- **Bare sentence-case imperative.** Concrete verb first (Add, Allow, Speed up, Filter, Require, Improve, Stop, Show). No Conventional-Commit prefix (`feat:` / `fix:` / `chore:`) in the title, no code or module names, and no ticket number (reference it in the body with `Closes #N`).
+- **Capture the whole PR's purpose, not just the most visible change.** When a PR establishes a pattern, framework, or cleanup that later work builds on, name that intent rather than titling the PR after the one example that demonstrates it. A second clause is fine: "Add cancel button to jobs & establish the pattern for future buttons".
+
+### Body: a Summary and a List of Changes are mandatory
+
+Every PR body opens with:
+
+1. **`## Summary`** — a short, plain-language paragraph stating the purpose of the change and its effect for the user, operator, or system. Written so the whole team can read it; implementation detail belongs in `## Detailed Description` below.
+2. **`### List of Changes`** — a numbered list or a table. Each change has, at minimum, a plain user-effect description. Optionally add a column for the technical/implementation detail, plus any other helpful columns (affected area, risk, migration). Lead with the user-effect; do not reduce it to a bare list of class or method names.
+
+### Examples
+
+Real titles from this repository, drafted mechanism-first and then rewritten to lead with the effect:
+
+| Drafted (mechanism) | Rewritten (effect) |
+|----|----|
+| `perf(api): rewrite collection counts as subqueries; trim capture list SELECT` | Speed up the captures list view |
+| `perf(thumbnails): emit storage URL direct from serializer when cache is warm` | Option for thumbnails: store and serve full URLs instead of hitting the server |
+| `feat(projects): wire session_time_gap_seconds into event grouping` | Allow users to customize the time gap between sessions |
+| `fix(jobs): ack NATS after results-stage SREM; defer task_failure for in-flight async jobs` | Prevent jobs from hanging in STARTED state with no progress |
+| `fix(newrelic): make app_name env-var-driven (drop from ini)` | Allow distinguishing data from different deployments in New Relic |
+
+A few patterns worth copying:
+
+- **Name the framework, not the demo.** `feat(post-processing): admin scaffolding precursor (pydantic schema, form base, parameterized template)` became *Framework for admins to trigger and review post-processing methods* — the title captures the capability, not the one example that exercises it.
+- **Don't ship the branch-name auto-title.** `gh pr create` pre-fills the title from the branch slug, so titles like `Feat/taxa-covers` or `Fix/celery workers` slip through. Rewrite them: the latter became *Fix background tasks from disappearing*.
+
+## Writing Comments, Docstrings, and PR Text
+
+A confident but wrong comment is worse than no comment — future developers and agents read it as established fact and build on it. Match confidence to evidence.
+
+- **Keep the load-bearing fact; cut unverified mechanism.** A reader changing a constant should not have to trust a paragraph of speculation. State what the code does and the one reason that matters.
+- **Label guesses as guesses.** Use "best-guess", "not measured", "appears to" for anything you have not tested or profiled. Never state a hunch in the authoritative voice.
+- **Short, then link.** Point to the PR or issue for the long reasoning (`See #1231`) instead of embedding it as truth. A PR thread is dated and discussable; an inline comment reads as eternal fact.
+- **In PR descriptions, distinguish measured from inferred.** Numbers from a profiler, logs, or `ps` are measurements; numbers from reading code are estimates. Say which.
 
 ## Project Overview
 
@@ -60,6 +108,18 @@ These patterns are specific to this codebase and may differ from typical Django 
 - **Calculated fields**: Many models use `update_calculated_fields()` methods that must be called when related data changes. Always call these after bulk operations.
 
 - **Event grouping**: Images are grouped into Events using `group_images_into_events()` function with 120-minute default gaps. Events are identified by `YYYY-MM-DD` format in `group_by` field.
+
+## Domain Invariants & Correctness Rules
+
+Silent-bug classes that reviewers have caught repeatedly. None of these are visible in a diff — check for them explicitly.
+
+- **One feature extractor per similarity/clustering query.** Any query over classification features or embeddings MUST constrain to a single algorithm (feature extractor), otherwise the results are random noise. If a cross-algorithm query is intentional, document it with an inline comment.
+- **`timezone.now()` vs `datetime.now()`**: use `django.utils.timezone.now()` for "now" timestamps. Use `datetime.now()` only when deliberately working with a deployment's local capture time, with a comment saying so.
+- **ML-backend schema boundary**: schemas in `ami/ml/schemas.py` define the contract with external processing services. They must not reference Antenna-side concepts (projects, users, permissions) — the processing service never knows about them.
+- **Raise, don't return sentinels.** Failure paths raise exceptions (or surface DRF 4xx via serializer validation) — never return an empty/None "success" response on error.
+- **No `assert` in production code.** Assertions are stripped under `python -O`. Raise explicit exceptions.
+- **Model change ⇒ migration in the same PR.** Run `python manage.py makemigrations --check --dry-run` before pushing (CI enforces this). A missing migration discovered mid-branch that belongs to main gets its own PR branched from main.
+- **Changing `VALID_JOB_TYPES` requires a migration.** `Job.job_type_key` builds its `choices` from the registry, so adding/renaming a job type changes the field definition. The migration is state-only (no schema change), but Django still requires it, and it is easy to miss because nothing in the database schema changes.
 
 ## Development Commands
 
@@ -104,6 +164,10 @@ docker compose up
 rm docker-compose.override.yml
 docker compose restart django celeryworker
 ```
+
+### Testing worktree changes against main stack
+
+Two routes — bind-mount worktree subdirs into the main stack (code-only changes, keeps real data) or run a duplicate stack from the worktree (full isolation, fresh empty volumes). Procedures, caveats, and cleanup steps: `docs/claude/reference/worktree-testing.md`.
 
 ### Backend (Django)
 
@@ -323,310 +387,50 @@ Location: `processing_services/` directory contains example implementations
 - Pydantic models stored in JSONB fields via django-pydantic-field
 - Custom managers and QuerySets for filtering by user permissions
 
-## Database Schema Quick Reference
+## Database Schema & Query Patterns
 
-### Core Model Relationships
+Full reference moved to dedicated docs — load on demand:
 
-| Model | App | Key ForeignKeys | Reverse Relations | M2M | Important Indexes |
-|-------|-----|-----------------|-------------------|-----|-------------------|
-| **Project** | main | owner→User | deployments, events, occurrences, captures, jobs, pipelines, sites, devices, tags | members→User | [-priority, created_at] |
-| **Deployment** | main | project→Project, research_site→Site, device→Device, data_source→S3StorageSource | events, captures, occurrences, jobs | - | [name] |
-| **Event** | main | project→Project, deployment→Deployment | captures, occurrences | - | **UNIQUE**(deployment, group_by), [group_by], [start] |
-| **SourceImage** | main | deployment→Deployment(**CASCADE**), event→Event, project→Project | detections | collections→Collection | **UNIQUE**(deployment, path), [deployment,timestamp], [event,timestamp] |
-| **Detection** | main | source_image→SourceImage(**CASCADE**), occurrence→Occurrence, detection_algorithm→Algorithm | classifications | - | [frame_num, timestamp] |
-| **Classification** | main | detection→Detection, taxon→Taxon, algorithm→Algorithm, category_map→CategoryMap | derived_classifications | - | [-created_at, -score] |
-| **Occurrence** | main | determination→Taxon, event→Event, deployment→Deployment, project→Project | detections, identifications | - | **INDEX**(determination,project,event,score), **INDEX**(determination,project,event) |
-| **Identification** | main | user→User, taxon→Taxon, occurrence→Occurrence(**CASCADE**), agreed_with_identification→Identification(self), agreed_with_prediction→Classification | - | - | [-created_at] |
-| **Taxon** | main | parent→Taxon(self), synonym_of→Taxon(self) | direct_children, occurrences, classifications, identifications | projects→Project, tags→Tag | **UNIQUE**(name), [ordering, name] |
-| **Device** | main | project→Project | deployments | - | [name] |
-| **Site** | main | project→Project | deployments | - | [name] |
-| **SourceImageCollection** | main | project→Project(**CASCADE**) | jobs | images→SourceImage | - |
-| **Tag** | main | project→Project(**CASCADE**) | taxa | - | **UNIQUE**(name, project) |
-| **Pipeline** | ml | - | jobs, project_pipeline_configs | algorithms→Algorithm, projects→Project(through), processing_services→ProcessingService | **UNIQUE**(name,version) |
-| **Algorithm** | ml | category_map→CategoryMap | pipelines(M2M), classifications | - | **UNIQUE**(name,version) |
-| **ProcessingService** | ml | - | - | projects→Project, pipelines→Pipeline | - |
-| **ProjectPipelineConfig** | ml | project→Project(**CASCADE**), pipeline→Pipeline(**CASCADE**) | - | - | **UNIQUE**(pipeline, project) |
-| **Job** | jobs | project→Project(**CASCADE**), deployment→Deployment(**CASCADE**), pipeline→Pipeline, source_image_collection→Collection, source_image_single→SourceImage | - | - | [-created_at] |
-| **User** | users | - | projects(owner), user_projects(members M2M), identifications, exports | - | **UNIQUE**(email) |
-| **DataExport** | exports | user→User(**CASCADE**), project→Project(**CASCADE**) | job(OneToOne) | - | [-created_at] |
+- `docs/claude/reference/query-patterns.md` — model relationship table, composite indexes, prefetch/select_related patterns, the full custom QuerySet method catalog, and query anti-patterns.
+- `.agents/DATABASE_SCHEMA.md` — visual ERD (Mermaid) organized by domain layers.
 
-**Legend:** Bold text indicates important constraints/behaviors. **CASCADE** = cascading deletes, **UNIQUE** = unique constraint, **INDEX** = composite index.
+Always-on rules (the most common review findings in this repo's history):
 
-**Visual ERD:** See `DATABASE_SCHEMA.md` for a Mermaid entity-relationship diagram organized by domain layers.
+- **Always filter by `project` first** on Occurrence/SourceImage/Event queries — the composite indexes lead with it, and it enforces visibility.
+- **Use the custom QuerySet methods** (`apply_default_filters()`, `with_taxa_count()`, `visible_for_user()`, etc.) instead of reimplementing filters — see the catalog in query-patterns.md.
+- **Never materialize unbounded querysets** (`list(qs)`, Python-side aggregation over rows). Use SQL-side `aggregate()`, annotations, or subqueries — production projects have >100k occurrences.
+- **No queries inside loops.** Batch with `__in`, `prefetch_related`, or subqueries.
 
-### Query Optimization Guide
+## Definition of Done — Checklists
 
-#### Critical Indexes for Performance
+These map 1:1 to the most frequent review findings across this repo's history. Run through the matching checklist before opening a PR.
 
-**Occurrence Queries** - Use these indexed fields:
-```python
-# Primary composite index - ALWAYS use when filtering by score
-(determination_id, project_id, event_id, determination_score)
+### Any new or changed API endpoint / queryset
 
-# Secondary composite index - for non-score queries
-(determination_id, project_id, event_id)
+- [ ] Permissions: viewset sets `require_project` explicitly (`ProjectMixin`, `ami/base/views.py`); object access goes through `get_object()` / `check_object_permissions()` — never a raw pk lookup.
+- [ ] Permission matrix test: member / non-member / anonymous / superuser (template: `ami/main/tests.py:1532`).
+- [ ] Default filters: occurrence-related querysets go through `apply_default_filters(project, request)`. Grep call sites of the filter the new code path *should* be using and confirm it does — this bug class is invisible in the diff.
+- [ ] No PII in serializers: nested user serializers expose name/image only — never `email`.
+- [ ] Every query param parsed via `SingleParamSerializer` (`ami/base/serializers.py`) or `url_boolean_param` (`ami/utils/fields.py`) so invalid input returns 400, not 500. Test the `?param=abc` case.
+- [ ] Aggregation happens in SQL. Add an `assertNumQueries` test with a **multi-row** fixture — single-row fixtures cannot catch N+1 (example: `ami/ml/tests.py:1006`). Use strict `==` counts in assertions.
+- [ ] Reuse existing patterns before writing new ones — see `docs/claude/reference/canonical-patterns.md`.
 
-# IMPORTANT: Always filter by project_id first when possible for best performance
-Occurrence.objects.filter(project=project, determination__in=taxa_ids)
-```
+### Any model change
 
-**SourceImage Queries** - Use these indexed fields:
-```python
-# For deployment timeline queries
-(deployment, timestamp)  # ← Composite index
+- [ ] Migration included in this PR (`makemigrations --check --dry-run` passes).
+- [ ] `update_calculated_fields()` called after bulk operations that affect cached counts.
+- [ ] No `print()` or debug code in migrations.
 
-# For event-based queries
-(event, timestamp)  # ← Composite index
+### Frontend change
 
-# For lookups by path (UNIQUE constraint = very fast)
-(deployment, path)  # ← Exact match lookups are O(1)
-```
+- [ ] Follow `ui/AGENTS.md` (symlinked as `ui/CLAUDE.md`, auto-loads when editing files under `ui/`).
 
-**Event Queries** - Use these indexed fields:
-```python
-# UNIQUE constraint - perfect for lookups
-(deployment, group_by)
+### Before requesting review (any PR)
 
-# For temporal queries
-[group_by], [start]
-```
-
-**Taxon Queries** - Use these indexed fields:
-```python
-# For name lookups (UNIQUE = very fast)
-name  # ← Exact match lookups
-
-# For ordered listings
-[ordering, name]  # ← Composite index
-```
-
-#### Essential Prefetch/Select_Related Patterns
-
-**Occurrences with all related data:**
-```python
-# Comprehensive occurrence query with all relationships
-Occurrence.objects.select_related(
-    'determination',  # Taxon FK
-    'determination__parent',  # Parent taxon
-    'event',
-    'deployment',
-    'project'
-).prefetch_related(
-    'detections__classifications__taxon',
-    'detections__classifications__algorithm',
-    'detections__source_image',
-    'identifications__user',
-    'identifications__taxon'
-)
-```
-
-**SourceImages with detections:**
-```python
-# Efficient source image query with nested relationships
-SourceImage.objects.select_related(
-    'deployment',
-    'deployment__research_site',
-    'deployment__device',
-    'event',
-    'project'
-).prefetch_related(
-    'detections__classifications__taxon__parent',
-    'detections__occurrence',
-    'collections'
-)
-```
-
-**Jobs with pipeline info:**
-```python
-# Job query with all ML pipeline data
-Job.objects.select_related(
-    'project',
-    'pipeline',
-    'deployment',
-    'source_image_collection'
-).prefetch_related(
-    'pipeline__algorithms',
-    'pipeline__processing_services'
-)
-```
-
-**Deployments with statistics:**
-```python
-# Deployment with denormalized counts (already cached in model fields)
-# These fields are auto-updated: events_count, occurrences_count,
-# captures_count, detections_count, taxa_count
-Deployment.objects.select_related('research_site', 'device', 'project')
-# No need to annotate counts - use the cached fields directly
-```
-
-**Taxa with hierarchy:**
-```python
-# Taxon queries with parent chain
-Taxon.objects.select_related('parent', 'parent__parent')
-
-# For full tree traversal, use the custom manager method
-Taxon.objects.tree(root=root_taxon, filter_ranks=DEFAULT_RANKS)
-```
-
-#### Custom QuerySet Methods (Always Use These)
-
-**Occurrence QuerySet Methods:**
-```python
-# Apply ALL project default filters (taxa lists, score thresholds, etc.)
-Occurrence.objects.apply_default_filters(project, request)
-
-# Add first_appearance and last_appearance timestamp annotations
-Occurrence.objects.with_timestamps()
-
-# Prefetch all identification data efficiently
-Occurrence.objects.with_identifications()
-
-# Filter by score threshold using indexed determination_score field
-Occurrence.objects.filter_by_score_threshold(project, request)
-
-# Get only valid occurrences (with at least one detection)
-Occurrence.objects.valid()
-
-# Annotate with detection count
-Occurrence.objects.with_detections_count()
-
-# Get unique taxa for a project (distinct determination values)
-Occurrence.objects.unique_taxa(project)
-```
-
-**SourceImage QuerySet Methods:**
-```python
-# Apply project default filters (REQUIRED for proper visibility)
-SourceImage.objects.apply_default_filters(project, request)
-
-# Annotate with occurrence count
-SourceImage.objects.with_occurrences_count()
-
-# Annotate with distinct taxa count
-SourceImage.objects.with_taxa_count()
-```
-
-**Event QuerySet Methods:**
-```python
-# Annotate with taxa count for project (respects filters)
-Event.objects.with_taxa_count(project, request)
-
-# Annotate with occurrence count for project
-Event.objects.with_occurrences_count(project, request)
-```
-
-**Taxon QuerySet Methods:**
-```python
-# Filter taxa visible to user (by project membership)
-Taxon.objects.visible_for_user(user)
-
-# Apply project's include/exclude taxa lists
-Taxon.objects.filter_by_project_default_taxa(project, request)
-
-# Annotate with occurrence count for specific project
-Taxon.objects.with_occurrence_counts(project)
-```
-
-**Taxon Manager Methods (use on Taxon.objects):**
-```python
-# Build hierarchical tree structure
-Taxon.objects.tree(root=root_taxon, filter_ranks=DEFAULT_RANKS)
-
-# Build tree of just names (lightweight)
-Taxon.objects.tree_of_names(root=root_taxon)
-
-# Get root taxon
-Taxon.objects.root()
-
-# Bulk update all cached parent chains
-Taxon.objects.update_all_parents()
-
-# Auto-create genus parents for species-level taxa
-Taxon.objects.add_genus_parents()
-
-# Bulk update display names
-Taxon.objects.update_display_names(queryset)
-```
-
-**Pipeline QuerySet Methods:**
-```python
-# Get only enabled pipelines for a project
-Pipeline.objects.enabled(project)
-
-# Get only pipelines with healthy/online processing services
-Pipeline.objects.online(project)
-```
-
-**Project QuerySet Methods:**
-```python
-# Filter projects where user is a member
-Project.objects.filter_by_user(user)
-
-# Filter projects visible to user (respects draft status and membership)
-Project.objects.visible_for_user(user)
-```
-
-**SourceImageCollection QuerySet Methods:**
-```python
-# Annotate with total image count
-SourceImageCollection.objects.with_source_images_count()
-
-# Annotate with images that have detections count
-SourceImageCollection.objects.with_source_images_with_detections_count()
-
-# Annotate with count of images processed by specific algorithm
-SourceImageCollection.objects.with_source_images_processed_by_algorithm_count(algorithm_id)
-
-# Annotate with occurrence count (respects threshold)
-SourceImageCollection.objects.with_occurrences_count(threshold, project)
-
-# Annotate with taxa count
-SourceImageCollection.objects.with_taxa_count(threshold, project)
-```
-
-#### Common Query Anti-Patterns to Avoid
-
-**❌ DON'T: Query without project filter on Occurrence**
-```python
-# This will be slow and may return data user shouldn't see
-Occurrence.objects.filter(determination=taxon)
-```
-
-**✅ DO: Always filter by project first**
-```python
-# Fast and respects permissions
-Occurrence.objects.filter(project=project, determination=taxon)
-```
-
-**❌ DON'T: Use apply_default_filters in loops**
-```python
-# This is inefficient - applies filters per iteration
-for project in projects:
-    occurrences = Occurrence.objects.apply_default_filters(project, request)
-```
-
-**✅ DO: Batch queries or use prefetch**
-```python
-# Better - get all data in one query then filter in Python if needed
-occurrences = Occurrence.objects.filter(project__in=projects).select_related('project')
-```
-
-**❌ DON'T: Access cached fields after bulk creation**
-```python
-# Cached counts won't be set for bulk_create
-SourceImage.objects.bulk_create(images)
-for img in images:
-    print(img.detections_count)  # ← This will be None or stale
-```
-
-**✅ DO: Use custom QuerySet annotations or refresh from DB**
-```python
-# Either refresh individual instances
-img.refresh_from_db()
-
-# Or use annotate for bulk operations
-images = SourceImage.objects.annotate(det_count=Count('detections'))
-```
+- [ ] Self-review the full diff: no WIP debris (commented-out code, stale `noqa`/TODOs, duplicated conditions, typos).
+- [ ] Linters pass with the repo's pinned configs (pre-commit hooks; `cd ui && yarn lint` for frontend).
+- [ ] PR title and description follow the conventions above — and are refreshed if scope changed during review.
+- [ ] Feature spans FE+BE? Agree on the API contract (fields, nesting, lookup keys) in the issue *before* implementing. Mid-review contract renegotiation is the main cause of months-long PRs in this repo.
 
 ## Common Development Patterns
 
@@ -663,41 +467,7 @@ For monitoring running jobs (Django ORM, REST API, NATS consumer state, Redis co
 
 ### Chaos testing async_api jobs (Redis/NATS fault injection)
 
-For changes to the async result handler (`ami/jobs/tasks.py::process_nats_pipeline_result`, `ami/ml/orchestration/async_job_state.py`) or to error-handling around Redis/NATS, the unit tests in `ami/jobs/tests/test_tasks.py` and `ami/ml/tests.py` invoke the Celery task body directly and therefore **do not exercise `autoretry_for`, real Celery retry backoff, or the NATS redelivery boundary**. Use the procedure below to verify those under a live stack.
-
-**Prereqs**: Antenna stack up (`docker compose ps` → django/celeryworker/redis/nats/rabbitmq healthy), ADC worker running for the pipeline under test, and a fresh `SourceImageCollection` on project 18 (existing collections have already-processed detections that `pipeline.filter_processed_images()` will skip).
-
-**Fault injection utilities:**
-
-1. **`chaos_monkey` management command** (`ami/jobs/management/commands/chaos_monkey.py`) — wipes state at runtime:
-   ```bash
-   docker compose exec django python manage.py chaos_monkey flush redis   # FLUSHDB
-   docker compose exec django python manage.py chaos_monkey flush nats    # delete all JetStream streams
-   ```
-   `flush redis` simulates the "job state keys genuinely gone" scenario — `update_state()` returns `None` and the caller takes the terminal-fail path.
-
-2. **One-shot transient `RedisError` via sentinel file** — patch `AsyncJobStateManager.update_state` at the top of the method body to consume `/tmp/inject-redis-fault` and raise `RedisError(...)`. Arm with `docker compose exec celeryworker touch /tmp/inject-redis-fault`. The file auto-removes on first hit, so exactly one task invocation sees the fault; retries succeed. Revert the edit and restart celeryworker after the test. `redis-cli CLIENT KILL TYPE normal` does NOT work for this — django-redis's connection pool transparently reconnects and the raised error is absorbed before `update_state` sees it.
-
-3. **Python-level `redis-py` timeout fault** — set `socket_timeout` low in `CACHES['default']['OPTIONS']` and use `DEBUG SLEEP` on Redis. Heavier setup; only useful for timeout-specific tests.
-
-**Procedure for retry-behaviour validation** (e.g., #1231 and future PRs touching the retry path):
-
-1. Create a fresh 20–50 image collection and populate it (large enough that Process stage takes >10s — time to inject mid-flight).
-2. Arm fault injection (sentinel file for transient test; `chaos_monkey` is run inline for the genuine-loss test).
-3. Start a `Monitor` on celery worker logs filtering for your terminal signals:
-   ```bash
-   docker compose logs celeryworker --since 5s --follow 2>&1 | grep --line-buffered -E \
-     'Transient Redis error|Job state keys not found|process_nats_pipeline_result\[[^]]+\] retry|MaxRetriesExceeded|Changing status of job <JOB_ID>'
-   ```
-4. Kick off the job via `POST /api/v2/jobs/?start_now=true` (or `test_ml_job_e2e`) and poll until `progress.stages[process].progress >= 10%` before injecting the fault.
-5. Record the log evidence (retry warning + Celery `retry: Retry in Ns` line OR the `FAILURE` message with the accurate `_fail_job` text) and the terminal job status.
-6. Revert any code patches, restart affected services (`docker compose restart celeryworker`), confirm `git diff` is empty.
-
-**Gotchas:**
-- The first ~1 min after restarting celeryworker, the `check_processing_services_online` beat task monopolises `ForkPoolWorker-16` retrying unreachable services. Populate/job tasks pick up fine on other workers, but logs are noisy.
-- If Django has been up > ~1 day, RabbitMQ AMQP connections go stale (`ConnectionResetError: [Errno 104]` when enqueuing). `docker compose restart django` fixes it — do this before any chaos run.
-- Celery code is volume-mounted; edits to `ami/**` only take effect after `docker compose restart celeryworker`.
-- Fault-injection patches are disruptive — revert them **and** `git diff` to verify before committing anything.
+Unit tests for the async result handler do not exercise `autoretry_for`, real Celery retry backoff, or the NATS redelivery boundary. For changes to `ami/jobs/tasks.py::process_nats_pipeline_result` or `ami/ml/orchestration/async_job_state.py`, follow the fault-injection runbook in `docs/claude/debugging/chaos-scenarios.md` against a live local stack.
 
 ### Running a Single Test
 
@@ -761,6 +531,21 @@ npm run build                    # Production build
 - `docker-compose.yml` - Local development stack
 - `ui/src/pages/` - React page components
 - `processing_services/README.md` - Guide for adding custom ML pipelines
+
+**Agent reference docs (load on demand):**
+
+- `docs/claude/INDEX.md` - Index of all agent docs (reference, runbooks, plans)
+- `docs/claude/reference/canonical-patterns.md` - Existing helpers/patterns to reuse, with file:line refs
+- `docs/claude/reference/query-patterns.md` - DB schema table, indexes, prefetch patterns, QuerySet method catalog
+- `.agents/DATABASE_SCHEMA.md` - Visual ERD (Mermaid)
+- `.agents/USER_PERMISSION_ROLES.md` - Permission roles reference
+- `ui/AGENTS.md` (symlinked as `ui/CLAUDE.md`) - Frontend conventions (i18n, types, mutations, naming, active lint rules)
+
+## Automated Review Bots (CodeRabbit, Copilot)
+
+- Bots flag lint rules that are **not in this repo's configs** (e.g. Stylelint rules — this repo has no Stylelint config). Check the actual config (`ui/.eslintrc.json`, `ui/.prettierrc.json`, `setup.cfg`) before "fixing" a bot finding.
+- Bots are sometimes wrong. Verify empirically (library source, quick test) before implementing a suggestion; push back in the thread with evidence instead of blindly applying it.
+- CodeRabbit skips reviews on PRs with more than ~150 changed files — another reason to split large PRs.
 
 ## Known Technical Debt & Areas for Improvement
 

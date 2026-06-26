@@ -1,11 +1,12 @@
 import { Pipeline } from 'data-services/models/pipeline'
 import { ProcessingService } from 'data-services/models/processing-service'
-import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
 import {
+  BasicTableCell,
+  CellTheme,
   Table,
   TableBackgroundTheme,
-} from 'design-system/components/table/table/table'
-import { CellTheme, TableColumn } from 'design-system/components/table/types'
+  TableColumn,
+} from 'nova-ui-kit'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'

@@ -1,13 +1,13 @@
 import { Session } from 'data-services/models/session'
-import { BasicTableCell } from 'design-system/components/table/basic-table-cell/basic-table-cell'
-import { DateTableCell } from 'design-system/components/table/date-table-cell/date-table-cell'
-import { ImageTableCell } from 'design-system/components/table/image-table-cell/image-table-cell'
 import {
+  BasicTableCell,
   CellTheme,
+  DateTableCell,
   ImageCellTheme,
+  ImageTableCell,
   TableColumn,
   TextAlign,
-} from 'design-system/components/table/types'
+} from 'nova-ui-kit'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'

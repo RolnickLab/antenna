@@ -1,0 +1,14 @@
+.badge {
+  padding: 6px 8px 4px;
+  border-radius: 4px;
+  background-color: var(--color-green-100);
+  color: var(--color-success-700);
+  text-align: center;
+  @include body-overline-small;
+  font-weight: 600;
+
+  &.deprecated {
+    background-color: var(--color-destructive-100);
+    color: var(--color-destructive);
+  }
+}
