@@ -63,7 +63,8 @@ export const Occurrences = () => {
   })
   const { pagination, setPage } = usePagination()
   const { activeFilters, filters } = useFilters()
-  const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
+  const { occurrences, total, totalIsExact, isLoading, isFetching, error } =
+    useOccurrences({
     projectId,
     pagination,
     sort,
@@ -216,6 +217,7 @@ export const Occurrences = () => {
           <PaginationBar
             pagination={pagination}
             total={total}
+            totalIsExact={totalIsExact}
             setPage={setPage}
           />
         ) : null}

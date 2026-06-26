@@ -12,6 +12,7 @@ export const useSessions = (
 ): {
   sessions?: Session[]
   total: number
+  totalIsExact: boolean
   isLoading: boolean
   isFetching: boolean
   error?: unknown
@@ -21,6 +22,7 @@ export const useSessions = (
   const { data, isLoading, isFetching, error } = useAuthorizedQuery<{
     results: ServerEvent[]
     count: number
+    count_is_exact?: boolean
   }>({
     queryKey: [API_ROUTES.SESSIONS, params],
     url: fetchUrl,
@@ -31,6 +33,7 @@ export const useSessions = (
   return {
     sessions,
     total: data?.count ?? 0,
+    totalIsExact: data?.count_is_exact ?? true,
     isLoading,
     isFetching,
     error,

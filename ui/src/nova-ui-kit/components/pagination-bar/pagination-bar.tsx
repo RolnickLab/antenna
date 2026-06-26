@@ -14,6 +14,11 @@ interface PaginationBarProps {
   }
   setPage: (page: number) => void
   total: number
+  // False when `total` is a capped lower bound (the server's precision cap).
+  // The info label then renders "N+"; the numbered pages still derive from the
+  // capped total, so pages beyond the cap are not reachable until the list moves
+  // to cursor pagination. Defaults to true (exact).
+  totalIsExact?: boolean
 }
 
 export const PaginationBar = ({
@@ -21,6 +26,7 @@ export const PaginationBar = ({
   pagination,
   setPage,
   total,
+  totalIsExact = true,
 }: PaginationBarProps) => {
   const { page: currentPage, perPage } = pagination
   const numPages = Math.ceil(total / perPage)
@@ -37,7 +43,11 @@ export const PaginationBar = ({
 
   return (
     <div className={styles.wrapper}>
-      <InfoLabel pagination={pagination} total={total} />
+      <InfoLabel
+        pagination={pagination}
+        total={total}
+        totalIsExact={totalIsExact}
+      />
       <div className={styles.pageSettings}>
         <Button
           aria-label={translate(STRING.PREVIOUS)}

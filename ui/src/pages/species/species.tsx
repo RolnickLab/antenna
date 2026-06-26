@@ -49,7 +49,8 @@ export const Species = () => {
   const { sort, setSort } = useSort({ field: 'name', order: 'asc' })
   const { pagination, setPage } = usePagination()
   const { filters } = useFilters()
-  const { species, total, isLoading, isFetching, error } = useSpecies({
+  const { species, total, totalIsExact, isLoading, isFetching, error } =
+    useSpecies({
     projectId,
     sort,
     pagination,
@@ -158,6 +159,7 @@ export const Species = () => {
           <PaginationBar
             pagination={pagination}
             total={total}
+            totalIsExact={totalIsExact}
             setPage={setPage}
           />
         ) : null}
