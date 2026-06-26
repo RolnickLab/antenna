@@ -6368,6 +6368,36 @@ class OccurrenceAdminChangelistTest(TestCase):
         results, _ = self.admin.get_search_results(self._request(), base, "Danaus")
         self.assertIn(occ.pk, set(results.values_list("pk", flat=True)))
 
+    def test_recompute_determination_action_refreshes_from_classifications(self):
+        """The recompute action re-derives the determination from current
+        classifications — needed because editing classifications by hand does not
+        trigger the recompute that Occurrence/Identification saves do."""
+        from django.contrib.messages.storage.fallback import FallbackStorage
+
+        from ami.main.models import Taxon
+        from ami.ml.models import Algorithm
+        from ami.ml.models.algorithm import AlgorithmTaskType
+
+        taxon = Taxon.objects.create(name="Recompute species", rank="SPECIES")
+        algorithm = Algorithm.objects.create(
+            name="recompute-classifier", task_type=AlgorithmTaskType.CLASSIFICATION.value
+        )
+        occ = self._make_occurrence(0)
+        detection = Detection.objects.create(source_image=self.source_image, bbox=[0, 0, 1, 1], occurrence=occ)
+        Classification.objects.create(
+            detection=detection, taxon=taxon, algorithm=algorithm, score=0.9, terminal=True, timestamp=timezone.now()
+        )
+        # Creating the classification did not recompute the occurrence determination.
+        occ.refresh_from_db()
+        self.assertIsNone(occ.determination)
+
+        request = self._request()
+        request.session = {}
+        setattr(request, "_messages", FallbackStorage(request))
+        self.admin.recompute_determination(request, Occurrence.objects.filter(pk=occ.pk))
+        occ.refresh_from_db()
+        self.assertEqual(occ.determination, taxon)
+
 
 class DetectionAdminChangelistTest(TestCase):
     """DetectionAdmin changelist counts classifications with a correlated subquery,
@@ -6419,3 +6449,47 @@ class DetectionAdminChangelistTest(TestCase):
         pks = set(results.values_list("pk", flat=True))
         self.assertEqual(pks, {target.pk})
         self.assertNotIn(other.pk, pks)
+
+
+class ClassificationAdminChangelistTest(TestCase):
+    """ClassificationAdmin counts the scores/logits arrays in SQL (cardinality) and
+    defers the arrays, so the changelist doesn't transfer thousands of floats per
+    row just to show their length."""
+
+    def setUp(self):
+        from django.contrib.admin.sites import AdminSite
+        from django.test import RequestFactory
+
+        from ami.main.admin import ClassificationAdmin
+        from ami.ml.models import Algorithm
+        from ami.ml.models.algorithm import AlgorithmTaskType
+
+        self.admin = ClassificationAdmin(Classification, AdminSite())
+        self.factory = RequestFactory()
+        self.superuser = User.objects.create_superuser(email="clf-admin@insectai.org", password="x")  # type: ignore
+        self.project = Project.objects.create(name="Classification Admin Test Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.source_image = SourceImage.objects.create(
+            deployment=self.deployment, project=self.project, path="clf-admin-test.jpg"
+        )
+        self.detection = Detection.objects.create(source_image=self.source_image, bbox=[0, 0, 1, 1])
+        self.algorithm = Algorithm.objects.create(
+            name="clf-admin-classifier", task_type=AlgorithmTaskType.CLASSIFICATION.value
+        )
+
+    def _request(self):
+        request = self.factory.get("/admin/main/classification/")
+        request.user = self.superuser
+        return request
+
+    def test_scores_and_logits_counted_in_sql_including_empty(self):
+        clf = Classification.objects.create(
+            detection=self.detection,
+            algorithm=self.algorithm,
+            timestamp=timezone.now(),
+            scores=[0.1, 0.2, 0.3],
+            logits=None,
+        )
+        row = next(c for c in self.admin.get_queryset(self._request()) if c.pk == clf.pk)
+        self.assertEqual(row.scores_count, 3)
+        self.assertEqual(row.logits_count, 0)

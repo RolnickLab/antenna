@@ -358,6 +358,9 @@ class SourceImageThumbnailAdmin(AdminBase):
 class ClassificationInline(admin.TabularInline):
     model = Classification
     extra = 0
+    # Link each row to its Classification change page, where the full scores /
+    # logits and the applied_to chain (post-processing provenance) are visible.
+    show_change_link = True
     fields = (
         "taxon",
         "algorithm",
@@ -526,7 +529,22 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
         name_resolver=lambda task_cls, occurrence: (f"Post-processing: {task_cls.name} on Occurrence {occurrence.pk}"),
     )
 
-    actions = [run_small_size_filter]
+    @admin.action(description="Recompute determination from current classifications and identifications")
+    def recompute_determination(self, request: HttpRequest, queryset: QuerySet[Any]) -> None:
+        """Re-derive each selected occurrence's determination from its current
+        predictions and human identifications.
+
+        Editing an occurrence's classifications by hand does not recompute its
+        determination — only Occurrence and Identification saves do — so this action
+        is the way to refresh it after manual changes.
+        """
+        count = 0
+        for occurrence in queryset:
+            occurrence.save(update_determination=True)
+            count += 1
+        self.message_user(request, f"Recomputed determination for {count} occurrence(s).")
+
+    actions = [run_small_size_filter, recompute_determination]
 
     # Order by -id (the indexed primary key) rather than -created_at, which has no
     # index and would force a full sort of the table to find the newest page. id
@@ -570,13 +588,41 @@ class ClassificationAdmin(admin.ModelAdmin[Classification]):
         "detection__source_image__project",
         "taxon__rank",
     )
+    # FK fields render as AJAX autocompletes instead of <select>s preloaded with
+    # every taxon / detection / classification — the latter makes the change page
+    # unusable on a large database.
+    autocomplete_fields = ("detection", "taxon", "algorithm", "category_map", "applied_to")
+    search_fields = ("taxon__name",)
+    # Order by -id (indexed PK) rather than the model's -created_at (no index).
+    ordering = ("-id",)
+
+    def get_search_results(self, request: HttpRequest, queryset: QuerySet[Any], search_term: str):
+        """An all-digit term is an exact id lookup; other terms search the taxon name."""
+        term = search_term.strip()
+        if term.isdigit():
+            return queryset.filter(pk=int(term)), False
+        return super().get_search_results(request, queryset, search_term)
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        from django.db.models import Func
+        from django.db.models.functions import Coalesce
+
         qs = super().get_queryset(request)
-        return qs.select_related(
-            "taxon", "detection", "detection__source_image", "detection__source_image__project"
-        ).annotate(
-            detection_date=models.F("detection__timestamp"),
+        # Count the scores / logits arrays in SQL (cardinality) and defer the arrays
+        # themselves, so the changelist does not transfer thousands of floats per row
+        # just to display their length.
+        return (
+            qs.select_related("taxon", "detection", "detection__source_image", "detection__source_image__project")
+            .defer("scores", "logits")
+            .annotate(
+                detection_date=models.F("detection__timestamp"),
+                scores_count=Coalesce(
+                    Func(models.F("scores"), function="cardinality", output_field=models.IntegerField()), 0
+                ),
+                logits_count=Coalesce(
+                    Func(models.F("logits"), function="cardinality", output_field=models.IntegerField()), 0
+                ),
+            )
         )
 
     @admin.display()
@@ -584,11 +630,13 @@ class ClassificationAdmin(admin.ModelAdmin[Classification]):
         # This property comes from the annotation in get_queryset, not the model
         return obj.detection_date  # type: ignore
 
+    @admin.display(description="num scores")
     def num_scores(self, obj: Classification) -> int:
-        return len(obj.scores) if obj.scores else 0
+        return obj.scores_count  # type: ignore[attr-defined]
 
+    @admin.display(description="num logits")
     def num_logits(self, obj: Classification) -> int:
-        return len(obj.logits) if obj.logits else 0
+        return obj.logits_count  # type: ignore[attr-defined]
 
 
 class TaxonParentFilter(admin.SimpleListFilter):
