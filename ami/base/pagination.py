@@ -135,30 +135,44 @@ class LimitOffsetPaginationWithPermissions(LimitOffsetPagination):
         }
         return paginated_schema
 
+    def _count_queryset(self, queryset):
+        """
+        Return the queryset reduced to the cheapest form that still counts the
+        same rows: ordering removed and projection narrowed to the primary key.
+
+        Both reductions matter once the count is wrapped in a ``LIMIT`` for the
+        precision cap. An ``ORDER BY`` not served by an index forces a top-N
+        sort of the whole filtered set before the ``LIMIT`` can stop it, undoing
+        the early exit. And the list orderings annotate correlated subqueries
+        (e.g. ``last_processed`` on captures); an unsliced ``COUNT(*)`` drops
+        those automatically, but the slice would otherwise re-project them and
+        run the subquery for every scanned row. Counting ``values("pk")`` keeps
+        the COUNT over a bare primary-key scan. Neither reduction changes the
+        count, only its cost.
+
+        This is also the single seam a subclass overrides to count a different
+        way; the previous per-view ``get_count`` override is folded in here.
+        """
+        return queryset.order_by().values("pk")
+
     def _get_capped_count(self, queryset):
         """
-        Run a bounded COUNT(*) that stops scanning after
+        Run a bounded COUNT that stops scanning after
         ``COUNT_PRECISION_THRESHOLD`` rows. Returns the exact count when the
         result set is within the cap, or the ``_OVER_CAP`` sentinel when it is
         larger so the caller reports an approximate lower bound instead.
 
-        Django translates ``queryset.order_by()[:N].count()`` into::
+        Django translates ``queryset...[:N].count()`` into::
 
-            SELECT COUNT(*) FROM (SELECT 1 … LIMIT N) sub
+            SELECT COUNT(*) FROM (SELECT pk … LIMIT N) sub
 
-        Stripping the queryset's ordering is essential to the bound. An
-        ``ORDER BY`` that is not served by an index forces Postgres to top-N
-        sort the entire filtered set before the ``LIMIT`` can stop it, which
-        defeats the early exit and can make this capped count slower than an
-        uncapped one. With the ordering removed the scan stops after at most N
-        matching rows, so the cost is O(N) regardless of total table size. The
-        order is irrelevant to a count, so dropping it changes only performance.
+        so the scan stops after at most N matching rows and the cost is O(N)
+        regardless of total table size. See ``_count_queryset`` for why the
+        ordering and annotations are stripped first.
         """
         # Fetch one extra row beyond the threshold so we can distinguish
         # "exactly N rows" (exact count) from "more than N rows" (over the cap).
-        # Drop the list view's ordering first so the LIMIT short-circuits
-        # instead of sorting.
-        capped = queryset.order_by()[: self.COUNT_PRECISION_THRESHOLD + 1].count()
+        capped = self._count_queryset(queryset)[: self.COUNT_PRECISION_THRESHOLD + 1].count()
         if capped <= self.COUNT_PRECISION_THRESHOLD:
             return capped
         return self._OVER_CAP
