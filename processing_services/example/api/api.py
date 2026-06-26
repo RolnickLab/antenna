@@ -7,6 +7,7 @@ import logging
 import fastapi
 
 from .pipelines import (
+    FlatBugDetectorPipeline,
     Pipeline,
     ZeroShotHFClassifierPipeline,
     ZeroShotObjectDetectorPipeline,
@@ -37,6 +38,7 @@ app = fastapi.FastAPI()
 
 
 pipelines: list[type[Pipeline]] = [
+    FlatBugDetectorPipeline,
     ZeroShotHFClassifierPipeline,
     ZeroShotObjectDetectorPipeline,
     ZeroShotObjectDetectorWithConstantClassifierPipeline,
