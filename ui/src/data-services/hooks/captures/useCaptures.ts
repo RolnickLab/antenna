@@ -14,6 +14,7 @@ export const useCaptures = (
   captures?: Capture[]
   userPermissions?: UserPermission[]
   total: number
+  totalIsExact: boolean
   isLoading: boolean
   isFetching: boolean
   error?: unknown
@@ -24,6 +25,7 @@ export const useCaptures = (
     results: ServerCapture[]
     user_permissions?: UserPermission[]
     count: number
+    count_is_exact?: boolean
   }>({
     queryKey: [API_ROUTES.CAPTURES, params],
     url: fetchUrl,
@@ -36,6 +38,7 @@ export const useCaptures = (
     captures,
     userPermissions: data?.user_permissions,
     total: data?.count ?? 0,
+    totalIsExact: data?.count_is_exact ?? true,
     isLoading,
     isFetching,
     error,

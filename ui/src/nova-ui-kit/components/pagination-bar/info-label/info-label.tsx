@@ -8,9 +8,16 @@ interface InfoLabelProps {
     perPage: number
   }
   total: number
+  // False when `total` is a capped lower bound rather than the exact count, so
+  // it renders as e.g. "10000+". Defaults to true (exact).
+  totalIsExact?: boolean
 }
 
-export const InfoLabel = ({ pagination, total }: InfoLabelProps) => {
+export const InfoLabel = ({
+  pagination,
+  total,
+  totalIsExact = true,
+}: InfoLabelProps) => {
   const minIndex = 0
   const maxIndex = total - 1
   const startIndex = getValueInRange({
@@ -29,7 +36,7 @@ export const InfoLabel = ({ pagination, total }: InfoLabelProps) => {
       {translate(STRING.MESSAGE_RESULT_RANGE, {
         start: startIndex + 1,
         end: endIndex + 1,
-        total,
+        total: totalIsExact ? total : `${total}+`,
       })}
     </span>
   )

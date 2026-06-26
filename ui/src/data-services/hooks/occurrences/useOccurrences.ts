@@ -12,6 +12,7 @@ export const useOccurrences = (
 ): {
   occurrences?: Occurrence[]
   total: number
+  totalIsExact: boolean
   isLoading: boolean
   isFetching: boolean
   error?: unknown
@@ -21,6 +22,7 @@ export const useOccurrences = (
   const { data, isLoading, isFetching, error } = useAuthorizedQuery<{
     results: ServerOccurrence[]
     count: number
+    count_is_exact?: boolean
   }>({
     queryKey: [API_ROUTES.OCCURRENCES, params],
     url: fetchUrl,
@@ -34,6 +36,7 @@ export const useOccurrences = (
   return {
     occurrences,
     total: data?.count ?? 0,
+    totalIsExact: data?.count_is_exact ?? true,
     isLoading,
     isFetching,
     error,

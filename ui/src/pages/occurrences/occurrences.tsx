@@ -63,12 +63,13 @@ export const Occurrences = () => {
   })
   const { pagination, setPage } = usePagination()
   const { activeFilters, filters } = useFilters()
-  const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
-    projectId,
-    pagination,
-    sort,
-    filters,
-  })
+  const { occurrences, total, totalIsExact, isLoading, isFetching, error } =
+    useOccurrences({
+      projectId,
+      pagination,
+      sort,
+      filters,
+    })
   const [_selectedItems, setSelectedItems] = useState<string[]>([])
   const selectedItems = _selectedItems.filter((id) =>
     occurrences?.some((occurrence) => occurrence.id === id)
@@ -216,6 +217,7 @@ export const Occurrences = () => {
           <PaginationBar
             pagination={pagination}
             total={total}
+            totalIsExact={totalIsExact}
             setPage={setPage}
           />
         ) : null}
