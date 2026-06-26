@@ -65,11 +65,11 @@ export const Occurrences = () => {
   const { activeFilters, filters } = useFilters()
   const { occurrences, total, totalIsExact, isLoading, isFetching, error } =
     useOccurrences({
-    projectId,
-    pagination,
-    sort,
-    filters,
-  })
+      projectId,
+      pagination,
+      sort,
+      filters,
+    })
   const [_selectedItems, setSelectedItems] = useState<string[]>([])
   const selectedItems = _selectedItems.filter((id) =>
     occurrences?.some((occurrence) => occurrence.id === id)

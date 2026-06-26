@@ -41,11 +41,11 @@ export const Sessions = () => {
   const { filters } = useFilters()
   const { sessions, total, totalIsExact, isLoading, isFetching, error } =
     useSessions({
-    projectId,
-    sort,
-    pagination,
-    filters,
-  })
+      projectId,
+      sort,
+      pagination,
+      filters,
+    })
   const { selectedView, setSelectedView } = useSelectedView('table')
   const tableColumns = columns({ projectId: projectId as string })
 

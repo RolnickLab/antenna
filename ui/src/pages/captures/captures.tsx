@@ -58,12 +58,12 @@ export const Captures = () => {
     isFetching,
     error,
   } = useCaptures({
-      projectId,
-      sort,
-      pagination,
-      filters,
-      withCounts: countColumnVisible || sortByCountActive, // Only fetch counts if needed since counts will slow down the response
-    })
+    projectId,
+    sort,
+    pagination,
+    filters,
+    withCounts: countColumnVisible || sortByCountActive, // Only fetch counts if needed since counts will slow down the response
+  })
   const canCreate = userPermissions?.includes(UserPermission.Create)
   const tableColumns = columns({ projectId: projectId as string })
 

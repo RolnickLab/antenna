@@ -51,11 +51,11 @@ export const Species = () => {
   const { filters } = useFilters()
   const { species, total, totalIsExact, isLoading, isFetching, error } =
     useSpecies({
-    projectId,
-    sort,
-    pagination,
-    filters,
-  })
+      projectId,
+      sort,
+      pagination,
+      filters,
+    })
   const { selectedView, setSelectedView } = useSelectedView('table')
   const { taxaLists = [] } = useTaxaLists({ projectId: projectId as string })
   const { tags = [] } = useTags({ projectId: projectId as string })
