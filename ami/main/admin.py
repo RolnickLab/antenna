@@ -37,6 +37,30 @@ from .models import (
     Taxon,
 )
 
+# PostgreSQL ``bigint`` upper bound. The primary keys on these models are
+# BigAutoField, so an all-digit search term longer than this cannot be a valid id.
+_BIGINT_MAX = 9223372036854775807
+
+
+class IdSearchAdminMixin:
+    """Treat an all-digit admin search term as an exact primary-key lookup.
+
+    The ids on these models are numeric and their text search fields (taxon and
+    determination names, image paths) never are, so a bare number is unambiguous and
+    jumps straight to that row. Anything else falls through to the normal
+    ``search_fields`` search. A number too large to be a valid id returns no results
+    rather than raising a database ``DataError``.
+    """
+
+    def get_search_results(self, request: HttpRequest, queryset: QuerySet[Any], search_term: str):
+        term = search_term.strip()
+        if term.isdigit():
+            pk = int(term)
+            if pk > _BIGINT_MAX:
+                return queryset.none(), False
+            return queryset.filter(pk=pk), False
+        return super().get_search_results(request, queryset, search_term)  # type: ignore[misc]
+
 
 class ProjectPipelineConfigInline(admin.TabularInline):
     model = ProjectPipelineConfig
@@ -404,7 +428,7 @@ class DetectionInline(admin.TabularInline):
 
 
 @admin.register(Detection)
-class DetectionAdmin(admin.ModelAdmin[Detection]):
+class DetectionAdmin(IdSearchAdminMixin, admin.ModelAdmin[Detection]):
     """Admin panel example for ``Detection`` model."""
 
     list_display = (
@@ -418,15 +442,11 @@ class DetectionAdmin(admin.ModelAdmin[Detection]):
     )
 
     autocomplete_fields = ("source_image", "occurrence")
+    # A digit term jumps to that detection by id (IdSearchAdminMixin); text searches path.
     search_fields = ("source_image__path",)
-
-    def get_search_results(self, request: HttpRequest, queryset: QuerySet[Any], search_term: str):
-        """Let an all-digit search term jump straight to that detection by id;
-        other terms search the source image path."""
-        term = search_term.strip()
-        if term.isdigit():
-            return queryset.filter(pk=int(term)), False
-        return super().get_search_results(request, queryset, search_term)
+    # Skip the extra unfiltered COUNT(*) the changelist runs for its total; on a large
+    # table that count is as expensive as the page query it accompanies.
+    show_full_result_count = False
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         from django.db.models.functions import Coalesce
@@ -465,7 +485,7 @@ class DetectionAdmin(admin.ModelAdmin[Detection]):
 
 
 @admin.register(Occurrence)
-class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
+class OccurrenceAdmin(IdSearchAdminMixin, admin.ModelAdmin[Occurrence]):
     """Admin panel example for ``Occurrence`` model."""
 
     list_display = (
@@ -486,7 +506,11 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
         "determination__rank",
         "created_at",
     )
+    # A digit term jumps to that occurrence by id (IdSearchAdminMixin); text searches names.
     search_fields = ("determination__name", "determination__search_names")
+    # Skip the extra unfiltered COUNT(*) the changelist runs for its total; on a large
+    # table that count is as expensive as the page query it accompanies.
+    show_full_result_count = False
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         from django.db.models.functions import Coalesce
@@ -551,24 +575,12 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
     # increases with insertion time, so newest-first is preserved.
     ordering = ("-id",)
 
-    def get_search_results(self, request: HttpRequest, queryset: QuerySet[Any], search_term: str):
-        """Let an all-digit search term jump straight to that occurrence by id.
-
-        The text search box still covers determination names; a numeric term is
-        unambiguous (occurrence ids are numbers, taxon names are not), so it is
-        treated as an exact id lookup within the currently filtered queryset.
-        """
-        term = search_term.strip()
-        if term.isdigit():
-            return queryset.filter(pk=int(term)), False
-        return super().get_search_results(request, queryset, search_term)
-
     # Add classifications as inline
     inlines = [DetectionInline]
 
 
 @admin.register(Classification)
-class ClassificationAdmin(admin.ModelAdmin[Classification]):
+class ClassificationAdmin(IdSearchAdminMixin, admin.ModelAdmin[Classification]):
     list_display = (
         "__str__",
         "taxon",
@@ -592,16 +604,13 @@ class ClassificationAdmin(admin.ModelAdmin[Classification]):
     # every taxon / detection / classification — the latter makes the change page
     # unusable on a large database.
     autocomplete_fields = ("detection", "taxon", "algorithm", "category_map", "applied_to")
+    # A digit term jumps to that classification by id (IdSearchAdminMixin); text searches taxon name.
     search_fields = ("taxon__name",)
     # Order by -id (indexed PK) rather than the model's -created_at (no index).
     ordering = ("-id",)
-
-    def get_search_results(self, request: HttpRequest, queryset: QuerySet[Any], search_term: str):
-        """An all-digit term is an exact id lookup; other terms search the taxon name."""
-        term = search_term.strip()
-        if term.isdigit():
-            return queryset.filter(pk=int(term)), False
-        return super().get_search_results(request, queryset, search_term)
+    # Skip the extra unfiltered COUNT(*) the changelist runs for its total; on a large
+    # table that count is as expensive as the page query it accompanies.
+    show_full_result_count = False
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         from django.db.models import Func

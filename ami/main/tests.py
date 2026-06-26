@@ -6345,7 +6345,12 @@ class OccurrenceAdminChangelistTest(TestCase):
         self.assertEqual(by_pk[zero.pk], 0)
 
     def test_numeric_search_is_an_exact_id_lookup(self):
-        """An all-digit search term jumps straight to that occurrence by id."""
+        """An all-digit search term jumps straight to that occurrence by id.
+
+        This is the canonical test of the shared ``IdSearchAdminMixin``; the
+        Detection and Classification admins inherit the same behavior and do not
+        re-test it.
+        """
         target = self._make_occurrence(1)
         other = self._make_occurrence(1)
 
@@ -6354,6 +6359,16 @@ class OccurrenceAdminChangelistTest(TestCase):
         pks = set(results.values_list("pk", flat=True))
         self.assertEqual(pks, {target.pk})
         self.assertNotIn(other.pk, pks)
+
+    def test_out_of_range_numeric_search_returns_no_results(self):
+        """A digit term too large for a bigint id returns an empty result instead of
+        letting the database raise a DataError (it cannot match any real id)."""
+        self._make_occurrence(1)
+
+        base = self.admin.get_queryset(self._request())
+        # 9223372036854775807 is the bigint max; one past it cannot be a valid id.
+        results, _ = self.admin.get_search_results(self._request(), base, "9223372036854775808")
+        self.assertEqual(list(results), [])
 
     def test_text_search_still_matches_determination_name(self):
         """A non-numeric term falls through to the determination-name search (and does
@@ -6402,7 +6417,10 @@ class OccurrenceAdminChangelistTest(TestCase):
 class DetectionAdminChangelistTest(TestCase):
     """DetectionAdmin changelist counts classifications with a correlated subquery,
     including the zero-classification case (Coalesced to 0). The grouped Count it
-    replaces could exhaust work_mem and error out on a large table."""
+    replaces could exhaust work_mem and error out on a large table.
+
+    The id search box is the shared ``IdSearchAdminMixin``, exercised once in
+    ``OccurrenceAdminChangelistTest``; it is not re-tested per admin."""
 
     def setUp(self):
         from django.contrib.admin.sites import AdminSite
@@ -6438,17 +6456,6 @@ class DetectionAdminChangelistTest(TestCase):
         by_pk = {d.pk: d.classifications_count for d in self.admin.get_queryset(self._request())}
         self.assertEqual(by_pk[two.pk], 2)
         self.assertEqual(by_pk[zero.pk], 0)
-
-    def test_numeric_search_is_an_exact_id_lookup(self):
-        """An all-digit search term jumps straight to that detection by id."""
-        target = Detection.objects.create(source_image=self.source_image, bbox=[0, 0, 1, 1])
-        other = Detection.objects.create(source_image=self.source_image, bbox=[0, 0, 1, 1])
-
-        base = self.admin.get_queryset(self._request())
-        results, _ = self.admin.get_search_results(self._request(), base, str(target.pk))
-        pks = set(results.values_list("pk", flat=True))
-        self.assertEqual(pks, {target.pk})
-        self.assertNotIn(other.pk, pks)
 
 
 class ClassificationAdminChangelistTest(TestCase):
