@@ -3780,6 +3780,11 @@ class Occurrence(BaseModel):
             # Supports sorting projects by their most recently updated occurrence
             # (see ProjectViewSet ordering "last_occurrence_updated_at").
             models.Index(fields=["project", "-updated_at"], name="occur_proj_updated_desc_idx"),
+            # Backs the default occurrence list sort: per-project, ordered by
+            # determination_score DESC (Meta.ordering). Without it the planner
+            # sorts the whole project's occurrences per page (on-disk merge sort
+            # on large projects). DESC = NULLS FIRST to match the ORM's ORDER BY.
+            models.Index(fields=["project", "-determination_score"], name="occur_proj_score_desc_idx"),
         ]
 
 
