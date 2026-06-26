@@ -21,12 +21,22 @@ class Command(BaseCommand):
             type=str,
             help="Base URL for images if paths are relative (e.g., http://0.0.0.0:7070/)",
         )
+        parser.add_argument(
+            "--create-new-algorithms",
+            action="store_true",
+            help=(
+                "Register algorithms and category maps from the results file instead of requiring them to be "
+                "registered in advance through a processing service's /info endpoint. Use this when importing "
+                "results for a pipeline whose algorithms are not already known to this Antenna instance."
+            ),
+        )
 
     def handle(self, *args, **options):
         json_file_path = Path(options["json_file"])
         project_id = options["project"]
         dry_run = options.get("dry_run", False)
         public_base_url = options.get("public_base_url")
+        create_new_algorithms = options.get("create_new_algorithms", False)
 
         # Validate that the JSON file exists
         if not json_file_path.exists():
@@ -83,6 +93,7 @@ class Command(BaseCommand):
                     create_missing_source_images=True,
                     project_id=project_id,
                     public_base_url=public_base_url,
+                    create_new_algorithms=create_new_algorithms,
                 )
 
             if result:
