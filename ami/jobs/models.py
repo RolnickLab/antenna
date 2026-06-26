@@ -79,7 +79,11 @@ class JobState(str, OrderedEnum):
 
     @classmethod
     def running_states(cls):
-        return [cls.CREATED, cls.PENDING, cls.STARTED, cls.RETRY, cls.CANCELING, cls.UNKNOWN]
+        # CREATED is excluded: a created-but-not-enqueued job has no Celery task
+        # and no async resources, so it must never be reaped or reconciled. Jobs
+        # can be pre-configured and started later, and they wait in CREATED until
+        # a user enqueues them (which flips them to PENDING). See #1354.
+        return [cls.PENDING, cls.STARTED, cls.RETRY, cls.CANCELING, cls.UNKNOWN]
 
     @classmethod
     def final_states(cls):
