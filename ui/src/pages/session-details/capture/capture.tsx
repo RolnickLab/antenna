@@ -8,6 +8,11 @@ import {
   TABS,
 } from 'pages/occurrence-details/occurrence-details'
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import {
+  ReactZoomPanPinchRef,
+  TransformComponent,
+  TransformWrapper,
+} from 'react-zoom-pan-pinch'
 import { SCORE_THRESHOLDS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { useActiveOccurrences } from '../hooks/useActiveOccurrences'
@@ -28,6 +33,7 @@ interface CaptureProps {
   height: number | null
   showDetections?: boolean
   src?: string
+  transformRef: React.RefObject<ReactZoomPanPinchRef>
   width: number | null
 }
 
@@ -37,6 +43,7 @@ export const Capture = ({
   height,
   showDetections,
   src,
+  transformRef,
   width,
 }: CaptureProps) => {
   const [naturalSize, setNaturalSize] = useState<{
@@ -118,31 +125,33 @@ export const Capture = ({
   }, [width, height, naturalSize])
 
   return (
-    <div
-      className={classNames(styles.wrapper)}
-      style={{
-        paddingBottom: `${(1 / ratio) * 100}%`,
-      }}
-    >
-      <img ref={imageRef} className={styles.image} />
-      <div
-        className={classNames(styles.details, {
-          [styles.showOverlay]: showDetections && detections.length,
-        })}
-      >
-        {renderOverlay && <CaptureOverlay boxStyles={boxStyles} />}
-        <CaptureDetections
-          boxStyles={boxStyles}
-          defaultFilters={defaultFilters}
-          detections={detections}
-          showDetections={showDetections}
-        />
-      </div>
-      {isLoading && (
-        <div className={styles.loadingWrapper}>
+    <div className="relative w-full" style={{ aspectRatio: ratio }}>
+      <TransformWrapper ref={transformRef}>
+        <TransformComponent
+          contentClass="!w-full !h-full"
+          wrapperClass="!w-full !h-full"
+        >
+          <img className="w-full h-full" ref={imageRef} />
+          <div
+            className={classNames(styles.details, {
+              [styles.showOverlay]: showDetections && detections.length,
+            })}
+          >
+            {renderOverlay ? <CaptureOverlay boxStyles={boxStyles} /> : null}
+            <CaptureDetections
+              boxStyles={boxStyles}
+              defaultFilters={defaultFilters}
+              detections={detections}
+              showDetections={showDetections}
+            />
+          </div>
+        </TransformComponent>
+      </TransformWrapper>
+      {isLoading ? (
+        <div className="absolute inset-0 flex items-center justify-center">
           <LoadingSpinner />
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

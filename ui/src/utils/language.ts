@@ -49,6 +49,8 @@ export enum STRING {
   VIEW_ALL,
   VIEW_DOCS,
   VIEW_PUBLIC_PROJECTS,
+  ZOOM_IN,
+  ZOOM_OUT,
 
   /* ENTITY */
   ENTITY_ADD,
@@ -407,6 +409,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.VIEW_ALL]: 'View all',
   [STRING.VIEW_DOCS]: 'View docs',
   [STRING.VIEW_PUBLIC_PROJECTS]: 'View public projects',
+  [STRING.ZOOM_IN]: 'Zoom in',
+  [STRING.ZOOM_OUT]: 'Zoom out',
 
   /* FIELD_LABEL */
   [STRING.FIELD_LABEL_ADDED_AT]: 'Added at',
