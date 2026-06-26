@@ -79,7 +79,9 @@ class JobState(str, OrderedEnum):
 
     @classmethod
     def running_states(cls):
-        return [cls.CREATED, cls.PENDING, cls.STARTED, cls.RETRY, cls.CANCELING, cls.UNKNOWN]
+        # Dispatched states the reapers/reconcilers select from. CREATED is not
+        # here: a not-yet-enqueued job has no Celery task to reap. See #1354.
+        return [cls.PENDING, cls.STARTED, cls.RETRY, cls.CANCELING, cls.UNKNOWN]
 
     @classmethod
     def final_states(cls):
@@ -96,8 +98,9 @@ class JobState(str, OrderedEnum):
 
     @classmethod
     def finalizable_states(cls):
-        # running_states() minus CANCELING (don't resurrect a cancel in progress)
-        # and UNKNOWN (never served; shouldn't auto-finalize). See #1337.
+        # States a job may auto-finalize from. Excludes CANCELING (don't resurrect
+        # a cancel in progress) and UNKNOWN (never served; shouldn't auto-finalize).
+        # See #1337.
         return [cls.CREATED, cls.PENDING, cls.STARTED, cls.RETRY]
 
 
