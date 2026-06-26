@@ -3,38 +3,49 @@ Turn on the ``async_pipeline_workers`` feature flag for every existing project.
 
 This rolls out async ML processing (workers that pull tasks from the NATS queue
 instead of the synchronous push API) to all projects at once. New projects keep
-the model default of ``False`` until they are opted in separately; this migration
-only updates rows that exist at deploy time.
+whatever the model default is at creation time; this migration only updates rows
+that exist at deploy time.
 
 The flag lives inside the ``feature_flags`` JSONB column (a ``ProjectFeatureFlags``
-pydantic model). We read each project's flags through the historical model, set the
-one boolean, and write it back. The reverse flips the flag back off for every
-project — a blanket disable. It does not restore per-project values from before the
-rollout, because the field default is ``False`` and this is the first global enable,
-so no project is expected to have been ``True`` beforehand.
+pydantic model). The update toggles only the one key server-side with ``jsonb_set``
+rather than reading each project's JSON into Python, mutating it, and writing the
+whole value back. Doing it in place leaves the other feature flags untouched even
+if another process changes one of them during the deploy, and it runs as a single
+statement instead of one save per row. The reverse flips the flag back off for
+every project — a blanket disable. It does not restore per-project values from
+before the rollout, because the field default is ``False`` and this is the first
+global enable, so no project is expected to have been ``True`` beforehand.
 """
 
 from django.db import migrations
 
 
-def enable_async_pipeline_workers(apps, schema_editor):
+def _set_async_pipeline_workers(apps, schema_editor, *, enabled):
     Project = apps.get_model("main", "Project")
-    for project in Project.objects.all():
-        flags = project.feature_flags
-        if not flags.async_pipeline_workers:
-            flags.async_pipeline_workers = True
-            project.feature_flags = flags
-            project.save(update_fields=["feature_flags"])
+    table = schema_editor.connection.ops.quote_name(Project._meta.db_table)
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            UPDATE {table}
+            SET feature_flags = jsonb_set(
+                COALESCE(feature_flags, '{{}}'::jsonb),
+                '{{async_pipeline_workers}}',
+                to_jsonb(%s::boolean),
+                true
+            )
+            WHERE COALESCE((feature_flags ->> 'async_pipeline_workers')::boolean, false)
+                  IS DISTINCT FROM %s
+            """,
+            [enabled, enabled],
+        )
+
+
+def enable_async_pipeline_workers(apps, schema_editor):
+    _set_async_pipeline_workers(apps, schema_editor, enabled=True)
 
 
 def disable_async_pipeline_workers(apps, schema_editor):
-    Project = apps.get_model("main", "Project")
-    for project in Project.objects.all():
-        flags = project.feature_flags
-        if flags.async_pipeline_workers:
-            flags.async_pipeline_workers = False
-            project.feature_flags = flags
-            project.save(update_fields=["feature_flags"])
+    _set_async_pipeline_workers(apps, schema_editor, enabled=False)
 
 
 class Migration(migrations.Migration):
