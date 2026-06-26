@@ -13,11 +13,13 @@ from ami.main.models import (
     Deployment,
     Detection,
     Event,
+    Identification,
     Occurrence,
     Project,
     SourceImage,
     SourceImageCollection,
     Taxon,
+    TaxonRank,
     group_images_into_events,
 )
 from ami.ml.models import Algorithm, Pipeline, ProcessingService
@@ -1436,24 +1438,29 @@ class TestAlgorithmCategoryMaps(TestCase):
 
 
 class TestPostProcessingTasks(TestCase):
-    def setUp(self):
-        # Create test project, deployment, and default setup
-        self.project, self.deployment = setup_test_project()
-        create_taxa(project=self.project)
-        self._create_images_with_dimensions(deployment=self.deployment)
-        group_images_into_events(deployment=self.deployment)
+    @classmethod
+    def setUpTestData(cls):
+        # Project, taxa, images, events, and the collection are read-only from the
+        # tests' point of view — build them once per class. Detections (and the
+        # task runs that mutate them) happen per-test inside each test's
+        # rolled-back transaction.
+        cls.project, cls.deployment = setup_test_project()
+        create_taxa(project=cls.project)
+        cls._create_images_with_dimensions(deployment=cls.deployment)
+        group_images_into_events(deployment=cls.deployment)
 
         # Create a simple SourceImageCollection for testing
-        self.collection = SourceImageCollection.objects.create(
+        cls.collection = SourceImageCollection.objects.create(
             name="Test PostProcessing Collection",
-            project=self.project,
+            project=cls.project,
             method="manual",
-            kwargs={"image_ids": list(self.deployment.captures.values_list("pk", flat=True))},
+            kwargs={"image_ids": list(cls.deployment.captures.values_list("pk", flat=True))},
         )
-        self.collection.populate_sample()
+        cls.collection.populate_sample()
 
+    @classmethod
     def _create_images_with_dimensions(
-        self,
+        cls,
         deployment,
         num_images: int = 5,
         width: int = 640,
@@ -1525,6 +1532,136 @@ class TestPostProcessingTasks(TestCase):
                 not_identifiable_taxon,
                 f"Occurrence {occurrence.pk} should have its determination set to 'Not identifiable'.",
             )
+
+    def test_occurrence_scope_only_touches_that_occurrence(self):
+        """Per-occurrence scope: running with ``occurrence_id`` flags only that
+        occurrence's detections and leaves sibling occurrences untouched."""
+        detections = []
+        for image in self.collection.images.all():
+            det = Detection.objects.create(
+                source_image=image,
+                bbox=[0, 0, 10, 10],  # small
+                created_at=datetime.datetime.now(datetime.timezone.utc),
+            )
+            det.associate_new_occurrence()
+            detections.append(det)
+        self.assertGreaterEqual(len(detections), 2)
+
+        target = detections[0]
+        SmallSizeFilterTask(occurrence_id=target.occurrence_id, size_threshold=0.01).run()
+
+        not_identifiable_taxon = Taxon.objects.get(name="Not identifiable")
+        self.assertEqual(
+            Classification.objects.filter(detection=target, taxon=not_identifiable_taxon).count(),
+            1,
+            "The scoped occurrence's detection should be flagged.",
+        )
+        for other in detections[1:]:
+            self.assertFalse(
+                Classification.objects.filter(detection=other, taxon=not_identifiable_taxon).exists(),
+                f"Detection {other.pk} outside the scoped occurrence should be untouched.",
+            )
+
+    def test_run_reports_stage_metrics_on_job(self):
+        """The task surfaces ``detections_checked`` / ``detections_flagged`` /
+        ``occurrences_updated`` as stage params on its Job so an operator can see
+        what a run examined and changed without reading the log."""
+        from ami.jobs.models import Job
+
+        for image in self.collection.images.all():
+            Detection.objects.create(
+                source_image=image,
+                bbox=[0, 0, 10, 10],  # small → flagged
+                created_at=datetime.datetime.now(datetime.timezone.utc),
+            ).associate_new_occurrence()
+        total = Detection.objects.filter(source_image__in=self.collection.images.all()).count()
+        self.assertGreater(total, 0)
+
+        job = Job.objects.create(
+            project=self.project,
+            name="stage metrics test",
+            job_type_key="post_processing",
+            params={
+                "task": "small_size_filter",
+                "config": {"source_image_collection_id": self.collection.pk, "size_threshold": 0.01},
+            },
+        )
+        job.progress.add_stage("Post Processing", key="post_processing")
+        job.save()
+
+        SmallSizeFilterTask(
+            job=job,
+            source_image_collection_id=self.collection.pk,
+            size_threshold=0.01,
+        ).run()
+
+        job.refresh_from_db()
+        params = {p.name: p.value for p in job.progress.get_stage("post_processing").params}
+        self.assertEqual(params.get("detections_checked"), total)
+        self.assertEqual(params.get("detections_flagged"), total)  # every detection is small
+        # Each detection has its own occurrence here, so the deduped occurrence
+        # count equals the detection count.
+        self.assertEqual(params.get("occurrences_updated"), total)
+
+    def test_occurrences_updated_counts_only_changed_determinations(self):
+        """``occurrences_updated`` counts occurrences whose determination actually
+        changed, not every occurrence the filter re-saved.
+
+        An occurrence already pinned to a human identification keeps that
+        determination when its detection is flagged "Not identifiable", so it must
+        not inflate the metric. Only the un-identified occurrence, whose
+        determination flips, is counted.
+        """
+        from ami.jobs.models import Job
+
+        images = list(self.collection.images.all())
+        self.assertGreaterEqual(len(images), 2)
+
+        # Occurrence A: small detection, but a human identification pins the
+        # determination — flagging the detection does not change it.
+        human_taxon = Taxon.objects.create(name="Human-pinned species", rank=TaxonRank.SPECIES)
+        identifier = User.objects.create_user(email="identifier@insectai.org")  # type: ignore[attr-defined]
+        det_with_id = Detection.objects.create(
+            source_image=images[0],
+            bbox=[0, 0, 10, 10],
+            created_at=datetime.datetime.now(datetime.timezone.utc),
+        )
+        det_with_id.associate_new_occurrence()
+        Identification.objects.create(user=identifier, occurrence=det_with_id.occurrence, taxon=human_taxon)
+
+        # Occurrence B: small detection, no identification — its determination
+        # flips to "Not identifiable" and is the only real change.
+        det_plain = Detection.objects.create(
+            source_image=images[1],
+            bbox=[0, 0, 10, 10],
+            created_at=datetime.datetime.now(datetime.timezone.utc),
+        )
+        det_plain.associate_new_occurrence()
+
+        job = Job.objects.create(
+            project=self.project,
+            name="changed-determination metric test",
+            job_type_key="post_processing",
+            params={
+                "task": "small_size_filter",
+                "config": {"source_image_collection_id": self.collection.pk, "size_threshold": 0.01},
+            },
+        )
+        job.progress.add_stage("Post Processing", key="post_processing")
+        job.save()
+
+        SmallSizeFilterTask(
+            job=job,
+            source_image_collection_id=self.collection.pk,
+            size_threshold=0.01,
+        ).run()
+
+        job.refresh_from_db()
+        params = {p.name: p.value for p in job.progress.get_stage("post_processing").params}
+        # Both detections are flagged small, but only the un-identified
+        # occurrence's determination changes, so only it is counted.
+        self.assertEqual(params.get("detections_flagged"), 2)
+        self.assertEqual(params.get("occurrences_updated"), 1)
 
 
 class TestTaskStateManager(TestCase):
