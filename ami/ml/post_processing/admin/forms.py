@@ -20,6 +20,16 @@ class BasePostProcessingActionForm(forms.Form):
     optional fields, derive computed values, rename keys).
     """
 
+    def __init__(self, *args, scope_queryset=None, **kwargs):
+        """Capture the admin selection the action will run on.
+
+        ``scope_queryset`` is the queryset of rows the operator picked (e.g. the
+        chosen occurrences or collections). Subclasses may use it to constrain
+        their fields to that selection; forms that don't need it ignore it.
+        """
+        self.scope_queryset = scope_queryset
+        super().__init__(*args, **kwargs)
+
     def to_config(self) -> dict:
         """Return ``cleaned_data`` shaped for ``Job.params['config']``."""
         return dict(self.cleaned_data)
