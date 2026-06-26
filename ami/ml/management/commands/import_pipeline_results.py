@@ -1,3 +1,42 @@
+"""
+Import machine-learning results that were produced outside Antenna into an existing project.
+
+Supported input
+---------------
+A single JSON file containing one ``PipelineResultsResponse`` (the same schema the processing
+services return over the API and over NATS). This is exactly the output of the AMI Data Companion's
+``ami export api-occurrences`` command. The results carry detections, classifications, the source
+images they came from, and optionally the deployments those images belong to.
+
+The file is fed through ``Pipeline.save_results`` — the same function the live processing path uses —
+so an import produces the same detections, classifications, and occurrences as if Antenna had run the
+pipeline itself.
+
+Not (yet) supported, and good to know before you reach for this command:
+
+- **Only one file at a time.** The Data Companion splits a large export into several
+  ``*_batch_001.json``, ``*_batch_002.json`` … files (and an optional ``*_images`` folder of crops).
+  Import them one at a time; there is no directory, glob, or zip-archive input yet.
+- **Results only, not a whole project.** The target project must already exist (passed by ``--project``).
+  This command does not create the project, and it does not import deployment configuration such as
+  latitude/longitude, device, or research site — only the deployment *name* carried in the results is
+  used to attach captures. With ``--create-missing-source-images`` (always on here) it will create the
+  referenced deployments and source images by name, but not their full configuration.
+- **No occurrence/track grouping on import.** Antenna's data model already supports an occurrence
+  made up of several detections across frames (a track) via ``Detection.occurrence``, and the
+  synthetic generators (``create_demo_project``, ``seed_synthetic_occurrences``) build such tracks.
+  Antenna does not compute tracks itself, though, and ``PipelineResultsResponse`` currently has no
+  field that says "these detections belong to the same occurrence", so this import gives each
+  detection its own single-detection occurrence. Carrying track associations produced upstream (in the
+  Data Companion or another service) through the schema and into ``save_results`` is a planned
+  enhancement; until then the legacy ``occurrences.json`` importer in the ``exports`` app is the only
+  path that preserves multi-detection occurrences.
+
+By default the algorithms referenced by the results must already be registered (through a processing
+service's ``/info`` endpoint). Pass ``--create-new-algorithms`` to register them from the results file
+instead — the common case when importing into an instance that has never seen that pipeline.
+"""
+
 import json
 from pathlib import Path
 
@@ -10,7 +49,11 @@ from ami.ml.schemas import PipelineResultsResponse
 
 
 class Command(BaseCommand):
-    help = "Import pipeline results from a JSON file into the database"
+    help = (
+        "Import one PipelineResultsResponse JSON file (e.g. from the AMI Data Companion's "
+        "'export api-occurrences' command) into an existing project. See the module docstring for the "
+        "supported input format and current limitations (single file, results-only, no track grouping)."
+    )
 
     def add_arguments(self, parser):
         parser.add_argument("json_file", type=str, help="Path to JSON file containing PipelineResultsResponse data")
