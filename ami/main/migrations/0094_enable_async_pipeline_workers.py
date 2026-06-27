@@ -13,8 +13,9 @@ whole value back. Doing it in place leaves the other feature flags untouched eve
 if another process changes one of them during the deploy, and it runs as a single
 statement instead of one save per row. The reverse flips the flag back off for
 every project — a blanket disable. It does not restore per-project values from
-before the rollout, because the field default is ``False`` and this is the first
-global enable, so no project is expected to have been ``True`` beforehand.
+before the rollout: some projects may have had the flag enabled individually
+beforehand, so the reverse returns every project to the off state rather than to
+its prior value.
 """
 
 from django.db import migrations
