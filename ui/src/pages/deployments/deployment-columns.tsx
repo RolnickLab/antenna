@@ -12,6 +12,7 @@ import {
   Toolbar,
 } from 'nova-ui-kit'
 import { DeleteEntityDialog } from 'pages/project/entities/delete-entity-dialog'
+import { SyncDeploymentDialog } from 'pages/deployments/sync-deployment-dialog'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -231,6 +232,9 @@ export const columns = ({
     sticky: true,
     renderCell: (item: Deployment) => (
       <Toolbar>
+        {item.canUpdate && (
+          <SyncDeploymentDialog id={item.id} projectId={projectId} />
+        )}
         {item.canDelete && (
           <DeleteEntityDialog
             collection={API_ROUTES.DEPLOYMENTS}
