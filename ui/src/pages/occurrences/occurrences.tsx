@@ -37,6 +37,7 @@ import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
 import { columns } from './occurrence-columns'
 import { OccurrenceGallery } from './occurrence-gallery'
+import { OccurrenceStats } from './occurrence-stats'
 import { OccurrenceNavigation } from './occurrence-navigation'
 import { OccurrencesActions } from './occurrences-actions'
 
@@ -96,6 +97,7 @@ export const Occurrences = () => {
     <>
       <div className="flex flex-col gap-6 md:flex-row">
         <div className="space-y-6">
+          <OccurrenceStats projectId={projectId} filters={filters} />
           <FilterSection defaultOpen>
             <FilterControl field="detections__source_image" readonly />
             <FilterControl field="event" readonly />
