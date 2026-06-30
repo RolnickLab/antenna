@@ -1,4 +1,4 @@
-"""Domain tests for class masking and rank rollup post-processing tasks.
+"""Domain tests for the class masking post-processing task.
 
 Class masking re-scores a classifier's terminal predictions against a taxa list:
 classes whose taxon is not in the list are masked, the softmax is renormalised
@@ -29,7 +29,6 @@ from ami.main.models import (
 from ami.ml.models import Algorithm, AlgorithmCategoryMap
 from ami.ml.models.algorithm import AlgorithmTaskType
 from ami.ml.post_processing.class_masking import ClassMaskingTask, make_classifications_filtered_by_taxa_list
-from ami.ml.post_processing.rank_rollup import RankRollupTask
 from ami.tests.fixtures.main import create_taxa, setup_test_project
 
 
@@ -268,35 +267,3 @@ class TestPostProcessingClassMasking(TestCase):
         new_clf = Classification.objects.filter(detection=det, terminal=True).exclude(algorithm=self.algorithm).first()
         self.assertIsNotNone(new_clf)
         self.assertEqual(new_clf.taxon, self.species_taxa[0])
-
-    # ----- rank rollup ----------------------------------------------------
-
-    def test_rank_rollup_creates_genus_terminal_classification(self):
-        now = datetime.datetime.now(datetime.timezone.utc)
-        originals = []
-        for _ in range(3):
-            det, _occ = self._detection_with_occurrence()
-            originals.append(
-                Classification.objects.create(
-                    detection=det,
-                    taxon=self.species_taxon,
-                    score=0.5,
-                    scores=[0.5, 0.2, 0.1],
-                    terminal=True,
-                    timestamp=now,
-                    algorithm=self.algorithm,
-                )
-            )
-
-        RankRollupTask(
-            source_image_collection_id=self.collection.pk,
-            thresholds={"SPECIES": 0.8, "GENUS": 0.6, "FAMILY": 0.4},
-        ).run()
-
-        for original in originals:
-            original.refresh_from_db(fields=["terminal"])
-            self.assertFalse(original.terminal)
-            rolled = Classification.objects.filter(detection=original.detection, terminal=True).first()
-            self.assertIsNotNone(rolled)
-            self.assertEqual(rolled.taxon, self.genus_taxon)
-            self.assertEqual(rolled.applied_to, original)

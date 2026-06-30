@@ -1,4 +1,4 @@
-"""Schema validation + admin-action wiring tests for class masking and rank rollup.
+"""Schema validation + admin-action wiring tests for class masking.
 
 These are deliberately lightweight: they exercise the pydantic config contracts
 and the admin trigger flow (intermediate page -> Job creation with the right
@@ -26,7 +26,6 @@ from ami.ml.models import Algorithm
 from ami.ml.models.algorithm import AlgorithmTaskType
 from ami.ml.post_processing.admin.class_masking_form import ClassMaskingActionForm
 from ami.ml.post_processing.class_masking import ClassMaskingConfig
-from ami.ml.post_processing.rank_rollup import RankRollupConfig
 from ami.users.models import User
 
 
@@ -55,24 +54,6 @@ class TestClassMaskingConfig(TestCase):
     def test_extra_field_is_forbidden(self):
         with self.assertRaises(pydantic.ValidationError):
             ClassMaskingConfig(source_image_collection_id=1, taxa_list_id=2, algorithm_id=3, bogus=1)
-
-
-class TestRankRollupConfig(TestCase):
-    def test_defaults_applied(self):
-        config = RankRollupConfig(source_image_collection_id=1)
-        self.assertEqual(config.thresholds["SPECIES"], 0.8)
-        self.assertEqual(config.rollup_order, ["SPECIES", "GENUS", "FAMILY"])
-
-    def test_threshold_out_of_range_is_invalid(self):
-        with self.assertRaises(pydantic.ValidationError):
-            RankRollupConfig(source_image_collection_id=1, thresholds={"SPECIES": 1.5})
-
-    def test_threshold_and_order_are_uppercased(self):
-        config = RankRollupConfig(
-            source_image_collection_id=1, thresholds={"species": 0.7}, rollup_order=["species", "genus"]
-        )
-        self.assertIn("SPECIES", config.thresholds)
-        self.assertEqual(config.rollup_order, ["SPECIES", "GENUS"])
 
 
 class _PostProcessingAdminCase(TestCase):
@@ -149,24 +130,6 @@ class TestClassMaskingAdmin(_PostProcessingAdminCase):
         self.assertEqual(job.params["task"], "class_masking")
         self.assertEqual(job.params["config"]["occurrence_id"], self.occurrence.pk)
         self.assertIsNone(job.params["config"].get("source_image_collection_id"))
-
-
-class TestRankRollupAdmin(_PostProcessingAdminCase):
-    def test_valid_post_creates_rank_rollup_job_with_defaults(self):
-        url = reverse("admin:main_sourceimagecollection_changelist")
-        response = self.client.post(
-            url,
-            data={
-                "action": "run_rank_rollup",
-                django_admin.helpers.ACTION_CHECKBOX_NAME: [str(self.collection.pk)],
-                "confirm": "yes",
-            },
-        )
-        self.assertEqual(response.status_code, 302)
-        job = Job.objects.get(project=self.project, job_type_key="post_processing")
-        self.assertEqual(job.params["task"], "rank_rollup")
-        self.assertEqual(job.params["config"]["source_image_collection_id"], self.collection.pk)
-        self.assertEqual(job.params["config"]["thresholds"]["SPECIES"], 0.8)
 
 
 class TestClassMaskingFormScopeFiltering(TestCase):
