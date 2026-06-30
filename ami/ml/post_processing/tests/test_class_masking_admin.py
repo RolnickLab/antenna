@@ -202,3 +202,17 @@ class TestClassMaskingFormScopeFiltering(TestCase):
         offered = set(form.fields["algorithm_id"].queryset.values_list("pk", flat=True))
         self.assertIn(self.used.pk, offered)
         self.assertIn(self.unused.pk, offered)
+
+    def test_collection_scope_offers_all_classifiers(self):
+        """A collection scope intentionally keeps the full classifier list rather
+        than narrowing to the classifiers used in the collection. The narrowing
+        lookup is an unbounded DISTINCT over every classification in the
+        collection, which can time out while rendering the form on a large
+        collection. This pins that the collection path stays unfiltered so the
+        expensive filter is not re-added there by mistake."""
+        collection = SourceImageCollection.objects.create(project=self.project, name="scope coll")
+        collection.images.add(self.source_image)
+        form = ClassMaskingActionForm(scope_queryset=SourceImageCollection.objects.filter(pk=collection.pk))
+        offered = set(form.fields["algorithm_id"].queryset.values_list("pk", flat=True))
+        self.assertIn(self.used.pk, offered)
+        self.assertIn(self.unused.pk, offered)
