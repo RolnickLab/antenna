@@ -6667,3 +6667,131 @@ class ClassificationAdminChangelistTest(TestCase):
         row = next(c for c in self.admin.get_queryset(self._request()) if c.pk == clf.pk)
         self.assertEqual(row.scores_count, 3)
         self.assertEqual(row.logits_count, 0)
+
+
+class TestPaginationWithCounts(APITestCase):
+    """
+    Verify the precision cap and the ``with_counts`` opt-out on list endpoints.
+
+    By default ``count`` is exact with ``count_is_exact: true``. Once a result
+    set exceeds ``COUNT_PRECISION_THRESHOLD`` the count is capped to the
+    threshold (a lower bound) with ``count_is_exact: false`` so the UI can
+    render "N+". Callers that want no count at all pass ``with_counts=false``
+    and receive ``count: null`` (``count_is_exact: null``). In both non-exact
+    modes ``next`` / ``previous`` are computed from a one-extra-row probe.
+    """
+
+    def setUp(self) -> None:
+        project, deployment = setup_test_project()
+        create_captures(deployment=deployment, num_nights=2, images_per_night=5)
+        self.project = project
+        self.user = User.objects.create_user(  # type: ignore
+            email="pagination_test@insectai.org",
+            is_staff=True,
+            is_superuser=True,
+        )
+        self.client.force_authenticate(user=self.user)
+        return super().setUp()
+
+    def _captures_url(self, **params):
+        from urllib.parse import urlencode
+
+        base = f"/api/v2/captures/?project_id={self.project.pk}"
+        if params:
+            base += "&" + urlencode(params)
+        return base
+
+    def test_default_response_includes_exact_integer_count(self):
+        """By default a small result set returns an exact integer count."""
+        response = self.client.get(self._captures_url(limit=5))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertIsInstance(data["count"], int)
+        self.assertGreater(data["count"], 0)
+        self.assertTrue(data["count_is_exact"])
+
+    def test_with_counts_true_returns_exact_integer_count(self):
+        """Explicit with_counts=true on a small result set is also exact."""
+        response = self.client.get(self._captures_url(with_counts="true", limit=5))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertIsInstance(data["count"], int)
+        self.assertGreater(data["count"], 0)
+        self.assertTrue(data["count_is_exact"])
+
+    def test_with_counts_false_returns_null_count(self):
+        """with_counts=false skips the count and returns count/count_is_exact null."""
+        response = self.client.get(self._captures_url(with_counts="false", limit=5))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertIn("count", data)
+        self.assertIsNone(data["count"])
+        self.assertIsNone(data["count_is_exact"])
+        self.assertIn("results", data)
+
+    def test_with_counts_false_next_link_present_when_more_results(self):
+        """next link is returned even without count when more results exist."""
+        total = SourceImage.objects.filter(deployment__project=self.project).count()
+        limit = max(1, total - 1)
+        response = self.client.get(self._captures_url(with_counts="false", limit=limit))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertIsNone(data["count"])
+        self.assertIsNotNone(data["next"])
+
+    def test_with_counts_false_next_link_absent_on_last_page(self):
+        """next is None when the current page is the last page."""
+        total = SourceImage.objects.filter(deployment__project=self.project).count()
+        response = self.client.get(self._captures_url(with_counts="false", limit=total))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertIsNone(data["count"])
+        self.assertIsNone(data["next"])
+
+    def test_with_counts_false_previous_link_present_with_nonzero_offset(self):
+        """previous link is returned correctly without count."""
+        response = self.client.get(self._captures_url(with_counts="false", limit=2, offset=2))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertIsNone(data["count"])
+        self.assertIsNotNone(data["previous"])
+
+    def test_count_is_capped_and_marked_inexact_over_threshold(self):
+        """
+        When the result set exceeds COUNT_PRECISION_THRESHOLD the count is
+        capped to the threshold (a lower bound) and flagged inexact, while
+        next/previous still work via the probe-based path.
+        """
+        from unittest.mock import patch
+
+        from ami.base.pagination import LimitOffsetPaginationWithPermissions
+
+        # Patch the threshold to 1 so even a second row trips the precision cap.
+        with patch.object(LimitOffsetPaginationWithPermissions, "COUNT_PRECISION_THRESHOLD", 1):
+            total = SourceImage.objects.filter(deployment__project=self.project).count()
+            self.assertGreater(total, 1, "Need at least 2 captures for this test")
+
+            response = self.client.get(self._captures_url(limit=1))
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            data = response.json()
+            self.assertEqual(data["count"], 1, "count is capped to the threshold as a lower bound")
+            self.assertFalse(data["count_is_exact"], "count_is_exact must be false above the cap")
+            self.assertIsNotNone(data["next"], "next link must still be present")
+            self.assertIsNone(data["previous"])
+
+    def test_count_exact_at_threshold_boundary(self):
+        """A result set exactly at the threshold is still reported exactly."""
+        from unittest.mock import patch
+
+        from ami.base.pagination import LimitOffsetPaginationWithPermissions
+
+        total = SourceImage.objects.filter(deployment__project=self.project).count()
+        self.assertGreater(total, 1, "Need at least 2 captures for this test")
+
+        # Threshold == total: the count is within the cap, so it stays exact.
+        with patch.object(LimitOffsetPaginationWithPermissions, "COUNT_PRECISION_THRESHOLD", total):
+            response = self.client.get(self._captures_url(limit=1))
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            data = response.json()
+            self.assertEqual(data["count"], total)
+            self.assertTrue(data["count_is_exact"])

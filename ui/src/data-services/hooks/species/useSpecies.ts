@@ -12,6 +12,7 @@ export const useSpecies = (
 ): {
   species?: Species[]
   total: number
+  totalIsExact: boolean
   isLoading: boolean
   isFetching: boolean
   error?: unknown
@@ -21,6 +22,7 @@ export const useSpecies = (
   const { data, isLoading, isFetching, error } = useAuthorizedQuery<{
     results: ServerSpecies[]
     count: number
+    count_is_exact?: boolean
   }>({
     queryKey: [API_ROUTES.SPECIES, params],
     url: fetchUrl,
@@ -31,6 +33,7 @@ export const useSpecies = (
   return {
     species,
     total: data?.count ?? 0,
+    totalIsExact: data?.count_is_exact ?? true,
     isLoading,
     isFetching,
     error,

@@ -49,14 +49,21 @@ export const Captures = () => {
   const countColumnVisible = columnSettings.occurrences || columnSettings.taxa
   const sortByCountActive =
     sort?.field === 'occurrences_count' || sort?.field === 'taxa_count'
-  const { captures, userPermissions, total, isLoading, isFetching, error } =
-    useCaptures({
-      projectId,
-      sort,
-      pagination,
-      filters,
-      withCounts: countColumnVisible || sortByCountActive, // Only fetch counts if needed since counts will slow down the response
-    })
+  const {
+    captures,
+    userPermissions,
+    total,
+    totalIsExact,
+    isLoading,
+    isFetching,
+    error,
+  } = useCaptures({
+    projectId,
+    sort,
+    pagination,
+    filters,
+    withCounts: countColumnVisible || sortByCountActive, // Only fetch counts if needed since counts will slow down the response
+  })
   const canCreate = userPermissions?.includes(UserPermission.Create)
   const tableColumns = columns({ projectId: projectId as string })
 
@@ -133,6 +140,7 @@ export const Captures = () => {
           <PaginationBar
             pagination={pagination}
             total={total}
+            totalIsExact={totalIsExact}
             setPage={setPage}
           />
         ) : null}
