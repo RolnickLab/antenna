@@ -168,11 +168,12 @@ ordering convention.
 
 ## Known limitations / follow-ups
 
-- **`isSuccess` persistence:** the mutation state lives on the mounted hook
-  instance, so reopening the dialog on the same row shows the prior success
-  state. The detail-view sync component has the same behavior. If undesired, a
-  small follow-up can call the mutation's `reset()` on dialog open (requires
-  exposing `reset` from the hook).
+- **`isSuccess` persistence (resolved in-scope):** the mutation state lives on
+  the row-mounted hook instance, so without intervention reopening the dialog on
+  the same row would show the prior success/error state and leave the Sync
+  button disabled. The hook now exposes `reset`, and the dialog calls it on open
+  so each open offers a fresh sync. (More important here than in the detail-view
+  sync component, which unmounts on navigation; a list row stays mounted.)
 - **Connected gate:** deferred. If we later want to hide the button on
   unconnected stations (or add a "Last synced" column), add `data_source_uri`
   (or a lightweight `data_source_connected` boolean) to

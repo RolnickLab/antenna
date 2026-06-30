@@ -17,14 +17,31 @@ export const SyncDeploymentDialog = ({
   projectId: string
 }) => {
   const [isOpen, setIsOpen] = useState(false)
-  const { syncDeploymentSourceImages, isLoading, isSuccess, error, data } =
-    useSyncDeploymentSourceImages()
+  const {
+    syncDeploymentSourceImages,
+    reset,
+    isLoading,
+    isSuccess,
+    error,
+    data,
+  } = useSyncDeploymentSourceImages()
 
   const jobId = data?.data.job_id
   const errorMessage = error ? parseServerError(error)?.message : undefined
 
   return (
-    <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog.Root
+      open={isOpen}
+      onOpenChange={(open) => {
+        setIsOpen(open)
+        // The hook is mounted for the whole row, so success/error/data survive
+        // a close. Reset on open so reopening offers a fresh sync instead of
+        // the previous attempt's stale state.
+        if (open) {
+          reset()
+        }
+      }}
+    >
       <Dialog.Trigger asChild>
         <Button
           aria-label={translate(STRING.SYNC)}
@@ -38,7 +55,7 @@ export const SyncDeploymentDialog = ({
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)} isCompact>
         {errorMessage && <FormError inDialog message={errorMessage} />}
         <FormSection
-          title={translate(STRING.SYNC)}
+          title={translate(STRING.SYNC_CAPTURES)}
           description={translate(STRING.MESSAGE_SYNC_CONFIRM)}
         >
           <div className="flex items-center justify-end gap-4">
@@ -51,7 +68,12 @@ export const SyncDeploymentDialog = ({
             </Button>
             <Button
               disabled={isLoading || isSuccess}
-              onClick={() => syncDeploymentSourceImages(id)}
+              onClick={() => {
+                // The error is surfaced via `error` state / FormError; swallow
+                // the promise rejection so the intended no-data-source 400 does
+                // not log an unhandled rejection.
+                void syncDeploymentSourceImages(id).catch(() => undefined)
+              }}
               size="small"
               variant="success"
             >
