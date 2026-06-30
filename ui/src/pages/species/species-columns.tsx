@@ -19,7 +19,15 @@ import { STRING, translate } from 'utils/language'
 export const columns: (project: {
   projectId: string
   featureFlags?: { [key: string]: boolean }
-}) => TableColumn<Species>[] = ({ projectId, featureFlags }) => [
+  // Active taxa-list filters (station, verified, device, site, …) carried over
+  // when drilling into a taxon's occurrences so the occurrence list stays scoped
+  // to the same selection instead of showing every occurrence of the taxon.
+  carryFilters?: Record<string, string>
+}) => TableColumn<Species>[] = ({
+  projectId,
+  featureFlags,
+  carryFilters = {},
+}) => [
   {
     id: 'cover-image',
     name: translate(STRING.FIELD_LABEL_IMAGE),
@@ -88,7 +96,7 @@ export const columns: (project: {
       <Link
         to={getAppRoute({
           to: APP_ROUTES.OCCURRENCES({ projectId }),
-          filters: { taxon: item.id },
+          filters: { ...carryFilters, taxon: item.id },
         })}
       >
         <BasicTableCell value={item.numOccurrences} theme={CellTheme.Bubble} />
@@ -106,7 +114,7 @@ export const columns: (project: {
       <Link
         to={getAppRoute({
           to: APP_ROUTES.OCCURRENCES({ projectId }),
-          filters: { taxon: item.id, verified: 'true' },
+          filters: { ...carryFilters, taxon: item.id, verified: 'true' },
         })}
       >
         <BasicTableCell value={item.numVerified} theme={CellTheme.Bubble} />
