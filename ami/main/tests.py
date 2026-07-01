@@ -51,7 +51,14 @@ from ami.tests.fixtures.main import (
 )
 from ami.tests.fixtures.storage import populate_bucket
 from ami.users.models import User
-from ami.users.roles import BasicMember, Identifier, MLDataManager, ProjectManager, create_roles_for_project
+from ami.users.roles import (
+    BasicMember,
+    Identifier,
+    MLDataManager,
+    ProjectManager,
+    Researcher,
+    create_roles_for_project,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -2919,9 +2926,15 @@ class TestDeploymentSyncAll(APITestCase):
 
         self.superuser = User.objects.create_superuser(email="super-syncall@insectai.org", password="password123")
         self.pm_user = User.objects.create_user(email="pm-syncall@insectai.org", password="password123")
+        self.ml_user = User.objects.create_user(email="ml-syncall@insectai.org", password="password123")
+        self.researcher = User.objects.create_user(email="researcher-syncall@insectai.org", password="password123")
+        self.identifier = User.objects.create_user(email="identifier-syncall@insectai.org", password="password123")
         self.basic_user = User.objects.create_user(email="basic-syncall@insectai.org", password="password123")
         self.outsider = User.objects.create_user(email="outsider-syncall@insectai.org", password="password123")
         ProjectManager.assign_user(self.pm_user, self.project)
+        MLDataManager.assign_user(self.ml_user, self.project)
+        Researcher.assign_user(self.researcher, self.project)
+        Identifier.assign_user(self.identifier, self.project)
         BasicMember.assign_user(self.basic_user, self.project)
 
         source = S3StorageSource.objects.create(
@@ -2956,9 +2969,14 @@ class TestDeploymentSyncAll(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_permission_matrix(self):
+        # Sync is allowed for MLDataManager and ProjectManager (and superusers),
+        # not for Researcher, Identifier, BasicMember, or non-members.
         matrix = [
             ("superuser", self.superuser, status.HTTP_200_OK),
             ("ProjectManager", self.pm_user, status.HTTP_200_OK),
+            ("MLDataManager", self.ml_user, status.HTTP_200_OK),
+            ("Researcher", self.researcher, status.HTTP_403_FORBIDDEN),
+            ("Identifier", self.identifier, status.HTTP_403_FORBIDDEN),
             ("BasicMember", self.basic_user, status.HTTP_403_FORBIDDEN),
             ("outsider", self.outsider, status.HTTP_403_FORBIDDEN),
         ]

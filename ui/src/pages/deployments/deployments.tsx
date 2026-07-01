@@ -36,7 +36,9 @@ export const Deployments = () => {
   const tableColumns = columns({ projectId: projectId as string })
   const syncableCount =
     deployments?.filter(
-      (deployment) => deployment.canUpdate && deployment.dataSourceConnected
+      (deployment) =>
+        (deployment.canUpdate || deployment.canSync) &&
+        deployment.dataSourceConnected
     ).length ?? 0
 
   return (
