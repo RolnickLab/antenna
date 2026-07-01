@@ -178,3 +178,39 @@ ordering convention.
   unconnected stations (or add a "Last synced" column), add `data_source_uri`
   (or a lightweight `data_source_connected` boolean) to
   `DeploymentListSerializer.fields` and gate on it.
+
+## Addendum (2026-07-01): connected gate + "Sync all"
+
+After the live test, three follow-ups were pulled into this PR (per the product
+owner's call):
+
+### 1. `data_source_connected` on the list serializer
+`DeploymentListSerializer` gets a read-only `data_source_connected` boolean
+(`obj.data_source_id is not None`). No query cost (the id is on the row), no
+migration. The per-row Sync button now shows only when
+`item.canUpdate && item.dataSourceConnected`, so it is hidden on stations with no
+storage source. The endpoint's 400 stays as a safety net for races. The field
+also feeds "Sync all" eligibility on the frontend.
+
+### 2. "Sync all" bulk endpoint
+`DeploymentViewSet.sync_all` (`detail=False`, POST, `project_id` via
+`ProjectMixin.get_active_project`). It enqueues one `DataStorageSyncJob` per
+connected deployment in the project — **separate jobs, not one consolidated
+job** — matching the admin bulk action (`DeploymentAdmin.sync_captures`) and the
+single-`deployment` FK on `DataStorageSyncJob`. Returns
+`{ job_ids, queued, project_id }`.
+
+### 3. Permissions (the parts that are invisible in the diff)
+- `ObjectPermission.has_permission` returns `True` and `has_object_permission`
+  only fires on detail actions (via `get_object`). A `detail=False` action is
+  therefore unguarded unless it checks permissions itself. `sync_all` checks a
+  transient probe: `Deployment(project=project).check_permission(user, "sync")`,
+  which resolves to the `sync_deployment` guardian permission — exactly what the
+  per-row `sync` action requires. Superusers pass via Django's bypass;
+  `ProjectManager` passes via guardian; `BasicMember` is denied (403).
+- The per-row button stays gated on `canUpdate`, **not** a `sync` permission.
+  Superusers receive `["update", "delete"]` in `user_permissions` but not
+  `"sync"` (guardian `get_perms` returns nothing for superusers), so gating on
+  `sync` would wrongly hide the button from them. `update_deployment` and
+  `sync_deployment` are co-granted (only to `ProjectManager`), so `canUpdate`
+  covers exactly the users who can sync.

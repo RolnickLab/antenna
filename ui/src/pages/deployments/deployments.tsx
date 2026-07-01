@@ -2,6 +2,7 @@ import { useDeployments } from 'data-services/hooks/deployments/useDeployments'
 import { ColumnSettings, PageHeader, SortControl, Table } from 'nova-ui-kit'
 import { DeploymentDetailsDialog } from 'pages/deployment-details/deployment-details-dialog'
 import { NewDeploymentDialog } from 'pages/deployment-details/new-deployment-dialog'
+import { SyncAllDeploymentsDialog } from 'pages/deployments/sync-all-deployments-dialog'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'
@@ -33,6 +34,10 @@ export const Deployments = () => {
     })
   const canCreate = userPermissions?.includes(UserPermission.Create)
   const tableColumns = columns({ projectId: projectId as string })
+  const syncableCount =
+    deployments?.filter(
+      (deployment) => deployment.canUpdate && deployment.dataSourceConnected
+    ).length ?? 0
 
   return (
     <>
@@ -46,6 +51,12 @@ export const Deployments = () => {
         tooltip={translate(STRING.TOOLTIP_DEPLOYMENT)}
       >
         {canCreate ? <NewDeploymentDialog /> : null}
+        {syncableCount > 0 ? (
+          <SyncAllDeploymentsDialog
+            projectId={projectId as string}
+            count={syncableCount}
+          />
+        ) : null}
         <SortControl columns={tableColumns} setSort={setSort} sort={sort} />
         <ColumnSettings
           columns={tableColumns}

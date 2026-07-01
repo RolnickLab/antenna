@@ -29,6 +29,10 @@ export class Deployment extends Entity {
     return this._deployment.user_permissions.includes(UserPermission.Update)
   }
 
+  get dataSourceConnected(): boolean {
+    return this._deployment.data_source_connected ?? false
+  }
+
   get currentJob(): Job | undefined {
     if (!this._jobs.length) {
       return

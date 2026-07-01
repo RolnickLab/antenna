@@ -232,7 +232,7 @@ export const columns = ({
     sticky: true,
     renderCell: (item: Deployment) => (
       <Toolbar>
-        {item.canUpdate && (
+        {item.canUpdate && item.dataSourceConnected && (
           <SyncDeploymentDialog id={item.id} projectId={projectId} />
         )}
         {item.canDelete && (
