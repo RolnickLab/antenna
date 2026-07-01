@@ -25,8 +25,18 @@ export class Deployment extends Entity {
     return this._deployment.user_permissions.includes(UserPermission.Delete)
   }
 
+  get canSync(): boolean {
+    // Superusers can sync but do not receive the `sync` permission in
+    // user_permissions, so callers gate on `canUpdate || canSync`.
+    return this._deployment.user_permissions.includes(UserPermission.Sync)
+  }
+
   get canUpdate(): boolean {
     return this._deployment.user_permissions.includes(UserPermission.Update)
+  }
+
+  get dataSourceConnected(): boolean {
+    return this._deployment.data_source_connected ?? false
   }
 
   get currentJob(): Job | undefined {

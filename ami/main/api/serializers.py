@@ -184,6 +184,7 @@ class DeploymentListSerializer(DefaultSerializer):
     device = DeviceNestedSerializer(read_only=True)
     research_site = SiteNestedSerializer(read_only=True)
     jobs = JobStatusSerializer(many=True, read_only=True)
+    data_source_connected = serializers.SerializerMethodField()
 
     class Meta:
         model = Deployment
@@ -208,7 +209,18 @@ class DeploymentListSerializer(DefaultSerializer):
             "device",
             "research_site",
             "jobs",
+            "data_source_connected",
         ]
+
+    def get_data_source_connected(self, obj: Deployment) -> bool:
+        """
+        Whether the station has a storage source configured.
+
+        The stations list uses this to show the per-row Sync button only where a
+        sync can succeed, and to count how many stations "Sync all" would cover.
+        Reads the foreign key id already on the row, so it adds no query.
+        """
+        return obj.data_source_id is not None
 
     def get_events(self, obj):
         """

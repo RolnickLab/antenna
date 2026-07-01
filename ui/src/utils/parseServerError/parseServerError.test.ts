@@ -73,6 +73,20 @@ describe('parseServerError', () => {
     })
   })
 
+  test('reads a top-level list of strings (DRF plain-string ValidationError) as the message', () => {
+    const EXAMPLE_ERROR = {
+      message: 'Request failed with status code 400',
+      response: {
+        data: ['Deployment must have a data source to sync captures from'],
+      },
+    }
+
+    expect(parseServerError(EXAMPLE_ERROR)).toEqual({
+      message: 'Deployment must have a data source to sync captures from',
+      fieldErrors: [],
+    })
+  })
+
   test('returns a default error if no information is present', () => {
     const { message, fieldErrors } = parseServerError({})
 
