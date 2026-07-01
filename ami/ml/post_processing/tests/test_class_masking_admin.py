@@ -55,6 +55,14 @@ class TestClassMaskingConfig(TestCase):
         with self.assertRaises(pydantic.ValidationError):
             ClassMaskingConfig(source_image_collection_id=1, taxa_list_id=2, algorithm_id=3, bogus=1)
 
+    def test_reweight_defaults_to_true(self):
+        config = ClassMaskingConfig(source_image_collection_id=1, taxa_list_id=2, algorithm_id=3)
+        self.assertTrue(config.reweight)
+
+    def test_reweight_can_be_set_false(self):
+        config = ClassMaskingConfig(source_image_collection_id=1, taxa_list_id=2, algorithm_id=3, reweight=False)
+        self.assertFalse(config.reweight)
+
 
 class _PostProcessingAdminCase(TestCase):
     @classmethod
@@ -130,6 +138,41 @@ class TestClassMaskingAdmin(_PostProcessingAdminCase):
         self.assertEqual(job.params["task"], "class_masking")
         self.assertEqual(job.params["config"]["occurrence_id"], self.occurrence.pk)
         self.assertIsNone(job.params["config"].get("source_image_collection_id"))
+
+
+class TestClassMaskingFormReweight(_PostProcessingAdminCase):
+    """The admin form exposes a reweight toggle and passes it through to the job config."""
+
+    def _post_collection_reweight(self, include_reweight: bool):
+        data = {
+            "action": "run_class_masking",
+            django_admin.helpers.ACTION_CHECKBOX_NAME: [str(self.collection.pk)],
+            "confirm": "yes",
+            "taxa_list_id": str(self.taxa_list.pk),
+            "algorithm_id": str(self.algorithm.pk),
+        }
+        if include_reweight:
+            data["reweight"] = "on"
+        return self.client.post(reverse("admin:main_sourceimagecollection_changelist"), data=data)
+
+    def test_form_has_reweight_field(self):
+        form = ClassMaskingActionForm()
+        self.assertIn("reweight", form.fields)
+        self.assertTrue(form.fields["reweight"].initial, "reweight must default to True (checked)")
+
+    def test_to_config_includes_reweight_true_when_checked(self):
+        """When the operator checks the reweight box, the job config carries reweight=True."""
+        response = self._post_collection_reweight(include_reweight=True)
+        self.assertEqual(response.status_code, 302)
+        job = Job.objects.get(project=self.project, job_type_key="post_processing")
+        self.assertTrue(job.params["config"]["reweight"])
+
+    def test_to_config_includes_reweight_false_when_unchecked(self):
+        """An unchecked reweight box (no value in POST) yields reweight=False in the job config."""
+        response = self._post_collection_reweight(include_reweight=False)
+        self.assertEqual(response.status_code, 302)
+        job = Job.objects.get(project=self.project, job_type_key="post_processing")
+        self.assertFalse(job.params["config"]["reweight"])
 
 
 class TestClassMaskingFormScopeFiltering(TestCase):

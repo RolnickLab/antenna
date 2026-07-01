@@ -267,3 +267,178 @@ class TestPostProcessingClassMasking(TestCase):
         new_clf = Classification.objects.filter(detection=det, terminal=True).exclude(algorithm=self.algorithm).first()
         self.assertIsNotNone(new_clf)
         self.assertEqual(new_clf.taxon, self.species_taxa[0])
+
+    # ----- batched commit + heartbeat -------------------------------------
+
+    def test_batched_commit_flushes_multiple_times(self):
+        """With batch_size=2 and 5 classifications, on_batch fires at i=2, 4, 5 — more than once.
+
+        Verifies that all classifications are correctly masked across flush boundaries
+        (correctness preserved) and that the on_batch callback receives a call per batch
+        (heartbeat wiring works)."""
+        taxa_list = TaxaList.objects.create(name="Batch flush test")
+        taxa_list.taxa.set(self.species_taxa[:1])  # keep only index 0; indices 1 and 2 excluded
+
+        new_algorithm = Algorithm.objects.create(
+            name="masked_batch",
+            key="masked_batch_test",
+            task_type=AlgorithmTaskType.CLASSIFICATION.value,
+            category_map=self.algorithm.category_map,
+        )
+
+        # Create 5 detections, each with a classification whose top logit is index 2
+        # (excluded), so every one should be masked and re-assigned to index 0.
+        logits = [2.0, 1.0, 5.0]
+        pks = []
+        for _ in range(5):
+            det, _ = self._detection_with_occurrence()
+            clf = self._create_classification_with_logits(det, self.species_taxa[2], _softmax(logits), logits)
+            pks.append(clf.pk)
+
+        batch_calls: list[dict] = []
+        metrics = make_classifications_filtered_by_taxa_list(
+            classifications=Classification.objects.filter(pk__in=pks),
+            taxa_list=taxa_list,
+            algorithm=self.algorithm,
+            new_algorithm=new_algorithm,
+            batch_size=2,
+            on_batch=batch_calls.append,
+        )
+
+        self.assertGreater(len(batch_calls), 1, "on_batch must fire more than once with batch_size=2 over 5 items")
+        # i=2 and i=4 fire on the batch boundary; i=5 fires on the total boundary.
+        self.assertEqual(len(batch_calls), 3)
+        self.assertEqual(metrics["classifications_masked"], 5, "All 5 classifications must be masked across batches")
+        self.assertEqual(
+            Classification.objects.filter(algorithm=new_algorithm, terminal=True).count(),
+            5,
+            "A new terminal classification must exist for every masked row",
+        )
+
+    # ----- changed-only occurrence count ----------------------------------
+
+    def test_occurrences_updated_counts_only_changed_determinations(self):
+        """``occurrences_updated`` counts only occurrences whose determination changed,
+        not every occurrence whose detection was touched.
+
+        occ1: original winner is index 2 (excluded) — masking flips determination to index 0.
+        occ2: original winner is index 0 (kept) — masking reassigns scores but determination stays index 0.
+        Only occ1 should count."""
+        taxa_list = TaxaList.objects.create(name="Changed-only count test")
+        taxa_list.taxa.set(self.species_taxa[:2])  # excludes species_taxa[2] (index 2)
+
+        new_algorithm = Algorithm.objects.create(
+            name="masked_changed",
+            key="masked_changed_test",
+            task_type=AlgorithmTaskType.CLASSIFICATION.value,
+            category_map=self.algorithm.category_map,
+        )
+
+        # occ1: index 2 has the highest logit, so masking forces the winner to index 0.
+        logits_changes = [2.0, 1.0, 5.0]
+        det1, occ1 = self._detection_with_occurrence()
+        clf1 = self._create_classification_with_logits(
+            det1, self.species_taxa[2], _softmax(logits_changes), logits_changes
+        )
+        # Persist the pre-masking determination so the loaded instance has it set.
+        occ1.save(update_determination=True)  # determination = species_taxa[2]
+
+        # occ2: index 0 has the highest logit, so after masking it remains the winner.
+        # Masking still changes the scores (index 2 drops to 0, softmax shifts), so the
+        # classification IS demoted — but occ2's determination stays species_taxa[0].
+        logits_stays = [5.0, 1.0, 3.0]
+        det2, occ2 = self._detection_with_occurrence()
+        clf2 = self._create_classification_with_logits(
+            det2, self.species_taxa[0], _softmax(logits_stays), logits_stays
+        )
+        occ2.save(update_determination=True)  # determination = species_taxa[0]
+
+        metrics = make_classifications_filtered_by_taxa_list(
+            classifications=Classification.objects.filter(pk__in=[clf1.pk, clf2.pk]),
+            taxa_list=taxa_list,
+            algorithm=self.algorithm,
+            new_algorithm=new_algorithm,
+        )
+
+        self.assertEqual(metrics["classifications_masked"], 2, "Both classifications are modified by masking")
+        self.assertEqual(
+            metrics["occurrences_updated"],
+            1,
+            "Only the occurrence whose determination changed (occ1) counts",
+        )
+
+    # ----- reweight toggle ------------------------------------------------
+
+    def test_reweight_false_winner_identical_scores_differ(self):
+        """With reweight=False the winning taxon is identical to reweight=True, but the
+        stored score equals the winner's original absolute probability (not renormalised)
+        and the kept-class scores do not sum to 1.
+
+        logits = [2, 1, 5]: index 2 is excluded, so index 0 wins in both modes.
+        reweight=True:  new_scores renormalised — sums to 1, score = renormalised p(index 0).
+        reweight=False: new_scores = original with index 2 zeroed — sums < 1, score = original p(index 0)."""
+        logits = [2.0, 1.0, 5.0]
+        scores = _softmax(logits)
+        taxa_list = TaxaList.objects.create(name="Reweight compare")
+        taxa_list.taxa.set(self.species_taxa[:2])  # excludes index 2
+
+        # --- reweight=True (default) ---
+        det_t, _ = self._detection_with_occurrence()
+        clf_t = self._create_classification_with_logits(det_t, self.species_taxa[2], scores, logits)
+        new_alg_true = Algorithm.objects.create(
+            name="masked_rw_true",
+            key="masked_rw_true_test",
+            task_type=AlgorithmTaskType.CLASSIFICATION.value,
+            category_map=self.algorithm.category_map,
+        )
+        make_classifications_filtered_by_taxa_list(
+            classifications=Classification.objects.filter(pk=clf_t.pk),
+            taxa_list=taxa_list,
+            algorithm=self.algorithm,
+            new_algorithm=new_alg_true,
+            reweight=True,
+        )
+
+        # --- reweight=False ---
+        det_f, _ = self._detection_with_occurrence()
+        clf_f = self._create_classification_with_logits(det_f, self.species_taxa[2], scores, logits)
+        new_alg_false = Algorithm.objects.create(
+            name="masked_rw_false",
+            key="masked_rw_false_test",
+            task_type=AlgorithmTaskType.CLASSIFICATION.value,
+            category_map=self.algorithm.category_map,
+        )
+        make_classifications_filtered_by_taxa_list(
+            classifications=Classification.objects.filter(pk=clf_f.pk),
+            taxa_list=taxa_list,
+            algorithm=self.algorithm,
+            new_algorithm=new_alg_false,
+            reweight=False,
+        )
+
+        new_clf_t = Classification.objects.get(detection=det_t, terminal=True)
+        new_clf_f = Classification.objects.get(detection=det_f, terminal=True)
+
+        # Winner is the same in both modes.
+        self.assertEqual(new_clf_t.taxon, self.species_taxa[0])
+        self.assertEqual(new_clf_f.taxon, self.species_taxa[0], "Winner is identical with reweight=False")
+
+        # Excluded class is zeroed in both modes.
+        self.assertAlmostEqual(new_clf_t.scores[2], 0.0, places=10)
+        self.assertAlmostEqual(new_clf_f.scores[2], 0.0, places=10)
+
+        # reweight=True: kept-class scores are renormalised and sum to 1.
+        self.assertAlmostEqual(sum(new_clf_t.scores), 1.0, places=5)
+
+        # reweight=False: kept classes retain original absolute values; sum is < 1.
+        self.assertAlmostEqual(
+            new_clf_f.scores[0], scores[0], places=6, msg="Kept class retains original score with reweight=False"
+        )
+        self.assertAlmostEqual(new_clf_f.scores[1], scores[1], places=6)
+        self.assertNotAlmostEqual(
+            sum(new_clf_f.scores), 1.0, places=2, msg="Scores must not sum to 1 with reweight=False"
+        )
+
+        # Stored confidence: reweight=False uses the original pre-mask probability.
+        self.assertAlmostEqual(new_clf_f.score, scores[0], places=6)
+        self.assertNotAlmostEqual(new_clf_t.score, scores[0], places=2)

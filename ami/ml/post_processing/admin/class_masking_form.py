@@ -30,6 +30,15 @@ class ClassMaskingActionForm(BasePostProcessingActionForm):
             "classification's softmax is renormalised over the classes that remain."
         ),
     )
+    reweight = forms.BooleanField(
+        required=False,
+        initial=True,
+        label="Reweight (renormalise) scores",
+        help_text=(
+            "Renormalise the kept classes to sum to 1. "
+            "Off = keep the model's raw absolute scores; the chosen species is unchanged either way."
+        ),
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -63,4 +72,5 @@ class ClassMaskingActionForm(BasePostProcessingActionForm):
         return {
             "algorithm_id": self.cleaned_data["algorithm_id"].pk,
             "taxa_list_id": self.cleaned_data["taxa_list_id"].pk,
+            "reweight": self.cleaned_data["reweight"],
         }
