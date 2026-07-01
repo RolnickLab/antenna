@@ -1603,6 +1603,54 @@ class TestPostProcessingTasks(TestCase):
         # count equals the detection count.
         self.assertEqual(params.get("occurrences_updated"), total)
 
+    def test_progress_save_bumps_updated_at_for_reaper(self):
+        """A progress heartbeat bumps ``Job.updated_at`` so the stale-job reaper
+        leaves an actively-running post-processing job alone.
+
+        ``check_stale_jobs`` revokes running jobs whose ``updated_at`` is older
+        than ``STALLED_JOBS_MAX_MINUTES``. The progress save narrows to
+        ``update_fields``, and Django does not auto-add ``auto_now`` fields to
+        that list, so ``update_progress`` / ``report_stage_metrics`` must include
+        ``updated_at`` explicitly. Without it a long run looks frozen and is
+        reaped mid-flight even while streaming progress. This pins that both save
+        paths move ``updated_at`` forward.
+        """
+        from ami.jobs.models import Job
+
+        job = Job.objects.create(
+            project=self.project,
+            name="reaper heartbeat test",
+            job_type_key="post_processing",
+            params={
+                "task": "small_size_filter",
+                "config": {"source_image_collection_id": self.collection.pk, "size_threshold": 0.01},
+            },
+        )
+        job.progress.add_stage("Post Processing", key="post_processing")
+        job.save()
+
+        task = SmallSizeFilterTask(
+            job=job,
+            source_image_collection_id=self.collection.pk,
+            size_threshold=0.01,
+        )
+
+        # Freeze a baseline older than the reaper cutoff, then confirm each
+        # heartbeat path drags updated_at back to "now". USE_TZ is False, so
+        # updated_at is naive local time — mirror check_stale_jobs' own
+        # naive datetime.now() comparison.
+        stale = datetime.datetime.now() - datetime.timedelta(minutes=Job.STALLED_JOBS_MAX_MINUTES + 5)
+
+        Job.objects.filter(pk=job.pk).update(updated_at=stale)
+        task.update_progress(0.5)
+        job.refresh_from_db()
+        self.assertGreater(job.updated_at, stale, "update_progress must bump updated_at")
+
+        Job.objects.filter(pk=job.pk).update(updated_at=stale)
+        task.report_stage_metrics({"classifications_checked": 1})
+        job.refresh_from_db()
+        self.assertGreater(job.updated_at, stale, "report_stage_metrics must bump updated_at")
+
     def test_occurrences_updated_counts_only_changed_determinations(self):
         """``occurrences_updated`` counts occurrences whose determination actually
         changed, not every occurrence the filter re-saved.
