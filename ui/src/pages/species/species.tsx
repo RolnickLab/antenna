@@ -17,9 +17,10 @@ import {
   Table,
   ToggleGroup,
 } from 'nova-ui-kit'
+import { OccurrenceDetailsDialog } from 'pages/occurrences/occurrence-details-dialog'
 import { SpeciesDetails, TABS } from 'pages/species-details/species-details'
 import { useContext, useEffect, useMemo } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -34,6 +35,10 @@ import { SpeciesGallery } from './species-gallery'
 
 export const Species = () => {
   const { projectId, id } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  // Occurrence to verify in a modal over the taxa list. Keyed off a search
+  // param (not the :id path segment, which already means taxon detail).
+  const verifyOccurrenceId = searchParams.get('verifyOccurrence') ?? undefined
   const { project } = useProjectDetails(projectId as string, true)
   const { columnSettings, setColumnSettings } = useColumnSettings('species', {
     'cover-image': true,
@@ -42,6 +47,7 @@ export const Species = () => {
     'last-seen': true,
     occurrences: true,
     verified: true,
+    example: true,
     'best-determination-score': true,
     'created-at': false,
     'updated-at': false,
@@ -137,9 +143,12 @@ export const Species = () => {
                 featureFlags: project?.featureFlags,
               }).filter((column) => !!columnSettings[column.id])}
               error={error}
-              isLoading={!id && isLoading}
+              isLoading={!id && !verifyOccurrenceId && isLoading}
               items={species}
               onSortSettingsChange={setSort}
+              rowClassName={(item) =>
+                item.numVerified > 0 ? 'opacity-50' : undefined
+              }
               sortable
               sortSettings={sort}
             />
@@ -147,7 +156,7 @@ export const Species = () => {
           {selectedView === 'gallery' && (
             <SpeciesGallery
               error={error}
-              isLoading={!id && isLoading}
+              isLoading={!id && !verifyOccurrenceId && isLoading}
               species={species}
             />
           )}
@@ -163,6 +172,16 @@ export const Species = () => {
         ) : null}
       </PageFooter>
       {id ? <SpeciesDetailsDialog id={id} /> : null}
+      {verifyOccurrenceId ? (
+        <OccurrenceDetailsDialog
+          id={verifyOccurrenceId}
+          onClose={() => {
+            const nextParams = new URLSearchParams(searchParams)
+            nextParams.delete('verifyOccurrence')
+            setSearchParams(nextParams)
+          }}
+        />
+      ) : null}
     </>
   )
 }

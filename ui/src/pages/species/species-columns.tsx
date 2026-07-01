@@ -2,6 +2,7 @@ import { DeterminationScore } from 'components/determination-score'
 import { TaxonDetails } from 'components/taxon-details/taxon-details'
 import { Tag } from 'components/taxon-tags/tag'
 import { Species } from 'data-services/models/species'
+import { ShieldCheckIcon } from 'lucide-react'
 import {
   BasicTableCell,
   CellTheme,
@@ -75,7 +76,22 @@ export const columns: (project: {
     id: 'last-seen',
     sortField: 'last_detected',
     name: 'Last seen',
-    renderCell: (item: Species) => <DateTableCell date={item.lastSeen} />,
+    renderCell: (item: Species) =>
+      item.lastDetectedOccurrenceId ? (
+        <Link
+          to={getAppRoute({
+            to: APP_ROUTES.TAXA({ projectId }),
+            filters: {
+              verifyOccurrence: String(item.lastDetectedOccurrenceId),
+            },
+            keepSearchParams: true,
+          })}
+        >
+          <DateTableCell date={item.lastSeen} />
+        </Link>
+      ) : (
+        <DateTableCell date={item.lastSeen} />
+      ),
   },
   {
     id: 'occurrences',
@@ -109,25 +125,75 @@ export const columns: (project: {
           filters: { taxon: item.id, verified: 'true' },
         })}
       >
-        <BasicTableCell value={item.numVerified} theme={CellTheme.Bubble} />
+        <div className="flex items-center justify-end gap-1.5">
+          {item.numVerified > 0 ? (
+            <ShieldCheckIcon
+              aria-label={translate(STRING.VERIFIED)}
+              className="w-4 h-4 text-success"
+            />
+          ) : null}
+          <BasicTableCell value={item.numVerified} theme={CellTheme.Bubble} />
+        </div>
       </Link>
     ),
+  },
+  {
+    id: 'example',
+    name: translate(STRING.FIELD_LABEL_EXAMPLE),
+    tooltip: translate(STRING.TOOLTIP_VERIFY_EXAMPLE),
+    renderCell: (item: Species) => {
+      const example = item.verificationExample
+
+      return (
+        <ImageTableCell
+          images={example?.imageUrl ? [{ src: example.imageUrl }] : []}
+          theme={ImageCellTheme.Light}
+          to={
+            example
+              ? getAppRoute({
+                  to: APP_ROUTES.TAXA({ projectId }),
+                  filters: { verifyOccurrence: String(example.id) },
+                  keepSearchParams: true,
+                })
+              : undefined
+          }
+        />
+      )
+    },
   },
   {
     id: 'best-determination-score',
     name: translate(STRING.FIELD_LABEL_BEST_SCORE),
     sortField: 'best_determination_score',
-    renderCell: (item: Species) => (
-      <BasicTableCell>
-        <DeterminationScore
-          score={item.score}
-          scoreLabel={item.scoreLabel}
-          tooltip={translate(STRING.MACHINE_PREDICTION_SCORE, {
-            score: `${item.score}`,
+    renderCell: (item: Species) => {
+      const cell = (
+        <BasicTableCell>
+          <DeterminationScore
+            score={item.score}
+            scoreLabel={item.scoreLabel}
+            tooltip={translate(STRING.MACHINE_PREDICTION_SCORE, {
+              score: `${item.score}`,
+            })}
+          />
+        </BasicTableCell>
+      )
+
+      return item.bestScoringOccurrenceId ? (
+        <Link
+          to={getAppRoute({
+            to: APP_ROUTES.TAXA({ projectId }),
+            filters: {
+              verifyOccurrence: String(item.bestScoringOccurrenceId),
+            },
+            keepSearchParams: true,
           })}
-        />
-      </BasicTableCell>
-    ),
+        >
+          {cell}
+        </Link>
+      ) : (
+        cell
+      )
+    },
   },
   {
     id: 'created-at',

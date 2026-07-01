@@ -16,7 +16,14 @@ export const useSpecies = (
   isFetching: boolean
   error?: unknown
 } => {
-  const fetchUrl = getFetchUrl({ collection: API_ROUTES.SPECIES, params })
+  // Always request the example-occurrence annotations so the taxa list can show
+  // the Example column and link the Last-seen / Best-score cells to a single
+  // occurrence. The backend gates this work behind the opt-in flag.
+  const fetchParams = { ...params, withExampleOccurrences: true }
+  const fetchUrl = getFetchUrl({
+    collection: API_ROUTES.SPECIES,
+    params: fetchParams,
+  })
 
   const { data, isLoading, isFetching, error } = useAuthorizedQuery<{
     results: ServerSpecies[]
