@@ -53,7 +53,7 @@ export const SyncDeploymentDialog = ({
         </Button>
       </Dialog.Trigger>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)} isCompact>
-        {errorMessage && <FormError inDialog message={errorMessage} />}
+        {errorMessage && <FormError message={errorMessage} />}
         <FormSection
           title={translate(STRING.SYNC_CAPTURES)}
           description={translate(STRING.MESSAGE_SYNC_CONFIRM)}
