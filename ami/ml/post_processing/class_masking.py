@@ -114,7 +114,7 @@ def make_classifications_filtered_by_taxa_list(
     masked_count = 0
 
     for i, classification in enumerate(classifications.iterator(chunk_size=batch_size), start=1):
-        scores, logits = classification.scores, classification.logits
+        logits = classification.logits
         if not isinstance(logits, list) or not all(isinstance(x, (int, float)) for x in logits):
             raise ValueError(f"Logits for classification {classification.pk} are not a list of numbers: {logits}")
         elif len(logits) != num_categories:
@@ -122,33 +122,35 @@ def make_classifications_filtered_by_taxa_list(
                 f"Classification {classification.pk}: {len(logits)} logits != {num_categories} categories; skipping"
             )
         else:
-            # Mask excluded classes with -inf on a working copy so the renormalised
-            # softmax assigns them exactly zero probability — an excluded class can
-            # never win argmax. (-inf is compute-only; it is never stored, since it
-            # is not valid JSON. The stored vectors stay finite: see below.)
-            working = np.asarray(logits, dtype=float)
-            working[excluded_indices] = -np.inf
-            working -= working.max()  # max is over kept classes (finite); stabilises exp
-            exp = np.exp(working)  # exp(-inf) == 0 for masked classes
-            new_scores_np = exp / exp.sum()  # sum > 0: at least one class is kept
-            top_index = int(np.argmax(new_scores_np))
+            # Everything is derived from ``logits`` alone — the stored ``scores`` field
+            # is being retired, so masking must not depend on it. Recompute the model's
+            # full softmax (over every class) from the logits, then drop the excluded
+            # classes to exactly zero. An excluded class can never win argmax or carry
+            # probability.
+            shifted = np.asarray(logits, dtype=float)
+            shifted -= shifted.max()  # stabilises exp without changing the softmax
+            full_softmax = np.exp(shifted)
+            full_softmax /= full_softmax.sum()  # p over all classes; matches the retired ``scores``
+
+            kept = full_softmax.copy()
+            kept[excluded_indices] = 0.0
+            kept_sum = kept.sum()  # > 0: at least one class is kept (guaranteed upstream)
+            top_index = int(np.argmax(kept))  # over kept classes only (excluded are 0)
 
             if reweight:
-                # Renormalise: excluded classes become exactly 0; kept classes sum to 1.
-                new_scores = new_scores_np.tolist()
-                score = float(new_scores_np[top_index])
+                # Renormalise: excluded classes stay 0; kept classes sum to 1.
+                new_scores_np = kept / kept_sum
             else:
-                # No renormalisation: kept classes keep their original absolute scores;
-                # excluded classes are zeroed. The winner is the same (argmax is
-                # computed on the renormalised distribution before this branch).
-                new_scores = list(scores)
-                for idx in excluded_indices:
-                    new_scores[idx] = 0.0
-                score = float(new_scores[top_index])
+                # No renormalisation: kept classes keep their original absolute
+                # probability; excluded classes are zeroed. Winner is unchanged.
+                new_scores_np = kept
+            new_scores = new_scores_np.tolist()
+            score = float(new_scores_np[top_index])
 
             # No-change short-circuit: if masking shifted no probability (the classes
-            # this taxa list drops carried ~zero score here), leave the row untouched.
-            if isinstance(scores, list) and np.allclose(scores, new_scores, atol=1e-9):
+            # this taxa list drops carried ~zero probability here), leave the row
+            # untouched. Compared against the unmasked softmax, not the stored scores.
+            if np.allclose(full_softmax, new_scores_np, atol=1e-9):
                 task_logger.debug(f"Classification {classification.pk} unchanged by masking; skipping")
             else:
                 top_taxon = index_to_taxon.get(top_index)  # guaranteed in taxa_in_list (top_index is kept)
@@ -228,21 +230,28 @@ class ClassMaskingTask(BasePostProcessingTask):
     name = "Class masking"
     config_schema = ClassMaskingConfig
 
-    def _get_or_create_masking_algorithm(self, source_algorithm: Algorithm, taxa_list: TaxaList) -> Algorithm:
-        """Get or create the output algorithm for this (source algorithm, taxa list).
+    def _get_or_create_masking_algorithm(
+        self, source_algorithm: Algorithm, taxa_list: TaxaList, *, reweight: bool
+    ) -> Algorithm:
+        """Get or create the output algorithm for this (source algorithm, taxa list, reweight mode).
 
-        One masking algorithm per pair keeps provenance reproducible: re-running
-        the same mask reuses the same Algorithm row. Its category map is the
-        source map (indices still align with the masked score vector) and is
-        persisted — earlier code set it in memory only, so masked classifications
-        referenced a null map.
+        One masking algorithm per (source algorithm, taxa list, reweight mode)
+        keeps provenance reproducible: re-running the same mask reuses the same
+        Algorithm row. The reweight mode is part of the identity because the two
+        modes persist different score semantics (renormalised vs original
+        absolute), so a masked classification's ``applied_to.algorithm`` can tell
+        them apart. Its category map is the source map (indices still align with
+        the masked score vector) and is persisted — earlier code set it in memory
+        only, so masked classifications referenced a null map.
         """
+        mode = "reweighted" if reweight else "absolute"
         algorithm, created = Algorithm.objects.get_or_create(
-            key=f"{source_algorithm.key}_filtered_by_taxa_list_{taxa_list.pk}",
+            key=f"{source_algorithm.key}_filtered_by_taxa_list_{taxa_list.pk}_{mode}",
             defaults={
-                "name": f"{source_algorithm.name} (filtered by taxa list {taxa_list.name})",
+                "name": f"{source_algorithm.name} (filtered by taxa list {taxa_list.name}, {mode} scores)",
                 "description": (
-                    f"Classifications from {source_algorithm.name} re-scored against taxa list {taxa_list.name}"
+                    f"Classifications from {source_algorithm.name} re-scored against taxa list "
+                    f"{taxa_list.name} ({mode} scores)"
                 ),
                 "task_type": AlgorithmTaskType.CLASSIFICATION.value,
                 "category_map": source_algorithm.category_map,
@@ -300,7 +309,9 @@ class ClassMaskingTask(BasePostProcessingTask):
         if not source_algorithm.category_map:
             raise ValueError(f"Algorithm '{source_algorithm.name}' has no category map; cannot mask classes.")
 
-        masking_algorithm = self._get_or_create_masking_algorithm(source_algorithm, taxa_list)
+        masking_algorithm = self._get_or_create_masking_algorithm(
+            source_algorithm, taxa_list, reweight=config.reweight
+        )
         classifications, scope_desc = self._scoped_classifications(config, source_algorithm)
         self.logger.info(f"Applying class masking on {scope_desc} using taxa list {taxa_list.pk}")
 

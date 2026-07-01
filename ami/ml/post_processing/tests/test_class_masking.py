@@ -238,9 +238,12 @@ class TestPostProcessingClassMasking(TestCase):
             algorithm_id=self.algorithm.pk,
         ).run()
 
-        # The per-(source algorithm, taxa list) masking algorithm exists and kept
-        # its category map (the bug being guarded: it used to be set in memory only).
-        masking_algo = Algorithm.objects.get(key=f"{self.algorithm.key}_filtered_by_taxa_list_{taxa_list.pk}")
+        # The per-(source algorithm, taxa list, reweight mode) masking algorithm
+        # exists and kept its category map (the bug being guarded: it used to be
+        # set in memory only). Default reweight=True → the "reweighted" mode.
+        masking_algo = Algorithm.objects.get(
+            key=f"{self.algorithm.key}_filtered_by_taxa_list_{taxa_list.pk}_reweighted"
+        )
         self.assertIsNotNone(masking_algo.category_map_id)
         self.assertEqual(masking_algo.category_map_id, self.algorithm.category_map_id)
 
@@ -249,6 +252,47 @@ class TestPostProcessingClassMasking(TestCase):
         self.assertEqual(new_clf.applied_to, original)
         occ.refresh_from_db()
         self.assertEqual(occ.determination, self.species_taxa[1], "Occurrence determination follows the masked result")
+
+    def test_reweight_modes_get_distinct_masking_algorithms(self):
+        """The reweight mode is part of the masking algorithm's identity.
+
+        reweight=True and reweight=False persist different score semantics
+        (renormalised vs original absolute), so they must resolve to different
+        Algorithm rows — otherwise a masked classification's
+        ``applied_to.algorithm`` could not tell which mode produced it. Both keys
+        derive from the same (source algorithm, taxa list); only the mode suffix
+        differs.
+        """
+        logits = [0.5, 3.0, 3.5]
+        taxa_list = TaxaList.objects.create(name="Reweight identity list")
+        taxa_list.taxa.set(self.species_taxa[:2])
+
+        det_t, _ = self._detection_with_occurrence()
+        self._create_classification_with_logits(det_t, self.species_taxa[2], _softmax(logits), logits)
+        ClassMaskingTask(
+            source_image_collection_id=self.collection.pk,
+            taxa_list_id=taxa_list.pk,
+            algorithm_id=self.algorithm.pk,
+            reweight=True,
+        ).run()
+
+        det_f, _ = self._detection_with_occurrence()
+        self._create_classification_with_logits(det_f, self.species_taxa[2], _softmax(logits), logits)
+        ClassMaskingTask(
+            source_image_collection_id=self.collection.pk,
+            taxa_list_id=taxa_list.pk,
+            algorithm_id=self.algorithm.pk,
+            reweight=False,
+        ).run()
+
+        base = f"{self.algorithm.key}_filtered_by_taxa_list_{taxa_list.pk}"
+        reweighted = Algorithm.objects.get(key=f"{base}_reweighted")
+        absolute = Algorithm.objects.get(key=f"{base}_absolute")
+        self.assertNotEqual(reweighted.pk, absolute.pk, "Each reweight mode gets its own masking algorithm")
+
+        # Each detection's masked classification points at the algorithm for its mode.
+        self.assertTrue(Classification.objects.filter(detection=det_t, terminal=True, algorithm=reweighted).exists())
+        self.assertTrue(Classification.objects.filter(detection=det_f, terminal=True, algorithm=absolute).exists())
 
     def test_task_run_occurrence_scope(self):
         logits = [2.0, 1.0, 5.0]

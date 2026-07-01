@@ -52,6 +52,7 @@ class Command(BaseCommand):
                 terminal=True,
                 algorithm=algorithm,
                 scores__isnull=False,
+                logits__isnull=False,
             )
             .distinct()
             .count()
