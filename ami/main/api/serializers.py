@@ -611,10 +611,22 @@ class TaxonListSerializer(DefaultSerializer):
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent")
     tags = serializers.SerializerMethodField()
+    # Presence-verification Example column (#1320). Populated only when the request sets
+    # ?with_example_occurrences=true; otherwise the annotations are NULL. The nested object
+    # is hydrated for the whole page in one query and passed via serializer context.
+    example_occurrence = serializers.SerializerMethodField()
+    best_scoring_occurrence_id = serializers.IntegerField(read_only=True, allow_null=True)
+    last_detected_occurrence_id = serializers.IntegerField(read_only=True, allow_null=True)
 
     def get_tags(self, obj):
         tag_list = getattr(obj, "prefetched_tags", [])
         return TagSerializer(tag_list, many=True, context=self.context).data
+
+    def get_example_occurrence(self, obj) -> dict | None:
+        occurrence_id = getattr(obj, "example_occurrence_id", None)
+        if occurrence_id is None:
+            return None
+        return self.context.get("example_occurrence_map", {}).get(occurrence_id)
 
     class Meta:
         model = Taxon
@@ -628,6 +640,9 @@ class TaxonListSerializer(DefaultSerializer):
             "occurrences_count",
             "verified_count",
             "occurrences",
+            "example_occurrence",
+            "best_scoring_occurrence_id",
+            "last_detected_occurrence_id",
             "tags",
             "last_detected",
             "best_determination_score",

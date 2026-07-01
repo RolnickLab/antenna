@@ -59,7 +59,9 @@ from ..models import (
     Taxon,
     TaxonRank,
     User,
+    get_media_url,
     update_detection_counts,
+    verified_taxon_counts,
 )
 from .serializers import (
     ClassificationListSerializer,
@@ -152,6 +154,18 @@ class ProjectPagination(LimitOffsetPaginationWithPermissions):
         # The recent-activity orderings annotate correlated subqueries onto the
         # queryset. They don't change the row count, so strip them (and ordering)
         # before counting to keep the pagination COUNT query cheap.
+        return super().get_count(queryset.order_by().values("pk"))
+
+
+class TaxonPagination(LimitOffsetPaginationWithPermissions):
+    def get_count(self, queryset):
+        # The taxa list annotates several correlated subqueries (occurrence counts /
+        # scores, and — under ?with_example_occurrences — the example / best-scoring /
+        # last-detected occurrence ids). They don't change the row count, and because
+        # TagInverseFilter always applies ``.distinct()``, they would otherwise be pulled
+        # into the COUNT subquery and evaluated for every taxon in the project, not just
+        # the page. Strip annotations (and ordering) before counting to keep the COUNT
+        # cheap. See docs/claude/reference/hierarchical-rollup-query-performance.md.
         return super().get_count(queryset.order_by().values("pk"))
 
 
@@ -1650,6 +1664,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
 
     queryset = Taxon.objects.all().defer("notes")
     serializer_class = TaxonSerializer
+    pagination_class = TaxonPagination
     # ``?collection=`` is handled inside get_taxa_observed (via get_occurrence_filters
     # + TaxonQuerySet.with_observation_counts_aggregated + HAVING). A dedicated
     # filter_backends entry that re-applied the collection filter on the main queryset
@@ -1886,14 +1901,115 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         if self.action == "list" and "verified" in request.query_params:
             verified_param = BooleanField(required=False).clean(request.query_params.get("verified"))
 
-        return qs.with_verification_counts(
+        # Compute the verified-occurrence rollup once: with_verification_counts needs the
+        # per-taxon counts and the example-occurrence dispatch needs the verified-taxon set.
+        verified_counts = verified_taxon_counts(
+            project,
+            request,
+            occurrence_filters=direct_filters,
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=apply_default_taxa_filter,
+        )
+        qs = qs.with_verification_counts(
             project,
             request,
             occurrence_filters=direct_filters,
             apply_default_score_filter=apply_default_score_filter,
             apply_default_taxa_filter=apply_default_taxa_filter,
             verified=verified_param,
+            verified_counts=verified_counts,
         )
+
+        return self.annotate_example_occurrences(
+            qs,
+            project,
+            occurrence_filters=direct_filters,
+            verified_taxon_ids=set(verified_counts.keys()),
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=apply_default_taxa_filter,
+        )
+
+    def annotate_example_occurrences(
+        self,
+        qs: QuerySet,
+        project: Project,
+        *,
+        occurrence_filters: models.Q,
+        verified_taxon_ids: set[int],
+        apply_default_score_filter=True,
+        apply_default_taxa_filter=True,
+    ) -> QuerySet:
+        """Add the ``example_occurrence_id`` / ``best_scoring_occurrence_id`` /
+        ``last_detected_occurrence_id`` annotations for the presence-verification Example
+        column (#1320).
+
+        Gated behind the ``with_example_occurrences`` opt-in param: the selecting
+        subqueries are index-served on the default path but degrade to per-row scans under
+        ``?collection=``, so they run only when the client asks for the column. When off,
+        the three ids are annotated ``NULL`` so the serialized shape stays stable.
+        """
+        include_examples = SingleParamSerializer[bool].clean(
+            param_name="with_example_occurrences",
+            field=serializers.BooleanField(required=False, default=False),
+            data=self.request.query_params,
+        )
+        if not include_examples:
+            return qs.annotate(
+                example_occurrence_id=models.Value(None, output_field=models.IntegerField()),
+                best_scoring_occurrence_id=models.Value(None, output_field=models.IntegerField()),
+                last_detected_occurrence_id=models.Value(None, output_field=models.IntegerField()),
+            )
+        return qs.with_example_occurrence_ids(
+            project,
+            self.request,
+            occurrence_filters=occurrence_filters,
+            verified_taxon_ids=verified_taxon_ids,
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=apply_default_taxa_filter,
+        )
+
+    def _build_example_occurrence_map(self, taxa) -> dict[int, dict]:
+        """Hydrate the page's ``example_occurrence_id`` annotations into nested objects for
+        the serializer, in one query for the whole page (no per-row lookups)."""
+        occurrence_ids = {getattr(taxon, "example_occurrence_id", None) for taxon in taxa}
+        occurrence_ids.discard(None)
+        if not occurrence_ids:
+            return {}
+        best_detection_id_subquery = (
+            Detection.objects.filter(occurrence=OuterRef("pk"))
+            .order_by("-classifications__score", "id")
+            .values("id")[:1]
+        )
+        occurrences = (
+            Occurrence.objects.filter(id__in=occurrence_ids)
+            .with_best_detection()
+            .annotate(
+                is_verified=models.Exists(Identification.objects.filter(occurrence=OuterRef("pk"), withdrawn=False)),
+                best_detection_id=Subquery(best_detection_id_subquery),
+            )
+        )
+        result: dict[int, dict] = {}
+        for occ in occurrences:
+            image_url = get_media_url(occ.best_detection_path) if occ.best_detection_path else None
+            result[occ.id] = {
+                "id": occ.id,
+                "detection_id": occ.best_detection_id,
+                "image_url": image_url,
+                "score": occ.determination_score,
+                "verified": occ.is_verified,
+            }
+        return result
+
+    def paginate_queryset(self, queryset):
+        page = super().paginate_queryset(queryset)
+        if page is not None and self.action == "list":
+            self._example_occurrence_map = self._build_example_occurrence_map(page)
+        return page
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["example_occurrence_map"] = getattr(self, "_example_occurrence_map", {})
+        return context
 
     def attach_tags_by_project(self, qs: QuerySet, project: Project) -> QuerySet:
         """

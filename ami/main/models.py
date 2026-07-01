@@ -3879,6 +3879,59 @@ def _case_from_map(mapping: dict, default, output_field: models.Field) -> models
     )
 
 
+def verified_taxon_counts(
+    project: "Project",
+    request: "Request | None",
+    *,
+    occurrence_filters: models.Q,
+    apply_default_score_filter: bool = True,
+    apply_default_taxa_filter: bool = True,
+) -> dict[int, int]:
+    """Hierarchical rollup of verified-occurrence counts, keyed by taxon id.
+
+    Each occurrence with a non-withdrawn ``Identification`` counts toward its determination
+    taxon and every ancestor in ``parents_json`` (verifying a species also credits its
+    genus / family / order rows). The verified subset is sparse relative to all
+    occurrences, so this is a single cheap Python pass. The result feeds both the
+    constant-time ``verified_count`` ``CASE`` annotation
+    (:meth:`TaxonQuerySet.with_verification_counts`) and the verified-vs-unverified branch
+    of the example-occurrence dispatch (:meth:`TaxonQuerySet.with_example_occurrence_ids`),
+    so callers compute it once and pass it to both.
+    """
+    default_q = build_occurrence_default_filters_q(
+        project,
+        request,
+        occurrence_accessor="",
+        apply_default_score_filter=apply_default_score_filter,
+        apply_default_taxa_filter=apply_default_taxa_filter,
+    )
+    verified_occurrences = (
+        Occurrence.objects.filter(occurrence_filters)
+        .filter(default_q)
+        .filter(Exists(Identification.objects.filter(occurrence=OuterRef("pk"), withdrawn=False)))
+    )
+    # ``pk`` is selected only so ``.distinct()`` below dedupes by occurrence: when
+    # occurrence_filters joins to detections (e.g. ?collection=<id>), one Occurrence
+    # yields a row per matching Detection, which would otherwise inflate counts.
+    value_fields = ["pk", "determination_id", "determination__parents_json"]
+
+    counts: dict[int, int] = {}
+    for row in verified_occurrences.values(*value_fields).distinct():
+        determination_id = row["determination_id"]
+        taxon_ids: set[int] = set()
+        if determination_id is not None:
+            taxon_ids.add(determination_id)
+        for parent in row["determination__parents_json"] or []:
+            # parents_json round-trips through the pydantic schema field, so elements
+            # may be dicts or ``TaxonParent`` objects depending on the query path.
+            parent_id = parent.get("id") if isinstance(parent, dict) else getattr(parent, "id", None)
+            if parent_id is not None:
+                taxon_ids.add(int(parent_id))
+        for taxon_id in taxon_ids:
+            counts[taxon_id] = counts.get(taxon_id, 0) + 1
+    return counts
+
+
 class TaxonQuerySet(BaseQuerySet):
     def with_observation_counts_subqueries(
         self,
@@ -4011,6 +4064,7 @@ class TaxonQuerySet(BaseQuerySet):
         apply_default_score_filter: bool = True,
         apply_default_taxa_filter: bool = True,
         verified: bool | None = None,
+        verified_counts: dict[int, int] | None = None,
     ):
         """Annotate ``verified_count`` and optionally apply the
         ``verified=true|false`` filter.
@@ -4022,40 +4076,21 @@ class TaxonQuerySet(BaseQuerySet):
         constant-time ``CASE`` annotations. A correlated ``parents_json`` subquery per
         taxon would not scale (GIN can't serve a containment with an ``OuterRef`` RHS).
 
+        ``verified_counts`` may be supplied precomputed (via :func:`verified_taxon_counts`)
+        when the caller also needs the verified-taxon set — e.g. for the example-occurrence
+        dispatch — so the verified-occurrence query runs once, not twice.
+
         Model-agreement counts (whether the chosen identification matched the model's
         top prediction) are tracked separately — see issue #1319.
         """
-        default_q = build_occurrence_default_filters_q(
-            project,
-            request,
-            occurrence_accessor="",
-            apply_default_score_filter=apply_default_score_filter,
-            apply_default_taxa_filter=apply_default_taxa_filter,
-        )
-        verified_occurrences = (
-            Occurrence.objects.filter(occurrence_filters)
-            .filter(default_q)
-            .filter(Exists(Identification.objects.filter(occurrence=OuterRef("pk"), withdrawn=False)))
-        )
-        # ``pk`` is selected only so ``.distinct()`` below dedupes by occurrence: when
-        # occurrence_filters joins to detections (e.g. ?collection=<id>), one Occurrence
-        # yields a row per matching Detection, which would otherwise inflate counts.
-        value_fields = ["pk", "determination_id", "determination__parents_json"]
-
-        verified_counts: dict[int, int] = {}
-        for row in verified_occurrences.values(*value_fields).distinct():
-            determination_id = row["determination_id"]
-            taxon_ids: set[int] = set()
-            if determination_id is not None:
-                taxon_ids.add(determination_id)
-            for parent in row["determination__parents_json"] or []:
-                # parents_json round-trips through the pydantic schema field, so elements
-                # may be dicts or ``TaxonParent`` objects depending on the query path.
-                parent_id = parent.get("id") if isinstance(parent, dict) else getattr(parent, "id", None)
-                if parent_id is not None:
-                    taxon_ids.add(int(parent_id))
-            for taxon_id in taxon_ids:
-                verified_counts[taxon_id] = verified_counts.get(taxon_id, 0) + 1
+        if verified_counts is None:
+            verified_counts = verified_taxon_counts(
+                project,
+                request,
+                occurrence_filters=occurrence_filters,
+                apply_default_score_filter=apply_default_score_filter,
+                apply_default_taxa_filter=apply_default_taxa_filter,
+            )
 
         qs = self.annotate(verified_count=_case_from_map(verified_counts, 0, models.IntegerField()))
 
@@ -4065,6 +4100,77 @@ class TaxonQuerySet(BaseQuerySet):
             qs = qs.exclude(id__in=list(verified_counts.keys()))
 
         return qs
+
+    def with_example_occurrence_ids(
+        self,
+        project: Project,
+        request: Request | None,
+        *,
+        occurrence_filters: models.Q,
+        verified_taxon_ids: set[int],
+        apply_default_score_filter: bool = True,
+        apply_default_taxa_filter: bool = True,
+    ):
+        """Annotate one representative occurrence id per taxon for the presence-verification
+        Example column (#1320), plus the source occurrence ids behind the Last-seen and
+        Best-score cells.
+
+        - ``example_occurrence_id`` is hybrid: the latest occurrence for a *verified* row
+          (is this taxon still showing up?), the best-scoring *unverified* occurrence
+          otherwise (the cleanest predicted ID, fastest for a human to confirm).
+          ``verified_taxon_ids`` (sparse — bounded by human review) selects the branch.
+        - ``best_scoring_occurrence_id`` / ``last_detected_occurrence_id`` mirror the
+          ``best_determination_score`` / ``last_detected`` value columns so those cells can
+          deep-link to their source occurrence.
+
+        All three match by exact determination (``determination_id = taxon``), consistent
+        with the observation-count columns on the default path; only ``verified_count``
+        rolls up to ancestors, so higher-rank rows without direct occurrences get ``NULL``.
+
+        These are correlated subqueries, index-served by the composite
+        ``(determination_id, project_id, event_id, determination_score)`` index on the
+        default path. When ``occurrence_filters`` joins detections (``?collection=<id>``)
+        they degrade to per-row scans, so the view gates this behind the opt-in
+        ``with_example_occurrences`` query param to protect the list's latency budget.
+        """
+        default_q = build_occurrence_default_filters_q(
+            project,
+            request,
+            occurrence_accessor="",
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=apply_default_taxa_filter,
+        )
+        base_filter = models.Q(occurrence_filters, determination_id=OuterRef("id")) & default_q
+
+        # OuterRef("id") resolves to the outer Taxon; OuterRef("pk") inside the Exists
+        # resolves to the inner Occurrence.
+        not_verified = ~Exists(Identification.objects.filter(occurrence=OuterRef("pk"), withdrawn=False))
+
+        best_scoring = Occurrence.objects.filter(base_filter).order_by("-determination_score", "-id").values("id")[:1]
+        latest = (
+            Occurrence.objects.filter(base_filter, detections__timestamp__isnull=False)
+            .order_by("-detections__timestamp", "-id")
+            .values("id")[:1]
+        )
+        best_unverified = (
+            Occurrence.objects.filter(base_filter)
+            .filter(not_verified)
+            .order_by("-determination_score", "-id")
+            .values("id")[:1]
+        )
+
+        return self.annotate(
+            best_scoring_occurrence_id=models.Subquery(best_scoring, output_field=models.IntegerField()),
+            last_detected_occurrence_id=models.Subquery(latest, output_field=models.IntegerField()),
+            example_occurrence_id=models.Case(
+                models.When(
+                    id__in=list(verified_taxon_ids),
+                    then=models.Subquery(latest, output_field=models.IntegerField()),
+                ),
+                default=models.Subquery(best_unverified, output_field=models.IntegerField()),
+                output_field=models.IntegerField(),
+            ),
+        )
 
     def filter_by_project_default_taxa(self, project: Project | None = None, request: Request | None = None):
         """

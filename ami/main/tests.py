@@ -4076,6 +4076,44 @@ class TestTaxonListQueryCount(APITestCase):
         print(f"\n[AUDIT] Taxon list: limit=5 -> {small}q, limit=25 -> {large}q")
         self.assertLessEqual(large, small + 5, f"Taxon list scaling: {small} -> {large} (likely N+1)")
 
+    def _list_query_count_with_examples(self, limit: int) -> int:
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/v2/taxa/?project_id={self.project.pk}&limit={limit}&with_example_occurrences=true"
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return len(ctx.captured_queries)
+
+    def test_example_hydration_does_not_scale_with_page_size(self):
+        # Hydrating the example thumbnails must be one batched query for the whole page,
+        # not one per row — the query count must not grow with page size (#1320).
+        small = self._list_query_count_with_examples(limit=5)
+        large = self._list_query_count_with_examples(limit=25)
+        print(f"\n[AUDIT] Taxon list w/ examples: limit=5 -> {small}q, limit=25 -> {large}q")
+        self.assertLessEqual(large, small + 5, f"Example hydration scaling: {small} -> {large} (likely N+1)")
+
+    def test_example_subqueries_stripped_from_pagination_count(self):
+        # The pagination COUNT must not carry the example correlated subqueries — in
+        # particular the best-unverified NOT EXISTS anti-join over main_identification —
+        # or the COUNT would evaluate them for every taxon in the project, not just the
+        # page (TagInverseFilter's .distinct() would otherwise pull them in). See
+        # TaxonPagination.get_count.
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/v2/taxa/?project_id={self.project.pk}&limit=5&with_example_occurrences=true"
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        count_sqls = [q["sql"] for q in ctx.captured_queries if q["sql"].lower().startswith("select count(")]
+        self.assertTrue(count_sqls, "expected a pagination COUNT query")
+        for sql in count_sqls:
+            self.assertNotIn("main_identification", sql.lower(), "example subqueries leaked into the COUNT")
+
 
 class TestProjectDefaultTaxaFilter(APITestCase):
     """
@@ -6176,6 +6214,162 @@ class TestTaxaVerification(APITestCase):
         rows = self._list_by_name(f"{self.list_url}&collection={collection.pk}")
         # 2 verified cardui occurrences, not 3 — the duplicate detection must not double-count.
         self.assertEqual(rows["Vanessa cardui"]["verified_count"], 2)
+
+
+class TestTaxaExampleOccurrence(APITestCase):
+    """Presence-verification Example column (#1320).
+
+    The taxa list can surface, per taxon, one example occurrence to verify (hybrid:
+    best-scoring *unverified* for unverified rows, latest for verified rows) plus the
+    source-occurrence ids behind the Last-seen / Best-score cells. The whole feature is
+    gated behind ``?with_example_occurrences=true`` so the default list keeps its latency
+    budget on the ``?collection=`` (detections-join) path.
+
+    The fixture deliberately decouples score from recency: each test taxon has an
+    early high-scoring occurrence and a late low-scoring one, so "best-scoring" and
+    "latest" resolve to different occurrences and the hybrid dispatch is genuinely pinned.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(self.project)
+        self.genus = Taxon.objects.get(name="Vanessa")
+        self.cardui = Taxon.objects.get(name="Vanessa cardui")
+        self.itea = Taxon.objects.get(name="Vanessa itea")
+
+        # Don't let the default score threshold drop the low-scoring occurrences.
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=3)
+        self.images = list(SourceImage.objects.filter(deployment=self.deployment).order_by("timestamp"))
+        self.assertGreaterEqual(len(self.images), 3)
+
+        self.user = User.objects.create_user(email="verifier1320@insectai.org", is_staff=True, is_superuser=True)
+        self.client.force_authenticate(user=self.user)
+
+        # cardui: a VERIFIED taxon whose latest occurrence is NOT its best-scoring one.
+        # Verifying an occurrence overrides its ML determination_score, so we keep the
+        # early/late occurrences unverified (to preserve distinct scores) and mark the
+        # taxon verified via a separate middle occurrence. The example must then resolve
+        # to "latest" (cardui_late_low), not "best-scoring-unverified" (cardui_early_high).
+        self.cardui_early_high = self._make_occurrence(self.cardui, self.images[0], score=0.95)
+        self.cardui_late_low = self._make_occurrence(self.cardui, self.images[2], score=0.70)
+        self.cardui_verified = self._make_occurrence(self.cardui, self.images[1], score=0.80)
+        Identification.objects.create(occurrence=self.cardui_verified, taxon=self.cardui, user=self.user)
+
+        # itea: an UNVERIFIED taxon whose best-scoring occurrence differs from its latest
+        # one, so the example must resolve to "best-scoring unverified", not "latest".
+        self.itea_high_early = self._make_occurrence(self.itea, self.images[0], score=0.95)
+        self.itea_low_late = self._make_occurrence(self.itea, self.images[2], score=0.70)
+
+        self.base_url = f"/api/v2/taxa/?project_id={self.project.pk}&limit=1000"
+
+    def _make_occurrence(self, taxon, source_image, score) -> Occurrence:
+        """Create one occurrence for ``taxon`` on ``source_image`` (which fixes its
+        timestamp) with the given determination score, so score and recency vary
+        independently."""
+        detection = Detection.objects.create(
+            source_image=source_image,
+            timestamp=source_image.timestamp,
+            bbox=[0.1, 0.1, 0.2, 0.2],
+            path=f"detections/ex_{taxon.pk}_{int(score * 100)}.jpg",
+        )
+        detection.classifications.create(taxon=taxon, score=score, timestamp=datetime.datetime.now())
+        return detection.associate_new_occurrence()
+
+    def _rows(self, url):
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.content)
+        return {row["name"]: row for row in res.json()["results"]}
+
+    def test_fields_null_without_flag(self):
+        # Default list omits the (potentially expensive) selection — the fields are null.
+        itea = self._rows(self.base_url)["Vanessa itea"]
+        self.assertIsNone(itea["example_occurrence"])
+        self.assertIsNone(itea["best_scoring_occurrence_id"])
+        self.assertIsNone(itea["last_detected_occurrence_id"])
+
+    def test_unverified_row_returns_best_scoring_unverified(self):
+        # Unverified row -> the best-scoring occurrence (fastest clean ID), NOT the latest.
+        row = self._rows(self.base_url + "&with_example_occurrences=true")["Vanessa itea"]
+        example = row["example_occurrence"]
+        self.assertEqual(example["id"], self.itea_high_early.id)
+        self.assertFalse(example["verified"])
+        self.assertAlmostEqual(example["score"], 0.95, places=5)
+        # The nested shape the frontend renders the thumbnail + deep-link from.
+        self.assertEqual(set(example), {"id", "detection_id", "image_url", "score", "verified"})
+        # Pin the dispatch: the example is best-scoring, distinct from the latest occurrence.
+        self.assertEqual(row["best_scoring_occurrence_id"], self.itea_high_early.id)
+        self.assertEqual(row["last_detected_occurrence_id"], self.itea_low_late.id)
+        self.assertNotEqual(example["id"], row["last_detected_occurrence_id"])
+
+    def test_verified_row_returns_latest(self):
+        # Verified row -> the latest occurrence (is it still showing up?), NOT the
+        # best-scoring-unverified one that an unverified row would surface.
+        row = self._rows(self.base_url + "&with_example_occurrences=true")["Vanessa cardui"]
+        example = row["example_occurrence"]
+        self.assertEqual(example["id"], self.cardui_late_low.id)  # latest by timestamp
+        self.assertNotEqual(example["id"], self.cardui_early_high.id)  # the best-scoring-unverified pick
+        self.assertEqual(row["last_detected_occurrence_id"], self.cardui_late_low.id)
+
+    def test_verified_false_filter_with_examples(self):
+        rows = self._rows(self.base_url + "&verified=false&with_example_occurrences=true")
+        self.assertIn("Vanessa itea", rows)
+        self.assertNotIn("Vanessa cardui", rows)
+        self.assertEqual(rows["Vanessa itea"]["example_occurrence"]["id"], self.itea_high_early.id)
+
+    def test_deployment_filter_scopes_example(self):
+        # A second deployment holds the globally highest-scoring cardui occurrence. When
+        # filtering by the original deployment, the example and both source ids must stay
+        # within that deployment (the subqueries honor occurrence_filters).
+        other_deployment = Deployment.objects.create(project=self.project, name="Other Station 1320")
+        create_captures(deployment=other_deployment, num_nights=1, images_per_night=1)
+        other_image = SourceImage.objects.filter(deployment=other_deployment).first()
+        other = self._make_occurrence(self.cardui, other_image, score=0.99)  # highest score overall
+        Identification.objects.create(occurrence=other, taxon=self.cardui, user=self.user)
+
+        url = f"{self.base_url}&deployment={self.deployment.pk}&with_example_occurrences=true"
+        row = self._rows(url)["Vanessa cardui"]
+        dep1_ids = {self.cardui_early_high.id, self.cardui_late_low.id, self.cardui_verified.id}
+        self.assertIn(row["example_occurrence"]["id"], dep1_ids)
+        self.assertIn(row["best_scoring_occurrence_id"], dep1_ids)
+        self.assertIn(row["last_detected_occurrence_id"], dep1_ids)
+        # The out-of-scope, higher-scoring occurrence must not leak in.
+        self.assertNotEqual(row["best_scoring_occurrence_id"], other.id)
+
+    def test_higher_rank_row_has_no_example(self):
+        # example / best-scoring / last-detected are exact-determination; only verified_count
+        # rolls up to ancestors. A genus row is verified via rollup but has no direct-
+        # determination occurrence, so its example resolves to NULL.
+        url = f"{self.base_url}&include_unobserved=true&with_example_occurrences=true"
+        row = self._rows(url)["Vanessa"]
+        self.assertGreater(row["verified_count"], 0)  # rolled up from cardui
+        self.assertIsNone(row["example_occurrence"])
+        self.assertIsNone(row["best_scoring_occurrence_id"])
+        self.assertIsNone(row["last_detected_occurrence_id"])
+
+    def test_collection_path_example_deduped_and_correct(self):
+        # ?collection= joins detections (fan-out). Give the best-scoring itea occurrence a
+        # second detection; the example must still be that single occurrence, correctly
+        # selected through the double detections join and not inflated to a wrong row.
+        Detection.objects.create(
+            source_image=self.itea_high_early.best_detection.source_image,
+            occurrence=self.itea_high_early,
+            timestamp=self.itea_high_early.best_detection.timestamp,
+            bbox=[0.5, 0.5, 0.6, 0.6],
+            path="detections/itea_dup_1320.jpg",
+        )
+        collection = SourceImageCollection.objects.create(project=self.project, name="ex-1320")
+        collection.images.set(SourceImage.objects.filter(deployment=self.deployment))
+        row = self._rows(f"{self.base_url}&collection={collection.pk}&with_example_occurrences=true")["Vanessa itea"]
+        self.assertEqual(row["example_occurrence"]["id"], self.itea_high_early.id)
+        self.assertEqual(row["best_scoring_occurrence_id"], self.itea_high_early.id)
+        self.assertEqual(row["last_detected_occurrence_id"], self.itea_low_late.id)
+
+    def test_bad_flag_returns_400(self):
+        res = self.client.get(self.base_url + "&with_example_occurrences=notabool")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
 
 class TestDetectionNullMarker(TestCase):
