@@ -18,13 +18,17 @@ export const OccurrenceDetailsDialog = ({
   id,
   occurrences,
   onClose,
+  defaultTab = TABS.FIELDS,
 }: {
   id: string
   occurrences?: Occurrence[]
   onClose: () => void
+  // Tab to open on when no ?tab= is set. The taxa list opens on Identification so
+  // verifying is the immediate action; the occurrences list keeps Fields.
+  defaultTab?: string
 }) => {
   const { state } = useLocation()
-  const { selectedView, setSelectedView } = useSelectedView(TABS.FIELDS, 'tab')
+  const { selectedView, setSelectedView } = useSelectedView(defaultTab, 'tab')
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { occurrence, isLoading, error } = useOccurrenceDetails(id)
 

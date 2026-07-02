@@ -18,6 +18,7 @@ import {
   ToggleGroup,
 } from 'nova-ui-kit'
 import { OccurrenceDetailsDialog } from 'pages/occurrences/occurrence-details-dialog'
+import { TABS as OCCURRENCE_TABS } from 'pages/occurrence-details/occurrence-details'
 import { SpeciesDetails, TABS } from 'pages/species-details/species-details'
 import { useContext, useEffect, useMemo } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
@@ -175,6 +176,7 @@ export const Species = () => {
       {verifyOccurrenceId ? (
         <OccurrenceDetailsDialog
           id={verifyOccurrenceId}
+          defaultTab={OCCURRENCE_TABS.IDENTIFICATION}
           onClose={() => {
             const nextParams = new URLSearchParams(searchParams)
             nextParams.delete('verifyOccurrence')
