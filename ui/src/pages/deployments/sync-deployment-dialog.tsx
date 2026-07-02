@@ -35,9 +35,12 @@ export const SyncDeploymentDialog = ({
       onOpenChange={(open) => {
         setIsOpen(open)
         // The hook is mounted for the whole row, so success/error/data survive
-        // a close. Reset on open so reopening offers a fresh sync instead of
-        // the previous attempt's stale state.
-        if (open) {
+        // a close. Reset on open so reopening offers a fresh sync instead of the
+        // previous attempt's stale state. Skip the reset while a request is in
+        // flight: reset() clears the loading state without cancelling the
+        // request, so resetting here would re-enable Sync and allow a duplicate
+        // job for the same deployment.
+        if (open && !isLoading) {
           reset()
         }
       }}

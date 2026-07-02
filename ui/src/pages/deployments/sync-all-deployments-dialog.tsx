@@ -29,8 +29,11 @@ export const SyncAllDeploymentsDialog = ({
       onOpenChange={(open) => {
         setIsOpen(open)
         // The hook stays mounted with the header, so reset on open to offer a
-        // fresh sync instead of the previous run's result.
-        if (open) {
+        // fresh sync instead of the previous run's result. Skip the reset while a
+        // request is in flight: reset() clears the loading state without
+        // cancelling the request, so resetting here would re-enable Sync all and
+        // allow a duplicate bulk run.
+        if (open && !isLoading) {
           reset()
         }
       }}
