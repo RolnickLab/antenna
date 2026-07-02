@@ -14,7 +14,7 @@ This document turns the design doc's "Proposal A", "reusable core", "data model"
 
 Class masking (#999) keeps only the classifier predictions whose taxon appears in a chosen taxa list, cutting a global classifier down to the species that actually occur at a site. The blocker is that the taxa list has to be hand-curated one taxon at a time, and nothing ties a list to the place a project monitors.
 
-Proposal A adds one capability — **"given a region, produce a taxa list"** — written once as a service function and surfaced five ways (management command, unit test, Django admin action, DRF endpoint, main UI). It fetches the species recorded in a geographic region from one or more external biodiversity databases (GBIF, iNaturalist), maps them onto Antenna `Taxon` rows, optionally reports how many fall inside a classifier's label set, and saves a project-scoped `TaxaList`. It also adds region/list fields to `Site` and `Project` and a resolution order so the class-masking task can pick the right list automatically per occurrence.
+Proposal A adds one capability — **"given a region, produce a taxa list"** — written once as a service function and surfaced five ways (management command, unit test, Django admin action, DRF endpoint, main UI). It fetches the species recorded in a geographic region from one or more external biodiversity databases (GBIF, iNaturalist), maps them onto Antenna `Taxon` rows, restricts (by default) to the species some classifier can actually predict, and saves a project-scoped `TaxaList`. It also adds region/list fields to `Site` and `Project` and a resolution order so the class-masking task can pick the right list automatically per occurrence.
 
 ### 1.1 The one design decision to get right: multiple sources UNION, they do not INTERSECT
 
@@ -22,7 +22,7 @@ When more than one source is queried (GBIF **and** iNaturalist, say), a species 
 
 - The merged intermediate is a **wide table**: one row per canonical species, carrying per-source provenance columns — which source(s) contributed the species, each source's native key (`gbif_taxon_key`, `inat_taxon_id`, …), and each source's observation count.
 - Sources are **never intersected against each other**. Querying two sources can only grow the candidate set, never shrink it.
-- The **only** intersection in the whole flow is the *optional, final, reporting-only* step against a classifier's label set. That intersection does not remove species from the saved list — it only reports "of the N species in this regional list, M are actually in classifier X's labels, so masking will affect M of them." It is a usefulness metric, not a filter.
+- The **only** intersections in the whole flow are applied *after* the union and are separate axes from source provenance: (i) an *optional, reporting-only* comparison against one specific classifier's label set, and (ii) the **model-coverage** restriction described in §6 (does any classifier cover this species at all). Neither removes species based on which source they came from; they act on the taxon after mapping. See §6 for how model-coverage is a separate axis from source provenance.
 
 Every abstraction below (`SourceSpecies`, the source protocol, the merge function, the `Result` summary) is shaped around this union-with-provenance model. If a future requirement wants "species seen in at least K sources", that is a *post-merge* filter over the provenance columns, not a change to how sources combine.
 
@@ -44,9 +44,10 @@ Internally the service is a short pipeline:
 region code ─▶ [Source clients]                 fetch_species() per source → list[SourceSpecies]
             ─▶ merge_source_species()            WIDE UNION on canonical key, provenance preserved
             ─▶ map_to_taxa()                     match/create Antenna Taxon rows
-            ─▶ (optional) intersect_classifier() REPORT-ONLY coverage against a classifier's labels
+            ─▶ apply_model_coverage()            annotate/subset by classifier coverage (§6)
+            ─▶ (optional) intersect_classifier() REPORT-ONLY coverage against ONE named classifier
             ─▶ save / update TaxaList            idempotent, project-scoped
-            ─▶ Result                            counts + unmatched names for human review
+            ─▶ Result                            bucketed counts + unmatched names for human review
 ```
 
 **New module:** `ami/main/services/regional_taxa.py` (new `services` package under `ami/main/`, per the "processing logic extraction" note in `CLAUDE.md`; add `ami/main/services/__init__.py`).
@@ -55,7 +56,7 @@ region code ─▶ [Source clients]                 fetch_species() per source �
 - `ami/utils/requests.py::create_session()` (`:14`) — all outbound HTTP, for retry/backoff.
 - `ami/main/management/commands/import_taxa.py::create_taxon()` and `get_or_create_root_taxon()` — the rank-hierarchy builder for creating missing `Taxon` rows under the `Arthropoda` root. This logic currently lives inside the command module; see §5.3 for extracting it so the service can call it without importing a management command.
 - `TaxaList.objects.get_or_create_for_project(name, project=None)` (`ami/main/models.py:4598`) — idempotent list creation, project-scoped.
-- `AlgorithmCategoryMap.with_taxa()` (`ami/ml/models/algorithm.py:105`) — the name-keyed category→taxon resolution masking already uses; reused for the classifier-coverage report.
+- `AlgorithmCategoryMap.with_taxa()` (`ami/ml/models/algorithm.py:105`) — the name-keyed category→taxon resolution masking already uses; reused for both the classifier-coverage report and the persisted model-coverage relationship (§6).
 - `Project.objects.all()` loop shape from `ami/main/management/commands/assign_roles.py:79` — the `--all-projects` backfill template.
 
 ---
@@ -84,7 +85,17 @@ Minimal columns; polygons/geometry are explicitly out of scope (design doc Propo
 
 **Relationship note.** `TaxaList↔Project` (`related_name="taxa_lists"`) and `TaxaList↔Taxon` (`related_name="lists"`) stay M2M. The new `taxa_list` / `default_taxa_list` are single FKs *layered on top*: a project still associates with many lists, but names one default. `related_name="+"` avoids reverse-accessor clutter on `TaxaList`.
 
-**Migrations:** one migration in `ami/main/migrations/` adding all six fields (they are all additive, nullable/blank, no data change). If `Project` and `Site` edits are cleaner as two migrations, that is fine; either way they are state+schema migrations, not data migrations.
+### 3.3 Model-coverage relationship (the "are the models aware of this taxon" field)
+
+This is the persisted relationship required by §6. Storing it here (not computing it live) is a deliberate decision — see §6.2 for the options considered and the recommendation.
+
+- **`AlgorithmCategoryMap.taxa`** — `ManyToManyField("main.Taxon", related_name="category_maps", blank=True)`. The persisted membership: which `Taxon` rows a label set resolves to (by the same name-match `with_taxa()` uses). The label set is the real owner of coverage (many `Algorithm` rows share one `category_map` via the FK at `ami/ml/models/algorithm.py:212`), so anchoring the M2M on the category map avoids duplicating rows across algorithms.
+- **`Taxon.is_classifiable`** — `BooleanField(default=False, db_index=True)`. Denormalized flag: `True` iff the taxon is in at least one category map's `taxa`. Gives cheap filtering and a simple UI signal without a join.
+
+"Which algorithm(s) cover this taxon" is then a derived query, not a stored column:
+`Algorithm.objects.filter(category_map__taxa=taxon)` — richer than a boolean, and free once the M2M exists.
+
+**Migrations:** the M2M through table lives with `AlgorithmCategoryMap` (an `ami/ml/` migration); the `is_classifiable` boolean is an `ami/main/` migration on `Taxon`. Both are additive. Neither backfills automatically — the refresh command (§6.3) populates them, and the same migration PR should either run a data migration calling that refresh or document that the command must be run once after deploy.
 
 ---
 
@@ -144,7 +155,7 @@ Default scope: Lepidoptera (moth/butterfly platform). Keep it a parameter so a p
 
 ### 4.3 Concrete sources (endpoints are CANDIDATE, UNVERIFIED)
 
-No live GBIF/iNat code exists in `ami/` today — these fields are only ever populated from files. The endpoints below are from published API docs and must be exercised against the live services (a recorded-response fixture per source) before they are trusted. Rate limits and exact faceting behaviour are the first things to verify (§10, §11).
+No live GBIF/iNat code exists in `ami/` today — these fields are only ever populated from files. The endpoints below are from published API docs and must be exercised against the live services (a recorded-response fixture per source) before they are trusted. Rate limits and exact faceting behaviour are the first things to verify (see Phase 0, §12, and §14).
 
 **`GBIFRegionalSource`** — GBIF occurrence search, faceted by species.
 - Candidate endpoint: `GET https://api.gbif.org/v1/occurrence/search`
@@ -195,6 +206,8 @@ Merge rules:
 - **Provenance union:** `sources = ∪ row.source`; `observation_counts[row.source] = row.observation_count`; keep both external keys if each source supplied one; prefer the GBIF name spelling when present, else the first.
 - Output is stable-ordered (e.g. by `-max(observation_counts)`, then name) so runs are reproducible and diffs are readable.
 
+Note that model-coverage (§6) is **not** part of the merge — it is applied after mapping to `Taxon`, as a separate axis. Merging is only about combining sources.
+
 ---
 
 ## 5. Mapping merged species → Antenna `Taxon`
@@ -219,7 +232,9 @@ def map_to_taxa(
 
 `Taxon.name` is globally unique (`models.py:4346`), and class masking joins list membership to classifier labels by **name** (`AlgorithmCategoryMap.with_taxa()`, keyed on `taxon.name` at `algorithm.py:135`). So:
 - Matching a source species to an existing `Taxon` by external key and then trusting its `.name` is correct — the list stores `Taxon` rows, and masking will later match those same names to classifier labels.
-- A source name that differs from both any `Taxon.name` and the classifier's label spelling will silently fail to mask even after we add it to the list. This is the **name-match fragility** open question (§10); the service surfaces `unmatched_names` and the classifier-coverage count precisely so a human can see the miss rate before trusting auto-masking.
+- A source name that differs from both any `Taxon.name` and the classifier's label spelling will silently fail to mask even after we add it to the list. This is the **name-match fragility** open question (§13); the service surfaces `unmatched_names`, the model-coverage buckets (§6), and the classifier-coverage count precisely so a human can see the miss rate before trusting auto-masking.
+
+Because model-coverage (§6) is keyed on the same name-match, a mapped `Taxon` and its coverage flag are consistent with what masking will actually do at run time, by construction.
 
 ### 5.3 Extract `create_taxon` for reuse
 
@@ -227,7 +242,52 @@ def map_to_taxa(
 
 ---
 
-## 6. The core service function
+## 6. Model & DB awareness
+
+The generator must be aware of two things about every candidate species before it saves a list:
+
+- **DB presence** — does a `Taxon` row already exist (matched by external key or name, §5.1)?
+- **Model coverage** — is the taxon covered by at least one classifier, i.e. does its name appear in some `AlgorithmCategoryMap` label set (the same `Taxon.name == label` join class masking uses)?
+
+These two facts drive the default behaviour, the opt-in richer behaviour, and the `Result` breakdown. Model-coverage is a **separate axis** from source provenance (§1.1): the wide merge still unions all sources; coverage is applied afterwards, per mapped `Taxon`. Do not conflate "in multiple sources" with "model-aware" — they are orthogonal.
+
+### 6.1 Default subsets to model-known species; opt-in creates the rest, flagged
+
+- **Default:** the saved list is `regional-species-from-sources ∩ taxa-covered-by-at-least-one-classifier`. Rationale: class masking can only ever affect taxa in some classifier's label set, so a regional species no model can predict is inert for masking. Keeping the default tight makes the list predictable and keeps "why does my 1500-species region only mask to N" answerable.
+- **Opt-in (`include_uncovered=True`, exposed as `--include-uncovered` / a form checkbox):** also keep regional species with no model coverage. Under this mode, species absent from the DB are created via the hierarchy builder (§5.3) but each carries an honest coverage indicator — `is_classifiable=False` and no `category_maps` membership — so the list/UI can show "in the region, but no model can predict it yet". Many valid regional species have no training data and will never appear in a prediction list; the model must not pretend otherwise.
+
+A note on interaction with `create_missing` (§5.1): under the default (model-covered-only) scope, a species is kept only if its name matches some label set; creating its `Taxon` when missing is safe because, by construction, it *is* classifiable. Under `include_uncovered`, `create_missing` also governs whether uncovered species get `Taxon` rows created (default yes) or are only reported as unmatched.
+
+### 6.2 The persisted relationship — options and recommendation
+
+Confirmed by code reading: there is **no persisted `Taxon ↔ Algorithm` or `Taxon ↔ AlgorithmCategoryMap` link today**. `Algorithm.category_map` is an FK to `AlgorithmCategoryMap` (`ami/ml/models/algorithm.py:212`, `related_name="algorithms"`); the label set lives in `data` (JSON) + `labels` (`ArrayField`) with a `labels_hash` BigInt; and the only label→`Taxon` path is `with_taxa()` (`algorithm.py:105`), which resolves names **on the fly, unpersisted**. So a persisted relationship has to be added — the user explicitly wants "a field relationship to show if the models are aware of them", not a live computation.
+
+| Option | Shape | Verdict |
+|---|---|---|
+| (a) boolean | `Taxon.is_classifiable` denorm, refreshed on category-map change | Cheap, filterable, good UI signal — but cannot say *which* model covers a taxon. Acceptable **MVP** on its own. |
+| (b) through relationship | persisted `Taxon ↔ Algorithm` (or `↔ AlgorithmCategoryMap`) membership | Answers "which model(s) cover this taxon", supports per-classifier questions. The user asked for a relationship → this is the **target**. |
+| (c) compute-only | keep using `with_taxa()` live, no schema | Cheapest, but no persisted field and slow to filter/UI. **Rejected** — it is exactly today's state, and the user wants persistence. |
+
+**Recommendation: (b), anchored on the category map, plus (a) as a denormalized convenience.** Because many algorithms share one `category_map`, storing membership as `AlgorithmCategoryMap.taxa` (§3.3) avoids duplicating rows per algorithm, and "which algorithms" derives for free via `Algorithm.objects.filter(category_map__taxa=taxon)`. The `Taxon.is_classifiable` boolean rides alongside for cheap filtering and a simple "models know this species" badge. This satisfies the "which models are aware" requirement while staying normalized. Whether the M2M should instead be anchored directly on `Algorithm` is an open question (§13) — anchoring on the map is the normalized choice given the shared-map schema, but an `Algorithm`-anchored M2M reads more directly if maps are rarely shared in practice.
+
+If (b) is too much for the first slice, ship (a) alone as the MVP (boolean only), and add the M2M in a follow-up — the service and `Result` treat coverage as a single predicate either way, so the upgrade does not change their contract.
+
+### 6.3 Refresh / consistency — coverage is derived data
+
+Classifier label sets change whenever an algorithm or category map is added or updated, so model-coverage is derived and needs an explicit refresh path tied to the same name-resolution `with_taxa()` uses (so coverage always matches masking's join):
+
+- **`refresh_category_map_taxa(category_map)`** — recompute `category_map.taxa` from its labels via the `with_taxa()` resolution, then update `Taxon.is_classifiable` for the affected taxa (True iff still in any map's `taxa`). Set-based, bulk, no per-row queries.
+- **Hook on change:** recompute on `AlgorithmCategoryMap` save/import when the label set changes. `labels_hash` (`algorithm.py:68`) is the ready-made "did the label set change" signal — compare before/after and only recompute when it moves. Also trigger on the algorithm-registration / category-map-import code path that first creates a map.
+- **Full rebuild:** a management command `refresh_taxon_model_coverage` loops all category maps, rebuilds membership, and recomputes `is_classifiable` — used for the initial backfill (the migration in §3.3) and as a repair tool.
+- **When it recomputes** is called out explicitly so readers are not surprised by staleness: on category-map create/update (hook), and on demand (command). It is *not* recomputed on every occurrence write — masking still resolves names live via `with_taxa()`, so a brief lag in the denormalized flag never causes a wrong mask, only a slightly stale "is_classifiable" badge until the next refresh.
+
+### 6.4 How the service uses coverage
+
+In `generate_regional_taxa_list()` (§7): after `map_to_taxa()`, `apply_model_coverage()` partitions the mapped taxa into model-covered vs. uncovered using the persisted `is_classifiable` / `category_maps` relationship (not a live recompute — the relationship is the source of truth, kept fresh by §6.3). The default scope keeps only the covered partition; `include_uncovered` keeps both. The optional `classifier=` argument is a *narrower, reporting-only* overlay on top: "of the kept species, how many are in *this specific* model's labels" — it never changes which taxa are saved.
+
+---
+
+## 7. The core service function
 
 ```python
 # ami/main/services/regional_taxa.py
@@ -238,12 +298,20 @@ class RegionalTaxaResult:
     region_code: str
     taxa_list_id: int | None            # None on dry_run
     list_created: bool                  # False when an existing list was updated
-    union_size: int                     # distinct species after the wide merge
+    # --- source union (§1.1) ---
+    regional_total: int                 # distinct species after the wide merge (union across sources)
     per_source_counts: dict[str, int]   # {"gbif_gadm": 812, "inat_place": 640}
-    matched_existing: int               # merged species already present as a Taxon
-    created_taxa: int                   # new Taxon rows created (0 when create_missing=False)
-    in_classifier_labels: int | None    # coverage against classifier (None if no classifier given)
-    not_in_classifier: int | None       # union_size - in_classifier_labels
+    # --- DB presence & model coverage (§6) ---
+    already_in_db: int                  # merged species already present as a Taxon
+    created_taxa: int                   # new Taxon rows created this run
+    model_covered: int                  # kept by default: covered by >=1 classifier
+    regional_no_model_coverage: int     # in region but no model covers them
+                                        #   (created+flagged under include_uncovered, else skipped)
+    saved_list_size: int                # taxa actually written to the TaxaList
+    # --- optional single-classifier report (§6.4) ---
+    in_classifier_labels: int | None    # coverage vs the ONE classifier passed (None if none given)
+    not_in_classifier: int | None       # saved_list_size - in_classifier_labels
+    # --- review ---
     unmatched_names: list[str]          # source names with no Taxon and not created
     dry_run: bool
 
@@ -253,11 +321,12 @@ def generate_regional_taxa_list(
     region_source: str,
     region_code: str,
     project: "Project | None" = None,
-    classifier: "Algorithm | None" = None,
-    taxon_scope: TaxonScope | None = None,   # defaults to Lepidoptera
+    classifier: "Algorithm | None" = None,       # OPTIONAL single-model report only (§6.4)
+    taxon_scope: TaxonScope | None = None,       # defaults to Lepidoptera
     sources: "list[RegionalSpeciesSource] | None" = None,  # defaults per region_source; DI seam for tests
+    include_uncovered: bool = False,             # default subsets to model-covered species (§6.1)
     create_missing: bool = True,
-    name: str | None = None,                 # defaults to f"{region_code} ({region_source})"
+    name: str | None = None,                     # defaults to f"{region_code} ({region_source})"
     dry_run: bool = False,
 ) -> RegionalTaxaResult:
     ...
@@ -265,11 +334,12 @@ def generate_regional_taxa_list(
 
 Behaviour:
 1. Resolve `sources` (default: the one client matching `region_source`; a caller may pass several to union). The `sources` parameter is the **dependency-injection seam** — tests pass a stubbed client, no HTTP.
-2. `fetch_species()` each source → `merge_source_species()` → wide union.
-3. `map_to_taxa(create_missing, dry_run)`.
-4. If `classifier` given: compute coverage against its label set (reporting only) — reuse `classifier.category_map.with_taxa()` or a name-set intersection against the labels; do not filter the list by it.
-5. Unless `dry_run`: `get_or_create_for_project(name, project)`, then set the list's taxa (idempotent — update the existing list's M2M rather than creating a duplicate, mirroring the manager's contract). `update_calculated_fields()` on the list if it has cached counts.
-6. Return `RegionalTaxaResult`.
+2. `fetch_species()` each source → `merge_source_species()` → wide union (`regional_total`).
+3. `map_to_taxa(create_missing, dry_run)` → matched/created/unmatched (`already_in_db`, `created_taxa`, `unmatched_names`).
+4. `apply_model_coverage()` (§6.4): partition mapped taxa into covered / uncovered via the persisted relationship (`model_covered`, `regional_no_model_coverage`). Default keeps covered only; `include_uncovered` keeps both (creating + flagging uncovered per §6.1).
+5. If `classifier` given: compute the single-model report against its label set (reporting only) — reuse `classifier.category_map.with_taxa()` or a name-set intersection against the labels; do not filter the list by it.
+6. Unless `dry_run`: `get_or_create_for_project(name, project)`, then set the list's taxa (idempotent — update the existing list's M2M rather than creating a duplicate, mirroring the manager's contract). `update_calculated_fields()` on the list if it has cached counts.
+7. Return `RegionalTaxaResult`.
 
 **Idempotency:** a second run for the same `(name, project)` updates the same `TaxaList` (the manager's `get_or_create_for_project` guarantees one row; the service replaces/refreshes its taxa set). Re-running never creates duplicate lists or duplicate `Taxon` rows (name-unique + external-key match handle that).
 
@@ -277,7 +347,7 @@ Behaviour:
 
 ---
 
-## 7. Region derivation (A3) — powers `--all-projects`
+## 8. Region derivation (A3) — powers `--all-projects`
 
 Most existing projects have no region code but do have deployment coordinates (`Deployment.latitude` `:770`, `longitude` `:771`). `derive_region_code()` reverse-geocodes a representative point to a region code so backfill needs no manual entry:
 
@@ -294,15 +364,15 @@ def derive_region_code(
 - For `gbif_gadm`: candidate endpoint `GET https://api.gbif.org/v1/geocode/reverse?lat=<>&lng=<>` returning GADM GIDs (UNVERIFIED — confirm the response shape and which GADM level to take). Fall back to a bundled GADM lookup if the endpoint is unreliable.
 - For `inat_place`: iNat has no clean reverse-geocode to a single place; prefer GBIF/GADM for derivation even when the chosen *fetch* source is iNat, or require manual `place_id` entry. Note this asymmetry.
 
-A3 is what makes "backfill every known project" feasible: the `--all-projects` command path calls `derive_region_code()` when a project has no `region_code`, then `generate_regional_taxa_list()`. Whether derivation is reliable enough to run unattended is an explicit open verification item (§11) — until confirmed, `--all-projects` should default to `--dry-run` and print what it *would* create.
+A3 is what makes "backfill every known project" feasible: the `--all-projects` command path calls `derive_region_code()` when a project has no `region_code`, then `generate_regional_taxa_list()`. Whether derivation is reliable enough to run unattended is an explicit open verification item (§14) — until confirmed, `--all-projects` should default to `--dry-run` and print what it *would* create.
 
 ---
 
-## 8. Auto-apply masking — resolution order
+## 9. Auto-apply masking — resolution order
 
 Extend `ClassMaskingConfig` (on branch `rework/999-class-masking-on-framework`, `ami/ml/post_processing/class_masking.py:17`) so the task can resolve the taxa list per occurrence instead of requiring an explicit `taxa_list_id`. **This change lands on the #999 branch (or a follow-up stacked on it), not on `main` today**, because `class_masking.py` does not exist on `main` yet.
 
-### 8.1 Config change (additive, backwards-compatible)
+### 9.1 Config change (additive, backwards-compatible)
 
 Today `taxa_list_id: int` is required (`:25`). Make the list selection a discriminated choice so the explicit path is untouched:
 
@@ -327,7 +397,7 @@ class ClassMaskingConfig(pydantic.BaseModel):
 
 Keep the existing `_exactly_one_scope` validator. The explicit path in `run()` (`class_masking.py:~305`, `TaxaList.objects.get(pk=config.taxa_list_id)`) is unchanged; a new `auto` branch resolves per occurrence.
 
-### 8.2 Resolution order (from the design doc)
+### 9.2 Resolution order (from the design doc)
 
 ```
 occurrence.deployment.research_site.taxa_list
@@ -343,43 +413,45 @@ Implement as `resolve_taxa_list_for_occurrence(occurrence) -> TaxaList | None`, 
 
 **Safety:** `auto` mode is a no-op when nothing resolves (log + skip), so a pipeline can enable it by default without masking projects that have no region/list configured. This preserves the existing explicit behaviour bit-for-bit for anyone still passing `taxa_list_id`.
 
-### 8.3 How it plugs into the framework
+### 9.3 How it plugs into the framework
 
-The task is still triggered through the #1289 framework (`make_post_processing_action`, `ami/ml/post_processing/admin/actions.py:177`) and the admin form (`class_masking_form.py`). The form grows a "list mode" choice (explicit list dropdown vs. auto). The `build_jobs`/`default_build_jobs` path (`actions.py:87,184`) is unchanged — config still validates against `ClassMaskingConfig` before enqueue. Whether "auto" is a per-`ProjectPipelineConfig` toggle or a pipeline property is an open question (§10); the config-level `taxa_list_mode` is the minimum that unblocks manual/admin use.
+The task is still triggered through the #1289 framework (`make_post_processing_action`, `ami/ml/post_processing/admin/actions.py:177`) and the admin form (`class_masking_form.py`). The form grows a "list mode" choice (explicit list dropdown vs. auto). The `build_jobs`/`default_build_jobs` path (`actions.py:87,184`) is unchanged — config still validates against `ClassMaskingConfig` before enqueue. Whether "auto" is a per-`ProjectPipelineConfig` toggle or a pipeline property is an open question (§13); the config-level `taxa_list_mode` is the minimum that unblocks manual/admin use.
 
 ---
 
-## 9. The five surfaces (each a thin wrapper)
+## 10. The five surfaces (each a thin wrapper)
 
-### 9.1 Management command — `ami/main/management/commands/generate_regional_taxa_list.py`
+### 10.1 Management command — `ami/main/management/commands/generate_regional_taxa_list.py`
 ```
 python manage.py generate_regional_taxa_list \
     --project <id> --region-source gbif_gadm --region <code> \
     [--classifier <algorithm_id>] [--scope lepidoptera] \
-    [--no-create-missing] [--all-projects] [--dry-run]
+    [--include-uncovered] [--no-create-missing] [--all-projects] [--dry-run]
 ```
-- Single project: calls the service, prints the `RegionalTaxaResult` as a table.
-- `--all-projects`: loops `Project.objects.all()` (shape from `assign_roles.py:79`); for each project without a `region_code`, calls `derive_region_code()` (A3); **defaults to `--dry-run`** until derivation reliability is confirmed (§11). Prints a per-project summary.
+- Single project: calls the service, prints the `RegionalTaxaResult` bucket breakdown as a table (regional-total / already-in-db / model-covered / no-model-coverage / saved).
+- `--all-projects`: loops `Project.objects.all()` (shape from `assign_roles.py:79`); for each project without a `region_code`, calls `derive_region_code()` (A3); **defaults to `--dry-run`** until derivation reliability is confirmed (§14). Prints a per-project summary.
 - Raises `CommandError` on failure; no sentinels.
 
-### 9.2 Unit tests — call the service directly with a stubbed source
-The primary regression surface (see §10). Stubbed `RegionalSpeciesSource` passed via the `sources=` DI seam; no network.
+A sibling command `refresh_taxon_model_coverage` (§6.3) rebuilds the coverage relationship + `is_classifiable`; it is independent of region generation but shares the coverage plumbing.
 
-### 9.3 Django admin action — on `Project` and `Site` changelists
-Built with `make_post_processing_action`-style plumbing is **not** required here (this is not a post-processing Job); instead a plain admin action + intermediate confirmation form (region source + code, optional classifier, dry-run checkbox) that calls the service and shows the `RegionalTaxaResult` via `messages`. Mirrors the confirmation-page pattern in `ami/ml/post_processing/admin/actions.py::render_confirmation` for consistency, but runs synchronously (regional fetch is slow — consider enqueuing a Job if it exceeds request timeout; note as a refinement).
+### 10.2 Unit tests — call the service directly with a stubbed source
+The primary regression surface (see §11). Stubbed `RegionalSpeciesSource` passed via the `sources=` DI seam; no network.
 
-### 9.4 DRF endpoint
+### 10.3 Django admin action — on `Project` and `Site` changelists
+Built with `make_post_processing_action`-style plumbing is **not** required here (this is not a post-processing Job); instead a plain admin action + intermediate confirmation form (region source + code, optional classifier, include-uncovered, dry-run checkbox) that calls the service and shows the `RegionalTaxaResult` via `messages`. Mirrors the confirmation-page pattern in `ami/ml/post_processing/admin/actions.py::render_confirmation` for consistency, but runs synchronously (regional fetch is slow — consider enqueuing a Job if it exceeds request timeout; note as a refinement).
+
+### 10.4 DRF endpoint
 `POST /api/v2/projects/{project_pk}/taxa-lists/regional/` as an `@action(detail=True, methods=["post"])` on `ProjectViewSet` (`ami/main/api/views.py:158`, already `ProjectMixin`), plus optionally a `Site` variant. Template: the `regroup_sessions` / `sync` actions (`views.py:339,363`) that validate, act, and return `202`.
-- Body validated by a request serializer (`region_source`, `region_code`, optional `classifier_id`, `dry_run`); parse every param via `SingleParamSerializer` (`ami/base/serializers.py:108`) / a DRF serializer so bad input returns 400 not 500 (`CLAUDE.md` DoD).
-- Permissions: `require_project`, object access through `get_object()`/`check_object_permissions()` — never a raw pk lookup (`CLAUDE.md` DoD). Only project members with the right role may generate (align with membership model; §11 verification item).
+- Body validated by a request serializer (`region_source`, `region_code`, optional `classifier_id`, `include_uncovered`, `dry_run`); parse every param via `SingleParamSerializer` (`ami/base/serializers.py:108`) / a DRF serializer so bad input returns 400 not 500 (`CLAUDE.md` DoD).
+- Permissions: `require_project`, object access through `get_object()`/`check_object_permissions()` — never a raw pk lookup (`CLAUDE.md` DoD). Only project members with the right role may generate (align with membership model; §14 verification item).
 - Because a live fetch is slow, the endpoint should enqueue a Job and return `{"job_id": …}` (like `sync`), with `dry_run` running synchronously for preview. Decide sync-vs-async here explicitly.
 
-### 9.5 Main UI button — later slice
-"Create taxa list for region" in Project settings and the Site editor, calling 9.4. Reference the closed **#1020** GBIF taxon-select React component for the region/place picker. Add a React Query mutation hook under `ui/src/data-services/hooks/` (follow `ui/AGENTS.md`). Explicitly a **later phase** (§Phase 4).
+### 10.5 Main UI button — later slice
+"Create taxa list for region" in Project settings and the Site editor, calling 10.4. Reference the closed **#1020** GBIF taxon-select React component for the region/place picker. Add a React Query mutation hook under `ui/src/data-services/hooks/` (follow `ui/AGENTS.md`). Explicitly a **later phase** (§12 Phase 4). The list detail/UI should surface the model-coverage flag so uncovered species are visibly marked (§6.1).
 
 ---
 
-## 10. Test plan (TDD — write these first)
+## 11. Test plan (TDD — write these first)
 
 All tests use factories (`ami/*/tests/factories.py`) and the stubbed-source DI seam; **no test hits a live API**. Record one real GBIF and one real iNat response as a fixture (small, scrubbed) for the source-client parsing tests.
 
@@ -391,41 +463,44 @@ All tests use factories (`ami/*/tests/factories.py`) and the stubbed-source DI s
    - Dedup-key precedence (gbif → inat → name) exercised explicitly.
 3. **Mapping + create** — existing `Taxon` matched by external key; matched by name; `create_missing=True` creates via the hierarchy builder; `create_missing=False` records `unmatched_names`. Assert no duplicate `Taxon` on re-run (name-unique).
 4. **Idempotency** — run the service twice for the same `(name, project)`; assert one `TaxaList`, taxa set refreshed, no duplicate lists/taxa.
-5. **Classifier coverage is report-only** — with a `classifier`, assert `in_classifier_labels` / `not_in_classifier` are populated and that the saved list's taxa are **not** filtered by the classifier (a species outside the classifier's labels still appears in the list).
-6. **Region derivation (A3)** — `derive_region_code()` returns a code for a project with deployment coords (stubbed reverse-geocode) and `None` when no deployment has coordinates.
-7. **Masking resolution order** — parametrize the five-step ladder: site list wins over site region-code wins over project default list wins over project region-code wins over skip. Assert `auto` mode is a no-op (skips, does not raise) when nothing resolves, and that explicit `taxa_list_id` still behaves exactly as before.
-8. **Masking `auto` batching** — `assertNumQueries` with a **multi-row** fixture (occurrences across two sites) proving list resolution is grouped, not per-occurrence (single-row fixtures cannot catch N+1 — `CLAUDE.md` DoD; template `ami/ml/tests.py:1006`). Strict `==` counts.
-9. **Endpoint permission matrix** — member / non-member / anonymous / superuser against `POST …/regional/` (template `ami/main/tests.py:1532`); `?…=abc` bad-param returns 400.
-10. **Command** — `--dry-run` creates nothing; `--all-projects --dry-run` iterates and reports; failure raises `CommandError`.
+5. **Single-classifier coverage is report-only** — with a `classifier`, assert `in_classifier_labels` / `not_in_classifier` are populated and that the saved list's taxa are **not** filtered by that classifier beyond the default model-coverage rule.
+6. **Model-coverage default subset (§6.1)** — a region whose species are a mix of model-covered and uncovered: default run saves only the covered ones; `Result.model_covered` and `regional_no_model_coverage` buckets are correct; an uncovered species is absent from the saved list.
+7. **Opt-in create-and-flag (§6.1)** — with `include_uncovered=True`, uncovered regional species are kept, their `Taxon` rows created (under `create_missing`), and each is flagged `is_classifiable=False` with no `category_maps` membership. Assert the covered species remain flagged `True`.
+8. **Coverage refresh (§6.3)** — adding a category map whose labels match a taxon sets that taxon's `is_classifiable=True` and its `category_maps` membership; removing/renaming the label (changing `labels_hash`) drops coverage on the next refresh; `Algorithm.objects.filter(category_map__taxa=taxon)` returns the covering algorithm. Exercise both the hook and the `refresh_taxon_model_coverage` command.
+9. **Region derivation (A3)** — `derive_region_code()` returns a code for a project with deployment coords (stubbed reverse-geocode) and `None` when no deployment has coordinates.
+10. **Masking resolution order (§9.2)** — parametrize the five-step ladder: site list wins over site region-code wins over project default list wins over project region-code wins over skip. Assert `auto` mode is a no-op (skips, does not raise) when nothing resolves, and that explicit `taxa_list_id` still behaves exactly as before.
+11. **Masking `auto` batching** — `assertNumQueries` with a **multi-row** fixture (occurrences across two sites) proving list resolution is grouped, not per-occurrence (single-row fixtures cannot catch N+1 — `CLAUDE.md` DoD; template `ami/ml/tests.py:1006`). Strict `==` counts.
+12. **Endpoint permission matrix** — member / non-member / anonymous / superuser against `POST …/regional/` (template `ami/main/tests.py:1532`); `?…=abc` bad-param returns 400.
+13. **Command** — `--dry-run` creates nothing; `--all-projects --dry-run` iterates and reports; failure raises `CommandError`.
 
 Repo rules to honour while writing: migration in the same PR; no `assert` in production code; raise don't return sentinels; test docstrings state the invariant, not "this PR added X".
 
 ---
 
-## 11. Phased rollout (internal-first)
+## 12. Phased rollout (internal-first)
 
 Order the slices so the internal path is usable and validated before the API/UI. Each phase is independently shippable and mergeable.
 
 **Phase 0 — De-risk the external APIs (spike, no merge).**
 Exercise the candidate GBIF and iNat endpoints from a scratch script against 2–3 real regions (one where a project already exists — e.g. Quebec/Vermont for the moths classifier). Confirm: faceting/pagination behaviour, rate limits, name/key/count fields, and reverse-geocode response shape. **Gate:** measure how many of a real classifier's labels a generated regional list actually covers (the design doc's key unknown). This decides whether Proposal A is useful alone or needs Proposal B's manual curation. Output: a short findings note + recorded response fixtures for the parsing tests. *De-risks: the whole premise (coverage) and every "CANDIDATE, UNVERIFIED" endpoint above.*
 
-**Phase 1 — Core service + one source + model fields (backend, no UI).**
-`SourceSpecies`/`MergedSpecies`/protocol, one concrete source (whichever won Phase 0 on moth coverage), `merge_source_species`, `map_to_taxa`, `generate_regional_taxa_list`, the `Site`/`Project` fields + migration, and `create_taxon` extraction (§5.3). Tests 1–5. *De-risks: the union-with-provenance core and the data model, behind unit tests, with zero external dependency in CI.*
+**Phase 1 — Core service + one source + model fields + coverage relationship (backend, no UI).**
+`SourceSpecies`/`MergedSpecies`/protocol, one concrete source (whichever won Phase 0 on moth coverage), `merge_source_species`, `map_to_taxa`, `apply_model_coverage`, `generate_regional_taxa_list`, the `Site`/`Project` fields + migration, the **model-coverage relationship + `is_classifiable` + refresh hook/command (§3.3, §6)**, and `create_taxon` extraction (§5.3). Tests 1–8. *De-risks: the union-with-provenance core, the data model, and the "are the models aware" relationship, behind unit tests with zero external dependency in CI. The coverage relationship is Phase-1 material because the default list behaviour depends on it.*
 
 **Phase 2 — Management command + admin action + A3.**
-Command (incl. `--all-projects --dry-run` backfill), `derive_region_code`, admin actions on Project/Site. Tests 6, 10. *De-risks: unattended backfill and gives internal users a way to generate lists before any API exists.*
+Command (incl. `--all-projects --dry-run` backfill), `derive_region_code`, admin actions on Project/Site. Tests 9, 13. *De-risks: unattended backfill and gives internal users a way to generate lists before any API exists.*
 
 **Phase 3 — Masking auto-resolution (on the #999 branch / stacked follow-up).**
-`ClassMaskingConfig` `taxa_list_mode`, resolution ladder, batched grouping, admin form "list mode". Tests 7, 8. **Requires #999 to have landed or be the base branch** — coordinate with that PR. *De-risks: the "works out of the box" promise; gated behind no-op-when-unconfigured so it is safe to enable.*
+`ClassMaskingConfig` `taxa_list_mode`, resolution ladder, batched grouping, admin form "list mode". Tests 10, 11. **Requires #999 to have landed or be the base branch** — coordinate with that PR. *De-risks: the "works out of the box" promise; gated behind no-op-when-unconfigured so it is safe to enable.*
 
 **Phase 4 — API endpoint + main UI.**
-`POST …/regional/` (sync-vs-async decided), request serializer, permission matrix (test 9), then the React button reusing #1020's picker. *De-risks: external/self-serve use once the service output is trusted internally.*
+`POST …/regional/` (sync-vs-async decided), request serializer, permission matrix (test 12), then the React button reusing #1020's picker and surfacing the model-coverage flag. *De-risks: external/self-serve use once the service output is trusted internally.*
 
 Second source (union path) can slot in whenever Phase 0 shows it adds coverage — the merge already supports it; adding a source is `+1` client + `+1` parsing test.
 
 ---
 
-## 12. Open questions (carried from the design doc + implementation-level)
+## 13. Open questions (carried from the design doc + implementation-level)
 
 Design-doc decisions still open:
 - **GBIF vs iNaturalist first** — decided empirically in Phase 0 by moth coverage + key cleanliness.
@@ -433,18 +508,23 @@ Design-doc decisions still open:
 - **Create-vs-skip unmatched taxa** — exposed as `create_missing` (default True). Confirm we want to grow the taxonomy from external sources vs. only intersect with existing taxa.
 - **TaxaList scope** — regional lists are project-scoped (not global) so one project's region does not pollute another's picker. Confirmed direction; `get_or_create_for_project(project=...)`.
 - **How the pipeline auto-applies masking** — per-`ProjectPipelineConfig` toggle vs. pipeline property. `taxa_list_mode="auto"` at the config level is the minimum; the pipeline-wiring decision aligns with #1289/#999.
-- **Name-match fragility** — masking joins on `Taxon.name`; source/classifier spelling mismatches silently drop species. Measured in Phase 0; surfaced per-run via `unmatched_names` + `not_in_classifier`.
+- **Name-match fragility** — masking joins on `Taxon.name`; source/classifier spelling mismatches silently drop species. Measured in Phase 0; surfaced per-run via `unmatched_names` + the model-coverage buckets + `not_in_classifier`.
+
+Model & DB awareness questions (§6):
+- **Boolean flag vs. through-model** — recommendation is the category-map-anchored M2M (`AlgorithmCategoryMap.taxa`) + a denormalized `is_classifiable` boolean, with (a) boolean-only as an acceptable MVP. Confirm this over an `Algorithm`-anchored M2M (more direct if maps are rarely shared) — see §6.2.
+- **When to recompute coverage** — on category-map create/update (hook keyed on `labels_hash`) plus an on-demand `refresh_taxon_model_coverage` command. Confirm no other write path (algorithm import, pipeline registration) needs to trigger it, and whether a periodic Celery Beat refresh is warranted as a safety net.
+- **DB-presence vs. occurrence-presence** — `is_classifiable` marks "a model could predict this taxon". Separately, we may want to mark "this taxon has actually been observed in this project" (occurrence-presence) — a different, project-scoped signal. Decide whether the regional-list UI needs both, and keep them distinct (a taxon can be model-covered but never observed, or observed but not model-covered).
 
 Implementation-level questions surfaced here:
 - **Sync vs. async for the endpoint/admin action** — regional fetch can exceed request timeouts; likely enqueue a Job (like `sync`), keep `dry_run` synchronous. Decide in Phase 2/4.
 - **Cache backend + TTL** for source responses (Redis vs. on-disk; days-scale TTL). Needed once real fetch latency is known (Phase 0).
 - **Where `RegionSource` and the masking-resolution helper live** — enum with the model (stable migration path); resolver in `services/` vs. a thin `ml/post_processing/` shim.
-- **Reverse-geocode reliability for unattended backfill** — until confirmed, `--all-projects` stays `--dry-run` by default (§7).
+- **Reverse-geocode reliability for unattended backfill** — until confirmed, `--all-projects` stays `--dry-run` by default (§8).
 
-## 13. What we still need to verify before building
+## 14. What we still need to verify before building
 
 - Exact GBIF endpoint + params returning a species list for a GADM region, its facet-depth cap, and rate limits — and the iNat equivalent (`species_counts` by `place_id`). Both are on-paper only.
 - The GBIF reverse-geocode response shape and which GADM level to take for A3.
-- Label-coverage of a generated regional list against a **real** classifier (Quebec/Vermont moths) — the go/no-go for Proposal A standing alone.
+- Label-coverage of a generated regional list against a **real** classifier (Quebec/Vermont moths) — the go/no-go for Proposal A standing alone. This is also what validates the §6 default-subset behaviour: if model coverage of a region is very low, the default list will be small and the `include_uncovered` path becomes the common case.
+- The cost of refreshing the coverage relationship on large classifiers — how many taxa a real category map resolves to, and whether the per-save hook is cheap enough or should defer to an async task.
 - Permissions story for the new fields and the generate action (who may set a region, who may trigger generation) consistent with the project-membership model.
-```
