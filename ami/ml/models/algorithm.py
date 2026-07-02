@@ -247,11 +247,24 @@ class Algorithm(BaseModel):
         ]
 
     def save(self, *args, **kwargs):
+        previous_category_map_id = None
+        if self.pk:
+            previous_category_map_id = (
+                type(self).objects.filter(pk=self.pk).values_list("category_map_id", flat=True).first()
+            )
         if not self.version_name:
             self.version_name = f"{self.version}"
         if not self.key:
             self.key = f"{slugify(self.name)}-{self.version}"
         super().save(*args, **kwargs)
+        if self.category_map_id and self.category_map_id != previous_category_map_id:
+            # A newly-linked category map means this algorithm's predictable taxa
+            # just changed (or became known for the first time); keep the persisted
+            # Taxon.covered_by_algorithms / has_model_coverage relationship in sync.
+            # See ami.main.services.taxon_coverage.
+            from ami.main.services.taxon_coverage import refresh_algorithm_coverage
+
+            refresh_algorithm_coverage(self)
 
     def category_count(self) -> int | None:
         """

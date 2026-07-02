@@ -98,6 +98,16 @@ DEFAULT_RANKS = sorted(
 )
 
 
+class RegionSource(models.TextChoices):
+    """Where a Site's or Project's region code comes from, so the regional taxa-list
+    service (`ami.main.services.regional_taxa`) knows which external API a stored
+    `region_code` refers to (a GBIF/GADM region id vs. an iNaturalist place id).
+    """
+
+    GBIF_GADM = "gbif_gadm", "GBIF (GADM region)"
+    INAT_PLACE = "inat_place", "iNaturalist (place)"
+
+
 def bbox_is_null(bbox) -> bool:
     """In-memory equivalent of null_detections_q() for an already-fetched bbox value."""
     return bbox is None
@@ -312,6 +322,23 @@ class Project(ProjectSettingsMixin, BaseModel):
 
     active = models.BooleanField(default=True)
     priority = models.IntegerField(default=1)
+
+    # Fall-back region used to generate a taxa list when a deployment's research site
+    # has no region of its own. See ami.main.services.regional_taxa.
+    region_source = models.CharField(max_length=32, choices=RegionSource.choices, blank=True)
+    region_code = models.CharField(
+        max_length=64,
+        blank=True,
+        help_text="A region identifier for region_source (a GADM gid or an iNaturalist place id).",
+    )
+    default_taxa_list = models.ForeignKey(
+        "TaxaList",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        help_text="Fall-back taxa list for occurrences whose research site has none of its own.",
+    )
 
     # Backreferences for type hinting
     captures: models.QuerySet["SourceImage"]
@@ -657,6 +684,23 @@ class Site(BaseModel):
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
     description = models.TextField(blank=True)
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="sites")
+
+    # The region this site sits in, used to auto-generate a taxa list. See
+    # ami.main.services.regional_taxa.
+    region_source = models.CharField(max_length=32, choices=RegionSource.choices, blank=True)
+    region_code = models.CharField(
+        max_length=64,
+        blank=True,
+        help_text="A region identifier for region_source (a GADM gid or an iNaturalist place id).",
+    )
+    taxa_list = models.ForeignKey(
+        "TaxaList",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        help_text="Taxa list to use for occurrences at this research site (e.g. for class masking).",
+    )
 
     deployments: models.QuerySet["Deployment"]
 
@@ -4377,6 +4421,22 @@ class Taxon(BaseModel):
     occurrences: models.QuerySet[Occurrence]
     classifications: models.QuerySet["Classification"]
     lists: models.QuerySet["TaxaList"]
+
+    # Which classifier(s), if any, can predict this taxon — i.e. whose category map
+    # lists the taxon's name as a label (the same Taxon.name == label join class
+    # masking uses via AlgorithmCategoryMap.with_taxa()). Derived, not user-editable:
+    # kept in sync by ami.main.services.taxon_coverage, not recomputed on every read.
+    covered_by_algorithms = models.ManyToManyField(
+        "ml.Algorithm",
+        related_name="covered_taxa",
+        blank=True,
+        help_text="Algorithm(s) whose category map includes this taxon as a label.",
+    )
+    has_model_coverage = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="True iff covered_by_algorithms is non-empty. Denormalized for cheap filtering.",
+    )
 
     author = models.CharField(max_length=255, blank=True)
     authorship_date = models.DateField(null=True, blank=True, help_text="The date the taxon was described.")
