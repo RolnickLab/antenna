@@ -3006,6 +3006,58 @@ class TestDeploymentSyncAll(APITestCase):
         self.assertEqual(jobs.first().deployment_id, self.connected.pk, "Unconnected station must be skipped")
 
 
+class TestSyncDeploymentBackfillMigration(APITestCase):
+    """The 0095 backfill grants OBJECT-LEVEL sync_deployment to existing projects'
+    MLDataManager groups, not just a global group permission.
+
+    A global-only grant (``group.permissions.add``) would leave ``get_perms`` and
+    ``has_perm(perm, project)`` — the checks the endpoint and UI actually use —
+    returning False, so the backfill would silently no-op for existing projects.
+    This pins the object-level path.
+    """
+
+    def test_backfill_grants_object_level_sync_to_mldatamanager(self):
+        import importlib
+        from unittest import mock
+
+        from django.apps import apps as global_apps
+        from django.contrib.auth.models import Group
+
+        project = Project.objects.create(name="Sync Backfill Project")
+        create_roles_for_project(project)
+        ml_user = User.objects.create_user(email="ml-backfill@insectai.org", password="password123")
+        MLDataManager.assign_user(ml_user, project)
+        source = S3StorageSource.objects.create(
+            name="Backfill Source",
+            bucket="test-bucket",
+            access_key="fake-access-key",
+            secret_key="fake-secret-key",
+            project=project,
+        )
+        Deployment.objects.create(name="Backfill Station", project=project, data_source=source)
+
+        mldm_group = Group.objects.get(name=f"{project.pk}_{project.name}_MLDataManager")
+
+        # Simulate a project created before MLDataManager gained the permission:
+        # strip the object-level grant so the sync endpoint is denied.
+        remove_perm("sync_deployment", mldm_group, project)
+        self.assertNotIn("sync_deployment", get_perms(mldm_group, project))
+
+        self.client.force_authenticate(ml_user)
+        denied = self.client.post(f"/api/v2/deployments/sync-all/?project_id={project.pk}")
+        self.assertEqual(denied.status_code, status.HTTP_403_FORBIDDEN)
+
+        # Run the backfill and confirm it restores the object-level permission
+        # (a global-only grant would leave get_perms unchanged and the POST 403).
+        migration = importlib.import_module("ami.main.migrations.0095_grant_sync_deployment_to_mldatamanager")
+        migration.grant_sync_to_mldatamanager(global_apps, None)
+
+        self.assertIn("sync_deployment", get_perms(mldm_group, project))
+        with mock.patch("ami.jobs.models.Job.enqueue"):
+            granted = self.client.post(f"/api/v2/deployments/sync-all/?project_id={project.pk}")
+        self.assertEqual(granted.status_code, status.HTTP_200_OK)
+
+
 class TestFineGrainedJobRunPermission(APITestCase):
     def setUp(self):
         super().setUp()
