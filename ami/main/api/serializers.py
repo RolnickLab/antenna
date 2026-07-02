@@ -1,6 +1,7 @@
 import datetime
 
 from django.db.models import QuerySet
+from drf_spectacular.utils import extend_schema_field
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -34,6 +35,7 @@ from ..models import (
     SourceImageUpload,
     TaxaList,
     Taxon,
+    get_media_url,
 )
 
 
@@ -605,6 +607,27 @@ class TagSerializer(DefaultSerializer):
         return [{"id": taxon.id, "name": taxon.name} for taxon in obj.taxa.all()]
 
 
+class ExampleOccurrenceSerializer(serializers.Serializer):
+    """One representative occurrence for a taxon's presence-verification Example column (#1320).
+
+    Read-only and not bound to a plain Occurrence: the view hydrates a page of example
+    occurrences with ``with_best_detection()`` plus an ``is_verified`` annotation and then
+    serializes them through this class. It is the single source of truth for the nested
+    shape the frontend renders (thumbnail + deep-link) and for the field's OpenAPI schema,
+    so the shape is declared here once rather than rebuilt as a dict literal in the view.
+    """
+
+    id = serializers.IntegerField(read_only=True)
+    detection_id = serializers.IntegerField(source="best_detection_id", read_only=True, allow_null=True)
+    image_url = serializers.SerializerMethodField()
+    score = serializers.FloatField(source="determination_score", read_only=True, allow_null=True)
+    verified = serializers.BooleanField(source="is_verified", read_only=True)
+
+    def get_image_url(self, obj) -> str | None:
+        path = getattr(obj, "best_detection_path", None)
+        return get_media_url(path) if path else None
+
+
 class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
@@ -622,6 +645,7 @@ class TaxonListSerializer(DefaultSerializer):
         tag_list = getattr(obj, "prefetched_tags", [])
         return TagSerializer(tag_list, many=True, context=self.context).data
 
+    @extend_schema_field(ExampleOccurrenceSerializer)
     def get_example_occurrence(self, obj) -> dict | None:
         occurrence_id = getattr(obj, "example_occurrence_id", None)
         if occurrence_id is None:

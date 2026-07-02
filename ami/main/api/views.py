@@ -59,7 +59,6 @@ from ..models import (
     Taxon,
     TaxonRank,
     User,
-    get_media_url,
     update_detection_counts,
     verified_taxon_counts,
 )
@@ -75,6 +74,7 @@ from .serializers import (
     EventListSerializer,
     EventSerializer,
     EventTimelineSerializer,
+    ExampleOccurrenceSerializer,
     IdentificationSerializer,
     ModelAgreementSerializer,
     OccurrenceListSerializer,
@@ -1807,6 +1807,13 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         """
         qs = super().get_queryset()
         project = self.get_active_project()
+        if project and not Project.objects.visible_for_user(self.request.user).filter(pk=project.pk).exists():
+            # The taxa list annotates observed-occurrence data: per-taxon counts and, under
+            # ?with_example_occurrences, example occurrence ids plus detection crop URLs. None
+            # of that is visibility-gated by the annotating subqueries, so a hidden (draft)
+            # project would otherwise leak it to a non-member. Refuse the project the same way
+            # the sibling project-scoped taxa endpoints (top-identifiers, model-agreement) do.
+            raise NotFound("Project not found.")
         if project:
             qs = self.attach_tags_by_project(qs, project)
 
@@ -1970,35 +1977,22 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
 
     def _build_example_occurrence_map(self, taxa) -> dict[int, dict]:
         """Hydrate the page's ``example_occurrence_id`` annotations into nested objects for
-        the serializer, in one query for the whole page (no per-row lookups)."""
+        the serializer, in one query for the whole page (no per-row lookups).
+
+        ``with_best_detection()`` supplies ``best_detection_id`` and ``best_detection_path``
+        from the same detection; ``ExampleOccurrenceSerializer`` owns the output shape."""
         occurrence_ids = {getattr(taxon, "example_occurrence_id", None) for taxon in taxa}
         occurrence_ids.discard(None)
         if not occurrence_ids:
             return {}
-        best_detection_id_subquery = (
-            Detection.objects.filter(occurrence=OuterRef("pk"))
-            .order_by("-classifications__score", "id")
-            .values("id")[:1]
-        )
         occurrences = (
             Occurrence.objects.filter(id__in=occurrence_ids)
             .with_best_detection()
             .annotate(
                 is_verified=models.Exists(Identification.objects.filter(occurrence=OuterRef("pk"), withdrawn=False)),
-                best_detection_id=Subquery(best_detection_id_subquery),
             )
         )
-        result: dict[int, dict] = {}
-        for occ in occurrences:
-            image_url = get_media_url(occ.best_detection_path) if occ.best_detection_path else None
-            result[occ.id] = {
-                "id": occ.id,
-                "detection_id": occ.best_detection_id,
-                "image_url": image_url,
-                "score": occ.determination_score,
-                "verified": occ.is_verified,
-            }
-        return result
+        return {occ.id: ExampleOccurrenceSerializer(occ).data for occ in occurrences}
 
     def paginate_queryset(self, queryset):
         page = super().paginate_queryset(queryset)

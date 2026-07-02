@@ -6366,6 +6366,44 @@ class TestTaxaExampleOccurrence(APITestCase):
         self.assertEqual(row["example_occurrence"]["id"], self.itea_high_early.id)
         self.assertEqual(row["best_scoring_occurrence_id"], self.itea_high_early.id)
         self.assertEqual(row["last_detected_occurrence_id"], self.itea_low_late.id)
+        # The example is drawn from the same collection-scoped set the count reports: itea has
+        # exactly its two occurrences here, and the extra detection must not inflate that count.
+        # This pins example/count consistency on the aggregation (collection) path, which uses
+        # a different SQL shape (GROUP BY) than the default correlated-subquery path.
+        self.assertEqual(row["occurrences_count"], 2)
+
+    def test_higher_rank_with_direct_determination_has_example(self):
+        # A higher-rank taxon that is *itself* used for identifications (occurrences
+        # determined directly to the genus, not rolled up from a species) does get an
+        # example. Exact-determination selection applies at every rank; only pure roll-up
+        # ancestors with no direct occurrence resolve to NULL (see the test above).
+        genus_direct = self._make_occurrence(self.genus, self.images[1], score=0.88)
+        row = self._rows(self.base_url + "&with_example_occurrences=true")["Vanessa"]
+        self.assertEqual(row["example_occurrence"]["id"], genus_direct.id)
+        self.assertEqual(row["best_scoring_occurrence_id"], genus_direct.id)
+        self.assertEqual(row["last_detected_occurrence_id"], genus_direct.id)
+
+    def test_draft_project_examples_hidden_from_non_members(self):
+        # Example occurrences expose occurrence ids and detection crop URLs, so on a draft
+        # project they must not reach a non-member. A project member still sees them.
+        self.project.draft = True
+        self.project.save()
+        member = User.objects.create_user(email="member1320@insectai.org")
+        self.project.members.add(member)
+        stranger = User.objects.create_user(email="stranger1320@insectai.org")
+
+        url = self.base_url + "&with_example_occurrences=true"
+
+        self.client.force_authenticate(user=member)
+        member_rows = self._rows(url)
+        self.assertIn("Vanessa itea", member_rows)
+        self.assertIsNotNone(member_rows["Vanessa itea"]["example_occurrence"])
+
+        # A non-member is refused the draft project outright (same 404 the other
+        # project-scoped taxa endpoints return), so no counts, ids or crop URLs leak.
+        self.client.force_authenticate(user=stranger)
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND, res.content)
 
     def test_bad_flag_returns_400(self):
         res = self.client.get(self.base_url + "&with_example_occurrences=notabool")

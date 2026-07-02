@@ -3392,11 +3392,24 @@ class OccurrenceQuerySet(BaseQuerySet):
         The best detection is the one with the highest classification score.
 
         Adds the following annotations:
+        - best_detection_id: The primary key of the best detection
         - best_detection_path: The path to the detection image
         - best_detection_bbox: The bounding box of the detection as a list [x1, y1, x2, y2]
         - best_detection_capture_path: The path of the source capture image
         - best_detection_capture_public_base_url: The public base URL of the source capture image
+
+        ``best_detection_id`` picks the same detection as ``best_detection_path`` (identical
+        ordering), so callers that need both an id and the image can rely on them referring
+        to one detection rather than re-deriving the pick with a second, drift-prone subquery.
         """
+        # Subquery to get the id of the best detection
+        # Use id as secondary sort to ensure deterministic results
+        best_detection_id_subquery = (
+            Detection.objects.filter(occurrence=OuterRef("pk"))
+            .order_by("-classifications__score", "id")
+            .values("id")[:1]
+        )
+
         # Subquery to get the path of the best detection
         # Use id as secondary sort to ensure deterministic results
         best_detection_path_subquery = (
@@ -3426,6 +3439,7 @@ class OccurrenceQuerySet(BaseQuerySet):
         )
 
         return self.annotate(
+            best_detection_id=models.Subquery(best_detection_id_subquery),
             best_detection_path=models.Subquery(best_detection_path_subquery),
             best_detection_bbox=models.Subquery(best_detection_bbox_subquery),
             best_detection_capture_path=models.Subquery(best_detection_capture_path_subquery),
