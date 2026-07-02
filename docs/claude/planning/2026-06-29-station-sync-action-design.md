@@ -1,7 +1,10 @@
 # Station row "Sync" floating action button — design
 
 **Date:** 2026-06-29
-**Scope:** Frontend only (`ui/`). No backend change, no migration.
+**Scope (initial phase):** Frontend only (`ui/`). No backend change, no
+migration. This describes the first phase only; the PR later grew a backend
+piece (list-serializer field, bulk `sync-all` endpoint, and an ML-data-manager
+permission with a data migration) — see the Addendum at the end of this document.
 **Branch/worktree:** `worktree-station-sync-action`
 
 ## Summary

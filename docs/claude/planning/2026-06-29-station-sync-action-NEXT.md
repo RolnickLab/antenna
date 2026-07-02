@@ -12,7 +12,12 @@ A per-row "Sync" floating action button on the Stations (deployments) list,
 beside Delete. Confirmation dialog → fires the existing async
 `DataStorageSyncJob` via `POST /api/v2/deployments/{id}/sync/`; shows spinner →
 check + a link to the created job; no-data-source 400 surfaced via `FormError`.
-Frontend-only, no backend change, no migration.
+
+**Note (historical):** this section describes the first phase. The shipped PR
+also includes backend work — a `data_source_connected` list-serializer field, a
+bulk `sync-all` endpoint, and granting the sync permission to ML data managers
+(with a data migration). The "Frontend-only, no migration" framing applies to
+the initial phase only.
 
 Commits on the branch:
 1. `e6a4303c` docs: design doc
