@@ -15,6 +15,8 @@ from django.contrib.messages.storage.fallback import FallbackStorage
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import RequestFactory, TestCase
+from guardian.shortcuts import assign_perm
+from rest_framework.test import APITestCase
 
 from ami.main.models import Deployment, Project, RegionSource, Site, TaxaList, Taxon, TaxonRank
 from ami.main.services.gbif import GBIFRegionalSource, reverse_geocode_gadm
@@ -30,6 +32,7 @@ from ami.main.services.regional_taxa import (
 )
 from ami.main.tasks import generate_regional_taxa_list_task
 from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
+from ami.users.models import User
 
 
 class _FakeResponse:
@@ -788,3 +791,63 @@ class RegionalTaxaAdminActionTest(TestCase):
         kwargs = mock_task.delay.call_args.kwargs
         self.assertEqual(kwargs["site_id"], site.pk)
         self.assertEqual(kwargs["project_id"], project.pk)
+
+
+class GenerateRegionalTaxaListEndpointTest(APITestCase):
+    """POST /projects/{id}/generate-regional-taxa-list/ — permission matrix, body
+    validation, region derivation, and that a valid call enqueues the task."""
+
+    def setUp(self):
+        self.project = Project.objects.create(name="API Project", draft=False, create_defaults=False)
+        self.editor = User.objects.create_user(email="editor@example.com", password="pw")
+        assign_perm(Project.Permissions.UPDATE_PROJECT, self.editor, self.project)
+        self.viewer = User.objects.create_user(email="viewer@example.com", password="pw")
+        self.url = f"/api/v2/projects/{self.project.pk}/generate-regional-taxa-list/"
+
+    @mock.patch("ami.main.api.views.generate_regional_taxa_list_task")
+    def test_editor_queues_with_explicit_region(self, mock_task):
+        self.client.force_authenticate(self.editor)
+        response = self.client.post(
+            self.url, {"region_source": RegionSource.GBIF_GADM.value, "region_code": "USA.46_1"}, format="json"
+        )
+        self.assertEqual(response.status_code, 202)
+        mock_task.delay.assert_called_once()
+        self.assertEqual(mock_task.delay.call_args.kwargs["region_code"], "USA.46_1")
+        self.assertEqual(mock_task.delay.call_args.kwargs["project_id"], self.project.pk)
+
+    @mock.patch("ami.main.api.views.generate_regional_taxa_list_task")
+    def test_non_editor_is_forbidden(self, mock_task):
+        self.client.force_authenticate(self.viewer)
+        response = self.client.post(self.url, {"region_code": "USA.46_1"}, format="json")
+        self.assertEqual(response.status_code, 403)
+        mock_task.delay.assert_not_called()
+
+    @mock.patch("ami.main.api.views.generate_regional_taxa_list_task")
+    def test_anonymous_is_denied(self, mock_task):
+        response = self.client.post(self.url, {"region_code": "USA.46_1"}, format="json")
+        self.assertIn(response.status_code, (401, 403))
+        mock_task.delay.assert_not_called()
+
+    @mock.patch("ami.main.api.views.generate_regional_taxa_list_task")
+    def test_invalid_region_source_is_400(self, mock_task):
+        self.client.force_authenticate(self.editor)
+        response = self.client.post(self.url, {"region_source": "bogus", "region_code": "X"}, format="json")
+        self.assertEqual(response.status_code, 400)
+        mock_task.delay.assert_not_called()
+
+    @mock.patch("ami.main.api.views.generate_regional_taxa_list_task")
+    def test_missing_and_underivable_region_is_400(self, mock_task):
+        # No region_code in the body and no located deployment to derive one from.
+        self.client.force_authenticate(self.editor)
+        response = self.client.post(self.url, {}, format="json")
+        self.assertEqual(response.status_code, 400)
+        mock_task.delay.assert_not_called()
+
+    @mock.patch("ami.main.services.regional_taxa.derive_region_for_project")
+    @mock.patch("ami.main.api.views.generate_regional_taxa_list_task")
+    def test_region_is_derived_when_omitted(self, mock_task, mock_derive):
+        mock_derive.return_value = (RegionSource.GBIF_GADM.value, "USA.46_1")
+        self.client.force_authenticate(self.editor)
+        response = self.client.post(self.url, {}, format="json")
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(mock_task.delay.call_args.kwargs["region_code"], "USA.46_1")

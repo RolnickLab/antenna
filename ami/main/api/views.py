@@ -35,6 +35,8 @@ from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
+from ami.main.services import regional_taxa
+from ami.main.tasks import generate_regional_taxa_list_task
 from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
@@ -49,6 +51,7 @@ from ..models import (
     Page,
     Project,
     ProjectQuerySet,
+    RegionSource,
     S3StorageSource,
     Site,
     SourceImage,
@@ -155,6 +158,15 @@ class ProjectPagination(LimitOffsetPaginationWithPermissions):
         return super().get_count(queryset.order_by().values("pk"))
 
 
+class RegionalTaxaListRequestSerializer(serializers.Serializer):
+    """Body for POST /projects/{id}/generate-regional-taxa-list/ (see #1364)."""
+
+    region_source = serializers.ChoiceField(choices=RegionSource.choices, default=RegionSource.GBIF_GADM.value)
+    region_code = serializers.CharField(required=False, allow_blank=True)
+    classifier_id = serializers.IntegerField(required=False)
+    include_uncovered = serializers.BooleanField(required=False, default=False)
+
+
 class ProjectViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows projects to be viewed or edited.
@@ -255,6 +267,59 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
 
         # Add current user as project owner
         serializer.save(owner=self.request.user)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        name="generate-regional-taxa-list",
+        url_path="generate-regional-taxa-list",
+    )
+    def generate_regional_taxa_list(self, request, pk=None) -> Response:
+        """Queue generation of a taxa list for this project from a geographic region.
+
+        The external biodiversity-database fetch is slow, so this enqueues a background
+        task and returns 202; on success the generated list becomes the project's
+        default_taxa_list. When region_code is omitted it is derived from the project's
+        deployments. Requires update permission on the project. See issue #1364.
+        """
+        project = get_object_or_404(self.get_queryset(), pk=pk)
+        if not request.user.has_perm("update_project", project):
+            raise PermissionDenied("You do not have permission to modify this project.")
+
+        params = RegionalTaxaListRequestSerializer(data=request.data)
+        params.is_valid(raise_exception=True)
+        data = params.validated_data
+
+        region_source = data["region_source"]
+        region_code = (data.get("region_code") or "").strip()
+        if not region_code:
+            derived = regional_taxa.derive_region_for_project(project, region_source=region_source)
+            if derived is None:
+                raise api_exceptions.ValidationError(
+                    {
+                        "region_code": (
+                            "No region_code was provided and none could be derived from the " "project's deployments."
+                        )
+                    }
+                )
+            _source, region_code = derived
+
+        generate_regional_taxa_list_task.delay(
+            project_id=project.pk,
+            region_source=region_source,
+            region_code=region_code,
+            classifier_id=data.get("classifier_id"),
+            include_uncovered=data.get("include_uncovered", False),
+        )
+        return Response(
+            {
+                "project_id": project.pk,
+                "region_source": region_source,
+                "region_code": region_code,
+                "status": "queued",
+            },
+            status=status.HTTP_202_ACCEPTED,
+        )
 
     @action(detail=True, methods=["get"], name="charts")
     def charts(self, request, pk=None):
