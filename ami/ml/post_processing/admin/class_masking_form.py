@@ -22,12 +22,27 @@ class ClassMaskingActionForm(BasePostProcessingActionForm):
         label="Source classifier",
         help_text="The classification algorithm whose terminal predictions will be re-scored.",
     )
+    taxa_list_mode = forms.ChoiceField(
+        choices=(
+            ("explicit", "Use the selected taxa list"),
+            ("auto", "Resolve automatically from the occurrence's site (then its project)"),
+        ),
+        required=False,
+        initial="explicit",
+        label="Taxa list source",
+        help_text=(
+            "Automatic resolution uses the region-configured list on the scope's site, "
+            "falling back to the project's default; it is a no-op if neither is set."
+        ),
+    )
     taxa_list_id = forms.ModelChoiceField(
         queryset=TaxaList.objects.all().order_by("name"),
+        required=False,
         label="Taxa list to keep",
         help_text=(
             "Classes whose taxon is not in this list are masked out; each "
-            "classification's softmax is renormalised over the classes that remain."
+            "classification's softmax is renormalised over the classes that remain. "
+            "Leave blank when using automatic resolution."
         ),
     )
     reweight = forms.BooleanField(
@@ -68,9 +83,21 @@ class ClassMaskingActionForm(BasePostProcessingActionForm):
             .order_by("name")
         )
 
+    def clean(self):
+        cleaned = super().clean()
+        mode = cleaned.get("taxa_list_mode") or "explicit"
+        cleaned["taxa_list_mode"] = mode
+        if mode == "explicit" and not cleaned.get("taxa_list_id"):
+            self.add_error("taxa_list_id", "Select a taxa list, or switch the source to automatic resolution.")
+        return cleaned
+
     def to_config(self) -> dict:
-        return {
+        mode = self.cleaned_data["taxa_list_mode"]
+        config = {
             "algorithm_id": self.cleaned_data["algorithm_id"].pk,
-            "taxa_list_id": self.cleaned_data["taxa_list_id"].pk,
             "reweight": self.cleaned_data["reweight"],
+            "taxa_list_mode": mode,
         }
+        if mode == "explicit":
+            config["taxa_list_id"] = self.cleaned_data["taxa_list_id"].pk
+        return config

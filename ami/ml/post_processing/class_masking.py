@@ -22,7 +22,14 @@ class ClassMaskingConfig(pydantic.BaseModel):
     source_image_collection_id: int | None = None
     occurrence_id: int | None = None
     # The taxa list to keep: classes whose taxon is not in this list are masked out.
-    taxa_list_id: int
+    # Required in "explicit" mode; omitted in "auto" mode, where the list is resolved
+    # from the scope's site (then its project's default) so a pipeline can apply
+    # masking without an operator choosing a list each run.
+    taxa_list_id: int | None = None
+    # "explicit": use taxa_list_id directly. "auto": resolve the list per the scope's
+    # site/project (see ClassMaskingTask._resolve_auto_taxa_list); when nothing is
+    # configured the task is a safe no-op, so auto masking can be enabled by default.
+    taxa_list_mode: str = "explicit"
     # The source classifier whose terminal classifications are re-scored.
     algorithm_id: int
     # When True (default), renormalise the kept classes' scores to sum to 1 after
@@ -31,10 +38,18 @@ class ClassMaskingConfig(pydantic.BaseModel):
     reweight: bool = True
 
     @pydantic.root_validator(skip_on_failure=True)
-    def _exactly_one_scope(cls, values: dict) -> dict:
+    def _validate_scope_and_mode(cls, values: dict) -> dict:
         scopes = [values.get("source_image_collection_id"), values.get("occurrence_id")]
         if sum(s is not None for s in scopes) != 1:
             raise ValueError("Provide exactly one of source_image_collection_id or occurrence_id")
+
+        mode = values.get("taxa_list_mode")
+        if mode not in ("explicit", "auto"):
+            raise ValueError("taxa_list_mode must be 'explicit' or 'auto'")
+        if mode == "explicit" and values.get("taxa_list_id") is None:
+            raise ValueError("taxa_list_id is required when taxa_list_mode is 'explicit'")
+        if mode == "auto" and values.get("taxa_list_id") is not None:
+            raise ValueError("taxa_list_id must be omitted when taxa_list_mode is 'auto'")
         return values
 
     class Config:
@@ -262,6 +277,42 @@ class ClassMaskingTask(BasePostProcessingTask):
             algorithm.save(update_fields=["category_map"])
         return algorithm
 
+    def _resolve_auto_taxa_list(self, config: ClassMaskingConfig) -> TaxaList | None:
+        """Resolve the taxa list for auto mode from the scope's configured region.
+
+        The ladder mirrors the design in issue #1364: an occurrence prefers its
+        site's list, then falls back to its project's default; a collection resolves
+        at the project level (a collection is not tied to a single site). Returns None
+        when nothing is configured, which the caller treats as a no-op rather than an
+        error — that is what makes auto masking safe to enable before a project has
+        set up a region. The region_code → generate rungs of the ladder are handled by
+        the generation surfaces (command/admin/API), not inline here, so a masking run
+        never triggers a slow external fetch.
+        """
+        if config.occurrence_id is not None:
+            try:
+                occurrence = Occurrence.objects.select_related(
+                    "deployment__research_site__taxa_list", "project__default_taxa_list"
+                ).get(pk=config.occurrence_id)
+            except Occurrence.DoesNotExist:
+                raise ValueError(f"Occurrence {config.occurrence_id} not found")
+            site = occurrence.deployment.research_site if occurrence.deployment else None
+            if site is not None and site.taxa_list_id:
+                return site.taxa_list
+            if occurrence.project is not None and occurrence.project.default_taxa_list_id:
+                return occurrence.project.default_taxa_list
+            return None
+
+        try:
+            collection = SourceImageCollection.objects.select_related("project__default_taxa_list").get(
+                pk=config.source_image_collection_id
+            )
+        except SourceImageCollection.DoesNotExist:
+            raise ValueError(f"SourceImageCollection {config.source_image_collection_id} not found")
+        if collection.project is not None and collection.project.default_taxa_list_id:
+            return collection.project.default_taxa_list
+        return None
+
     def _scoped_classifications(
         self, config: ClassMaskingConfig, source_algorithm: Algorithm
     ) -> tuple[QuerySet[Classification], str]:
@@ -302,10 +353,23 @@ class ClassMaskingTask(BasePostProcessingTask):
             source_algorithm = Algorithm.objects.get(pk=config.algorithm_id)
         except Algorithm.DoesNotExist:
             raise ValueError(f"Algorithm {config.algorithm_id} not found")
-        try:
-            taxa_list = TaxaList.objects.get(pk=config.taxa_list_id)
-        except TaxaList.DoesNotExist:
-            raise ValueError(f"TaxaList {config.taxa_list_id} not found")
+        if config.taxa_list_mode == "auto":
+            taxa_list = self._resolve_auto_taxa_list(config)
+            if taxa_list is None:
+                self.logger.info(
+                    "Class masking (auto): no taxa list is configured for this scope's site or project; "
+                    "there is nothing to mask, so the task is a no-op."
+                )
+                self.report_stage_metrics(
+                    {"classifications_checked": 0, "classifications_masked": 0, "occurrences_updated": 0}
+                )
+                return
+            self.logger.info(f"Class masking (auto): resolved taxa list {taxa_list.pk} ({taxa_list.name})")
+        else:
+            try:
+                taxa_list = TaxaList.objects.get(pk=config.taxa_list_id)
+            except TaxaList.DoesNotExist:
+                raise ValueError(f"TaxaList {config.taxa_list_id} not found")
         if not source_algorithm.category_map:
             raise ValueError(f"Algorithm '{source_algorithm.name}' has no category map; cannot mask classes.")
 
