@@ -2060,7 +2060,7 @@ class ClassificationViewSet(DefaultViewSet, ProjectMixin):
     """
 
     require_project_for_list = True  # Unfiltered list scans are too expensive on this table
-    queryset = Classification.objects.all().select_related("taxon", "algorithm")  # , "detection")
+    queryset = Classification.objects.all().select_related("taxon", "algorithm", "applied_to__algorithm")
     serializer_class = ClassificationSerializer
     filterset_fields = [
         # Docs about slow loading API browser because of large choice fields
