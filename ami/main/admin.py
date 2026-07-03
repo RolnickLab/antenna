@@ -1,7 +1,7 @@
 import datetime
 from typing import Any
 
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.db import models
 from django.db.models.query import QuerySet
 from django.http.request import HttpRequest
@@ -12,6 +12,7 @@ from guardian.admin import GuardedModelAdmin
 import ami.utils
 from ami import tasks
 from ami.jobs.models import Job
+from ami.main.tasks import generate_regional_taxa_list_task
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.ml.post_processing.admin.actions import make_post_processing_action
 from ami.ml.post_processing.admin.class_masking_form import ClassMaskingActionForm
@@ -108,6 +109,7 @@ class ProjectAdmin(GuardedModelAdmin):
 
     inlines = [ProjectPipelineConfigInline]
     autocomplete_fields = ("owner", "default_filters_include_taxa", "default_filters_exclude_taxa")
+    raw_id_fields = ("default_taxa_list",)
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         return super().get_queryset(request).select_related("owner")
@@ -139,6 +141,20 @@ class ProjectAdmin(GuardedModelAdmin):
             },
         ),
         (
+            "Region & Taxa List",
+            {
+                "fields": (
+                    "region_source",
+                    "region_code",
+                    "default_taxa_list",
+                ),
+                "description": (
+                    "The region a taxa list can be generated from, and the list used as this "
+                    "project's fallback when a site has none configured."
+                ),
+            },
+        ),
+        (
             "Ownership & Access",
             {
                 "fields": ("owner",),
@@ -155,7 +171,33 @@ class ProjectAdmin(GuardedModelAdmin):
             task_ids.append(task.id)
         self.message_user(request, f"Started {len(task_ids)} tasks to delete classification: {task_ids}")
 
-    actions = [_remove_duplicate_classifications]
+    @admin.action(description="Generate a regional taxa list from the configured region")
+    def generate_regional_taxa_list_action(self, request: HttpRequest, queryset: QuerySet[Project]) -> None:
+        """Enqueue regional taxa-list generation for each selected project that has a
+        region configured; the list is attached to the project's default_taxa_list.
+        Runs in the background because the external fetch is slow."""
+        enqueued = 0
+        skipped = []
+        for project in queryset:
+            if not project.region_source or not project.region_code:
+                skipped.append(project.name)
+                continue
+            generate_regional_taxa_list_task.delay(
+                project_id=project.pk,
+                region_source=project.region_source,
+                region_code=project.region_code,
+            )
+            enqueued += 1
+        if enqueued:
+            self.message_user(request, f"Queued regional taxa-list generation for {enqueued} project(s).")
+        if skipped:
+            self.message_user(
+                request,
+                f"Skipped (no region configured): {', '.join(skipped)}",
+                level=messages.WARNING,
+            )
+
+    actions = [_remove_duplicate_classifications, generate_regional_taxa_list_action]
 
 
 @admin.register(Deployment)
@@ -763,7 +805,40 @@ class DeviceAdmin(admin.ModelAdmin[Device]):
 
 @admin.register(Site)
 class SiteAdmin(admin.ModelAdmin[Site]):
-    """Admin panel example for ``Site`` model."""
+    """Admin panel for ``Site`` (Research Site) model."""
+
+    list_display = ("name", "project", "region_source", "region_code", "taxa_list")
+    list_filter = ("region_source",)
+    search_fields = ("name",)
+    raw_id_fields = ("project", "taxa_list")
+
+    @admin.action(description="Generate a regional taxa list from the configured region")
+    def generate_regional_taxa_list_action(self, request: HttpRequest, queryset: QuerySet[Site]) -> None:
+        """Enqueue regional taxa-list generation for each selected site that has a
+        project and a region configured; the list is attached to the site's taxa_list."""
+        enqueued = 0
+        skipped = []
+        for site in queryset:
+            if not site.project_id or not site.region_source or not site.region_code:
+                skipped.append(site.name)
+                continue
+            generate_regional_taxa_list_task.delay(
+                project_id=site.project_id,
+                region_source=site.region_source,
+                region_code=site.region_code,
+                site_id=site.pk,
+            )
+            enqueued += 1
+        if enqueued:
+            self.message_user(request, f"Queued regional taxa-list generation for {enqueued} site(s).")
+        if skipped:
+            self.message_user(
+                request,
+                f"Skipped (missing project or region): {', '.join(skipped)}",
+                level=messages.WARNING,
+            )
+
+    actions = [generate_regional_taxa_list_action]
 
 
 @admin.register(S3StorageSource)

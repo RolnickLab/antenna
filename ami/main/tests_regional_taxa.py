@@ -11,11 +11,12 @@ nothing exercises the network.
 
 from unittest import mock
 
+from django.contrib.messages.storage.fallback import FallbackStorage
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.test import TestCase
+from django.test import RequestFactory, TestCase
 
-from ami.main.models import Deployment, Project, RegionSource, TaxaList, Taxon, TaxonRank
+from ami.main.models import Deployment, Project, RegionSource, Site, TaxaList, Taxon, TaxonRank
 from ami.main.services.gbif import GBIFRegionalSource, reverse_geocode_gadm
 from ami.main.services.regional_taxa import (
     LEPIDOPTERA_SCOPE,
@@ -27,6 +28,7 @@ from ami.main.services.regional_taxa import (
     map_to_taxa,
     merge_source_species,
 )
+from ami.main.tasks import generate_regional_taxa_list_task
 from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
 
 
@@ -708,3 +710,81 @@ class GenerateRegionalTaxaListCommandTest(TestCase):
         Project.objects.create(name="Cmd P1", create_defaults=False)
         call_command("generate_regional_taxa_list", "--all-projects", "--dry-run")
         mock_generate.assert_not_called()
+
+
+class GenerateRegionalTaxaListTaskTest(TestCase):
+    """The task links the generated list to the right owner (project vs. site) and is
+    the slow-fetch-off-the-request-path surface the admin actions enqueue."""
+
+    @mock.patch("ami.main.services.regional_taxa.generate_regional_taxa_list")
+    def test_links_list_to_project_by_default(self, mock_generate):
+        project = Project.objects.create(name="Task P", create_defaults=False)
+        taxa_list = TaxaList.objects.create(name="Region list")
+        mock_generate.return_value = _fake_result(taxa_list_id=taxa_list.pk, saved_list_size=3)
+        generate_regional_taxa_list_task(
+            project_id=project.pk, region_source=RegionSource.GBIF_GADM.value, region_code="USA.46_1"
+        )
+        project.refresh_from_db()
+        self.assertEqual(project.default_taxa_list_id, taxa_list.pk)
+
+    @mock.patch("ami.main.services.regional_taxa.generate_regional_taxa_list")
+    def test_links_list_to_site_when_site_scoped(self, mock_generate):
+        project = Project.objects.create(name="Task P", create_defaults=False)
+        site = Site.objects.create(name="Site A", project=project)
+        taxa_list = TaxaList.objects.create(name="Region list")
+        mock_generate.return_value = _fake_result(taxa_list_id=taxa_list.pk)
+        generate_regional_taxa_list_task(
+            project_id=project.pk,
+            region_source=RegionSource.GBIF_GADM.value,
+            region_code="USA.46_1",
+            site_id=site.pk,
+        )
+        site.refresh_from_db()
+        project.refresh_from_db()
+        self.assertEqual(site.taxa_list_id, taxa_list.pk)
+        self.assertIsNone(project.default_taxa_list_id)
+
+
+def _admin_request():
+    request = RequestFactory().post("/admin/")
+    setattr(request, "session", {})
+    request._messages = FallbackStorage(request)
+    return request
+
+
+class RegionalTaxaAdminActionTest(TestCase):
+    """The admin actions are thin: enqueue the task only for rows with a region set,
+    passing the right scope. These pin that skip logic and the site-scope kwarg."""
+
+    @mock.patch("ami.main.admin.generate_regional_taxa_list_task")
+    def test_project_action_enqueues_only_configured_rows(self, mock_task):
+        from django.contrib.admin.sites import site as admin_site
+
+        from ami.main.admin import ProjectAdmin
+
+        configured = Project.objects.create(
+            name="configured",
+            region_source=RegionSource.GBIF_GADM.value,
+            region_code="USA.46_1",
+            create_defaults=False,
+        )
+        Project.objects.create(name="no-region", create_defaults=False)
+        ProjectAdmin(Project, admin_site).generate_regional_taxa_list_action(_admin_request(), Project.objects.all())
+        mock_task.delay.assert_called_once()
+        self.assertEqual(mock_task.delay.call_args.kwargs["project_id"], configured.pk)
+
+    @mock.patch("ami.main.admin.generate_regional_taxa_list_task")
+    def test_site_action_passes_site_scope(self, mock_task):
+        from django.contrib.admin.sites import site as admin_site
+
+        from ami.main.admin import SiteAdmin
+
+        project = Project.objects.create(name="p", create_defaults=False)
+        site = Site.objects.create(
+            name="s", project=project, region_source=RegionSource.GBIF_GADM.value, region_code="USA.46_1"
+        )
+        SiteAdmin(Site, admin_site).generate_regional_taxa_list_action(_admin_request(), Site.objects.all())
+        mock_task.delay.assert_called_once()
+        kwargs = mock_task.delay.call_args.kwargs
+        self.assertEqual(kwargs["site_id"], site.pk)
+        self.assertEqual(kwargs["project_id"], project.pk)
