@@ -93,7 +93,7 @@ def create_taxon(taxon_data: dict, root_taxon_parent: Taxon) -> tuple[set[Taxon]
                     parent = None
                 if taxon.parent != parent:
                     if not created:
-                        logger.warn(f"Changing parent of {taxon} from {taxon.parent} to more specific {parent}")
+                        logger.warning(f"Changing parent of {taxon} from {taxon.parent} to more specific {parent}")
                     taxon.parent = parent
                     taxon.save(update_calculated_fields=False)
                     if not created:
@@ -117,7 +117,7 @@ def create_taxon(taxon_data: dict, root_taxon_parent: Taxon) -> tuple[set[Taxon]
     specific_taxon = taxa_in_row[-1]
     expected_specific_taxon_ranks = TaxonRank.SPECIES, TaxonRank.GENUS
     if specific_taxon.get_rank() not in expected_specific_taxon_ranks:
-        logger.warn(f"Assumming the most specific taxon of this row is: {specific_taxon} {specific_taxon.rank}")
+        logger.warning(f"Assuming the most specific taxon of this row is: {specific_taxon} {specific_taxon.rank}")
 
     specific_taxon_columns = [
         "author",
