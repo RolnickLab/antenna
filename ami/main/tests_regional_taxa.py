@@ -30,6 +30,7 @@ from ami.main.services.regional_taxa import (
     map_to_taxa,
     merge_source_species,
 )
+from ami.main.services.taxon_coverage import refresh_coverage_for_taxa
 from ami.main.tasks import generate_regional_taxa_list_task
 from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
 from ami.users.models import User
@@ -495,6 +496,29 @@ class TaxonModelCoverageRefreshTest(TestCase):
         self.assertTrue(taxon.has_model_coverage)
         self.assertIn(algorithm, taxon.covered_by_algorithms.all())
         self.assertIn(taxon, algorithm.covered_taxa.all())
+
+    def test_targeted_refresh_covers_only_the_given_taxa(self):
+        """A taxon created after a classifier exists is not seen by the save hook.
+        refresh_coverage_for_taxa (used by the regional service for just-created
+        rows) links only the named taxa to matching algorithms, leaving others
+        untouched — this is the cheap path that avoids a full per-algorithm rebuild."""
+        category_map = AlgorithmCategoryMap.objects.create(
+            labels=["Late Species"], data=[{"index": 0, "label": "Late Species"}]
+        )
+        algorithm = Algorithm.objects.create(name="Late Classifier", version=1, category_map=category_map)
+        # Both created AFTER the algorithm, so the save hook never linked them.
+        late = Taxon.objects.create(name="Late Species", rank=TaxonRank.SPECIES.name)
+        unlisted = Taxon.objects.create(name="Unlisted Species", rank=TaxonRank.SPECIES.name)
+        self.assertFalse(late.has_model_coverage)
+
+        refresh_coverage_for_taxa([late.pk, unlisted.pk])
+
+        late.refresh_from_db()
+        unlisted.refresh_from_db()
+        self.assertTrue(late.has_model_coverage)
+        self.assertIn(algorithm, late.covered_by_algorithms.all())
+        self.assertFalse(unlisted.has_model_coverage)
+        self.assertEqual(unlisted.covered_by_algorithms.count(), 0)
 
     def test_reassigning_the_category_map_drops_stale_coverage(self):
         """When an algorithm's category map is swapped for one that no longer lists

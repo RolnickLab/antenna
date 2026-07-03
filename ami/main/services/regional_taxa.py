@@ -317,7 +317,10 @@ def apply_model_coverage(mapping: MappingOutcome, *, dry_run: bool) -> CoverageO
         return CoverageOutcome(covered=covered, uncovered=uncovered)
 
     if created_taxa:
-        taxon_coverage.refresh_all_algorithm_coverage()
+        # Give just-created taxa a coverage state before partitioning them. A targeted
+        # refresh (only these taxa) keeps the --all-projects backfill from paying a
+        # full per-algorithm rebuild on every project that creates a taxon.
+        taxon_coverage.refresh_coverage_for_taxa([t.pk for t in created_taxa])
         fresh_by_id = {t.pk: t for t in Taxon.objects.filter(pk__in=[t.pk for t in created_taxa])}
         created_taxa = [fresh_by_id[t.pk] for t in created_taxa if t.pk in fresh_by_id]
 

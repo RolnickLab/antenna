@@ -62,6 +62,38 @@ def refresh_all_algorithm_coverage() -> int:
     return len(algorithms)
 
 
+def refresh_coverage_for_taxa(taxon_ids: typing.Iterable[int]) -> None:
+    """Compute and persist model coverage for exactly these taxa, without a full rebuild.
+
+    For taxa the regional service just created, this links each to any algorithm whose
+    category-map labels include its name, then resyncs has_model_coverage for only
+    these taxa. It touches only the given taxa and loads only the category maps whose
+    labels actually overlap their names — unlike refresh_all_algorithm_coverage, which
+    rewrites the whole covered_taxa relation for every algorithm and is meant for full
+    backfills or repair. This keeps the per-run cost of the ``--all-projects`` backfill
+    proportional to the newly created taxa, not to the total algorithm/label count.
+    """
+    from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
+
+    taxon_ids = list(taxon_ids)
+    if not taxon_ids:
+        return
+
+    ids_by_name: dict[str, list[int]] = {}
+    for pk, name in Taxon.objects.filter(pk__in=taxon_ids).values_list("pk", "name"):
+        ids_by_name.setdefault(name, []).append(pk)
+    names = set(ids_by_name)
+
+    for category_map in AlgorithmCategoryMap.objects.filter(labels__overlap=list(names)):
+        matched_ids = [pk for label in names.intersection(category_map.labels) for pk in ids_by_name[label]]
+        if not matched_ids:
+            continue
+        for algorithm in Algorithm.objects.filter(category_map=category_map):
+            algorithm.covered_taxa.add(*matched_ids)
+
+    _resync_has_model_coverage(taxon_ids)
+
+
 def names_covered_by_any_algorithm(names: set[str]) -> set[str]:
     """Read-only check of which of `names` appear in some algorithm's category map
     labels, without creating or persisting anything. Used only to simulate the
