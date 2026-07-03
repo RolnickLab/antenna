@@ -441,3 +441,38 @@ def generate_regional_taxa_list(
         unmatched_names=mapping.unmatched_names,
         dry_run=dry_run,
     )
+
+
+def derive_region_for_project(
+    project: Project,
+    *,
+    region_source: str = RegionSource.GBIF_GADM.value,
+    level: int = 1,
+    geocoder: typing.Callable[..., str | None] | None = None,
+) -> tuple[str, str] | None:
+    """Derive a (region_source, region_code) for a project from a representative
+    deployment's coordinates (issue #1364, path A3).
+
+    This is what lets the `--all-projects` backfill run without anyone entering a
+    region by hand: it reverse-geocodes the first deployment that has coordinates.
+    Returns None when the project has no located deployment or the point falls
+    outside any GADM region of `level`, so the caller can skip that project. GBIF/GADM
+    is the only supported source for now. `geocoder` is a test seam — inject a stub to
+    avoid a network call.
+    """
+    if region_source != RegionSource.GBIF_GADM:
+        raise ValueError(f"derive_region_for_project supports GBIF/GADM only, got {region_source!r}")
+
+    deployment = project.deployments.filter(latitude__isnull=False, longitude__isnull=False).order_by("pk").first()
+    if deployment is None:
+        return None
+
+    if geocoder is None:
+        from .gbif import reverse_geocode_gadm
+
+        geocoder = reverse_geocode_gadm
+
+    region_code = geocoder(deployment.latitude, deployment.longitude, level=level)
+    if not region_code:
+        return None
+    return (region_source, region_code)

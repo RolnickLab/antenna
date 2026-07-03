@@ -12,15 +12,17 @@ nothing exercises the network.
 from unittest import mock
 
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 
-from ami.main.models import Project, RegionSource, TaxaList, Taxon, TaxonRank
-from ami.main.services.gbif import GBIFRegionalSource
+from ami.main.models import Deployment, Project, RegionSource, TaxaList, Taxon, TaxonRank
+from ami.main.services.gbif import GBIFRegionalSource, reverse_geocode_gadm
 from ami.main.services.regional_taxa import (
     LEPIDOPTERA_SCOPE,
     MergedSpecies,
     SourceSpecies,
     apply_model_coverage,
+    derive_region_for_project,
     generate_regional_taxa_list,
     map_to_taxa,
     merge_source_species,
@@ -582,3 +584,127 @@ class ApplyModelCoverageDryRunTest(TestCase):
         self.assertEqual({t.name for t in coverage.uncovered}, {"Uncovered Species"})
         # dry_run must not persist either stand-in Taxon.
         self.assertFalse(Taxon.objects.filter(name__in=["Covered Species", "Uncovered Species"]).exists())
+
+
+class _FakeReverseSession:
+    """Stub session for GBIF's /geocode/reverse endpoint — returns a fixed list of
+    GADM entries at levels 0/1/2, the shape the real endpoint returns for a point."""
+
+    def __init__(self, items):
+        self.items = items
+
+    def get(self, url, params=None, timeout=None):
+        return _FakeResponse(self.items)
+
+
+class ReverseGeocodeGADMTest(TestCase):
+    ITEMS = [
+        {"id": "USA", "type": "Political"},
+        {"id": "USA.46_1", "type": "Political"},
+        {"id": "USA.46.14_1", "type": "Political"},
+    ]
+
+    def test_picks_level1_gid(self):
+        session = _FakeReverseSession(self.ITEMS)
+        self.assertEqual(reverse_geocode_gadm(44.26, -72.58, level=1, session=session), "USA.46_1")
+
+    def test_picks_level2_gid(self):
+        session = _FakeReverseSession(self.ITEMS)
+        self.assertEqual(reverse_geocode_gadm(44.26, -72.58, level=2, session=session), "USA.46.14_1")
+
+    def test_none_when_no_polygon_at_level(self):
+        # Only the bare country (level 0) is returned — no level-1 polygon contains the point.
+        session = _FakeReverseSession([{"id": "USA", "type": "Political"}])
+        self.assertIsNone(reverse_geocode_gadm(0.0, 0.0, level=1, session=session))
+
+
+class DeriveRegionForProjectTest(TestCase):
+    def test_uses_first_located_deployment(self):
+        project = Project.objects.create(name="Derive P", create_defaults=False)
+        Deployment.objects.create(name="no coords", project=project)
+        Deployment.objects.create(name="located", project=project, latitude=44.26, longitude=-72.58)
+        seen = {}
+
+        def geocoder(latitude, longitude, level=1):
+            seen["args"] = (latitude, longitude, level)
+            return "USA.46_1"
+
+        result = derive_region_for_project(project, geocoder=geocoder)
+        self.assertEqual(result, (RegionSource.GBIF_GADM.value, "USA.46_1"))
+        self.assertEqual(seen["args"], (44.26, -72.58, 1))
+
+    def test_none_without_located_deployment(self):
+        project = Project.objects.create(name="Derive P", create_defaults=False)
+        Deployment.objects.create(name="no coords", project=project)
+        self.assertIsNone(derive_region_for_project(project, geocoder=lambda *a, **k: "USA.46_1"))
+
+    def test_none_when_geocoder_finds_no_region(self):
+        project = Project.objects.create(name="Derive P", create_defaults=False)
+        Deployment.objects.create(name="located", project=project, latitude=1.0, longitude=2.0)
+        self.assertIsNone(derive_region_for_project(project, geocoder=lambda *a, **k: None))
+
+
+def _fake_result(**overrides):
+    fields = dict(
+        region_code="USA.46_1",
+        saved_list_size=1,
+        model_covered=1,
+        regional_no_model_coverage=0,
+        created_taxa=0,
+        already_in_db=1,
+        regional_total=1,
+        dry_run=True,
+    )
+    fields.update(overrides)
+    return mock.Mock(**fields)
+
+
+class GenerateRegionalTaxaListCommandTest(TestCase):
+    """The command is a thin wrapper — these pin the arg wiring and the two guards,
+    with the service itself mocked (its behaviour is covered elsewhere)."""
+
+    @mock.patch("ami.main.services.regional_taxa.generate_regional_taxa_list")
+    def test_single_project_passes_parsed_args(self, mock_generate):
+        mock_generate.return_value = _fake_result()
+        project = Project.objects.create(name="Cmd P", create_defaults=False)
+        call_command(
+            "generate_regional_taxa_list",
+            "--project",
+            str(project.pk),
+            "--region-code",
+            "USA.46_1",
+            "--include-uncovered",
+            "--dry-run",
+        )
+        mock_generate.assert_called_once()
+        kwargs = mock_generate.call_args.kwargs
+        self.assertEqual(kwargs["region_code"], "USA.46_1")
+        self.assertEqual(kwargs["project"], project)
+        self.assertTrue(kwargs["include_uncovered"])
+        self.assertTrue(kwargs["dry_run"])
+
+    def test_requires_region_code_without_all_projects(self):
+        with self.assertRaises(CommandError):
+            call_command("generate_regional_taxa_list", "--dry-run")
+
+    def test_all_projects_rejects_explicit_region_code(self):
+        with self.assertRaises(CommandError):
+            call_command("generate_regional_taxa_list", "--all-projects", "--region-code", "USA.46_1")
+
+    @mock.patch("ami.main.services.regional_taxa.derive_region_for_project")
+    @mock.patch("ami.main.services.regional_taxa.generate_regional_taxa_list")
+    def test_all_projects_generates_for_each_derived_region(self, mock_generate, mock_derive):
+        mock_generate.return_value = _fake_result()
+        mock_derive.return_value = (RegionSource.GBIF_GADM.value, "USA.46_1")
+        Project.objects.create(name="Cmd P1", create_defaults=False)
+        Project.objects.create(name="Cmd P2", create_defaults=False)
+        call_command("generate_regional_taxa_list", "--all-projects", "--dry-run")
+        self.assertEqual(mock_generate.call_count, Project.objects.count())
+
+    @mock.patch("ami.main.services.regional_taxa.derive_region_for_project")
+    @mock.patch("ami.main.services.regional_taxa.generate_regional_taxa_list")
+    def test_all_projects_skips_projects_without_region(self, mock_generate, mock_derive):
+        mock_derive.return_value = None
+        Project.objects.create(name="Cmd P1", create_defaults=False)
+        call_command("generate_regional_taxa_list", "--all-projects", "--dry-run")
+        mock_generate.assert_not_called()

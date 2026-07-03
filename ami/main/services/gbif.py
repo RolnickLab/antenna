@@ -100,3 +100,40 @@ class GBIFRegionalSource:
                 )
             )
         return species
+
+
+DEFAULT_GADM_LEVEL = 1
+
+
+def reverse_geocode_gadm(
+    latitude: float,
+    longitude: float,
+    level: int = DEFAULT_GADM_LEVEL,
+    timeout: int = DEFAULT_TIMEOUT_SECONDS,
+    session=None,
+) -> str | None:
+    """Resolve a point to the GADM region id that contains it, at the requested level.
+
+    Level 1 is state/province ("USA.46_1"), level 2 is county/district
+    ("USA.46.14_1"). Returns the gid, or None when no GADM polygon of that level
+    contains the point. This derives a `region_code` for a project or site from a
+    deployment's stored latitude/longitude, so a regional taxa list can be built
+    without anyone typing a region code by hand (issue #1364, path A3).
+
+    Matching is on the gid shape rather than the response's source string: a level-N
+    GADM gid has N dot-separated segments after the country and ends with the version
+    suffix "_1" (level 0, the bare country code, has no suffix and is never returned).
+    """
+    session = session or create_session()
+    response = session.get(
+        f"{GBIF_API_BASE}/geocode/reverse",
+        params={"lat": latitude, "lng": longitude},
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    for item in response.json():
+        gid = item.get("id", "")
+        segments = gid.split(".")
+        if gid.endswith("_1") and len(segments) == level + 1:
+            return gid
+    return None
