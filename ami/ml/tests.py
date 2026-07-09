@@ -2070,8 +2070,10 @@ class TestSaveResultsRefreshesDeploymentCounts(TestCase):
 
 class TestAlgorithmViewSetProjectFilter(APITestCase):
     """
-    The algorithm list endpoint is scoped to algorithms belonging to
-    pipelines enabled for the active project.
+    The algorithm list endpoint is scoped to algorithms relevant to the active
+    project: those belonging to an enabled pipeline, plus any that produced
+    classifications in the project (e.g. post-processing algorithms like class
+    masking, which are created standalone with no pipeline).
     """
 
     def setUp(self):
@@ -2136,3 +2138,33 @@ class TestAlgorithmViewSetProjectFilter(APITestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["name"], "Algo Disabled")
+
+    def _classify_in_project(self, algorithm, project):
+        """Give ``algorithm`` a terminal classification whose capture is in ``project``."""
+        source_image = SourceImage.objects.create(project=project)
+        detection = Detection.objects.create(source_image=source_image)
+        return Classification.objects.create(
+            detection=detection,
+            algorithm=algorithm,
+            timestamp=datetime.datetime.now(datetime.timezone.utc),
+        )
+
+    def test_lists_post_processing_algorithm_with_classifications_in_project(self):
+        """A post-processing algorithm has no pipeline but produces determinations in
+        the project, so the list must include it — otherwise the user cannot filter
+        occurrences by the masked result."""
+        masked_algo = Algorithm.objects.create(name="Class Masked Classifier", version=1)
+        self._classify_in_project(masked_algo, self.project)
+
+        names = self._list_algorithm_names(project_id=self.project.pk)
+        self.assertIn("Class Masked Classifier", names)
+        self.assertIn("Algo Enabled", names, "Enabled-pipeline algorithms still appear")
+        self.assertNotIn("Algo Disabled", names, "A disabled pipeline with no classifications stays hidden")
+
+    def test_classifications_in_other_project_do_not_leak(self):
+        """An algorithm whose classifications live in another project must not appear."""
+        other_masked_algo = Algorithm.objects.create(name="Other Project Masked", version=1)
+        self._classify_in_project(other_masked_algo, self.other_project)
+
+        names = self._list_algorithm_names(project_id=self.project.pk)
+        self.assertNotIn("Other Project Masked", names)

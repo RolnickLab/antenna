@@ -1,7 +1,7 @@
 import logging
 
 from django.db import transaction
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.db.models.query import QuerySet
 from django.utils.text import slugify
 from drf_spectacular.utils import extend_schema
@@ -15,7 +15,7 @@ from ami.base.permissions import ProjectPipelineConfigPermission
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
-from ami.main.models import Project, SourceImage
+from ami.main.models import Classification, Project, SourceImage
 from ami.ml.schemas import PipelineRegistrationResponse
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
@@ -56,14 +56,25 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
     def get_queryset(self) -> QuerySet["Algorithm"]:
         qs: QuerySet["Algorithm"] = super().get_queryset()
         qs = qs.with_category_count()  # type: ignore[union-attr] # Custom queryset method
-        # Only scope list by project. Detail stays unscoped so links from historical
+        # Only scope the list by project. Detail stays unscoped so links from historical
         # classifications whose pipeline is no longer enabled still resolve.
         if getattr(self, "action", None) == "list":
             project = self.get_active_project()
             if project:
+                # An algorithm is relevant to the project if it is configured via an
+                # enabled pipeline OR it produced classifications in the project.
+                # Post-processing algorithms (e.g. class masking) are created standalone
+                # with no pipeline, so the pipeline join alone would hide them even though
+                # they own determinations the user needs to filter occurrences by.
+                classified_in_project = Classification.objects.filter(detection__source_image__project=project).values(
+                    "algorithm"
+                )
                 qs = qs.filter(
-                    pipelines__project_pipeline_configs__project=project,
-                    pipelines__project_pipeline_configs__enabled=True,
+                    Q(
+                        pipelines__project_pipeline_configs__project=project,
+                        pipelines__project_pipeline_configs__enabled=True,
+                    )
+                    | Q(pk__in=classified_in_project)
                 ).distinct()
         return qs
 
