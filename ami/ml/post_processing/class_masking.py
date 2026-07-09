@@ -272,7 +272,7 @@ class ClassMaskingTask(BasePostProcessingTask):
         return algorithm
 
     def _scoped_classifications(
-        self, config: ClassMaskingConfig, source_algorithm: Algorithm
+        self, config: ClassMaskingConfig, source_algorithm: Algorithm, masking_algorithm: Algorithm
     ) -> tuple[QuerySet[Classification], str]:
         """Resolve the terminal classifications to re-score from the config's scope.
 
@@ -284,13 +284,21 @@ class ClassMaskingTask(BasePostProcessingTask):
         arrays, which measured 208s versus 0.5s on a 55,530-row scope. Broadening
         either scope to match several collections or a whole project would fan out
         and need de-duplication again — restrict the columns first. See #1376.
+
+        Sources already re-scored by ``masking_algorithm`` are excluded via the
+        ``applied_to`` lineage, so a source is masked at most once per masking
+        algorithm even if it becomes terminal again later. See #1368.
         """
-        base = Classification.objects.filter(
-            terminal=True,
-            algorithm=source_algorithm,
-            scores__isnull=False,
-            logits__isnull=False,
-        ).select_related("detection", "detection__occurrence")
+        base = (
+            Classification.objects.filter(
+                terminal=True,
+                algorithm=source_algorithm,
+                scores__isnull=False,
+                logits__isnull=False,
+            )
+            .exclude(derived_classifications__algorithm=masking_algorithm)
+            .select_related("detection", "detection__occurrence")
+        )
 
         if config.occurrence_id is not None:
             if not Occurrence.objects.filter(pk=config.occurrence_id).exists():
@@ -327,7 +335,7 @@ class ClassMaskingTask(BasePostProcessingTask):
         masking_algorithm = self._get_or_create_masking_algorithm(
             source_algorithm, taxa_list, reweight=config.reweight
         )
-        classifications, scope_desc = self._scoped_classifications(config, source_algorithm)
+        classifications, scope_desc = self._scoped_classifications(config, source_algorithm, masking_algorithm)
         self.logger.info(f"Applying class masking on {scope_desc} using taxa list {taxa_list.pk}")
 
         def _on_setup(total: int) -> None:

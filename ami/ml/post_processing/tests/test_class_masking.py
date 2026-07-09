@@ -253,6 +253,53 @@ class TestPostProcessingClassMasking(TestCase):
         occ.refresh_from_db()
         self.assertEqual(occ.determination, self.species_taxa[1], "Occurrence determination follows the masked result")
 
+    def test_rerun_does_not_duplicate_masked_classifications(self):
+        """Re-running the same mask must not create a second masked classification for
+        a source already re-scored, even if that source became terminal again in between.
+
+        Idempotency is keyed on the ``applied_to`` lineage — a source is masked at most
+        once per masking algorithm — not on the terminal flag. This makes it safe to
+        finish a partially completed run (e.g. one the health-check reaper revoked) or
+        to re-run after a re-classification / dedup pass re-terminalized a source.
+        """
+        logits = [0.5, 3.0, 3.5]  # excluded index 2 is top; index 1 is the in-list winner
+        taxa_list = TaxaList.objects.create(name="Idempotency list")
+        taxa_list.taxa.set(self.species_taxa[:2])
+
+        det, _ = self._detection_with_occurrence()
+        original = self._create_classification_with_logits(det, self.species_taxa[2], _softmax(logits), logits)
+
+        def run():
+            ClassMaskingTask(
+                source_image_collection_id=self.collection.pk,
+                taxa_list_id=taxa_list.pk,
+                algorithm_id=self.algorithm.pk,
+            ).run()
+
+        run()
+        masking_algo = Algorithm.objects.get(
+            key=f"{self.algorithm.key}_filtered_by_taxa_list_{taxa_list.pk}_reweighted"
+        )
+        self.assertEqual(
+            Classification.objects.filter(algorithm=masking_algo, applied_to=original).count(),
+            1,
+            "First run masks the source exactly once",
+        )
+
+        # Simulate the source becoming terminal again (a dedup or re-classification pass)
+        # while its masked child still exists. The terminal filter alone would re-select
+        # it; the applied_to guard must still skip it.
+        original.refresh_from_db()
+        original.terminal = True
+        original.save(update_fields=["terminal"])
+
+        run()
+        self.assertEqual(
+            Classification.objects.filter(algorithm=masking_algo, applied_to=original).count(),
+            1,
+            "Re-run must not create a duplicate masked classification for an already-masked source",
+        )
+
     def test_reweight_modes_get_distinct_masking_algorithms(self):
         """The reweight mode is part of the masking algorithm's identity.
 
