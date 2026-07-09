@@ -191,7 +191,7 @@ owner's call):
 `DeploymentListSerializer` gets a read-only `data_source_connected` boolean
 (`obj.data_source_id is not None`). No query cost (the id is on the row), no
 migration. The per-row Sync button now shows only when
-`item.canUpdate && item.dataSourceConnected`, so it is hidden on stations with no
+`item.canSync && item.dataSourceConnected`, so it is hidden on stations with no
 storage source. The endpoint's 400 stays as a safety net for races. The field
 also feeds "Sync all" eligibility on the frontend.
 
@@ -210,10 +210,14 @@ single-`deployment` FK on `DataStorageSyncJob`. Returns
   transient probe: `Deployment(project=project).check_permission(user, "sync")`,
   which resolves to the `sync_deployment` guardian permission — exactly what the
   per-row `sync` action requires. Superusers pass via Django's bypass;
-  `ProjectManager` passes via guardian; `BasicMember` is denied (403).
-- The per-row button stays gated on `canUpdate`, **not** a `sync` permission.
-  Superusers receive `["update", "delete"]` in `user_permissions` but not
-  `"sync"` (guardian `get_perms` returns nothing for superusers), so gating on
-  `sync` would wrongly hide the button from them. `update_deployment` and
-  `sync_deployment` are co-granted (only to `ProjectManager`), so `canUpdate`
-  covers exactly the users who can sync.
+  `ProjectManager` and `MLDataManager` pass via guardian; `BasicMember`,
+  `Researcher`, and `Identifier` are denied (403).
+- The per-row button is gated on `canSync` — the `sync` entry in a deployment's
+  `user_permissions`, backed by the `sync_deployment` guardian permission.
+  Superusers receive `sync` there too: guardian's `get_perms` returns every
+  permission defined on the project's content type for a superuser, and
+  `sync_deployment` is one of them. `sync_deployment` is held by `MLDataManager`
+  and `ProjectManager` (and superusers); `update_deployment` is held only by
+  `ProjectManager`, so gating on `canUpdate` would wrongly hide the button from
+  ML data managers who can sync. `canSync` is the exact set of users who may
+  sync.
