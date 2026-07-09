@@ -141,9 +141,20 @@ class AlgorithmCategoryMap(BaseModel):
         return labels_data
 
     def save(self, *args, **kwargs):
-        if not self.labels_hash:
-            self.labels_hash = self.make_labels_hash(self.labels)
+        new_labels_hash = self.make_labels_hash(self.labels) if self.labels else None
+        previous_labels_hash = None
+        if self.pk:
+            previous_labels_hash = type(self).objects.filter(pk=self.pk).values_list("labels_hash", flat=True).first()
+        self.labels_hash = new_labels_hash
         super().save(*args, **kwargs)
+        # Refresh coverage only when the label set changed on a map that already has
+        # algorithms — i.e. an in-place edit / re-import under a stable id, which the
+        # Algorithm.save() hook (keyed on category_map_id) would miss. A brand-new map
+        # has no algorithms yet; its coverage is set when an algorithm is first linked.
+        if new_labels_hash != previous_labels_hash and self.pk and self.algorithms.exists():
+            from ami.main.services.taxon_coverage import refresh_category_map_coverage
+
+            refresh_category_map_coverage(self)
 
 
 class ArrayLength(models.Func):
@@ -247,11 +258,24 @@ class Algorithm(BaseModel):
         ]
 
     def save(self, *args, **kwargs):
+        previous_category_map_id = None
+        if self.pk:
+            previous_category_map_id = (
+                type(self).objects.filter(pk=self.pk).values_list("category_map_id", flat=True).first()
+            )
         if not self.version_name:
             self.version_name = f"{self.version}"
         if not self.key:
             self.key = f"{slugify(self.name)}-{self.version}"
         super().save(*args, **kwargs)
+        if self.category_map_id and self.category_map_id != previous_category_map_id:
+            # A newly-linked category map means this algorithm's predictable taxa
+            # just changed (or became known for the first time); keep the persisted
+            # Taxon.covered_by_algorithms / has_model_coverage relationship in sync.
+            # See ami.main.services.taxon_coverage.
+            from ami.main.services.taxon_coverage import refresh_algorithm_coverage
+
+            refresh_algorithm_coverage(self)
 
     def category_count(self) -> int | None:
         """
