@@ -39,6 +39,30 @@ export const columns: (project: {
     },
   },
   {
+    id: 'example',
+    name: translate(STRING.FIELD_LABEL_EXAMPLE),
+    tooltip: translate(STRING.TOOLTIP_VERIFY_EXAMPLE),
+    renderCell: (item: Species) => {
+      const example = item.verificationExample
+
+      return (
+        <ImageTableCell
+          images={example?.imageUrl ? [{ src: example.imageUrl }] : []}
+          theme={ImageCellTheme.Light}
+          to={
+            example
+              ? getAppRoute({
+                  to: APP_ROUTES.TAXA({ projectId }),
+                  filters: { verifyOccurrence: String(example.id) },
+                  keepSearchParams: true,
+                })
+              : undefined
+          }
+        />
+      )
+    },
+  },
+  {
     id: 'name',
     sortField: 'name',
     name: translate(STRING.FIELD_LABEL_TAXON),
@@ -136,30 +160,6 @@ export const columns: (project: {
         </div>
       </Link>
     ),
-  },
-  {
-    id: 'example',
-    name: translate(STRING.FIELD_LABEL_EXAMPLE),
-    tooltip: translate(STRING.TOOLTIP_VERIFY_EXAMPLE),
-    renderCell: (item: Species) => {
-      const example = item.verificationExample
-
-      return (
-        <ImageTableCell
-          images={example?.imageUrl ? [{ src: example.imageUrl }] : []}
-          theme={ImageCellTheme.Light}
-          to={
-            example
-              ? getAppRoute({
-                  to: APP_ROUTES.TAXA({ projectId }),
-                  filters: { verifyOccurrence: String(example.id) },
-                  keepSearchParams: true,
-                })
-              : undefined
-          }
-        />
-      )
-    },
   },
   {
     id: 'best-determination-score',

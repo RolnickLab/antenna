@@ -1,5 +1,4 @@
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
-import { Occurrence } from 'data-services/models/occurrence'
 import { Dialog } from 'nova-ui-kit'
 import {
   OccurrenceDetails,
@@ -18,11 +17,16 @@ export const OccurrenceDetailsDialog = ({
   id,
   occurrences,
   onClose,
+  onNavigate,
   defaultTab = TABS.FIELDS,
 }: {
   id: string
-  occurrences?: Occurrence[]
+  // Ordered items the prev/next buttons page through. Only the id is used.
+  occurrences?: { id: string }[]
   onClose: () => void
+  // How prev/next switches occurrence. When omitted, navigation routes to the
+  // occurrence detail page; the taxa list passes this to swap ?verifyOccurrence in place.
+  onNavigate?: (id: string) => void
   // Tab to open on when no ?tab= is set. The taxa list opens on Identification so
   // verifying is the immediate action; the occurrences list keeps Fields.
   defaultTab?: string
@@ -71,7 +75,11 @@ export const OccurrenceDetailsDialog = ({
             setSelectedTab={setSelectedView}
           />
         ) : null}
-        <OccurrenceNavigation occurrences={occurrences} />
+        <OccurrenceNavigation
+          occurrences={occurrences}
+          currentId={id}
+          onNavigate={onNavigate}
+        />
       </Dialog.Content>
     </Dialog.Root>
   )

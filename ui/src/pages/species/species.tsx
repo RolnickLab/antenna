@@ -43,12 +43,12 @@ export const Species = () => {
   const { project } = useProjectDetails(projectId as string, true)
   const { columnSettings, setColumnSettings } = useColumnSettings('species', {
     'cover-image': true,
+    example: true,
     name: true,
     rank: false,
     'last-seen': true,
     occurrences: true,
     verified: true,
-    example: true,
     'best-determination-score': true,
     'created-at': false,
     'updated-at': false,
@@ -62,6 +62,17 @@ export const Species = () => {
     pagination,
     filters,
   })
+  // Ordered example occurrences, one per taxon row that has one, so the modal's
+  // prev/next steps to the next taxon's example (rows without an example are skipped).
+  const exampleNavItems = useMemo(
+    () =>
+      (species ?? []).flatMap((item) =>
+        item.verificationExample
+          ? [{ id: String(item.verificationExample.id) }]
+          : []
+      ),
+    [species]
+  )
   const { selectedView, setSelectedView } = useSelectedView('table')
   const { taxaLists = [] } = useTaxaLists({ projectId: projectId as string })
   const { tags = [] } = useTags({ projectId: projectId as string })
@@ -176,7 +187,13 @@ export const Species = () => {
       {verifyOccurrenceId ? (
         <OccurrenceDetailsDialog
           id={verifyOccurrenceId}
+          occurrences={exampleNavItems}
           defaultTab={OCCURRENCE_TABS.IDENTIFICATION}
+          onNavigate={(occurrenceId) => {
+            const nextParams = new URLSearchParams(searchParams)
+            nextParams.set('verifyOccurrence', occurrenceId)
+            setSearchParams(nextParams)
+          }}
           onClose={() => {
             const nextParams = new URLSearchParams(searchParams)
             nextParams.delete('verifyOccurrence')
