@@ -16,10 +16,18 @@ export const useSpecies = (
   isFetching: boolean
   error?: unknown
 } => {
-  // Always request the example-occurrence annotations so the taxa list can show
-  // the Example column and link the Last-seen / Best-score cells to a single
-  // occurrence. The backend gates this work behind the opt-in flag.
-  const fetchParams = { ...params, withExampleOccurrences: true }
+  // Request the example-occurrence annotations so the taxa list can show the Example
+  // column and link the Last-seen / Best-score cells to a single occurrence — except
+  // when a capture-set (collection) filter is active. On the ?collection= path those
+  // subqueries join detections and degrade to per-row scans, which is exactly why the
+  // backend gates them behind this opt-in flag, so we leave it off there.
+  const hasCollectionFilter = params?.filters?.some(
+    (filter) => filter.field === 'collection' && filter.value
+  )
+  const fetchParams = {
+    ...params,
+    withExampleOccurrences: !hasCollectionFilter,
+  }
   const fetchUrl = getFetchUrl({
     collection: API_ROUTES.SPECIES,
     params: fetchParams,
