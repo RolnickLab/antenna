@@ -26,8 +26,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         try:
-            algorithms_processed = refresh_all_algorithm_coverage()
+            maps_processed = refresh_all_algorithm_coverage()
         except Exception as e:
             raise CommandError(f"Failed to refresh taxon model coverage: {e}") from e
 
-        self.stdout.write(self.style.SUCCESS(f"Refreshed model coverage for {algorithms_processed} algorithm(s)."))
+        self.stdout.write(self.style.SUCCESS(f"Refreshed model coverage from {maps_processed} category map(s)."))

@@ -22,6 +22,8 @@ import dataclasses
 import logging
 import typing
 
+from django.db import transaction
+
 from ..models import RegionSource, Taxon, TaxonRank
 from . import taxon_coverage
 from .taxonomy import create_taxon, get_or_create_root_taxon
@@ -279,7 +281,16 @@ def map_to_taxa(merged: list[MergedSpecies], *, create_missing: bool, dry_run: b
 
         if root_taxon is None:
             root_taxon = get_or_create_root_taxon()
-        _created_taxa, _updated_taxa, specific_taxon = create_taxon(_taxon_data_from_merged(species), root_taxon)
+        try:
+            _created_taxa, _updated_taxa, specific_taxon = create_taxon(_taxon_data_from_merged(species), root_taxon)
+        except ValueError as exc:
+            # A source row whose rank Antenna's taxonomy cannot place (e.g. GBIF
+            # SUBSPECIES / VARIETY / FORM, none of which are TaxonRank members) makes
+            # create_taxon raise. Record it for review rather than aborting the whole
+            # region — one unmappable row must not discard the other species.
+            logger.warning("Regional taxa: skipping %r — could not build a taxon (%s)", species.scientific_name, exc)
+            unmatched_names.append(species.scientific_name)
+            continue
         created.append(specific_taxon)
 
     return MappingOutcome(matched=matched, created=created, unmatched_names=unmatched_names)
@@ -404,28 +415,33 @@ def generate_regional_taxa_list(
     merged = merge_source_species(per_source_species)
     regional_total = len(merged)
 
-    mapping = map_to_taxa(merged, create_missing=create_missing, dry_run=dry_run)
-    coverage = apply_model_coverage(mapping, dry_run=dry_run)
-
-    kept_taxa = list(coverage.covered)
-    if include_uncovered:
-        kept_taxa += coverage.uncovered
-
+    # The source fetch above is slow network I/O and is deliberately outside the
+    # transaction; only the DB mutation (creating taxa, refreshing their coverage, and
+    # writing the list membership) is atomic, so a mid-write failure leaves no orphan
+    # taxa or half-populated list.
     in_classifier_labels: int | None = None
     not_in_classifier: int | None = None
-    if classifier is not None and classifier.category_map is not None:
-        classifier_labels = set(classifier.category_map.labels)
-        in_classifier_labels = sum(1 for taxon in kept_taxa if taxon.name in classifier_labels)
-        not_in_classifier = len(kept_taxa) - in_classifier_labels
-
     list_name = name or f"{region_code} ({region_source})"
     taxa_list_id: int | None = None
     list_created = False
 
-    if not dry_run:
-        taxa_list, list_created = TaxaList.objects.get_or_create_for_project(name=list_name, project=project)
-        taxa_list.taxa.set(kept_taxa)
-        taxa_list_id = taxa_list.pk
+    with transaction.atomic():
+        mapping = map_to_taxa(merged, create_missing=create_missing, dry_run=dry_run)
+        coverage = apply_model_coverage(mapping, dry_run=dry_run)
+
+        kept_taxa = list(coverage.covered)
+        if include_uncovered:
+            kept_taxa += coverage.uncovered
+
+        if classifier is not None and classifier.category_map is not None:
+            classifier_labels = set(classifier.category_map.labels)
+            in_classifier_labels = sum(1 for taxon in kept_taxa if taxon.name in classifier_labels)
+            not_in_classifier = len(kept_taxa) - in_classifier_labels
+
+        if not dry_run:
+            taxa_list, list_created = TaxaList.objects.get_or_create_for_project(name=list_name, project=project)
+            taxa_list.taxa.set(kept_taxa)
+            taxa_list_id = taxa_list.pk
 
     return RegionalTaxaResult(
         region_source=region_source,

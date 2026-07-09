@@ -520,6 +520,40 @@ class TaxonModelCoverageRefreshTest(TestCase):
         self.assertFalse(unlisted.has_model_coverage)
         self.assertEqual(unlisted.covered_by_algorithms.count(), 0)
 
+    def test_inactive_taxon_is_not_covered_matching_masking(self):
+        """Coverage must mirror masking, which maps a label only to the ACTIVE taxon
+        of that name (AlgorithmCategoryMap.with_taxa, active=True). An inactive taxon
+        whose name is a label is therefore not covered — otherwise the regional list
+        would keep a taxon masking actually drops."""
+        taxon = Taxon.objects.create(name="Inactive Species", rank=TaxonRank.SPECIES.name, active=False)
+        category_map = AlgorithmCategoryMap.objects.create(
+            labels=["Inactive Species"], data=[{"index": 0, "label": "Inactive Species"}]
+        )
+        Algorithm.objects.create(name="Active-only Classifier", version=1, category_map=category_map)
+
+        taxon.refresh_from_db()
+        self.assertFalse(taxon.has_model_coverage)
+        self.assertEqual(taxon.covered_by_algorithms.count(), 0)
+
+    def test_editing_map_labels_in_place_refreshes_coverage(self):
+        """Editing or re-importing a category map's labels under a stable id changes
+        its labels_hash; the AlgorithmCategoryMap.save() hook refreshes coverage even
+        though category_map_id never changed (the Algorithm.save() hook would miss it)."""
+        taxon = Taxon.objects.create(name="Late-added Species", rank=TaxonRank.SPECIES.name)
+        category_map = AlgorithmCategoryMap.objects.create(
+            labels=["Something Else"], data=[{"index": 0, "label": "Something Else"}]
+        )
+        Algorithm.objects.create(name="Editable Classifier", version=1, category_map=category_map)
+        taxon.refresh_from_db()
+        self.assertFalse(taxon.has_model_coverage)
+
+        category_map.labels = ["Late-added Species"]
+        category_map.data = [{"index": 0, "label": "Late-added Species"}]
+        category_map.save()
+
+        taxon.refresh_from_db()
+        self.assertTrue(taxon.has_model_coverage)
+
     def test_reassigning_the_category_map_drops_stale_coverage(self):
         """When an algorithm's category map is swapped for one that no longer lists
         a taxon, the hook-triggered refresh removes that taxon's coverage (assuming
@@ -875,3 +909,32 @@ class GenerateRegionalTaxaListEndpointTest(APITestCase):
         response = self.client.post(self.url, {}, format="json")
         self.assertEqual(response.status_code, 202)
         self.assertEqual(mock_task.delay.call_args.kwargs["region_code"], "USA.46_1")
+
+
+class MapToTaxaRankGuardTest(TestCase):
+    """A source row whose rank Antenna's taxonomy cannot place must be recorded as
+    unmatched, not abort the whole region — one bad row must not lose the good ones."""
+
+    def _merged(self, name, rank, gbif_key):
+        return MergedSpecies(
+            scientific_name=name,
+            rank=rank,
+            gbif_taxon_key=gbif_key,
+            inat_taxon_id=None,
+            sources={"gbif"},
+            observation_counts={},
+            contributing=[SourceSpecies(source="gbif", scientific_name=name, rank=rank, gbif_taxon_key=gbif_key)],
+        )
+
+    def test_unmappable_rank_row_is_unmatched_and_others_still_created(self):
+        good = self._merged("Danaus plexippus", "SPECIES", 1)
+        # GBIF returns SUBSPECIES / VARIETY / FORM, none of which are TaxonRank members;
+        # create_taxon raises for such a row.
+        bad = self._merged("Danaus plexippus plexippus", "SUBSPECIES", 2)
+
+        outcome = map_to_taxa([good, bad], create_missing=True, dry_run=False)
+
+        self.assertIn("Danaus plexippus", {taxon.name for taxon in outcome.created})
+        self.assertIn("Danaus plexippus plexippus", outcome.unmatched_names)
+        self.assertTrue(Taxon.objects.filter(name="Danaus plexippus").exists())
+        self.assertFalse(Taxon.objects.filter(name="Danaus plexippus plexippus").exists())
