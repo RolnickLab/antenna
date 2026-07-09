@@ -6410,6 +6410,92 @@ class TestTaxaExampleOccurrence(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
 
+class TestDeviceAndSiteFilters(APITestCase):
+    """Filtering occurrences and taxa by the deployment's device and research site.
+
+    A deployment records both a ``device`` (the camera/hardware configuration) and a
+    ``research_site``. Users can scope the occurrence and taxa lists to one device or
+    one site so they can, for example, build a presence matrix per site. These tests
+    pin that the occurrence list filters exactly to the chosen device/site, that the
+    taxa list restricts membership the same way (not just its annotated counts), and
+    that an unknown device/site id is rejected with a 404 on the taxa endpoint.
+    """
+
+    def setUp(self):
+        self.project, self.deployment_a = setup_test_project(reuse=False)
+        create_taxa(self.project)
+        self.cardui = Taxon.objects.get(name="Vanessa cardui")
+        self.atalanta = Taxon.objects.get(name="Vanessa atalanta")
+
+        # Two devices and two sites, each pinned to its own deployment.
+        self.device_a = Device.objects.create(name="Device A", project=self.project)
+        self.device_b = Device.objects.create(name="Device B", project=self.project)
+        self.site_a = Site.objects.create(name="Site A", project=self.project)
+        self.site_b = Site.objects.create(name="Site B", project=self.project)
+
+        self.deployment_a.device = self.device_a
+        self.deployment_a.research_site = self.site_a
+        self.deployment_a.save()
+        self.deployment_b = Deployment.objects.create(
+            name="Deployment B",
+            project=self.project,
+            device=self.device_b,
+            research_site=self.site_b,
+        )
+
+        # Deployment A only sees cardui; deployment B only sees atalanta. This lets the
+        # device/site filter be checked by both the occurrence count and the taxa membership.
+        create_captures(deployment=self.deployment_a, num_nights=1, images_per_night=2)
+        create_captures(deployment=self.deployment_b, num_nights=1, images_per_night=2)
+        create_occurrences(deployment=self.deployment_a, num=3, taxon=self.cardui, determination_score=0.9)
+        create_occurrences(deployment=self.deployment_b, num=2, taxon=self.atalanta, determination_score=0.9)
+
+    def _occurrence_count(self, **params):
+        query = "&".join(f"{k}={v}" for k, v in params.items())
+        res = self.client.get(f"/api/v2/occurrences/?project_id={self.project.pk}&{query}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return res.json()["count"]
+
+    def _taxa_names(self, **params):
+        query = "&".join(f"{k}={v}" for k, v in params.items())
+        res = self.client.get(f"/api/v2/taxa/?project_id={self.project.pk}&limit=1000&{query}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return {row["name"] for row in res.json()["results"]}
+
+    def test_occurrences_filtered_by_device(self):
+        self.assertEqual(self._occurrence_count(), 5)
+        self.assertEqual(self._occurrence_count(deployment__device=self.device_a.pk), 3)
+        self.assertEqual(self._occurrence_count(deployment__device=self.device_b.pk), 2)
+
+    def test_occurrences_filtered_by_site(self):
+        self.assertEqual(self._occurrence_count(deployment__research_site=self.site_a.pk), 3)
+        self.assertEqual(self._occurrence_count(deployment__research_site=self.site_b.pk), 2)
+
+    def test_taxa_membership_restricted_by_device(self):
+        # The taxa list must drop to only the taxa observed on the chosen device, not
+        # merely re-scope the counts of the full taxa set.
+        self.assertEqual(self._taxa_names(deployment__device=self.device_a.pk), {"Vanessa cardui"})
+        self.assertEqual(self._taxa_names(deployment__device=self.device_b.pk), {"Vanessa atalanta"})
+
+    def test_taxa_membership_restricted_by_site(self):
+        self.assertEqual(self._taxa_names(deployment__research_site=self.site_a.pk), {"Vanessa cardui"})
+        self.assertEqual(self._taxa_names(deployment__research_site=self.site_b.pk), {"Vanessa atalanta"})
+
+    def test_unknown_device_or_site_returns_404_on_taxa(self):
+        for param in ("deployment__device", "deployment__research_site"):
+            res = self.client.get(f"/api/v2/taxa/?project_id={self.project.pk}&{param}=999999")
+            self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND, param)
+
+    def test_non_integer_id_returns_400_not_500(self):
+        # A malformed id must be a client error on both endpoints, not an unhandled 500.
+        # The taxa view validates the id before the existence lookup; the occurrence view
+        # gets the same 400 from django-filter. Both must agree.
+        for endpoint in ("taxa", "occurrences"):
+            for param in ("deployment__device", "deployment__research_site"):
+                res = self.client.get(f"/api/v2/{endpoint}/?project_id={self.project.pk}&{param}=abc")
+                self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST, f"{endpoint}?{param}=abc")
+
+
 class TestDetectionNullMarker(TestCase):
     """
     Covers the null-marker abstraction added for Issue #1310 follow-up:
