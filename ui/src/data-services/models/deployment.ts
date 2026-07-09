@@ -26,8 +26,9 @@ export class Deployment extends Entity {
   }
 
   get canSync(): boolean {
-    // Superusers can sync but do not receive the `sync` permission in
-    // user_permissions, so callers gate on `canUpdate || canSync`.
+    // Granted to ML data managers, project managers, and superusers. Superusers
+    // receive `sync` here too (guardian returns every project permission for
+    // them), so this getter alone is the sync gate.
     return this._deployment.user_permissions.includes(UserPermission.Sync)
   }
 

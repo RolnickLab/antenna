@@ -3005,6 +3005,28 @@ class TestDeploymentSyncAll(APITestCase):
         self.assertEqual(jobs.count(), 1, "Exactly one sync job, for the connected station")
         self.assertEqual(jobs.first().deployment_id, self.connected.pk, "Unconnected station must be skipped")
 
+    def test_per_row_sync_permission_matrix(self):
+        # The per-row POST /deployments/{id}/sync/ action enforces the same
+        # sync_deployment permission as the bulk endpoint. This pins that the
+        # newly-granted MLDataManager role can start a sync and that roles
+        # without the permission are refused (403), so the per-row and bulk
+        # paths cannot silently diverge on who may sync.
+        url = f"/api/v2/deployments/{self.connected.pk}/sync/"
+        matrix = [
+            ("superuser", self.superuser, status.HTTP_200_OK),
+            ("ProjectManager", self.pm_user, status.HTTP_200_OK),
+            ("MLDataManager", self.ml_user, status.HTTP_200_OK),
+            ("Researcher", self.researcher, status.HTTP_403_FORBIDDEN),
+            ("Identifier", self.identifier, status.HTTP_403_FORBIDDEN),
+            ("BasicMember", self.basic_user, status.HTTP_403_FORBIDDEN),
+            ("outsider", self.outsider, status.HTTP_403_FORBIDDEN),
+        ]
+        for role_name, user, expected in matrix:
+            with self.subTest(role=role_name):
+                self.client.force_authenticate(user)
+                response = self.client.post(url)
+                self.assertEqual(response.status_code, expected, f"{role_name} got {response.status_code}")
+
 
 class TestSyncDeploymentBackfillMigration(APITestCase):
     """The 0095 backfill grants OBJECT-LEVEL sync_deployment to existing projects'
