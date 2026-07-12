@@ -154,18 +154,34 @@ def get_or_create_default_research_site(project: "Project") -> "Site":
 
 
 def get_or_create_default_deployment(
-    project: "Project", site: "Site | None" = None, device: "Device | None" = None
+    project: "Project",
+    site: "Site | None" = None,
+    device: "Device | None" = None,
+    name: str = "Default Station",
 ) -> "Deployment":
-    """Create a default deployment for a project."""
-    deployment, _created = Deployment.objects.get_or_create(
-        name="Default Station",
-        project=project,
-        research_site=site,
-        device=device,
-        latitude=0,
-        longitude=0,
+    """
+    Create a default deployment for a project.
+
+    @TODO Require that the deployment name is unique per project.
+    """
+    deployment = (
+        Deployment.objects.filter(
+            project=project,
+            name=name,
+        )
+        .order_by("-created_at")
+        .first()
     )
-    logger.info(f"Created default deployment for project {project}")
+    if not deployment:
+        deployment = Deployment.objects.create(
+            name=name,
+            project=project,
+            research_site=site,
+            device=device,
+            latitude=0,
+            longitude=0,
+        )
+        logger.info(f"Created default deployment for project {project}")
     return deployment
 
 
@@ -1692,6 +1708,19 @@ def _group_images_into_events_locked(
         # Set the width and height of all images in each event based on the first image
         logger.info(f"Setting image dimensions for event {event}")
         set_dimensions_for_collection(event)
+
+    # Warn if any occurrences belonging to the deployment are not assigned to an event
+    logger.info("Checking for ungrouped occurrences in deployment")
+    ungrouped_occurrences = Occurrence.objects.filter(
+        deployment=deployment,
+        event__isnull=True,
+    )
+    if ungrouped_occurrences.exists():
+        logger.warning(
+            f"Found {ungrouped_occurrences.count()} occurrences in deployment {deployment} "
+            "that are not assigned to any event. "
+            "This may indicate that some images were not grouped correctly."
+        )
 
     # Refresh deployment-level cached counts. The async regroup_events task
     # never goes through Deployment.save's calculated-fields refresh, so
