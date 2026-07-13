@@ -147,12 +147,9 @@ class DefaultReadOnlyViewSet(DefaultViewSetMixin, viewsets.ReadOnlyModelViewSet)
 
 class ProjectPagination(LimitOffsetPaginationWithPermissions):
     default_limit = 40
-
-    def get_count(self, queryset):
-        # The recent-activity orderings annotate correlated subqueries onto the
-        # queryset. They don't change the row count, so strip them (and ordering)
-        # before counting to keep the pagination COUNT query cheap.
-        return super().get_count(queryset.order_by().values("pk"))
+    # The recent-activity orderings annotate correlated subqueries onto the
+    # queryset; the base paginator's _count_queryset strips them (and ordering)
+    # before counting, so no get_count override is needed here.
 
 
 class ProjectViewSet(DefaultViewSet, ProjectMixin):

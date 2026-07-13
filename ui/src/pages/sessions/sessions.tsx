@@ -39,12 +39,13 @@ export const Sessions = () => {
   })
   const { pagination, setPage } = usePagination()
   const { filters } = useFilters()
-  const { sessions, total, isLoading, isFetching, error } = useSessions({
-    projectId,
-    sort,
-    pagination,
-    filters,
-  })
+  const { sessions, total, totalIsExact, isLoading, isFetching, error } =
+    useSessions({
+      projectId,
+      sort,
+      pagination,
+      filters,
+    })
   const { selectedView, setSelectedView } = useSelectedView('table')
   const tableColumns = columns({ projectId: projectId as string })
 
@@ -114,6 +115,7 @@ export const Sessions = () => {
           <PaginationBar
             pagination={pagination}
             total={total}
+            totalIsExact={totalIsExact}
             setPage={setPage}
           />
         ) : null}
