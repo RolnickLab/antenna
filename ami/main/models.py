@@ -5060,6 +5060,7 @@ class SourceImageCollection(BaseModel):
     def sample_interval(
         self,
         minute_interval: int = 10,
+        max_num: int | None = None,
         exclude_events: list[int] = [],
         deployment_id: int | None = None,  # Deprecated
         hour_start: int | None = None,
@@ -5106,7 +5107,7 @@ class SourceImageCollection(BaseModel):
         captures: set[SourceImage] = set()
         for dep in deps:
             dep_qs = qs.filter(deployment=dep)
-            for c in sample_captures_by_interval(minute_interval=minute_interval, qs=dep_qs):
+            for c in sample_captures_by_interval(minute_interval=minute_interval, qs=dep_qs, max_num=max_num):
                 captures.add(c)
 
         # Return results in a deterministic order. Sort by timestamp (oldest first),
