@@ -2,6 +2,7 @@ import collections
 import contextlib
 import datetime
 import functools
+import inspect
 import logging
 import textwrap
 import time
@@ -4913,8 +4914,23 @@ class SourceImageCollection(BaseModel):
         else:
             task_logger.info(f"Sampling using method '{method_name}' with params: {kwargs}")
             method = getattr(self, method_name)
+            method_sig = inspect.signature(method)
+            accepted_kwargs = {
+                name
+                for name, param in method_sig.parameters.items()
+                if name != "self"
+                and param.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY)
+            }
+            filtered_kwargs = {key: value for key, value in kwargs.items() if key in accepted_kwargs}
+            ignored_kwargs = sorted(set(kwargs) - set(filtered_kwargs))
+            if ignored_kwargs:
+                task_logger.warning(
+                    "Ignoring unsupported arguments for samplng method %s: %s",
+                    method_name,
+                    ", ".join(ignored_kwargs),
+                )
             task_logger.info(f"Sampling and saving captures to {self}")
-            self.images.set(method(**kwargs))
+            self.images.set(method(**filtered_kwargs))
             self.save()
             task_logger.info(f"Done sampling and saving captures to {self}")
 
