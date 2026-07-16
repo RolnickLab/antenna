@@ -884,6 +884,28 @@ class Deployment(BaseModel):
         else:
             return filesizeformat(self.data_source_total_size)
 
+    def enqueue_sync_job(self) -> "Job":
+        """
+        Create and enqueue a ``DataStorageSyncJob`` to sync this station's
+        captures from its data source, returning the queued job.
+
+        The single place that builds the sync job, shared by the API's per-row
+        and bulk sync actions and the Django admin bulk action so all three
+        create it identically (one job per deployment). Callers own their own
+        preconditions — that a data source is configured, that skipped stations
+        are reported — this method always builds and enqueues.
+        """
+        from ami.jobs.models import DataStorageSyncJob, Job
+
+        job = Job.objects.create(
+            name=f"Sync captures for deployment {self.pk}",
+            deployment=self,
+            project=self.project,
+            job_type_key=DataStorageSyncJob.key,
+        )
+        job.enqueue()
+        return job
+
     def sync_captures(
         self,
         batch_size=1000,

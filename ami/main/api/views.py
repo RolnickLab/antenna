@@ -336,26 +336,6 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
 
         return qs
 
-    @staticmethod
-    def _enqueue_sync_job(deployment: Deployment):
-        """
-        Create and enqueue a ``DataStorageSyncJob`` for a single deployment.
-
-        Shared by the per-row ``sync`` action and the bulk ``sync_all`` action so
-        both build the job the same way (one job per deployment, matching the
-        admin bulk action).
-        """
-        from ami.jobs.models import DataStorageSyncJob, Job
-
-        job = Job.objects.create(
-            name=f"Sync captures for deployment {deployment.pk}",
-            deployment=deployment,
-            project=deployment.project,
-            job_type_key=DataStorageSyncJob.key,
-        )
-        job.enqueue()
-        return job
-
     @action(detail=True, methods=["post"], name="sync")
     def sync(self, _request, pk=None) -> Response:
         """
@@ -363,7 +343,7 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         """
         deployment: Deployment = self.get_object()
         if deployment and deployment.data_source:
-            job = self._enqueue_sync_job(deployment)
+            job = deployment.enqueue_sync_job()
             logger.info(
                 f"Syncing captures for deployment {deployment.pk} from {deployment.data_source_uri} in background."
             )
@@ -395,7 +375,7 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
             )
 
         deployments = self.get_queryset().filter(data_source__isnull=False)
-        job_ids = [self._enqueue_sync_job(deployment).pk for deployment in deployments]
+        job_ids = [deployment.enqueue_sync_job().pk for deployment in deployments]
         logger.info(f"Queued {len(job_ids)} DataStorageSyncJob(s) for project {project.pk}: {job_ids}")
         return Response({"job_ids": job_ids, "queued": len(job_ids), "project_id": project.pk})
 
