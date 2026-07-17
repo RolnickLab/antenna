@@ -341,9 +341,11 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         """
         Queue a task to sync data from the deployment's data source.
         """
+        from ami.jobs.models import DataStorageSyncJob
+
         deployment: Deployment = self.get_object()
         if deployment and deployment.data_source:
-            job = deployment.enqueue_sync_job()
+            job = DataStorageSyncJob.enqueue_for(deployment)
             logger.info(
                 f"Syncing captures for deployment {deployment.pk} from {deployment.data_source_uri} in background."
             )
@@ -374,8 +376,10 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
                 detail="You do not have permission to sync stations in this project."
             )
 
+        from ami.jobs.models import DataStorageSyncJob
+
         deployments = self.get_queryset().filter(data_source__isnull=False)
-        job_ids = [deployment.enqueue_sync_job().pk for deployment in deployments]
+        job_ids = [DataStorageSyncJob.enqueue_for(deployment).pk for deployment in deployments]
         logger.info(f"Queued {len(job_ids)} DataStorageSyncJob(s) for project {project.pk}: {job_ids}")
         return Response({"job_ids": job_ids, "queued": len(job_ids), "project_id": project.pk})
 

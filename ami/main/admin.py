@@ -207,6 +207,8 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
     # https://docs.djangoproject.com/en/3.2/ref/contrib/admin/actions/#writing-action-functions
     @admin.action(description="Sync captures from deployment's data source (Job)")
     def sync_captures(self, request: HttpRequest, queryset: QuerySet[Deployment]) -> None:
+        from ami.jobs.models import DataStorageSyncJob
+
         queued_job_ids: list[int] = []
         skipped: list[str] = []
         for deployment in queryset:
@@ -216,7 +218,7 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
             if not deployment.data_source_id:
                 skipped.append(f"{deployment} (no data source)")
                 continue
-            queued_job_ids.append(deployment.enqueue_sync_job().pk)
+            queued_job_ids.append(DataStorageSyncJob.enqueue_for(deployment).pk)
         msg = f"Queued DataStorageSyncJob for {len(queued_job_ids)} deployments: {queued_job_ids}"
         if skipped:
             msg += f" — skipped: {', '.join(skipped)}"
