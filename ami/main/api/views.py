@@ -6,7 +6,7 @@ from django.conf import settings
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.core.files.storage import default_storage
-from django.db import models
+from django.db import models, transaction
 from django.db.models import OuterRef, Prefetch, Q, Subquery
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
@@ -62,6 +62,8 @@ from ..models import (
     update_detection_counts,
 )
 from .serializers import (
+    BulkIdentificationRequestSerializer,
+    BulkIdentificationResponseSerializer,
     ClassificationListSerializer,
     ClassificationSerializer,
     ClassificationWithTaxaSerializer,
@@ -2205,6 +2207,14 @@ class PageViewSet(DefaultViewSet):
             return PageSerializer
 
 
+#: Upper bound on a single bulk identification request.
+#: The write path saves each identification individually, so a batch holds a
+#: database connection for roughly this many round trips. The identification UI
+#: can only select occurrences on the current page, so real batches are far
+#: smaller than this; the cap exists to bound the worst case, not to shape the UI.
+MAX_BULK_IDENTIFICATIONS = 200
+
+
 class IdentificationViewSet(DefaultViewSet):
     """
     API endpoint that allows identifications to be viewed or edited.
@@ -2236,6 +2246,190 @@ class IdentificationViewSet(DefaultViewSet):
         self.check_object_permissions(self.request, obj)
 
         serializer.save(user=self.request.user)
+
+    @extend_schema(
+        request=BulkIdentificationRequestSerializer,
+        responses={200: BulkIdentificationResponseSerializer},
+    )
+    @action(detail=False, methods=["post"])
+    def bulk(self, request):
+        """
+        Create many identifications in one request.
+
+        Applying determinations to a page of occurrences otherwise costs one HTTP
+        request per occurrence. Each item is saved independently, so a single bad
+        item (an occurrence deleted since the page was loaded, say) reports an
+        error against its own index while the rest of the batch still succeeds.
+        The response lists an outcome per submitted item, in request order.
+        """
+        request_serializer = BulkIdentificationRequestSerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+        items = request_serializer.validated_data["identifications"]
+
+        occurrences = self._resolve_occurrences(items)
+        self._authorize_batch(request, occurrences)
+        taxa = self._resolve_taxa(items)
+        agreed_identifications, agreed_predictions = self._resolve_agreement_targets(items)
+
+        results = []
+        created_count = 0
+        for index, item in enumerate(items):
+            errors = self._validate_item(item, occurrences, taxa, agreed_identifications, agreed_predictions)
+            if errors:
+                results.append(
+                    {
+                        "index": index,
+                        "occurrence_id": item["occurrence_id"],
+                        "status": "error",
+                        "errors": errors,
+                    }
+                )
+                continue
+
+            identification = Identification(
+                occurrence=occurrences[item["occurrence_id"]],
+                taxon=taxa[item["taxon_id"]],
+                user=request.user,
+                comment=item["comment"],
+                agreed_with_identification=agreed_identifications.get(item["agreed_with_identification_id"]),
+                agreed_with_prediction=agreed_predictions.get(item["agreed_with_prediction_id"]),
+            )
+            # Each item commits on its own so that a failure part-way through the
+            # batch cannot undo the identifications already saved. save() also
+            # withdraws the user's earlier identification on this occurrence and
+            # recomputes the occurrence's determination.
+            with transaction.atomic():
+                identification.save()
+
+            created_count += 1
+            results.append(
+                {
+                    "index": index,
+                    "occurrence_id": item["occurrence_id"],
+                    "status": "created",
+                    "id": identification.pk,
+                }
+            )
+
+        return Response(
+            {
+                "created_count": created_count,
+                "error_count": len(items) - created_count,
+                "results": results,
+            }
+        )
+
+    def _resolve_occurrences(self, items: list[dict]) -> dict[int, Occurrence]:
+        """Fetch every occurrence in the batch in one query, with its project loaded."""
+        occurrence_ids = {item["occurrence_id"] for item in items}
+        # select_related("project") lets the permission probe and the single-project
+        # check read the project without a query per occurrence.
+        return {
+            occurrence.pk: occurrence
+            for occurrence in Occurrence.objects.filter(pk__in=occurrence_ids).select_related("project")
+        }
+
+    def _authorize_batch(self, request, occurrences: dict[int, Occurrence]) -> None:
+        """
+        Authorize the batch against the single project it belongs to.
+
+        A `detail=False` action never passes through `has_object_permission`, so the
+        check has to happen here. Permission to create an identification is granted
+        per project, so one check per batch is equivalent to one check per
+        occurrence — see the note on `Identification.check_permission`.
+        """
+        if not occurrences:
+            raise api_exceptions.ValidationError({"identifications": ["None of the requested occurrences exist."]})
+
+        projects = {occurrence.project for occurrence in occurrences.values()}
+        if len(projects) > 1:
+            raise api_exceptions.ValidationError(
+                {"identifications": ["All occurrences in a request must belong to the same project."]}
+            )
+
+        probe = Identification(occurrence=next(iter(occurrences.values())))
+        if not probe.check_permission(request.user, "create"):
+            # "create", not the name of this action: the action name is not in the
+            # model's CRUD permission map and would silently fall through to a
+            # permission that no role grants.
+            raise PermissionDenied("You do not have permission to identify occurrences in this project.")
+
+    def _resolve_taxa(self, items: list[dict]) -> dict[int, Taxon]:
+        """Fetch every taxon in the batch in one query."""
+        taxon_ids = {item["taxon_id"] for item in items}
+        return {taxon.pk: taxon for taxon in Taxon.objects.filter(pk__in=taxon_ids)}
+
+    def _resolve_agreement_targets(
+        self, items: list[dict]
+    ) -> tuple[dict[int, Identification], dict[int, Classification]]:
+        """
+        Fetch the identifications and predictions that items claim to agree with.
+
+        Both are recorded only as provenance, but they still have to be real and
+        belong to the occurrence being identified.
+        """
+        identification_ids = {
+            item["agreed_with_identification_id"] for item in items if item["agreed_with_identification_id"]
+        }
+        prediction_ids = {item["agreed_with_prediction_id"] for item in items if item["agreed_with_prediction_id"]}
+
+        agreed_identifications = {}
+        if identification_ids:
+            agreed_identifications = {
+                identification.pk: identification
+                for identification in Identification.objects.filter(pk__in=identification_ids)
+            }
+
+        agreed_predictions = {}
+        if prediction_ids:
+            agreed_predictions = {
+                classification.pk: classification
+                for classification in Classification.objects.filter(pk__in=prediction_ids).select_related("detection")
+            }
+
+        return agreed_identifications, agreed_predictions
+
+    def _validate_item(
+        self,
+        item: dict,
+        occurrences: dict[int, Occurrence],
+        taxa: dict[int, Taxon],
+        agreed_identifications: dict[int, Identification],
+        agreed_predictions: dict[int, Classification],
+    ) -> dict[str, list[str]]:
+        """Check one item against the already-fetched batch. Returns field errors, empty when valid."""
+        errors: dict[str, list[str]] = {}
+
+        occurrence = occurrences.get(item["occurrence_id"])
+        if occurrence is None:
+            errors["occurrence_id"] = [f"Occurrence {item['occurrence_id']} does not exist."]
+
+        if item["taxon_id"] not in taxa:
+            errors["taxon_id"] = [f"Taxon {item['taxon_id']} does not exist."]
+
+        agreed_identification_id = item["agreed_with_identification_id"]
+        if agreed_identification_id:
+            agreed = agreed_identifications.get(agreed_identification_id)
+            if agreed is None:
+                errors["agreed_with_identification_id"] = [
+                    f"Identification {agreed_identification_id} does not exist."
+                ]
+            elif occurrence is not None and agreed.occurrence_id != occurrence.pk:
+                errors["agreed_with_identification_id"] = [
+                    "An identification can only agree with another identification of the same occurrence."
+                ]
+
+        agreed_prediction_id = item["agreed_with_prediction_id"]
+        if agreed_prediction_id:
+            prediction = agreed_predictions.get(agreed_prediction_id)
+            if prediction is None:
+                errors["agreed_with_prediction_id"] = [f"Classification {agreed_prediction_id} does not exist."]
+            elif occurrence is not None and prediction.detection.occurrence_id != occurrence.pk:
+                errors["agreed_with_prediction_id"] = [
+                    "An identification can only agree with a prediction of the same occurrence."
+                ]
+
+        return errors
 
 
 class SiteViewSet(DefaultViewSet, ProjectMixin):
