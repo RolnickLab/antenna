@@ -66,6 +66,9 @@ class BaseQuerySet(QuerySet):
             if not is_anonymous:
                 filter_condition |= Q(owner=user) | Q(members=user)
 
+            if is_anonymous:
+                return self.filter(filter_condition)
+
             visible_project_ids = self.filter(filter_condition).order_by().values_list("pk", flat=True)
             return self.filter(pk__in=visible_project_ids)
 

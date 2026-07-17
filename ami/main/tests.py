@@ -3233,9 +3233,12 @@ class TestDraftProjectPermissions(APITestCase):
         assert self.deployment.pk not in ids
 
     def test_visible_for_user_deduplicates_captures_in_a_primary_key_subquery(self):
-        queryset = SourceImage.objects.visible_for_user(self.member)
+        self.project.members.add(self.outsider)
+        queryset = SourceImage.objects.visible_for_user(self.owner)
 
         self.assertIn(self.deployment.captures.first(), queryset)
+        capture_ids = list(queryset.values_list("pk", flat=True))
+        self.assertEqual(len(capture_ids), len(set(capture_ids)))
         self.assertNotIn("SELECT DISTINCT", str(queryset.query))
 
     def test_visible_for_user_across_all_models(self):
