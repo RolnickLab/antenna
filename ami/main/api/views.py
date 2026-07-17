@@ -6,7 +6,7 @@ from django.conf import settings
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.core.files.storage import default_storage
-from django.db import models, transaction
+from django.db import DatabaseError, models, transaction
 from django.db.models import OuterRef, Prefetch, Q, Subquery
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
@@ -2207,14 +2207,6 @@ class PageViewSet(DefaultViewSet):
             return PageSerializer
 
 
-#: Upper bound on a single bulk identification request.
-#: The write path saves each identification individually, so a batch holds a
-#: database connection for roughly this many round trips. The identification UI
-#: can only select occurrences on the current page, so real batches are far
-#: smaller than this; the cap exists to bound the worst case, not to shape the UI.
-MAX_BULK_IDENTIFICATIONS = 200
-
-
 class IdentificationViewSet(DefaultViewSet):
     """
     API endpoint that allows identifications to be viewed or edited.
@@ -2294,12 +2286,36 @@ class IdentificationViewSet(DefaultViewSet):
                 agreed_with_identification=agreed_identifications.get(item["agreed_with_identification_id"]),
                 agreed_with_prediction=agreed_predictions.get(item["agreed_with_prediction_id"]),
             )
-            # Each item commits on its own so that a failure part-way through the
-            # batch cannot undo the identifications already saved. save() also
-            # withdraws the user's earlier identification on this occurrence and
-            # recomputes the occurrence's determination.
-            with transaction.atomic():
-                identification.save()
+            try:
+                # ATOMIC_REQUESTS wraps the whole request in a transaction, so this
+                # is a savepoint rather than a separate transaction. Rolling back to
+                # it leaves the connection usable, which is what lets the rest of the
+                # batch continue after one item fails. Without catching the error
+                # here, a single failure would abort the request and discard every
+                # identification already made in it.
+                #
+                # save() also withdraws the user's earlier identification on this
+                # occurrence and recomputes the occurrence's determination.
+                with transaction.atomic():
+                    identification.save()
+            except (DatabaseError, exceptions.ObjectDoesNotExist) as error:
+                # The occurrence can be deleted between resolving the batch and
+                # writing it, which surfaces as an integrity error or a missing row
+                # part-way through save().
+                logger.warning(
+                    f"Bulk identification of occurrence {item['occurrence_id']} failed and was skipped: {error}"
+                )
+                results.append(
+                    {
+                        "index": index,
+                        "occurrence_id": item["occurrence_id"],
+                        "status": "error",
+                        "errors": {
+                            "occurrence_id": ["This occurrence could not be identified. It may have been deleted."]
+                        },
+                    }
+                )
+                continue
 
             created_count += 1
             results.append(
@@ -2339,7 +2355,11 @@ class IdentificationViewSet(DefaultViewSet):
         occurrence — see the note on `Identification.check_permission`.
         """
         if not occurrences:
-            raise api_exceptions.ValidationError({"identifications": ["None of the requested occurrences exist."]})
+            # Nothing resolved, so there is no project to authorize against and
+            # nothing to write. Every item is reported as not found instead, which
+            # keeps a batch of one missing occurrence answering the same way as a
+            # batch where only some are missing.
+            return
 
         projects = {occurrence.project for occurrence in occurrences.values()}
         if len(projects) > 1:
@@ -2424,7 +2444,12 @@ class IdentificationViewSet(DefaultViewSet):
             prediction = agreed_predictions.get(agreed_prediction_id)
             if prediction is None:
                 errors["agreed_with_prediction_id"] = [f"Classification {agreed_prediction_id} does not exist."]
-            elif occurrence is not None and prediction.detection.occurrence_id != occurrence.pk:
+            elif occurrence is not None and (
+                # A classification keeps its row when its detection is deleted, so the
+                # link back to an occurrence can be missing entirely.
+                prediction.detection is None
+                or prediction.detection.occurrence_id != occurrence.pk
+            ):
                 errors["agreed_with_prediction_id"] = [
                     "An identification can only agree with a prediction of the same occurrence."
                 ]

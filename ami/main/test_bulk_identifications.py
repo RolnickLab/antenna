@@ -9,12 +9,14 @@ and the fact that validation cost must not grow with the size of the batch.
 """
 
 import logging
+from unittest import mock
 
-from django.db import connection
+from django.db import IntegrityError, connection
 from django.test.utils import CaptureQueriesContext
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from ami.main.api.serializers import MAX_BULK_IDENTIFICATIONS
 from ami.main.models import Identification, Occurrence, Taxon
 from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 from ami.users.models import User
@@ -169,6 +171,13 @@ class TestBulkIdentificationSuccess(BulkIdentificationTestCase):
         """
         via_single, via_bulk = self.occurrences[0], self.occurrences[1]
 
+        # Seed both with an earlier identification by the same user, so that
+        # withdraw-previous is part of what the two paths have to agree on.
+        other_taxon = Taxon.objects.exclude(pk=self.taxon.pk).first()
+        assert other_taxon is not None
+        for occurrence in (via_single, via_bulk):
+            Identification.objects.create(occurrence=occurrence, taxon=other_taxon, user=self.identifier)
+
         self.client.force_authenticate(user=self.identifier)
         single_response = self.client.post(
             "/api/v2/identifications/",
@@ -253,12 +262,116 @@ class TestBulkIdentificationPartialFailure(BulkIdentificationTestCase):
         self.assertIn("agreed_with_identification_id", body["results"][0]["errors"])
 
     def test_a_failed_item_does_not_roll_back_successful_items(self):
-        """Each item commits independently; a later failure must not undo an earlier success."""
+        """A rejected item must not undo the identifications already made in the batch."""
         items = [self.item(self.occurrences[0]), {"occurrence_id": self.occurrences[1].pk, "taxon_id": 9_999_999}]
         self.post_bulk(items, user=self.identifier)
 
         self.assertTrue(Identification.objects.filter(occurrence=self.occurrences[0]).exists())
         self.assertFalse(Identification.objects.filter(occurrence=self.occurrences[1]).exists())
+
+    def test_a_database_failure_on_one_item_is_reported_without_losing_the_others(self):
+        """
+        A write that fails inside save() costs that item only.
+
+        The request runs in a single transaction (ATOMIC_REQUESTS), so each item is
+        saved inside a savepoint and its failure is caught. Without that, the first
+        failure would abort the transaction, discard every identification already
+        made in the request, and return a 500 instead of a per-item error. This is
+        the case that made the endpoint's partial-success promise real, so it is
+        pinned by forcing a failure rather than by trusting the arrangement.
+        """
+        failing_occurrence_id = self.occurrences[1].pk
+        original_save = Identification.save
+
+        def save_but_fail_for_one(identification_self, *args, **kwargs):
+            if identification_self.occurrence_id == failing_occurrence_id:
+                raise IntegrityError("simulated conflict while saving")
+            return original_save(identification_self, *args, **kwargs)
+
+        items = [self.item(occurrence) for occurrence in self.occurrences[:3]]
+        with mock.patch.object(Identification, "save", save_but_fail_for_one):
+            response = self.post_bulk(items, user=self.identifier)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        body = response.json()
+        self.assertEqual(body["created_count"], 2)
+        self.assertEqual(body["error_count"], 1)
+        self.assertEqual([result["status"] for result in body["results"]], ["created", "error", "created"])
+
+        # The surviving items are really committed, not merely reported as created.
+        self.assertTrue(Identification.objects.filter(occurrence=self.occurrences[0]).exists())
+        self.assertFalse(Identification.objects.filter(occurrence=self.occurrences[1]).exists())
+        self.assertTrue(Identification.objects.filter(occurrence=self.occurrences[2]).exists())
+
+    def test_every_occurrence_missing_is_reported_per_item(self):
+        """
+        A batch where nothing resolves answers like any other batch of failures.
+
+        A batch of one deleted occurrence and a batch where only some are deleted are
+        the same kind of failure, so they must not return different shapes.
+        """
+        response = self.post_bulk([{"occurrence_id": 9_999_998, "taxon_id": self.taxon.pk}], user=self.identifier)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        body = response.json()
+        self.assertEqual(body["created_count"], 0)
+        self.assertEqual(body["error_count"], 1)
+        self.assertIn("occurrence_id", body["results"][0]["errors"])
+
+    def test_unknown_agreement_targets_are_reported_per_item(self):
+        response = self.post_bulk(
+            [
+                self.item(self.occurrences[0], agreed_with_identification_id=9_999_999),
+                self.item(self.occurrences[1], agreed_with_prediction_id=9_999_999),
+            ],
+            user=self.identifier,
+        )
+
+        body = response.json()
+        self.assertEqual(body["created_count"], 0)
+        self.assertIn("agreed_with_identification_id", body["results"][0]["errors"])
+        self.assertIn("agreed_with_prediction_id", body["results"][1]["errors"])
+
+    def test_agreed_with_prediction_from_another_occurrence_is_rejected(self):
+        foreign_prediction = self.occurrences[1].best_prediction
+        response = self.post_bulk(
+            [self.item(self.occurrences[0], agreed_with_prediction_id=foreign_prediction.pk)],
+            user=self.identifier,
+        )
+
+        body = response.json()
+        self.assertEqual(body["created_count"], 0)
+        self.assertIn("agreed_with_prediction_id", body["results"][0]["errors"])
+
+    def test_a_missing_occurrence_does_not_produce_a_spurious_agreement_error(self):
+        """
+        With no occurrence to compare against, the agreement target cannot be
+        cross-checked, so the item reports the missing occurrence and nothing else.
+
+        The target here is real, so the only error that could appear alongside would
+        be an unwarranted "not the same occurrence" complaint.
+        """
+        real_target = Identification.objects.create(
+            occurrence=self.occurrences[1], taxon=self.taxon, user=self.superuser
+        )
+        response = self.post_bulk(
+            [{"occurrence_id": 9_999_997, "taxon_id": self.taxon.pk, "agreed_with_identification_id": real_target.pk}],
+            user=self.identifier,
+        )
+
+        errors = response.json()["results"][0]["errors"]
+        self.assertEqual(list(errors), ["occurrence_id"])
+
+    def test_an_item_reports_every_problem_it_has(self):
+        """Errors are reported per field, so one item with two problems names both."""
+        response = self.post_bulk(
+            [{"occurrence_id": 9_999_997, "taxon_id": 9_999_996}],
+            user=self.identifier,
+        )
+
+        errors = response.json()["results"][0]["errors"]
+        self.assertIn("occurrence_id", errors)
+        self.assertIn("taxon_id", errors)
 
 
 class TestBulkIdentificationValidation(BulkIdentificationTestCase):
@@ -279,11 +392,35 @@ class TestBulkIdentificationValidation(BulkIdentificationTestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_batch_larger_than_the_cap_is_rejected(self):
-        from ami.main.api.views import MAX_BULK_IDENTIFICATIONS
+        """
+        The cap is what fails an oversized batch, not some other rule.
 
-        items = [self.item(self.occurrences[0]) for _ in range(MAX_BULK_IDENTIFICATIONS + 1)]
+        Repeating one occurrence 201 times would be rejected by the duplicate check
+        instead, and unknown IDs would be reported per item, so both would pass this
+        test with the cap removed. Distinct IDs plus an assertion on the message pin
+        the cap itself.
+        """
+        items = [
+            {"occurrence_id": 9_000_000 + offset, "taxon_id": self.taxon.pk}
+            for offset in range(MAX_BULK_IDENTIFICATIONS + 1)
+        ]
         response = self.post_bulk(items, user=self.identifier)
+
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn(str(MAX_BULK_IDENTIFICATIONS), str(response.json()))
+
+    def test_a_batch_at_the_cap_is_accepted(self):
+        """The cap rejects what is over it, not what is exactly at it."""
+        items = [
+            {"occurrence_id": 9_000_000 + offset, "taxon_id": self.taxon.pk}
+            for offset in range(MAX_BULK_IDENTIFICATIONS)
+        ]
+        response = self.post_bulk(items, user=self.identifier)
+
+        # Every occurrence is unknown, so each is reported as an error rather than
+        # the request being rejected outright.
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        self.assertEqual(response.json()["error_count"], MAX_BULK_IDENTIFICATIONS)
 
     def test_duplicate_occurrence_ids_are_rejected(self):
         """
@@ -405,9 +542,9 @@ class TestBulkIdentificationQueryCount(BulkIdentificationTestCase):
         Resolving occurrences and taxa is batched and costs 2 queries for the whole
         request, so it does not appear in this slope.
 
-        The budget of 10 leaves headroom for the existing write path while still
-        failing if the batch resolve is replaced by a per-item lookup, which would
-        add roughly three queries per item.
+        The budget is the measured cost, so any new per-item query fails this test.
+        If a change to the write path legitimately adds one, update the number here
+        deliberately rather than widening the budget to accommodate it.
         """
         small, large = 2, 6
         queries_small = self.measure(small)
@@ -416,7 +553,7 @@ class TestBulkIdentificationQueryCount(BulkIdentificationTestCase):
         slope = (queries_large - queries_small) / (large - small)
         self.assertLessEqual(
             slope,
-            10,
+            8,
             f"Each identification should cost a bounded number of queries, measured {slope:.1f} "
             f"({queries_small} queries for {small} items, {queries_large} for {large}). "
             f"A jump here usually means something started querying per item.",

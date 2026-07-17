@@ -1,3 +1,4 @@
+import collections
 import datetime
 
 from django.db.models import QuerySet
@@ -800,6 +801,16 @@ class IdentificationSerializer(DefaultSerializer):
         ]
 
 
+#: Upper bound on a single bulk identification request.
+#: Every identification in a batch is written inside the request's transaction, which
+#: holds row locks on each occurrence until the request finishes, so an unbounded batch
+#: would block other people identifying the same occurrences for as long as it ran. The
+#: identification interface can only select occurrences on the page being displayed, so
+#: real batches are far smaller than this; the cap bounds the worst case rather than
+#: shaping the interface.
+MAX_BULK_IDENTIFICATIONS = 200
+
+
 class BulkIdentificationItemSerializer(serializers.Serializer):
     """
     One identification within a bulk request.
@@ -827,16 +838,14 @@ class BulkIdentificationRequestSerializer(serializers.Serializer):
     identifications = BulkIdentificationItemSerializer(many=True, allow_empty=False)
 
     def validate_identifications(self, value: list[dict]) -> list[dict]:
-        from ami.main.api.views import MAX_BULK_IDENTIFICATIONS
-
         if len(value) > MAX_BULK_IDENTIFICATIONS:
             raise serializers.ValidationError(
                 f"A single request may contain at most {MAX_BULK_IDENTIFICATIONS} identifications, "
                 f"got {len(value)}."
             )
 
-        occurrence_ids = [item["occurrence_id"] for item in value]
-        duplicates = sorted({pk for pk in occurrence_ids if occurrence_ids.count(pk) > 1})
+        counts = collections.Counter(item["occurrence_id"] for item in value)
+        duplicates = sorted(pk for pk, count in counts.items() if count > 1)
         if duplicates:
             # Two identifications for one occurrence in one batch have no defined
             # winner: the outcome would depend on insert ordering rather than on
