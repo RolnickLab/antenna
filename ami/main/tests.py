@@ -3232,6 +3232,12 @@ class TestDraftProjectPermissions(APITestCase):
         ids = [d["id"] for d in response.data["results"]]
         assert self.deployment.pk not in ids
 
+    def test_visible_for_user_deduplicates_captures_in_a_primary_key_subquery(self):
+        queryset = SourceImage.objects.visible_for_user(self.member)
+
+        self.assertIn(self.deployment.captures.first(), queryset)
+        self.assertNotIn("SELECT DISTINCT", str(queryset.query))
+
     def test_visible_for_user_across_all_models(self):
         all_users = {
             "superuser": self.superuser,
