@@ -119,11 +119,22 @@ Running two test commands against the CI stack at once produces spurious failure
 `IntegrityError on auth_group_permissions`. Fix is to drop the test DB **and** `redis-cli FLUSHALL`
 together (see `reference_ci_compose_cachalot_flush`).
 
+## Frontend switch (in this PR)
+
+The pressure relief only lands when the FE stops fanning out N POSTs. `useCreateIdentifications.ts` now
+makes one POST to `/bulk/`; the singular `useCreateIdentification.ts` (still used by the per-occurrence
+Agree card in `agree.tsx`) is untouched. The plural hook keeps its return shape
+(`isLoading`/`isSuccess`/`error`/`createIdentifications`), so the three callers (`occurrences-actions.tsx`,
+`suggest-id.tsx`, `id-button.tsx`) are unchanged. Two behaviours preserved on purpose: retry resends
+only the rejected items, and a partial failure is not reported as success (drives the Agree
+"Confirmed" state). "Select all" is page-bounded (`occurrence-gallery.tsx:173` maps the current page's
+`items`; default page size 20), so batches stay well under `MAX_BULK_IDENTIFICATIONS = 200`.
+
+FE verified: `tsc --noEmit`, eslint, prettier, and `yarn build` all clean. BE string-ID contract
+(`"123"` coerced by DRF IntegerField) pinned by `test_accepts_ids_sent_as_strings`.
+
 ## Follow-ups
 
-- **Frontend switch** — not in this PR. `useCreateIdentifications.ts` should POST the array it already
-  builds instead of fanning out; its retry-by-index logic must be rewritten either way, since
-  `PromiseSettledResult[]` has no meaning with one request.
 - **Batched write path** — planned; the request contract does not change. See the planning doc.
 - **`update_occurrence_determination` int-vs-Taxon comparison** — needs a decision, then tests, before
   anyone touches determination logic.
