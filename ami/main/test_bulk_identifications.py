@@ -83,6 +83,24 @@ class TestBulkIdentificationSuccess(BulkIdentificationTestCase):
                 1,
             )
 
+    def test_accepts_ids_sent_as_strings(self):
+        """
+        The frontend sends occurrence and taxon IDs as JSON strings.
+
+        The request body is built from the identification form, where IDs are
+        strings, so the endpoint has to accept "123" and not only 123. This pins
+        the frontend-to-backend contract; a stricter integer-only field would 400
+        every real bulk identification.
+        """
+        occurrence = self.occurrences[0]
+        response = self.post_bulk(
+            [{"occurrence_id": str(occurrence.pk), "taxon_id": str(self.taxon.pk)}],
+            user=self.identifier,
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        self.assertEqual(response.json()["created_count"], 1)
+
     def test_results_are_returned_in_request_order(self):
         """Clients match results to submitted items by index, so order and index must be stable."""
         targets = self.occurrences[:3]
