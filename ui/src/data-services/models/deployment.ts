@@ -25,8 +25,19 @@ export class Deployment extends Entity {
     return this._deployment.user_permissions.includes(UserPermission.Delete)
   }
 
+  get canSync(): boolean {
+    // Granted to ML data managers, project managers, and superusers. Superusers
+    // receive `sync` here too (guardian returns every project permission for
+    // them), so this getter alone is the sync gate.
+    return this._deployment.user_permissions.includes(UserPermission.Sync)
+  }
+
   get canUpdate(): boolean {
     return this._deployment.user_permissions.includes(UserPermission.Update)
+  }
+
+  get dataSourceConnected(): boolean {
+    return this._deployment.data_source_connected ?? false
   }
 
   get currentJob(): Job | undefined {

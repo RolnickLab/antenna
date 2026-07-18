@@ -220,14 +220,7 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
             if not deployment.data_source_id:
                 skipped.append(f"{deployment} (no data source)")
                 continue
-            job = Job.objects.create(
-                name=f"Sync captures for deployment {deployment.pk}",
-                deployment=deployment,
-                project=deployment.project,
-                job_type_key=DataStorageSyncJob.key,
-            )
-            job.enqueue()
-            queued_job_ids.append(job.pk)
+            queued_job_ids.append(DataStorageSyncJob.enqueue_for(deployment).pk)
         msg = f"Queued DataStorageSyncJob for {len(queued_job_ids)} deployments: {queued_job_ids}"
         if skipped:
             msg += f" — skipped: {', '.join(skipped)}"

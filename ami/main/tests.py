@@ -51,7 +51,14 @@ from ami.tests.fixtures.main import (
 )
 from ami.tests.fixtures.storage import populate_bucket
 from ami.users.models import User
-from ami.users.roles import BasicMember, Identifier, MLDataManager, ProjectManager, create_roles_for_project
+from ami.users.roles import (
+    BasicMember,
+    Identifier,
+    MLDataManager,
+    ProjectManager,
+    Researcher,
+    create_roles_for_project,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -2898,6 +2905,179 @@ class TestDeploymentSyncCreatesEvents(TestCase):
             "Deployment events_count should reflect updated event count",
         )
         logger.info(f"Initial events count: {initial_events_count}, Updated events count: {updated_events.count()}")
+
+
+class TestDeploymentSyncAll(APITestCase):
+    """
+    The bulk "Sync all" endpoint enqueues one sync job per connected station and
+    is gated by the same sync permission the per-row action enforces.
+
+    Pins three guarantees: the ``data_source_connected`` flag the frontend reads,
+    the permission matrix (a ``detail=False`` action must check permissions
+    itself), and that only stations with a storage source get a job.
+    """
+
+    def setUp(self):
+        super().setUp()
+        from unittest import mock
+
+        self.project = Project.objects.create(name="Sync All Project", description="Sync-all tests")
+        create_roles_for_project(self.project)
+
+        self.superuser = User.objects.create_superuser(email="super-syncall@insectai.org", password="password123")
+        self.pm_user = User.objects.create_user(email="pm-syncall@insectai.org", password="password123")
+        self.ml_user = User.objects.create_user(email="ml-syncall@insectai.org", password="password123")
+        self.researcher = User.objects.create_user(email="researcher-syncall@insectai.org", password="password123")
+        self.identifier = User.objects.create_user(email="identifier-syncall@insectai.org", password="password123")
+        self.basic_user = User.objects.create_user(email="basic-syncall@insectai.org", password="password123")
+        self.outsider = User.objects.create_user(email="outsider-syncall@insectai.org", password="password123")
+        ProjectManager.assign_user(self.pm_user, self.project)
+        MLDataManager.assign_user(self.ml_user, self.project)
+        Researcher.assign_user(self.researcher, self.project)
+        Identifier.assign_user(self.identifier, self.project)
+        BasicMember.assign_user(self.basic_user, self.project)
+
+        source = S3StorageSource.objects.create(
+            name="Sync All Source",
+            bucket="test-bucket",
+            access_key="fake-access-key",
+            secret_key="fake-secret-key",
+            project=self.project,
+        )
+        self.connected = Deployment.objects.create(name="Connected", project=self.project, data_source=source)
+        self.unconnected = Deployment.objects.create(name="Unconnected", project=self.project)
+
+        # Keep the endpoint tests off the broker: assert the job rows and enqueue
+        # calls, not real Celery dispatch.
+        patcher = mock.patch("ami.jobs.models.Job.enqueue")
+        self.mock_enqueue = patcher.start()
+        self.addCleanup(patcher.stop)
+
+        self.url = "/api/v2/deployments/sync-all/"
+
+    def test_data_source_connected_field_in_list(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.get(f"/api/v2/deployments/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        flags = {row["id"]: row["data_source_connected"] for row in response.data["results"]}
+        self.assertTrue(flags[self.connected.pk], "Connected station should report data_source_connected=True")
+        self.assertFalse(flags[self.unconnected.pk], "Unconnected station should report data_source_connected=False")
+
+    def test_requires_project_id(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_permission_matrix(self):
+        # Sync is allowed for MLDataManager and ProjectManager (and superusers),
+        # not for Researcher, Identifier, BasicMember, or non-members.
+        matrix = [
+            ("superuser", self.superuser, status.HTTP_200_OK),
+            ("ProjectManager", self.pm_user, status.HTTP_200_OK),
+            ("MLDataManager", self.ml_user, status.HTTP_200_OK),
+            ("Researcher", self.researcher, status.HTTP_403_FORBIDDEN),
+            ("Identifier", self.identifier, status.HTTP_403_FORBIDDEN),
+            ("BasicMember", self.basic_user, status.HTTP_403_FORBIDDEN),
+            ("outsider", self.outsider, status.HTTP_403_FORBIDDEN),
+        ]
+        for role_name, user, expected in matrix:
+            with self.subTest(role=role_name):
+                self.client.force_authenticate(user)
+                response = self.client.post(f"{self.url}?project_id={self.project.pk}")
+                self.assertEqual(response.status_code, expected, f"{role_name} got {response.status_code}")
+
+    def test_anonymous_denied(self):
+        self.client.force_authenticate(None)
+        response = self.client.post(f"{self.url}?project_id={self.project.pk}")
+        self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
+
+    def test_enqueues_one_job_per_connected_station(self):
+        from ami.jobs.models import DataStorageSyncJob
+
+        self.client.force_authenticate(self.pm_user)
+        response = self.client.post(f"{self.url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["queued"], 1)
+        self.assertEqual(len(response.data["job_ids"]), 1)
+        self.assertEqual(self.mock_enqueue.call_count, 1, "One job should be enqueued")
+
+        jobs = Job.objects.filter(project=self.project, job_type_key=DataStorageSyncJob.key)
+        self.assertEqual(jobs.count(), 1, "Exactly one sync job, for the connected station")
+        self.assertEqual(jobs.first().deployment_id, self.connected.pk, "Unconnected station must be skipped")
+
+    def test_per_row_sync_permission_matrix(self):
+        # The per-row POST /deployments/{id}/sync/ action enforces the same
+        # sync_deployment permission as the bulk endpoint. This pins that the
+        # newly-granted MLDataManager role can start a sync and that roles
+        # without the permission are refused (403), so the per-row and bulk
+        # paths cannot silently diverge on who may sync.
+        url = f"/api/v2/deployments/{self.connected.pk}/sync/"
+        matrix = [
+            ("superuser", self.superuser, status.HTTP_200_OK),
+            ("ProjectManager", self.pm_user, status.HTTP_200_OK),
+            ("MLDataManager", self.ml_user, status.HTTP_200_OK),
+            ("Researcher", self.researcher, status.HTTP_403_FORBIDDEN),
+            ("Identifier", self.identifier, status.HTTP_403_FORBIDDEN),
+            ("BasicMember", self.basic_user, status.HTTP_403_FORBIDDEN),
+            ("outsider", self.outsider, status.HTTP_403_FORBIDDEN),
+        ]
+        for role_name, user, expected in matrix:
+            with self.subTest(role=role_name):
+                self.client.force_authenticate(user)
+                response = self.client.post(url)
+                self.assertEqual(response.status_code, expected, f"{role_name} got {response.status_code}")
+
+
+class TestSyncDeploymentBackfillMigration(APITestCase):
+    """The 0095 backfill grants OBJECT-LEVEL sync_deployment to existing projects'
+    MLDataManager groups, not just a global group permission.
+
+    A global-only grant (``group.permissions.add``) would leave ``get_perms`` and
+    ``has_perm(perm, project)`` — the checks the endpoint and UI actually use —
+    returning False, so the backfill would silently no-op for existing projects.
+    This pins the object-level path.
+    """
+
+    def test_backfill_grants_object_level_sync_to_mldatamanager(self):
+        import importlib
+        from unittest import mock
+
+        from django.apps import apps as global_apps
+        from django.contrib.auth.models import Group
+
+        project = Project.objects.create(name="Sync Backfill Project")
+        create_roles_for_project(project)
+        ml_user = User.objects.create_user(email="ml-backfill@insectai.org", password="password123")
+        MLDataManager.assign_user(ml_user, project)
+        source = S3StorageSource.objects.create(
+            name="Backfill Source",
+            bucket="test-bucket",
+            access_key="fake-access-key",
+            secret_key="fake-secret-key",
+            project=project,
+        )
+        Deployment.objects.create(name="Backfill Station", project=project, data_source=source)
+
+        mldm_group = Group.objects.get(name=f"{project.pk}_{project.name}_MLDataManager")
+
+        # Simulate a project created before MLDataManager gained the permission:
+        # strip the object-level grant so the sync endpoint is denied.
+        remove_perm("sync_deployment", mldm_group, project)
+        self.assertNotIn("sync_deployment", get_perms(mldm_group, project))
+
+        self.client.force_authenticate(ml_user)
+        denied = self.client.post(f"/api/v2/deployments/sync-all/?project_id={project.pk}")
+        self.assertEqual(denied.status_code, status.HTTP_403_FORBIDDEN)
+
+        # Run the backfill and confirm it restores the object-level permission
+        # (a global-only grant would leave get_perms unchanged and the POST 403).
+        migration = importlib.import_module("ami.main.migrations.0095_grant_sync_deployment_to_mldatamanager")
+        migration.grant_sync_to_mldatamanager(global_apps, None)
+
+        self.assertIn("sync_deployment", get_perms(mldm_group, project))
+        with mock.patch("ami.jobs.models.Job.enqueue"):
+            granted = self.client.post(f"/api/v2/deployments/sync-all/?project_id={project.pk}")
+        self.assertEqual(granted.status_code, status.HTTP_200_OK)
 
 
 class TestFineGrainedJobRunPermission(APITestCase):

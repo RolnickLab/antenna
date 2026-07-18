@@ -714,6 +714,26 @@ class DataStorageSyncJob(JobType):
     regroup_stage_name = "Regroup sessions"
 
     @classmethod
+    def enqueue_for(cls, deployment: Deployment) -> "Job":
+        """
+        Create and enqueue a sync job for one station, returning the queued job.
+
+        The single place that builds a ``DataStorageSyncJob``, shared by the API's
+        per-row and bulk sync actions and the Django admin bulk action so all three
+        create it identically (one job per deployment). Callers own their own
+        preconditions — that a data source is configured, that skipped stations are
+        reported — this only builds and enqueues.
+        """
+        job = Job.objects.create(
+            name=f"Sync captures for deployment {deployment.pk}",
+            deployment=deployment,
+            project=deployment.project,
+            job_type_key=cls.key,
+        )
+        job.enqueue()
+        return job
+
+    @classmethod
     def run(cls, job: "Job"):
         """
         Run the data storage sync job.

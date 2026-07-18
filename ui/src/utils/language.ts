@@ -46,8 +46,13 @@ export enum STRING {
   SUBMIT,
   SUGGEST_ID_SHORT,
   SUGGEST_ID,
+  SYNC,
+  SYNC_ALL,
+  SYNC_CAPTURES,
   VIEW_ALL,
   VIEW_DOCS,
+  VIEW_JOB,
+  VIEW_JOBS,
   VIEW_PUBLIC_PROJECTS,
   ZOOM_IN,
   ZOOM_OUT,
@@ -210,6 +215,8 @@ export enum STRING {
   MESSAGE_RESET_INSTRUCTIONS_SENT,
   MESSAGE_RESULT_RANGE,
   MESSAGE_SIGNED_UP,
+  MESSAGE_SYNC_ALL_CONFIRM,
+  MESSAGE_SYNC_CONFIRM,
   MESSAGE_VALUE_INVALID,
   MESSAGE_VALUE_MISSING,
 
@@ -406,8 +413,13 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SUBMIT]: 'Submit',
   [STRING.SUGGEST_ID_SHORT]: 'Suggest',
   [STRING.SUGGEST_ID]: 'Suggest ID',
+  [STRING.SYNC]: 'Sync',
+  [STRING.SYNC_ALL]: 'Sync all',
+  [STRING.SYNC_CAPTURES]: 'Sync captures',
   [STRING.VIEW_ALL]: 'View all',
   [STRING.VIEW_DOCS]: 'View docs',
+  [STRING.VIEW_JOB]: 'View job',
+  [STRING.VIEW_JOBS]: 'View jobs',
   [STRING.VIEW_PUBLIC_PROJECTS]: 'View public projects',
   [STRING.ZOOM_IN]: 'Zoom in',
   [STRING.ZOOM_OUT]: 'Zoom out',
@@ -595,6 +607,10 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_RESULT_RANGE]:
     'Showing {{start}}-{{end}} of {{total}} result(s)',
   [STRING.MESSAGE_SIGNED_UP]: 'Signed up successfully!',
+  [STRING.MESSAGE_SYNC_ALL_CONFIRM]:
+    'This starts a background sync job for each of the {{count}} station(s) with a storage source.',
+  [STRING.MESSAGE_SYNC_CONFIRM]:
+    'This scans the connected storage source and imports any new captures as a background job.',
   [STRING.MESSAGE_VALUE_INVALID]: 'Please provide a valid value',
   [STRING.MESSAGE_VALUE_MISSING]: 'Please provide a value',
 

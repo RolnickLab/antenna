@@ -341,24 +341,47 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         """
         Queue a task to sync data from the deployment's data source.
         """
+        from ami.jobs.models import DataStorageSyncJob
+
         deployment: Deployment = self.get_object()
         if deployment and deployment.data_source:
-            # queued_task = tasks.sync_source_images.delay(deployment.pk)
-            from ami.jobs.models import DataStorageSyncJob, Job
-
-            job = Job.objects.create(
-                name=f"Sync captures for deployment {deployment.pk}",
-                deployment=deployment,
-                project=deployment.project,
-                job_type_key=DataStorageSyncJob.key,
+            job = DataStorageSyncJob.enqueue_for(deployment)
+            logger.info(
+                f"Syncing captures for deployment {deployment.pk} from {deployment.data_source_uri} in background."
             )
-            job.enqueue()
-            msg = f"Syncing captures for deployment {deployment.pk} from {deployment.data_source_uri} in background."
-            logger.info(msg)
-            assert deployment.project
-            return Response({"job_id": job.pk, "project_id": deployment.project.pk})
+            return Response({"job_id": job.pk, "project_id": deployment.project_id})
         else:
             raise api_exceptions.ValidationError(detail="Deployment must have a data source to sync captures from")
+
+    @action(detail=False, methods=["post"], name="sync-all", url_path="sync-all")
+    def sync_all(self, request) -> Response:
+        """
+        Queue a sync job for every station in the project that has a storage source.
+
+        Enqueues one ``DataStorageSyncJob`` per connected station (separate jobs,
+        not one consolidated job), matching the per-row ``sync`` action and the
+        admin bulk action. Requires the ``project_id`` query parameter and the
+        sync permission on the project.
+        """
+        project = self.get_active_project()
+        if not project:
+            raise api_exceptions.ValidationError(detail="A project_id is required to sync all stations.")
+
+        # ObjectPermission.has_permission() is a no-op and has_object_permission()
+        # only runs for detail actions (via get_object()), so a detail=False action
+        # must check permissions itself. Probe the same sync permission the per-row
+        # action enforces, resolved against the project.
+        if not Deployment(project=project).check_permission(request.user, "sync"):
+            raise api_exceptions.PermissionDenied(
+                detail="You do not have permission to sync stations in this project."
+            )
+
+        from ami.jobs.models import DataStorageSyncJob
+
+        deployments = self.get_queryset().filter(data_source__isnull=False)
+        job_ids = [DataStorageSyncJob.enqueue_for(deployment).pk for deployment in deployments]
+        logger.info(f"Queued {len(job_ids)} DataStorageSyncJob(s) for project {project.pk}: {job_ids}")
+        return Response({"job_ids": job_ids, "queued": len(job_ids), "project_id": project.pk})
 
     @action(detail=True, methods=["post"], name="regroup-sessions", url_path="regroup-sessions")
     def regroup_sessions(self, _request, pk=None) -> Response:
