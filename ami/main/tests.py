@@ -275,13 +275,8 @@ class TestImageThumbnailViews(TestCase):
 
     def test_thumbnail_strips_exif_orientation(self):
         """Thumbnails must stay in the source file's raw pixel space so detection
-        bounding boxes (stored in raw coordinates) align when overlaid in the UI.
-
-        A photo shot in portrait is typically stored as landscape pixels plus an
-        EXIF Orientation tag, and browsers force-apply that rotation to
-        cross-origin images. The thumbnail pipeline must neither rotate the
-        pixels nor propagate the tag to the output file, otherwise the session
-        detail view renders boxes 90° out of place (the pre-thumbnail behavior).
+        boxes (stored in raw coordinates) align when overlaid in the UI: neither
+        rotate the pixels nor propagate the EXIF Orientation tag to the output.
         """
         from django.core.files.storage import default_storage
 

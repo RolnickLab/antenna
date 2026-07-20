@@ -93,11 +93,8 @@ export const Capture = ({
         const boxWidth = boxRight - boxLeft
         const boxHeight = boxBottom - boxTop
 
-        // Box coordinates are in the original image's pixel space, so they can
-        // only be scaled against the capture's stored dimensions. The rendered
-        // image may be a downscaled thumbnail, so its natural size is not a
-        // valid substitute — without stored dimensions, skip drawing boxes
-        // rather than drawing them at the wrong scale.
+        // Boxes are in the original image's pixel space and the rendered image
+        // may be a downscaled thumbnail, so only stored dimensions can scale them.
         if (!width || !height) {
           return result
         }

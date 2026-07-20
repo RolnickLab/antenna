@@ -2519,11 +2519,8 @@ class SourceImage(BaseModel):
             img.thumbnail(new_size)
 
             buffer = BytesIO()
-            # EXIF must NOT be copied to the output (no ``exif=`` argument): the UI
-            # overlays detection boxes, which are stored in raw pixel coordinates, on
-            # these thumbnails. An EXIF Orientation tag would make browsers rotate the
-            # rendered pixels out of that coordinate space. Pinned by
-            # test_thumbnail_strips_exif_orientation.
+            # No ``exif=`` argument: detection boxes are overlaid on thumbnails in raw
+            # pixel coordinates, so the EXIF Orientation tag must not propagate.
             img.save(buffer, format="JPEG", progressive=True, optimize=True, quality=82)
             contents = buffer.getvalue()
             file_size = len(contents)
