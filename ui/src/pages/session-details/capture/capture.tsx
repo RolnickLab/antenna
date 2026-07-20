@@ -93,23 +93,25 @@ export const Capture = ({
         const boxWidth = boxRight - boxLeft
         const boxHeight = boxBottom - boxTop
 
-        const _width = width ?? naturalSize?.width
-        const _height = height ?? naturalSize?.height
-
-        if (!_width || !_height) {
+        // Box coordinates are in the original image's pixel space, so they can
+        // only be scaled against the capture's stored dimensions. The rendered
+        // image may be a downscaled thumbnail, so its natural size is not a
+        // valid substitute — without stored dimensions, skip drawing boxes
+        // rather than drawing them at the wrong scale.
+        if (!width || !height) {
           return result
         }
 
         result[detection.id] = {
-          width: `${(boxWidth / _width) * 100}%`,
-          height: `${(boxHeight / _height) * 100}%`,
-          top: `${(boxTop / _height) * 100}%`,
-          left: `${(boxLeft / _width) * 100}%`,
+          width: `${(boxWidth / width) * 100}%`,
+          height: `${(boxHeight / height) * 100}%`,
+          top: `${(boxTop / height) * 100}%`,
+          left: `${(boxLeft / width) * 100}%`,
         }
 
         return result
       }, {}),
-    [width, height, naturalSize, detections]
+    [width, height, detections]
   )
 
   const ratio = useMemo(() => {
