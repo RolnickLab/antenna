@@ -262,6 +262,51 @@ class TestImageThumbnailViews(TestCase):
         self.assertEqual(thumb.height, 768)
         self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
 
+    def test_thumbnail_new_with_large_size(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/?label=large")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="large")
+        # ``width`` stores the requested spec width for the regen gate, not the
+        # encoder output. The test fixture is 1024px wide and PIL's thumbnail()
+        # never upscales, so the stored file keeps its original dimensions.
+        self.assertEqual(thumb.width, 2560)
+        self.assertEqual(thumb.height, 768)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_strips_exif_orientation(self):
+        """Thumbnails must stay in the source file's raw pixel space so detection
+        bounding boxes (stored in raw coordinates) align when overlaid in the UI.
+
+        A photo shot in portrait is typically stored as landscape pixels plus an
+        EXIF Orientation tag, and browsers force-apply that rotation to
+        cross-origin images. The thumbnail pipeline must neither rotate the
+        pixels nor propagate the tag to the output file, otherwise the session
+        detail view renders boxes 90° out of place (the pre-thumbnail behavior).
+        """
+        from django.core.files.storage import default_storage
+
+        from ami.utils import s3
+
+        ORIENTATION_TAG = 274  # EXIF tag id for Orientation
+        source = Image.new("RGB", (320, 240), (10, 120, 30))
+        exif = source.getexif()
+        exif[ORIENTATION_TAG] = 6  # stored landscape, rotate 90° CW to view
+        buffer = BytesIO()
+        source.save(buffer, format="JPEG", exif=exif)
+
+        assert self.deployment.data_source is not None
+        s3.write_file(self.deployment.data_source.config, self.first_capture.path, buffer.getvalue())
+
+        thumb = self.first_capture.find_or_generate_thumbnail_for_label("large")
+
+        with default_storage.open(thumb.path) as f:
+            output = Image.open(f)
+            output.load()
+
+        # Pixels stay in raw (landscape) space and the orientation tag is gone.
+        self.assertEqual(output.size, (320, 240))
+        self.assertIsNone(output.getexif().get(ORIENTATION_TAG))
+
     def test_thumbnail_blank_path_row_regenerates(self):
         """A row with an empty ``path`` (failed or interrupted generation) must
         trigger regeneration, not redirect to the storage root.

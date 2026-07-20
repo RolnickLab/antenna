@@ -589,5 +589,10 @@ DEFAULT_EXCLUDE_TAXA = env.list("DEFAULT_EXCLUDE_TAXA", default=[])  # type: ign
 JOB_LOG_PERSIST_ENABLED = env.bool("JOB_LOG_PERSIST_ENABLED", default=True)  # type: ignore[no-untyped-call]
 
 
-# Sizes for Source Image Thumbnails
-THUMBNAILS = {"STORAGE_PREFIX": "thumbnails/", "SIZES": {"small": {"width": 240}, "medium": {"width": 1024}}}
+# Sizes for Source Image Thumbnails. The "large" size backs the zoomable session
+# detail view; thumbnails are re-encoded without EXIF metadata, so they render in
+# the same pixel space as detection bounding boxes (EXIF-rotated originals do not).
+THUMBNAILS = {
+    "STORAGE_PREFIX": "thumbnails/",
+    "SIZES": {"small": {"width": 240}, "medium": {"width": 1024}, "large": {"width": 2560}},
+}

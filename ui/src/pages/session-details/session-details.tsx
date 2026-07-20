@@ -169,7 +169,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
               detections={activeCapture?.detections ?? []}
               height={activeCapture?.height ?? session.firstCapture.height}
               showDetections={settings.showDetections}
-              src={activeCapture?.url}
+              src={activeCapture?.thumbnailLarge}
               transformRef={transformRef}
               width={activeCapture?.width ?? session.firstCapture.width}
             />

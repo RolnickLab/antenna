@@ -183,6 +183,18 @@ export class Capture {
     return this._capture.url
   }
 
+  // Preferred source for the zoomable session detail view: large thumbnails are
+  // re-encoded without EXIF metadata, so they render in the same pixel space as
+  // detection bounding boxes. The raw original may carry an EXIF rotation that
+  // browsers force-apply to cross-origin images, misplacing the boxes.
+  get thumbnailLarge(): string {
+    if (this._capture.thumbnails?.large) {
+      return this._capture.thumbnails.large
+    }
+
+    return this._capture.url
+  }
+
   get src(): string {
     return this._capture.url
   }
