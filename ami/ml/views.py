@@ -67,8 +67,10 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
                 # algorithms (e.g. class masking) are created standalone with no pipeline at all,
                 # so a pipeline join would both list algorithms with nothing behind them and hide
                 # ones that own live determinations.
-                classified_in_project = Classification.objects.filter(detection__source_image__project=project).values(
-                    "algorithm"
+                classified_in_project = (
+                    Classification.objects.filter(detection__source_image__project=project)
+                    .values_list("algorithm", flat=True)
+                    .distinct()
                 )
                 qs = qs.filter(pk__in=classified_in_project)
         return qs
