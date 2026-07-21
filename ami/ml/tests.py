@@ -2070,14 +2070,13 @@ class TestSaveResultsRefreshesDeploymentCounts(TestCase):
 
 class TestAlgorithmViewSetProjectFilter(APITestCase):
     """
-    The algorithm list endpoint is scoped to the algorithms that actually produced
-    classifications in the active project.
+    The algorithm list endpoint is scoped to the algorithms relevant to the active
+    project, which they reach two ways.
 
-    Pipeline configuration does not grant an algorithm a place in the list. An
-    algorithm wired to an enabled pipeline but never run has no results to filter or
-    inspect, and post-processing algorithms such as class masking are created
-    standalone with no pipeline at all, so pipeline membership is neither necessary
-    nor sufficient.
+    An enabled pipeline configures most of them. That covers detectors, which never
+    author a Classification and so could not be found by their results. Post-processing
+    algorithms such as class masking have no pipeline at all, so they are admitted by
+    having classified something in the project.
     """
 
     def setUp(self):
@@ -2131,15 +2130,30 @@ class TestAlgorithmViewSetProjectFilter(APITestCase):
         self.assertEqual(response.status_code, 200)
         return {row["name"] for row in response.json()["results"]}
 
-    def test_lists_only_algorithms_used_in_project(self):
-        """Having run in the project is what puts an algorithm in the list.
+    def test_lists_enabled_pipeline_algorithms_for_project(self):
+        """An enabled pipeline admits its algorithms whether or not they have run.
 
-        ``Algo Configured Unused`` shares an enabled pipeline with ``Algo Used`` and is
-        excluded purely because it never classified anything, which pins the positive and
-        negative sides of the rule against an otherwise identical pair.
+        Running is not required because detectors never author a Classification, so a
+        results-only rule would drop the detector behind every detection in the project.
         """
         names = self._list_algorithm_names(project_id=self.project.pk)
-        self.assertEqual(names, {"Algo Used"})
+        self.assertEqual(names, {"Algo Used", "Algo Configured Unused"})
+
+    def test_detector_that_ran_is_listed_although_it_never_classified(self):
+        """Detectors set ``Detection.detection_algorithm`` and never write a
+        Classification, so they are reachable only through their pipeline. This pins the
+        regression where scoping the list purely by classification authorship dropped
+        every localizer from the project's algorithm list."""
+        detector = Algorithm.objects.create(name="Algo Detector", version=1, task_type="localization")
+        pipeline = Pipeline.objects.get(name="Enabled Pipeline")
+        pipeline.algorithms.add(detector)
+
+        source_image = SourceImage.objects.create(project=self.project)
+        Detection.objects.create(source_image=source_image, detection_algorithm=detector)
+        self.assertFalse(Classification.objects.filter(algorithm=detector).exists())
+
+        names = self._list_algorithm_names(project_id=self.project.pk)
+        self.assertIn("Algo Detector", names)
 
     def test_other_project_only_sees_its_own_algorithms(self):
         names = self._list_algorithm_names(project_id=self.other_project.pk)

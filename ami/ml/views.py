@@ -15,7 +15,7 @@ from ami.base.permissions import ProjectPipelineConfigPermission
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
-from ami.main.models import Classification, Project, SourceImage
+from ami.main.models import Project, SourceImage
 from ami.ml.schemas import PipelineRegistrationResponse
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
@@ -61,18 +61,29 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
         if getattr(self, "action", None) == "list":
             project = self.get_active_project()
             if project:
-                # An algorithm belongs to the project if it actually produced classifications
-                # there. Pipeline configuration is deliberately not consulted: a configured but
-                # never-run algorithm has no results to filter or inspect, and post-processing
-                # algorithms (e.g. class masking) are created standalone with no pipeline at all,
-                # so a pipeline join would both list algorithms with nothing behind them and hide
-                # ones that own live determinations.
-                classified_in_project = (
-                    Classification.objects.filter(detection__source_image__project=project)
-                    .values_list("algorithm", flat=True)
-                    .distinct()
-                )
-                qs = qs.filter(pk__in=classified_in_project)
+                # Algorithms reach the list two ways. An enabled pipeline configures most of
+                # them, and that join alone covers detectors, which never author a
+                # Classification and so cannot be found by their results at all.
+                #
+                # Post-processing algorithms (e.g. class masking) are created standalone with
+                # no pipeline, so they are found by their classifications instead. That lookup
+                # is restricted to unpipelined algorithms first, which is what keeps it cheap:
+                # Classification has no project column and reaches one only through
+                # detection -> source_image, so an unrestricted version scans the whole table.
+                #
+                # The two are collected separately rather than OR'd into one filter. An OR
+                # across the pipeline join forces a SELECT DISTINCT whose COUNT costs more
+                # than both queries together.
+                configured_for_project = Algorithm.objects.filter(
+                    pipelines__project_pipeline_configs__project=project,
+                    pipelines__project_pipeline_configs__enabled=True,
+                ).values_list("pk", flat=True)
+                post_processing_used_in_project = Algorithm.objects.filter(
+                    pipelines__isnull=True,
+                    classifications__detection__source_image__project=project,
+                ).values_list("pk", flat=True)
+                # Materialising is safe here: algorithms number in the dozens platform-wide.
+                qs = qs.filter(pk__in=set(configured_for_project) | set(post_processing_used_in_project))
         return qs
 
     @extend_schema(parameters=[project_id_doc_param])
