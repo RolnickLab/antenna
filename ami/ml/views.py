@@ -66,10 +66,15 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
                 # Classification and so cannot be found by their results at all.
                 #
                 # Post-processing algorithms (e.g. class masking) are created standalone with
-                # no pipeline, so they are found by their classifications instead. That lookup
-                # is restricted to unpipelined algorithms first, which is what keeps it cheap:
+                # no pipeline, so they are found by their classifications instead. Restricting
+                # that lookup to unpipelined algorithms bounds which rows are scanned:
                 # Classification has no project column and reaches one only through
                 # detection -> source_image, so an unrestricted version scans the whole table.
+                #
+                # An algorithm attached to a pipeline that is not enabled for this project is
+                # therefore absent even when it owns determinations here. That matches the
+                # behaviour on the pipeline join alone, and widening the second query to cover
+                # it costs roughly five times the runtime.
                 #
                 # The two are collected separately rather than OR'd into one filter. An OR
                 # across the pipeline join forces a SELECT DISTINCT whose COUNT costs more
@@ -78,10 +83,17 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
                     pipelines__project_pipeline_configs__project=project,
                     pipelines__project_pipeline_configs__enabled=True,
                 ).values_list("pk", flat=True)
-                post_processing_used_in_project = Algorithm.objects.filter(
-                    pipelines__isnull=True,
-                    classifications__detection__source_image__project=project,
-                ).values_list("pk", flat=True)
+                # Deduplicated in the database: the join emits one row per matching
+                # classification, so without this the result grows with a project's masked
+                # classification count rather than with its handful of algorithms.
+                post_processing_used_in_project = (
+                    Algorithm.objects.filter(
+                        pipelines__isnull=True,
+                        classifications__detection__source_image__project=project,
+                    )
+                    .values_list("pk", flat=True)
+                    .distinct()
+                )
                 # Sorted so the generated SQL is stable for a given result: cachalot keys its
                 # cache on the query string, and an unordered set would vary it.
                 #
