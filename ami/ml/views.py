@@ -85,7 +85,11 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
                 # absent even when it owns determinations here. That matches the behaviour on the
                 # pipeline join alone; widening the second lookup to cover it costs several times
                 # the runtime and is left as a follow-up.
-                unpipelined_algorithm_ids = list(
+                # Sorted for the same reason as the outer id list below: this list is rendered
+                # verbatim into the IN clause, and Algorithm's (name, version) ordering would
+                # otherwise vary the id order — and so the SQL string and its cachalot key —
+                # for identical membership.
+                unpipelined_algorithm_ids = sorted(
                     Algorithm.objects.filter(pipelines__isnull=True).values_list("pk", flat=True)
                 )
                 # `.order_by()` clears Classification's default ordering before `.distinct()`.
