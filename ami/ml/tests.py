@@ -2189,25 +2189,29 @@ class TestAlgorithmViewSetProjectFilter(APITestCase):
         self.assertIn("Class Masked Classifier", names)
 
     def test_post_processing_lookup_is_deduplicated_in_the_database(self):
-        """The post-processing join emits one row per matching classification, so it must
+        """The post-processing lookup matches one row per classification, so it must
         deduplicate in SQL rather than in Python.
 
         Without that, the rows fetched grow with a project's masked classification count —
         hundreds of thousands on a real masking run — to identify a handful of algorithms.
         The listed names are correct either way, so this asserts the row count of the
-        underlying lookup rather than the endpoint's output.
+        underlying lookup rather than the endpoint's output. The ``.order_by()`` matters:
+        Classification's default ordering would otherwise widen the DISTINCT back to one
+        row per classification.
         """
         masked_algo = Algorithm.objects.create(name="Chatty Masked Classifier", version=1)
         for _ in range(5):
             self._classify_in_project(masked_algo, self.project)
 
-        lookup = Algorithm.objects.filter(
-            pipelines__isnull=True,
-            classifications__detection__source_image__project=self.project,
-        ).values_list("pk", flat=True)
+        lookup = Classification.objects.filter(
+            algorithm_id=masked_algo.pk,
+            detection__source_image__project=self.project,
+        ).values_list("algorithm_id", flat=True)
 
-        self.assertEqual(len(list(lookup)), 5, "Undeduplicated join emits one row per classification")
-        self.assertEqual(len(list(lookup.distinct())), 1, "Deduplicating collapses them to the one algorithm")
+        self.assertEqual(len(list(lookup)), 5, "The lookup matches one row per classification")
+        self.assertEqual(
+            len(list(lookup.order_by().distinct())), 1, "Deduplicating collapses them to the one algorithm"
+        )
         self.assertIn("Chatty Masked Classifier", self._list_algorithm_names(project_id=self.project.pk))
 
     def test_classifications_in_other_project_do_not_leak(self):

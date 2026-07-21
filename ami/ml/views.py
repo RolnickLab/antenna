@@ -15,7 +15,7 @@ from ami.base.permissions import ProjectPipelineConfigPermission
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
-from ami.main.models import Project, SourceImage
+from ami.main.models import Classification, Project, SourceImage
 from ami.ml.schemas import PipelineRegistrationResponse
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
@@ -64,44 +64,44 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
                 # Algorithms reach the list two ways. An enabled pipeline configures most of
                 # them, and that join alone covers detectors, which never author a
                 # Classification and so cannot be found by their results at all.
-                #
-                # Post-processing algorithms (e.g. class masking) are created standalone with
-                # no pipeline, so they are found by their classifications instead. Restricting
-                # that lookup to unpipelined algorithms bounds which rows are scanned:
-                # Classification has no project column and reaches one only through
-                # detection -> source_image, so an unrestricted version scans the whole table.
-                #
-                # An algorithm attached to a pipeline that is not enabled for this project is
-                # therefore absent even when it owns determinations here. That matches the
-                # behaviour on the pipeline join alone, and widening the second query to cover
-                # it costs roughly five times the runtime.
-                #
-                # The two are collected separately rather than OR'd into one filter. An OR
-                # across the pipeline join forces a SELECT DISTINCT whose COUNT costs more
-                # than both queries together.
                 configured_for_project = Algorithm.objects.filter(
                     pipelines__project_pipeline_configs__project=project,
                     pipelines__project_pipeline_configs__enabled=True,
                 ).values_list("pk", flat=True)
-                # Deduplicated in the database: the join emits one row per matching
-                # classification, so without this the result grows with a project's masked
-                # classification count rather than with its handful of algorithms.
+
+                # Post-processing algorithms (e.g. class masking) are created standalone with
+                # no pipeline, so they are found by their classifications instead. This is done
+                # in two steps on purpose. Collecting the unpipelined algorithm ids first, as an
+                # explicit list, lets the classification lookup filter on `algorithm_id IN (...)`,
+                # which the planner answers from the algorithm_id index. Expressing the same thing
+                # as a single join (`pipelines__isnull=True, classifications__...`) hides those ids
+                # behind an anti-join at plan time, so the planner sequentially scans the whole
+                # classification table instead — a cost that grows with the platform's total
+                # classification count rather than with this project. The first query is also
+                # cheap to cache: it only changes when algorithms or pipeline links change, not on
+                # every classification write.
+                #
+                # An algorithm attached to a pipeline that is not enabled for this project is
+                # absent even when it owns determinations here. That matches the behaviour on the
+                # pipeline join alone; widening the second lookup to cover it costs several times
+                # the runtime and is left as a follow-up.
+                unpipelined_algorithm_ids = list(
+                    Algorithm.objects.filter(pipelines__isnull=True).values_list("pk", flat=True)
+                )
+                # `.order_by()` clears Classification's default ordering before `.distinct()`.
+                # Without it the ordering columns join the SELECT and widen the DISTINCT, so it
+                # would return one row per classification rather than one per algorithm.
                 post_processing_used_in_project = (
-                    Algorithm.objects.filter(
-                        pipelines__isnull=True,
-                        classifications__detection__source_image__project=project,
+                    Classification.objects.filter(
+                        algorithm_id__in=unpipelined_algorithm_ids,
+                        detection__source_image__project=project,
                     )
-                    .values_list("pk", flat=True)
+                    .order_by()
+                    .values_list("algorithm_id", flat=True)
                     .distinct()
                 )
                 # Sorted so the generated SQL is stable for a given result: cachalot keys its
                 # cache on the query string, and an unordered set would vary it.
-                #
-                # Materialising the ids is fine at this cardinality. Algorithms are created per
-                # model rather than per run, and the one path that adds them over time is class
-                # masking, which creates a single algorithm per source algorithm, taxa list and
-                # reweight mode. Should that ever reach the thousands, this wants to become a
-                # subquery rather than an IN list.
                 relevant_ids = set(configured_for_project) | set(post_processing_used_in_project)
                 qs = qs.filter(pk__in=sorted(relevant_ids))
         return qs
