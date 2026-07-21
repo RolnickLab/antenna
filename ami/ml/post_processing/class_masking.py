@@ -287,7 +287,9 @@ class ClassMaskingTask(BasePostProcessingTask):
 
         Sources already re-scored by ``masking_algorithm`` are excluded via the
         ``applied_to`` lineage, so a source is masked at most once per masking
-        algorithm even if it becomes terminal again later. See #1368.
+        algorithm even if it becomes terminal again later. A taxa list is identified
+        by primary key, not contents — re-masking against an edited list needs a new
+        list. See #1368.
         """
         base = (
             Classification.objects.filter(
