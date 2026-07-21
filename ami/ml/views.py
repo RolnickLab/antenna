@@ -82,8 +82,16 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
                     pipelines__isnull=True,
                     classifications__detection__source_image__project=project,
                 ).values_list("pk", flat=True)
-                # Materialising is safe here: algorithms number in the dozens platform-wide.
-                qs = qs.filter(pk__in=set(configured_for_project) | set(post_processing_used_in_project))
+                # Sorted so the generated SQL is stable for a given result: cachalot keys its
+                # cache on the query string, and an unordered set would vary it.
+                #
+                # Materialising the ids is fine at this cardinality. Algorithms are created per
+                # model rather than per run, and the one path that adds them over time is class
+                # masking, which creates a single algorithm per source algorithm, taxa list and
+                # reweight mode. Should that ever reach the thousands, this wants to become a
+                # subquery rather than an IN list.
+                relevant_ids = set(configured_for_project) | set(post_processing_used_in_project)
+                qs = qs.filter(pk__in=sorted(relevant_ids))
         return qs
 
     @extend_schema(parameters=[project_id_doc_param])
