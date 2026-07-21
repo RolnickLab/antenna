@@ -1,7 +1,7 @@
 import logging
 
 from django.db import transaction
-from django.db.models import Prefetch
+from django.db.models import Exists, OuterRef, Prefetch
 from django.db.models.query import QuerySet
 from django.utils.text import slugify
 from drf_spectacular.utils import extend_schema
@@ -64,9 +64,21 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
                 # Scope the list to algorithms that actually produced results in the project —
                 # any superseded pipeline version or standalone post-processing algorithm whose
                 # output still exists, so the user can filter occurrences by anything that ran.
-                # Pipeline configuration is not consulted; configured-but-never-run algorithms
-                # do not appear. See the method for cost characteristics.
+                # Pipeline configuration is not consulted for membership; configured-but-never-run
+                # algorithms do not appear. See the method for cost characteristics.
                 qs = qs.used_in_project(project)  # type: ignore[union-attr] # Custom queryset method
+                # Flag each one with whether it is still enabled for the project (on a pipeline
+                # the project has enabled). The list intentionally includes algorithms that ran
+                # but are no longer enabled, e.g. superseded versions; the UI grays those out.
+                qs = qs.annotate(
+                    enabled_in_project=Exists(
+                        ProjectPipelineConfig.objects.filter(
+                            project=project,
+                            enabled=True,
+                            pipeline__algorithms=OuterRef("pk"),
+                        )
+                    )
+                )
         return qs
 
     @extend_schema(parameters=[project_id_doc_param])

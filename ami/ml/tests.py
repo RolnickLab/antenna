@@ -2126,12 +2126,15 @@ class TestAlgorithmViewSetProjectFilter(APITestCase):
             timestamp=datetime.datetime.now(datetime.timezone.utc),
         )
 
-    def _list_algorithm_names(self, project_id=None):
+    def _list_rows(self, project_id=None):
         params = {"project_id": project_id} if project_id is not None else {}
         url = reverse_with_params("api:algorithm-list", params=params)
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
-        return {row["name"] for row in response.json()["results"]}
+        return {row["name"]: row for row in response.json()["results"]}
+
+    def _list_algorithm_names(self, project_id=None):
+        return set(self._list_rows(project_id).keys())
 
     def test_lists_only_algorithms_that_produced_results(self):
         """The project list is exactly the algorithms with output here: the classifier
@@ -2153,6 +2156,22 @@ class TestAlgorithmViewSetProjectFilter(APITestCase):
         user can still filter occurrences by what an earlier run produced."""
         names = self._list_algorithm_names(project_id=self.project.pk)
         self.assertIn("Algo Superseded", names)
+
+    def test_enabled_in_project_flag_distinguishes_current_from_historical(self):
+        """Every listed algorithm carries `enabled_in_project`: True when it is on a
+        pipeline the project has enabled, False when it only ran historically (a
+        superseded version on a disabled pipeline). The UI grays out the False ones,
+        which is what lets the same list serve both the algorithms page and the
+        occurrence filter."""
+        rows = self._list_rows(project_id=self.project.pk)
+        self.assertTrue(rows["Algo Used"]["enabled_in_project"])
+        self.assertFalse(rows["Algo Superseded"]["enabled_in_project"])
+
+    def test_enabled_in_project_flag_is_null_when_unscoped(self):
+        """The flag is relative to a project, so the unscoped list reports it as null
+        rather than guessing a project to be enabled in."""
+        rows = self._list_rows()
+        self.assertIsNone(rows["Algo Used"]["enabled_in_project"])
 
     def test_detector_that_ran_is_listed_although_it_never_classified(self):
         """Detectors set ``Detection.detection_algorithm`` and never write a

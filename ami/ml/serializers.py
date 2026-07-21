@@ -30,6 +30,7 @@ MinimalCategoryMapNestedSerializer = MinimalNestedModelSerializer.create_for_mod
 
 class AlgorithmSerializer(DefaultSerializer):
     category_map = MinimalCategoryMapNestedSerializer(read_only=True, source="category_map_id")
+    enabled_in_project = serializers.SerializerMethodField()
 
     class Meta:
         model = Algorithm
@@ -45,9 +46,21 @@ class AlgorithmSerializer(DefaultSerializer):
             "task_type",
             "category_map",
             "category_count",
+            "enabled_in_project",
             "created_at",
             "updated_at",
         ]
+
+    def get_enabled_in_project(self, obj) -> bool | None:
+        """Whether the algorithm is on a pipeline the active project has enabled.
+
+        The project algorithm list includes algorithms that produced results but are no
+        longer enabled — superseded versions, standalone post-processing algorithms — so
+        the UI can gray those out. Only the project-scoped list annotates this; it is
+        ``None`` on the unscoped list and on detail responses, where the flag has no
+        project to be relative to.
+        """
+        return getattr(obj, "enabled_in_project", None)
 
 
 class AlgorithmNestedSerializer(DefaultSerializer):

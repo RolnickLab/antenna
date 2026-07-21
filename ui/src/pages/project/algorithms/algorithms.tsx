@@ -61,6 +61,11 @@ export const Algorithms = () => {
         isLoading={isLoading}
         items={algorithms}
         onSortSettingsChange={setSort}
+        // Algorithms that ran in the project but are no longer enabled here (superseded
+        // versions, post-processing algorithms) are shown grayed rather than hidden.
+        rowClassName={(algorithm) =>
+          algorithm.enabledInProject === false ? 'opacity-50' : undefined
+        }
         sortable
         sortSettings={sort}
       />
