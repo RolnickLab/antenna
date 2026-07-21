@@ -183,14 +183,15 @@ export class Capture {
     return this._capture.url
   }
 
-  // EXIF-free large thumbnail for the zoomable session detail view; detection
-  // boxes align with its pixels, unlike the EXIF-rotated original file.
-  get thumbnailLarge(): string {
-    if (this._capture.thumbnails?.large) {
-      return this._capture.thumbnails.large
+  // EXIF-free thumbnail URLs for the session detail zoom ladder, with no
+  // original-file fallback: thumbnails are generated on request, so a missing
+  // size usually means the source file is unreachable too, and the ladder
+  // simply skips that tier.
+  get thumbnailSizes(): { medium?: string; large?: string } {
+    return {
+      medium: this._capture.thumbnails?.medium ?? undefined,
+      large: this._capture.thumbnails?.large ?? undefined,
     }
-
-    return this._capture.url
   }
 
   get src(): string {

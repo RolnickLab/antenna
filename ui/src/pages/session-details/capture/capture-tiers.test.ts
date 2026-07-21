@@ -51,11 +51,10 @@ describe('buildTierLadder', () => {
     ])
   })
 
-  test('missing medium thumbnail falls back to original and sorts by real width', () => {
-    // When a thumbnail size is missing, the model getters fall back to the
-    // original URL — that tier's real width is the original's, not 1024.
-    const sources = { ...SOURCES, medium: SOURCES.original }
-    const tiers = buildTierLadder(sources, 4096)
+  test('a missing thumbnail size is skipped as a tier', () => {
+    // Thumbnails are generated on request, so a missing size means the
+    // capture's storage is likely unreachable — skip it rather than retry.
+    const tiers = buildTierLadder({ ...SOURCES, medium: undefined }, 4096)
 
     expect(tiers).toEqual([
       { src: SOURCES.large, width: 2560, isOriginal: false },
@@ -64,12 +63,7 @@ describe('buildTierLadder', () => {
   })
 
   test('all thumbnails missing yields a single original tier', () => {
-    const sources = {
-      medium: SOURCES.original,
-      large: SOURCES.original,
-      original: SOURCES.original,
-    }
-    const tiers = buildTierLadder(sources, 3000)
+    const tiers = buildTierLadder({ original: SOURCES.original }, 3000)
 
     expect(tiers).toEqual([
       { src: SOURCES.original, width: 3000, isOriginal: true },

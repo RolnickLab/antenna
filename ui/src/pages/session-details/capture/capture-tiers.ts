@@ -8,8 +8,10 @@
  */
 
 export interface TierSources {
-  medium: string
-  large: string
+  // Thumbnail sizes are generated on request, so a missing URL means the
+  // capture's storage is likely unreachable; the ladder skips that tier.
+  medium?: string
+  large?: string
   original: string
 }
 
@@ -42,48 +44,46 @@ export const buildTierLadder = (
   captureWidth: number | null
 ): CaptureTier[] => {
   // Thumbnails are never upscaled, so a tier's real width is capped by the
-  // original's. A missing thumbnail size falls back to the original URL, in
-  // which case the tier's real width is the original's, whatever the nominal
-  // thumbnail size says.
-  const tierFor = (src: string, thumbnailWidth: number): CaptureTier => {
-    if (src === sources.original) {
-      return { src, width: captureWidth, isOriginal: true }
-    }
-    return {
-      src,
-      width: captureWidth
-        ? Math.min(thumbnailWidth, captureWidth)
-        : thumbnailWidth,
+  // original's.
+  const cap = (thumbnailWidth: number) =>
+    captureWidth ? Math.min(thumbnailWidth, captureWidth) : thumbnailWidth
+
+  const candidates: CaptureTier[] = []
+  if (sources.medium) {
+    candidates.push({
+      src: sources.medium,
+      width: cap(THUMBNAIL_WIDTHS.medium),
       isOriginal: false,
-    }
+    })
   }
-
-  const candidates = [
-    tierFor(sources.medium, THUMBNAIL_WIDTHS.medium),
-    tierFor(sources.large, THUMBNAIL_WIDTHS.large),
-    { src: sources.original, width: captureWidth, isOriginal: true },
-  ]
-
-  const unique = candidates.filter(
-    (candidate, index) =>
-      candidates.findIndex((other) => other.src === candidate.src) === index
-  )
-
-  // Sort by real width (unknown last) and keep only tiers that add resolution.
-  const sorted = [...unique].sort(
-    (a, b) => (a.width ?? Infinity) - (b.width ?? Infinity)
-  )
-
-  return sorted.filter((tier, index) => {
-    if (index === 0) {
-      return true
-    }
-    const previous = sorted[index - 1]
-    if (previous.width === null) {
-      return false
-    }
-    return tier.width === null || tier.width > previous.width
+  if (sources.large) {
+    candidates.push({
+      src: sources.large,
+      width: cap(THUMBNAIL_WIDTHS.large),
+      isOriginal: false,
+    })
+  }
+  candidates.push({
+    src: sources.original,
+    width: captureWidth,
+    isOriginal: true,
   })
+
+  // Keep only tiers that add resolution over the previous one — this drops
+  // the EXIF-risky original whenever the large thumbnail already covers its
+  // full size.
+  return candidates.reduce((ladder: CaptureTier[], tier) => {
+    const previous = ladder[ladder.length - 1]
+    if (
+      previous &&
+      previous.width !== null &&
+      tier.width !== null &&
+      tier.width <= previous.width
+    ) {
+      return ladder
+    }
+    return [...ladder, tier]
+  }, [])
 }
 
 /**

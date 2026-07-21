@@ -41,7 +41,7 @@ export const useCaptureTiers = ({
 
   const tiers = useMemo(
     () =>
-      medium && large && original
+      original
         ? buildTierLadder({ medium, large, original }, captureWidth)
         : [],
     [medium, large, original, captureWidth]

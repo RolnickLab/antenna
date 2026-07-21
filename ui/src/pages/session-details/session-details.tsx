@@ -172,8 +172,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
               sources={
                 activeCapture
                   ? {
-                      medium: activeCapture.thumbnailMedium,
-                      large: activeCapture.thumbnailLarge,
+                      ...activeCapture.thumbnailSizes,
                       original: activeCapture.src,
                     }
                   : undefined
