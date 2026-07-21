@@ -15,7 +15,7 @@ from ami.base.permissions import ProjectPipelineConfigPermission
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
-from ami.main.models import Classification, Project, SourceImage
+from ami.main.models import Project, SourceImage
 from ami.ml.schemas import PipelineRegistrationResponse
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
@@ -61,53 +61,12 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
         if getattr(self, "action", None) == "list":
             project = self.get_active_project()
             if project:
-                # Algorithms reach the list two ways. An enabled pipeline configures most of
-                # them, and that join alone covers detectors, which never author a
-                # Classification and so cannot be found by their results at all.
-                configured_for_project = Algorithm.objects.filter(
-                    pipelines__project_pipeline_configs__project=project,
-                    pipelines__project_pipeline_configs__enabled=True,
-                ).values_list("pk", flat=True)
-
-                # Post-processing algorithms (e.g. class masking) are created standalone with
-                # no pipeline, so they are found by their classifications instead. This is done
-                # in two steps on purpose. Collecting the unpipelined algorithm ids first, as an
-                # explicit list, lets the classification lookup filter on `algorithm_id IN (...)`,
-                # which the planner answers from the algorithm_id index. Expressing the same thing
-                # as a single join (`pipelines__isnull=True, classifications__...`) hides those ids
-                # behind an anti-join at plan time, so the planner sequentially scans the whole
-                # classification table instead — a cost that grows with the platform's total
-                # classification count rather than with this project. The first query is also
-                # cheap to cache: it only changes when algorithms or pipeline links change, not on
-                # every classification write.
-                #
-                # An algorithm attached to a pipeline that is not enabled for this project is
-                # absent even when it owns determinations here. That matches the behaviour on the
-                # pipeline join alone; widening the second lookup to cover it costs several times
-                # the runtime and is left as a follow-up.
-                # Sorted for the same reason as the outer id list below: this list is rendered
-                # verbatim into the IN clause, and Algorithm's (name, version) ordering would
-                # otherwise vary the id order — and so the SQL string and its cachalot key —
-                # for identical membership.
-                unpipelined_algorithm_ids = sorted(
-                    Algorithm.objects.filter(pipelines__isnull=True).values_list("pk", flat=True)
-                )
-                # `.order_by()` clears Classification's default ordering before `.distinct()`.
-                # Without it the ordering columns join the SELECT and widen the DISTINCT, so it
-                # would return one row per classification rather than one per algorithm.
-                post_processing_used_in_project = (
-                    Classification.objects.filter(
-                        algorithm_id__in=unpipelined_algorithm_ids,
-                        detection__source_image__project=project,
-                    )
-                    .order_by()
-                    .values_list("algorithm_id", flat=True)
-                    .distinct()
-                )
-                # Sorted so the generated SQL is stable for a given result: cachalot keys its
-                # cache on the query string, and an unordered set would vary it.
-                relevant_ids = set(configured_for_project) | set(post_processing_used_in_project)
-                qs = qs.filter(pk__in=sorted(relevant_ids))
+                # Scope the list to algorithms that actually produced results in the project —
+                # any superseded pipeline version or standalone post-processing algorithm whose
+                # output still exists, so the user can filter occurrences by anything that ran.
+                # Pipeline configuration is not consulted; configured-but-never-run algorithms
+                # do not appear. See the method for cost characteristics.
+                qs = qs.used_in_project(project)  # type: ignore[union-attr] # Custom queryset method
         return qs
 
     @extend_schema(parameters=[project_id_doc_param])

@@ -19,6 +19,8 @@ Every call to the AI model API incurs a cost and requires electricity. Be smart 
 - Focus on optimizing cold queries first before adding caching
 - When ordering by annotated fields, pagination COUNT queries include those annotations - use `.values('pk')` to strip them
 - For large tables (>10k rows), consider fuzzy counting using PostgreSQL's pg_class.reltuples
+- **Run `EXPLAIN (ANALYZE)` before claiming anything about a query plan.** Do not describe a query as "uses the index", "stays off the table", or "only touches N rows" from reading the ORM expression — verify it. A filter that looks bounded can still trigger a `Seq Scan`: an anti-join such as `pipelines__isnull=True` hides the candidate ids at plan time, so Postgres scans the whole table despite an index being available. Materializing the ids first and filtering on `field__in=[literal ids]` is what lets the planner use the index.
+- **Measure on the largest project in the local database, and survey several project sizes.** The local DB is a copy of production — use it. A small or empty project routinely hides the defect. If a query's cost does not move with project size, it is bound by total table size and will degrade as the platform grows regardless of tenant. Wrap timing loops in `cachalot_disabled()` and rebuild the queryset each iteration, or a reused queryset serves from `_result_cache` and reports a fake ~0 ms.
 
 **Git Commit Guidelines:**
 - Do NOT include "Generated with Claude Code" in commit messages

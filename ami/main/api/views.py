@@ -1222,11 +1222,15 @@ class OccurrenceCollectionFilter(filters.BaseFilterBackend):
 
 class OccurrenceAlgorithmFilter(filters.BaseFilterBackend):
     """
-    Filter occurrences by the detection algorithm that detected them.
+    Filter occurrences by any algorithm that produced a result on them.
 
-    Accepts a list of algorithm ids to filter by or exclude by.
+    Matches an occurrence when one of its detections was made by the given
+    algorithm (detectors) or one of its classifications came from it
+    (classifiers and post-processing algorithms), so every algorithm listed
+    by ``Algorithm.objects.used_in_project()`` can be filtered here.
 
-    This filter can be both inclusive and exclusive.
+    Accepts a list of algorithm ids to filter by (``algorithm``) or exclude
+    by (``not_algorithm``). Both are supported and may be combined.
     """
 
     query_param = "algorithm"
@@ -1237,9 +1241,9 @@ class OccurrenceAlgorithmFilter(filters.BaseFilterBackend):
         algorithm_ids_exclusive = request.query_params.getlist(self.query_param_exclusive)
 
         if algorithm_ids:
-            queryset = queryset.filter(detections__classifications__algorithm__in=algorithm_ids)
+            queryset = queryset.detected_or_classified_by(algorithm_ids)
         if algorithm_ids_exclusive:
-            queryset = queryset.exclude(detections__classifications__algorithm__in=algorithm_ids_exclusive)
+            queryset = queryset.not_detected_or_classified_by(algorithm_ids_exclusive)
 
         return queryset
 
