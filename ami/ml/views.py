@@ -1,7 +1,7 @@
 import logging
 
 from django.db import transaction
-from django.db.models import Prefetch, Q
+from django.db.models import Prefetch
 from django.db.models.query import QuerySet
 from django.utils.text import slugify
 from drf_spectacular.utils import extend_schema
@@ -61,21 +61,16 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
         if getattr(self, "action", None) == "list":
             project = self.get_active_project()
             if project:
-                # An algorithm is relevant to the project if it is configured via an
-                # enabled pipeline OR it produced classifications in the project.
-                # Post-processing algorithms (e.g. class masking) are created standalone
-                # with no pipeline, so the pipeline join alone would hide them even though
-                # they own determinations the user needs to filter occurrences by.
+                # An algorithm belongs to the project if it actually produced classifications
+                # there. Pipeline configuration is deliberately not consulted: a configured but
+                # never-run algorithm has no results to filter or inspect, and post-processing
+                # algorithms (e.g. class masking) are created standalone with no pipeline at all,
+                # so a pipeline join would both list algorithms with nothing behind them and hide
+                # ones that own live determinations.
                 classified_in_project = Classification.objects.filter(detection__source_image__project=project).values(
                     "algorithm"
                 )
-                qs = qs.filter(
-                    Q(
-                        pipelines__project_pipeline_configs__project=project,
-                        pipelines__project_pipeline_configs__enabled=True,
-                    )
-                    | Q(pk__in=classified_in_project)
-                ).distinct()
+                qs = qs.filter(pk__in=classified_in_project)
         return qs
 
     @extend_schema(parameters=[project_id_doc_param])

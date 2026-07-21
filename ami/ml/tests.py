@@ -2070,10 +2070,14 @@ class TestSaveResultsRefreshesDeploymentCounts(TestCase):
 
 class TestAlgorithmViewSetProjectFilter(APITestCase):
     """
-    The algorithm list endpoint is scoped to algorithms relevant to the active
-    project: those belonging to an enabled pipeline, plus any that produced
-    classifications in the project (e.g. post-processing algorithms like class
-    masking, which are created standalone with no pipeline).
+    The algorithm list endpoint is scoped to the algorithms that actually produced
+    classifications in the active project.
+
+    Pipeline configuration does not grant an algorithm a place in the list. An
+    algorithm wired to an enabled pipeline but never run has no results to filter or
+    inspect, and post-processing algorithms such as class masking are created
+    standalone with no pipeline at all, so pipeline membership is neither necessary
+    nor sufficient.
     """
 
     def setUp(self):
@@ -2083,16 +2087,18 @@ class TestAlgorithmViewSetProjectFilter(APITestCase):
         self.project = Project.objects.create(name="Algo Project A", create_defaults=False)
         self.other_project = Project.objects.create(name="Algo Project B", create_defaults=False)
 
-        # Project A: one enabled pipeline, one disabled pipeline
-        self.algo_enabled = Algorithm.objects.create(name="Algo Enabled", version=1)
+        # Project A: an algorithm that has run, and one configured via a disabled pipeline
+        self.algo_used = Algorithm.objects.create(name="Algo Used", version=1)
         self.algo_disabled = Algorithm.objects.create(name="Algo Disabled", version=1)
-        # Project B: a different pipeline/algorithm
+        # Project A: enabled pipeline, but the algorithm never produced anything
+        self.algo_configured_unused = Algorithm.objects.create(name="Algo Configured Unused", version=1)
+        # Project B: a different algorithm, also used
         self.algo_other_project = Algorithm.objects.create(name="Algo Other Project", version=1)
-        # Unrelated algorithm not attached to any pipeline
+        # Unrelated algorithm not attached to any pipeline and never run
         self.algo_orphan = Algorithm.objects.create(name="Algo Orphan", version=1)
 
         enabled_pipeline = Pipeline.objects.create(name="Enabled Pipeline")
-        enabled_pipeline.algorithms.add(self.algo_enabled)
+        enabled_pipeline.algorithms.add(self.algo_used, self.algo_configured_unused)
         ProjectPipelineConfig.objects.create(project=self.project, pipeline=enabled_pipeline, enabled=True)
 
         disabled_pipeline = Pipeline.objects.create(name="Disabled Pipeline")
@@ -2103,7 +2109,20 @@ class TestAlgorithmViewSetProjectFilter(APITestCase):
         other_pipeline.algorithms.add(self.algo_other_project)
         ProjectPipelineConfig.objects.create(project=self.other_project, pipeline=other_pipeline, enabled=True)
 
+        self._classify_in_project(self.algo_used, self.project)
+        self._classify_in_project(self.algo_other_project, self.other_project)
+
         self.client.force_authenticate(user=self.user)
+
+    def _classify_in_project(self, algorithm, project):
+        """Give ``algorithm`` a classification whose capture belongs to ``project``."""
+        source_image = SourceImage.objects.create(project=project)
+        detection = Detection.objects.create(source_image=source_image)
+        return Classification.objects.create(
+            detection=detection,
+            algorithm=algorithm,
+            timestamp=datetime.datetime.now(datetime.timezone.utc),
+        )
 
     def _list_algorithm_names(self, project_id=None):
         params = {"project_id": project_id} if project_id is not None else {}
@@ -2112,9 +2131,15 @@ class TestAlgorithmViewSetProjectFilter(APITestCase):
         self.assertEqual(response.status_code, 200)
         return {row["name"] for row in response.json()["results"]}
 
-    def test_lists_only_enabled_pipeline_algorithms_for_project(self):
+    def test_lists_only_algorithms_used_in_project(self):
+        """Having run in the project is what puts an algorithm in the list.
+
+        ``Algo Configured Unused`` shares an enabled pipeline with ``Algo Used`` and is
+        excluded purely because it never classified anything, which pins the positive and
+        negative sides of the rule against an otherwise identical pair.
+        """
         names = self._list_algorithm_names(project_id=self.project.pk)
-        self.assertEqual(names, {"Algo Enabled"})
+        self.assertEqual(names, {"Algo Used"})
 
     def test_other_project_only_sees_its_own_algorithms(self):
         names = self._list_algorithm_names(project_id=self.other_project.pk)
@@ -2123,7 +2148,7 @@ class TestAlgorithmViewSetProjectFilter(APITestCase):
     def test_unscoped_request_returns_all_algorithms(self):
         """Without project_id, current behavior lists all algorithms (unchanged)."""
         names = self._list_algorithm_names()
-        self.assertIn("Algo Enabled", names)
+        self.assertIn("Algo Used", names)
         self.assertIn("Algo Disabled", names)
         self.assertIn("Algo Other Project", names)
         self.assertIn("Algo Orphan", names)
@@ -2139,16 +2164,6 @@ class TestAlgorithmViewSetProjectFilter(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["name"], "Algo Disabled")
 
-    def _classify_in_project(self, algorithm, project):
-        """Give ``algorithm`` a terminal classification whose capture is in ``project``."""
-        source_image = SourceImage.objects.create(project=project)
-        detection = Detection.objects.create(source_image=source_image)
-        return Classification.objects.create(
-            detection=detection,
-            algorithm=algorithm,
-            timestamp=datetime.datetime.now(datetime.timezone.utc),
-        )
-
     def test_lists_post_processing_algorithm_with_classifications_in_project(self):
         """A post-processing algorithm has no pipeline but produces determinations in
         the project, so the list must include it — otherwise the user cannot filter
@@ -2158,8 +2173,6 @@ class TestAlgorithmViewSetProjectFilter(APITestCase):
 
         names = self._list_algorithm_names(project_id=self.project.pk)
         self.assertIn("Class Masked Classifier", names)
-        self.assertIn("Algo Enabled", names, "Enabled-pipeline algorithms still appear")
-        self.assertNotIn("Algo Disabled", names, "A disabled pipeline with no classifications stays hidden")
 
     def test_classifications_in_other_project_do_not_leak(self):
         """An algorithm whose classifications live in another project must not appear."""
