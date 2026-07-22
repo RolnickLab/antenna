@@ -78,11 +78,14 @@ class BasePostProcessingTask(abc.ABC):
             # registry, so a module-level import would be circular.
             from ami.jobs.models import JobState
 
-            # The stage is marked STARTED here because nothing else does it: the job
-            # wrapper creates the stage and later marks it SUCCESS, so a stage
-            # reporting progress would otherwise still be labelled "Waiting to
-            # start" for the whole run. See #1376.
-            self.job.progress.update_stage(self.job.job_type_key, status=JobState.STARTED, progress=progress)
+            # Job.update_progress only promotes a stage out of CREATED once its
+            # progress exceeds zero, so a stage reporting exactly 0% stays labelled
+            # "Waiting to start". Promote it here, and only from CREATED, so a
+            # heartbeat can never pull a finished or cancelled stage backwards.
+            # See #1376.
+            stage = self.job.progress.get_stage(self.job.job_type_key)
+            status = {"status": JobState.STARTED} if stage.status == JobState.CREATED else {}
+            self.job.progress.update_stage(self.job.job_type_key, progress=progress, **status)
             # Bump updated_at alongside progress: the stale-job reaper
             # (check_stale_jobs) revokes running jobs whose updated_at is older
             # than STALLED_JOBS_MAX_MINUTES. A long post-processing run that only
