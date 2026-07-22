@@ -486,3 +486,133 @@ class TestPostProcessingClassMasking(TestCase):
         # Stored confidence: reweight=False uses the original pre-mask probability.
         self.assertAlmostEqual(new_clf_f.score, scores[0], places=6)
         self.assertNotAlmostEqual(new_clf_t.score, scores[0], places=2)
+
+    # ----- scope query shape ----------------------------------------------
+
+    def test_collection_scope_returns_each_classification_once(self):
+        """A capture that belongs to several collections still contributes one row per
+        classification when the scope is filtered to one of those collections.
+
+        This is the property that makes de-duplication unnecessary: the collection
+        membership table holds at most one row per (capture, collection) pair, and
+        detection -> capture is a plain foreign key, so filtering on a single
+        collection cannot multiply rows.
+        """
+        capture = self.collection.images.first()
+        other_collection = SourceImageCollection.objects.create(
+            name="Second collection containing the same capture",
+            project=self.project,
+            method="manual",
+            kwargs={"image_ids": [capture.pk]},
+        )
+        other_collection.images.add(capture)
+
+        detection = Detection.objects.create(source_image=capture, bbox=[0, 0, 200, 200])
+        occurrence = Occurrence.objects.create(project=self.project, event=self.deployment.events.first())
+        occurrence.detections.add(detection)
+        logits = [2.0, 1.0, 5.0]
+        classification = self._create_classification_with_logits(
+            detection, self.species_taxa[2], _softmax(logits), logits
+        )
+
+        taxa_list = TaxaList.objects.create(name="Scope shape list")
+        taxa_list.taxa.set(self.species_taxa[:2])
+        task = ClassMaskingTask(
+            source_image_collection_id=self.collection.pk,
+            taxa_list_id=taxa_list.pk,
+            algorithm_id=self.algorithm.pk,
+        )
+        scoped, _ = task._scoped_classifications(task.config, self.algorithm)
+
+        self.assertEqual(list(scoped.filter(pk=classification.pk)), [classification])
+        self.assertEqual(
+            scoped.filter(pk=classification.pk).count(),
+            1,
+            "A capture in two collections must not yield the classification twice",
+        )
+
+    def test_occurrence_scope_returns_each_classification_once(self):
+        """An occurrence with several detections yields one row per classification."""
+        taxa_list = TaxaList.objects.create(name="Occurrence scope shape list")
+        taxa_list.taxa.set(self.species_taxa[:2])
+
+        occurrence = Occurrence.objects.create(project=self.project, event=self.deployment.events.first())
+        logits = [2.0, 1.0, 5.0]
+        for capture in self.collection.images.all()[:3]:
+            detection = Detection.objects.create(source_image=capture, bbox=[0, 0, 200, 200])
+            occurrence.detections.add(detection)
+            self._create_classification_with_logits(detection, self.species_taxa[2], _softmax(logits), logits)
+
+        task = ClassMaskingTask(
+            occurrence_id=occurrence.pk,
+            taxa_list_id=taxa_list.pk,
+            algorithm_id=self.algorithm.pk,
+        )
+        scoped, _ = task._scoped_classifications(task.config, self.algorithm)
+        self.assertEqual(scoped.count(), 3)
+
+    def test_scope_query_does_not_deduplicate_rows(self):
+        """Neither scope may emit ``SELECT DISTINCT``, because the selected columns
+        include the ``logits`` and ``scores`` arrays.
+
+        A production classifier carries 29,176 categories, so those two arrays are
+        roughly half a megabyte per row and de-duplicating whole rows forces the
+        database to sort all of them. Measured against a 55,530-row scope: counting
+        the scope took 208 seconds with de-duplication and 0.5 seconds without,
+        returning the same number. The de-duplication is also blocking, so the first
+        row of the iteration pass cannot arrive until the whole sort completes,
+        which is what pushed masking runs past the stalled-job cutoff before any
+        progress was reported.
+
+        The equivalent-results half of this claim is covered by the two scope tests
+        above; de-duplication cannot be observed in the output, so the query shape
+        is the only thing left to pin.
+        """
+        taxa_list = TaxaList.objects.create(name="Query shape list")
+        taxa_list.taxa.set(self.species_taxa[:2])
+        occurrence = Occurrence.objects.create(project=self.project, event=self.deployment.events.first())
+
+        for kwargs in (
+            {"source_image_collection_id": self.collection.pk},
+            {"occurrence_id": occurrence.pk},
+        ):
+            with self.subTest(**kwargs):
+                task = ClassMaskingTask(taxa_list_id=taxa_list.pk, algorithm_id=self.algorithm.pk, **kwargs)
+                scoped, _ = task._scoped_classifications(task.config, self.algorithm)
+                self.assertNotIn("DISTINCT", str(scoped.query).upper())
+
+    def test_scope_size_is_reported_before_the_first_batch(self):
+        """The scope size reaches the job before any row is processed.
+
+        Resolving the scope reads the taxa list and expands the classifier's
+        category map, so an operator watching a large run would otherwise see a
+        stage sitting at zero with no indication of how much work was found. The
+        same callback moves the stage out of its created state, which is what
+        proves to the stalled-job check that the run is alive.
+        """
+        taxa_list = TaxaList.objects.create(name="Setup callback list")
+        taxa_list.taxa.set(self.species_taxa[:2])
+
+        det, _ = self._detection_with_occurrence()
+        logits = [2.0, 1.0, 5.0]
+        self._create_classification_with_logits(det, self.species_taxa[2], _softmax(logits), logits)
+
+        new_algorithm = Algorithm.objects.create(
+            name="masked_setup",
+            key="masked_setup_test",
+            task_type=AlgorithmTaskType.CLASSIFICATION.value,
+            category_map=self.algorithm.category_map,
+        )
+
+        events: list[tuple[str, int]] = []
+        make_classifications_filtered_by_taxa_list(
+            classifications=Classification.objects.filter(detection=det, terminal=True),
+            taxa_list=taxa_list,
+            algorithm=self.algorithm,
+            new_algorithm=new_algorithm,
+            on_setup=lambda total: events.append(("setup", total)),
+            on_batch=lambda m: events.append(("batch", m["classifications_checked"])),
+        )
+
+        self.assertEqual(events[0], ("setup", 1), "Scope size is reported once, before the first batch")
+        self.assertEqual([name for name, _ in events], ["setup", "batch"])
