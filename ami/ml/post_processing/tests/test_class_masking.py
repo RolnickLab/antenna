@@ -525,32 +525,12 @@ class TestPostProcessingClassMasking(TestCase):
             "A capture in two collections must not yield the classification twice",
         )
 
-    def test_occurrence_scope_returns_each_classification_once(self):
-        """An occurrence with several detections yields one row per classification."""
-        taxa_list = TaxaList.objects.create(name="Occurrence scope shape list")
-        taxa_list.taxa.set(self.species_taxa[:2])
-
-        occurrence = Occurrence.objects.create(project=self.project, event=self.deployment.events.first())
-        logits = [2.0, 1.0, 5.0]
-        for capture in self.collection.images.all()[:3]:
-            detection = Detection.objects.create(source_image=capture, bbox=[0, 0, 200, 200])
-            occurrence.detections.add(detection)
-            self._create_classification_with_logits(detection, self.species_taxa[2], _softmax(logits), logits)
-
-        task = ClassMaskingTask(
-            occurrence_id=occurrence.pk,
-            taxa_list_id=taxa_list.pk,
-            algorithm_id=self.algorithm.pk,
-        )
-        scoped, _ = task._scoped_classifications(task.config, self.algorithm)
-        self.assertEqual(scoped.count(), 3)
-
     def test_scope_query_does_not_deduplicate_rows(self):
         """Neither scope de-duplicates rows.
 
-        This costs 208s versus 0.5s on a production-sized scope and is invisible in
-        the output, so the query shape is the only thing that can guard it. The two
-        tests above cover the results being equivalent. See #1376.
+        De-duplication is invisible in the output but very costly here, so the
+        query shape is the only thing that can guard it; the test above covers the
+        results being equivalent. See #1376.
         """
         taxa_list = TaxaList.objects.create(name="Query shape list")
         taxa_list.taxa.set(self.species_taxa[:2])

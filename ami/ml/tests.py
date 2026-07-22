@@ -1651,62 +1651,38 @@ class TestPostProcessingTasks(TestCase):
         job.refresh_from_db()
         self.assertGreater(job.updated_at, stale, "report_stage_metrics must bump updated_at")
 
-    def _post_processing_job(self, name: str):
-        from ami.jobs.models import Job
+    def test_post_processing_stage_is_started_before_the_task_runs(self):
+        """The stage reads as running from the moment the job starts.
+
+        A task's first progress report can be minutes into a large run, and a stage
+        left at CREATED renders as "Waiting to start" until then. See #1376.
+        """
+        from unittest.mock import patch
+
+        from ami.jobs.models import Job, JobState, PostProcessingJob
 
         job = Job.objects.create(
             project=self.project,
-            name=name,
+            name="stage status test",
             job_type_key="post_processing",
             params={
                 "task": "small_size_filter",
                 "config": {"source_image_collection_id": self.collection.pk, "size_threshold": 0.01},
             },
         )
-        job.progress.add_stage("Post Processing", key="post_processing")
-        job.save()
-        return job
 
-    def test_zero_progress_heartbeat_marks_the_stage_started(self):
-        """A heartbeat at exactly 0% still moves the stage out of CREATED.
+        observed = {}
 
-        ``Job.update_progress`` only promotes a stage once its progress exceeds
-        zero, so the setup heartbeat would otherwise leave a running job labelled
-        "Waiting to start". See #1376.
-        """
-        from ami.jobs.models import JobState
+        def _capture(self_task):
+            stage = self_task.job.progress.get_stage("post_processing")
+            observed["status"] = stage.status
+            observed["label"] = stage.status_label
 
-        job = self._post_processing_job("stage status test")
-        self.assertEqual(job.progress.stages[0].status, JobState.CREATED)
+        with patch.object(SmallSizeFilterTask, "run", _capture):
+            PostProcessingJob.run(job)
 
-        task = SmallSizeFilterTask(job=job, source_image_collection_id=self.collection.pk, size_threshold=0.01)
-        task.update_progress(0.0)
-
-        job.refresh_from_db()
-        stage = job.progress.stages[0]
-        self.assertEqual(stage.status, JobState.STARTED)
-        self.assertEqual(stage.status_label, "0% complete")
-
-    def test_heartbeat_does_not_resurrect_a_finished_stage(self):
-        """Promotion applies only to a stage that has not started.
-
-        A late heartbeat must not pull a stage that already reached a final state
-        back to STARTED, which would hide a failure or a cancellation. See #1376.
-        """
-        from ami.jobs.models import Job, JobState
-
-        for final in (JobState.SUCCESS, JobState.FAILURE, JobState.REVOKED):
-            with self.subTest(final=final):
-                job = self._post_processing_job(f"stage status {final} test")
-                job.progress.update_stage("post_processing", status=final, progress=1.0)
-                job.save()
-
-                task = SmallSizeFilterTask(job=job, source_image_collection_id=self.collection.pk, size_threshold=0.01)
-                task.update_progress(0.5)
-
-                job.refresh_from_db()
-                self.assertEqual(job.progress.stages[0].status, final)
-                Job.objects.filter(pk=job.pk).delete()
+        self.assertEqual(observed["status"], JobState.STARTED)
+        self.assertEqual(observed["label"], "0% complete")
 
     def test_occurrences_updated_counts_only_changed_determinations(self):
         """``occurrences_updated`` counts occurrences whose determination actually

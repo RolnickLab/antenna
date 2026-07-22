@@ -279,9 +279,11 @@ class ClassMaskingTask(BasePostProcessingTask):
         ``config_schema`` guarantees exactly one scope id is set, so the single
         ``else`` branch is sound.
 
-        Do not add ``.distinct()``: neither scope can duplicate a row, and
-        de-duplicating sorts the ``logits`` and ``scores`` arrays, which measured
-        208s versus 0.5s on a 55,530-row scope. See #1376.
+        Do not add ``.distinct()`` while both scopes filter a to-one path: neither
+        can duplicate a row, and de-duplicating sorts the ``logits`` and ``scores``
+        arrays, which measured 208s versus 0.5s on a 55,530-row scope. Broadening
+        either scope to match several collections or a whole project would fan out
+        and need de-duplication again — restrict the columns first. See #1376.
         """
         base = Classification.objects.filter(
             terminal=True,
