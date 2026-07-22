@@ -63,6 +63,16 @@ class TestClassMaskingConfig(TestCase):
         config = ClassMaskingConfig(source_image_collection_id=1, taxa_list_id=2, algorithm_id=3, reweight=False)
         self.assertFalse(config.reweight)
 
+    def test_only_when_taxon_changes_defaults_to_true(self):
+        config = ClassMaskingConfig(source_image_collection_id=1, taxa_list_id=2, algorithm_id=3)
+        self.assertTrue(config.only_when_taxon_changes)
+
+    def test_only_when_taxon_changes_can_be_set_false(self):
+        config = ClassMaskingConfig(
+            source_image_collection_id=1, taxa_list_id=2, algorithm_id=3, only_when_taxon_changes=False
+        )
+        self.assertFalse(config.only_when_taxon_changes)
+
 
 class _PostProcessingAdminCase(TestCase):
     @classmethod
@@ -173,6 +183,41 @@ class TestClassMaskingFormReweight(_PostProcessingAdminCase):
         self.assertEqual(response.status_code, 302)
         job = Job.objects.get(project=self.project, job_type_key="post_processing")
         self.assertFalse(job.params["config"]["reweight"])
+
+
+class TestClassMaskingFormOnlyWhenTaxonChanges(_PostProcessingAdminCase):
+    """The admin form exposes the "only when the species changes" toggle and passes
+    it through to the job config."""
+
+    def _post_collection(self, include_flag: bool):
+        data = {
+            "action": "run_class_masking",
+            django_admin.helpers.ACTION_CHECKBOX_NAME: [str(self.collection.pk)],
+            "confirm": "yes",
+            "taxa_list_id": str(self.taxa_list.pk),
+            "algorithm_id": str(self.algorithm.pk),
+            "reweight": "on",
+        }
+        if include_flag:
+            data["only_when_taxon_changes"] = "on"
+        return self.client.post(reverse("admin:main_sourceimagecollection_changelist"), data=data)
+
+    def test_form_has_the_field_checked_by_default(self):
+        form = ClassMaskingActionForm()
+        self.assertIn("only_when_taxon_changes", form.fields)
+        self.assertTrue(form.fields["only_when_taxon_changes"].initial)
+
+    def test_checked_box_yields_true_in_the_job_config(self):
+        response = self._post_collection(include_flag=True)
+        self.assertEqual(response.status_code, 302)
+        job = Job.objects.get(project=self.project, job_type_key="post_processing")
+        self.assertTrue(job.params["config"]["only_when_taxon_changes"])
+
+    def test_unchecked_box_yields_false_in_the_job_config(self):
+        response = self._post_collection(include_flag=False)
+        self.assertEqual(response.status_code, 302)
+        job = Job.objects.get(project=self.project, job_type_key="post_processing")
+        self.assertFalse(job.params["config"]["only_when_taxon_changes"])
 
 
 class TestClassMaskingFormScopeFiltering(TestCase):
