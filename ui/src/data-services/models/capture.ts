@@ -175,14 +175,6 @@ export class Capture {
     return this._capture.url
   }
 
-  get thumbnailMedium(): string {
-    if (this._capture.thumbnails?.medium) {
-      return this._capture.thumbnails.medium
-    }
-
-    return this._capture.url
-  }
-
   // EXIF-free thumbnail URLs for the session detail zoom ladder, with no
   // original-file fallback: thumbnails are generated on request, so a missing
   // size usually means the source file is unreachable too, and the ladder
