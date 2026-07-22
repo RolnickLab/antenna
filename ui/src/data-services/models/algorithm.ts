@@ -43,12 +43,4 @@ export class Algorithm extends Entity {
       ? this._algorithm.category_count
       : undefined
   }
-
-  // Whether the algorithm is on a pipeline the active project has enabled. The
-  // project list also includes algorithms that only ran historically (superseded
-  // versions, post-processing algorithms), which come back false so the UI can gray
-  // them out. Undefined on the unscoped list, where there is no project to be enabled in.
-  get enabledInProject(): boolean | undefined {
-    return this._algorithm.enabled_in_project ?? undefined
-  }
 }

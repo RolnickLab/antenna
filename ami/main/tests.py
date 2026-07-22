@@ -6512,7 +6512,7 @@ class TestOccurrenceValidQuerySet(TestCase):
 
 class TestOccurrenceAlgorithmFilterQuerySet(TestCase):
     """
-    Covers OccurrenceQuerySet.detected_or_classified_by / not_detected_or_classified_by,
+    Covers OccurrenceQuerySet.processed_by_algorithm / not_processed_by_algorithm,
     which back the ?algorithm= and ?not_algorithm= occurrence filters (PR #1368).
 
     The filter must match an algorithm by either role it can play: the detector that
@@ -6582,32 +6582,32 @@ class TestOccurrenceAlgorithmFilterQuerySet(TestCase):
         return set(queryset.values_list("pk", flat=True))
 
     def test_filter_by_classifier_matches_its_occurrences(self):
-        matched = Occurrence.objects.filter(project=self.project).detected_or_classified_by([self.classifier.pk])
+        matched = Occurrence.objects.filter(project=self.project).processed_by_algorithm([self.classifier.pk])
         self.assertEqual(self._pks(matched), {self.occ_classified.pk, self.occ_multi.pk})
 
     def test_filter_by_detector_matches_occurrences_it_detected(self):
         """A detector authors no Classification, so the old classification-join form
         returned nothing for it. Matching through Detection.detection_algorithm is what
         lets the user filter by a localizer at all."""
-        matched = Occurrence.objects.filter(project=self.project).detected_or_classified_by([self.detector.pk])
+        matched = Occurrence.objects.filter(project=self.project).processed_by_algorithm([self.detector.pk])
         self.assertEqual(self._pks(matched), {self.occ_classified.pk, self.occ_multi.pk})
 
     def test_count_not_inflated_by_multiple_classifications(self):
         """The occurrence with three classifications by the same algorithm must count
         once. The paginator calls this same COUNT, so an inflated value would report
         four occurrences where there are two and repeat rows across pages."""
-        matched = Occurrence.objects.filter(project=self.project).detected_or_classified_by([self.classifier.pk])
+        matched = Occurrence.objects.filter(project=self.project).processed_by_algorithm([self.classifier.pk])
         self.assertEqual(matched.count(), 2)
 
     def test_exclude_removes_matching_occurrences(self):
-        remaining = Occurrence.objects.filter(project=self.project).not_detected_or_classified_by([self.other.pk])
+        remaining = Occurrence.objects.filter(project=self.project).not_processed_by_algorithm([self.other.pk])
         self.assertEqual(self._pks(remaining), {self.occ_classified.pk, self.occ_multi.pk})
 
     def test_exclude_is_the_complement_of_include(self):
         base = Occurrence.objects.filter(project=self.project)
         ids = [self.classifier.pk]
-        included = self._pks(base.detected_or_classified_by(ids))
-        excluded = self._pks(base.not_detected_or_classified_by(ids))
+        included = self._pks(base.processed_by_algorithm(ids))
+        excluded = self._pks(base.not_processed_by_algorithm(ids))
         self.assertEqual(included | excluded, self._pks(base))
         self.assertEqual(included & excluded, set())
 

@@ -2068,17 +2068,13 @@ class TestSaveResultsRefreshesDeploymentCounts(TestCase):
         )
 
 
-class TestAlgorithmViewSetProjectFilter(APITestCase):
-    """
-    The algorithm list endpoint is scoped to the algorithms that actually produced
-    results in the active project, regardless of pipeline configuration.
+class AlgorithmProjectTestBase(APITestCase):
+    """Shared fixture for the two project-scoped algorithm listings.
 
-    An algorithm qualifies by owning output rows: a detection made by it (detectors,
-    which never author a Classification) or a classification from it (classifiers and
-    standalone post-processing algorithms such as class masking). A superseded pipeline
-    version stays listed as long as its results survive, and an algorithm configured on
-    an enabled pipeline that has never run does not appear at all — the list reflects
-    what happened, not what is set up.
+    Project A has an enabled pipeline carrying one algorithm that ran ("Algo Used")
+    and one that never did ("Algo Configured Unused"), plus a disabled pipeline whose
+    algorithm's determinations survive ("Algo Superseded"). Project B has its own
+    used algorithm. "Algo Orphan" belongs to no pipeline and never ran anywhere.
     """
 
     def setUp(self):
@@ -2126,66 +2122,40 @@ class TestAlgorithmViewSetProjectFilter(APITestCase):
             timestamp=datetime.datetime.now(datetime.timezone.utc),
         )
 
-    def _list_rows(self, project_id=None):
+
+class TestAlgorithmViewSetProjectFilter(AlgorithmProjectTestBase):
+    """
+    The algorithm list endpoint scoped to a project shows what the project can run:
+    the algorithms on its enabled pipelines.
+
+    It reflects configuration, not history — a freshly configured project sees its
+    algorithms before anything has run, and an algorithm only on a disabled pipeline
+    is not offered even if it ran in the past. The algorithms that actually produced
+    results are served separately as occurrence filter choices (see
+    TestOccurrenceAlgorithmChoices), and detail pages stay reachable for any
+    algorithm through the unscoped detail endpoint.
+    """
+
+    def _list_algorithm_names(self, project_id=None):
         params = {"project_id": project_id} if project_id is not None else {}
         url = reverse_with_params("api:algorithm-list", params=params)
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
-        return {row["name"]: row for row in response.json()["results"]}
+        return {row["name"] for row in response.json()["results"]}
 
-    def _list_algorithm_names(self, project_id=None):
-        return set(self._list_rows(project_id).keys())
-
-    def test_lists_only_algorithms_that_produced_results(self):
-        """The project list is exactly the algorithms with output here: the classifier
-        that ran and the superseded version whose determinations survive. The enabled
-        pipeline's never-run algorithm is absent, proving configuration alone does not
-        admit an algorithm."""
+    def test_project_list_shows_enabled_pipeline_algorithms(self):
+        """The scoped list is exactly the enabled pipelines' algorithms — including
+        one that has never run, so a new project can see what it is set up to use
+        before any job has completed."""
         names = self._list_algorithm_names(project_id=self.project.pk)
-        self.assertEqual(names, {"Algo Used", "Algo Superseded"})
+        self.assertEqual(names, {"Algo Used", "Algo Configured Unused"})
 
-    def test_configured_but_never_run_algorithm_is_hidden(self):
-        """An algorithm on an enabled pipeline that never produced a result does not
-        appear. This pins the semantic that the list follows results, not setup."""
+    def test_disabled_pipeline_algorithm_is_not_listed(self):
+        """An algorithm only on a pipeline the project has disabled is not part of
+        what the project can run, even though its past determinations survive. Those
+        stay reachable through the occurrence filter choices and the detail endpoint."""
         names = self._list_algorithm_names(project_id=self.project.pk)
-        self.assertNotIn("Algo Configured Unused", names)
-
-    def test_superseded_pipeline_version_with_results_is_listed(self):
-        """An algorithm whose pipeline is disabled for the project — an older model
-        version, for instance — stays listed as long as its determinations exist, so the
-        user can still filter occurrences by what an earlier run produced."""
-        names = self._list_algorithm_names(project_id=self.project.pk)
-        self.assertIn("Algo Superseded", names)
-
-    def test_enabled_in_project_flag_distinguishes_current_from_historical(self):
-        """Every listed algorithm carries `enabled_in_project`: True when it is on a
-        pipeline the project has enabled, False when it only ran historically (a
-        superseded version on a disabled pipeline). The UI grays out the False ones,
-        which is what lets the same list serve both the algorithms page and the
-        occurrence filter."""
-        rows = self._list_rows(project_id=self.project.pk)
-        self.assertTrue(rows["Algo Used"]["enabled_in_project"])
-        self.assertFalse(rows["Algo Superseded"]["enabled_in_project"])
-
-    def test_enabled_in_project_flag_is_null_when_unscoped(self):
-        """The flag is relative to a project, so the unscoped list reports it as null
-        rather than guessing a project to be enabled in."""
-        rows = self._list_rows()
-        self.assertIsNone(rows["Algo Used"]["enabled_in_project"])
-
-    def test_detector_that_ran_is_listed_although_it_never_classified(self):
-        """Detectors set ``Detection.detection_algorithm`` and never write a
-        Classification, so they are reachable only through their detections. This pins
-        the regression where scoping the list purely by classification authorship dropped
-        every localizer from the project's algorithm list."""
-        detector = Algorithm.objects.create(name="Algo Detector", version=1, task_type="localization")
-
-        source_image = SourceImage.objects.create(project=self.project)
-        Detection.objects.create(source_image=source_image, detection_algorithm=detector)
-        self.assertFalse(Classification.objects.filter(algorithm=detector).exists())
-
-        names = self._list_algorithm_names(project_id=self.project.pk)
-        self.assertIn("Algo Detector", names)
+        self.assertNotIn("Algo Superseded", names)
 
     def test_other_project_only_sees_its_own_algorithms(self):
         names = self._list_algorithm_names(project_id=self.other_project.pk)
@@ -2194,15 +2164,19 @@ class TestAlgorithmViewSetProjectFilter(APITestCase):
     def test_unscoped_request_returns_all_algorithms(self):
         """Without project_id, current behavior lists all algorithms (unchanged)."""
         names = self._list_algorithm_names()
-        self.assertIn("Algo Used", names)
-        self.assertIn("Algo Superseded", names)
-        self.assertIn("Algo Configured Unused", names)
-        self.assertIn("Algo Other Project", names)
-        self.assertIn("Algo Orphan", names)
+        for name in (
+            "Algo Used",
+            "Algo Superseded",
+            "Algo Configured Unused",
+            "Algo Other Project",
+            "Algo Orphan",
+        ):
+            self.assertIn(name, names)
 
     def test_detail_endpoint_unscoped_even_with_project_id(self):
-        """Detail stays unscoped so links to an algorithm outside the project's used
-        set — here an orphan that never ran — still resolve."""
+        """Detail stays unscoped so a link from a historical classification — here an
+        algorithm outside the project's enabled set — still resolves to its details
+        and category map."""
         url = reverse_with_params(
             "api:algorithm-detail",
             kwargs={"pk": self.algo_orphan.pk},
@@ -2212,15 +2186,82 @@ class TestAlgorithmViewSetProjectFilter(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["name"], "Algo Orphan")
 
-    def test_lists_post_processing_algorithm_with_classifications_in_project(self):
+
+class TestOccurrenceAlgorithmChoices(AlgorithmProjectTestBase):
+    """
+    The occurrence filter's algorithm choices, served at /occurrences/algorithms/,
+    are exactly the algorithms that produced results in the project.
+
+    An algorithm qualifies by owning output rows: a detection made by it (detectors,
+    which never author a Classification) or a classification from it (classifiers and
+    standalone post-processing algorithms such as class masking). A superseded
+    pipeline version stays a choice as long as its results survive, and a configured
+    algorithm that never ran is not offered — the filter never lists a value with
+    zero matching occurrences.
+    """
+
+    def _choice_names(self, project_id):
+        url = reverse_with_params("api:occurrence-algorithms", params={"project_id": project_id})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        return {row["name"] for row in response.json()["results"]}
+
+    def test_choices_are_exactly_the_algorithms_that_produced_results(self):
+        """The classifier that ran and the superseded version whose determinations
+        survive are choices; the enabled pipeline's never-run algorithm is not.
+        This pins the semantic that choices follow results, not setup."""
+        names = self._choice_names(self.project.pk)
+        self.assertEqual(names, {"Algo Used", "Algo Superseded"})
+
+    def test_configured_but_never_run_algorithm_is_not_a_choice(self):
+        """Filtering by an algorithm that never produced a result would always return
+        zero occurrences, so configuration alone does not admit one."""
+        names = self._choice_names(self.project.pk)
+        self.assertNotIn("Algo Configured Unused", names)
+
+    def test_detector_that_ran_is_a_choice_although_it_never_classified(self):
+        """Detectors set ``Detection.detection_algorithm`` and never write a
+        Classification, so they are reachable only through their detections. This pins
+        the regression where scoping choices purely by classification authorship
+        dropped every localizer."""
+        detector = Algorithm.objects.create(name="Algo Detector", version=1, task_type="localization")
+
+        source_image = SourceImage.objects.create(project=self.project)
+        Detection.objects.create(source_image=source_image, detection_algorithm=detector)
+        self.assertFalse(Classification.objects.filter(algorithm=detector).exists())
+
+        self.assertIn("Algo Detector", self._choice_names(self.project.pk))
+
+    def test_post_processing_algorithm_with_classifications_is_a_choice(self):
         """A post-processing algorithm has no pipeline but produces determinations in
-        the project, so the list must include it — otherwise the user cannot filter
+        the project, so it must be offered — otherwise the user cannot filter
         occurrences by the masked result."""
         masked_algo = Algorithm.objects.create(name="Class Masked Classifier", version=1)
         self._classify_in_project(masked_algo, self.project)
 
-        names = self._list_algorithm_names(project_id=self.project.pk)
-        self.assertIn("Class Masked Classifier", names)
+        self.assertIn("Class Masked Classifier", self._choice_names(self.project.pk))
+
+    def test_classifications_in_other_project_do_not_leak(self):
+        """An algorithm whose classifications live in another project must not appear."""
+        other_masked_algo = Algorithm.objects.create(name="Other Project Masked", version=1)
+        self._classify_in_project(other_masked_algo, self.other_project)
+
+        self.assertNotIn("Other Project Masked", self._choice_names(self.project.pk))
+
+    def test_project_id_is_required(self):
+        """Choices are relative to a project; without one the request is rejected
+        rather than listing every algorithm on the platform."""
+        url = reverse_with_params("api:occurrence-algorithms")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 400)
+
+    def test_response_is_paginated_like_a_list_endpoint(self):
+        """The endpoint returns the standard ``{count, results}`` shape the
+        frontend's entity picker consumes."""
+        url = reverse_with_params("api:occurrence-algorithms", params={"project_id": self.project.pk})
+        data = self.client.get(url).json()
+        self.assertEqual(data["count"], 2)
+        self.assertEqual(len(data["results"]), 2)
 
     def test_used_lookup_is_deduplicated_in_the_database(self):
         """``used_in_project`` matches one classification row per determination, so it
@@ -2246,12 +2287,4 @@ class TestAlgorithmViewSetProjectFilter(APITestCase):
         self.assertEqual(
             len(list(lookup.order_by().distinct())), 1, "Deduplicating collapses them to the one algorithm"
         )
-        self.assertIn("Chatty Masked Classifier", self._list_algorithm_names(project_id=self.project.pk))
-
-    def test_classifications_in_other_project_do_not_leak(self):
-        """An algorithm whose classifications live in another project must not appear."""
-        other_masked_algo = Algorithm.objects.create(name="Other Project Masked", version=1)
-        self._classify_in_project(other_masked_algo, self.other_project)
-
-        names = self._list_algorithm_names(project_id=self.project.pk)
-        self.assertNotIn("Other Project Masked", names)
+        self.assertIn("Chatty Masked Classifier", self._choice_names(self.project.pk))
