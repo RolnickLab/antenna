@@ -563,7 +563,10 @@ class TestPostProcessingClassMasking(TestCase):
             taxa_list_id=taxa_list.pk,
             algorithm_id=self.algorithm.pk,
         )
-        scoped, _ = task._scoped_classifications(task.config, self.algorithm)
+        masking_algorithm = task._get_or_create_masking_algorithm(
+            self.algorithm, taxa_list, reweight=task.config.reweight
+        )
+        scoped, _ = task._scoped_classifications(task.config, self.algorithm, masking_algorithm)
 
         self.assertEqual(list(scoped.filter(pk=classification.pk)), [classification])
         self.assertEqual(
@@ -589,7 +592,10 @@ class TestPostProcessingClassMasking(TestCase):
         ):
             with self.subTest(**kwargs):
                 task = ClassMaskingTask(taxa_list_id=taxa_list.pk, algorithm_id=self.algorithm.pk, **kwargs)
-                scoped, _ = task._scoped_classifications(task.config, self.algorithm)
+                masking_algorithm = task._get_or_create_masking_algorithm(
+                    self.algorithm, taxa_list, reweight=task.config.reweight
+                )
+                scoped, _ = task._scoped_classifications(task.config, self.algorithm, masking_algorithm)
                 self.assertFalse(scoped.query.distinct)
 
     def test_scope_size_is_reported_before_the_first_batch(self):
