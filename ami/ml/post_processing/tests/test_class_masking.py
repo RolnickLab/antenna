@@ -490,14 +490,8 @@ class TestPostProcessingClassMasking(TestCase):
     # ----- scope query shape ----------------------------------------------
 
     def test_collection_scope_returns_each_classification_once(self):
-        """A capture that belongs to several collections still contributes one row per
-        classification when the scope is filtered to one of those collections.
-
-        This is the property that makes de-duplication unnecessary: the collection
-        membership table holds at most one row per (capture, collection) pair, and
-        detection -> capture is a plain foreign key, so filtering on a single
-        collection cannot multiply rows.
-        """
+        """A capture in several collections still contributes one row per
+        classification, which is why the scope needs no de-duplication."""
         capture = self.collection.images.first()
         other_collection = SourceImageCollection.objects.create(
             name="Second collection containing the same capture",
@@ -552,21 +546,11 @@ class TestPostProcessingClassMasking(TestCase):
         self.assertEqual(scoped.count(), 3)
 
     def test_scope_query_does_not_deduplicate_rows(self):
-        """Neither scope may emit ``SELECT DISTINCT``, because the selected columns
-        include the ``logits`` and ``scores`` arrays.
+        """Neither scope de-duplicates rows.
 
-        A production classifier carries 29,176 categories, so those two arrays are
-        roughly half a megabyte per row and de-duplicating whole rows forces the
-        database to sort all of them. Measured against a 55,530-row scope: counting
-        the scope took 208 seconds with de-duplication and 0.5 seconds without,
-        returning the same number. The de-duplication is also blocking, so the first
-        row of the iteration pass cannot arrive until the whole sort completes,
-        which is what pushed masking runs past the stalled-job cutoff before any
-        progress was reported.
-
-        The equivalent-results half of this claim is covered by the two scope tests
-        above; de-duplication cannot be observed in the output, so the query shape
-        is the only thing left to pin.
+        This costs 208s versus 0.5s on a production-sized scope and is invisible in
+        the output, so the query shape is the only thing that can guard it. The two
+        tests above cover the results being equivalent. See #1376.
         """
         taxa_list = TaxaList.objects.create(name="Query shape list")
         taxa_list.taxa.set(self.species_taxa[:2])
@@ -579,17 +563,11 @@ class TestPostProcessingClassMasking(TestCase):
             with self.subTest(**kwargs):
                 task = ClassMaskingTask(taxa_list_id=taxa_list.pk, algorithm_id=self.algorithm.pk, **kwargs)
                 scoped, _ = task._scoped_classifications(task.config, self.algorithm)
-                self.assertNotIn("DISTINCT", str(scoped.query).upper())
+                self.assertFalse(scoped.query.distinct)
 
     def test_scope_size_is_reported_before_the_first_batch(self):
-        """The scope size reaches the job before any row is processed.
-
-        Resolving the scope reads the taxa list and expands the classifier's
-        category map, so an operator watching a large run would otherwise see a
-        stage sitting at zero with no indication of how much work was found. The
-        same callback moves the stage out of its created state, which is what
-        proves to the stalled-job check that the run is alive.
-        """
+        """The scope size reaches the job before any row is processed, so a large
+        run reports what it found rather than sitting at zero while it starts."""
         taxa_list = TaxaList.objects.create(name="Setup callback list")
         taxa_list.taxa.set(self.species_taxa[:2])
 

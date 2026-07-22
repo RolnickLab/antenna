@@ -68,10 +68,8 @@ def make_classifications_filtered_by_taxa_list(
     ``{"classifications_checked": i, "classifications_total": total,
        "classifications_masked": masked_count, "occurrences_updated": n_changed}``.
 
-    ``on_setup`` is called once with the number of classifications in scope, after
-    the scope has been sized and the category map expanded but before the first row
-    is processed. It gives an operator the size of the run up front and marks the
-    job as alive before any masking work begins.
+    ``on_setup`` is called once with the number of classifications in scope, before
+    the first row is processed, so a long run reports what it found up front.
 
     ``occurrences_updated`` counts only occurrences whose determination actually
     changed (not just any occurrence touched), matching the size-filter convention.
@@ -119,9 +117,8 @@ def make_classifications_filtered_by_taxa_list(
     timestamp = timezone.now()
     masked_count = 0
 
-    # Report the size of the run before touching a row: sizing the scope and
-    # expanding the category map both take time on a large classifier, and until
-    # this fires the job looks untouched.
+    # Sizing the scope and expanding the category map both take time on a large
+    # classifier, so report before touching a row.
     if on_setup is not None:
         on_setup(total)
 
@@ -282,17 +279,9 @@ class ClassMaskingTask(BasePostProcessingTask):
         ``config_schema`` guarantees exactly one scope id is set, so the single
         ``else`` branch is sound.
 
-        Neither branch de-duplicates rows, and neither needs to: a classification
-        reaches an occurrence through a plain foreign key, and it reaches a
-        collection through a membership table that holds one row per
-        (capture, collection) pair, so filtering on a single occurrence or a single
-        collection cannot multiply rows. De-duplicating is also costly here, because
-        the selected columns include the ``logits`` and ``scores`` arrays, which run
-        to roughly half a megabyte per row for a classifier with tens of thousands
-        of categories. Measured on a 55,530-row scope: counting took 208 seconds
-        with ``.distinct()`` and 0.5 seconds without, returning the same number.
-        De-duplication is also a blocking step, so it delayed the first row of the
-        iteration pass as well as the count.
+        Do not add ``.distinct()``: neither scope can duplicate a row, and
+        de-duplicating sorts the ``logits`` and ``scores`` arrays, which measured
+        208s versus 0.5s on a 55,530-row scope. See #1376.
         """
         base = Classification.objects.filter(
             terminal=True,

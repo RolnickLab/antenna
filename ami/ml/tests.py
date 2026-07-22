@@ -1651,6 +1651,37 @@ class TestPostProcessingTasks(TestCase):
         job.refresh_from_db()
         self.assertGreater(job.updated_at, stale, "report_stage_metrics must bump updated_at")
 
+    def test_progress_marks_the_stage_started(self):
+        """A progress heartbeat moves the stage to STARTED.
+
+        The job wrapper creates the stage and later marks it SUCCESS, and nothing
+        in between sets a status. ``get_status_label`` labels CREATED as "Waiting
+        to start" whatever the progress is, so without this a running job reads as
+        not yet begun for its whole duration. See #1376.
+        """
+        from ami.jobs.models import Job, JobState
+
+        job = Job.objects.create(
+            project=self.project,
+            name="stage status test",
+            job_type_key="post_processing",
+            params={
+                "task": "small_size_filter",
+                "config": {"source_image_collection_id": self.collection.pk, "size_threshold": 0.01},
+            },
+        )
+        job.progress.add_stage("Post Processing", key="post_processing")
+        job.save()
+        self.assertEqual(job.progress.stages[0].status, JobState.CREATED)
+
+        task = SmallSizeFilterTask(job=job, source_image_collection_id=self.collection.pk, size_threshold=0.01)
+        task.update_progress(0.5)
+
+        job.refresh_from_db()
+        stage = job.progress.stages[0]
+        self.assertEqual(stage.status, JobState.STARTED)
+        self.assertEqual(stage.status_label, "50% complete")
+
     def test_occurrences_updated_counts_only_changed_determinations(self):
         """``occurrences_updated`` counts occurrences whose determination actually
         changed, not every occurrence the filter re-saved.

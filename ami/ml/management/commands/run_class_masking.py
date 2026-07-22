@@ -46,11 +46,8 @@ class Command(BaseCommand):
 
         from ami.main.models import Classification
 
-        # Mirrors ClassMaskingTask._scoped_classifications, including its reason for
-        # not de-duplicating rows: collection membership holds one row per
-        # (capture, collection) pair, so this cannot double-count, and de-duplicating
-        # rows that carry the logits and scores arrays is expensive enough to dominate
-        # the command's runtime.
+        # Mirrors ClassMaskingTask._scoped_classifications; do not add .distinct(),
+        # see #1376.
         classification_count = Classification.objects.filter(
             detection__source_image__collections=collection,
             terminal=True,
