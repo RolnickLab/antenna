@@ -54,9 +54,15 @@ export const useCreateIdentifications = (
       return { data, submitted: values }
     },
     onSuccess: ({ data, submitted }) => {
-      const failed = submitted.filter(
-        (_, index) => data.results[index]?.status === 'error'
+      // Match failures by the `index` the backend reports against each result,
+      // not by position in `results`, so a reordered or sparse response still
+      // maps each error back to the right submitted item.
+      const failedIndices = new Set(
+        data.results
+          .filter((result) => result.status === 'error')
+          .map((result) => result.index)
       )
+      const failed = submitted.filter((_, index) => failedIndices.has(index))
       setLastAttempt({ failed, total: submitted.length })
       queryClient.invalidateQueries([API_ROUTES.IDENTIFICATIONS])
       queryClient.invalidateQueries([API_ROUTES.OCCURRENCES])
