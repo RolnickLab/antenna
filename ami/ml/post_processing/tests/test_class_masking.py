@@ -367,7 +367,10 @@ class TestPostProcessingClassMasking(TestCase):
 
         occ1: original winner is index 2 (excluded) — masking flips determination to index 0.
         occ2: original winner is index 0 (kept) — masking reassigns scores but determination stays index 0.
-        Only occ1 should count."""
+        Only occ1 should count.
+
+        Runs with ``only_when_taxon_changes=False`` so occ2 reaches the counting step
+        rather than being skipped."""
         taxa_list = TaxaList.objects.create(name="Changed-only count test")
         taxa_list.taxa.set(self.species_taxa[:2])  # excludes species_taxa[2] (index 2)
 
@@ -402,6 +405,7 @@ class TestPostProcessingClassMasking(TestCase):
             taxa_list=taxa_list,
             algorithm=self.algorithm,
             new_algorithm=new_algorithm,
+            only_when_taxon_changes=False,
         )
 
         self.assertEqual(metrics["classifications_masked"], 2, "Both classifications are modified by masking")
@@ -574,3 +578,103 @@ class TestPostProcessingClassMasking(TestCase):
 
         self.assertEqual(events[0], ("setup", 1), "Scope size is reported once, before the first batch")
         self.assertEqual([name for name, _ in events], ["setup", "batch"])
+
+    # ----- skipping re-scores that keep the same taxon ---------------------
+
+    def test_no_new_classification_when_the_taxon_does_not_change(self):
+        """By default, a re-score that keeps the same winning taxon writes nothing,
+        so the identification history does not gain a repeat of the taxon already
+        there. See #1377."""
+        # Index 0 has the highest logit and is in the taxa list, so it wins both
+        # before and after masking. Index 2 is dropped and held real probability,
+        # so the scores do change.
+        logits = [5.0, 1.0, 3.0]
+        taxa_list = TaxaList.objects.create(name="Winner survives the mask")
+        taxa_list.taxa.set(self.species_taxa[:2])
+
+        det, occ = self._detection_with_occurrence()
+        original = self._create_classification_with_logits(det, self.species_taxa[0], _softmax(logits), logits)
+        occ.save(update_determination=True)  # settle the pre-masking determination
+
+        ClassMaskingTask(
+            source_image_collection_id=self.collection.pk,
+            taxa_list_id=taxa_list.pk,
+            algorithm_id=self.algorithm.pk,
+        ).run()
+
+        original.refresh_from_db()
+        self.assertTrue(original.terminal, "The source prediction keeps its place as the current one")
+        self.assertEqual(Classification.objects.filter(detection=det).count(), 1, "No second row for the same taxon")
+        occ.refresh_from_db()
+        self.assertEqual(occ.determination, self.species_taxa[0], "The occurrence keeps the determination it had")
+
+    def test_new_classification_when_the_taxon_changes(self):
+        """The taxon check must not swallow the case masking exists for: a guard that
+        always skipped would pass the test above, so the transition it is meant to
+        allow is pinned here."""
+        logits = [2.0, 1.0, 5.0]  # index 2 wins before masking and is dropped
+        taxa_list = TaxaList.objects.create(name="Winner is dropped")
+        taxa_list.taxa.set(self.species_taxa[:2])
+
+        det, _ = self._detection_with_occurrence()
+        original = self._create_classification_with_logits(det, self.species_taxa[2], _softmax(logits), logits)
+
+        ClassMaskingTask(
+            source_image_collection_id=self.collection.pk,
+            taxa_list_id=taxa_list.pk,
+            algorithm_id=self.algorithm.pk,
+        ).run()
+
+        original.refresh_from_db()
+        self.assertFalse(original.terminal)
+        new_clf = Classification.objects.get(detection=det, terminal=True)
+        self.assertEqual(new_clf.taxon, self.species_taxa[0])
+        self.assertEqual(new_clf.applied_to, original)
+
+    def test_rescore_is_recorded_when_the_operator_asks_for_it(self):
+        """With ``only_when_taxon_changes=False`` the re-scored prediction is stored
+        even though the taxon is unchanged, which is what an operator comparing
+        confidence before and after a taxa list needs."""
+        logits = [5.0, 1.0, 3.0]
+        scores = _softmax(logits)
+        taxa_list = TaxaList.objects.create(name="Record every re-score")
+        taxa_list.taxa.set(self.species_taxa[:2])
+
+        det, _ = self._detection_with_occurrence()
+        original = self._create_classification_with_logits(det, self.species_taxa[0], scores, logits)
+
+        ClassMaskingTask(
+            source_image_collection_id=self.collection.pk,
+            taxa_list_id=taxa_list.pk,
+            algorithm_id=self.algorithm.pk,
+            only_when_taxon_changes=False,
+        ).run()
+
+        original.refresh_from_db()
+        self.assertFalse(original.terminal)
+        new_clf = Classification.objects.get(detection=det, terminal=True)
+        self.assertEqual(new_clf.taxon, self.species_taxa[0], "Same taxon as the source")
+        self.assertGreater(new_clf.score, scores[0], "Dropping a class raises the winner's confidence")
+
+    def test_both_skip_settings_share_one_masking_algorithm(self):
+        """Both skip settings resolve to the same masking algorithm, unlike the
+        reweight mode, which changes score semantics and so forms part of the
+        algorithm's identity. See #1377."""
+        logits = [2.0, 1.0, 5.0]
+        taxa_list = TaxaList.objects.create(name="Shared algorithm list")
+        taxa_list.taxa.set(self.species_taxa[:2])
+
+        for skip in (True, False):
+            det, _ = self._detection_with_occurrence()
+            self._create_classification_with_logits(det, self.species_taxa[2], _softmax(logits), logits)
+            ClassMaskingTask(
+                source_image_collection_id=self.collection.pk,
+                taxa_list_id=taxa_list.pk,
+                algorithm_id=self.algorithm.pk,
+                only_when_taxon_changes=skip,
+            ).run()
+
+        self.assertEqual(
+            Algorithm.objects.filter(key__startswith=f"{self.algorithm.key}_filtered_by_taxa_list_").count(),
+            1,
+        )

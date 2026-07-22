@@ -29,6 +29,9 @@ class ClassMaskingConfig(pydantic.BaseModel):
     # masking. When False, the kept classes retain their original absolute scores and
     # the excluded classes are zeroed; the chosen species is identical either way.
     reweight: bool = True
+    # When True (default), only record a re-score that changes the winning taxon;
+    # recording the rest repeats the taxon already shown. See #1377.
+    only_when_taxon_changes: bool = True
 
     @pydantic.root_validator(skip_on_failure=True)
     def _exactly_one_scope(cls, values: dict) -> dict:
@@ -49,6 +52,7 @@ def make_classifications_filtered_by_taxa_list(
     *,
     batch_size: int = 200,
     reweight: bool = True,
+    only_when_taxon_changes: bool = True,
     task_logger: logging.Logger = logger,
     on_setup: Callable[[int], None] | None = None,
     on_batch: Callable[[dict], None] | None = None,
@@ -61,6 +65,10 @@ def make_classifications_filtered_by_taxa_list(
     classes retain their original absolute scores), and a new terminal classification
     (attributed to ``new_algorithm``, linked back via ``applied_to``) records the
     masked prediction. The original classification is demoted to non-terminal.
+
+    With ``only_when_taxon_changes`` (the default), a re-score that leaves the same
+    winning taxon is not recorded and the source prediction keeps its place. Set it
+    to False to keep every re-score. See #1377.
 
     Commits in batches of ``batch_size`` so memory stays bounded and the job
     health-check reaper sees regular heartbeats. ``on_batch`` is called after every
@@ -156,14 +164,19 @@ def make_classifications_filtered_by_taxa_list(
             new_scores = new_scores_np.tolist()
             score = float(new_scores_np[top_index])
 
-            # No-change short-circuit: if masking shifted no probability (the classes
-            # this taxa list drops carried ~zero probability here), leave the row
-            # untouched. Compared against the unmasked softmax, not the stored scores.
-            if np.allclose(full_softmax, new_scores_np, atol=1e-9):
-                task_logger.debug(f"Classification {classification.pk} unchanged by masking; skipping")
-            else:
-                top_taxon = index_to_taxon.get(top_index)  # guaranteed in taxa_in_list (top_index is kept)
+            top_taxon = index_to_taxon.get(top_index)  # guaranteed in taxa_in_list (top_index is kept)
 
+            # Leave the row untouched when masking shifted no probability, which
+            # happens when every class this taxa list drops already scored ~zero.
+            # Compared against the unmasked softmax, not the stored scores.
+            unchanged_scores = bool(np.allclose(full_softmax, new_scores_np, atol=1e-9))
+            # Compare ids rather than instances: the scope query does not fetch the
+            # taxon, so touching ``classification.taxon`` would load one per row.
+            unchanged_taxon = classification.taxon_id == (top_taxon.pk if top_taxon else None)
+
+            if unchanged_scores or (only_when_taxon_changes and unchanged_taxon):
+                task_logger.debug(f"Classification {classification.pk} keeps its taxon under this mask; skipping")
+            else:
                 classification.terminal = False
                 classification.updated_at = timestamp
 
@@ -252,6 +265,10 @@ class ClassMaskingTask(BasePostProcessingTask):
         them apart. Its category map is the source map (indices still align with
         the masked score vector) and is persisted — earlier code set it in memory
         only, so masked classifications referenced a null map.
+
+        ``only_when_taxon_changes`` is deliberately not part of the identity: it
+        decides how many predictions get recorded, not what a recorded prediction
+        means, so both settings produce interchangeable rows.
         """
         mode = "reweighted" if reweight else "absolute"
         algorithm, created = Algorithm.objects.get_or_create(
@@ -351,6 +368,7 @@ class ClassMaskingTask(BasePostProcessingTask):
             algorithm=source_algorithm,
             new_algorithm=masking_algorithm,
             reweight=config.reweight,
+            only_when_taxon_changes=config.only_when_taxon_changes,
             task_logger=self.logger,
             on_setup=_on_setup,
             on_batch=_on_batch,
