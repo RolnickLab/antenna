@@ -2253,6 +2253,13 @@ class IdentificationViewSet(DefaultViewSet):
         item (an occurrence deleted since the page was loaded, say) reports an
         error against its own index while the rest of the batch still succeeds.
         The response lists an outcome per submitted item, in request order.
+
+        A per-item problem never fails the request: the response is 200 and the
+        bad item carries its own ``errors`` under its index. Only a batch-level
+        problem — too many items, the same occurrence twice, or occurrences from
+        more than one project — rejects the whole request with a 400 whose body
+        is a serializer error, not the per-item ``results`` shape. Callers handle
+        both: a 4xx for the whole request, and per-item ``errors`` inside a 200.
         """
         request_serializer = BulkIdentificationRequestSerializer(data=request.data)
         request_serializer.is_valid(raise_exception=True)
@@ -2327,6 +2334,10 @@ class IdentificationViewSet(DefaultViewSet):
                 }
             )
 
+        # created_count counts only savepoint-committed saves. ATOMIC_REQUESTS
+        # commits the request's outer transaction before this response is sent,
+        # so a row reported "created" is durable; a failed final commit surfaces
+        # as a 500, never as a 200 that overstates what was written.
         return Response(
             {
                 "created_count": created_count,
