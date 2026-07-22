@@ -50,6 +50,7 @@ def make_classifications_filtered_by_taxa_list(
     batch_size: int = 200,
     reweight: bool = True,
     task_logger: logging.Logger = logger,
+    on_setup: Callable[[int], None] | None = None,
     on_batch: Callable[[dict], None] | None = None,
 ) -> dict[str, int]:
     """Re-score ``classifications`` by masking out classes absent from ``taxa_list``.
@@ -66,6 +67,9 @@ def make_classifications_filtered_by_taxa_list(
     flush with running counters:
     ``{"classifications_checked": i, "classifications_total": total,
        "classifications_masked": masked_count, "occurrences_updated": n_changed}``.
+
+    ``on_setup`` is called once with the number of classifications in scope, before
+    the first row is processed, so a long run reports what it found up front.
 
     ``occurrences_updated`` counts only occurrences whose determination actually
     changed (not just any occurrence touched), matching the size-filter convention.
@@ -112,6 +116,11 @@ def make_classifications_filtered_by_taxa_list(
 
     timestamp = timezone.now()
     masked_count = 0
+
+    # Sizing the scope and expanding the category map both take time on a large
+    # classifier, so report before touching a row.
+    if on_setup is not None:
+        on_setup(total)
 
     for i, classification in enumerate(classifications.iterator(chunk_size=batch_size), start=1):
         logits = classification.logits
@@ -269,6 +278,12 @@ class ClassMaskingTask(BasePostProcessingTask):
 
         ``config_schema`` guarantees exactly one scope id is set, so the single
         ``else`` branch is sound.
+
+        Do not add ``.distinct()`` while both scopes filter a to-one path: neither
+        can duplicate a row, and de-duplicating sorts the ``logits`` and ``scores``
+        arrays, which measured 208s versus 0.5s on a 55,530-row scope. Broadening
+        either scope to match several collections or a whole project would fan out
+        and need de-duplication again — restrict the columns first. See #1376.
         """
         base = Classification.objects.filter(
             terminal=True,
@@ -281,7 +296,7 @@ class ClassMaskingTask(BasePostProcessingTask):
             if not Occurrence.objects.filter(pk=config.occurrence_id).exists():
                 raise ValueError(f"Occurrence {config.occurrence_id} not found")
             return (
-                base.filter(detection__occurrence_id=config.occurrence_id).distinct(),
+                base.filter(detection__occurrence_id=config.occurrence_id),
                 f"occurrence {config.occurrence_id}",
             )
 
@@ -290,7 +305,7 @@ class ClassMaskingTask(BasePostProcessingTask):
         except SourceImageCollection.DoesNotExist:
             raise ValueError(f"SourceImageCollection {config.source_image_collection_id} not found")
         return (
-            base.filter(detection__source_image__collections=collection).distinct(),
+            base.filter(detection__source_image__collections=collection),
             f"collection {collection.pk}",
         )
 
@@ -315,6 +330,10 @@ class ClassMaskingTask(BasePostProcessingTask):
         classifications, scope_desc = self._scoped_classifications(config, source_algorithm)
         self.logger.info(f"Applying class masking on {scope_desc} using taxa list {taxa_list.pk}")
 
+        def _on_setup(total: int) -> None:
+            self.update_progress(0.0)
+            self.report_stage_metrics({"classifications_total": total})
+
         def _on_batch(m: dict) -> None:
             total = m["classifications_total"]
             self.update_progress(m["classifications_checked"] / total if total else 1.0)
@@ -333,6 +352,7 @@ class ClassMaskingTask(BasePostProcessingTask):
             new_algorithm=masking_algorithm,
             reweight=config.reweight,
             task_logger=self.logger,
+            on_setup=_on_setup,
             on_batch=_on_batch,
         )
         self.report_stage_metrics(metrics)

@@ -1651,6 +1651,39 @@ class TestPostProcessingTasks(TestCase):
         job.refresh_from_db()
         self.assertGreater(job.updated_at, stale, "report_stage_metrics must bump updated_at")
 
+    def test_post_processing_stage_is_started_before_the_task_runs(self):
+        """The stage reads as running from the moment the job starts.
+
+        A task's first progress report can be minutes into a large run, and a stage
+        left at CREATED renders as "Waiting to start" until then. See #1376.
+        """
+        from unittest.mock import patch
+
+        from ami.jobs.models import Job, JobState, PostProcessingJob
+
+        job = Job.objects.create(
+            project=self.project,
+            name="stage status test",
+            job_type_key="post_processing",
+            params={
+                "task": "small_size_filter",
+                "config": {"source_image_collection_id": self.collection.pk, "size_threshold": 0.01},
+            },
+        )
+
+        observed = {}
+
+        def _capture(self_task):
+            stage = self_task.job.progress.get_stage("post_processing")
+            observed["status"] = stage.status
+            observed["label"] = stage.status_label
+
+        with patch.object(SmallSizeFilterTask, "run", _capture):
+            PostProcessingJob.run(job)
+
+        self.assertEqual(observed["status"], JobState.STARTED)
+        self.assertEqual(observed["label"], "0% complete")
+
     def test_occurrences_updated_counts_only_changed_determinations(self):
         """``occurrences_updated`` counts occurrences whose determination actually
         changed, not every occurrence the filter re-saved.

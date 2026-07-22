@@ -46,17 +46,15 @@ class Command(BaseCommand):
 
         from ami.main.models import Classification
 
-        classification_count = (
-            Classification.objects.filter(
-                detection__source_image__collections=collection,
-                terminal=True,
-                algorithm=algorithm,
-                scores__isnull=False,
-                logits__isnull=False,
-            )
-            .distinct()
-            .count()
-        )
+        # Mirrors ClassMaskingTask._scoped_classifications; do not add .distinct(),
+        # see #1376.
+        classification_count = Classification.objects.filter(
+            detection__source_image__collections=collection,
+            terminal=True,
+            algorithm=algorithm,
+            scores__isnull=False,
+            logits__isnull=False,
+        ).count()
 
         taxa_count = taxa_list.taxa.count()
 
