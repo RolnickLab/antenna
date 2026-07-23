@@ -177,6 +177,22 @@ LOGGING = {
     },
 }
 
+# Django's default mail_admins handler sends email synchronously, blocking a worker
+# thread per HTTP 500; other (async/queued) handlers are recommended. Disabled by
+# default and gated behind an env var; errors are already captured by Sentry.
+ADMIN_ERROR_EMAILS = env.bool("DJANGO_ADMIN_ERROR_EMAILS", default=False)
+if not ADMIN_ERROR_EMAILS:
+    LOGGING["loggers"]["django"] = {
+        "level": "INFO",
+        "handlers": ["console"],
+        "propagate": False,
+    }
+else:
+    # Nothing to wire here: Django's DEFAULT_LOGGING attaches the mail_admins handler
+    # to the "django" logger before this module's LOGGING is applied. Explicit branch
+    # so the "on" path is visible here instead of hidden in Django's defaults. See #1356.
+    pass
+
 # Sentry
 # ------------------------------------------------------------------------------
 SENTRY_DSN = env("SENTRY_DSN")
