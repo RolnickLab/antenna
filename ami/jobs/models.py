@@ -897,6 +897,10 @@ class PostProcessingJob(JobType):
         job.progress.add_stage(cls.name, key=cls.key)
         job.update_status(JobState.STARTED)
         job.started_at = datetime.datetime.now()
+        # Mark the stage started before the task runs, as the other job types do.
+        # A stage left at CREATED reads as "Waiting to start" however long the task
+        # takes, and a task's first progress report can be minutes in. See #1376.
+        job.progress.update_stage(cls.key, status=JobState.STARTED, progress=0)
         job.save()
 
         params = job.params or {}

@@ -69,6 +69,13 @@ A confident but wrong comment is worse than no comment — future developers and
 - **Keep the load-bearing fact; cut unverified mechanism.** A reader changing a constant should not have to trust a paragraph of speculation. State what the code does and the one reason that matters.
 - **Label guesses as guesses.** Use "best-guess", "not measured", "appears to" for anything you have not tested or profiled. Never state a hunch in the authoritative voice.
 - **Short, then link.** Point to the PR or issue for the long reasoning (`See #1231`) instead of embedding it as truth. A PR thread is dated and discussable; an inline comment reads as eternal fact.
+- **Keep comments to a few lines; put the investigation in the PR.** A rationale comment states the rule a future editor must not break, the one reason it exists, and a `See #NNNN` link — normally two or three lines, rarely more than four. Benchmark tables, before/after measurements, the history of what was tried, and anything a reviewer would want to argue with belong in the PR description, where they are dated and can be replied to. The same limit applies to docstrings on tests and helpers: say what the test protects, then link out for why it matters. Long explanatory blocks also age badly, because the next person to change the code updates the line and leaves the essay.
+
+  ```python
+  # Do not add .distinct(): neither scope can duplicate a row, and de-duplicating
+  # sorts the logits and scores arrays — 208s versus 0.5s on a 55,530-row scope.
+  # See #1376.
+  ```
 - **In PR descriptions, distinguish measured from inferred.** Numbers from a profiler, logs, or `ps` are measurements; numbers from reading code are estimates. Say which.
 
 ## Project Overview
