@@ -298,8 +298,12 @@ class ClassMaskingTask(BasePostProcessingTask):
                 scores__isnull=False,
                 logits__isnull=False,
             )
-            .exclude(derived_classifications__algorithm=masking_algorithm)
-            .select_related("detection", "detection__occurrence")
+            # If another task needs this replay guard, hoist it to a
+            # ClassificationQuerySet method (e.g. not_derived_by(algorithm))
+            # rather than copying the exclude.
+            .exclude(derived_classifications__algorithm=masking_algorithm).select_related(
+                "detection", "detection__occurrence"
+            )
         )
 
         if config.occurrence_id is not None:
