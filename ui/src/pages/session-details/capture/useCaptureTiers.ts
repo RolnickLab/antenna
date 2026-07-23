@@ -14,6 +14,14 @@ const PROMOTE_DEBOUNCE_MS = 300
 const CROSSFADE_MS = 300
 
 /**
+ * Extra margin past the crossfade before committing the tier, so the opacity
+ * transition finishes before the incoming image is promoted to the base layer
+ * and the old layer unmounts. Without it the swap can land a frame early and
+ * flash.
+ */
+const COMMIT_BUFFER_MS = 50
+
+/**
  * Owns the resolution ladder state for the session detail capture: which tier
  * is displayed, which higher tier is loading, and the crossfade between them.
  *
@@ -164,7 +172,7 @@ export const useCaptureTiers = ({
       setDisplayed(tier)
       setIncoming(null)
       setIncomingLoaded(false)
-    }, CROSSFADE_MS + 50)
+    }, CROSSFADE_MS + COMMIT_BUFFER_MS)
   }, [])
 
   const onIncomingError = useCallback(() => {
