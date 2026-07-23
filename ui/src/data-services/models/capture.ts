@@ -183,6 +183,16 @@ export class Capture {
     return this._capture.url
   }
 
+  // EXIF-free large thumbnail for the zoomable session detail view; detection
+  // boxes align with its pixels, unlike the EXIF-rotated original file.
+  get thumbnailLarge(): string {
+    if (this._capture.thumbnails?.large) {
+      return this._capture.thumbnails.large
+    }
+
+    return this._capture.url
+  }
+
   get src(): string {
     return this._capture.url
   }

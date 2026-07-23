@@ -93,23 +93,22 @@ export const Capture = ({
         const boxWidth = boxRight - boxLeft
         const boxHeight = boxBottom - boxTop
 
-        const _width = width ?? naturalSize?.width
-        const _height = height ?? naturalSize?.height
-
-        if (!_width || !_height) {
+        // Boxes are in the original image's pixel space and the rendered image
+        // may be a downscaled thumbnail, so only stored dimensions can scale them.
+        if (!width || !height) {
           return result
         }
 
         result[detection.id] = {
-          width: `${(boxWidth / _width) * 100}%`,
-          height: `${(boxHeight / _height) * 100}%`,
-          top: `${(boxTop / _height) * 100}%`,
-          left: `${(boxLeft / _width) * 100}%`,
+          width: `${(boxWidth / width) * 100}%`,
+          height: `${(boxHeight / height) * 100}%`,
+          top: `${(boxTop / height) * 100}%`,
+          left: `${(boxLeft / width) * 100}%`,
         }
 
         return result
       }, {}),
-    [width, height, naturalSize, detections]
+    [width, height, detections]
   )
 
   const ratio = useMemo(() => {

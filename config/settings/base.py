@@ -589,5 +589,8 @@ DEFAULT_EXCLUDE_TAXA = env.list("DEFAULT_EXCLUDE_TAXA", default=[])  # type: ign
 JOB_LOG_PERSIST_ENABLED = env.bool("JOB_LOG_PERSIST_ENABLED", default=True)  # type: ignore[no-untyped-call]
 
 
-# Sizes for Source Image Thumbnails
-THUMBNAILS = {"STORAGE_PREFIX": "thumbnails/", "SIZES": {"small": {"width": 240}, "medium": {"width": 1024}}}
+# Sizes for Source Image Thumbnails ("large" backs the zoomable session detail view)
+THUMBNAILS = {
+    "STORAGE_PREFIX": "thumbnails/",
+    "SIZES": {"small": {"width": 240}, "medium": {"width": 1024}, "large": {"width": 2560}},
+}

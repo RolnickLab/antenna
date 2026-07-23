@@ -2519,6 +2519,8 @@ class SourceImage(BaseModel):
             img.thumbnail(new_size)
 
             buffer = BytesIO()
+            # No ``exif=`` argument: detection boxes are overlaid on thumbnails in raw
+            # pixel coordinates, so the EXIF Orientation tag must not propagate.
             img.save(buffer, format="JPEG", progressive=True, optimize=True, quality=82)
             contents = buffer.getvalue()
             file_size = len(contents)
