@@ -2915,11 +2915,9 @@ class Identification(BaseModel):
         """
         Custom permission check logic for Identification model.
 
-        The "create" branch depends only on the occurrence's project, never on the
-        occurrence itself. The bulk identification endpoint relies on that: it checks
-        "create" once for the whole batch instead of once per occurrence. Adding
-        per-occurrence logic to the "create" path means that endpoint has to check
-        each occurrence individually.
+        The "create" branch depends only on the occurrence's project. The bulk
+        endpoint relies on that to check once per batch instead of once per
+        occurrence — revisit it if this path gains per-occurrence logic. See #1371.
         """
         import ami.users.roles as roles
 

@@ -6,7 +6,7 @@ from django.conf import settings
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.core.files.storage import default_storage
-from django.db import DatabaseError, models, transaction
+from django.db import models
 from django.db.models import OuterRef, Prefetch, Q, Subquery
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
@@ -34,6 +34,7 @@ from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
+from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
 from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
@@ -2248,96 +2249,22 @@ class IdentificationViewSet(DefaultViewSet):
         """
         Create many identifications in one request.
 
-        Applying determinations to a page of occurrences otherwise costs one HTTP
-        request per occurrence. Each item is saved independently, so a single bad
-        item (an occurrence deleted since the page was loaded, say) reports an
-        error against its own index while the rest of the batch still succeeds.
-        The response lists an outcome per submitted item, in request order.
-
-        A per-item problem never fails the request: the response is 200 and the
-        bad item carries its own ``errors`` under its index. Only a batch-level
-        problem — too many items, the same occurrence twice, or occurrences from
-        more than one project — rejects the whole request with a 400 whose body
-        is a serializer error, not the per-item ``results`` shape. Callers handle
-        both: a 4xx for the whole request, and per-item ``errors`` inside a 200.
+        Each item is saved independently: a bad item reports its error under its
+        own index in ``results`` while the rest of the batch still succeeds, so
+        a per-item problem never fails the request. Only a batch-level problem
+        (too many items, a duplicate occurrence, occurrences from more than one
+        project) rejects the whole request with a 400 serializer error instead
+        of the per-item ``results`` shape. See #1371.
         """
         request_serializer = BulkIdentificationRequestSerializer(data=request.data)
         request_serializer.is_valid(raise_exception=True)
         items = request_serializer.validated_data["identifications"]
 
-        occurrences = self._resolve_occurrences(items)
+        occurrences = resolve_occurrences(items)
         self._authorize_batch(request, occurrences)
-        taxa = self._resolve_taxa(items)
-        agreed_identifications, agreed_predictions = self._resolve_agreement_targets(items)
+        results = create_identifications_batch(items, request.user, occurrences)
 
-        results = []
-        created_count = 0
-        for index, item in enumerate(items):
-            errors = self._validate_item(item, occurrences, taxa, agreed_identifications, agreed_predictions)
-            if errors:
-                results.append(
-                    {
-                        "index": index,
-                        "occurrence_id": item["occurrence_id"],
-                        "status": "error",
-                        "errors": errors,
-                    }
-                )
-                continue
-
-            identification = Identification(
-                occurrence=occurrences[item["occurrence_id"]],
-                taxon=taxa[item["taxon_id"]],
-                user=request.user,
-                comment=item["comment"],
-                agreed_with_identification=agreed_identifications.get(item["agreed_with_identification_id"]),
-                agreed_with_prediction=agreed_predictions.get(item["agreed_with_prediction_id"]),
-            )
-            try:
-                # ATOMIC_REQUESTS wraps the whole request in a transaction, so this
-                # is a savepoint rather than a separate transaction. Rolling back to
-                # it leaves the connection usable, which is what lets the rest of the
-                # batch continue after one item fails. Without catching the error
-                # here, a single failure would abort the request and discard every
-                # identification already made in it.
-                #
-                # save() also withdraws the user's earlier identification on this
-                # occurrence and recomputes the occurrence's determination.
-                with transaction.atomic():
-                    identification.save()
-            except (DatabaseError, exceptions.ObjectDoesNotExist) as error:
-                # The occurrence can be deleted between resolving the batch and
-                # writing it, which surfaces as an integrity error or a missing row
-                # part-way through save().
-                logger.warning(
-                    f"Bulk identification of occurrence {item['occurrence_id']} failed and was skipped: {error}"
-                )
-                results.append(
-                    {
-                        "index": index,
-                        "occurrence_id": item["occurrence_id"],
-                        "status": "error",
-                        "errors": {
-                            "occurrence_id": ["This occurrence could not be identified. It may have been deleted."]
-                        },
-                    }
-                )
-                continue
-
-            created_count += 1
-            results.append(
-                {
-                    "index": index,
-                    "occurrence_id": item["occurrence_id"],
-                    "status": "created",
-                    "id": identification.pk,
-                }
-            )
-
-        # created_count counts only savepoint-committed saves. ATOMIC_REQUESTS
-        # commits the request's outer transaction before this response is sent,
-        # so a row reported "created" is durable; a failed final commit surfaces
-        # as a 500, never as a 200 that overstates what was written.
+        created_count = sum(1 for result in results if result["status"] == "created")
         return Response(
             {
                 "created_count": created_count,
@@ -2346,30 +2273,17 @@ class IdentificationViewSet(DefaultViewSet):
             }
         )
 
-    def _resolve_occurrences(self, items: list[dict]) -> dict[int, Occurrence]:
-        """Fetch every occurrence in the batch in one query, with its project loaded."""
-        occurrence_ids = {item["occurrence_id"] for item in items}
-        # select_related("project") lets the permission probe and the single-project
-        # check read the project without a query per occurrence.
-        return {
-            occurrence.pk: occurrence
-            for occurrence in Occurrence.objects.filter(pk__in=occurrence_ids).select_related("project")
-        }
-
     def _authorize_batch(self, request, occurrences: dict[int, Occurrence]) -> None:
         """
         Authorize the batch against the single project it belongs to.
 
-        A `detail=False` action never passes through `has_object_permission`, so the
-        check has to happen here. Permission to create an identification is granted
-        per project, so one check per batch is equivalent to one check per
-        occurrence — see the note on `Identification.check_permission`.
+        A `detail=False` action never passes through `has_object_permission`.
+        Create permission is granted per project, so one check per batch is
+        equivalent to one per occurrence — see `Identification.check_permission`.
         """
         if not occurrences:
-            # Nothing resolved, so there is no project to authorize against and
-            # nothing to write. Every item is reported as not found instead, which
-            # keeps a batch of one missing occurrence answering the same way as a
-            # batch where only some are missing.
+            # Nothing resolved, so there is nothing to authorize against or to
+            # write; every item is reported as not found instead.
             return
 
         projects = {occurrence.project for occurrence in occurrences.values()}
@@ -2379,93 +2293,10 @@ class IdentificationViewSet(DefaultViewSet):
             )
 
         probe = Identification(occurrence=next(iter(occurrences.values())))
+        # Check "create", not the action name: "bulk" is not in the model's CRUD
+        # permission map and would fall through to a permission no role grants.
         if not probe.check_permission(request.user, "create"):
-            # "create", not the name of this action: the action name is not in the
-            # model's CRUD permission map and would silently fall through to a
-            # permission that no role grants.
             raise PermissionDenied("You do not have permission to identify occurrences in this project.")
-
-    def _resolve_taxa(self, items: list[dict]) -> dict[int, Taxon]:
-        """Fetch every taxon in the batch in one query."""
-        taxon_ids = {item["taxon_id"] for item in items}
-        return {taxon.pk: taxon for taxon in Taxon.objects.filter(pk__in=taxon_ids)}
-
-    def _resolve_agreement_targets(
-        self, items: list[dict]
-    ) -> tuple[dict[int, Identification], dict[int, Classification]]:
-        """
-        Fetch the identifications and predictions that items claim to agree with.
-
-        Both are recorded only as provenance, but they still have to be real and
-        belong to the occurrence being identified.
-        """
-        identification_ids = {
-            item["agreed_with_identification_id"] for item in items if item["agreed_with_identification_id"]
-        }
-        prediction_ids = {item["agreed_with_prediction_id"] for item in items if item["agreed_with_prediction_id"]}
-
-        agreed_identifications = {}
-        if identification_ids:
-            agreed_identifications = {
-                identification.pk: identification
-                for identification in Identification.objects.filter(pk__in=identification_ids)
-            }
-
-        agreed_predictions = {}
-        if prediction_ids:
-            agreed_predictions = {
-                classification.pk: classification
-                for classification in Classification.objects.filter(pk__in=prediction_ids).select_related("detection")
-            }
-
-        return agreed_identifications, agreed_predictions
-
-    def _validate_item(
-        self,
-        item: dict,
-        occurrences: dict[int, Occurrence],
-        taxa: dict[int, Taxon],
-        agreed_identifications: dict[int, Identification],
-        agreed_predictions: dict[int, Classification],
-    ) -> dict[str, list[str]]:
-        """Check one item against the already-fetched batch. Returns field errors, empty when valid."""
-        errors: dict[str, list[str]] = {}
-
-        occurrence = occurrences.get(item["occurrence_id"])
-        if occurrence is None:
-            errors["occurrence_id"] = [f"Occurrence {item['occurrence_id']} does not exist."]
-
-        if item["taxon_id"] not in taxa:
-            errors["taxon_id"] = [f"Taxon {item['taxon_id']} does not exist."]
-
-        agreed_identification_id = item["agreed_with_identification_id"]
-        if agreed_identification_id:
-            agreed = agreed_identifications.get(agreed_identification_id)
-            if agreed is None:
-                errors["agreed_with_identification_id"] = [
-                    f"Identification {agreed_identification_id} does not exist."
-                ]
-            elif occurrence is not None and agreed.occurrence_id != occurrence.pk:
-                errors["agreed_with_identification_id"] = [
-                    "An identification can only agree with another identification of the same occurrence."
-                ]
-
-        agreed_prediction_id = item["agreed_with_prediction_id"]
-        if agreed_prediction_id:
-            prediction = agreed_predictions.get(agreed_prediction_id)
-            if prediction is None:
-                errors["agreed_with_prediction_id"] = [f"Classification {agreed_prediction_id} does not exist."]
-            elif occurrence is not None and (
-                # A classification keeps its row when its detection is deleted, so the
-                # link back to an occurrence can be missing entirely.
-                prediction.detection is None
-                or prediction.detection.occurrence_id != occurrence.pk
-            ):
-                errors["agreed_with_prediction_id"] = [
-                    "An identification can only agree with a prediction of the same occurrence."
-                ]
-
-        return errors
 
 
 class SiteViewSet(DefaultViewSet, ProjectMixin):
