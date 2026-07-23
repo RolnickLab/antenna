@@ -2914,7 +2914,13 @@ class Identification(BaseModel):
         update_occurrence_determination(self.occurrence, current_determination=self.taxon)
 
     def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
-        """Custom permission check logic for Identification model."""
+        """
+        Custom permission check logic for Identification model.
+
+        The "create" branch depends only on the occurrence's project. The bulk
+        endpoint relies on that to check once per batch instead of once per
+        occurrence — revisit it if this path gains per-occurrence logic. See #1371.
+        """
         import ami.users.roles as roles
 
         project = self.get_project()

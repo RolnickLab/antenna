@@ -34,6 +34,7 @@ from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
+from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
@@ -64,6 +65,8 @@ from ..models import (
     update_detection_counts,
 )
 from .serializers import (
+    BulkIdentificationRequestSerializer,
+    BulkIdentificationResponseSerializer,
     ClassificationListSerializer,
     ClassificationSerializer,
     ClassificationWithTaxaSerializer,
@@ -2292,6 +2295,64 @@ class IdentificationViewSet(DefaultViewSet):
         self.check_object_permissions(self.request, obj)
 
         serializer.save(user=self.request.user)
+
+    @extend_schema(
+        request=BulkIdentificationRequestSerializer,
+        responses={200: BulkIdentificationResponseSerializer},
+    )
+    @action(detail=False, methods=["post"])
+    def bulk(self, request):
+        """
+        Create many identifications in one request.
+
+        Each item is saved independently: a bad item reports its error under its
+        own index in ``results`` while the rest of the batch still succeeds, so
+        a per-item problem never fails the request. Only a batch-level problem
+        (too many items, a duplicate occurrence, occurrences from more than one
+        project) rejects the whole request with a 400 serializer error instead
+        of the per-item ``results`` shape. See #1371.
+        """
+        request_serializer = BulkIdentificationRequestSerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+        items = request_serializer.validated_data["identifications"]
+
+        occurrences = resolve_occurrences(items)
+        self._authorize_batch(request, occurrences)
+        results = create_identifications_batch(items, request.user, occurrences)
+
+        created_count = sum(1 for result in results if result["status"] == "created")
+        return Response(
+            {
+                "created_count": created_count,
+                "error_count": len(items) - created_count,
+                "results": results,
+            }
+        )
+
+    def _authorize_batch(self, request, occurrences: dict[int, Occurrence]) -> None:
+        """
+        Authorize the batch against the single project it belongs to.
+
+        A `detail=False` action never passes through `has_object_permission`.
+        Create permission is granted per project, so one check per batch is
+        equivalent to one per occurrence — see `Identification.check_permission`.
+        """
+        if not occurrences:
+            # Nothing resolved, so there is nothing to authorize against or to
+            # write; every item is reported as not found instead.
+            return
+
+        projects = {occurrence.project for occurrence in occurrences.values()}
+        if len(projects) > 1:
+            raise api_exceptions.ValidationError(
+                {"identifications": ["All occurrences in a request must belong to the same project."]}
+            )
+
+        probe = Identification(occurrence=next(iter(occurrences.values())))
+        # Check "create", not the action name: "bulk" is not in the model's CRUD
+        # permission map and would fall through to a permission no role grants.
+        if not probe.check_permission(request.user, "create"):
+            raise PermissionDenied("You do not have permission to identify occurrences in this project.")
 
 
 class SiteViewSet(DefaultViewSet, ProjectMixin):

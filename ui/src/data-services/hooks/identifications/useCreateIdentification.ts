@@ -5,7 +5,7 @@ import { getAuthHeader } from 'data-services/utils'
 import { useUser } from 'utils/user/userContext'
 import { IdentificationFieldValues } from './types'
 
-const convertToServerFieldValues = (
+export const convertToServerFieldValues = (
   fieldValues: IdentificationFieldValues
 ) => ({
   agreed_with_identification_id: fieldValues.agreeWith?.identificationId,
