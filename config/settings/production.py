@@ -187,6 +187,11 @@ if not ADMIN_ERROR_EMAILS:
         "handlers": ["console"],
         "propagate": False,
     }
+else:
+    # Nothing to wire here: Django's DEFAULT_LOGGING attaches the mail_admins handler
+    # to the "django" logger before this module's LOGGING is applied. Explicit branch
+    # so the "on" path is visible here instead of hidden in Django's defaults. See #1356.
+    pass
 
 # Sentry
 # ------------------------------------------------------------------------------
