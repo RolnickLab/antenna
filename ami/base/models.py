@@ -66,7 +66,11 @@ class BaseQuerySet(QuerySet):
             if not is_anonymous:
                 filter_condition |= Q(owner=user) | Q(members=user)
 
-            return self.filter(filter_condition).distinct()
+            if is_anonymous:
+                return self.filter(filter_condition)
+
+            visible_project_ids = self.filter(filter_condition).order_by().values_list("pk", flat=True)
+            return self.filter(pk__in=visible_project_ids)
 
         # For models related to Project
         project_accessor = model.get_project_accessor()
@@ -85,7 +89,8 @@ class BaseQuerySet(QuerySet):
         if not is_anonymous:
             filter_condition |= Q(**{f"{project_field}owner": user}) | Q(**{f"{project_field}members": user})
 
-        return self.filter(filter_condition).distinct()
+        visible_object_ids = self.filter(filter_condition).order_by().values_list("pk", flat=True)
+        return self.filter(pk__in=visible_object_ids)
 
 
 class BaseModel(models.Model):
