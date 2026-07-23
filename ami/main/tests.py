@@ -1425,7 +1425,7 @@ class TestSourceImageCollections(TestCase):
             assert image.event != excluded_event
 
     def test_extra_arguments(self):
-        # Assert that a value error is raised when trying to call a sampling method with extra arguments
+        # Extra kwargs in stored collection config should be ignored, not fail population.
         from ami.main.models import SourceImageCollection
 
         collection = SourceImageCollection.objects.create(
@@ -1435,9 +1435,23 @@ class TestSourceImageCollections(TestCase):
             kwargs={"birthday": True, "cake": "chocolate"},
         )
         collection.save()
+        collection.populate_sample()
 
-        with self.assertRaises(TypeError):
-            collection.populate_sample()
+        self.assertGreater(collection.images.count(), 0)
+
+    def test_interval_sample_accepts_max_num(self):
+        from ami.main.models import SourceImageCollection
+
+        collection = SourceImageCollection.objects.create(
+            name="Test Interval Sample With Max Num",
+            project=self.project_one,
+            method="interval",
+            kwargs={"minute_interval": 1, "max_num": 1},
+        )
+        collection.save()
+        collection.populate_sample()
+
+        self.assertEqual(collection.images.count(), 1)
 
     def test_last_and_random(self):
         from ami.main.models import SourceImageCollection
