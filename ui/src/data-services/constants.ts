@@ -14,6 +14,7 @@ export const API_ROUTES = {
   LOGOUT: 'auth/token/logout',
   ME: 'users/me',
   MEMBERS: (projectId: string) => `projects/${projectId}/members`,
+  OCCURRENCE_ALGORITHMS: 'occurrences/algorithms',
   OCCURRENCES: 'occurrences',
   PAGES: 'pages',
   PIPELINES: 'ml/pipelines',

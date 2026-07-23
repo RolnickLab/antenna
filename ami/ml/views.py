@@ -56,11 +56,15 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
     def get_queryset(self) -> QuerySet["Algorithm"]:
         qs: QuerySet["Algorithm"] = super().get_queryset()
         qs = qs.with_category_count()  # type: ignore[union-attr] # Custom queryset method
-        # Only scope list by project. Detail stays unscoped so links from historical
+        # Only scope the list by project. Detail stays unscoped so links from historical
         # classifications whose pipeline is no longer enabled still resolve.
         if getattr(self, "action", None) == "list":
             project = self.get_active_project()
             if project:
+                # The project-scoped list shows the algorithms available to the project — those
+                # on its enabled pipelines — so a freshly configured project sees what it can
+                # run before anything has run. The algorithms that actually produced results
+                # (including superseded versions) are served by /occurrences/algorithms/.
                 qs = qs.filter(
                     pipelines__project_pipeline_configs__project=project,
                     pipelines__project_pipeline_configs__enabled=True,

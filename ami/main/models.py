@@ -3355,6 +3355,33 @@ class OccurrenceQuerySet(BaseQuerySet):
     def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
 
+    def _processed_by_algorithm_q(self, algorithm_ids) -> Exists:
+        """Subquery matching occurrences with any result from the given algorithms —
+        a detection made by one (detectors) or a classification from one (classifiers
+        and post-processing algorithms such as class masking or a size filter)."""
+        return Exists(
+            Detection.objects.filter(occurrence_id=OuterRef("pk")).filter(
+                models.Q(detection_algorithm__in=algorithm_ids)
+                | models.Q(classifications__algorithm__in=algorithm_ids)
+            )
+        )
+
+    def processed_by_algorithm(self, algorithm_ids) -> "OccurrenceQuerySet":
+        """Occurrences with at least one result from the given algorithms.
+
+        Matches detectors through Detection.detection_algorithm and classifiers or
+        post-processing algorithms through their classifications, so every algorithm
+        listed by ``Algorithm.objects.used_in_project()`` can match here. The EXISTS
+        form returns each occurrence once; a join through
+        ``detections__classifications`` returns one row per matching result, which
+        inflates pagination counts and duplicates rows across pages.
+        """
+        return self.filter(self._processed_by_algorithm_q(algorithm_ids))
+
+    def not_processed_by_algorithm(self, algorithm_ids) -> "OccurrenceQuerySet":
+        """Occurrences with no result from any of the given algorithms."""
+        return self.exclude(self._processed_by_algorithm_q(algorithm_ids))
+
     def with_timestamps(self):
         """
         These are timestamps used for filtering and ordering in the UI.

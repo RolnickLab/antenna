@@ -35,6 +35,8 @@ from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
+from ami.ml.models.algorithm import Algorithm
+from ami.ml.serializers import AlgorithmSerializer
 from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
@@ -1222,11 +1224,15 @@ class OccurrenceCollectionFilter(filters.BaseFilterBackend):
 
 class OccurrenceAlgorithmFilter(filters.BaseFilterBackend):
     """
-    Filter occurrences by the detection algorithm that detected them.
+    Filter occurrences by any algorithm that produced a result on them.
 
-    Accepts a list of algorithm ids to filter by or exclude by.
+    Matches an occurrence when one of its detections was made by the given
+    algorithm (detectors) or one of its classifications came from it
+    (classifiers and post-processing algorithms), so every algorithm listed
+    by ``Algorithm.objects.used_in_project()`` can be filtered here.
 
-    This filter can be both inclusive and exclusive.
+    Accepts a list of algorithm ids to filter by (``algorithm``) or exclude
+    by (``not_algorithm``). Both are supported and may be combined.
     """
 
     query_param = "algorithm"
@@ -1237,9 +1243,9 @@ class OccurrenceAlgorithmFilter(filters.BaseFilterBackend):
         algorithm_ids_exclusive = request.query_params.getlist(self.query_param_exclusive)
 
         if algorithm_ids:
-            queryset = queryset.filter(detections__classifications__algorithm__in=algorithm_ids)
+            queryset = queryset.processed_by_algorithm(algorithm_ids)
         if algorithm_ids_exclusive:
-            queryset = queryset.exclude(detections__classifications__algorithm__in=algorithm_ids_exclusive)
+            queryset = queryset.not_processed_by_algorithm(algorithm_ids_exclusive)
 
         return queryset
 
@@ -1466,6 +1472,33 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @extend_schema(parameters=[project_id_doc_param], responses=AlgorithmSerializer(many=True))
+    @action(detail=False, methods=["get"], name="algorithms")
+    def algorithms(self, request: Request) -> Response:
+        """Choices for the occurrence algorithm filter: every algorithm that produced a result in the project.
+
+        Includes superseded pipeline versions and standalone post-processing algorithms
+        (their output is still filterable), so it differs from the project's algorithm
+        list at ``/ml/algorithms/``, which shows what the project can run — its
+        enabled-pipeline algorithms. Serving choices from what actually ran means the
+        filter never offers a value with zero results.
+        """
+        project = self.get_active_project()
+        if project is None:
+            raise api_exceptions.ValidationError({"project_id": "This parameter is required."})
+        if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
+            raise NotFound("Project not found.")
+
+        qs = (
+            Algorithm.objects.all()
+            .with_category_count()  # type: ignore[union-attr] # Custom queryset method
+            .used_in_project(project)
+            .order_by("name")
+        )
+        page = self.paginate_queryset(qs)
+        serializer = AlgorithmSerializer(page, many=True, context=self.get_serializer_context())
+        return self.get_paginated_response(serializer.data)
 
 
 class OccurrenceStatsViewSet(viewsets.GenericViewSet, ProjectMixin):
