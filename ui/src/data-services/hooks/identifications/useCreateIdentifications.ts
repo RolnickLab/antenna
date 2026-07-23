@@ -85,7 +85,9 @@ export const useCreateIdentifications = (
   const requestError = isError
     ? translate(STRING.MESSAGE_IDENTIFICATION_REJECTED)
     : undefined
-  const error = partialError ?? requestError
+  // The newest failure wins: a retry rejected at the request level replaces
+  // the partial-failure message left over from the previous attempt.
+  const error = requestError ?? partialError
 
   return {
     // A partial failure is still a successful request, so only report success
