@@ -191,6 +191,8 @@ export enum STRING {
   MESSAGE_DRAFTS,
   MESSAGE_EXPORT_TIP,
   MESSAGE_HAS_ACCOUNT,
+  MESSAGE_IDENTIFICATION_REJECTED,
+  MESSAGE_IDENTIFICATIONS_REJECTED,
   MESSAGE_IMAGE_FORMAT,
   MESSAGE_IMAGE_SIZE,
   MESSAGE_IMAGE_TOO_BIG,
@@ -565,6 +567,10 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_EXPORT_TIP]:
     'We support two export formats: one compact and easy to use, and one that includes all raw data. To include all data in the export, skip "Capture set".',
   [STRING.MESSAGE_HAS_ACCOUNT]: 'Already have an account?',
+  [STRING.MESSAGE_IDENTIFICATION_REJECTED]:
+    'The update was rejected, please retry.',
+  [STRING.MESSAGE_IDENTIFICATIONS_REJECTED]:
+    '{{numRejected}}/{{total}} updates were rejected, please retry.',
   [STRING.MESSAGE_IMAGE_FORMAT]: 'Valid formats are PNG, GIF and JPEG.',
   [STRING.MESSAGE_IMAGE_SIZE]:
     'The image must smaller than {{value}} {{unit}}.',
