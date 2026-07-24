@@ -887,6 +887,64 @@ class BulkIdentificationResponseSerializer(serializers.Serializer):
     results = BulkIdentificationResultSerializer(many=True)
 
 
+MAX_UPLOAD_REQUEST_FILES = 1000
+
+
+class UploadRequestFileSerializer(serializers.Serializer):
+    """One file the client wants to upload directly to storage."""
+
+    filename = serializers.CharField(max_length=255)
+    size = serializers.IntegerField()
+    content_type = serializers.CharField(required=False, allow_blank=True, default="")
+    # base64-encoded raw SHA-256 digest; optional and only honoured against real AWS.
+    sha256 = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class UploadRequestSerializer(serializers.Serializer):
+    """Request body for POST /deployments/{id}/upload-request/."""
+
+    subdir = serializers.CharField(required=False, allow_blank=True, default="")
+    files = UploadRequestFileSerializer(many=True, allow_empty=False)
+
+    def validate_subdir(self, value: str) -> str:
+        if value and (".." in value or value.startswith("/") or "\\" in value or any(ord(c) < 32 for c in value)):
+            raise serializers.ValidationError(
+                "subdir must not contain '..', a leading '/', backslashes, or control characters."
+            )
+        return value
+
+    def validate_files(self, value: list[dict]) -> list[dict]:
+        if len(value) > MAX_UPLOAD_REQUEST_FILES:
+            raise serializers.ValidationError(
+                f"A single request may contain at most {MAX_UPLOAD_REQUEST_FILES} files, got {len(value)}."
+            )
+        return value
+
+
+class UploadRequestUrlSerializer(serializers.Serializer):
+    """A minted presigned PUT URL for one file."""
+
+    filename = serializers.CharField()
+    key = serializers.CharField()
+    url = serializers.CharField()
+    method = serializers.CharField()
+    headers = serializers.DictField(child=serializers.CharField())
+    expires_at = serializers.DateTimeField()
+
+
+class UploadRequestErrorSerializer(serializers.Serializer):
+    """A file that was rejected before any URL was minted."""
+
+    filename = serializers.CharField()
+    code = serializers.CharField()
+    detail = serializers.CharField()
+
+
+class UploadRequestResponseSerializer(serializers.Serializer):
+    urls = UploadRequestUrlSerializer(many=True)
+    errors = UploadRequestErrorSerializer(many=True)
+
+
 class TaxonDetectionsSerializer(DefaultSerializer):
     class Meta:
         model = Detection

@@ -884,6 +884,16 @@ class Deployment(BaseModel):
         else:
             return filesizeformat(self.data_source_total_size)
 
+    def check_custom_permission(self, user, action: str) -> bool:
+        # `upload_request` mints presigned PUT URLs for direct-to-storage capture
+        # uploads; treat it as the write side of syncing this deployment's data
+        # source, so it reuses SYNC_DEPLOYMENT (no new guardian perm / migration).
+        # Without this, get_object() would probe the nonexistent
+        # `upload_request_deployment` perm and 403 every non-superuser. See #1379.
+        if action == "upload_request":
+            return user.has_perm(Project.Permissions.SYNC_DEPLOYMENT, self.project)
+        return super().check_custom_permission(user, action)
+
     def sync_captures(
         self,
         batch_size=1000,
