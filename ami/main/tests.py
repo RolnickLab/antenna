@@ -6887,3 +6887,80 @@ class ClassificationAdminChangelistTest(TestCase):
         row = next(c for c in self.admin.get_queryset(self._request()) if c.pk == clf.pk)
         self.assertEqual(row.scores_count, 3)
         self.assertEqual(row.logits_count, 0)
+
+
+class TestCaptureSetChoices(APITestCase):
+    """Choices endpoint for capture set filters and pickers.
+
+    Pins the contract those consumers rely on: names without counts, most recently
+    updated first.
+    """
+
+    def setUp(self) -> None:
+        self.user = User.objects.create_user(email="picker@insectai.org", is_staff=False)
+        self.project = Project.objects.create(name="Picker project", owner=self.user)
+        self.other_project = Project.objects.create(name="Other project", owner=self.user)
+        # A new project starts with a capture set holding all of its captures.
+        self.starting_collection = SourceImageCollection.objects.get(project=self.project)
+        self.oldest, self.middle, self.newest = (
+            SourceImageCollection.objects.create(name=name, project=self.project, method="manual")
+            for name in ("Oldest", "Middle", "Newest")
+        )
+        # updated_at is auto_now, so write the timestamps directly instead of relying on
+        # the order the rows were created in.
+        for days_ago, collection in enumerate([self.newest, self.middle, self.oldest, self.starting_collection]):
+            SourceImageCollection.objects.filter(pk=collection.pk).update(
+                updated_at=timezone.now() - datetime.timedelta(days=days_ago)
+            )
+        self.expected_order = ["Newest", "Middle", "Oldest", self.starting_collection.name]
+        self.other_collection = SourceImageCollection.objects.create(
+            name="Elsewhere", project=self.other_project, method="manual"
+        )
+        self.url = f"/api/v2/captures/collections/choices/?project_id={self.project.pk}"
+
+    def test_most_recently_updated_capture_set_comes_first(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([row["name"] for row in response.json()["results"]], self.expected_order)
+
+    def test_choices_omit_the_capture_occurrence_and_taxa_counts(self):
+        response = self.client.get(self.url)
+        row = response.json()["results"][0]
+        self.assertEqual(sorted(row.keys()), ["details", "id", "method", "name", "user_permissions"])
+
+    def test_choices_are_limited_to_the_requested_project(self):
+        response = self.client.get(self.url)
+        returned_ids = {row["id"] for row in response.json()["results"]}
+        self.assertEqual(
+            returned_ids,
+            {self.oldest.pk, self.middle.pk, self.newest.pk, self.starting_collection.pk},
+        )
+        self.assertNotIn(self.other_collection.pk, returned_ids)
+
+    def test_a_project_is_required(self):
+        response = self.client.get("/api/v2/captures/collections/choices/")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_capture_sets_in_a_draft_project_are_hidden_from_non_members(self):
+        draft_project = Project.objects.create(name="Draft project", owner=self.user, draft=True)
+        SourceImageCollection.objects.create(name="Secret", project=draft_project, method="manual")
+
+        response = self.client.get(f"/api/v2/captures/collections/choices/?project_id={draft_project.pk}")
+
+        self.assertEqual(response.json()["results"], [])
+
+    def test_the_list_endpoint_still_reports_capture_counts(self):
+        response = self.client.get(f"/api/v2/captures/collections/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = response.json()["results"][0]
+        self.assertIn("source_images_count", row)
+
+    def test_the_list_endpoint_also_defaults_to_most_recently_updated_first(self):
+        response = self.client.get(f"/api/v2/captures/collections/?project_id={self.project.pk}")
+        self.assertEqual([row["name"] for row in response.json()["results"]], self.expected_order)
+
+    def test_sorting_by_a_count_still_works_on_the_list_endpoint(self):
+        response = self.client.get(
+            f"/api/v2/captures/collections/?project_id={self.project.pk}&ordering=source_images_count"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)

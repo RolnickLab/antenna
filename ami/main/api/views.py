@@ -82,6 +82,7 @@ from .serializers import (
     ProjectListSerializer,
     ProjectSerializer,
     SiteSerializer,
+    SourceImageCollectionNestedSerializer,
     SourceImageCollectionSerializer,
     SourceImageListSerializer,
     SourceImageSerializer,
@@ -927,13 +928,7 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     Endpoint for viewing capture sets or samples of captures.
     """
 
-    queryset = (
-        SourceImageCollection.objects.all()
-        .with_source_images_count()  # type: ignore
-        .with_source_images_with_detections_count()
-        .with_source_images_processed_count()
-        .prefetch_related("jobs")
-    )
+    queryset = SourceImageCollection.objects.all().prefetch_related("jobs")
     serializer_class = SourceImageCollectionSerializer
     permission_classes = [
         ObjectPermission,
@@ -950,17 +945,32 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         "source_images_processed_count",
         "occurrences_count",
     ]
+    # Recently updated first, so a caller reading one page gets the sets a user is most
+    # likely to want. Without a default the row order is whatever Postgres returns, which
+    # also makes pages unstable.
+    ordering = ["-updated_at"]
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
         with_counts_default = False
-        # If with_counts is explicitly requested, require project
-        if "with_counts" in self.request.query_params:
+        # If with_counts is explicitly requested, require project.
+        # Picker choices are always scoped to one project.
+        if "with_counts" in self.request.query_params or self.action == "choices":
             self.require_project = True
         project = self.get_active_project()
 
         if project:
             query_set = query_set.filter(project=project)
+
+        if self.action == "choices":
+            # Choices are names, so skip the counts and the jobs each set has run.
+            return query_set.prefetch_related(None)
+
+        query_set = (
+            query_set.with_source_images_count()  # type: ignore
+            .with_source_images_with_detections_count()
+            .with_source_images_processed_count()
+        )
 
         if self.action == "retrieve":
             # For detail view, include counts by default
@@ -979,6 +989,24 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
             )
 
         return query_set
+
+    @extend_schema(
+        parameters=[project_id_doc_param],
+        responses=SourceImageCollectionNestedSerializer(many=True),
+    )
+    @action(detail=False, methods=["get"], name="choices")
+    def choices(self, request: Request) -> Response:
+        """Choices for capture set filters and pickers.
+
+        Returns only what those consumers need to name a capture set, most recently
+        updated first.
+        """
+        # Sorting by a count would fail here, since the counts are never annotated.
+        self.ordering_fields = ["id", "created_at", "updated_at", "name", "method"]
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        serializer = SourceImageCollectionNestedSerializer(page, many=True, context=self.get_serializer_context())
+        return self.get_paginated_response(serializer.data)
 
     @action(detail=True, methods=["post"], name="populate")
     def populate(self, request, pk=None):
