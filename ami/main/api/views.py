@@ -928,6 +928,17 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
         return response
 
 
+class CaptureSetChoicesPagination(LimitOffsetPaginationWithPermissions):
+    """Sends a whole project's capture set choices in one response.
+
+    Dropdowns cannot page, so the limit is set here rather than by each caller. It is
+    capped as well as defaulted, so no caller can ask for a larger one.
+    """
+
+    default_limit = 100
+    max_limit = 100
+
+
 class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     """
     Endpoint for viewing capture sets or samples of captures.
@@ -1004,14 +1015,16 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         """Choices for capture set filters and pickers.
 
         Returns only what those consumers need to name a capture set, most recently
-        updated first.
+        updated first, and enough of them that a dropdown never has to page. A project
+        with more capture sets than the cap needs the search field in #1380.
         """
         # Sorting by a count would fail here, since the counts are never annotated.
         self.ordering_fields = ["id", "created_at", "updated_at", "name", "method"]
         queryset = self.filter_queryset(self.get_queryset())
-        page = self.paginate_queryset(queryset)
+        paginator = CaptureSetChoicesPagination()
+        page = paginator.paginate_queryset(queryset, request, view=self)
         serializer = SourceImageCollectionNestedSerializer(page, many=True, context=self.get_serializer_context())
-        return self.get_paginated_response(serializer.data)
+        return paginator.get_paginated_response(serializer.data)
 
     @action(detail=True, methods=["post"], name="populate")
     def populate(self, request, pk=None):

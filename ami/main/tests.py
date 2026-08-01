@@ -7070,6 +7070,25 @@ class TestCaptureSetChoices(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    def test_a_dropdown_gets_every_capture_set_without_asking_for_a_page(self):
+        SourceImageCollection.objects.bulk_create(
+            SourceImageCollection(name=f"Bulk {index}", project=self.project, method="manual") for index in range(50)
+        )
+        response = self.client.get(self.url)
+        results = response.json()["results"]
+        self.assertEqual(len(results), SourceImageCollection.objects.filter(project=self.project).count())
+
+    def test_a_project_with_too_many_capture_sets_is_capped_rather_than_paged(self):
+        SourceImageCollection.objects.bulk_create(
+            SourceImageCollection(name=f"Bulk {index}", project=self.project, method="manual") for index in range(120)
+        )
+        # A caller cannot raise the cap, so the response size stays bounded no matter what
+        # is asked for. Reaching past it is what the search field in #1380 is for.
+        for query in ("", "&limit=500"):
+            with self.subTest(query=query):
+                response = self.client.get(f"{self.url}{query}")
+                self.assertEqual(len(response.json()["results"]), 100)
+
 
 BULK_IDENTIFICATIONS_ENDPOINT = "/api/v2/identifications/bulk/"
 

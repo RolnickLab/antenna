@@ -1,5 +1,5 @@
 import { FormMessage } from 'components/form/layout/layout'
-import { API_ROUTES, MAX_CAPTURE_SET_CHOICES } from 'data-services/constants'
+import { API_ROUTES } from 'data-services/constants'
 import { useCaptureSetDetails } from 'data-services/hooks/capture-sets/useCaptureSetDetails'
 import { useEntities } from 'data-services/hooks/entities/useEntities'
 import { ChevronRight, XIcon } from 'lucide-react'
@@ -22,10 +22,7 @@ export const CaptureSetPicker = ({
   const { projectId } = useParams()
   const { entities = [], isLoading } = useEntities(
     API_ROUTES.CAPTURE_SET_CHOICES,
-    {
-      projectId: projectId as string,
-      pagination: { page: 0, perPage: MAX_CAPTURE_SET_CHOICES },
-    }
+    { projectId: projectId as string }
   )
   // The choices carry no counts, so the selected set is loaded on its own to report the
   // number of captures it holds.

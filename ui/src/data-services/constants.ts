@@ -34,10 +34,6 @@ export const API_ROUTES = {
   USERS: 'users',
 }
 
-// How many capture sets a picker or filter loads. Choices arrive most recently updated
-// first, so a project with more than this cannot reach the rest. See #1380.
-export const MAX_CAPTURE_SET_CHOICES = 200
-
 export const STATUS_CODES = {
   FORBIDDEN: 403,
 }
