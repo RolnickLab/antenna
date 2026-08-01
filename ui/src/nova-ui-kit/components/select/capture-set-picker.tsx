@@ -1,17 +1,13 @@
 import { FormMessage } from 'components/form/layout/layout'
-import { API_ROUTES } from 'data-services/constants'
+import { API_ROUTES, MAX_CAPTURE_SET_CHOICES } from 'data-services/constants'
 import { useCaptureSetDetails } from 'data-services/hooks/capture-sets/useCaptureSetDetails'
 import { useEntities } from 'data-services/hooks/entities/useEntities'
 import { ChevronRight, XIcon } from 'lucide-react'
 import { Button, Select } from 'nova-ui-kit'
+import { useEffect } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
-
-// Choices arrive most recently updated first, so this covers the sets a user is
-// realistically picking between. A project with more than this cannot reach the rest of
-// them from here, which is what the search field in #1380 is for.
-const MAX_CHOICES = 200
 
 // TODO: Move to src/components, this is not a design system component
 export const CaptureSetPicker = ({
@@ -28,12 +24,15 @@ export const CaptureSetPicker = ({
     API_ROUTES.CAPTURE_SET_CHOICES,
     {
       projectId: projectId as string,
-      pagination: { page: 0, perPage: MAX_CHOICES },
+      pagination: { page: 0, perPage: MAX_CAPTURE_SET_CHOICES },
     }
   )
   // The choices carry no counts, so the selected set is loaded on its own to report the
   // number of captures it holds.
-  const { captureSet } = useCaptureSetDetails(_value, projectId)
+  const { captureSet, isLoading: isLoadingCaptureSet } = useCaptureSetDetails(
+    _value,
+    projectId
+  )
 
   // A set that was picked before it dropped off the end of the list is still shown, so an
   // existing selection never silently disappears from the form.
@@ -41,6 +40,16 @@ export const CaptureSetPicker = ({
     ? entities
     : [...(captureSet ? [captureSet] : []), ...entities]
   const value = choices.some((choice) => choice.id === _value) ? _value : ''
+
+  // Once both fetches have settled, a selection still missing from the choices refers to
+  // a capture set that no longer exists. Report that upwards, so the form cannot be
+  // submitted with an id the picker is not showing.
+  const isMissing = !!_value && !isLoading && !isLoadingCaptureSet && !value
+  useEffect(() => {
+    if (isMissing) {
+      onValueChange(undefined)
+    }
+  }, [isMissing, onValueChange])
 
   return (
     <div className="flex flex-col gap-4">

@@ -34,6 +34,12 @@ export const API_ROUTES = {
   USERS: 'users',
 }
 
+// How many capture sets a picker or filter loads at once. Choices arrive most recently
+// updated first, so this covers the sets a user is realistically choosing between. A
+// project with more than this cannot reach the rest from a dropdown, which is what the
+// search field in #1380 is for.
+export const MAX_CAPTURE_SET_CHOICES = 200
+
 export const STATUS_CODES = {
   FORBIDDEN: 403,
 }
