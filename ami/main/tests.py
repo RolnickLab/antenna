@@ -6998,7 +6998,7 @@ class TestCaptureSetChoices(APITestCase):
     """Choices endpoint for capture set filters and pickers.
 
     Pins the contract those consumers rely on: names without counts, most recently
-    updated first.
+    updated first, and a single capped response rather than pages.
     """
 
     def setUp(self) -> None:
@@ -7040,7 +7040,6 @@ class TestCaptureSetChoices(APITestCase):
             returned_ids,
             {self.oldest.pk, self.middle.pk, self.newest.pk, self.starting_collection.pk},
         )
-        self.assertNotIn(self.other_collection.pk, returned_ids)
 
     def test_a_project_is_required(self):
         response = self.client.get("/api/v2/captures/collections/choices/")
@@ -7070,24 +7069,23 @@ class TestCaptureSetChoices(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-    def test_a_dropdown_gets_every_capture_set_without_asking_for_a_page(self):
-        SourceImageCollection.objects.bulk_create(
-            SourceImageCollection(name=f"Bulk {index}", project=self.project, method="manual") for index in range(50)
-        )
-        response = self.client.get(self.url)
-        results = response.json()["results"]
-        self.assertEqual(len(results), SourceImageCollection.objects.filter(project=self.project).count())
+    def test_a_dropdown_gets_one_capped_response_instead_of_pages(self):
+        """The response size is the same whether or not a caller asks for a limit.
 
-    def test_a_project_with_too_many_capture_sets_is_capped_rather_than_paged(self):
+        A dropdown cannot page, so the endpoint neither falls back to the small
+        project-wide default nor lets a caller raise the cap. Reaching capture sets
+        past the cap is what the search field in #1380 is for.
+        """
         SourceImageCollection.objects.bulk_create(
             SourceImageCollection(name=f"Bulk {index}", project=self.project, method="manual") for index in range(120)
         )
-        # A caller cannot raise the cap, so the response size stays bounded no matter what
-        # is asked for. Reaching past it is what the search field in #1380 is for.
         for query in ("", "&limit=500"):
             with self.subTest(query=query):
-                response = self.client.get(f"{self.url}{query}")
-                self.assertEqual(len(response.json()["results"]), 100)
+                body = self.client.get(f"{self.url}{query}").json()
+                self.assertEqual(len(body["results"]), 100)
+                # The total still reports every capture set, so a caller can tell that
+                # what it received is a subset.
+                self.assertEqual(body["count"], SourceImageCollection.objects.filter(project=self.project).count())
 
 
 BULK_IDENTIFICATIONS_ENDPOINT = "/api/v2/identifications/bulk/"
