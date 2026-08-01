@@ -43,6 +43,39 @@ in `src/design-system/` — check there before writing a new component.
 - Constants are SCREAMING_SNAKE with word separation: `TAXA_LISTS`, not `TAXALISTS`.
 - Don't shadow global/DOM types (`Response`, `string`) with local interface names.
 
+## Constants
+
+- A magic number used by one module is a `const` at the top of that module:
+  `const MAX_NUM_RESULTS = 5` in `components/taxon-search/useTaxonSearch.ts`.
+- Hoist to `data-services/constants.ts` only once a second module in a different
+  directory needs the same value. That file holds cross-cutting values —
+  `REFETCH_INTERVAL`, `SUCCESS_TIMEOUT` — not per-page settings.
+
+## Comments
+
+The general rule in `.agents/AGENTS.md` is written for the Python side. The frontend
+runs leaner: most components carry no comments at all, so a block of prose stands out
+far more here than the same block would in a Django view.
+
+- One or two lines, and only where the code cannot say it. Anything longer belongs in
+  the PR description with a `See #NNNN` pointer left behind.
+- Match the file you are editing. Before adding a comment, look at its siblings — if
+  they have none, the bar for adding one is high.
+- State each reason once. A rationale repeated in a constant, a prop, and the code that
+  uses them is one comment spread over three files.
+- Comments on an exported prop or constant document the contract for its callers. Say
+  what a caller must decide, not how the internals work.
+
+Before committing, compare your comment density with the neighbours:
+
+```bash
+cd ui && for f in src/path/to/dir/*.tsx; do
+  echo "$(grep -c '^\s*//' "$f")/$(wc -l < "$f")  $(basename "$f")"
+done
+```
+
+Standing out by several times the local ratio means trimming, not justifying.
+
 ## Lint & format — what is actually configured
 
 - ESLint: `ui/.eslintrc.json` — `eslint:recommended` + `@typescript-eslint/recommended`;
