@@ -1,3 +1,4 @@
+import collections
 import datetime
 
 from django.db.models import QuerySet
@@ -810,6 +811,80 @@ class IdentificationSerializer(DefaultSerializer):
             "created_at",
             "updated_at",
         ]
+
+
+#: Upper bound on a single bulk identification request.
+#: Every identification in a batch is written inside the request's transaction, which
+#: holds row locks on each occurrence until the request finishes, so an unbounded batch
+#: would block other people identifying the same occurrences for as long as it ran. The
+#: identification interface can only select occurrences on the page being displayed, so
+#: real batches are far smaller than this; the cap bounds the worst case rather than
+#: shaping the interface.
+MAX_BULK_IDENTIFICATIONS = 200
+
+
+class BulkIdentificationItemSerializer(serializers.Serializer):
+    """
+    One identification within a bulk request.
+
+    Related objects are declared as plain integers rather than
+    `PrimaryKeyRelatedField` so that the view can resolve the whole batch in a
+    fixed number of queries. `PrimaryKeyRelatedField` issues one query per field
+    per item, which would make validation alone scale with the size of the batch.
+
+    `withdrawn` is deliberately absent: the model maintains it, and letting a
+    client set it would break the "one active identification per user per
+    occurrence" invariant.
+    """
+
+    occurrence_id = serializers.IntegerField()
+    taxon_id = serializers.IntegerField()
+    comment = serializers.CharField(required=False, allow_blank=True, default="")
+    agreed_with_identification_id = serializers.IntegerField(required=False, allow_null=True, default=None)
+    agreed_with_prediction_id = serializers.IntegerField(required=False, allow_null=True, default=None)
+
+
+class BulkIdentificationRequestSerializer(serializers.Serializer):
+    """Validates the shape of a bulk request, before any occurrence is looked up."""
+
+    identifications = BulkIdentificationItemSerializer(many=True, allow_empty=False)
+
+    def validate_identifications(self, value: list[dict]) -> list[dict]:
+        if len(value) > MAX_BULK_IDENTIFICATIONS:
+            raise serializers.ValidationError(
+                f"A single request may contain at most {MAX_BULK_IDENTIFICATIONS} identifications, "
+                f"got {len(value)}."
+            )
+
+        counts = collections.Counter(item["occurrence_id"] for item in value)
+        duplicates = sorted(pk for pk, count in counts.items() if count > 1)
+        if duplicates:
+            # Two identifications for one occurrence in one batch have no defined
+            # winner: the outcome would depend on insert ordering rather than on
+            # anything the client asked for.
+            raise serializers.ValidationError(
+                f"Each occurrence may appear only once per request. Repeated occurrence IDs: {duplicates}."
+            )
+
+        return value
+
+
+class BulkIdentificationResultSerializer(serializers.Serializer):
+    """The outcome of a single submitted item, matched to the request by `index`."""
+
+    index = serializers.IntegerField()
+    occurrence_id = serializers.IntegerField()
+    status = serializers.ChoiceField(choices=["created", "error"])
+    id = serializers.IntegerField(required=False)
+    errors = serializers.DictField(required=False)
+
+
+class BulkIdentificationResponseSerializer(serializers.Serializer):
+    """Per-item outcomes for a bulk request, in the order the items were submitted."""
+
+    created_count = serializers.IntegerField()
+    error_count = serializers.IntegerField()
+    results = BulkIdentificationResultSerializer(many=True)
 
 
 class TaxonDetectionsSerializer(DefaultSerializer):

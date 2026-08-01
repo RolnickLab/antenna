@@ -196,6 +196,8 @@ export enum STRING {
   MESSAGE_DRAFTS,
   MESSAGE_EXPORT_TIP,
   MESSAGE_HAS_ACCOUNT,
+  MESSAGE_IDENTIFICATION_REJECTED,
+  MESSAGE_IDENTIFICATIONS_REJECTED,
   MESSAGE_IMAGE_FORMAT,
   MESSAGE_IMAGE_SIZE,
   MESSAGE_IMAGE_TOO_BIG,
@@ -311,6 +313,7 @@ export enum STRING {
   LATEST_OCCURRENCES,
   LEAVE_TEAM,
   LOADING_DATA,
+  LOADING_HIGHER_RESOLUTION,
   MACHINE_PREDICTION_SCORE,
   MACHINE_SUGGESTION,
   MANAGE_ACCESS_FOR,
@@ -577,6 +580,10 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_EXPORT_TIP]:
     'We support two export formats: one compact and easy to use, and one that includes all raw data. To include all data in the export, skip "Capture set".',
   [STRING.MESSAGE_HAS_ACCOUNT]: 'Already have an account?',
+  [STRING.MESSAGE_IDENTIFICATION_REJECTED]:
+    'The update was rejected, please retry.',
+  [STRING.MESSAGE_IDENTIFICATIONS_REJECTED]:
+    '{{numRejected}}/{{total}} updates were rejected, please retry.',
   [STRING.MESSAGE_IMAGE_FORMAT]: 'Valid formats are PNG, GIF and JPEG.',
   [STRING.MESSAGE_IMAGE_SIZE]:
     'The image must smaller than {{value}} {{unit}}.',
@@ -719,6 +726,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.LATEST_OCCURRENCES]: 'Latest occurrences',
   [STRING.LEAVE_TEAM]: 'Leave team',
   [STRING.LOADING_DATA]: 'Loading data',
+  [STRING.LOADING_HIGHER_RESOLUTION]: 'Loading higher resolution',
   [STRING.MACHINE_PREDICTION_SCORE]: 'Machine prediction score\n{{score}}',
   [STRING.MACHINE_SUGGESTION]: 'Machine suggestion',
   [STRING.MANAGE_ACCESS_FOR]: 'Manage access for {{user}}.',

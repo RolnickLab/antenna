@@ -7,7 +7,7 @@ import {
   OccurrenceDetails,
   TABS,
 } from 'pages/occurrence-details/occurrence-details'
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   ReactZoomPanPinchRef,
   TransformComponent,
@@ -16,9 +16,16 @@ import {
 import { SCORE_THRESHOLDS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { useActiveOccurrences } from '../hooks/useActiveOccurrences'
+import { TierSources } from './capture-tiers'
 import styles from './capture.module.scss'
+import { useCaptureTiers } from './useCaptureTiers'
 
 const FALLBACK_RATIO = 16 / 9
+
+// react-zoom-pan-pinch's default maxScale; raised dynamically so large
+// originals can always be inspected past 100% of their native pixels.
+const DEFAULT_MAX_SCALE = 8
+const MAX_OVERZOOM = 2
 
 interface BoxStyle {
   width: string
@@ -32,7 +39,7 @@ interface CaptureProps {
   detections: CaptureDetection[]
   height: number | null
   showDetections?: boolean
-  src?: string
+  sources?: TierSources
   transformRef: React.RefObject<ReactZoomPanPinchRef>
   width: number | null
 }
@@ -42,44 +49,57 @@ export const Capture = ({
   detections,
   height,
   showDetections,
-  src,
+  sources,
   transformRef,
   width,
 }: CaptureProps) => {
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const [naturalSize, setNaturalSize] = useState<{
     width: number
     height: number
   }>()
-  const imageRef = useRef<HTMLImageElement>(null)
   const [isLoading, setIsLoading] = useState<boolean>()
   const [renderOverlay, setRenderOverlay] = useState<boolean>()
+  const [containerWidth, setContainerWidth] = useState(0)
+  const [scale, setScale] = useState(1)
 
+  const {
+    displayed,
+    incoming,
+    incomingLoaded,
+    updateDemand,
+    onIncomingLoad,
+    onIncomingError,
+  } = useCaptureTiers({ sources, captureWidth: width, captureHeight: height })
+
+  const dpr = window.devicePixelRatio || 1
+
+  // The container width drives both the tier demand and the zoom readout.
   useLayoutEffect(() => {
-    if (!imageRef.current) {
+    const element = wrapperRef.current
+    if (!element) {
       return
     }
+    const measure = () =>
+      setContainerWidth(element.getBoundingClientRect().width)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
 
+  useEffect(() => {
+    if (containerWidth) {
+      updateDemand(containerWidth * dpr * scale)
+    }
+  }, [containerWidth, dpr, scale, updateDemand])
+
+  useEffect(() => {
+    // Show the spinner whenever the active capture changes; the previous
+    // image stays visible underneath until the new tier loads.
     setIsLoading(true)
     setNaturalSize(undefined)
-
-    if (src) {
-      imageRef.current.src = src
-      imageRef.current.onload = () => {
-        if (imageRef.current?.width && imageRef.current.height) {
-          setNaturalSize({
-            width: imageRef.current.naturalWidth,
-            height: imageRef.current.naturalHeight,
-          })
-        }
-        setIsLoading(false)
-      }
-
-      imageRef.current.onerror = () => {
-        setNaturalSize(undefined)
-        setIsLoading(false)
-      }
-    }
-  }, [src])
+  }, [sources?.original])
 
   useLayoutEffect(() => {
     // Ugly hack to make overlay correct on first render
@@ -112,25 +132,85 @@ export const Capture = ({
   )
 
   const ratio = useMemo(() => {
-    if (naturalSize) {
-      return naturalSize.width / naturalSize.height
-    }
-
+    // Stored dimensions first: they match the detection box space and stay
+    // constant across tiers, so the layout never shifts on a tier swap.
     if (width && height) {
       return width / height
+    }
+
+    if (naturalSize) {
+      return naturalSize.width / naturalSize.height
     }
 
     return FALLBACK_RATIO
   }, [width, height, naturalSize])
 
+  const maxScale = useMemo(() => {
+    if (width && containerWidth) {
+      const fullResolutionScale = width / (containerWidth * dpr)
+      return Math.max(DEFAULT_MAX_SCALE, fullResolutionScale * MAX_OVERZOOM)
+    }
+
+    return DEFAULT_MAX_SCALE
+  }, [width, containerWidth, dpr])
+
+  // Zoom level relative to the original image's pixels: 100% = one image
+  // pixel per device pixel.
+  const zoomPercent = useMemo(() => {
+    if (!width || !containerWidth) {
+      return null
+    }
+
+    return Math.round(((containerWidth * dpr * scale) / width) * 100)
+  }, [width, containerWidth, dpr, scale])
+
   return (
-    <div className="relative w-full" style={{ aspectRatio: ratio }}>
-      <TransformWrapper ref={transformRef}>
+    <div
+      className="relative w-full"
+      ref={wrapperRef}
+      style={{ aspectRatio: ratio }}
+    >
+      <TransformWrapper
+        maxScale={maxScale}
+        onTransform={(_, state) => setScale(state.scale)}
+        ref={transformRef}
+      >
         <TransformComponent
           contentClass="!w-full !h-full"
           wrapperClass="!w-full !h-full"
         >
-          <img className="w-full h-full" ref={imageRef} />
+          <img
+            alt=""
+            className="w-full h-full"
+            src={displayed?.src}
+            onLoad={(event) => {
+              const image = event.currentTarget
+              if (image.naturalWidth && image.naturalHeight) {
+                setNaturalSize({
+                  width: image.naturalWidth,
+                  height: image.naturalHeight,
+                })
+              }
+              setIsLoading(false)
+            }}
+            onError={() => {
+              setNaturalSize(undefined)
+              setIsLoading(false)
+            }}
+          />
+          {incoming ? (
+            <img
+              alt=""
+              key={incoming.src}
+              className={classNames(
+                'absolute inset-0 w-full h-full transition-opacity duration-300',
+                incomingLoaded ? 'opacity-100' : 'opacity-0'
+              )}
+              src={incoming.src}
+              onLoad={(event) => onIncomingLoad(event.currentTarget)}
+              onError={onIncomingError}
+            />
+          ) : null}
           <div
             className={classNames(styles.details, {
               [styles.showOverlay]: showDetections && detections.length,
@@ -146,6 +226,20 @@ export const Capture = ({
           </div>
         </TransformComponent>
       </TransformWrapper>
+      {zoomPercent !== null ? (
+        <span className="absolute bottom-2 left-2 px-2.5 py-1 rounded-full bg-neutral-900/70 text-generic-white text-xs tabular-nums pointer-events-none select-none">
+          {zoomPercent}%
+        </span>
+      ) : null}
+      {incoming && !incomingLoaded ? (
+        <span
+          className="absolute bottom-2 right-2 flex items-center gap-2 px-2.5 py-1 rounded-full bg-neutral-900/70 text-generic-white text-xs pointer-events-none select-none"
+          role="status"
+        >
+          <LoadingSpinner size={12} />
+          <span>{translate(STRING.LOADING_HIGHER_RESOLUTION)}...</span>
+        </span>
+      ) : null}
       {isLoading ? (
         <div className="absolute inset-0 flex items-center justify-center">
           <LoadingSpinner />
