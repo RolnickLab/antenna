@@ -11,8 +11,7 @@ export const EntityPicker = ({
   onValueChange,
 }: {
   collection: string
-  // How many options to load. A selection outside the loaded options shows as blank, so
-  // collections with many rows should raise this above the API default.
+  // Raise above the API default when a selection could fall outside the first page.
   pageSize?: number
   value?: string
   onValueChange: (value?: string) => void

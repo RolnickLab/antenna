@@ -34,16 +34,13 @@ export const CaptureSetPicker = ({
     projectId
   )
 
-  // A set that was picked before it dropped off the end of the list is still shown, so an
-  // existing selection never silently disappears from the form.
+  // A set picked before it dropped off the end of the list is added back, so an existing
+  // selection never silently disappears. One still missing once both fetches have settled
+  // no longer exists, and is cleared rather than submitted while the field looks empty.
   const choices = entities.some((entity) => entity.id === _value)
     ? entities
     : [...(captureSet ? [captureSet] : []), ...entities]
   const value = choices.some((choice) => choice.id === _value) ? _value : ''
-
-  // Once both fetches have settled, a selection still missing from the choices refers to
-  // a capture set that no longer exists. Report that upwards, so the form cannot be
-  // submitted with an id the picker is not showing.
   const isMissing = !!_value && !isLoading && !isLoadingCaptureSet && !value
   useEffect(() => {
     if (isMissing) {
