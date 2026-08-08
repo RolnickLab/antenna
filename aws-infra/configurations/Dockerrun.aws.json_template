@@ -1,0 +1,113 @@
+{
+  "AWSEBDockerrunVersion": 2,
+  "containerDefinitions": [
+
+    {
+      "name": "django",
+      "image": "<AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/antenna-backend:<BACKEND_IMAGE_TAG>",
+      "essential": true,
+      "memory": 1024,
+      "portMappings": [
+        { "hostPort": 80, "containerPort": 5000 }
+      ],
+      "command": ["/start"],
+      "environment": [
+        { "name": "USE_DOCKER", "value": "yes" },
+        { "name": "DEFAULT_PROCESSING_SERVICE_ENDPOINT", "value": "http://ml-backend-minimal:2000" },
+        { "name": "DEFAULT_PROCESSING_SERVICE_NAME", "value": "Default ML Service" }
+      ],
+      "links": [
+        "ml-backend-minimal",
+        "ml-backend-example"
+      ]
+    },
+
+    {
+      "name": "celeryworker",
+      "image": "<AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/antenna-backend:<BACKEND_IMAGE_TAG>",
+      "essential": false,
+      "memory": 512,
+      "command": ["/start-celeryworker"],
+      "environment": [
+        { "name": "USE_DOCKER", "value": "yes" },
+        { "name": "DEFAULT_PROCESSING_SERVICE_ENDPOINT", "value": "http://ml-backend-minimal:2000" }
+      ],
+      "links": [
+        "ml-backend-minimal",
+        "ml-backend-example"
+      ]
+    },
+
+    {
+      "name": "celerybeat",
+      "image": "<AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/antenna-backend:<BACKEND_IMAGE_TAG>",
+      "essential": false,
+      "memory": 512,
+      "command": ["/start-celerybeat"],
+      "environment": [
+        { "name": "USE_DOCKER", "value": "yes" },
+        { "name": "DEFAULT_PROCESSING_SERVICE_ENDPOINT", "value": "http://ml-backend-minimal:2000" }
+      ],
+      "links": [
+        "ml-backend-minimal",
+        "ml-backend-example"
+      ]
+    },
+
+    {
+      "name": "flower",
+      "image": "<AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/antenna-backend:<BACKEND_IMAGE_TAG>",
+      "essential": false,
+      "memory": 512,
+      "portMappings": [
+        { "hostPort": 5555, "containerPort": 5555 }
+      ],
+      "command": ["/start-flower"],
+      "environment": [
+        { "name": "CELERY_FLOWER_USER", "value": "<FLOWER_USERNAME>" },
+        { "name": "CELERY_FLOWER_PASSWORD", "value": "<FLOWER_PASSWORD>" },
+        { "name": "USE_DOCKER", "value": "yes" },
+        { "name": "DEFAULT_PROCESSING_SERVICE_ENDPOINT", "value": "http://ml-backend-minimal:2000" }
+      ],
+      "links": [
+        "ml-backend-minimal",
+        "ml-backend-example"
+      ]
+    },
+
+    {
+      "name": "awscli",
+      "image": "<AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/antenna-awscli:<AWSCLI_IMAGE_TAG>",
+      "essential": false,
+      "memory": 256,
+      "command": ["sleep", "9999999"],
+      "environment": [
+        { "name": "AWS_REGION", "value": "<AWS_REGION>" },
+        { "name": "USE_DOCKER", "value": "yes" }
+      ]
+    },
+
+    {
+      "name": "ml-backend-minimal",
+      "image": "<AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/antenna-ml-minimal:<ML_MINIMAL_IMAGE_TAG>",
+      "essential": false,
+      "memory": 512,
+      "hostname": "ml-backend-minimal",
+      "portMappings": [
+        { "hostPort": 2000, "containerPort": 2000 }
+      ]
+    },
+
+    {
+      "name": "ml-backend-example",
+      "image": "<AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/antenna-ml-example:<ML_EXAMPLE_IMAGE_TAG>",
+      "essential": false,
+      "memory": 512,
+      "hostname": "ml-backend-example",
+      "portMappings": [
+        { "hostPort": 2003, "containerPort": 2000 }
+      ]
+    }
+
+  ]
+}
