@@ -1,0 +1,121 @@
+{
+  "pipeline": "random-detection-random-species",
+  "algorithms": {
+    "random-detector": {
+      "name": "Random Detector",
+      "key": "random-detector",
+      "description": "",
+      "task_type": "localization",
+      "version": 1,
+      "version_name": null,
+      "uri": null,
+      "category_map": null
+    },
+    "random-species-classifier": {
+      "name": "Random species classifier",
+      "key": "random-species-classifier",
+      "description": "",
+      "task_type": "classification",
+      "version": 1,
+      "version_name": null,
+      "uri": null,
+      "category_map": null
+    }
+  },
+  "total_time": 0.0,
+  "source_images": [
+    {
+      "id": "680",
+      "url": "2023_01_24/329-20230125060859-snapshot.jpg",
+      "deployment": {
+        "name": "Mothra-01",
+        "key": "mothra-01"
+      }
+    },
+    {
+      "id": "657",
+      "url": "2023_01_24/326-20230125055729-snapshot.jpg",
+      "deployment": {
+        "name": "Mothra-01",
+        "key": "mothra-01"
+      }
+    }
+  ],
+  "detections": [
+    {
+      "source_image_id": "680",
+      "bbox": {
+        "x1": 1057.0,
+        "y1": 1905.0,
+        "x2": 1287.0,
+        "y2": 2142.0
+      },
+      "inference_time": null,
+      "algorithm": {
+        "name": "Random Detector",
+        "key": "random-detector"
+      },
+      "timestamp": "2023-01-25 06:08:59",
+      "crop_image_url": "/media/michael/ZWEIBEL/ami-ml-data/trapdata/crops/b4a2fd7e99f3995cac296f28b7a240a7.jpg",
+      "classifications": [
+        {
+          "classification": "Megalopyge tharops",
+          "labels": null,
+          "scores": [
+            0.5804115533828735
+          ],
+          "logits": [],
+          "inference_time": null,
+          "algorithm": {
+            "name": "Random species classifier",
+            "key": "random-species-classifier"
+          },
+          "terminal": true,
+          "timestamp": "2023-01-25 06:08:59"
+        }
+      ]
+    },
+    {
+      "source_image_id": "657",
+      "bbox": {
+        "x1": 2915.0,
+        "y1": 1790.0,
+        "x2": 3130.0,
+        "y2": 2062.0
+      },
+      "inference_time": null,
+      "algorithm": {
+        "name": "Random Detector",
+        "key": "random-detector"
+      },
+      "timestamp": "2023-01-25 05:57:29",
+      "crop_image_url": "/media/michael/ZWEIBEL/ami-ml-data/trapdata/crops/80af0289d7def3ab1278d66842b9c42a.jpg",
+      "classifications": [
+        {
+          "classification": "Megalopyge tharops",
+          "labels": null,
+          "scores": [
+            0.7600370049476624
+          ],
+          "logits": [],
+          "inference_time": null,
+          "algorithm": {
+            "name": "Random species classifier",
+            "key": "random-species-classifier"
+          },
+          "terminal": true,
+          "timestamp": "2023-01-25 05:57:29"
+        }
+      ]
+    }
+  ],
+  "deployments": [
+    {
+      "name": "Mothra-01",
+      "key": "mothra-01"
+    }
+  ],
+  "config": {
+    "example_config_param": null
+  }
+}
