@@ -39,6 +39,16 @@ class ClassMaskingActionForm(BasePostProcessingActionForm):
             "Off = keep the model's raw absolute scores; the chosen species is unchanged either way."
         ),
     )
+    only_when_taxon_changes = forms.BooleanField(
+        required=False,
+        initial=True,
+        label="Only record a new identification when the species changes",
+        help_text=(
+            "Masking nudges the scores of nearly every prediction, so leaving this off records a new "
+            "identification for most of them, usually repeating the species already shown. "
+            "Off = record every re-score, which is useful for comparing confidence across taxa lists."
+        ),
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -73,4 +83,5 @@ class ClassMaskingActionForm(BasePostProcessingActionForm):
             "algorithm_id": self.cleaned_data["algorithm_id"].pk,
             "taxa_list_id": self.cleaned_data["taxa_list_id"].pk,
             "reweight": self.cleaned_data["reweight"],
+            "only_when_taxon_changes": self.cleaned_data["only_when_taxon_changes"],
         }
