@@ -213,6 +213,7 @@ PipelineChoice = typing.Literal[
     "zero-shot-object-detector-pipeline",
     "zero-shot-object-detector-with-constant-classifier-pipeline",
     "zero-shot-object-detector-with-random-species-classifier-pipeline",
+    "zero-shot-object-detector-with-global-moth-classifier-pipeline",
 ]
 
 
