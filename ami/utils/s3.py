@@ -271,7 +271,10 @@ def list_files(
     """
     "Recursively" list files in a bucket, with optional limit and regex filter.
 
-    Returns an ObjectSummary object.
+    Yields one ``(ObjectSummary, num_files_checked)`` pair per key that passes the
+    filter, then a final ``(None, num_files_checked)`` with the total number of keys
+    scanned. Callers must skip that last pair; its count is the only way to tell an
+    empty prefix from one where the filter rejected every key.
 
     @TODO Consider returning just the key instead of the full object so we
     can make list_files_paginated more consistent with list_files.
@@ -307,7 +310,9 @@ def list_files_paginated(
     """
     List files in a bucket, with pagination to increase performance.
 
-    Returns an ObjectTypeDef dict instead of an ObjectSummary object.
+    Yields ObjectTypeDef dicts instead of the ObjectSummary objects list_files yields;
+    the generator contract is otherwise the same, including the trailing
+    ``(None, num_files_checked)`` pair. See test_connection() for why that pair matters.
 
     @TODO Consider returning just the key instead of the full object so we
     can make list_files_paginated more consistent with list_files.
