@@ -310,9 +310,10 @@ def list_files_paginated(
     """
     List files in a bucket, with pagination to increase performance.
 
-    Yields ObjectTypeDef dicts instead of the ObjectSummary objects list_files yields;
-    the generator contract is otherwise the same, including the trailing
-    ``(None, num_files_checked)`` pair. See test_connection() for why that pair matters.
+    Yields ``(ObjectTypeDef, num_files_checked)`` pairs rather than the
+    ``(ObjectSummary, num_files_checked)`` pairs list_files yields. The contract is
+    otherwise the same, including the trailing ``(None, num_files_checked)`` pair.
+    See test_connection() for why that pair matters.
 
     @TODO Consider returning just the key instead of the full object so we
     can make list_files_paginated more consistent with list_files.
