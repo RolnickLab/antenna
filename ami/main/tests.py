@@ -2158,6 +2158,77 @@ class TestProjectRequiredOnListEndpoints(APITestCase):
                 self.assertEqual(response.status_code, status.HTTP_200_OK, path)
 
 
+class TestProjectScopingOnListEndpoints(APITestCase):
+    """
+    Every list endpoint that requires a project_id must also filter its results
+    by that project.
+
+    Requiring the parameter without filtering by it is a silent failure mode:
+    the request is accepted, but the response mixes in other projects' rows and
+    reports a count over the whole table — so the pagination COUNT the
+    requirement exists to prevent still runs. The status-code tests above
+    cannot catch that, because they never look at the response body. This test
+    pins the other half of the contract: with two projects that both have data
+    in every hot table, a scoped list request returns only the requested
+    project's rows and a count that matches.
+
+    The expected rows are resolved generically through each model's
+    ``get_project_accessor()``, so any future viewset added to the endpoint
+    list below is checked the same way.
+    """
+
+    def setUp(self) -> None:
+        self.project_a, deployment_a = setup_test_project(reuse=False)
+        self.project_b, deployment_b = setup_test_project(reuse=False)
+        for project, deployment in [
+            (self.project_a, deployment_a),
+            (self.project_b, deployment_b),
+        ]:
+            create_captures(deployment=deployment)
+            create_taxa(project=project)
+            create_occurrences(deployment=deployment, num=5)
+        self.user = User.objects.create_user(email="scopingtestuser@insectai.org", is_staff=True)  # type: ignore
+        self.client.force_authenticate(user=self.user)
+        return super().setUp()
+
+    def test_list_results_are_scoped_to_requested_project(self):
+        endpoints: list[tuple[str, type[models.Model]]] = [
+            ("/api/v2/captures/", SourceImage),
+            ("/api/v2/detections/", Detection),
+            ("/api/v2/occurrences/", Occurrence),
+            ("/api/v2/classifications/", Classification),
+        ]
+
+        for path, model in endpoints:
+            accessor = model.get_project_accessor()
+            assert accessor, f"{model.__name__} has no project accessor"
+            for project in [self.project_a, self.project_b]:
+                with self.subTest(path=path, project=project.pk):
+                    expected_ids = set(model.objects.filter(**{accessor: project}).values_list("id", flat=True))
+                    other_ids = set(model.objects.exclude(**{accessor: project}).values_list("id", flat=True))
+                    # Both projects must have rows, otherwise the scoping
+                    # assertions below would pass vacuously.
+                    self.assertTrue(expected_ids, f"No {model.__name__} rows in the requested project")
+                    self.assertTrue(other_ids, f"No {model.__name__} rows outside the requested project")
+
+                    response = self.client.get(f"{path}?project_id={project.pk}&limit=200")
+                    self.assertEqual(response.status_code, status.HTTP_200_OK, path)
+                    data = response.json()
+
+                    returned_ids = {result["id"] for result in data["results"]}
+                    leaked_ids = returned_ids & other_ids
+                    self.assertFalse(
+                        leaked_ids,
+                        f"{path} returned rows from other projects: {sorted(leaked_ids)}",
+                    )
+                    self.assertLessEqual(returned_ids, expected_ids, path)
+                    self.assertEqual(
+                        data["count"],
+                        len(expected_ids),
+                        f"{path} count spans more than the requested project",
+                    )
+
+
 class TestCapturesProcessedFilter(APITestCase):
     """
     The captures list distinguishes two related filters:

@@ -1183,10 +1183,17 @@ class DetectionViewSet(DefaultViewSet, ProjectMixin):
         else:
             return DetectionSerializer
 
+    def get_queryset(self) -> QuerySet:
+        qs = super().get_queryset()
+        # Resolving the project here also enforces the list-action project_id
+        # requirement before pagination runs its COUNT over the full table.
+        project = self.get_active_project()
+        if project:
+            qs = qs.filter(source_image__project=project)
+        return qs
+
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
-        # Force project_id validation before pagination triggers a full-table COUNT.
-        self.get_active_project()
         return super().list(request, *args, **kwargs)
 
 
