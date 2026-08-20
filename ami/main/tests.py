@@ -2221,12 +2221,37 @@ class TestProjectScopingOnListEndpoints(APITestCase):
                         leaked_ids,
                         f"{path} returned rows from other projects: {sorted(leaked_ids)}",
                     )
-                    self.assertLessEqual(returned_ids, expected_ids, path)
+                    # Exact equality, not a subset: a subset check passes when the
+                    # response silently omits rows that belong to the project. The
+                    # fixtures are far smaller than the requested page size, so every
+                    # expected row must appear.
+                    self.assertSetEqual(returned_ids, expected_ids, path)
                     self.assertEqual(
                         data["count"],
                         len(expected_ids),
                         f"{path} count spans more than the requested project",
                     )
+
+    def test_detail_route_rejects_a_project_it_does_not_belong_to(self):
+        """
+        A detail request naming the wrong project returns 404 rather than the object.
+
+        Scoping happens in ``get_queryset()``, which every action reads, so the
+        project constraint reaches detail routes as well as the list. Naming a
+        project the object does not belong to therefore yields 404, matching the
+        occurrences and classifications detail routes. This is pinned here
+        because the behaviour is a consequence of where the filter lives, and a
+        later refactor that scoped only the list action would silently drop it.
+        """
+        detection = Detection.objects.filter(source_image__project=self.project_a).first()
+        assert detection, "fixture produced no detections in the first project"
+
+        same_project = self.client.get(f"/api/v2/detections/{detection.pk}/?project_id={self.project_a.pk}")
+        self.assertEqual(same_project.status_code, status.HTTP_200_OK)
+        self.assertEqual(same_project.json()["id"], detection.pk)
+
+        other_project = self.client.get(f"/api/v2/detections/{detection.pk}/?project_id={self.project_b.pk}")
+        self.assertEqual(other_project.status_code, status.HTTP_404_NOT_FOUND)
 
 
 class TestCapturesProcessedFilter(APITestCase):
