@@ -7652,3 +7652,134 @@ class TestBulkIdentificationQueryCount(BulkIdentificationTestCase):
             f"({queries_small} queries for {small} items, {queries_large} for {large}). "
             f"A jump here usually means something started querying per item.",
         )
+
+
+class TestHugeTableFilterParams(APITestCase):
+    """Pin the query-parameter contract for filters on huge related tables.
+
+    ``source_image`` (detections), ``detections__source_image`` (occurrences)
+    and ``taxon`` (classifications) are declared as ``NumberFilter``s so the
+    browsable API renders a number input instead of a ``<select>`` enumerating
+    the related table (the source image table holds tens of millions of rows
+    in production, so enumerating it times out the page). These tests pin the
+    invariant that the query parameters still filter by id exactly as the
+    auto-generated ``ModelChoiceFilter`` did.
+
+    One deliberate difference from the auto-generated filter: an id with no
+    matching row returns an empty page instead of a validation error, because
+    a plain number filter does not check that the id exists. Non-numeric
+    values are still rejected.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=10)
+        taxa = list(Taxon.objects.filter(projects=self.project)[:2])
+        assert len(taxa) == 2
+        self.taxon_a, self.taxon_b = taxa
+        create_occurrences(deployment=self.deployment, num=4, taxon=self.taxon_a)
+        create_occurrences(deployment=self.deployment, num=4, taxon=self.taxon_b)
+
+        # Let every occurrence through the project's default score filters so
+        # the ORM mirrors below match the list endpoints row for row.
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        self.user = User.objects.create_user(  # type: ignore
+            email="hugetablefilters@insectai.org",
+            is_staff=True,
+            is_superuser=True,
+        )
+        self.client.force_authenticate(user=self.user)
+
+        self.capture = SourceImage.objects.filter(deployment=self.deployment, detections__isnull=False).first()
+        assert self.capture is not None
+
+    def _get_ids(self, path: str, params: dict) -> set[int]:
+        query = "&".join(f"{key}={value}" for key, value in params.items())
+        response = self.client.get(f"{path}?{query}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return {row["id"] for row in response.json()["results"]}
+
+    def _assert_filters_by_id(self, path: str, param: str, value: int, expected_pks: set[int]):
+        """The filtered page must equal the unfiltered page restricted to expected_pks."""
+        base_params = {"project_id": self.project.pk, "limit": 200}
+        unfiltered = self._get_ids(path, base_params)
+        filtered = self._get_ids(path, {**base_params, param: value})
+        self.assertEqual(filtered, unfiltered & expected_pks)
+        # Guard against a filter that silently stops restricting anything.
+        self.assertTrue(filtered)
+        self.assertLess(len(filtered), len(unfiltered))
+
+    def test_detections_filter_by_source_image(self):
+        expected = set(Detection.objects.filter(source_image=self.capture).values_list("pk", flat=True))
+        self._assert_filters_by_id("/api/v2/detections/", "source_image", self.capture.pk, expected)
+
+    def test_occurrences_filter_by_source_image(self):
+        expected = set(Occurrence.objects.filter(detections__source_image=self.capture).values_list("pk", flat=True))
+        self._assert_filters_by_id("/api/v2/occurrences/", "detections__source_image", self.capture.pk, expected)
+
+    def test_classifications_filter_by_taxon(self):
+        expected = set(Classification.objects.filter(taxon=self.taxon_a).values_list("pk", flat=True))
+        self._assert_filters_by_id("/api/v2/classifications/", "taxon", self.taxon_a.pk, expected)
+
+    def test_unknown_id_returns_empty_page(self):
+        """A well-formed id that matches nothing filters everything out rather than erroring."""
+        for path, param in [
+            ("/api/v2/detections/", "source_image"),
+            ("/api/v2/occurrences/", "detections__source_image"),
+            ("/api/v2/classifications/", "taxon"),
+        ]:
+            with self.subTest(path=path):
+                ids = self._get_ids(path, {"project_id": self.project.pk, "limit": 200, param: 99999999})
+                self.assertEqual(ids, set())
+
+    def test_non_numeric_id_is_rejected(self):
+        for path, param in [
+            ("/api/v2/detections/", "source_image"),
+            ("/api/v2/occurrences/", "detections__source_image"),
+            ("/api/v2/classifications/", "taxon"),
+        ]:
+            with self.subTest(path=path):
+                response = self.client.get(f"{path}?project_id={self.project.pk}&{param}=abc")
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class TestBrowsableApiFilterFormsStayLightweight(APITestCase):
+    """The browsable API's filter form must not enumerate huge related tables.
+
+    For each list endpoint whose filterset touches the source image or taxon
+    tables, the HTML page must render those filters as number inputs. A
+    ``<select>`` for one of these fields means django-filter regenerated a
+    ``ModelChoiceFilter``, which builds an option per row of the related table
+    and times out against production-sized tables.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=3)
+        create_occurrences(deployment=self.deployment, num=3)
+        # A regular authenticated user sees the page but gets no create forms,
+        # so the only form fields on the page belong to the filter form.
+        self.user = User.objects.create_user(email="browsableforms@insectai.org")  # type: ignore
+        self.client.force_authenticate(user=self.user)
+
+    def _get_html(self, path: str) -> str:
+        response = self.client.get(f"{path}?project_id={self.project.pk}", headers={"accept": "text/html"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.content.decode()
+
+    def _assert_number_input(self, html: str, field_name: str):
+        self.assertNotIn(f'<select name="{field_name}"', html)
+        self.assertIn(f'<input type="number" name="{field_name}"', html)
+
+    def test_detections_browsable_page(self):
+        self._assert_number_input(self._get_html("/api/v2/detections/"), "source_image")
+
+    def test_occurrences_browsable_page(self):
+        self._assert_number_input(self._get_html("/api/v2/occurrences/"), "detections__source_image")
+
+    def test_classifications_browsable_page(self):
+        self._assert_number_input(self._get_html("/api/v2/classifications/"), "taxon")

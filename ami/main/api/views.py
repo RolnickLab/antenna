@@ -12,7 +12,7 @@ from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
 from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
-from django_filters.rest_framework import DjangoFilterBackend
+from django_filters.rest_framework import DjangoFilterBackend, FilterSet, NumberFilter
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import exceptions as api_exceptions
@@ -1163,6 +1163,24 @@ class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
         obj.save()
 
 
+class DetectionFilterSet(FilterSet):
+    """Declared filterset so the browsable API form stays lightweight.
+
+    ``source_image`` is a ``NumberFilter`` because the auto-generated
+    ``ModelChoiceFilter`` for a foreign key renders the browsable API's filter
+    form as a ``<select>`` enumerating the entire related table. The source
+    image table holds tens of millions of rows, so building that form times
+    out the request. A plain number input accepts the same
+    ``?source_image=<id>`` query parameter without loading the related table.
+    """
+
+    source_image = NumberFilter()
+
+    class Meta:
+        model = Detection
+        fields = ["source_image", "detection_algorithm", "source_image__project"]
+
+
 class DetectionViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows detections to be viewed or edited.
@@ -1171,7 +1189,7 @@ class DetectionViewSet(DefaultViewSet, ProjectMixin):
     require_project_for_list = True  # Unfiltered list scans are too expensive on this table
     queryset = Detection.objects.valid().select_related("source_image", "detection_algorithm")
     serializer_class = DetectionSerializer
-    filterset_fields = ["source_image", "detection_algorithm", "source_image__project"]
+    filterset_class = DetectionFilterSet
     ordering_fields = ["created_at", "updated_at", "detection_score", "timestamp"]
 
     def get_serializer_class(self):
@@ -1435,6 +1453,24 @@ OCCURRENCE_FILTERSET_FIELDS = (
 )
 
 
+class OccurrenceFilterSet(FilterSet):
+    """Declared filterset shared by the occurrence list and stats viewsets.
+
+    ``detections__source_image`` is a ``NumberFilter`` because the
+    auto-generated ``ModelChoiceFilter`` renders the browsable API's filter
+    form as a ``<select>`` enumerating the source image table (tens of
+    millions of rows), which times out the request. A plain number input
+    accepts the same ``?detections__source_image=<id>`` query parameter
+    without loading the related table.
+    """
+
+    detections__source_image = NumberFilter()
+
+    class Meta:
+        model = Occurrence
+        fields = list(OCCURRENCE_FILTERSET_FIELDS)
+
+
 class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows occurrences to be viewed or edited.
@@ -1445,7 +1481,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
 
     serializer_class = OccurrenceSerializer
     filter_backends = DefaultViewSetMixin.filter_backends + list(OCCURRENCE_FILTER_BACKENDS)
-    filterset_fields = list(OCCURRENCE_FILTERSET_FIELDS)
+    filterset_class = OccurrenceFilterSet
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -1578,7 +1614,7 @@ class OccurrenceStatsViewSet(viewsets.GenericViewSet, ProjectMixin):
     # `top_identifiers` doesn't call it, so its behavior is unchanged.
     queryset = Occurrence.objects.none()
     filter_backends = [DjangoFilterBackend, *OCCURRENCE_FILTER_BACKENDS]
-    filterset_fields = list(OCCURRENCE_FILTERSET_FIELDS)
+    filterset_class = OccurrenceFilterSet
 
     @extend_schema(
         parameters=[project_id_doc_param, limit_doc_param],
@@ -2154,6 +2190,29 @@ class TagViewSet(DefaultViewSet, ProjectMixin):
         return qs
 
 
+class ClassificationFilterSet(FilterSet):
+    """Declared filterset so the browsable API form stays lightweight.
+
+    ``taxon`` is a ``NumberFilter`` because the auto-generated
+    ``ModelChoiceFilter`` renders the browsable API's filter form as a
+    ``<select>`` enumerating the entire taxon table, which makes the page take
+    many seconds to load. A plain number input accepts the same
+    ``?taxon=<id>`` query parameter without loading the related table. See
+    https://www.django-rest-framework.org/topics/browsable-api/#handling-choicefield-with-large-numbers-of-items
+    """
+
+    taxon = NumberFilter()
+
+    class Meta:
+        model = Classification
+        fields = [
+            "taxon",
+            "algorithm",
+            "detection__source_image__project",
+            "detection__source_image__collections",
+        ]
+
+
 class ClassificationViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint for viewing and adding classification results from a model.
@@ -2162,14 +2221,7 @@ class ClassificationViewSet(DefaultViewSet, ProjectMixin):
     require_project_for_list = True  # Unfiltered list scans are too expensive on this table
     queryset = Classification.objects.all().select_related("taxon", "algorithm", "applied_to__algorithm")
     serializer_class = ClassificationSerializer
-    filterset_fields = [
-        # Docs about slow loading API browser because of large choice fields
-        # https://www.django-rest-framework.org/topics/browsable-api/#handling-choicefield-with-large-numbers-of-items
-        "taxon",
-        "algorithm",
-        "detection__source_image__project",
-        "detection__source_image__collections",
-    ]
+    filterset_class = ClassificationFilterSet
     ordering_fields = [
         "created_at",
         "updated_at",

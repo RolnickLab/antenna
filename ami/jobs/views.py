@@ -142,6 +142,11 @@ class JobFilterSet(filters.FilterSet):
 
     pipeline__slug = filters.CharFilter(field_name="pipeline__slug", lookup_expr="exact")
     pipeline__slug__in = filters.BaseInFilter(field_name="pipeline__slug", lookup_expr="in")
+    # A plain number input for the source image id. The auto-generated
+    # ModelChoiceFilter would render the browsable API's filter form as a
+    # <select> enumerating the source image table (tens of millions of rows),
+    # which times out the request.
+    source_image_single = filters.NumberFilter()
 
     class Meta:
         model = Job
