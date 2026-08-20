@@ -1779,6 +1779,31 @@ class TagInverseFilter(filters.BaseFilterBackend):
         return queryset.distinct()
 
 
+class TaxonFilterSet(FilterSet):
+    """Declared filterset so the browsable API form stays lightweight.
+
+    ``parent`` is a ``NumberFilter`` because the auto-generated
+    ``ModelChoiceFilter`` renders the browsable API's filter form as a
+    ``<select>`` enumerating the taxon table itself, which makes the page take
+    many seconds to load. A plain number input accepts the same
+    ``?parent=<id>`` query parameter without loading the table.
+    """
+
+    parent = NumberFilter()
+
+    class Meta:
+        model = Taxon
+        fields = [
+            "name",
+            "rank",
+            "parent",
+            "occurrences__event",
+            "occurrences__deployment",
+            "occurrences__project",
+            "projects",
+        ]
+
+
 class TaxonViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows taxa to be viewed or edited.
@@ -1798,15 +1823,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         TaxonTagFilter,
         TagInverseFilter,
     ]
-    filterset_fields = [
-        "name",
-        "rank",
-        "parent",
-        "occurrences__event",
-        "occurrences__deployment",
-        "occurrences__project",
-        "projects",
-    ]
+    filterset_class = TaxonFilterSet
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -2357,6 +2374,29 @@ class PageViewSet(DefaultViewSet):
             return PageSerializer
 
 
+class IdentificationFilterSet(FilterSet):
+    """Declared filterset so the browsable API form stays lightweight.
+
+    ``occurrence`` and ``taxon`` are ``NumberFilter``s because the
+    auto-generated ``ModelChoiceFilter`` renders the browsable API's filter
+    form as a ``<select>`` enumerating the related table, and both the
+    occurrence and taxon tables are far too large for that. Plain number
+    inputs accept the same ``?occurrence=<id>`` and ``?taxon=<id>`` query
+    parameters without loading the related tables.
+    """
+
+    occurrence = NumberFilter()
+    taxon = NumberFilter()
+
+    class Meta:
+        model = Identification
+        fields = [
+            "occurrence",
+            "user",
+            "taxon",
+        ]
+
+
 class IdentificationViewSet(DefaultViewSet):
     """
     API endpoint that allows identifications to be viewed or edited.
@@ -2364,11 +2404,7 @@ class IdentificationViewSet(DefaultViewSet):
 
     queryset = Identification.objects.all()
     serializer_class = IdentificationSerializer
-    filterset_fields = [
-        "occurrence",
-        "user",
-        "taxon",
-    ]
+    filterset_class = IdentificationFilterSet
     ordering_fields = [
         "created_at",
         "updated_at",

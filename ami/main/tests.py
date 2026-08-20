@@ -7696,6 +7696,15 @@ class TestHugeTableFilterParams(APITestCase):
         self.capture = SourceImage.objects.filter(deployment=self.deployment, detections__isnull=False).first()
         assert self.capture is not None
 
+        occurrences = list(Occurrence.objects.filter(project=self.project)[:2])
+        assert len(occurrences) == 2
+        self.identification_a = Identification.objects.create(
+            user=self.user, occurrence=occurrences[0], taxon=self.taxon_a
+        )
+        self.identification_b = Identification.objects.create(
+            user=self.user, occurrence=occurrences[1], taxon=self.taxon_b
+        )
+
     def _get_ids(self, path: str, params: dict) -> set[int]:
         query = "&".join(f"{key}={value}" for key, value in params.items())
         response = self.client.get(f"{path}?{query}")
@@ -7724,12 +7733,30 @@ class TestHugeTableFilterParams(APITestCase):
         expected = set(Classification.objects.filter(taxon=self.taxon_a).values_list("pk", flat=True))
         self._assert_filters_by_id("/api/v2/classifications/", "taxon", self.taxon_a.pk, expected)
 
+    def test_taxa_filter_by_parent(self):
+        parent = Taxon.objects.filter(direct_children__isnull=False).first()
+        assert parent is not None
+        expected = set(Taxon.objects.filter(parent=parent).values_list("pk", flat=True))
+        self._assert_filters_by_id("/api/v2/taxa/", "parent", parent.pk, expected)
+
+    def test_identifications_filter_by_occurrence(self):
+        expected = {self.identification_a.pk}
+        self._assert_filters_by_id(
+            "/api/v2/identifications/", "occurrence", self.identification_a.occurrence.pk, expected
+        )
+
+    def test_identifications_filter_by_taxon(self):
+        expected = {self.identification_a.pk}
+        self._assert_filters_by_id("/api/v2/identifications/", "taxon", self.taxon_a.pk, expected)
+
     def test_unknown_id_returns_empty_page(self):
         """A well-formed id that matches nothing filters everything out rather than erroring."""
         for path, param in [
             ("/api/v2/detections/", "source_image"),
             ("/api/v2/occurrences/", "detections__source_image"),
             ("/api/v2/classifications/", "taxon"),
+            ("/api/v2/taxa/", "parent"),
+            ("/api/v2/identifications/", "occurrence"),
         ]:
             with self.subTest(path=path):
                 ids = self._get_ids(path, {"project_id": self.project.pk, "limit": 200, param: 99999999})
@@ -7740,6 +7767,8 @@ class TestHugeTableFilterParams(APITestCase):
             ("/api/v2/detections/", "source_image"),
             ("/api/v2/occurrences/", "detections__source_image"),
             ("/api/v2/classifications/", "taxon"),
+            ("/api/v2/taxa/", "parent"),
+            ("/api/v2/identifications/", "occurrence"),
         ]:
             with self.subTest(path=path):
                 response = self.client.get(f"{path}?project_id={self.project.pk}&{param}=abc")
@@ -7783,3 +7812,14 @@ class TestBrowsableApiFilterFormsStayLightweight(APITestCase):
 
     def test_classifications_browsable_page(self):
         self._assert_number_input(self._get_html("/api/v2/classifications/"), "taxon")
+
+    def test_taxa_browsable_page(self):
+        self._assert_number_input(self._get_html("/api/v2/taxa/"), "parent")
+
+    def test_identifications_browsable_page(self):
+        # Unauthenticated so no create form is rendered; the identification
+        # create form would itself contain selects for these field names.
+        self.client.force_authenticate(user=None)
+        html = self._get_html("/api/v2/identifications/")
+        self._assert_number_input(html, "occurrence")
+        self._assert_number_input(html, "taxon")
