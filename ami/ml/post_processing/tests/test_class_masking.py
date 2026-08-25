@@ -12,8 +12,12 @@ import datetime
 import math
 import pathlib
 import uuid
+from unittest import mock
 
+from django.db import connection
+from django.db.models import QuerySet
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 
 from ami.main.models import (
     Classification,
@@ -574,3 +578,131 @@ class TestPostProcessingClassMasking(TestCase):
 
         self.assertEqual(events[0], ("setup", 1), "Scope size is reported once, before the first batch")
         self.assertEqual([name for name, _ in events], ["setup", "batch"])
+
+    # ----- scope fetch shape ----------------------------------------------
+
+    def _make_scope(self, n: int, taxa_list_name: str) -> tuple[TaxaList, list[int]]:
+        """Build ``n`` maskable classifications and a taxa list that masks their winner."""
+        taxa_list = TaxaList.objects.create(name=taxa_list_name)
+        taxa_list.taxa.set(self.species_taxa[:2])
+        logits = [2.0, 1.0, 5.0]  # index 2 wins and is excluded, so every row is masked
+        pks = []
+        for _ in range(n):
+            det, _ = self._detection_with_occurrence()
+            pks.append(self._create_classification_with_logits(det, self.species_taxa[2], _softmax(logits), logits).pk)
+        return taxa_list, pks
+
+    def _masking_algorithm(self, name: str) -> Algorithm:
+        return Algorithm.objects.create(
+            name=name,
+            key=name,
+            task_type=AlgorithmTaskType.CLASSIFICATION.value,
+            category_map=self.algorithm.category_map,
+        )
+
+    def test_scope_is_read_one_batch_per_query(self):
+        """The scope is read by one query per batch, not through a single cursor.
+
+        A single cursor makes the time to the first row scale with the size of the
+        scope, so the first progress report lands after the whole scope has been read
+        and a large run is revoked as stalled having reported nothing. That delay
+        happens inside PostgreSQL and is invisible to the test process, so the query
+        shape is what can be pinned here. See #1376.
+        """
+        taxa_list, pks = self._make_scope(5, "Bounded batch list")
+        scope = Classification.objects.filter(pk__in=pks, terminal=True)
+
+        scope_pks = set(pks)
+        batch_sizes: list[int] = []
+        original_fetch_all = QuerySet._fetch_all
+
+        def _record(self_qs):
+            already_cached = self_qs._result_cache is not None
+            original_fetch_all(self_qs)
+            if already_cached:
+                return
+            rows = [r for r in self_qs._result_cache if isinstance(r, Classification) and r.pk in scope_pks]
+            if rows:
+                batch_sizes.append(len(rows))
+
+        with mock.patch.object(QuerySet, "_fetch_all", _record):
+            make_classifications_filtered_by_taxa_list(
+                classifications=scope,
+                taxa_list=taxa_list,
+                algorithm=self.algorithm,
+                new_algorithm=self._masking_algorithm("masked_batched"),
+                batch_size=2,
+            )
+
+        self.assertGreaterEqual(
+            len(batch_sizes),
+            3,
+            f"5 rows at batch_size=2 should reach the loop in at least 3 queries, got {batch_sizes}",
+        )
+        self.assertLessEqual(max(batch_sizes), 2, f"A single query returned {max(batch_sizes)} scope rows")
+
+    def test_scope_does_not_fetch_the_unused_scores_column(self):
+        """``scores`` is never read while masking, and it is as large as ``logits``
+        (~140 kB per row for a 29,176-class algorithm), so fetching it doubles what
+        every batch transfers and parses for nothing."""
+        taxa_list, pks = self._make_scope(2, "Deferred scores list")
+        scope = Classification.objects.filter(pk__in=pks, terminal=True)
+
+        # Record how each scope row arrived the first time it was read, which is the
+        # batch read. Later reads of the same row come from occurrence.save()
+        # recomputing a determination, which legitimately selects every column.
+        scope_pks = set(pks)
+        deferred_on_arrival: dict[int, set[str]] = {}
+        original_fetch_all = QuerySet._fetch_all
+
+        def _record(self_qs):
+            already_cached = self_qs._result_cache is not None
+            original_fetch_all(self_qs)
+            if already_cached:
+                return
+            for row in self_qs._result_cache:
+                if isinstance(row, Classification) and row.pk in scope_pks:
+                    deferred_on_arrival.setdefault(row.pk, row.get_deferred_fields())
+
+        with mock.patch.object(QuerySet, "_fetch_all", _record):
+            make_classifications_filtered_by_taxa_list(
+                classifications=scope,
+                taxa_list=taxa_list,
+                algorithm=self.algorithm,
+                new_algorithm=self._masking_algorithm("masked_deferred"),
+                batch_size=2,
+            )
+
+        self.assertEqual(len(deferred_on_arrival), 2, "Both scope rows should have been read")
+        self.assertTrue(
+            all("scores" in deferred for deferred in deferred_on_arrival.values()),
+            "Masking fetched the scores column, which it never reads",
+        )
+
+    def test_detection_is_not_queried_once_per_row(self):
+        """``classification.detection`` and ``detection.occurrence`` are read for every
+        masked row, so both arrive with the batch instead of costing a query each. The
+        per-occurrence queries that ``occurrence.save()`` issues during the flush are a
+        separate cost and are not covered here."""
+        taxa_list, pks = self._make_scope(4, "Select related list")
+        scope = Classification.objects.filter(pk__in=pks, terminal=True)
+
+        with CaptureQueriesContext(connection) as ctx:
+            make_classifications_filtered_by_taxa_list(
+                classifications=scope,
+                taxa_list=taxa_list,
+                algorithm=self.algorithm,
+                new_algorithm=self._masking_algorithm("masked_related"),
+                batch_size=4,
+            )
+
+        per_row_lookups = [
+            q["sql"]
+            for q in ctx.captured_queries
+            if 'FROM "main_detection" WHERE "main_detection"."id" = ' in q["sql"]
+        ]
+        self.assertEqual(
+            per_row_lookups,
+            [],
+            f"{len(per_row_lookups)} per-row detection lookups; expected detection to come with the batch",
+        )

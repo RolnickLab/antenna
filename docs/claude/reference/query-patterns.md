@@ -307,3 +307,37 @@ img.refresh_from_db()
 images = SourceImage.objects.annotate(det_count=Count('detections'))
 ```
 
+**❌ DON'T: Rely on `.iterator(chunk_size=N)` to produce a first row quickly**
+
+`chunk_size` bounds memory, not latency. Time-to-first-row scales with the size of the
+whole scope, so a loop that reports progress after its first batch reports nothing for
+that entire ramp. On `Classification` rows carrying `logits` and `scores` (~140 kB each
+for a 29,176-class algorithm) this measured 4.65 s at 200 rows, 22.06 s at 1,000, and
+61.09 s at 2,798 — roughly 22 ms per row regardless of `chunk_size`. Jobs whose stage
+never crosses `Job.STALLED_JOBS_MAX_MINUTES` (10 minutes) get revoked by the reaper
+having reported nothing.
+
+```python
+for row in wide_queryset.iterator(chunk_size=200):  # ← no heartbeat for minutes
+    ...
+```
+
+**✅ DO: Chunk by primary key, and fetch only the columns you read**
+```python
+ids = list(scope.order_by().values_list("pk", flat=True))  # narrow, fast
+for start in range(0, len(ids), BATCH):
+    rows = (Model.objects.filter(pk__in=ids[start:start + BATCH])
+            .defer("large_array_column_you_never_read")
+            .select_related("fk", "fk__nested"))
+```
+Each batch is its own short query, so memory stays bounded and every batch is a natural
+progress heartbeat. Measured on the same 2,798-row scope: first batch 3.22 s instead of
+61.58 s, and 91 rows/s instead of ~3.5 rows/s.
+
+**⚠️ `EXPLAIN (ANALYZE)` cannot see this.** It executes the plan but never returns rows
+to the client, so it never detoasts a large array column, never puts it on the wire, and
+never parses it in Python. The plan for that 2,798-row scope reports 23 ms against a real
+fetch of 61 s. Note also that `Sort` on a TOASTed column is cheap — it sorts pointers
+(`width=141`) — whereas `DISTINCT` compares values and therefore detoasts. When rows are
+wide, quote both the plan *and* a timed real fetch.
+
