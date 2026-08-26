@@ -1,13 +1,17 @@
 import { API_ROUTES, API_URL } from 'data-services/constants'
 import { useAuthorizedQuery } from '../../auth/useAuthorizedQuery'
 
-interface ModelAgreementResponse {
+export interface ModelAgreementResponse {
   project_id: number
   total_occurrences: number
   verified_count: number
   verified_pct: number
   verified_with_prediction_count: number
   no_prediction_count: number
+  verified_without_taxon_count: number
+  // Denominator for every agreed_*_pct and CI: verified occurrences that have
+  // both a model prediction and a human taxon.
+  comparable_count: number
   agreed_exact_count: number
   agreed_exact_pct: number
   agreed_exact_ci_low: number | null
@@ -35,7 +39,8 @@ type FilterValue = FilterPrimitive | FilterPrimitive[] | null | undefined
 // the backend reads via `request.query_params.getlist(...)`) survive.
 export const useModelAgreement = (
   projectId?: string,
-  filters?: Record<string, FilterValue>
+  filters?: Record<string, FilterValue>,
+  enabled?: boolean
 ) => {
   const url = `${API_URL}/${API_ROUTES.OCCURRENCES}/stats/model-agreement/`
 
@@ -59,6 +64,7 @@ export const useModelAgreement = (
 
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<ModelAgreementResponse>({
+      enabled,
       queryKey: [
         API_ROUTES.OCCURRENCES,
         'stats',
