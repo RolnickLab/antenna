@@ -4752,6 +4752,7 @@ __metadata:
     react-markdown: "npm:^9.0.1"
     react-plotly.js: "npm:^2.6.0"
     react-router-dom: "npm:^6.8.2"
+    react-zoom-pan-pinch: "npm:^4.0.3"
     sass: "npm:^1.58.3"
     tailwind-merge: "npm:^3.6.0"
     tailwindcss: "npm:^3.4.14"
@@ -11393,6 +11394,16 @@ __metadata:
     "@types/react":
       optional: true
   checksum: 841938ff16d16a6b76895f4cb2e1fea957e5fe3b30febbf03a54892dae1c9153f2383e231dea0b3ba41192ad2f2849448fa859caccd288943bce32639e971bee
+  languageName: node
+  linkType: hard
+
+"react-zoom-pan-pinch@npm:^4.0.3":
+  version: 4.0.3
+  resolution: "react-zoom-pan-pinch@npm:4.0.3"
+  peerDependencies:
+    react: "*"
+    react-dom: "*"
+  checksum: 611bc498891550c5e59da5ee94996ff9c31eae533affa10f2fa0b0cb7b5333b51c1e7aa1bb918dcfff2a103c42de0b1963e1fdfe4fa87fcae36b046c37a822b1
   languageName: node
   linkType: hard
 

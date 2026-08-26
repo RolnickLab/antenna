@@ -121,3 +121,21 @@ class CheckStaleJobsTest(TestCase):
 
         self.assertEqual(results, [])
         mock_cleanup.assert_not_called()
+
+    @patch("ami.jobs.tasks.cleanup_async_job_if_needed")
+    def test_skips_created_but_unstarted_jobs(self, mock_cleanup):
+        """A job created but never enqueued is left alone regardless of age.
+
+        Jobs can be pre-configured and started later, so a CREATED job has no
+        Celery task and no async resources to reconcile. The staleness cutoff
+        (measured against ``updated_at``) does not apply to it — it waits in
+        CREATED until a user starts it. See #1354.
+        """
+        job = self._create_job(status=JobState.CREATED, minutes_ago=300)
+
+        results = check_stale_jobs()
+
+        self.assertEqual(results, [])
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.CREATED.value)
+        mock_cleanup.assert_not_called()
