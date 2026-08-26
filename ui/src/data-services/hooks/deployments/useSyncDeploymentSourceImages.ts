@@ -8,25 +8,28 @@ export const useSyncDeploymentSourceImages = () => {
   const { user } = useUser()
   const queryClient = useQueryClient()
 
-  const { mutateAsync, isLoading, isSuccess, error, data } = useMutation({
-    mutationFn: (id: string) =>
-      axios.post<{ job_id: number; project_id: number }>(
-        `${API_URL}/${API_ROUTES.DEPLOYMENTS}/${id}/sync/`,
-        undefined,
-        {
-          headers: getAuthHeader(user),
-        }
-      ),
-    onSuccess: (resp) => {
-      queryClient.invalidateQueries([API_ROUTES.JOBS])
-      queryClient.invalidateQueries([API_ROUTES.CAPTURES])
+  const { mutateAsync, reset, isLoading, isSuccess, error, data } = useMutation(
+    {
+      mutationFn: (id: string) =>
+        axios.post<{ job_id: number; project_id: number }>(
+          `${API_URL}/${API_ROUTES.DEPLOYMENTS}/${id}/sync/`,
+          undefined,
+          {
+            headers: getAuthHeader(user),
+          }
+        ),
+      onSuccess: (resp) => {
+        queryClient.invalidateQueries([API_ROUTES.JOBS])
+        queryClient.invalidateQueries([API_ROUTES.CAPTURES])
 
-      return resp.data
-    },
-  })
+        return resp.data
+      },
+    }
+  )
 
   return {
     syncDeploymentSourceImages: mutateAsync,
+    reset,
     isLoading,
     isSuccess,
     error,

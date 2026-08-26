@@ -46,9 +46,16 @@ export enum STRING {
   SUBMIT,
   SUGGEST_ID_SHORT,
   SUGGEST_ID,
+  SYNC,
+  SYNC_ALL,
+  SYNC_CAPTURES,
   VIEW_ALL,
   VIEW_DOCS,
+  VIEW_JOB,
+  VIEW_JOBS,
   VIEW_PUBLIC_PROJECTS,
+  ZOOM_IN,
+  ZOOM_OUT,
 
   /* ENTITY */
   ENTITY_ADD,
@@ -189,6 +196,8 @@ export enum STRING {
   MESSAGE_DRAFTS,
   MESSAGE_EXPORT_TIP,
   MESSAGE_HAS_ACCOUNT,
+  MESSAGE_IDENTIFICATION_REJECTED,
+  MESSAGE_IDENTIFICATIONS_REJECTED,
   MESSAGE_IMAGE_FORMAT,
   MESSAGE_IMAGE_SIZE,
   MESSAGE_IMAGE_TOO_BIG,
@@ -208,6 +217,8 @@ export enum STRING {
   MESSAGE_RESET_INSTRUCTIONS_SENT,
   MESSAGE_RESULT_RANGE,
   MESSAGE_SIGNED_UP,
+  MESSAGE_SYNC_ALL_CONFIRM,
+  MESSAGE_SYNC_CONFIRM,
   MESSAGE_VALUE_INVALID,
   MESSAGE_VALUE_MISSING,
 
@@ -302,6 +313,7 @@ export enum STRING {
   LATEST_OCCURRENCES,
   LEAVE_TEAM,
   LOADING_DATA,
+  LOADING_HIGHER_RESOLUTION,
   MACHINE_PREDICTION_SCORE,
   MACHINE_SUGGESTION,
   MANAGE_ACCESS_FOR,
@@ -404,9 +416,16 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SUBMIT]: 'Submit',
   [STRING.SUGGEST_ID_SHORT]: 'Suggest',
   [STRING.SUGGEST_ID]: 'Suggest ID',
+  [STRING.SYNC]: 'Sync',
+  [STRING.SYNC_ALL]: 'Sync all',
+  [STRING.SYNC_CAPTURES]: 'Sync captures',
   [STRING.VIEW_ALL]: 'View all',
   [STRING.VIEW_DOCS]: 'View docs',
+  [STRING.VIEW_JOB]: 'View job',
+  [STRING.VIEW_JOBS]: 'View jobs',
   [STRING.VIEW_PUBLIC_PROJECTS]: 'View public projects',
+  [STRING.ZOOM_IN]: 'Zoom in',
+  [STRING.ZOOM_OUT]: 'Zoom out',
 
   /* FIELD_LABEL */
   [STRING.FIELD_LABEL_ADDED_AT]: 'Added at',
@@ -561,6 +580,10 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_EXPORT_TIP]:
     'We support two export formats: one compact and easy to use, and one that includes all raw data. To include all data in the export, skip "Capture set".',
   [STRING.MESSAGE_HAS_ACCOUNT]: 'Already have an account?',
+  [STRING.MESSAGE_IDENTIFICATION_REJECTED]:
+    'The update was rejected, please retry.',
+  [STRING.MESSAGE_IDENTIFICATIONS_REJECTED]:
+    '{{numRejected}}/{{total}} updates were rejected, please retry.',
   [STRING.MESSAGE_IMAGE_FORMAT]: 'Valid formats are PNG, GIF and JPEG.',
   [STRING.MESSAGE_IMAGE_SIZE]:
     'The image must smaller than {{value}} {{unit}}.',
@@ -591,6 +614,10 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_RESULT_RANGE]:
     'Showing {{start}}-{{end}} of {{total}} result(s)',
   [STRING.MESSAGE_SIGNED_UP]: 'Signed up successfully!',
+  [STRING.MESSAGE_SYNC_ALL_CONFIRM]:
+    'This starts a background sync job for each of the {{count}} station(s) with a storage source.',
+  [STRING.MESSAGE_SYNC_CONFIRM]:
+    'This scans the connected storage source and imports any new captures as a background job.',
   [STRING.MESSAGE_VALUE_INVALID]: 'Please provide a valid value',
   [STRING.MESSAGE_VALUE_MISSING]: 'Please provide a value',
 
@@ -699,6 +726,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.LATEST_OCCURRENCES]: 'Latest occurrences',
   [STRING.LEAVE_TEAM]: 'Leave team',
   [STRING.LOADING_DATA]: 'Loading data',
+  [STRING.LOADING_HIGHER_RESOLUTION]: 'Loading higher resolution',
   [STRING.MACHINE_PREDICTION_SCORE]: 'Machine prediction score\n{{score}}',
   [STRING.MACHINE_SUGGESTION]: 'Machine suggestion',
   [STRING.MANAGE_ACCESS_FOR]: 'Manage access for {{user}}.',

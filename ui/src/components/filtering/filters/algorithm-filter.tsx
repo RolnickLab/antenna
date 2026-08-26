@@ -7,7 +7,7 @@ export const AlgorithmFilter = ({
   onAdd,
 }: FilterProps & { placeholder?: string }) => (
   <EntityPicker
-    collection={API_ROUTES.ALGORITHM}
+    collection={API_ROUTES.OCCURRENCE_ALGORITHMS}
     onValueChange={(value) => {
       if (value) {
         onAdd(value)

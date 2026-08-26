@@ -97,12 +97,28 @@ DEFAULT_RANKS = sorted(
     ]
 )
 
-NULL_DETECTIONS_FILTER = Q(bbox__isnull=True) | Q(bbox=[])
-
 
 def bbox_is_null(bbox) -> bool:
-    """In-memory equivalent of NULL_DETECTIONS_FILTER for already-fetched bbox values."""
-    return bbox is None or bbox == []
+    """In-memory equivalent of null_detections_q() for an already-fetched bbox value."""
+    return bbox is None
+
+
+def null_detections_q(prefix: str = "") -> Q:
+    """
+    Return a Q expression matching null-marker Detection rows, optionally prefixed
+    for use across relations (e.g. null_detections_q("images__detections__") for an
+    aggregate filter on a parent table). For Detection queries directly, prefer
+    Detection.objects.null_markers() / .valid() instead.
+
+    Null markers are stored as SQL NULL (bbox IS NULL); that is the only sentinel form.
+    """
+    return Q(**{f"{prefix}bbox__isnull": True})
+
+
+# Single source of truth for "this Detection is a null marker", shared by
+# DetectionQuerySet.valid() / .null_markers(). Defined via null_detections_q() so the
+# constant and the helper cannot drift apart.
+NULL_DETECTIONS_FILTER = null_detections_q()
 
 
 def get_media_url(path: str) -> str:
@@ -262,7 +278,7 @@ class ProjectFeatureFlags(pydantic.BaseModel):
     default_filters: bool = False  # Whether to show default filters form in UI
     # Feature flag for jobs to reprocess all images in the project, even if already processed
     reprocess_all_images: bool = False
-    async_pipeline_workers: bool = False  # Whether to use async pipeline workers that pull tasks from a queue
+    async_pipeline_workers: bool = True  # Whether to use async pipeline workers that pull tasks from a queue
 
 
 def get_default_feature_flags() -> ProjectFeatureFlags:
@@ -836,7 +852,7 @@ class Deployment(BaseModel):
         was processed and no detections were found) to stay consistent with
         ``SourceImage.get_detections_count`` and ``Event.get_detections_count``.
         """
-        qs = Detection.objects.filter(source_image__deployment=self).exclude(NULL_DETECTIONS_FILTER)
+        qs = Detection.objects.filter(source_image__deployment=self).valid()
         filter_q = build_occurrence_default_filters_q(
             project=self.project,
             request=None,
@@ -1271,7 +1287,7 @@ class Event(BaseModel):
         Excludes null-bbox placeholder detections to stay consistent with
         ``SourceImage.get_detections_count`` and ``Deployment.get_detections_count``.
         """
-        qs = Detection.objects.filter(source_image__event=self).exclude(NULL_DETECTIONS_FILTER)
+        qs = Detection.objects.filter(source_image__event=self).valid()
         filter_q = build_occurrence_default_filters_q(
             project=self.project,
             request=None,
@@ -1320,7 +1336,15 @@ class Event(BaseModel):
         # Ideally this would be an annotated field, rather than an additional query.
         # raise NotImplementedError("This is added an annotated field, it should not be called directly.")
         # return SourceImage.objects.filter(event=self).order_by("timestamp").first().with_detections()
-        return SourceImage.objects.filter(event=self).order_by("timestamp").first()
+        # with_thumbnails() satisfies the thumbnail_urls prefetch contract for the nested serializer;
+        # select_related("project") feeds its project.thumbnails_enabled guard without an extra query.
+        return (
+            SourceImage.objects.filter(event=self)
+            .select_related("project")
+            .order_by("timestamp")
+            .with_thumbnails()
+            .first()
+        )
 
     def summary_data(self):
         """
@@ -2103,6 +2127,12 @@ class SourceImageQuerySet(BaseQuerySet):
         processed_exists = models.Exists(Detection.objects.filter(source_image_id=models.OuterRef("pk")))
         return self.annotate(was_processed=processed_exists)
 
+    def with_thumbnails(self):
+        """Prefetch ``thumbnails`` so :meth:`SourceImage.thumbnail_urls` decides
+        warm/cold in memory instead of firing a SELECT per row.
+        """
+        return self.prefetch_related("thumbnails")
+
 
 class SourceImageManager(models.Manager.from_queryset(SourceImageQuerySet)):
     pass
@@ -2238,7 +2268,7 @@ class SourceImage(BaseModel):
         Excludes detections without bounding boxes — those are placeholder records
         indicating the image was successfully processed and no detections were found.
         """
-        qs = self.detections.exclude(NULL_DETECTIONS_FILTER)
+        qs = self.detections.all().valid()
         project = self.project
         if not project:
             return qs.distinct().count()
@@ -2258,7 +2288,7 @@ class SourceImage(BaseModel):
         ``SourceImageQuerySet.with_was_processed()``). Falls back to a DB query otherwise.
 
         Do not call in bulk without the annotation — use ``with_was_processed()``
-        on the queryset instead to avoid N+1 queries.
+        on the queryset instead so each row does not trigger its own DB query.
 
         :param algorithm_key: If provided, only detections from this algorithm are checked.
                               The annotation does not filter by algorithm; per-algorithm
@@ -2410,6 +2440,59 @@ class SourceImage(BaseModel):
             custom_perms.add(Project.Permissions.RUN_SINGLE_IMAGE_JOB)
         return list(custom_perms)
 
+    def thumbnail_is_valid(self, spec: dict, thumb: "SourceImageThumbnail | None") -> bool:
+        """Whether ``thumb`` satisfies ``spec`` and need not be regenerated.
+
+        ``thumb.width`` stores the requested spec width (see the generator), so the
+        comparison is strict equality; legacy encoder-width rows read invalid and
+        self-heal on next generation. A None ``last_modified`` on either side means
+        "no signal of change" (matches ``NULL < x`` → ``False`` in SQL).
+        """
+        if thumb is None or not thumb.path or thumb.width != spec["width"]:
+            return False
+        source_changed = (
+            self.last_modified is not None
+            and thumb.last_modified is not None
+            and thumb.last_modified < self.last_modified
+        )
+        return not source_changed
+
+    def thumbnail_urls(self, request: Request | None = None) -> dict[str, str]:
+        """Per-label ``{label: url}`` for this capture's thumbnails.
+
+        Warm (cached row valid for the spec) → direct storage URL. Cold/stale →
+        route URL into the thumbnail viewset, which (re)generates lazily.
+
+        The warm path needs prefetched ``thumbnails``
+        (:meth:`SourceImageQuerySet.with_thumbnails`). Without the prefetch — a
+        freshly created instance in a write response, or a caller that skipped
+        ``with_thumbnails`` — every label falls back to the route URL without
+        querying. This never lazily loads per object (which would be an N+1 in
+        list contexts); list endpoints must apply ``with_thumbnails`` to get the
+        warm storage URLs, and the list query-count tests pin that.
+        """
+        # Local import avoids a models ↔ serializers cycle at module load time.
+        from ami.base.serializers import reverse_with_params
+
+        prefetched = "thumbnails" in getattr(self, "_prefetched_objects_cache", {})
+        thumbs: dict[str, "SourceImageThumbnail"] = {t.label: t for t in self.thumbnails.all()} if prefetched else {}
+
+        out: dict[str, str] = {}
+        for label, spec in settings.THUMBNAILS["SIZES"].items():
+            thumb = thumbs.get(label)
+            if self.thumbnail_is_valid(spec, thumb):
+                out[label] = default_storage.url(thumb.path)
+            else:
+                # Qualified ``api:`` namespace so this also resolves when ``request``
+                # is None (management commands, template tags).
+                out[label] = reverse_with_params(
+                    "api:sourceimagethumbnail-detail",
+                    args=(self.pk,),
+                    request=request,
+                    params={"label": label},
+                )
+        return out
+
     def find_or_generate_thumbnail_for_label(self, label):
         try:
             thumb = self.thumbnails.get(label=label)
@@ -2418,14 +2501,9 @@ class SourceImage(BaseModel):
         size = settings.THUMBNAILS["SIZES"].get(label)
         prefix = settings.THUMBNAILS["STORAGE_PREFIX"]
 
-        # ``self.last_modified`` can be None on legacy rows synced before upload
-        # backfill — treat None as "no signal of change", not an error.
-        source_changed = (
-            self.last_modified is not None and thumb is not None and thumb.last_modified < self.last_modified
-        )
         # The row is trusted without a storage existence check; an orphan row (blob
         # deleted out of band) shows a broken image until the row is removed.
-        if not thumb or not thumb.path or thumb.width != size["width"] or source_changed:
+        if not self.thumbnail_is_valid(size, thumb):
             img = PIL.Image.open(BytesIO(fetch_image_content(self.public_url(raise_errors=True))))
             # JPEG only supports L, RGB, CMYK — convert other modes (e.g. RGBA PNGs)
             # or PIL raises ``OSError: cannot write mode <X> as JPEG``.
@@ -2441,6 +2519,8 @@ class SourceImage(BaseModel):
             img.thumbnail(new_size)
 
             buffer = BytesIO()
+            # No ``exif=`` argument: detection boxes are overlaid on thumbnails in raw
+            # pixel coordinates, so the EXIF Orientation tag must not propagate.
             img.save(buffer, format="JPEG", progressive=True, optimize=True, quality=82)
             contents = buffer.getvalue()
             file_size = len(contents)
@@ -2518,7 +2598,7 @@ def update_detection_counts(
     if null_only:
         qs = qs.filter(detections_count__isnull=True)
 
-    detection_qs = Detection.objects.filter(source_image_id=models.OuterRef("pk")).exclude(NULL_DETECTIONS_FILTER)
+    detection_qs = Detection.objects.filter(source_image_id=models.OuterRef("pk")).valid()
     if project is not None:
         filter_q = build_occurrence_default_filters_q(
             project=project,
@@ -2834,7 +2914,13 @@ class Identification(BaseModel):
         update_occurrence_determination(self.occurrence, current_determination=self.taxon)
 
     def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
-        """Custom permission check logic for Identification model."""
+        """
+        Custom permission check logic for Identification model.
+
+        The "create" branch depends only on the occurrence's project. The bulk
+        endpoint relies on that to check once per batch instead of once per
+        occurrence — revisit it if this path gains per-occurrence logic. See #1371.
+        """
         import ami.users.roles as roles
 
         project = self.get_project()
@@ -3024,7 +3110,23 @@ class Classification(BaseModel):
 
 
 class DetectionQuerySet(BaseQuerySet):
-    def null_detections(self):
+    def valid(self):
+        """
+        Detections suitable for consumer queries — excludes null-marker sentinels.
+
+        Null markers are rows that record "an algorithm ran against this image and
+        found nothing." Consumers asking "give me detections" should always go
+        through .valid(). Future predicates to fold in here: soft-delete tombstones,
+        detections missing an algorithm reference, detections missing classifications.
+        """
+        return self.exclude(NULL_DETECTIONS_FILTER)
+
+    def null_markers(self):
+        """
+        Sentinel rows that record "this algorithm ran against this image and found
+        nothing." Only relevant for SourceImage-level "has this been processed?"
+        questions. Detection consumers should use .valid() instead.
+        """
         return self.filter(NULL_DETECTIONS_FILTER)
 
 
@@ -3101,6 +3203,25 @@ class Detection(BaseModel):
     detection_algorithm_id: int
 
     objects = DetectionManager()
+
+    NULL_BBOX = None
+    """Canonical bbox value for null markers (rows that record 'an algorithm ran but
+    found nothing'). Null markers are stored as SQL NULL; use Detection.build_null_marker()
+    to construct them."""
+
+    @property
+    def is_null_marker(self) -> bool:
+        """True for sentinel rows representing 'no detections found by this algorithm.'"""
+        return self.bbox is None
+
+    @classmethod
+    def build_null_marker(cls, source_image, detection_algorithm) -> "Detection":
+        """Construct (without saving) a null-marker Detection for the given image+algorithm."""
+        return cls(
+            source_image=source_image,
+            bbox=cls.NULL_BBOX,
+            detection_algorithm=detection_algorithm,
+        )
 
     def get_bbox(self):
         if self.bbox:
@@ -3222,10 +3343,50 @@ class Detection(BaseModel):
 
 class OccurrenceQuerySet(BaseQuerySet):
     def valid(self):
-        return self.exclude(detections__isnull=True)
+        """
+        Occurrences fit to surface in API responses: at least one real detection AND
+        a determination set.
+
+        Excludes:
+          - Occurrences with no detections at all (empty occurrences)
+          - Occurrences whose only detections are null-marker sentinels (Issue #1310:
+            field bug created phantom occurrences with no real bounding box backing
+            them)
+          - Occurrences with determination__isnull=True (no taxonomic identification,
+            same field bug shape)
+        """
+        has_valid_detection = Exists(Detection.objects.valid().filter(occurrence_id=OuterRef("pk")))
+        return self.filter(has_valid_detection).exclude(determination__isnull=True)
 
     def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
+
+    def _processed_by_algorithm_q(self, algorithm_ids) -> Exists:
+        """Subquery matching occurrences with any result from the given algorithms —
+        a detection made by one (detectors) or a classification from one (classifiers
+        and post-processing algorithms such as class masking or a size filter)."""
+        return Exists(
+            Detection.objects.filter(occurrence_id=OuterRef("pk")).filter(
+                models.Q(detection_algorithm__in=algorithm_ids)
+                | models.Q(classifications__algorithm__in=algorithm_ids)
+            )
+        )
+
+    def processed_by_algorithm(self, algorithm_ids) -> "OccurrenceQuerySet":
+        """Occurrences with at least one result from the given algorithms.
+
+        Matches detectors through Detection.detection_algorithm and classifiers or
+        post-processing algorithms through their classifications, so every algorithm
+        listed by ``Algorithm.objects.used_in_project()`` can match here. The EXISTS
+        form returns each occurrence once; a join through
+        ``detections__classifications`` returns one row per matching result, which
+        inflates pagination counts and duplicates rows across pages.
+        """
+        return self.filter(self._processed_by_algorithm_q(algorithm_ids))
+
+    def not_processed_by_algorithm(self, algorithm_ids) -> "OccurrenceQuerySet":
+        """Occurrences with no result from any of the given algorithms."""
+        return self.exclude(self._processed_by_algorithm_q(algorithm_ids))
 
     def with_timestamps(self):
         """
@@ -3654,6 +3815,11 @@ class Occurrence(BaseModel):
             # Supports sorting projects by their most recently updated occurrence
             # (see ProjectViewSet ordering "last_occurrence_updated_at").
             models.Index(fields=["project", "-updated_at"], name="occur_proj_updated_desc_idx"),
+            # Backs the default occurrence list sort: per-project, ordered by
+            # determination_score DESC (Meta.ordering). Without it the planner
+            # sorts the whole project's occurrences per page (on-disk merge sort
+            # on large projects). DESC = NULLS FIRST to match the ORM's ORDER BY.
+            models.Index(fields=["project", "-determination_score"], name="occur_proj_score_desc_idx"),
         ]
 
 
@@ -4621,7 +4787,7 @@ class SourceImageCollectionQuerySet(BaseQuerySet):
         return self.annotate(
             source_images_with_detections_count=models.Count(
                 "images",
-                filter=(~models.Q(images__detections__bbox__isnull=True) & ~models.Q(images__detections__bbox=[])),
+                filter=~null_detections_q("images__detections__"),
                 distinct=True,
             )
         )
@@ -5013,10 +5179,11 @@ class SourceImageCollection(BaseModel):
         return captures
 
     def sample_detections_only(self):
-        """Sample all source images with detections"""
+        """Sample all source images with at least one real (non-null-marker) detection."""
 
         qs = self.get_queryset()
-        return qs.filter(detections__isnull=False).distinct()
+        valid_detection_image_ids = Detection.objects.valid().values("source_image_id")
+        return qs.filter(pk__in=valid_detection_image_ids).distinct()
 
     def sample_full(
         self,

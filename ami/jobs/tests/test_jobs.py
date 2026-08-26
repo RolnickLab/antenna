@@ -1215,7 +1215,10 @@ class TestJobDispatchModeFiltering(APITestCase):
 
     def test_ml_job_dispatch_mode_set_on_creation(self):
         """Test that ML jobs get dispatch_mode set based on project feature flags at creation time."""
-        # Without async flag, ML job should default to sync_api
+        # With the async flag disabled, an ML job is dispatched via sync_api.
+        self.project.feature_flags.async_pipeline_workers = False
+        self.project.save()
+
         sync_job = Job.objects.create(
             job_type_key=MLJob.key,
             project=self.project,

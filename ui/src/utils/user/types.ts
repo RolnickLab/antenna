@@ -17,6 +17,7 @@ export enum UserPermission {
   Run = 'run', // Custom job permission
   RunSingleImage = 'run_single_image_ml_job', // Custom job permission
   Star = 'star',
+  Sync = 'sync', // Custom deployment permission (sync_deployment)
   Update = 'update',
 }
 
