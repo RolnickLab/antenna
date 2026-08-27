@@ -68,7 +68,7 @@ Baseline. Confirms the lifecycle doc's Section 1 matches reality.
 
 1. Dispatch a job:
    ```
-   docker compose exec -T django python manage.py test_ml_job_e2e \
+   docker compose -f docker-compose.ci.yml exec -T django python manage.py test_ml_job_e2e \
      --project 20 --collection <id> --pipeline <slug> --dispatch-mode async_api
    ```
 2. Watch logs:

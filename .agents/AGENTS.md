@@ -182,27 +182,27 @@ Two routes — bind-mount worktree subdirs into the main stack (code-only change
 
 Run tests:
 ```bash
-docker compose run --rm django python manage.py test
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test
 ```
 
 Run specific test pattern:
 ```bash
-docker compose run --rm django python manage.py test -k pattern
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test -k pattern
 ```
 
 Run tests with debugger on failure:
 ```bash
-docker compose run --rm django python manage.py test -k pattern --failfast --pdb
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test -k pattern --failfast --pdb
 ```
 
 Speed up test development (reuse database):
 ```bash
-docker compose run --rm django python manage.py test --keepdb
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test --keepdb
 ```
 
 Run pytest (alternative test runner):
 ```bash
-docker compose run --rm django pytest --ds=config.settings.test --reuse-db
+docker compose -f docker-compose.ci.yml run --rm django pytest --ds=config.settings.test --reuse-db
 ```
 
 Django shell:
@@ -468,7 +468,7 @@ These map 1:1 to the most frequent review findings across this repo's history. R
 
 Run an end-to-end ML job test:
 ```bash
-docker compose run --rm django python manage.py test_ml_job_e2e \
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test_ml_job_e2e \
   --project 18 --dispatch-mode async_api --collection 142 --pipeline "global_moths_2024"
 ```
 
@@ -482,13 +482,13 @@ Unit tests for the async result handler do not exercise `autoretry_for`, real Ce
 
 ```bash
 # Run specific test class
-docker compose run --rm django python manage.py test ami.main.tests.test_models.ProjectTestCase
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test ami.main.tests.test_models.ProjectTestCase
 
 # Run specific test method
-docker compose run --rm django python manage.py test ami.main.tests.test_models.ProjectTestCase.test_project_creation
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test ami.main.tests.test_models.ProjectTestCase.test_project_creation
 
 # Run with pattern matching
-docker compose run --rm django python manage.py test -k test_detection
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test -k test_detection
 ```
 
 ### Pre-commit Hooks
