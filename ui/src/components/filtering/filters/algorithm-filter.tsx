@@ -1,5 +1,5 @@
 import { API_ROUTES } from 'data-services/constants'
-import { EntityPicker } from 'design-system/components/select/entity-picker'
+import { EntityPicker } from 'nova-ui-kit'
 import { FilterProps } from './types'
 
 export const AlgorithmFilter = ({
@@ -7,7 +7,7 @@ export const AlgorithmFilter = ({
   onAdd,
 }: FilterProps & { placeholder?: string }) => (
   <EntityPicker
-    collection={API_ROUTES.ALGORITHM}
+    collection={API_ROUTES.OCCURRENCE_ALGORITHMS}
     onValueChange={(value) => {
       if (value) {
         onAdd(value)

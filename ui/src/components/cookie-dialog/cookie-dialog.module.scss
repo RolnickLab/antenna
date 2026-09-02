@@ -1,22 +1,18 @@
-@import 'src/design-system/variables/colors.scss';
-@import 'src/design-system/variables/typography.scss';
-@import 'src/design-system/variables/variables.scss';
-
 .dialog {
   position: fixed;
   left: 32px;
   bottom: 32px;
-  max-width: 480px;
+  max-width: 576px;
   padding: 32px;
   border-radius: 4px;
-  color: $color-neutral-700;
-  background-color: $color-generic-white;
+  color: var(--color-foreground);
+  background-color: var(--color-generic-white);
   box-shadow: 0px 4px 16px rgba(0, 0, 0, 0.1);
   box-sizing: border-box;
-  z-index: 2;
+  z-index: 50;
 
   h1 {
-    @include heading-6();
+    @include body-xlarge;
     margin: 0;
 
     &:not(:last-child) {
@@ -25,7 +21,7 @@
   }
 
   p {
-    @include paragraph-small();
+    @include body-small;
     margin: 0;
 
     &:not(:last-child) {
@@ -50,7 +46,7 @@
   gap: 8px;
 }
 
-@media only screen and (max-width: $small-screen-breakpoint) {
+@media only screen and (max-width: $breakpoint-md) {
   .dialog {
     left: 0;
     bottom: 0;

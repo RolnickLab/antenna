@@ -23,3 +23,14 @@ incomplete_only_param = OpenApiParameter(
     required=False,
     type=bool,
 )
+
+logs_limit_param = OpenApiParameter(
+    name="logs_limit",
+    description=(
+        "Max number of JobLog rows to include in the ``logs`` field on the detail response. "
+        "Newest-first. Defaults to 1000, capped at 5000. Pagination over older entries will "
+        "ship with a dedicated ``/jobs/logs/`` endpoint."
+    ),
+    required=False,
+    type=int,
+)

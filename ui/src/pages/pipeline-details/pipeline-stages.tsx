@@ -1,8 +1,6 @@
 import { FormRow } from 'components/form/layout/layout'
 import { Pipeline } from 'data-services/models/pipeline'
-import { InputValue } from 'design-system/components/input/input'
-import { StatusBullet } from 'design-system/components/wizard/status-bullet/status-bullet'
-import * as Wizard from 'design-system/components/wizard/wizard'
+import { InputValue, StatusBullet, Wizard } from 'nova-ui-kit'
 import { useState } from 'react'
 
 export const PipelineStages = ({ pipeline }: { pipeline: Pipeline }) => {

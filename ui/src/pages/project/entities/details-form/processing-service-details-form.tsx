@@ -7,7 +7,7 @@ import {
 } from 'components/form/layout/layout'
 import { FormConfig } from 'components/form/types'
 import { ProcessingService } from 'data-services/models/processing-service'
-import { SaveButton } from 'design-system/components/button/save-button'
+import { SaveButton } from 'nova-ui-kit'
 import { ConnectionStatus } from 'pages/project/processing-services/connection-status'
 import { useForm } from 'react-hook-form'
 import { STRING, translate } from 'utils/language'

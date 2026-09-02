@@ -290,6 +290,20 @@ class TaskQueueManager:
         except nats.js.errors.NotFoundError:
             return False
 
+    async def ensure_job_resources(self, job_id: int) -> None:
+        """Ensure both the stream and consumer for the given job exist.
+
+        Public wrapper for the two ``_ensure_*`` calls. Callers that want to
+        pre-warm both before a hot loop (e.g. a publish fanout) should use this
+        rather than touching the private methods directly — keeps the
+        TaskQueueManager's stream/consumer setup story in one place.
+
+        Subsequent calls in the same manager session skip the NATS round-trip
+        via the per-instance ``_streams_logged`` / ``_consumers_logged`` sets.
+        """
+        await self._ensure_stream(job_id)
+        await self._ensure_consumer(job_id)
+
     async def _ensure_stream(self, job_id: int):
         """Ensure stream exists for the given job.
 

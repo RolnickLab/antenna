@@ -1,9 +1,6 @@
-@import 'src/design-system/variables/variables.scss';
-@import 'src/design-system/variables/colors.scss';
-
 .wrapper {
   position: relative;
-  background-color: $color-neutral-50;
+  background-color: var(--color-neutral-50);
   width: 100%;
   height: 100vh;
   height: 100dvh;
@@ -15,7 +12,7 @@
 .main {
   padding: 24px 100px 96px;
   width: 100%;
-  min-width: $page-min-width;
+  min-width: 320px;
   box-sizing: border-box;
 
   &.fullscreen {
@@ -28,13 +25,13 @@
   position: relative;
 }
 
-@media (max-width: $medium-screen-breakpoint) {
+@media (max-width: $breakpoint-lg) {
   .main {
     padding: 24px 24px 96px;
   }
 }
 
-@media (max-width: $small-screen-breakpoint) {
+@media (max-width: $breakpoint-md) {
   .main {
     padding: 16px 16px 80px;
   }

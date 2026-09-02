@@ -1,3 +1,4 @@
+import datetime
 from typing import Any
 
 from django.contrib import admin
@@ -12,6 +13,14 @@ import ami.utils
 from ami import tasks
 from ami.jobs.models import Job
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
+from ami.ml.post_processing.admin.actions import make_post_processing_action
+from ami.ml.post_processing.admin.class_masking_form import ClassMaskingActionForm
+from ami.ml.post_processing.admin.small_size_filter_form import SmallSizeFilterActionForm
+from ami.ml.post_processing.admin.tracking_actions import build_tracking_jobs_for_events
+from ami.ml.post_processing.admin.tracking_form import TrackingActionForm
+from ami.ml.post_processing.class_masking import ClassMaskingTask
+from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
+from ami.ml.post_processing.tracking_task import TrackingTask
 from ami.ml.tasks import remove_duplicate_classifications
 
 from .models import (
@@ -27,10 +36,35 @@ from .models import (
     Site,
     SourceImage,
     SourceImageCollection,
+    SourceImageThumbnail,
     Tag,
     TaxaList,
     Taxon,
 )
+
+# PostgreSQL ``bigint`` upper bound. The primary keys on these models are
+# BigAutoField, so an all-digit search term longer than this cannot be a valid id.
+_BIGINT_MAX = 9223372036854775807
+
+
+class IdSearchAdminMixin:
+    """Treat an all-digit admin search term as an exact primary-key lookup.
+
+    The ids on these models are numeric and their text search fields (taxon and
+    determination names, image paths) never are, so a bare number is unambiguous and
+    jumps straight to that row. Anything else falls through to the normal
+    ``search_fields`` search. A number too large to be a valid id returns no results
+    rather than raising a database ``DataError``.
+    """
+
+    def get_search_results(self, request: HttpRequest, queryset: QuerySet[Any], search_term: str):
+        term = search_term.strip()
+        if term.isdigit():
+            pk = int(term)
+            if pk > _BIGINT_MAX:
+                return queryset.none(), False
+            return queryset.filter(pk=pk), False
+        return super().get_search_results(request, queryset, search_term)  # type: ignore[misc]
 
 
 class ProjectPipelineConfigInline(admin.TabularInline):
@@ -72,11 +106,14 @@ class ProjectAdmin(GuardedModelAdmin):
         form.instance.ensure_owner_membership()
 
     list_display = ("name", "owner", "priority", "active", "created_at", "updated_at")
-    list_filter = ("active", "owner")
+    list_filter = ("active",)
     search_fields = ("name", "owner__email")
 
     inlines = [ProjectPipelineConfigInline]
-    autocomplete_fields = ("default_filters_include_taxa", "default_filters_exclude_taxa")
+    autocomplete_fields = ("owner", "default_filters_include_taxa", "default_filters_exclude_taxa")
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        return super().get_queryset(request).select_related("owner")
 
     fieldsets = (
         (
@@ -132,11 +169,11 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         "name",
         "project",
         "data_source_uri",
-        "captures_count",
-        "captures_size",
-        "events_count",
-        "start_date",
-        "end_date",
+        "captures_count_display",
+        "captures_size_display",
+        "events_count_display",
+        "first_date",
+        "last_date",
     )
 
     search_fields = (
@@ -144,41 +181,76 @@ class DeploymentAdmin(admin.ModelAdmin[Deployment]):
         "name",
     )
 
-    def start_date(self, obj) -> str | None:
-        result = SourceImage.objects.filter(event__deployment=obj).aggregate(
-            models.Min("timestamp"),
-        )
-        return result["timestamp__min"].date() if result["timestamp__min"] else None
+    # The previous custom start_date / end_date / events_count / captures_count
+    # methods each ran a live aggregate per row (`SourceImage.aggregate(Min/Max)`,
+    # `obj.events.count()`), making this list view ~O(rows × 4 expensive
+    # queries) — unusable on stacks with deployments holding >100k captures.
+    # Deployment already denormalizes captures_count, events_count,
+    # data_source_total_size, first_capture_timestamp and last_capture_timestamp
+    # (refreshed by update_calculated_fields); read those instead.
+    @admin.display(description="First date", ordering="first_capture_timestamp")
+    def first_date(self, obj: Deployment) -> datetime.date | None:
+        return obj.first_date()
 
-    def end_date(self, obj) -> str | None:
-        result = SourceImage.objects.filter(deployment=obj).aggregate(
-            models.Max("timestamp"),
-        )
-        return result["timestamp__max"].date() if result["timestamp__max"] else None
+    @admin.display(description="Last date", ordering="last_capture_timestamp")
+    def last_date(self, obj: Deployment) -> datetime.date | None:
+        return obj.last_date()
 
-    def events_count(self, obj) -> str | None:
-        return number_format(obj.events.count(), force_grouping=True, use_l10n=True)
+    @admin.display(description="Events", ordering="events_count")
+    def events_count_display(self, obj: Deployment) -> str:
+        return number_format(obj.events_count or 0, force_grouping=True, use_l10n=True)
 
-    def captures_size(self, obj) -> str | None:
-        return filesizeformat(obj.data_source_total_size)
+    @admin.display(description="Captures", ordering="captures_count")
+    def captures_count_display(self, obj: Deployment) -> str:
+        return number_format(obj.captures_count or 0, force_grouping=True, use_l10n=True)
 
-    def captures_count(self, obj) -> str | None:
-        total_files = obj.data_source_total_files
-        return number_format(total_files, force_grouping=True, use_l10n=True)
+    @admin.display(description="Size", ordering="data_source_total_size")
+    def captures_size_display(self, obj: Deployment) -> str:
+        return filesizeformat(obj.data_source_total_size or 0)
 
     # list action that runs deployment.import_captures and displays a message
     # https://docs.djangoproject.com/en/3.2/ref/contrib/admin/actions/#writing-action-functions
-    @admin.action(description="Sync captures from deployment's data source (async)")
+    @admin.action(description="Sync captures from deployment's data source (Job)")
     def sync_captures(self, request: HttpRequest, queryset: QuerySet[Deployment]) -> None:
-        queued_tasks = [tasks.sync_source_images.delay(deployment.pk) for deployment in queryset]
-        msg = f"Syncing captures for {len(queued_tasks)} deployments in background: {queued_tasks}"
+        from ami.jobs.models import DataStorageSyncJob
+
+        queued_job_ids: list[int] = []
+        skipped: list[str] = []
+        for deployment in queryset:
+            if not deployment.project_id:
+                skipped.append(f"{deployment} (no project)")
+                continue
+            if not deployment.data_source_id:
+                skipped.append(f"{deployment} (no data source)")
+                continue
+            queued_job_ids.append(DataStorageSyncJob.enqueue_for(deployment).pk)
+        msg = f"Queued DataStorageSyncJob for {len(queued_job_ids)} deployments: {queued_job_ids}"
+        if skipped:
+            msg += f" — skipped: {', '.join(skipped)}"
         self.message_user(request, msg)
 
     # Action that regroups all captures in the deployment into events
-    @admin.action(description="Regroup captures into events (async)")
+    @admin.action(description="Regroup captures into sessions (Job)")
     def regroup_events(self, request: HttpRequest, queryset: QuerySet[Deployment]) -> None:
-        queued_tasks = [tasks.regroup_events.delay(deployment.pk) for deployment in queryset]
-        msg = f"Regrouping captures into events for {len(queued_tasks)} deployments in background: {queued_tasks}"
+        from ami.jobs.models import RegroupEventsJob
+
+        queued_job_ids: list[int] = []
+        skipped: list[str] = []
+        for deployment in queryset:
+            if not deployment.project_id:
+                skipped.append(f"{deployment} (no project)")
+                continue
+            job = Job.objects.create(
+                name=f"Regroup sessions for deployment {deployment.pk}",
+                deployment=deployment,
+                project=deployment.project,
+                job_type_key=RegroupEventsJob.key,
+            )
+            job.enqueue()
+            queued_job_ids.append(job.pk)
+        msg = f"Queued RegroupEventsJob for {len(queued_job_ids)} deployments: {queued_job_ids}"
+        if skipped:
+            msg += f" — skipped: {', '.join(skipped)}"
         self.message_user(request, msg)
 
     list_filter = ("project",)
@@ -245,108 +317,17 @@ class EventAdmin(admin.ModelAdmin[Event]):
         update_calculated_fields_for_events(qs=queryset)
         self.message_user(request, f"Updated {queryset.count()} events.")
 
-    @admin.action(description="Run Occurrence Tracking on selected events")
-    def run_tracking_on_events(self, request: HttpRequest, queryset: QuerySet[Event]):
-        from collections import defaultdict
-
-        from django.contrib import messages
-        from django.template.response import TemplateResponse
-
-        from ami.ml.post_processing.admin_forms import TrackingActionForm
-
-        # Superuser-only: queues background jobs and exposes tunables that change
-        # determination scoring across an event. Project admins can request a run
-        # via a superuser; widening the gate is a separate decision.
-        if not request.user.is_superuser:
-            self.message_user(request, "Only superusers can trigger tracking jobs.", level=messages.ERROR)
-            return None
-
-        if request.POST.get("confirm"):
-            form = TrackingActionForm(request.POST, events=queryset)
-            if not form.is_valid():
-                # Re-render with errors.
-                return TemplateResponse(
-                    request,
-                    "admin/main/tracking_confirmation.html",
-                    {
-                        **self.admin_site.each_context(request),
-                        "title": "Run Occurrence Tracking",
-                        "queryset": queryset,
-                        "scope_label": f"{queryset.count()} event(s)",
-                        "scope_summary": (
-                            "One Job is enqueued per project. Each Job processes all "
-                            "selected events from that project and is visible on the "
-                            "Jobs admin page where you can watch its log stream."
-                        ),
-                        "form": form,
-                        "action_name": "run_tracking_on_events",
-                        "action_checkbox_name": admin.helpers.ACTION_CHECKBOX_NAME,
-                        "opts": self.model._meta,
-                    },
-                )
-
-            config = form.to_config()
-            by_project: dict[int, list[int]] = defaultdict(list)
-            null_project_event_ids: list[int] = []
-            for ev in queryset.values("pk", "project_id"):
-                if ev["project_id"] is None:
-                    null_project_event_ids.append(ev["pk"])
-                    continue
-                by_project[ev["project_id"]].append(ev["pk"])
-
-            if null_project_event_ids:
-                self.message_user(
-                    request,
-                    f"Skipped {len(null_project_event_ids)} event(s) without a project: "
-                    f"{null_project_event_ids}. Fix Event.project before tracking those.",
-                    level=messages.WARNING,
-                )
-
-            jobs = []
-            for project_id, event_ids in by_project.items():
-                job = Job.objects.create(
-                    name=f"Post-processing: Tracking on {len(event_ids)} event(s)",
-                    project_id=project_id,
-                    job_type_key="post_processing",
-                    params={
-                        "task": "tracking",
-                        "config": {**config, "event_ids": event_ids},
-                    },
-                )
-                job.enqueue()
-                jobs.append(job.pk)
-
-            self.message_user(
-                request,
-                f"Queued Tracking for {sum(len(v) for v in by_project.values())} event(s) "
-                f"across {len(by_project)} project(s). Jobs: {jobs}",
-            )
-            return None
-
-        # GET / first POST without confirm — render the intermediate page.
-        form = TrackingActionForm(events=queryset)
-        return TemplateResponse(
-            request,
-            "admin/main/tracking_confirmation.html",
-            {
-                **self.admin_site.each_context(request),
-                "title": "Run Occurrence Tracking",
-                "queryset": queryset,
-                "scope_label": f"{queryset.count()} event(s)",
-                "scope_summary": (
-                    "One Job is enqueued per project. Each Job processes all "
-                    "selected events from that project and is visible on the "
-                    "Jobs admin page where you can watch its log stream."
-                ),
-                "form": form,
-                "action_name": "run_tracking_on_events",
-                "action_checkbox_name": admin.helpers.ACTION_CHECKBOX_NAME,
-                "opts": self.model._meta,
-            },
-        )
+    # Built from the shared post-processing action factory. Sessions can be selected
+    # across projects here, so a custom builder partitions the selection: one Job per
+    # project, carrying that project's event ids.
+    run_tracking = make_post_processing_action(
+        TrackingTask,
+        TrackingActionForm,
+        build_jobs=build_tracking_jobs_for_events,
+    )
 
     list_filter = ("deployment", "project", "start")
-    actions = [update_calculated_fields, run_tracking_on_events]
+    actions = [update_calculated_fields, run_tracking]
 
 
 @admin.register(SourceImage)
@@ -381,6 +362,10 @@ class SourceImageAdmin(AdminBase):
         "path",
     )
 
+    # Populated from the source file during sync/upload; read-only here so
+    # operators don't clobber them. The API stays writable for fixups.
+    readonly_fields = ("size", "last_modified", "checksum", "checksum_algorithm")
+
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         return (
             super()
@@ -390,9 +375,23 @@ class SourceImageAdmin(AdminBase):
         )
 
 
+@admin.register(SourceImageThumbnail)
+class SourceImageThumbnailAdmin(AdminBase):
+    """Admin panel for ``SourceImageThumbnail`` model."""
+
+    list_display = ("source_image", "path", "label", "width", "height", "size")
+    list_filter = ("source_image__deployment__project", "source_image__deployment__data_source", "label")
+
+    def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        return super().get_queryset(request).select_related("source_image", "source_image__deployment")
+
+
 class ClassificationInline(admin.TabularInline):
     model = Classification
     extra = 0
+    # Link each row to its Classification change page, where the full scores /
+    # logits and the applied_to chain (post-processing provenance) are visible.
+    show_change_link = True
     fields = (
         "taxon",
         "algorithm",
@@ -416,6 +415,9 @@ class ClassificationInline(admin.TabularInline):
 class DetectionInline(admin.TabularInline):
     model = Detection
     extra = 0
+    # Link each row to its Detection change page, where the classifications
+    # inline shows which algorithms (including post-processing) were applied.
+    show_change_link = True
     fields = (
         "detection_algorithm",
         "source_image",
@@ -433,7 +435,7 @@ class DetectionInline(admin.TabularInline):
 
 
 @admin.register(Detection)
-class DetectionAdmin(admin.ModelAdmin[Detection]):
+class DetectionAdmin(IdSearchAdminMixin, admin.ModelAdmin[Detection]):
     """Admin panel example for ``Detection`` model."""
 
     list_display = (
@@ -447,11 +449,32 @@ class DetectionAdmin(admin.ModelAdmin[Detection]):
     )
 
     autocomplete_fields = ("source_image", "occurrence")
+    # A digit term jumps to that detection by id (IdSearchAdminMixin); text searches path.
+    search_fields = ("source_image__path",)
+    # Skip the extra unfiltered COUNT(*) the changelist runs for its total; on a large
+    # table that count is as expensive as the page query it accompanies.
+    show_full_result_count = False
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
-        qs = super().get_queryset(request)
-        return qs.select_related("source_image", "occurrence").annotate(
-            classifications_count=models.Count("classifications"),
+        from django.db.models.functions import Coalesce
+
+        qs = super().get_queryset(request).select_related("source_image", "occurrence")
+        # Correlated subquery instead of Count("classifications") + GROUP BY. The
+        # grouped aggregate over the whole detection x classification join must run
+        # before ORDER BY ... LIMIT can take a page, which on a large table is slow
+        # enough to exhaust work_mem and error out. The subquery runs only for the
+        # rows on the page. Coalesce maps "no classifications" to 0.
+        classifications_count = (
+            Classification.objects.filter(detection=models.OuterRef("pk"))
+            .order_by()
+            .values("detection")
+            .annotate(c=models.Count("*"))
+            .values("c")
+        )
+        return qs.annotate(
+            classifications_count=Coalesce(
+                models.Subquery(classifications_count, output_field=models.IntegerField()), 0
+            )
         )
 
     @admin.display(
@@ -461,13 +484,15 @@ class DetectionAdmin(admin.ModelAdmin[Detection]):
     def classifications_count(self, obj) -> int:
         return obj.classifications_count
 
-    ordering = ("-created_at",)
+    # Order by -id (indexed PK) rather than -created_at, which has no index and
+    # forces a full sort of the table to find the newest page.
+    ordering = ("-id",)
 
     inlines = [ClassificationInline]
 
 
 @admin.register(Occurrence)
-class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
+class OccurrenceAdmin(IdSearchAdminMixin, admin.ModelAdmin[Occurrence]):
     """Admin panel example for ``Occurrence`` model."""
 
     list_display = (
@@ -488,19 +513,33 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
         "determination__rank",
         "created_at",
     )
+    # A digit term jumps to that occurrence by id (IdSearchAdminMixin); text searches names.
     search_fields = ("determination__name", "determination__search_names")
+    # Skip the extra unfiltered COUNT(*) the changelist runs for its total; on a large
+    # table that count is as expensive as the page query it accompanies.
+    show_full_result_count = False
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        from django.db.models.functions import Coalesce
+
         qs = super().get_queryset(request)
         qs = qs.select_related("determination", "project", "deployment", "event")
-        # Add detections count to queryset
-        qs = qs.annotate(detections_count=models.Count("detections"))
-        # Add min, max and avg detection__classifications counts to queryset
-        # qs = qs.annotate(
-        #     min_detection_classifications=models.Min("detections__classifications"),
-        #     max_detection_classifications=models.Max("detections__classifications"),
-        #     avg_detection_classifications=models.Avg("detections__classifications"),
-        # )
+        # Count detections with a correlated subquery instead of a JOIN + GROUP BY.
+        # A grouped count must aggregate the whole occurrence x detection join before
+        # the changelist's ORDER BY ... LIMIT can take a page, so it scans every row to
+        # show 25 (~15s on a 1.3M-row table). The subquery runs only for the rows that
+        # survive the limit. Coalesce maps "no detections" to 0 (a bare subquery is NULL,
+        # where the old JOIN count returned 0).
+        detections_count = (
+            Detection.objects.filter(occurrence=models.OuterRef("pk"))
+            .order_by()
+            .values("occurrence")
+            .annotate(c=models.Count("*"))
+            .values("c")
+        )
+        qs = qs.annotate(
+            detections_count=Coalesce(models.Subquery(detections_count, output_field=models.IntegerField()), 0)
+        )
         return qs
 
     @admin.display(
@@ -510,14 +549,51 @@ class OccurrenceAdmin(admin.ModelAdmin[Occurrence]):
     def detections_count(self, obj) -> int:
         return obj.detections_count
 
-    ordering = ("-created_at",)
+    # Per-occurrence post-processing trigger. Same factory as the capture-set
+    # action on SourceImageCollectionAdmin, scoped to one occurrence — the fast
+    # spot/dev path for iterating on a filter without running a whole collection.
+    # New per-occurrence tasks add their own action here the same way.
+    run_small_size_filter = make_post_processing_action(
+        SmallSizeFilterTask,
+        SmallSizeFilterActionForm,
+        scope_resolver=lambda occurrence: {"occurrence_id": occurrence.pk},
+        name_resolver=lambda task_cls, occurrence: (f"Post-processing: {task_cls.name} on Occurrence {occurrence.pk}"),
+    )
+    run_class_masking = make_post_processing_action(
+        ClassMaskingTask,
+        ClassMaskingActionForm,
+        scope_resolver=lambda occurrence: {"occurrence_id": occurrence.pk},
+        name_resolver=lambda task_cls, occurrence: (f"Post-processing: {task_cls.name} on Occurrence {occurrence.pk}"),
+    )
+
+    @admin.action(description="Recompute determination from current classifications and identifications")
+    def recompute_determination(self, request: HttpRequest, queryset: QuerySet[Any]) -> None:
+        """Re-derive each selected occurrence's determination from its current
+        predictions and human identifications.
+
+        Editing an occurrence's classifications by hand does not recompute its
+        determination — only Occurrence and Identification saves do — so this action
+        is the way to refresh it after manual changes.
+        """
+        count = 0
+        for occurrence in queryset:
+            occurrence.save(update_determination=True)
+            count += 1
+        self.message_user(request, f"Recomputed determination for {count} occurrence(s).")
+
+    actions = [run_small_size_filter, run_class_masking, recompute_determination]
+
+    # Order by -id (the indexed primary key) rather than -created_at, which has no
+    # index and would force a full sort of the table to find the newest page. id
+    # increases with insertion time, so newest-first is preserved.
+    ordering = ("-id",)
 
     # Add classifications as inline
     inlines = [DetectionInline]
 
 
 @admin.register(Classification)
-class ClassificationAdmin(admin.ModelAdmin[Classification]):
+class ClassificationAdmin(IdSearchAdminMixin, admin.ModelAdmin[Classification]):
     list_display = (
         "__str__",
         "taxon",
@@ -537,13 +613,38 @@ class ClassificationAdmin(admin.ModelAdmin[Classification]):
         "detection__source_image__project",
         "taxon__rank",
     )
+    # FK fields render as AJAX autocompletes instead of <select>s preloaded with
+    # every taxon / detection / classification — the latter makes the change page
+    # unusable on a large database.
+    autocomplete_fields = ("detection", "taxon", "algorithm", "category_map", "applied_to")
+    # A digit term jumps to that classification by id (IdSearchAdminMixin); text searches taxon name.
+    search_fields = ("taxon__name",)
+    # Order by -id (indexed PK) rather than the model's -created_at (no index).
+    ordering = ("-id",)
+    # Skip the extra unfiltered COUNT(*) the changelist runs for its total; on a large
+    # table that count is as expensive as the page query it accompanies.
+    show_full_result_count = False
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
+        from django.db.models import Func
+        from django.db.models.functions import Coalesce
+
         qs = super().get_queryset(request)
-        return qs.select_related(
-            "taxon", "detection", "detection__source_image", "detection__source_image__project"
-        ).annotate(
-            detection_date=models.F("detection__timestamp"),
+        # Count the scores / logits arrays in SQL (cardinality) and defer the arrays
+        # themselves, so the changelist does not transfer thousands of floats per row
+        # just to display their length.
+        return (
+            qs.select_related("taxon", "detection", "detection__source_image", "detection__source_image__project")
+            .defer("scores", "logits")
+            .annotate(
+                detection_date=models.F("detection__timestamp"),
+                scores_count=Coalesce(
+                    Func(models.F("scores"), function="cardinality", output_field=models.IntegerField()), 0
+                ),
+                logits_count=Coalesce(
+                    Func(models.F("logits"), function="cardinality", output_field=models.IntegerField()), 0
+                ),
+            )
         )
 
     @admin.display()
@@ -551,11 +652,13 @@ class ClassificationAdmin(admin.ModelAdmin[Classification]):
         # This property comes from the annotation in get_queryset, not the model
         return obj.detection_date  # type: ignore
 
+    @admin.display(description="num scores")
     def num_scores(self, obj: Classification) -> int:
-        return len(obj.scores) if obj.scores else 0
+        return obj.scores_count  # type: ignore[attr-defined]
 
+    @admin.display(description="num logits")
     def num_logits(self, obj: Classification) -> int:
-        return len(obj.logits) if obj.logits else 0
+        return obj.logits_count  # type: ignore[attr-defined]
 
 
 class TaxonParentFilter(admin.SimpleListFilter):
@@ -748,128 +851,39 @@ class SourceImageCollectionAdmin(admin.ModelAdmin[SourceImageCollection]):
             f"Populating {len(queued_tasks)} capture set(s) background tasks: {queued_tasks}.",
         )
 
-    @admin.action(description="Run Small Size Filter post-processing task (async)")
-    def run_small_size_filter(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]) -> None:
-        jobs = []
-        for collection in queryset:
-            job = Job.objects.create(
-                name=f"Post-processing: SmallSizeFilter on Capture Set {collection.pk}",
-                project=collection.project,
-                job_type_key="post_processing",
-                params={
-                    "task": "small_size_filter",
-                    "config": {
-                        "source_image_collection_id": collection.pk,
-                    },
-                },
-            )
-            job.enqueue()
-            jobs.append(job.pk)
-
-        self.message_user(request, f"Queued Small Size Filter for {queryset.count()} capture set(s). Jobs: {jobs}")
-
-    @admin.action(description="Run Occurrence Tracking on selected capture sets")
-    def run_tracking(self, request: HttpRequest, queryset: QuerySet[SourceImageCollection]):
-        from django.contrib import messages
-        from django.template.response import TemplateResponse
-
-        from ami.main.models import Event
-        from ami.ml.post_processing.admin_forms import TrackingActionForm
-
-        # Superuser-only: queues background jobs and exposes tunables that change
-        # determination scoring across an event. Mirrors EventAdmin.run_tracking_on_events.
-        if not request.user.is_superuser:
-            self.message_user(request, "Only superusers can trigger tracking jobs.", level=messages.ERROR)
-            return None
-
-        # Aggregate Event queryset across all selected collections; the form uses this
-        # to scope the feature-extraction-algorithm dropdown.
-        events_qs = Event.objects.filter(captures__collections__in=queryset).distinct()
-
-        if request.POST.get("confirm"):
-            form = TrackingActionForm(request.POST, events=events_qs)
-            if not form.is_valid():
-                return TemplateResponse(
-                    request,
-                    "admin/main/tracking_confirmation.html",
-                    {
-                        **self.admin_site.each_context(request),
-                        "title": "Run Occurrence Tracking",
-                        "queryset": queryset,
-                        "scope_label": f"{queryset.count()} capture set(s)",
-                        "scope_summary": (
-                            "One Job is enqueued per capture set. Each Job tracks every "
-                            "event whose images belong to the set and is visible on the "
-                            "Jobs admin page where you can watch its log stream."
-                        ),
-                        "form": form,
-                        "action_name": "run_tracking",
-                        "action_checkbox_name": admin.helpers.ACTION_CHECKBOX_NAME,
-                        "opts": self.model._meta,
-                    },
-                )
-
-            config = form.to_config()
-            jobs = []
-            empty_collections: list[int] = []
-            for collection in queryset:
-                event_ids = list(
-                    Event.objects.filter(captures__collections=collection)
-                    .values_list("pk", flat=True)
-                    .distinct()
-                    .order_by("pk")
-                )
-                if not event_ids:
-                    empty_collections.append(collection.pk)
-                    continue
-                job = Job.objects.create(
-                    name=f"Post-processing: Tracking on Capture Set {collection.pk}",
-                    project=collection.project,
-                    source_image_collection=collection,
-                    job_type_key="post_processing",
-                    params={
-                        "task": "tracking",
-                        "config": {**config, "event_ids": event_ids},
-                    },
-                )
-                job.enqueue()
-                jobs.append(job.pk)
-
-            if empty_collections:
-                self.message_user(
-                    request,
-                    f"Skipped {len(empty_collections)} capture set(s) with no events: {empty_collections}.",
-                    level=messages.WARNING,
-                )
-            self.message_user(request, f"Queued Tracking for {len(jobs)} capture set(s). Jobs: {jobs}")
-            return None
-
-        # GET / first POST without confirm — render the intermediate page.
-        form = TrackingActionForm(events=events_qs)
-        return TemplateResponse(
-            request,
-            "admin/main/tracking_confirmation.html",
-            {
-                **self.admin_site.each_context(request),
-                "title": "Run Occurrence Tracking",
-                "queryset": queryset,
-                "scope_label": f"{queryset.count()} capture set(s)",
-                "scope_summary": (
-                    "One Job is enqueued per capture set. Each Job tracks every "
-                    "event whose images belong to the set and is visible on the "
-                    "Jobs admin page where you can watch its log stream."
-                ),
-                "form": form,
-                "action_name": "run_tracking",
-                "action_checkbox_name": admin.helpers.ACTION_CHECKBOX_NAME,
-                "opts": self.model._meta,
-            },
-        )
-
+    # Built from the shared post-processing action factory: renders an intermediate
+    # confirmation page with the task's knob form, validates each selection against
+    # SmallSizeFilterConfig, then enqueues one Job per capture set. New post-processing
+    # tasks declare their own trigger the same way (task class + form + scope_resolver).
+    run_small_size_filter = make_post_processing_action(
+        SmallSizeFilterTask,
+        SmallSizeFilterActionForm,
+        scope_resolver=lambda collection: {"source_image_collection_id": collection.pk},
+        name_resolver=lambda task_cls, collection: (
+            f"Post-processing: {task_cls.name} on Capture Set {collection.pk}"
+        ),
+    )
+    run_class_masking = make_post_processing_action(
+        ClassMaskingTask,
+        ClassMaskingActionForm,
+        scope_resolver=lambda collection: {"source_image_collection_id": collection.pk},
+        name_resolver=lambda task_cls, collection: (
+            f"Post-processing: {task_cls.name} on Capture Set {collection.pk}"
+        ),
+    )
+    run_tracking = make_post_processing_action(
+        TrackingTask,
+        TrackingActionForm,
+        scope_resolver=lambda collection: {"source_image_collection_id": collection.pk},
+        name_resolver=lambda task_cls, collection: (
+            f"Post-processing: {task_cls.name} on Capture Set {collection.pk}"
+        ),
+    )
     actions = [
         populate_collection,
         populate_collection_async,
         run_small_size_filter,
+        run_class_masking,
         run_tracking,
     ]
 

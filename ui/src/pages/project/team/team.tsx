@@ -1,10 +1,7 @@
 import { useMembers } from 'data-services/hooks/team/useMembers'
 import { ProjectDetails } from 'data-services/models/project-details'
-import { PageHeader } from 'design-system/components/page-header/page-header'
-import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
-import { Table } from 'design-system/components/table/table/table'
 import { LockIcon } from 'lucide-react'
-import { buttonVariants } from 'nova-ui-kit'
+import { buttonVariants, PageHeader, PaginationBar, Table } from 'nova-ui-kit'
 import { useEffect } from 'react'
 import { Link, useNavigate, useOutletContext } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -24,7 +21,7 @@ export const Team = () => {
   }>()
   const { pagination, setPage } = usePagination()
   const { sort, setSort } = useSort({
-    field: 'name',
+    field: 'created_at',
     order: 'asc',
   })
   const { members, userPermissions, total, isLoading, isFetching, error } =

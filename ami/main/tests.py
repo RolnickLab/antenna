@@ -1,12 +1,17 @@
+import copy
 import datetime
 import logging
 import typing
 from io import BytesIO
+from unittest import mock
 
+from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import connection, models
+from django.db import IntegrityError, connection, models
 from django.test import TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 from guardian.shortcuts import assign_perm, get_perms, remove_perm
 from PIL import Image
 from rest_framework import status
@@ -15,6 +20,7 @@ from rich import print
 
 from ami.exports.models import DataExport
 from ami.jobs.models import VALID_JOB_TYPES, Job
+from ami.main.api.serializers import MAX_BULK_IDENTIFICATIONS
 from ami.main.models import (
     Classification,
     Deployment,
@@ -38,10 +44,24 @@ from ami.main.models import (
 from ami.ml.models.pipeline import Pipeline
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
-from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
+from ami.tests.fixtures.main import (
+    create_captures,
+    create_captures_from_files,
+    create_detections,
+    create_occurrences,
+    create_taxa,
+    setup_test_project,
+)
 from ami.tests.fixtures.storage import populate_bucket
 from ami.users.models import User
-from ami.users.roles import BasicMember, Identifier, MLDataManager, ProjectManager, create_roles_for_project
+from ami.users.roles import (
+    BasicMember,
+    Identifier,
+    MLDataManager,
+    ProjectManager,
+    Researcher,
+    create_roles_for_project,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -208,6 +228,590 @@ class TestProjectSetup(TestCase):
                     config.enabled,
                     f"Pipeline {config.pipeline.name} should not be enabled for project {project_two.name}.",
                 )
+
+
+NEW_THUMBNAIL_SETTINGS = copy.deepcopy(settings.THUMBNAILS)
+NEW_THUMBNAIL_SETTINGS["SIZES"]["small"]["width"] = 300
+
+
+class TestImageThumbnailViews(TestCase):
+    base_url = "http://testserver/api/v2/captures/thumbnails/"
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project()
+
+        self.captures = create_captures_from_files(deployment=self.deployment)
+        self.first_capture = self.captures[0][0]
+
+        return super().setUp()
+
+    def test_thumbnail_no_list(self):
+        response = self.client.get("/api/v2/captures/thumbnails/")
+        self.assertEqual(response.status_code, 405)
+
+    def test_thumbnail_new(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(thumb.width, 240)
+        self.assertEqual(thumb.height, 180)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_new_with_size(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/?label=medium")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="medium")
+        self.assertEqual(thumb.width, 1024)
+        self.assertEqual(thumb.height, 768)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_new_with_large_size(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/?label=large")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="large")
+        # ``width`` stores the requested spec width for the regen gate, not the
+        # encoder output. The test fixture is 1024px wide and PIL's thumbnail()
+        # never upscales, so the stored file keeps its original dimensions.
+        self.assertEqual(thumb.width, 2560)
+        self.assertEqual(thumb.height, 768)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_strips_exif_orientation(self):
+        """Thumbnails must stay in the source file's raw pixel space so detection
+        boxes (stored in raw coordinates) align when overlaid in the UI: neither
+        rotate the pixels nor propagate the EXIF Orientation tag to the output.
+        """
+        from django.core.files.storage import default_storage
+
+        from ami.utils import s3
+
+        ORIENTATION_TAG = 274  # EXIF tag id for Orientation
+        source = Image.new("RGB", (320, 240), (10, 120, 30))
+        exif = source.getexif()
+        exif[ORIENTATION_TAG] = 6  # stored landscape, rotate 90° CW to view
+        buffer = BytesIO()
+        source.save(buffer, format="JPEG", exif=exif)
+
+        assert self.deployment.data_source is not None
+        s3.write_file(self.deployment.data_source.config, self.first_capture.path, buffer.getvalue())
+
+        thumb = self.first_capture.find_or_generate_thumbnail_for_label("large")
+
+        with default_storage.open(thumb.path) as f:
+            output = Image.open(f)
+            output.load()
+
+        # Pixels stay in raw (landscape) space and the orientation tag is gone.
+        self.assertEqual(output.size, (320, 240))
+        self.assertIsNone(output.getexif().get(ORIENTATION_TAG))
+
+    def test_thumbnail_blank_path_row_regenerates(self):
+        """A row with an empty ``path`` (failed or interrupted generation) must
+        trigger regeneration, not redirect to the storage root.
+        """
+        self.first_capture.thumbnails.create(path="", label="small", width=240, height=180, size=0)
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertTrue(thumb.path)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_redirect_is_browser_cacheable(self):
+        """The 302 must carry Cache-Control so browsers reuse the redirect across
+        page views instead of re-paying the round trip per thumbnail per view.
+        """
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Cache-Control"], "private, max-age=300")
+
+    def test_thumbnail_new_with_invalid_size(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/?label=typo")
+        self.assertEqual(response.status_code, 400)
+
+    def test_thumbnail_exists(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        t_id = self.first_capture.thumbnails.first().pk
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(self.first_capture.thumbnails.count(), 1)
+        self.assertEqual(self.first_capture.thumbnails.first().pk, t_id)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_exists_newer_modified_source(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.first()
+        original_pk = thumb.pk
+        original_thumb_last_modified = thumb.last_modified
+        self.first_capture.last_modified = datetime.datetime.now()
+        self.first_capture.save()
+        self.assertTrue(self.first_capture.last_modified > thumb.last_modified)
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(self.first_capture.thumbnails.count(), 1)
+        # The upsert must reuse the existing row (same PK).
+        refreshed = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(refreshed.pk, original_pk)
+        # Regen must force-bump last_modified (auto_now_add fires only on INSERT).
+        self.assertGreater(refreshed.last_modified, original_thumb_last_modified)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], f"/media/{refreshed.path}")
+
+    def test_thumbnail_source_last_modified_none_does_not_crash(self):
+        """Legacy SourceImage rows synced before the upload backfill have last_modified=None.
+
+        Once a thumbnail row exists, the regen check used to raise
+        ``TypeError: '<' not supported between instances of 'datetime.datetime' and 'NoneType'``
+        on every subsequent request. Now the comparison should treat None as "no signal of
+        source change" and reuse the cached thumb.
+        """
+        # First request generates the thumb (last_modified=None at this point is fine because
+        # the short-circuit on ``not thumb`` doesn't reach the comparison).
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        thumb_id = self.first_capture.thumbnails.first().pk
+
+        # Simulate a legacy row with no source mtime.
+        SourceImage.objects.filter(pk=self.first_capture.pk).update(last_modified=None)
+
+        # Second request must reuse the cached thumb, not raise.
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.first_capture.thumbnails.count(), 1)
+        self.assertEqual(self.first_capture.thumbnails.first().pk, thumb_id)
+
+    def test_thumbnail_regen_reuses_row_via_upsert(self):
+        """Regenerating an existing thumbnail must upsert into the same row, not
+        delete-then-recreate (which under concurrent gen destroyed the other
+        racer's row and storage blob).
+
+        Triggers the regen path by making the cached row's width stale (as if
+        ``settings.THUMBNAILS`` changed since generation), then re-requesting.
+        Asserts the row's primary key is preserved (proving
+        ``update_or_create`` UPDATE was used, not a fresh INSERT after a
+        DELETE).
+        """
+        # First request populates the cache.
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        original_thumb = self.first_capture.thumbnails.get(label="small")
+        original_pk = original_thumb.pk
+
+        # Make the cached row stale so the regen branch fires.
+        self.first_capture.thumbnails.filter(label="small").update(width=9999)
+
+        # Regen must reuse the same row and not raise on the (source_image, label)
+        # UniqueConstraint.
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.first_capture.thumbnails.filter(label="small").count(), 1)
+        self.assertEqual(self.first_capture.thumbnails.get(label="small").pk, original_pk)
+
+    def test_upload_handler_backfills_last_modified(self):
+        """``create_source_image_from_upload`` must set ``last_modified`` so uploaded
+        captures match the parity of S3-synced ones and can be invalidated when re-uploaded.
+        """
+        from ami.main.models import create_source_image_from_upload
+
+        png = BytesIO()
+        Image.new("RGB", (320, 240), (255, 0, 0)).save(png, format="JPEG")
+        png.seek(0)
+        upload = SimpleUploadedFile("20200101000000-test.jpg", png.read(), content_type="image/jpeg")
+        before = timezone.now()
+        captured = create_source_image_from_upload(image=upload, deployment=self.deployment, process_now=False)
+        after = timezone.now()
+
+        self.assertIsNotNone(captured.last_modified)
+        self.assertGreaterEqual(captured.last_modified, before)
+        self.assertLessEqual(captured.last_modified, after)
+
+    @override_settings(THUMBNAILS={"STORAGE_PREFIX": "thumbnails/", "SIZES": {}})
+    def test_thumbnail_empty_sizes_returns_clear_error(self):
+        """If THUMBNAILS['SIZES'] is empty the endpoint must return a clear API error,
+        not 500 with ``StopIteration`` from ``next(iter(empty))``.
+        """
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 404)
+        self.assertIn(b"No thumbnail sizes", response.content)
+
+    def test_thumbnail_non_rgb_source_converts(self):
+        """RGBA/P/etc. source images must be converted to RGB before JPEG encode."""
+        from unittest import mock
+
+        rgba_buf = BytesIO()
+        Image.new("RGBA", (320, 240), (255, 0, 0, 128)).save(rgba_buf, format="PNG")
+        rgba_bytes = rgba_buf.getvalue()
+
+        with mock.patch("ami.main.models.fetch_image_content", return_value=rgba_bytes):
+            response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(thumb.width, 240)
+
+    @override_settings(THUMBNAILS=NEW_THUMBNAIL_SETTINGS)
+    def test_thumbnail_settings_change_regenerates(self):
+        # A pre-existing different size thumb
+        self.first_capture.thumbnails.create(path="thumbs/test", label="small", width=240, height=180, size=0)
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(self.first_capture.thumbnails.count(), 1)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(thumb.width, 300)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_row_stores_spec_width_not_encoder_output(self):
+        """``PIL.Image.thumbnail()`` preserves aspect ratio and can emit a width
+        1-2px below the requested spec (e.g. 239 for a 240 spec). The row must
+        record the spec width — it identifies which configured size the row
+        satisfies — otherwise the strict-equality regen gate treats the row as
+        stale and regenerates on every request. See #1331.
+        """
+        from unittest import mock
+
+        original_thumbnail = Image.Image.thumbnail
+
+        def rounding_thumbnail(img, size, *args, **kwargs):
+            # Simulate Pillow's aspect-preserving rounding landing 1px under spec.
+            original_thumbnail(img, (size[0] - 1, size[1]), *args, **kwargs)
+
+        with mock.patch.object(Image.Image, "thumbnail", rounding_thumbnail):
+            response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="small")
+        spec_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
+        self.assertEqual(thumb.width, spec_width)
+        first_gen_marker = thumb.last_modified
+
+        # Second request must reuse the cached row. A regen force-bumps
+        # ``last_modified``, so an unchanged value proves the gate held.
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/")
+        self.assertEqual(response.status_code, 302)
+        refreshed = self.first_capture.thumbnails.get(label="small")
+        self.assertEqual(refreshed.last_modified, first_gen_marker)
+
+    def test_captures_response_includes_thumbnail_urls(self):
+        response = self.client.get(f"/api/v2/captures/{self.first_capture.pk}/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        rec = response.json()
+        self.assertIn("thumbnails", rec)
+        self.assertURLEqual(rec["thumbnails"]["small"], f"{self.base_url}{self.first_capture.pk}/?label=small")
+        self.assertURLEqual(rec["thumbnails"]["medium"], f"{self.base_url}{self.first_capture.pk}/?label=medium")
+
+    def test_captures_list_response_includes_thumbnail_urls(self):
+        response = self.client.get(f"/api/v2/captures/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        capture_json = response.json()["results"][0]
+        self.assertIn("thumbnails", capture_json)
+        self.assertURLEqual(
+            capture_json["thumbnails"]["small"], f"{self.base_url}{self.first_capture.pk}/?label=small"
+        )
+        self.assertURLEqual(
+            capture_json["thumbnails"]["medium"], f"{self.base_url}{self.first_capture.pk}/?label=medium"
+        )
+
+    def test_session_example_captures_response_includes_thumbnail_urls(self):
+        response = self.client.get(f"/api/v2/events/?deployment={self.deployment.pk}")
+        self.assertEqual(response.status_code, 200)
+        capture_json = response.json()["results"][0]["example_captures"][0]
+        self.assertIn("thumbnails", capture_json)
+        self.assertURLEqual(capture_json["thumbnails"]["small"], f"{self.base_url}{capture_json['id']}/?label=small")
+        self.assertURLEqual(capture_json["thumbnails"]["medium"], f"{self.base_url}{capture_json['id']}/?label=medium")
+
+    def test_session_first_capture_response_includes_thumbnail_urls(self):
+        response = self.client.get(f"/api/v2/events/{self.deployment.events.all()[0].pk}/")
+        self.assertEqual(response.status_code, 200)
+        capture_json = response.json()["first_capture"]
+        self.assertIn("thumbnails", capture_json)
+        self.assertURLEqual(capture_json["thumbnails"]["small"], f"{self.base_url}{capture_json['id']}/?label=small")
+        self.assertURLEqual(capture_json["thumbnails"]["medium"], f"{self.base_url}{capture_json['id']}/?label=medium")
+
+    def test_source_image_delete_cascades_to_thumbnails(self):
+        """Deleting a SourceImage must cascade-delete its SourceImageThumbnail rows.
+
+        The previous SET_NULL FK left orphan rows (and their storage blobs) forever
+        with no reaper. CASCADE + the pre_delete signal in ami.main.signals together
+        guarantee the row is gone and the blob is cleaned up.
+        """
+        from ami.main.models import SourceImageThumbnail
+
+        # Pre-populate two thumbnail rows for the capture.
+        for label, width in [("small", 240), ("medium", 1024)]:
+            self.first_capture.thumbnails.create(
+                path=f"thumbnails/cascadetest_{label}.jpg", label=label, width=width, height=180, size=42
+            )
+        capture_pk = self.first_capture.pk
+        self.assertEqual(SourceImageThumbnail.objects.filter(source_image_id=capture_pk).count(), 2)
+
+        # Delete the parent capture.
+        self.first_capture.delete()
+
+        # Thumbnail rows must be gone via CASCADE.
+        self.assertEqual(SourceImageThumbnail.objects.filter(source_image_id=capture_pk).count(), 0)
+
+    def test_thumbnail_delete_removes_storage_blob(self):
+        """The pre_delete signal must call default_storage.delete on the row's path.
+
+        Covers both explicit row deletes and CASCADE deletes — the signal fires for
+        both. Use FileSystemStorage's exists() to verify the blob is gone.
+        """
+        from django.core.files.base import ContentFile
+        from django.core.files.storage import default_storage
+
+        # Plant a real blob in storage and wire up a row pointing at it.
+        path = default_storage.save("thumbnails/signal_test.jpg", ContentFile(b"\x00\x01\x02\x03"))
+        self.assertTrue(default_storage.exists(path))
+
+        thumb = self.first_capture.thumbnails.create(path=path, label="small", width=240, height=180, size=4)
+        thumb.delete()
+
+        self.assertFalse(default_storage.exists(path), "pre_delete signal must clean the storage blob")
+
+    def test_serializer_emits_storage_url_when_thumb_row_exists(self):
+        """Warm-path optimization: when a SourceImageThumbnail row exists with the
+        configured width, the serializer must emit ``default_storage.url(row.path)``
+        directly instead of the lazy-regen route URL. This is the whole point of
+        the direct-URLs change — every cached thumbnail must skip Django on the
+        warm path.
+        """
+        from django.core.files.storage import default_storage
+
+        # Pre-create a thumbnail row whose width matches THUMBNAILS['SIZES']['small'].
+        configured_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
+        self.first_capture.thumbnails.create(
+            path="thumbnails/cached/abc.jpg", label="small", width=configured_width, height=180, size=42
+        )
+
+        response = self.client.get(f"/api/v2/captures/{self.first_capture.pk}/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        small_url = response.json()["thumbnails"]["small"]
+
+        # ``small`` should be the storage URL, not the route URL.
+        expected_storage_url = default_storage.url("thumbnails/cached/abc.jpg")
+        self.assertEqual(small_url, expected_storage_url)
+        # ``medium`` has no cached row → falls back to the route URL.
+        self.assertURLEqual(
+            response.json()["thumbnails"]["medium"], f"{self.base_url}{self.first_capture.pk}/?label=medium"
+        )
+
+    def test_serializer_falls_back_to_route_url_when_width_mismatches_spec(self):
+        """Any width != the configured spec → route URL so the next browser fetch
+        triggers lazy regen via the redirect viewset. The check is strict equality,
+        so this covers both a changed setting (stored wider/narrower than spec) and
+        legacy rows that recorded PIL's rounded output (e.g. 239 for a 240 spec)
+        before the #1306 spec-width fix — those self-heal through one regeneration.
+        """
+        configured_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
+        # +100 = settings changed since last gen; -1 = legacy encoder rounding.
+        for delta in (100, -1):
+            with self.subTest(delta=delta):
+                self.first_capture.thumbnails.update_or_create(
+                    label="small",
+                    defaults={
+                        "path": f"thumbnails/stale/{delta}.jpg",
+                        "width": configured_width + delta,
+                        "height": 180,
+                        "size": 42,
+                    },
+                )
+                response = self.client.get(f"/api/v2/captures/{self.first_capture.pk}/?project_id={self.project.pk}")
+                self.assertEqual(response.status_code, 200)
+                self.assertURLEqual(
+                    response.json()["thumbnails"]["small"], f"{self.base_url}{self.first_capture.pk}/?label=small"
+                )
+
+    def test_serializer_falls_back_to_route_url_when_source_changed(self):
+        """If the source image was re-uploaded after the cached row was
+        generated (``source.last_modified > row.last_modified``), the serializer
+        must emit the route URL so the next browser fetch regenerates via the
+        redirect viewset. Mirrors the predicate the generator already uses.
+
+        Guards https://github.com/RolnickLab/antenna/pull/1331#discussion_r3373715397.
+        """
+        configured_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
+        # Row generated at T0. ``last_modified`` is ``auto_now_add`` so set
+        # ``self.first_capture.last_modified`` to a later timestamp via UPDATE
+        # below to flip the staleness predicate.
+        self.first_capture.thumbnails.create(
+            path="thumbnails/preupload/abc.jpg", label="small", width=configured_width, height=180, size=42
+        )
+        # Source bytes were re-uploaded after the cached row was written.
+        SourceImage.objects.filter(pk=self.first_capture.pk).update(
+            last_modified=timezone.now() + datetime.timedelta(minutes=1)
+        )
+
+        response = self.client.get(f"/api/v2/captures/{self.first_capture.pk}/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        # Source-changed → emit route URL so the redirect viewset regenerates.
+        self.assertURLEqual(
+            response.json()["thumbnails"]["small"], f"{self.base_url}{self.first_capture.pk}/?label=small"
+        )
+
+    def test_thumbnail_urls_model_method_emits_warm_and_route(self):
+        """``SourceImage.thumbnail_urls`` is the single source of truth for the
+        per-label URL contract: warm storage URL when a cached row exists at
+        the configured width, route URL otherwise.
+
+        Exercising the model method directly keeps the contract regression-tested
+        even if the serializer surface changes (e.g. a future template tag or
+        management command that needs the same dict).
+        """
+        from django.core.files.storage import default_storage
+
+        configured_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
+        self.first_capture.thumbnails.create(
+            path="thumbnails/cached/direct.jpg", label="small", width=configured_width, height=180, size=42
+        )
+
+        # Prefetch via ``with_thumbnails()`` to exercise the warm path; without the
+        # prefetch the method emits route URLs without querying (see the test below).
+        capture = SourceImage.objects.with_thumbnails().get(pk=self.first_capture.pk)
+        urls = capture.thumbnail_urls(request=None)
+
+        # Warm path → direct storage URL for the cached label.
+        self.assertEqual(urls["small"], default_storage.url("thumbnails/cached/direct.jpg"))
+        # Cold path → route URL for labels without a cached row. With ``request=None``
+        # the URL is path-only (no scheme/host) — matches DRF's reverse() contract.
+        self.assertIn(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/", urls["medium"])
+        self.assertIn("label=medium", urls["medium"])
+
+    def test_thumbnail_urls_without_prefetch_emits_route_urls_without_querying(self):
+        """Without prefetched thumbnails, ``thumbnail_urls`` must not fire a
+        per-object SELECT (an N+1 in list contexts) — it falls back to route URLs.
+        A cached row exists here, but the un-prefetched call must ignore it rather
+        than query for it."""
+        configured_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
+        self.first_capture.thumbnails.create(
+            path="thumbnails/cached/noprefetch.jpg", label="small", width=configured_width, height=180, size=42
+        )
+
+        capture = SourceImage.objects.get(pk=self.first_capture.pk)
+        with self.assertNumQueries(0):
+            urls = capture.thumbnail_urls(request=None)
+
+        # Cached row ignored (not prefetched) → route URL, not the storage URL.
+        self.assertIn(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/", urls["small"])
+        self.assertIn("label=small", urls["small"])
+
+    def test_warm_list_serves_storage_urls_with_single_thumbnail_query(self):
+        """The contract this PR exists to deliver: a warm gallery list serves direct
+        storage URLs while reading the thumbnail table once (the prefetch), not once
+        per row.
+
+        Runtime no longer enforces the prefetch (un-prefetched falls back to route
+        URLs without querying), so this test is the only guard against both
+        regressions: dropping ``with_thumbnails()`` from the viewset (→ route URLs,
+        the perf win silently lost) and a per-row lazy read (→ N+1). Needs a
+        multi-row fixture — a single row hides an N+1.
+        """
+        from django.core.files.storage import default_storage
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        configured_width = settings.THUMBNAILS["SIZES"]["small"]["width"]
+        captures = list(SourceImage.objects.filter(deployment=self.deployment))
+        self.assertGreater(len(captures), 1, "need >1 capture to detect an N+1")
+        for cap in captures:
+            cap.thumbnails.create(
+                path=f"thumbnails/warm/{cap.pk}.jpg", label="small", width=configured_width, height=180, size=42
+            )
+
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(f"/api/v2/captures/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+
+        results = response.json()["results"]
+        self.assertGreater(len(results), 1)
+        for rec in results:
+            # Warm row → direct storage URL (regression guard: dropped prefetch → route URL).
+            self.assertEqual(
+                rec["thumbnails"]["small"],
+                default_storage.url(f"thumbnails/warm/{rec['id']}.jpg"),
+            )
+
+        thumb_queries = [q for q in ctx.captured_queries if "sourceimagethumbnail" in q["sql"].lower()]
+        self.assertLessEqual(
+            len(thumb_queries), 1, f"thumbnails must be one prefetch, not per-row; got {len(thumb_queries)}"
+        )
+
+
+class TestThumbnailDraftProjectVisibility(APITestCase):
+    """PR #1306 follow-up: draft (non-public) projects must not route thumbnails
+    through the auth-gated thumbnail endpoint.
+
+    The frontend loads thumbnails via an anonymous ``<img>`` tag, which cannot send
+    an Authorization header, so a draft project's gated thumbnail endpoint returns
+    401 and the image renders broken. The serializer omits thumbnail URLs for draft
+    projects so the frontend falls back to the capture's source URL (``capture.url``,
+    the pre-thumbnail-layer behavior). Public projects keep server-generated thumbnails.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.superuser = User.objects.create_superuser(email="thumb-draft-admin@insectai.org", password="secret")
+        # Superuser can view captures of a draft project; we assert on the serialized
+        # ``thumbnails`` field, which is independent of who is viewing.
+        self.client.force_authenticate(self.superuser)
+
+    def _make_project_with_captures(self, draft: bool):
+        project, deployment = setup_test_project(reuse=False)
+        if draft:
+            project.draft = True
+            project.save(update_fields=["draft"])
+        captures = create_captures_from_files(deployment=deployment)
+        return project, deployment, [c[0] for c in captures]
+
+    def test_public_project_returns_thumbnail_urls(self):
+        project, _, captures = self._make_project_with_captures(draft=False)
+        response = self.client.get(f"/api/v2/captures/{captures[0].pk}/?project_id={project.pk}")
+        self.assertEqual(response.status_code, 200)
+        thumbnails = response.json()["thumbnails"]
+        self.assertIsNotNone(thumbnails)
+        self.assertIn("small", thumbnails)
+
+    def test_draft_project_omits_thumbnail_urls(self):
+        project, _, captures = self._make_project_with_captures(draft=True)
+        response = self.client.get(f"/api/v2/captures/{captures[0].pk}/?project_id={project.pk}")
+        self.assertEqual(response.status_code, 200)
+        rec = response.json()
+        # No thumbnail endpoint URLs -> frontend falls back to the capture's source URL.
+        self.assertIsNone(rec["thumbnails"])
+        self.assertTrue(rec["url"], "source URL must still be provided for fallback")
+
+    @override_settings(CACHALOT_ENABLED=False)
+    def test_thumbnails_check_does_not_fetch_project_per_capture(self):
+        """Reading ``project.thumbnails_enabled`` per capture must not trigger a query.
+
+        The list queryset ``select_related("project")`` so the FK is populated via the
+        main JOIN. Without it the serializer would lazy-load ``obj.project`` once per
+        capture row — an N+1. We assert no standalone per-row fetch of the project
+        table occurs. Query caching is disabled so the count reflects real DB hits.
+        """
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        project, _, captures = self._make_project_with_captures(draft=True)
+        self.assertGreater(len(captures), 1, "need a multi-row fixture to detect an N+1")
+
+        url = f"/api/v2/captures/?project_id={project.pk}"
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertGreater(len(response.json()["results"]), 1, "need >1 result row to detect an N+1")
+
+        # A lazy-load of ``obj.project`` reads the project table as the primary FROM
+        # (``SELECT ... FROM main_project WHERE id = ?``); the JOINed list query does
+        # not. Match without quoted identifiers so it is not tied to one DB backend.
+        per_row_project_fetches = [
+            q for q in ctx.captured_queries if "from main_project" in q["sql"].lower().replace('"', "")
+        ]
+        self.assertEqual(
+            len(per_row_project_fetches),
+            0,
+            f"project table fetched {len(per_row_project_fetches)} times across "
+            f"{len(captures)} captures (expected 0 via select_related)",
+        )
 
 
 class TestImageGrouping(TestCase):
@@ -433,6 +1037,170 @@ class TestImageGrouping(TestCase):
 
         # No occurrence should be left pointing at a deleted/missing event.
         assert Occurrence.objects.filter(deployment=self.deployment, event__isnull=True).count() == 0
+
+    def _create_burst(self, start: datetime.datetime, n: int, interval_minutes: int = 5):
+        """Create ``n`` captures spaced ``interval_minutes`` apart starting at ``start``."""
+        import pathlib
+        import uuid
+
+        for i in range(n):
+            SourceImage.objects.create(
+                deployment=self.deployment,
+                timestamp=start + datetime.timedelta(minutes=i * interval_minutes),
+                path=pathlib.Path("test") / f"{uuid.uuid4().hex[:8]}_burst_{i}.jpg",
+            )
+
+    def test_cross_midnight_bursts_split_by_short_gap(self):
+        """
+        User-reported pattern: a "night" with a multi-hour off-window between
+        bursts that crosses midnight gets split into two separate Events at
+        the default 2 h gap, because the second burst's start_date is on the
+        next calendar day. Bumping ``max_time_gap`` past the off-window
+        merges both bursts into a single timestamp_group whose start_date
+        determines the group_by date, yielding one Event.
+        """
+        # Burst A: 22:00–22:25 on day N
+        self._create_burst(datetime.datetime(2023, 8, 5, 22, 0), n=6, interval_minutes=5)
+        # Burst B: 01:00–01:25 on day N+1 (off-window = 2 h 35 min, crosses midnight)
+        self._create_burst(datetime.datetime(2023, 8, 6, 1, 0), n=6, interval_minutes=5)
+
+        # Default 2 h gap → splits into two Events on different dates.
+        events_default = group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(hours=2),
+        )
+        assert len(events_default) == 2, f"expected 2 Events at 2h gap, got {len(events_default)}"
+
+        # 4 h gap (off-window 2h35m < 4h) → single timestamp_group → one Event.
+        events_widened = group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(hours=4),
+        )
+        assert len(events_widened) == 1, f"expected 1 Event at 4h gap, got {len(events_widened)}"
+
+    def test_same_date_bursts_merge_regardless_of_gap(self):
+        """
+        Inverse of the above: bursts that DON'T cross midnight collide on
+        ``group_by = start_date.date()`` even when the gap setting would
+        split them into separate timestamp_groups. This is the #904 caveat
+        — sub-day session-splits are masked by date-keyed Event reuse.
+        Documenting current behavior so a future fix (e.g. noon-to-noon
+        keying) has a regression target.
+        """
+        # Two bursts on the SAME calendar date with a 1 h 35 min off-window between.
+        self._create_burst(datetime.datetime(2023, 8, 5, 20, 0), n=6, interval_minutes=5)
+        self._create_burst(datetime.datetime(2023, 8, 5, 22, 0), n=6, interval_minutes=5)
+
+        # 1 h gap → splits into two timestamp_groups, but both start_date.date()
+        # is 2023-08-05 → get_or_create collides → ONE Event.
+        # group_images_into_events returns one entry per timestamp_group (with
+        # duplicates when groups reuse the same Event), so assert on the DB count.
+        group_images_into_events(
+            deployment=self.deployment,
+            max_time_gap=datetime.timedelta(hours=1),
+        )
+        db_event_count = Event.objects.filter(deployment=self.deployment).count()
+        assert db_event_count == 1, f"expected 1 Event due to date collision, got {db_event_count}"
+
+    def test_session_time_gap_seconds_is_used_when_no_explicit_gap(self):
+        """
+        When ``max_time_gap`` is not passed, ``group_images_into_events``
+        falls back to ``deployment.project.session_time_gap_seconds``. Verify
+        the project setting actually drives the split decision.
+        """
+        # Same cross-midnight burst pattern as the first test.
+        self._create_burst(datetime.datetime(2023, 8, 5, 22, 0), n=6, interval_minutes=5)
+        self._create_burst(datetime.datetime(2023, 8, 6, 1, 0), n=6, interval_minutes=5)
+
+        # Project setting at 2 h (= 7200 s) → splits across midnight.
+        self.project.session_time_gap_seconds = 2 * 60 * 60
+        self.project.save()
+        # Bust the cached deployment.project relation so the function reads the new value.
+        self.deployment.refresh_from_db()
+        group_images_into_events(deployment=self.deployment)
+        count_2h = Event.objects.filter(deployment=self.deployment).count()
+        assert count_2h == 2, f"expected 2 Events at project setting 7200s, got {count_2h}"
+
+        # Project setting at 4 h (= 14400 s) → off-window 2h35m fits → single Event.
+        self.project.session_time_gap_seconds = 4 * 60 * 60
+        self.project.save()
+        self.deployment.refresh_from_db()
+        group_images_into_events(deployment=self.deployment)
+        count_4h = Event.objects.filter(deployment=self.deployment).count()
+        assert count_4h == 1, f"expected 1 Event at project setting 14400s, got {count_4h}"
+
+    def test_invalid_session_time_gap_falls_back_to_default(self):
+        """
+        Non-positive (0 or negative) ``session_time_gap_seconds`` would
+        otherwise split every timestamp into its own Event. Guard by falling
+        back to the historical 120-minute default and logging a warning.
+        """
+        self._create_burst(datetime.datetime(2023, 8, 5, 22, 0), n=6, interval_minutes=5)
+        self._create_burst(datetime.datetime(2023, 8, 6, 1, 0), n=6, interval_minutes=5)
+
+        for bad_value in (0, -1, -7200):
+            Event.objects.filter(deployment=self.deployment).delete()
+            self.project.session_time_gap_seconds = bad_value
+            self.project.save()
+            self.deployment.refresh_from_db()
+            group_images_into_events(deployment=self.deployment)
+            count = Event.objects.filter(deployment=self.deployment).count()
+            # Default 120-min gap on this cross-midnight pattern → 2 Events,
+            # NOT 12 (which is what bad_value=0 would produce without the guard).
+            assert count == 2, f"expected 2 Events at gap={bad_value} (default fallback), got {count}"
+
+    def test_regroup_is_idempotent_under_concurrent_calls(self):
+        """
+        ``group_images_into_events`` holds a per-deployment cache lock so
+        concurrent calls (admin, API action, autoregroup-on-save, sync-stage)
+        collapse to a single in-flight run. The second call should return an
+        empty list without creating any Events.
+        """
+        from django.core.cache import cache
+
+        lock_key = f"regroup_events:lock:deployment:{self.deployment.pk}"
+        # Make sure no stale lock from a prior test leaks in.
+        cache.delete(lock_key)
+
+        self._create_burst(datetime.datetime(2023, 8, 5, 22, 0), n=6, interval_minutes=5)
+        Event.objects.filter(deployment=self.deployment).delete()
+
+        # Pre-take the lock with a token we control.
+        cache.add(lock_key, "other-run-token", timeout=60)
+        try:
+            result = group_images_into_events(deployment=self.deployment)
+        finally:
+            cache.delete(lock_key)
+
+        assert result == [], "Locked run should return empty list"
+        assert Event.objects.filter(deployment=self.deployment).count() == 0, "Locked run should not create Events"
+
+        # Without the pre-taken lock, the next call should run normally and release the lock.
+        events = group_images_into_events(deployment=self.deployment)
+        assert len(events) >= 1, "Unlocked run should produce Events"
+        assert cache.get(lock_key) is None, "Lock should be released after the function returns"
+
+    def test_regroup_lock_release_does_not_clobber_a_newer_owner(self):
+        """
+        Token-based lock release: if our run takes longer than the lock TTL and
+        another caller acquires the same key with a fresh token, our ``finally``
+        block must not delete the other caller's lock.
+        """
+        from django.core.cache import cache
+
+        from ami.main.models import _regroup_lock
+
+        lock_key = f"regroup_events:lock:deployment:{self.deployment.pk}"
+        cache.delete(lock_key)
+
+        with _regroup_lock(self.deployment.pk) as acquired:
+            assert acquired, "Should acquire the lock on first try"
+            # Simulate the TTL expiring and a newer caller taking the lock.
+            cache.set(lock_key, "newer-owner-token", timeout=60)
+
+        # Our `finally` ran. The newer owner's lock should still be there.
+        assert cache.get(lock_key) == "newer-owner-token", "Expired-lock release must not clobber the newer owner"
+        cache.delete(lock_key)
 
     def test_pruning_empty_events(self):
         from ami.main.models import delete_empty_events
@@ -1390,6 +2158,89 @@ class TestProjectRequiredOnListEndpoints(APITestCase):
                 self.assertEqual(response.status_code, status.HTTP_200_OK, path)
 
 
+class TestCapturesProcessedFilter(APITestCase):
+    """
+    The captures list distinguishes two related filters:
+
+    - ``?processed=true|false`` (the UI "Processing status" filter): a capture is
+      "processed" when it has *any* Detection row, including the null markers that
+      record a "processed, found nothing" result.
+    - ``?has_detections=true|false``: a capture has *real* detections (a detection
+      with a bounding box). Null markers are excluded.
+
+    Fixture: 4 captures — 2 with a real detection, 1 with only a null marker
+    (processed but found nothing), 1 untouched. So:
+        processed=true       -> 3   has_detections=true  -> 2
+        processed=false      -> 1   has_detections=false -> 2
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.captures = create_captures(self.deployment, num_nights=1, images_per_night=4)
+        # Two captures get a real detection (bounding box present).
+        for capture in self.captures[:2]:
+            create_detections(capture, bboxes=[(0.1, 0.1, 0.2, 0.2)])
+        # One capture gets only a null marker: processed, but nothing found.
+        Detection.objects.create(
+            source_image=self.captures[2],
+            bbox=None,
+            timestamp=self.captures[2].timestamp,
+        )
+        # self.captures[3] is left untouched (never processed).
+        self.user = User.objects.create_user(email="proc-filter@insectai.org", is_staff=True)  # type: ignore
+        self.client.force_authenticate(user=self.user)
+        self.list_url = f"/api/v2/captures/?project_id={self.project.pk}"
+        return super().setUp()
+
+    def _count(self, query: str = "") -> int:
+        response = self.client.get(f"{self.list_url}{query}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.json()["count"]
+
+    def test_processed_counts_null_markers(self):
+        # The null-marker capture counts as processed (2 real + 1 marker); its
+        # complement is the single untouched capture.
+        self.assertEqual(self._count("&processed=true"), 3)
+        self.assertEqual(self._count("&processed=false"), 1)
+
+    def test_has_detections_excludes_null_markers(self):
+        # Only the 2 real-detection captures; the processed-but-empty capture
+        # falls on the has_detections=false side.
+        self.assertEqual(self._count("&has_detections=true"), 2)
+        self.assertEqual(self._count("&has_detections=false"), 2)
+
+
+class TestCapturesLastProcessed(APITestCase):
+    """
+    The captures list annotates and can order by ``last_processed`` — the most
+    recent detection created_at for each capture. Captures that were never
+    processed expose ``last_processed = None``.
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.captures = create_captures(self.deployment, num_nights=1, images_per_night=2)
+        # First capture is processed (has a detection); the second is left untouched.
+        create_detections(self.captures[0], bboxes=[(0.1, 0.1, 0.2, 0.2)])
+        self.user = User.objects.create_user(email="cap-lastproc@insectai.org", is_staff=True)  # type: ignore
+        self.client.force_authenticate(user=self.user)
+        self.url = f"/api/v2/captures/?project_id={self.project.pk}"
+        return super().setUp()
+
+    def _row(self, data: dict, capture_id: int) -> dict:
+        return next(c for c in data["results"] if c["id"] == capture_id)
+
+    def test_last_processed_annotated_and_orderable(self):
+        # One request exercises the annotation, the serializer field, and the
+        # ordering registration together.
+        response = self.client.get(f"{self.url}&ordering=-last_processed")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        # Processed capture has a timestamp; the untouched one is null.
+        self.assertIsNotNone(self._row(data, self.captures[0].pk)["last_processed"])
+        self.assertIsNone(self._row(data, self.captures[1].pk)["last_processed"])
+
+
 class TestProjectOwnerAutoAssignment(APITestCase):
     def setUp(self) -> None:
         self.user_1 = User.objects.create_user(email="testuser@insectai.org", is_staff=True, is_superuser=True)
@@ -1585,7 +2436,7 @@ class TestRolePermissions(APITestCase):
                 "job": {
                     "create": True,
                     "update": True,
-                    "delete": True,
+                    "delete": False,
                     "run_single_image": True,
                     "run": True,
                 },
@@ -1716,6 +2567,7 @@ class TestRolePermissions(APITestCase):
         self._assign_roles()
         capture_id = self.project.occurrences.first().detections.first().source_image.pk
         occurrence_id = self.project.occurrences.first().pk
+        taxon_id = self.project.occurrences.first().determination_id
         endpoints = {
             "collection": "/api/v2/captures/collections/",
             "site": "/api/v2/deployments/sites/",
@@ -1750,7 +2602,7 @@ class TestRolePermissions(APITestCase):
             "device": {"description": "New Device", "name": "Device 1", "project": self.project.pk},
             "storage": {"name": "New Storage", "project": self.project.pk, "bucket": "test-bucket"},
             "job": {"delay": "1", "name": "Test Job", "project_id": self.project.pk},
-            "identification": {"occurrence_id": occurrence_id, "taxon_id": "5", "comment": "Identifier comment"},
+            "identification": {"occurrence_id": occurrence_id, "taxon_id": taxon_id, "comment": "Identifier comment"},
             "project": {"name": "New Project", "description": "This is a test project."},
         }
 
@@ -2096,6 +2948,179 @@ class TestDeploymentSyncCreatesEvents(TestCase):
             "Deployment events_count should reflect updated event count",
         )
         logger.info(f"Initial events count: {initial_events_count}, Updated events count: {updated_events.count()}")
+
+
+class TestDeploymentSyncAll(APITestCase):
+    """
+    The bulk "Sync all" endpoint enqueues one sync job per connected station and
+    is gated by the same sync permission the per-row action enforces.
+
+    Pins three guarantees: the ``data_source_connected`` flag the frontend reads,
+    the permission matrix (a ``detail=False`` action must check permissions
+    itself), and that only stations with a storage source get a job.
+    """
+
+    def setUp(self):
+        super().setUp()
+        from unittest import mock
+
+        self.project = Project.objects.create(name="Sync All Project", description="Sync-all tests")
+        create_roles_for_project(self.project)
+
+        self.superuser = User.objects.create_superuser(email="super-syncall@insectai.org", password="password123")
+        self.pm_user = User.objects.create_user(email="pm-syncall@insectai.org", password="password123")
+        self.ml_user = User.objects.create_user(email="ml-syncall@insectai.org", password="password123")
+        self.researcher = User.objects.create_user(email="researcher-syncall@insectai.org", password="password123")
+        self.identifier = User.objects.create_user(email="identifier-syncall@insectai.org", password="password123")
+        self.basic_user = User.objects.create_user(email="basic-syncall@insectai.org", password="password123")
+        self.outsider = User.objects.create_user(email="outsider-syncall@insectai.org", password="password123")
+        ProjectManager.assign_user(self.pm_user, self.project)
+        MLDataManager.assign_user(self.ml_user, self.project)
+        Researcher.assign_user(self.researcher, self.project)
+        Identifier.assign_user(self.identifier, self.project)
+        BasicMember.assign_user(self.basic_user, self.project)
+
+        source = S3StorageSource.objects.create(
+            name="Sync All Source",
+            bucket="test-bucket",
+            access_key="fake-access-key",
+            secret_key="fake-secret-key",
+            project=self.project,
+        )
+        self.connected = Deployment.objects.create(name="Connected", project=self.project, data_source=source)
+        self.unconnected = Deployment.objects.create(name="Unconnected", project=self.project)
+
+        # Keep the endpoint tests off the broker: assert the job rows and enqueue
+        # calls, not real Celery dispatch.
+        patcher = mock.patch("ami.jobs.models.Job.enqueue")
+        self.mock_enqueue = patcher.start()
+        self.addCleanup(patcher.stop)
+
+        self.url = "/api/v2/deployments/sync-all/"
+
+    def test_data_source_connected_field_in_list(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.get(f"/api/v2/deployments/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        flags = {row["id"]: row["data_source_connected"] for row in response.data["results"]}
+        self.assertTrue(flags[self.connected.pk], "Connected station should report data_source_connected=True")
+        self.assertFalse(flags[self.unconnected.pk], "Unconnected station should report data_source_connected=False")
+
+    def test_requires_project_id(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_permission_matrix(self):
+        # Sync is allowed for MLDataManager and ProjectManager (and superusers),
+        # not for Researcher, Identifier, BasicMember, or non-members.
+        matrix = [
+            ("superuser", self.superuser, status.HTTP_200_OK),
+            ("ProjectManager", self.pm_user, status.HTTP_200_OK),
+            ("MLDataManager", self.ml_user, status.HTTP_200_OK),
+            ("Researcher", self.researcher, status.HTTP_403_FORBIDDEN),
+            ("Identifier", self.identifier, status.HTTP_403_FORBIDDEN),
+            ("BasicMember", self.basic_user, status.HTTP_403_FORBIDDEN),
+            ("outsider", self.outsider, status.HTTP_403_FORBIDDEN),
+        ]
+        for role_name, user, expected in matrix:
+            with self.subTest(role=role_name):
+                self.client.force_authenticate(user)
+                response = self.client.post(f"{self.url}?project_id={self.project.pk}")
+                self.assertEqual(response.status_code, expected, f"{role_name} got {response.status_code}")
+
+    def test_anonymous_denied(self):
+        self.client.force_authenticate(None)
+        response = self.client.post(f"{self.url}?project_id={self.project.pk}")
+        self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
+
+    def test_enqueues_one_job_per_connected_station(self):
+        from ami.jobs.models import DataStorageSyncJob
+
+        self.client.force_authenticate(self.pm_user)
+        response = self.client.post(f"{self.url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["queued"], 1)
+        self.assertEqual(len(response.data["job_ids"]), 1)
+        self.assertEqual(self.mock_enqueue.call_count, 1, "One job should be enqueued")
+
+        jobs = Job.objects.filter(project=self.project, job_type_key=DataStorageSyncJob.key)
+        self.assertEqual(jobs.count(), 1, "Exactly one sync job, for the connected station")
+        self.assertEqual(jobs.first().deployment_id, self.connected.pk, "Unconnected station must be skipped")
+
+    def test_per_row_sync_permission_matrix(self):
+        # The per-row POST /deployments/{id}/sync/ action enforces the same
+        # sync_deployment permission as the bulk endpoint. This pins that the
+        # newly-granted MLDataManager role can start a sync and that roles
+        # without the permission are refused (403), so the per-row and bulk
+        # paths cannot silently diverge on who may sync.
+        url = f"/api/v2/deployments/{self.connected.pk}/sync/"
+        matrix = [
+            ("superuser", self.superuser, status.HTTP_200_OK),
+            ("ProjectManager", self.pm_user, status.HTTP_200_OK),
+            ("MLDataManager", self.ml_user, status.HTTP_200_OK),
+            ("Researcher", self.researcher, status.HTTP_403_FORBIDDEN),
+            ("Identifier", self.identifier, status.HTTP_403_FORBIDDEN),
+            ("BasicMember", self.basic_user, status.HTTP_403_FORBIDDEN),
+            ("outsider", self.outsider, status.HTTP_403_FORBIDDEN),
+        ]
+        for role_name, user, expected in matrix:
+            with self.subTest(role=role_name):
+                self.client.force_authenticate(user)
+                response = self.client.post(url)
+                self.assertEqual(response.status_code, expected, f"{role_name} got {response.status_code}")
+
+
+class TestSyncDeploymentBackfillMigration(APITestCase):
+    """The 0095 backfill grants OBJECT-LEVEL sync_deployment to existing projects'
+    MLDataManager groups, not just a global group permission.
+
+    A global-only grant (``group.permissions.add``) would leave ``get_perms`` and
+    ``has_perm(perm, project)`` — the checks the endpoint and UI actually use —
+    returning False, so the backfill would silently no-op for existing projects.
+    This pins the object-level path.
+    """
+
+    def test_backfill_grants_object_level_sync_to_mldatamanager(self):
+        import importlib
+        from unittest import mock
+
+        from django.apps import apps as global_apps
+        from django.contrib.auth.models import Group
+
+        project = Project.objects.create(name="Sync Backfill Project")
+        create_roles_for_project(project)
+        ml_user = User.objects.create_user(email="ml-backfill@insectai.org", password="password123")
+        MLDataManager.assign_user(ml_user, project)
+        source = S3StorageSource.objects.create(
+            name="Backfill Source",
+            bucket="test-bucket",
+            access_key="fake-access-key",
+            secret_key="fake-secret-key",
+            project=project,
+        )
+        Deployment.objects.create(name="Backfill Station", project=project, data_source=source)
+
+        mldm_group = Group.objects.get(name=f"{project.pk}_{project.name}_MLDataManager")
+
+        # Simulate a project created before MLDataManager gained the permission:
+        # strip the object-level grant so the sync endpoint is denied.
+        remove_perm("sync_deployment", mldm_group, project)
+        self.assertNotIn("sync_deployment", get_perms(mldm_group, project))
+
+        self.client.force_authenticate(ml_user)
+        denied = self.client.post(f"/api/v2/deployments/sync-all/?project_id={project.pk}")
+        self.assertEqual(denied.status_code, status.HTTP_403_FORBIDDEN)
+
+        # Run the backfill and confirm it restores the object-level permission
+        # (a global-only grant would leave get_perms unchanged and the POST 403).
+        migration = importlib.import_module("ami.main.migrations.0095_grant_sync_deployment_to_mldatamanager")
+        migration.grant_sync_to_mldatamanager(global_apps, None)
+
+        self.assertIn("sync_deployment", get_perms(mldm_group, project))
+        with mock.patch("ami.jobs.models.Job.enqueue"):
+            granted = self.client.post(f"/api/v2/deployments/sync-all/?project_id={project.pk}")
+        self.assertEqual(granted.status_code, status.HTTP_200_OK)
 
 
 class TestFineGrainedJobRunPermission(APITestCase):
@@ -2925,6 +3950,354 @@ class TestProjectDefaultThresholdFilter(APITestCase):
             summary_taxa_count,
             f"Mismatch with outside taxon: taxa endpoint returned {taxa_count}, summary {summary_taxa_count}",
         )
+
+
+class TestOccurrenceListQueryCount(APITestCase):
+    """Guard against N+1 regressions in OccurrenceViewSet.list (issue #1271).
+
+    The number of queries should be roughly constant regardless of page size:
+    a small handful of pagination/auth/permission queries plus a fixed set of
+    prefetches (occurrences, detections, classifications, identifications, etc.).
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=10)
+
+        # Use a low threshold so all occurrences are returned
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        self.user = User.objects.create_user(email="qcount@insectai.org", is_staff=False, is_superuser=False)
+        self.client.force_authenticate(user=self.user)
+
+    def _list_occurrences(self, limit: int) -> int:
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/v2/occurrences/?project_id={self.project.pk}&limit={limit}"
+        # Clear cachalot cache between runs so query counts reflect cold state.
+        # Failures must propagate — a warm cache hides query-scaling regressions.
+        caches["default"].clear()
+
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res.data["results"]), min(limit, res.data["count"]))
+        # List responses cap detection_images per row (1 cover image; prevents unbounded payload).
+        for row in res.data["results"]:
+            self.assertLessEqual(len(row["detection_images"]), 1)
+        return len(ctx.captured_queries)
+
+    def test_list_query_count_does_not_scale_with_page_size(self):
+        """Query count for a page of 25 should be very close to a page of 5."""
+        create_occurrences(deployment=self.deployment, num=25, determination_score=0.9)
+
+        small_count = self._list_occurrences(limit=5)
+        large_count = self._list_occurrences(limit=25)
+
+        # Allow a small constant overhead (e.g. cachalot bookkeeping) but
+        # nowhere near 5x scaling.
+        self.assertLessEqual(
+            large_count,
+            small_count + 5,
+            f"Query count grew with page size: {small_count} -> {large_count} (likely N+1 regression)",
+        )
+
+
+class TestOccurrenceDetailQueryCount(APITestCase):
+    """Guard against N+1 regressions on the detail endpoint.
+
+    `OccurrenceSerializer` extends `OccurrenceListSerializer`, so any
+    cache-key gating in the shared base can silently regress the detail
+    path. This guard pins detail-endpoint query count.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=10)
+
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        self.user = User.objects.create_user(email="qcount-detail@insectai.org", is_staff=False, is_superuser=False)
+        self.client.force_authenticate(user=self.user)
+
+    def _detail_query_count(self, occurrence_id: int) -> int:
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/v2/occurrences/{occurrence_id}/?project_id={self.project.pk}"
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return len(ctx.captured_queries)
+
+    def test_detail_query_count_is_bounded(self):
+        """Detail endpoint query count must not scale with detections per occurrence."""
+        create_occurrences(deployment=self.deployment, num=5, determination_score=0.9)
+        occurrence_id = Occurrence.objects.filter(project=self.project).values_list("pk", flat=True).first()
+        self.assertIsNotNone(occurrence_id)
+
+        count = self._detail_query_count(occurrence_id)
+        # 7 list-path queries + a small allowance for detail-only (full detections,
+        # nested predictions, source_image select_related). Hard ceiling catches
+        # silent reintroduction of N+1 in the shared serializer base.
+        self.assertLess(count, 20, f"Detail endpoint took {count} queries (likely N+1 regression)")
+
+    def test_detail_query_count_does_not_scale_with_detections(self):
+        """Detail with many detections per occurrence must not multiply queries.
+
+        `create_occurrences` produces 1 detection/classification per occurrence.
+        Inflate one occurrence to N detections × N classifications and confirm
+        query count stays in the same envelope as the single-detection case
+        (i.e. bounded by the ceiling above, not detection_count).
+        """
+        import datetime
+
+        from ami.main.models import Classification, Detection
+
+        create_occurrences(deployment=self.deployment, num=3, determination_score=0.9)
+        occurrence = Occurrence.objects.filter(project=self.project).first()
+        self.assertIsNotNone(occurrence)
+
+        seed_detection = occurrence.detections.first()
+        self.assertIsNotNone(seed_detection)
+        seed_classification = seed_detection.classifications.first()
+        self.assertIsNotNone(seed_classification)
+        source_image = seed_detection.source_image
+
+        for i in range(8):
+            det = Detection.objects.create(
+                source_image=source_image,
+                occurrence=occurrence,
+                timestamp=source_image.timestamp,
+                bbox=[10, 10, 20, 20],
+                path=f"detections/inflated_{i}.jpg",
+            )
+            for j in range(3):
+                Classification.objects.create(
+                    detection=det,
+                    taxon=seed_classification.taxon,
+                    algorithm=seed_classification.algorithm,
+                    score=0.8 + (j * 0.01),
+                    timestamp=datetime.datetime.now(),
+                )
+
+        count = self._detail_query_count(occurrence.pk)
+        self.assertLess(
+            count,
+            20,
+            f"Detail with 9 detections × 4 classifications took {count} queries — N+1 regression",
+        )
+
+
+class TestOccurrencePrefetchHelpersEdgeCases(APITestCase):
+    """Helpers in `models_future/occurrence.py` must handle empty prefetch caches gracefully.
+
+    `.valid()` excludes zero-detection occurrences from the list endpoint, but
+    helpers can still be called on objects whose detections were deleted, or in
+    non-API contexts (admin, exports). Empty must return None / [] without 500.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=2)
+        create_occurrences(deployment=self.deployment, num=2, determination_score=0.9)
+
+    def _empty_occurrence(self) -> "Occurrence":
+        """An occurrence with prefetch caches populated but all relations empty."""
+        from ami.main.models_future.occurrence import prefetch_detections_for_list
+
+        occurrence = (
+            Occurrence.objects.filter(project=self.project)
+            .prefetch_related(prefetch_detections_for_list(), "identifications")
+            .first()
+        )
+        assert occurrence is not None
+        # Wipe relations through DB to leave the prefetch cache empty.
+        occurrence.detections.all().delete()
+        occurrence.identifications.all().delete()
+        # Re-fetch with prefetches so the cache reflects the empty state.
+        return (
+            Occurrence.objects.filter(pk=occurrence.pk)
+            .prefetch_related(prefetch_detections_for_list(), "identifications")
+            .get()
+        )
+
+    def test_helpers_return_safe_defaults_on_empty(self):
+        from ami.main.models_future.occurrence import (
+            best_identification_from_prefetch,
+            best_prediction_from_prefetch,
+            detection_image_urls_from_prefetch,
+        )
+
+        occurrence = self._empty_occurrence()
+        self.assertIsNone(best_prediction_from_prefetch(occurrence))
+        self.assertIsNone(best_identification_from_prefetch(occurrence))
+        self.assertEqual(detection_image_urls_from_prefetch(occurrence), [])
+        self.assertEqual(detection_image_urls_from_prefetch(occurrence, limit=3), [])
+
+    def test_helpers_raise_when_prefetch_missing(self):
+        """Strict contract: missing prefetch must raise, not silently slow-path."""
+        from ami.main.models_future.occurrence import (
+            best_identification_from_prefetch,
+            best_prediction_from_prefetch,
+            detection_image_urls_from_prefetch,
+        )
+
+        # No prefetch applied
+        occurrence = Occurrence.objects.filter(project=self.project).first()
+        assert occurrence is not None
+        with self.assertRaises(RuntimeError):
+            best_prediction_from_prefetch(occurrence)
+        with self.assertRaises(RuntimeError):
+            best_identification_from_prefetch(occurrence)
+        with self.assertRaises(RuntimeError):
+            detection_image_urls_from_prefetch(occurrence)
+
+
+@override_settings(CACHALOT_ENABLED=False)
+class TestSourceImageListQueryCount(APITestCase):
+    """Audit SourceImageViewSet.list for N+1 (follow-up to PR #1274).
+
+    Cachalot disabled so we measure cold query count, not warm cache.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=25)
+        create_occurrences(deployment=self.deployment, num=25, determination_score=0.9)
+
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        self.user = User.objects.create_user(
+            email="qcount-sourceimage@insectai.org", is_staff=False, is_superuser=False
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def _list_query_count(self, limit: int, with_detections: bool) -> int:
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = (
+            f"/api/v2/captures/?project_id={self.project.pk}&limit={limit}"
+            f"&with_detections={'true' if with_detections else 'false'}"
+        )
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return len(ctx.captured_queries)
+
+    def test_list_query_count_does_not_scale_without_detections(self):
+        small = self._list_query_count(limit=5, with_detections=False)
+        large = self._list_query_count(limit=25, with_detections=False)
+        print(f"\n[AUDIT] SourceImage list (no detections): limit=5 -> {small}q, limit=25 -> {large}q")
+        self.assertLessEqual(large, small + 5, f"SourceImage list scaling: {small} -> {large} (likely N+1)")
+
+    def test_list_query_count_does_not_scale_with_detections(self):
+        small = self._list_query_count(limit=5, with_detections=True)
+        large = self._list_query_count(limit=25, with_detections=True)
+        print(f"\n[AUDIT] SourceImage list (with_detections=true): limit=5 -> {small}q, limit=25 -> {large}q")
+        self.assertLessEqual(
+            large, small + 5, f"SourceImage list scaling with detections: {small} -> {large} (likely N+1)"
+        )
+
+    def test_list_query_with_counts_and_detections(self):
+        """Realistic UI call: with_counts=true & with_detections=true at limit=25."""
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url_base = f"/api/v2/captures/?project_id={self.project.pk}&with_detections=true&with_counts=true"
+        # Two warmups: first request does session/auth bootstrap, second equalises pool state.
+        self.client.get(url_base + "&limit=1")
+        self.client.get(url_base + "&limit=1")
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx_small:
+            self.client.get(url_base + "&limit=5")
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx_large:
+            self.client.get(url_base + "&limit=25")
+        small, large = len(ctx_small.captured_queries), len(ctx_large.captured_queries)
+        print(
+            f"\n[AUDIT] SourceImage list (with_detections+with_counts): " f"limit=5 -> {small}q, limit=25 -> {large}q"
+        )
+        self.assertLessEqual(large, small + 5, f"SourceImage list scaling: {small} -> {large} (likely N+1)")
+
+    def test_list_response_shape_has_no_lazy_loads(self):
+        """Every row must serialize `url`, `size_display`, `deployment.name`, and
+        `event.name` without lazy loads — `select_related("deployment__data_source")`
+        is the contract that prevents per-row queries from `SourceImage.public_url()`."""
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/v2/captures/?project_id={self.project.pk}&limit=5"
+        self.client.get(url)
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        body = res.json()
+        self.assertGreater(len(body["results"]), 0)
+        row = body["results"][0]
+        # Confirm fields the serializer reads (some via model methods) are non-null/present.
+        for key in ("id", "url", "size_display", "deployment", "event", "detections_count", "path"):
+            self.assertIn(key, row, f"missing field {key!r} in list response")
+        self.assertIsNotNone(row["deployment"]["name"])
+        # No lazy-load queries should fire after the main list SELECT.
+        # 1 list select + 1 detection prefetch (no, not in this call) + savepoints.
+        self.assertLessEqual(
+            len(ctx.captured_queries),
+            6,
+            f"Unexpected extra queries — likely lazy-load from deferred field: {len(ctx.captured_queries)}",
+        )
+
+
+@override_settings(CACHALOT_ENABLED=False)
+class TestTaxonListQueryCount(APITestCase):
+    """Audit TaxonViewSet.list for N+1 (follow-up to PR #1274, task #9/#15).
+
+    Cachalot disabled so we measure cold query count, not warm cache.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project()
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=25)
+        # Spread occurrences across many taxa so the taxon list has 25+ rows.
+        taxa = list(Taxon.objects.filter(projects=self.project))
+        for taxon in taxa[:25]:
+            create_occurrences(deployment=self.deployment, num=2, taxon=taxon, determination_score=0.9)
+
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        self.user = User.objects.create_user(email="qcount-taxon@insectai.org", is_staff=False, is_superuser=False)
+        self.client.force_authenticate(user=self.user)
+
+    def _list_query_count(self, limit: int) -> int:
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/v2/taxa/?project_id={self.project.pk}&limit={limit}"
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return len(ctx.captured_queries)
+
+    def test_list_query_count_does_not_scale_with_page_size(self):
+        small = self._list_query_count(limit=5)
+        large = self._list_query_count(limit=25)
+        print(f"\n[AUDIT] Taxon list: limit=5 -> {small}q, limit=25 -> {large}q")
+        self.assertLessEqual(large, small + 5, f"Taxon list scaling: {small} -> {large} (likely N+1)")
 
 
 class TestProjectDefaultTaxaFilter(APITestCase):
@@ -4394,3 +5767,1953 @@ class TestOccurrenceDeterminationScoreRefresh(TestCase):
 
         self.assertEqual(keeper.determination, self.taxon)
         self.assertAlmostEqual(keeper.determination_score, 0.55, places=4)
+
+
+class TestLcaRankBetween(TestCase):
+    """Pure-Python LCA over (taxon_id, rank, parents_json) tuples.
+
+    Inputs encode each taxon as ``(id, rank_str, [{"id": int, "rank": str}, ...])``
+    where the parents list is ordered root → immediate-parent (matches
+    Taxon.parents_json layout).
+    """
+
+    GENUS_NOCTUA = (
+        101,
+        "GENUS",
+        [
+            {"id": 1, "rank": "KINGDOM"},
+            {"id": 4, "rank": "ORDER"},
+            {"id": 30, "rank": "FAMILY"},
+        ],
+    )
+    SPECIES_NOCTUA_PRONUBA = (
+        201,
+        "SPECIES",
+        [
+            {"id": 1, "rank": "KINGDOM"},
+            {"id": 4, "rank": "ORDER"},
+            {"id": 30, "rank": "FAMILY"},
+            {"id": 101, "rank": "GENUS"},
+        ],
+    )
+    SPECIES_NOCTUA_FIMBRIATA = (
+        202,
+        "SPECIES",
+        [
+            {"id": 1, "rank": "KINGDOM"},
+            {"id": 4, "rank": "ORDER"},
+            {"id": 30, "rank": "FAMILY"},
+            {"id": 101, "rank": "GENUS"},
+        ],
+    )
+    SPECIES_DIFFERENT_FAMILY = (
+        301,
+        "SPECIES",
+        [
+            {"id": 1, "rank": "KINGDOM"},
+            {"id": 4, "rank": "ORDER"},
+            {"id": 99, "rank": "FAMILY"},
+        ],
+    )
+    SPECIES_DIFFERENT_ORDER = (
+        401,
+        "SPECIES",
+        [
+            {"id": 1, "rank": "KINGDOM"},
+            {"id": 5, "rank": "ORDER"},
+        ],
+    )
+
+    def test_identical_taxa_lca_is_self_rank(self):
+        from ami.main.models_future.occurrence import lca_rank_between
+
+        rank = lca_rank_between(self.SPECIES_NOCTUA_PRONUBA, self.SPECIES_NOCTUA_PRONUBA)
+        self.assertEqual(rank, TaxonRank.SPECIES)
+
+    def test_sister_species_share_genus(self):
+        from ami.main.models_future.occurrence import lca_rank_between
+
+        rank = lca_rank_between(self.SPECIES_NOCTUA_PRONUBA, self.SPECIES_NOCTUA_FIMBRIATA)
+        self.assertEqual(rank, TaxonRank.GENUS)
+
+    def test_genus_vs_species_in_same_genus(self):
+        from ami.main.models_future.occurrence import lca_rank_between
+
+        rank = lca_rank_between(self.GENUS_NOCTUA, self.SPECIES_NOCTUA_PRONUBA)
+        self.assertEqual(rank, TaxonRank.GENUS)
+
+    def test_different_family_same_order(self):
+        from ami.main.models_future.occurrence import lca_rank_between
+
+        rank = lca_rank_between(self.SPECIES_NOCTUA_PRONUBA, self.SPECIES_DIFFERENT_FAMILY)
+        self.assertEqual(rank, TaxonRank.ORDER)
+
+    def test_different_order_same_kingdom(self):
+        from ami.main.models_future.occurrence import lca_rank_between
+
+        rank = lca_rank_between(self.SPECIES_NOCTUA_PRONUBA, self.SPECIES_DIFFERENT_ORDER)
+        self.assertEqual(rank, TaxonRank.KINGDOM)
+
+    def test_no_shared_ancestor_returns_none(self):
+        from ami.main.models_future.occurrence import lca_rank_between
+
+        rootless = (501, "SPECIES", [])
+        rank = lca_rank_between(rootless, self.SPECIES_NOCTUA_PRONUBA)
+        self.assertIsNone(rank)
+
+    def test_unknown_rank_excluded_from_lca(self):
+        """TaxonRank.UNKNOWN sorts after SPECIES in OrderedEnum definition order,
+        so without explicit exclusion `UNKNOWN >= ORDER` would be True and a
+        shared UNKNOWN ancestor would wrongly count as under-order agreement.
+        """
+        from ami.main.models_future.occurrence import lca_rank_between
+
+        # Both chains share a KINGDOM ancestor and an UNKNOWN ancestor; the LCA
+        # at a real taxonomic rank is KINGDOM, not UNKNOWN.
+        unknown_a = (
+            701,
+            "SPECIES",
+            [
+                {"id": 1, "rank": "KINGDOM"},
+                {"id": 999, "rank": "UNKNOWN"},
+            ],
+        )
+        unknown_b = (
+            702,
+            "SPECIES",
+            [
+                {"id": 1, "rank": "KINGDOM"},
+                {"id": 999, "rank": "UNKNOWN"},
+            ],
+        )
+        rank = lca_rank_between(unknown_a, unknown_b)
+        self.assertEqual(rank, TaxonRank.KINGDOM)
+
+
+class TestWilsonInterval(TestCase):
+    """Pure-Python Wilson score confidence interval."""
+
+    def test_zero_total_returns_none(self):
+        from ami.utils.stats import wilson_interval
+
+        self.assertIsNone(wilson_interval(0, 0))
+
+    def test_known_value_8_of_10(self):
+        """Textbook Wilson 95% CI for 8/10 ≈ [0.490, 0.943]."""
+        from ami.utils.stats import wilson_interval
+
+        low, high = wilson_interval(8, 10)
+        self.assertAlmostEqual(low, 0.4902, places=3)
+        self.assertAlmostEqual(high, 0.9433, places=3)
+
+    def test_bounds_stay_within_unit_interval(self):
+        """At p̂ = 1.0 the normal approximation would exceed 1; Wilson must not."""
+        from ami.utils.stats import wilson_interval
+
+        low, high = wilson_interval(1, 1)
+        self.assertGreaterEqual(low, 0.0)
+        self.assertLessEqual(high, 1.0)
+        self.assertLess(low, high)
+
+    def test_interval_tightens_as_n_grows(self):
+        from ami.utils.stats import wilson_interval
+
+        narrow = wilson_interval(90, 100)
+        wide = wilson_interval(9, 10)
+        self.assertLess(narrow[1] - narrow[0], wide[1] - wide[0])
+
+    def test_successes_out_of_range_raises(self):
+        """successes > total can only be a caller bug — fail loud, not with an
+        opaque math-domain error from a negative sqrt."""
+        from ami.utils.stats import wilson_interval
+
+        with self.assertRaises(ValueError):
+            wilson_interval(5, 3)
+        with self.assertRaises(ValueError):
+            wilson_interval(-1, 10)
+
+
+class TestCohensKappa(TestCase):
+    """Pure-Python Cohen's kappa over (human_taxon, model_taxon) pairs."""
+
+    def test_empty_returns_none(self):
+        from ami.utils.stats import cohens_kappa
+
+        self.assertIsNone(cohens_kappa([]))
+
+    def test_single_category_is_undefined(self):
+        """Everyone picks the same taxon → expected agreement 1.0 → kappa undefined."""
+        from ami.utils.stats import cohens_kappa
+
+        self.assertIsNone(cohens_kappa([(1, 1), (1, 1), (1, 1)]))
+
+    def test_perfect_agreement_two_categories(self):
+        from ami.utils.stats import cohens_kappa
+
+        self.assertEqual(cohens_kappa([(1, 1), (2, 2)]), 1.0)
+
+    def test_known_2x2_value(self):
+        """observed 0.75, expected 0.5 → kappa = 0.5.
+
+        pairs: 3× human=1, 1× human=2; model 1 twice, 2 twice; 3 of 4 match.
+        """
+        from ami.utils.stats import cohens_kappa
+
+        self.assertEqual(cohens_kappa([(1, 1), (1, 1), (2, 2), (1, 2)]), 0.5)
+
+    def test_can_be_negative(self):
+        """Systematic disagreement → worse than chance → negative kappa."""
+        from ami.utils.stats import cohens_kappa
+
+        kappa = cohens_kappa([(1, 2), (2, 1), (1, 2), (2, 1)])
+        self.assertLess(kappa, 0.0)
+
+
+class TestModelAgreementForProject(APITestCase):
+    """Aggregation function over a filtered Occurrence queryset.
+
+    Covers four bucket transitions: unverified, verified+exact-agreed,
+    verified+any-rank-agreed (no threshold), verified+disagreed-no-shared-rank.
+    Optional coarsest_rank threshold cases handled in the viewset tests below.
+    """
+
+    def setUp(self) -> None:
+        project, deployment = setup_test_project()
+        create_taxa(project=project)
+        create_captures(deployment=deployment)
+        # Add a sibling family + species under the same ORDER so we can exercise
+        # the "different family, same order → under-order" bucket.
+        lepidoptera = Taxon.objects.get(name="Lepidoptera", projects=project)
+        pieridae = Taxon.objects.create(name="Pieridae", parent=lepidoptera, rank=TaxonRank.FAMILY.name)
+        pieridae.projects.add(project)
+        pieris = Taxon.objects.create(name="Pieris brassicae", parent=pieridae, rank=TaxonRank.SPECIES.name)
+        pieris.projects.add(project)
+        # Use Vanessa atalanta as the baseline machine prediction so all
+        # occurrences start with a known classification.
+        self.vanessa_atalanta = Taxon.objects.get(name="Vanessa atalanta", projects=project)
+        create_occurrences(deployment=deployment, num=4, taxon=self.vanessa_atalanta)
+        # Populate parents_json on every taxon — fixtures don't do this.
+        Taxon.objects.update_all_parents()
+        self.project = project
+        self.deployment = deployment
+        self.vanessa_cardui = Taxon.objects.get(name="Vanessa cardui", projects=project)
+        self.pieris_brassicae = pieris
+        self.user = User.objects.create_user(email="ider@insectai.org")  # type: ignore
+
+    def _identify(self, occurrence: Occurrence, taxon: Taxon) -> Identification:
+        return Identification.objects.create(user=self.user, occurrence=occurrence, taxon=taxon)
+
+    def test_empty_project_returns_zeros_not_nans(self):
+        from ami.main.models_future.occurrence import model_agreement_for_project
+
+        empty_project = Project.objects.create(name="empty")
+        result = model_agreement_for_project(Occurrence.objects.filter(project=empty_project))
+        self.assertEqual(result["total_occurrences"], 0)
+        self.assertEqual(result["verified_count"], 0)
+        self.assertEqual(result["verified_pct"], 0.0)
+        self.assertEqual(result["agreed_exact_pct"], 0.0)
+        self.assertEqual(result["agreed_any_rank_pct"], 0.0)
+        # No threshold passed → coarser-rank fields null.
+        self.assertIsNone(result["agreement_coarsest_rank"])
+        self.assertIsNone(result["agreed_coarser_rank_count"])
+        self.assertIsNone(result["agreed_coarser_rank_pct"])
+
+    def test_buckets_canonical_cases(self):
+        from ami.main.models_future.occurrence import model_agreement_for_project
+
+        occurrences = list(Occurrence.objects.filter(project=self.project).order_by("pk"))
+        self.assertEqual(len(occurrences), 4)
+        # 0: verified, machine == user (exact agreement at SPECIES)
+        self._identify(occurrences[0], self.vanessa_atalanta)
+        # 1: verified, sister species (LCA at GENUS)
+        self._identify(occurrences[1], self.vanessa_cardui)
+        # 2: verified, different family same order (LCA at ORDER)
+        self._identify(occurrences[2], self.pieris_brassicae)
+        # 3: unverified
+
+        result = model_agreement_for_project(Occurrence.objects.filter(project=self.project))
+        self.assertEqual(result["total_occurrences"], 4)
+        self.assertEqual(result["verified_count"], 3)
+        self.assertEqual(result["agreed_exact_count"], 1)
+        self.assertEqual(result["agreed_any_rank_count"], 3)
+        self.assertAlmostEqual(result["verified_pct"], 0.75)
+        self.assertAlmostEqual(result["agreed_exact_pct"], 1 / 3, places=3)
+        self.assertAlmostEqual(result["agreed_any_rank_pct"], 1.0)
+
+    def test_coarsest_rank_threshold_filters_shallow_lcas(self):
+        """With coarsest_rank=FAMILY, an ORDER-only LCA pair is excluded."""
+        from ami.main.models import TaxonRank
+        from ami.main.models_future.occurrence import model_agreement_for_project
+
+        occurrences = list(Occurrence.objects.filter(project=self.project).order_by("pk"))
+        # 0: exact (SPECIES) — counts in both
+        self._identify(occurrences[0], self.vanessa_atalanta)
+        # 1: sister species (LCA = GENUS, deeper than FAMILY) — counts in both
+        self._identify(occurrences[1], self.vanessa_cardui)
+        # 2: different family same order (LCA = ORDER, NOT >= FAMILY) — counts in any_rank only
+        self._identify(occurrences[2], self.pieris_brassicae)
+
+        result = model_agreement_for_project(
+            Occurrence.objects.filter(project=self.project),
+            coarsest_rank=TaxonRank.FAMILY,
+        )
+        self.assertEqual(result["agreed_any_rank_count"], 3)
+        self.assertEqual(result["agreement_coarsest_rank"], "FAMILY")
+        # exact + GENUS LCA = 2; ORDER LCA excluded
+        self.assertEqual(result["agreed_coarser_rank_count"], 2)
+        self.assertAlmostEqual(result["agreed_coarser_rank_pct"], 2 / 3, places=3)
+
+    def test_taxon_less_verification_excluded_from_denominator(self):
+        """A comment-only verification (Identification.taxon=None) has a machine
+        prediction but no human taxon. It can neither agree nor disagree, so it
+        must be excluded from comparable_count, not just from the numerators."""
+        from ami.main.models_future.occurrence import model_agreement_for_project
+
+        occurrences = list(Occurrence.objects.filter(project=self.project).order_by("pk"))
+        # 0: exact agreement (machine == user)
+        self._identify(occurrences[0], self.vanessa_atalanta)
+        # 1: comment-only verification — has a prediction but no human taxon
+        Identification.objects.create(user=self.user, occurrence=occurrences[1], taxon=None)
+
+        result = model_agreement_for_project(Occurrence.objects.filter(project=self.project))
+        # Both rows are "verified" and both have a machine prediction.
+        self.assertEqual(result["verified_count"], 2)
+        self.assertEqual(result["verified_with_prediction_count"], 2)
+        # But only the row with a human taxon is comparable.
+        self.assertEqual(result["verified_without_taxon_count"], 1)
+        self.assertEqual(result["comparable_count"], 1)
+        # 1 exact agreement out of 1 comparable → 100%, not 50%.
+        self.assertEqual(result["agreed_exact_count"], 1)
+        self.assertAlmostEqual(result["agreed_exact_pct"], 1.0)
+
+
+class TestOccurrenceStatsViewSet(APITestCase):
+    """Covers /api/v2/occurrences/stats/top-identifiers/.
+
+    See docs/claude/reference/api-stats-pattern.md for the broader convention.
+    """
+
+    top_url = "/api/v2/occurrences/stats/top-identifiers/"
+
+    def setUp(self) -> None:
+        project, deployment = setup_test_project()
+        create_taxa(project=project)
+        create_captures(deployment=deployment)
+        create_occurrences(deployment=deployment, num=4)
+        self.project = project
+        self.deployment = deployment
+        self.taxon = Taxon.objects.filter(projects=project).first()
+        self.alice = User.objects.create_user(email="alice@insectai.org")  # type: ignore
+        self.bob = User.objects.create_user(email="bob@insectai.org")  # type: ignore
+        self.carol = User.objects.create_user(email="carol@insectai.org")  # type: ignore
+        return super().setUp()
+
+    def _id(self, user: User, occurrence: Occurrence) -> Identification:
+        return Identification.objects.create(user=user, taxon=self.taxon, occurrence=occurrence)
+
+    def test_returns_ranked_list_in_envelope(self):
+        """Happy path: envelope shape + ranking + distinct-occurrence count + limit slice."""
+        occurrences = list(Occurrence.objects.filter(project=self.project))
+        # alice IDs 3 distinct occurrences (one of them twice — counts as 1)
+        for occ in occurrences[:3]:
+            self._id(self.alice, occ)
+        self._id(self.alice, occurrences[0])  # revised ID, same occurrence
+        # bob IDs 2, carol IDs 1
+        for occ in occurrences[:2]:
+            self._id(self.bob, occ)
+        self._id(self.carol, occurrences[0])
+
+        response = self.client.get(f"{self.top_url}?project_id={self.project.pk}&limit=2")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        # Scalar envelope, NOT DRF paginator's `{count, next, previous, results}`.
+        self.assertEqual(set(body.keys()), {"project_id", "top_identifiers"})
+        self.assertEqual(body["project_id"], self.project.pk)
+        # limit=2 caps to top 2 by identification_count; alice's revised ID counts as 1 occurrence.
+        counts = [(row["id"], row["identification_count"]) for row in body["top_identifiers"]]
+        self.assertEqual(counts, [(self.alice.pk, 3), (self.bob.pk, 2)])
+
+    def test_excludes_users_with_zero_count(self):
+        """`identification_count >= 1` is non-configurable so anon calls can't leak the project user list."""
+        # carol has no identifications in this project
+        self._id(self.alice, Occurrence.objects.filter(project=self.project).first())
+        self._id(self.bob, Occurrence.objects.filter(project=self.project).first())
+
+        response = self.client.get(f"{self.top_url}?project_id={self.project.pk}")
+        ids = [r["id"] for r in response.json()["top_identifiers"]]
+        self.assertEqual(set(ids), {self.alice.pk, self.bob.pk})
+
+    def test_no_project_id_returns_400(self):
+        response = self.client.get(self.top_url)
+        self.assertEqual(response.status_code, 400)
+
+    def test_invalid_limit_returns_400(self):
+        """Strict validation via SingleParamSerializer — no silent clamps."""
+        response = self.client.get(f"{self.top_url}?project_id={self.project.pk}&limit=999")
+        self.assertEqual(response.status_code, 400)
+
+    def test_draft_project_404_for_anon(self):
+        self.project.draft = True
+        self.project.save()
+        response = self.client.get(f"{self.top_url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 404)
+
+    def test_registration_order_preserves_occurrence_retrieve(self):
+        """`r"occurrences/stats"` MUST register before `r"occurrences"`.
+
+        If swapped, OccurrenceViewSet.retrieve's `^occurrences/(?P<pk>[^/.]+)/$`
+        captures `/occurrences/stats/` first and 404s on `pk="stats"`.
+        """
+        occurrence = Occurrence.objects.filter(project=self.project).first()
+        stats_response = self.client.get(f"{self.top_url}?project_id={self.project.pk}")
+        retrieve_response = self.client.get(f"/api/v2/occurrences/{occurrence.pk}/?project_id={self.project.pk}")
+        self.assertEqual(stats_response.status_code, 200, "stats URL must resolve")
+        self.assertEqual(retrieve_response.status_code, 200, "occurrence retrieve must still work")
+
+    # ----- /occurrences/stats/model-agreement/ -----
+
+    agreement_url = "/api/v2/occurrences/stats/model-agreement/"
+
+    def test_agreement_no_project_id_returns_400(self):
+        response = self.client.get(self.agreement_url)
+        self.assertEqual(response.status_code, 400)
+
+    def test_agreement_draft_project_404_for_anon(self):
+        self.project.draft = True
+        self.project.save()
+        response = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 404)
+
+    def test_agreement_empty_returns_zero_pcts(self):
+        response = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["project_id"], self.project.pk)
+        self.assertEqual(body["total_occurrences"], 4)
+        self.assertEqual(body["verified_count"], 0)
+        self.assertEqual(body["verified_pct"], 0.0)
+        self.assertEqual(body["agreed_exact_pct"], 0.0)
+        self.assertEqual(body["agreed_any_rank_pct"], 0.0)
+        # No ?agreement_coarsest_rank → threshold + coarser fields null.
+        self.assertIsNone(body["agreement_coarsest_rank"])
+        self.assertIsNone(body["agreed_coarser_rank_count"])
+        self.assertIsNone(body["agreed_coarser_rank_pct"])
+
+    def test_agreement_happy_path(self):
+        """One verified occurrence; user agrees with the machine prediction → exact match.
+
+        The fixture creates a single classification per occurrence via
+        `create_occurrences()`, which uses a random taxon. We identify the
+        first occurrence with that same taxon to force an exact match.
+        """
+        occurrence = Occurrence.objects.filter(project=self.project).order_by("pk").first()
+        # The machine prediction is whatever `create_occurrences()` picked — match it.
+        machine_taxon = occurrence.detections.first().classifications.first().taxon
+        Taxon.objects.update_all_parents()
+        Identification.objects.create(user=self.alice, occurrence=occurrence, taxon=machine_taxon)
+
+        response = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["total_occurrences"], 4)
+        self.assertEqual(body["verified_count"], 1)
+        self.assertEqual(body["verified_with_prediction_count"], 1)
+        self.assertEqual(body["no_prediction_count"], 0)
+        self.assertEqual(body["agreed_exact_count"], 1)
+        self.assertEqual(body["agreed_any_rank_count"], 1)
+
+    def test_agreement_any_rank_bucket(self):
+        """Disagreement at species but same genus → counted as any-rank agreement, not exact.
+
+        Pin the machine prediction and the human ID to two distinct species under
+        the same genus (Vanessa). LCA between the two species is GENUS, so the
+        occurrence falls into the any-rank bucket without contributing to
+        agreed_exact_count. Both taxa are fixed rather than the random fixture
+        pick (`create_detections` assigns a random taxon), so the test is
+        deterministic — a random non-species pick has no sister species and used
+        to flake ~50% of runs.
+        """
+        occurrence = Occurrence.objects.filter(project=self.project).order_by("pk").first()
+        species = list(Taxon.objects.filter(parent__name="Vanessa", rank=TaxonRank.SPECIES.name).order_by("name"))
+        self.assertGreaterEqual(len(species), 2, "Fixture must define ≥2 Vanessa species")
+        machine_species, human_species = species[0], species[1]
+        # Pin the machine prediction deterministically, overriding the random fixture taxon.
+        Classification.objects.filter(detection__occurrence=occurrence).update(taxon=machine_species)
+        Taxon.objects.update_all_parents()
+        Identification.objects.create(user=self.alice, occurrence=occurrence, taxon=human_species)
+
+        response = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["verified_count"], 1)
+        self.assertEqual(body["verified_with_prediction_count"], 1)
+        self.assertEqual(body["agreed_exact_count"], 0)
+        self.assertEqual(body["agreed_any_rank_count"], 1)
+        # 0/1 exact, 1/1 any-rank
+        self.assertEqual(body["agreed_exact_pct"], 0.0)
+        self.assertEqual(body["agreed_any_rank_pct"], 1.0)
+
+    def test_agreement_ci_and_kappa_present(self):
+        """Wilson CI bounds bracket the rate; kappa is null for a single-category set."""
+        occurrence = Occurrence.objects.filter(project=self.project).order_by("pk").first()
+        machine_taxon = occurrence.detections.first().classifications.first().taxon
+        Taxon.objects.update_all_parents()
+        Identification.objects.create(user=self.alice, occurrence=occurrence, taxon=machine_taxon)
+
+        body = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}").json()
+        self.assertIsNotNone(body["agreed_exact_ci_low"])
+        self.assertIsNotNone(body["agreed_exact_ci_high"])
+        self.assertLessEqual(body["agreed_exact_ci_low"], body["agreed_exact_pct"])
+        self.assertGreaterEqual(body["agreed_exact_ci_high"], body["agreed_exact_pct"])
+        # One verified occurrence, exact match → a single taxon category → kappa undefined.
+        self.assertIsNone(body["cohens_kappa"])
+
+    def test_agreement_empty_ci_and_kappa_null(self):
+        """No verified occurrences → CI bounds and kappa are null, not zero."""
+        body = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}").json()
+        self.assertIsNone(body["agreed_exact_ci_low"])
+        self.assertIsNone(body["agreed_exact_ci_high"])
+        self.assertIsNone(body["agreed_any_rank_ci_low"])
+        self.assertIsNone(body["agreed_any_rank_ci_high"])
+        self.assertIsNone(body["cohens_kappa"])
+
+    def test_agreement_coarsest_rank_invalid_returns_400(self):
+        response = self.client.get(
+            f"{self.agreement_url}?project_id={self.project.pk}&agreement_coarsest_rank=GARBAGE"
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("agreement_coarsest_rank", response.json())
+
+    def test_agreement_coarsest_rank_unknown_rejected(self):
+        """UNKNOWN is a real enum member but not a meaningful threshold."""
+        response = self.client.get(
+            f"{self.agreement_url}?project_id={self.project.pk}&agreement_coarsest_rank=UNKNOWN"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_agreement_coarsest_rank_blank_returns_400(self):
+        """An empty value must 400 like any other invalid rank, not silently no-op."""
+        response = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}&agreement_coarsest_rank=")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("agreement_coarsest_rank", response.json())
+
+    def test_agreement_coarsest_rank_echoed_in_response(self):
+        response = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}&agreement_coarsest_rank=family")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        # Param is case-insensitive; response echoes enum name (uppercase).
+        self.assertEqual(body["agreement_coarsest_rank"], "FAMILY")
+        # No verified occurrences in this fixture → coarser fields present but zero.
+        self.assertEqual(body["agreed_coarser_rank_count"], 0)
+        self.assertEqual(body["agreed_coarser_rank_pct"], 0.0)
+
+    def test_agreement_filter_passthrough(self):
+        """`?deployment=` should narrow the set."""
+        other_deployment = Deployment.objects.create(name="other", project=self.project)
+        response = self.client.get(
+            f"{self.agreement_url}?project_id={self.project.pk}&deployment={other_deployment.pk}"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["total_occurrences"], 0)
+
+    def test_agreement_apply_defaults_false_bypasses_score_threshold(self):
+        """A score threshold filters out occurrences; apply_defaults=false restores them."""
+        self.project.default_filters_score_threshold = 0.99
+        self.project.save()
+        gated = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}").json()
+        bypassed = self.client.get(f"{self.agreement_url}?project_id={self.project.pk}&apply_defaults=false").json()
+        self.assertGreaterEqual(bypassed["total_occurrences"], gated["total_occurrences"])
+        # Sanity: with threshold=0.99 and fixture's score=0.9, gated should be 0.
+        self.assertEqual(gated["total_occurrences"], 0)
+        self.assertEqual(bypassed["total_occurrences"], 4)
+
+    def test_options_emits_response_field_schema(self):
+        """OPTIONS on a stats action returns the response serializer's field
+        schema (with `help_text`) under `actions.GET`, so frontends can read
+        stat descriptions without hardcoding them."""
+        response = self.client.options(f"{self.agreement_url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertIn("actions", body)
+        self.assertIn("GET", body["actions"])
+        fields = body["actions"]["GET"]
+        self.assertIn("verified_pct", fields)
+        self.assertEqual(fields["verified_pct"]["help_text"], "verified_count / total_occurrences")
+        self.assertIn("cohens_kappa", fields)
+        self.assertIn("beyond chance", fields["cohens_kappa"]["help_text"])
+
+
+class TestTaxaVerification(APITestCase):
+    """Per-taxon verification + human/model agreement annotations and the verified filter (#1316)."""
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.taxa_list = create_taxa(self.project)
+        self.order = Taxon.objects.get(name="Lepidoptera")
+        self.family = Taxon.objects.get(name="Nymphalidae")
+        self.genus = Taxon.objects.get(name="Vanessa")
+        self.cardui = Taxon.objects.get(name="Vanessa cardui")
+        self.atalanta = Taxon.objects.get(name="Vanessa atalanta")
+        self.itea = Taxon.objects.get(name="Vanessa itea")
+
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=3)
+        # 3 occurrences ML-determined to cardui, 1 to itea (left unverified)
+        create_occurrences(deployment=self.deployment, num=3, taxon=self.cardui, determination_score=0.9)
+        create_occurrences(deployment=self.deployment, num=1, taxon=self.itea, determination_score=0.9)
+
+        self.user = User.objects.create_user(email="verifier@insectai.org", is_staff=True, is_superuser=True)
+        self.client.force_authenticate(user=self.user)
+
+        cardui_occ = list(Occurrence.objects.filter(project=self.project, determination=self.cardui).order_by("pk"))
+        self.assertEqual(len(cardui_occ), 3)
+        self.occ_pred, self.occ_exact, self.occ_disagree = cardui_occ
+
+        # occ_pred: user agrees with the model prediction (cardui), agreed_with_prediction set
+        Identification.objects.create(
+            occurrence=self.occ_pred,
+            taxon=self.cardui,
+            user=self.user,
+            agreed_with_prediction=self.occ_pred.best_prediction,
+        )
+        # occ_exact: same taxon as the model, but not via the "agree" workflow
+        Identification.objects.create(occurrence=self.occ_exact, taxon=self.cardui, user=self.user)
+        # occ_disagree: user overrides to a different taxon (atalanta) than the model (cardui)
+        Identification.objects.create(occurrence=self.occ_disagree, taxon=self.atalanta, user=self.user)
+
+        self.itea_occ = Occurrence.objects.get(project=self.project, determination=self.itea)
+        self.list_url = f"/api/v2/taxa/?project_id={self.project.pk}&limit=1000"
+
+    def _detail(self, taxon):
+        res = self.client.get(f"/api/v2/taxa/{taxon.pk}/?project_id={self.project.pk}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return res.json()
+
+    def _list_by_name(self, url=None):
+        res = self.client.get(url or self.list_url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return {row["name"]: row for row in res.json()["results"]}
+
+    # --- verified_count (hierarchical rollup) ---
+
+    def test_verified_count_species(self):
+        self.assertEqual(self._detail(self.cardui)["verified_count"], 2)
+        self.assertEqual(self._detail(self.atalanta)["verified_count"], 1)
+        self.assertEqual(self._detail(self.itea)["verified_count"], 0)
+
+    def test_verified_count_rolls_up_to_ancestors(self):
+        # Verifying species marks genus/family/order verified, occurrence-weighted by descendants.
+        for ancestor in (self.genus, self.family, self.order):
+            self.assertEqual(self._detail(ancestor)["verified_count"], 3, ancestor.name)
+
+    # --- list field values ---
+
+    def test_list_field_values(self):
+        rows = self._list_by_name()
+        self.assertEqual(rows["Vanessa cardui"]["occurrences_count"], 2)
+        self.assertEqual(rows["Vanessa cardui"]["verified_count"], 2)
+        self.assertEqual(rows["Vanessa atalanta"]["verified_count"], 1)
+        self.assertEqual(rows["Vanessa itea"]["verified_count"], 0)
+
+    # --- verified=true|false filter ---
+
+    def test_verified_filter_true_false_complement(self):
+        all_names = set(self._list_by_name().keys())
+        verified = set(self._list_by_name(self.list_url + "&verified=true").keys())
+        unverified = set(self._list_by_name(self.list_url + "&verified=false").keys())
+        self.assertEqual(verified, {"Vanessa cardui", "Vanessa atalanta"})
+        self.assertEqual(unverified, {"Vanessa itea"})
+        # verified=false is the strict complement of verified=true on the filtered set.
+        self.assertEqual(verified | unverified, all_names)
+        self.assertEqual(verified & unverified, set())
+
+    def test_ordering_by_verified_count(self):
+        res = self.client.get(self.list_url + "&ordering=verified_count")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        counts = [row["verified_count"] for row in res.json()["results"]]
+        self.assertEqual(counts, sorted(counts))
+
+    # --- apply_defaults handling ---
+
+    def test_verified_filter_respects_apply_defaults(self):
+        self.project.default_filters_exclude_taxa.add(self.atalanta)
+
+        verified_default = set(self._list_by_name(self.list_url + "&verified=true").keys())
+        self.assertEqual(verified_default, {"Vanessa cardui"})
+
+        verified_bypassed = set(self._list_by_name(self.list_url + "&verified=true&apply_defaults=false").keys())
+        self.assertEqual(verified_bypassed, {"Vanessa cardui", "Vanessa atalanta"})
+
+    # --- collection filter must not inflate counts via the detections join ---
+
+    def test_verified_count_not_inflated_by_collection_join(self):
+        # A second detection on a verified occurrence means the ?collection= INNER JOIN to
+        # detections yields two rows for that occurrence; the rollup must still count it once.
+        extra_detection = Detection.objects.create(
+            source_image=self.occ_exact.best_detection.source_image,
+            occurrence=self.occ_exact,
+            timestamp=self.occ_exact.best_detection.timestamp,
+            bbox=[0.5, 0.5, 0.6, 0.6],
+            path="detections/test_detection_dup.jpg",
+        )
+        extra_detection.classifications.create(taxon=self.cardui, score=0.9, timestamp=datetime.datetime.now())
+        self.assertEqual(self.occ_exact.detections.count(), 2)
+
+        collection = SourceImageCollection.objects.create(project=self.project, name="verif-dedup")
+        collection.images.set(SourceImage.objects.filter(deployment=self.deployment))
+
+        rows = self._list_by_name(f"{self.list_url}&collection={collection.pk}")
+        # 2 verified cardui occurrences, not 3 — the duplicate detection must not double-count.
+        self.assertEqual(rows["Vanessa cardui"]["verified_count"], 2)
+
+
+class TestDetectionNullMarker(TestCase):
+    """
+    Covers the null-marker abstraction added for Issue #1310 follow-up:
+    Detection.is_null_marker, Detection.build_null_marker, and
+    DetectionQuerySet.valid() / .null_markers().
+    """
+
+    def setUp(self):
+        from ami.ml.models.algorithm import Algorithm
+
+        self.project = Project.objects.create(name="Null Marker Test Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.source_image = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            path="nullmarker-test.jpg",
+        )
+        self.algorithm = Algorithm.objects.create(name="test-detector", key="test-detector", task_type="detection")
+
+    def test_is_null_marker_for_bbox_none(self):
+        det = Detection.objects.create(
+            source_image=self.source_image,
+            bbox=None,
+            detection_algorithm=self.algorithm,
+        )
+        self.assertTrue(det.is_null_marker)
+
+    def test_is_null_marker_false_for_real_detection(self):
+        det = Detection.objects.create(
+            source_image=self.source_image,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+        )
+        self.assertFalse(det.is_null_marker)
+
+    def test_build_null_marker_sets_canonical_fields(self):
+        det = Detection.build_null_marker(self.source_image, self.algorithm)
+        self.assertIsNone(det.bbox)
+        self.assertEqual(det.source_image, self.source_image)
+        self.assertEqual(det.detection_algorithm, self.algorithm)
+        # timestamp is intentionally not set on the builder — Detection.save() backfills
+        # it from the source image's capture time, so the marker sorts by capture time
+        # rather than processing time.
+        self.assertIsNone(det.timestamp)
+        self.assertTrue(det.is_null_marker)
+
+    def test_valid_and_null_markers_are_disjoint_and_complete(self):
+        real = Detection.objects.create(
+            source_image=self.source_image,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+        )
+        null_marker = Detection.objects.create(
+            source_image=self.source_image,
+            bbox=None,
+            detection_algorithm=self.algorithm,
+        )
+        scoped = Detection.objects.filter(source_image=self.source_image)
+        valid_pks = set(scoped.valid().values_list("pk", flat=True))
+        null_pks = set(scoped.null_markers().values_list("pk", flat=True))
+        self.assertEqual(valid_pks, {real.pk})
+        self.assertEqual(null_pks, {null_marker.pk})
+        self.assertEqual(valid_pks & null_pks, set())
+
+
+class TestOccurrenceValidQuerySet(TestCase):
+    """
+    Covers OccurrenceQuerySet.valid() tightening for Issue #1310:
+    excludes occurrences with no real detections and occurrences missing a
+    determination, in addition to the existing detections__isnull=True
+    exclusion.
+    """
+
+    def setUp(self):
+        from ami.main.models import Taxon
+        from ami.ml.models.algorithm import Algorithm
+
+        self.project = Project.objects.create(name="Occurrence Valid Test Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.event = Event.objects.create(
+            project=self.project,
+            deployment=self.deployment,
+            group_by="2024-01-01",
+            start=datetime.datetime(2024, 1, 1, 0, 0),
+        )
+        self.source_image = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            path="occvalid-test.jpg",
+        )
+        self.algorithm = Algorithm.objects.create(name="valid-detector", key="valid-detector", task_type="detection")
+        self.taxon = Taxon.objects.create(name="Occurrence Valid Test Taxon")
+
+    def _make_occurrence_with_real_detection(self) -> Occurrence:
+        occ = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+        )
+        Detection.objects.create(
+            source_image=self.source_image,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+            occurrence=occ,
+        )
+        return occ
+
+    def _make_occurrence_with_only_null_detection(self) -> Occurrence:
+        occ = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+        )
+        Detection.objects.create(
+            source_image=self.source_image,
+            bbox=None,
+            detection_algorithm=self.algorithm,
+            occurrence=occ,
+        )
+        return occ
+
+    def _make_occurrence_with_null_determination(self) -> Occurrence:
+        occ = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=None,
+        )
+        Detection.objects.create(
+            source_image=self.source_image,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+            occurrence=occ,
+        )
+        return occ
+
+    def test_valid_returns_only_real_with_determination(self):
+        real = self._make_occurrence_with_real_detection()
+        null_only = self._make_occurrence_with_only_null_detection()
+        no_determination = self._make_occurrence_with_null_determination()
+
+        valid_qs = Occurrence.objects.filter(project=self.project).valid()
+        valid_pks = set(valid_qs.values_list("pk", flat=True))
+
+        self.assertIn(real.pk, valid_pks)
+        self.assertNotIn(null_only.pk, valid_pks)
+        self.assertNotIn(no_determination.pk, valid_pks)
+
+
+class TestOccurrenceAlgorithmFilterQuerySet(TestCase):
+    """
+    Covers OccurrenceQuerySet.processed_by_algorithm / not_processed_by_algorithm,
+    which back the ?algorithm= and ?not_algorithm= occurrence filters (PR #1368).
+
+    The filter must match an algorithm by either role it can play: the detector that
+    made a detection, or the classifier / post-processing algorithm that authored a
+    classification. It must also count each occurrence once — the previous join form
+    (``detections__classifications__algorithm__in``) returned one row per matching
+    classification, inflating the paginator's COUNT and duplicating occurrences across
+    pages.
+    """
+
+    def setUp(self):
+        from ami.main.models import Taxon
+        from ami.ml.models.algorithm import Algorithm
+
+        self.project = Project.objects.create(name="Occurrence Algo Filter Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.event = Event.objects.create(
+            project=self.project,
+            deployment=self.deployment,
+            group_by="2024-01-01",
+            start=datetime.datetime(2024, 1, 1, 0, 0),
+        )
+        self.source_image = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            path="occ-algo-filter.jpg",
+        )
+        self.taxon = Taxon.objects.create(name="Occurrence Algo Filter Taxon")
+
+        self.detector = Algorithm.objects.create(name="Filter Detector", version=1, task_type="localization")
+        self.classifier = Algorithm.objects.create(name="Filter Classifier", version=1, task_type="classification")
+        self.other = Algorithm.objects.create(name="Filter Other", version=1, task_type="classification")
+
+        # Detected by `detector`, classified once by `classifier`.
+        self.occ_classified = self._make_occurrence(detector=self.detector, classifiers=[self.classifier])
+        # Same pair, but classified three times — the double-count trap.
+        self.occ_multi = self._make_occurrence(
+            detector=self.detector, classifiers=[self.classifier, self.classifier, self.classifier]
+        )
+        # A different algorithm entirely, to prove filters are exclusive.
+        self.occ_other = self._make_occurrence(detector=self.other, classifiers=[self.other])
+
+    def _make_occurrence(self, detector, classifiers) -> Occurrence:
+        occ = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+        )
+        detection = Detection.objects.create(
+            source_image=self.source_image,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=detector,
+            occurrence=occ,
+        )
+        for classifier in classifiers:
+            detection.classifications.create(
+                taxon=self.taxon,
+                algorithm=classifier,
+                score=0.9,
+                timestamp=datetime.datetime.now(),
+            )
+        return occ
+
+    def _pks(self, queryset):
+        return set(queryset.values_list("pk", flat=True))
+
+    def test_filter_by_classifier_matches_its_occurrences(self):
+        matched = Occurrence.objects.filter(project=self.project).processed_by_algorithm([self.classifier.pk])
+        self.assertEqual(self._pks(matched), {self.occ_classified.pk, self.occ_multi.pk})
+
+    def test_filter_by_detector_matches_occurrences_it_detected(self):
+        """A detector authors no Classification, so the old classification-join form
+        returned nothing for it. Matching through Detection.detection_algorithm is what
+        lets the user filter by a localizer at all."""
+        matched = Occurrence.objects.filter(project=self.project).processed_by_algorithm([self.detector.pk])
+        self.assertEqual(self._pks(matched), {self.occ_classified.pk, self.occ_multi.pk})
+
+    def test_count_not_inflated_by_multiple_classifications(self):
+        """The occurrence with three classifications by the same algorithm must count
+        once. The paginator calls this same COUNT, so an inflated value would report
+        four occurrences where there are two and repeat rows across pages."""
+        matched = Occurrence.objects.filter(project=self.project).processed_by_algorithm([self.classifier.pk])
+        self.assertEqual(matched.count(), 2)
+
+    def test_exclude_removes_matching_occurrences(self):
+        remaining = Occurrence.objects.filter(project=self.project).not_processed_by_algorithm([self.other.pk])
+        self.assertEqual(self._pks(remaining), {self.occ_classified.pk, self.occ_multi.pk})
+
+    def test_exclude_is_the_complement_of_include(self):
+        base = Occurrence.objects.filter(project=self.project)
+        ids = [self.classifier.pk]
+        included = self._pks(base.processed_by_algorithm(ids))
+        excluded = self._pks(base.not_processed_by_algorithm(ids))
+        self.assertEqual(included | excluded, self._pks(base))
+        self.assertEqual(included & excluded, set())
+
+
+class TestCleanupNullOnlyOccurrencesCommand(TestCase):
+    """
+    Covers ami/main/management/commands/cleanup_null_only_occurrences.py.
+    Verifies dry-run reports counts without deleting and --commit deletes
+    phantom occurrences and dangling null markers, leaving valid rows alone.
+    """
+
+    def setUp(self):
+        from ami.main.models import Taxon
+        from ami.ml.models.algorithm import Algorithm
+
+        self.project = Project.objects.create(name="Cleanup Cmd Test Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.event = Event.objects.create(
+            project=self.project,
+            deployment=self.deployment,
+            group_by="2024-01-01",
+            start=datetime.datetime(2024, 1, 1, 0, 0),
+        )
+        self.algorithm = Algorithm.objects.create(
+            name="cleanup-detector", key="cleanup-detector", task_type="detection"
+        )
+        self.taxon = Taxon.objects.create(name="Cleanup Test Taxon")
+
+        self.img_with_real = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            path="with-real.jpg",
+        )
+        self.img_only_null = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            path="only-null.jpg",
+        )
+
+        self.valid_occurrence = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+        )
+        self.real_detection = Detection.objects.create(
+            source_image=self.img_with_real,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+            occurrence=self.valid_occurrence,
+        )
+        self.null_on_processed_image = Detection.objects.create(
+            source_image=self.img_with_real,
+            bbox=None,
+            detection_algorithm=self.algorithm,
+        )
+
+        self.phantom_occurrence = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+        )
+        self.phantom_null = Detection.objects.create(
+            source_image=self.img_only_null,
+            bbox=None,
+            detection_algorithm=self.algorithm,
+            occurrence=self.phantom_occurrence,
+        )
+
+        # A different (partial-write) shape: an occurrence with a real detection but a
+        # missing determination. Occurrence.valid() excludes it (determination IS NULL),
+        # but the cleanup command must NOT delete it — doing so would SET_NULL the real
+        # detection's occurrence FK and strand a classified detection on an image that
+        # filter_processed_images then skips forever. The command's phantom predicate is
+        # deliberately narrower than valid() to spare exactly this case.
+        self.img_real_no_determination = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            path="real-no-determination.jpg",
+        )
+        self.occ_real_no_determination = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=None,
+        )
+        self.real_detection_no_determination = Detection.objects.create(
+            source_image=self.img_real_no_determination,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=self.algorithm,
+            occurrence=self.occ_real_no_determination,
+        )
+
+    def _call_command(self, *args):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command("cleanup_null_only_occurrences", *args, stdout=out)
+        return out.getvalue()
+
+    def test_dry_run_reports_counts_without_deleting(self):
+        output = self._call_command(f"--project={self.project.pk}")
+        self.assertIn("Phantom occurrences", output)
+        self.assertIn("Dangling null-marker detections", output)
+        self.assertIn("Dry run", output)
+        self.assertTrue(Occurrence.objects.filter(pk=self.phantom_occurrence.pk).exists())
+        self.assertTrue(Detection.objects.filter(pk=self.phantom_null.pk).exists())
+
+    def test_commit_deletes_phantoms_and_dangling_null_markers(self):
+        self._call_command(f"--project={self.project.pk}", "--commit")
+        self.assertFalse(Occurrence.objects.filter(pk=self.phantom_occurrence.pk).exists())
+        self.assertFalse(Detection.objects.filter(pk=self.phantom_null.pk).exists())
+        self.assertTrue(Occurrence.objects.filter(pk=self.valid_occurrence.pk).exists())
+        self.assertTrue(Detection.objects.filter(pk=self.real_detection.pk).exists())
+        self.assertTrue(
+            Detection.objects.filter(pk=self.null_on_processed_image.pk).exists(),
+            "Null markers on images with at least one real detection must be kept",
+        )
+        self.assertTrue(
+            Occurrence.objects.filter(pk=self.occ_real_no_determination.pk).exists(),
+            "Occurrence with a real detection but a missing determination is a partial-write "
+            "shape, not Issue #1310 debris — it must be preserved, not deleted",
+        )
+        self.real_detection_no_determination.refresh_from_db()
+        self.assertEqual(
+            self.real_detection_no_determination.occurrence_id,
+            self.occ_real_no_determination.pk,
+            "The real detection must keep its occurrence FK — deleting the occurrence would "
+            "SET_NULL it and strand the detection",
+        )
+
+    def test_commit_is_idempotent(self):
+        self._call_command(f"--project={self.project.pk}", "--commit")
+        second_run = self._call_command(f"--project={self.project.pk}", "--commit")
+        self.assertIn("Nothing to clean up", second_run)
+
+
+class OccurrenceAdminChangelistTest(TestCase):
+    """OccurrenceAdmin changelist behavior: the detections_count subquery
+    annotation (including the zero-detection case) and the jump-to-occurrence-by-id
+    search. The changelist carries the per-occurrence post-processing trigger, so it
+    needs to stay both correct and usable on a large table."""
+
+    def setUp(self):
+        from django.contrib.admin.sites import AdminSite
+        from django.test import RequestFactory
+
+        from ami.main.admin import OccurrenceAdmin
+
+        self.admin = OccurrenceAdmin(Occurrence, AdminSite())
+        self.factory = RequestFactory()
+        self.superuser = User.objects.create_superuser(email="occ-admin@insectai.org", password="x")  # type: ignore
+        self.project = Project.objects.create(name="Occurrence Admin Test Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.source_image = SourceImage.objects.create(
+            deployment=self.deployment, project=self.project, path="occ-admin-test.jpg"
+        )
+
+    def _request(self):
+        request = self.factory.get("/admin/main/occurrence/")
+        request.user = self.superuser
+        return request
+
+    def _make_occurrence(self, num_detections: int) -> Occurrence:
+        occ = Occurrence.objects.create(project=self.project, deployment=self.deployment)
+        for _ in range(num_detections):
+            Detection.objects.create(source_image=self.source_image, bbox=[0, 0, 1, 1], occurrence=occ)
+        return occ
+
+    def test_detections_count_counts_per_occurrence_including_zero(self):
+        """The subquery annotation reports each occurrence's own detection count, and
+        Coalesce yields 0 (not NULL) for an occurrence with no detections."""
+        two = self._make_occurrence(2)
+        zero = self._make_occurrence(0)
+
+        by_pk = {o.pk: o.detections_count for o in self.admin.get_queryset(self._request())}
+        self.assertEqual(by_pk[two.pk], 2)
+        self.assertEqual(by_pk[zero.pk], 0)
+
+    def test_numeric_search_is_an_exact_id_lookup(self):
+        """An all-digit search term jumps straight to that occurrence by id.
+
+        This is the canonical test of the shared ``IdSearchAdminMixin``; the
+        Detection and Classification admins inherit the same behavior and do not
+        re-test it.
+        """
+        target = self._make_occurrence(1)
+        other = self._make_occurrence(1)
+
+        base = self.admin.get_queryset(self._request())
+        results, _ = self.admin.get_search_results(self._request(), base, str(target.pk))
+        pks = set(results.values_list("pk", flat=True))
+        self.assertEqual(pks, {target.pk})
+        self.assertNotIn(other.pk, pks)
+
+    def test_out_of_range_numeric_search_returns_no_results(self):
+        """A digit term too large for a bigint id returns an empty result instead of
+        letting the database raise a DataError (it cannot match any real id)."""
+        self._make_occurrence(1)
+
+        base = self.admin.get_queryset(self._request())
+        # 9223372036854775807 is the bigint max; one past it cannot be a valid id.
+        results, _ = self.admin.get_search_results(self._request(), base, "9223372036854775808")
+        self.assertEqual(list(results), [])
+
+    def test_text_search_still_matches_determination_name(self):
+        """A non-numeric term falls through to the determination-name search (and does
+        not raise from trying to cast the term to the integer id field)."""
+        from ami.main.models import Taxon
+
+        occ = self._make_occurrence(1)
+        occ.determination = Taxon.objects.create(name="Danaus plexippus")
+        occ.save(update_determination=False)
+
+        base = self.admin.get_queryset(self._request())
+        results, _ = self.admin.get_search_results(self._request(), base, "Danaus")
+        self.assertIn(occ.pk, set(results.values_list("pk", flat=True)))
+
+    def test_recompute_determination_action_refreshes_from_classifications(self):
+        """The recompute action re-derives the determination from current
+        classifications — needed because editing classifications by hand does not
+        trigger the recompute that Occurrence/Identification saves do."""
+        from django.contrib.messages.storage.fallback import FallbackStorage
+
+        from ami.main.models import Taxon
+        from ami.ml.models import Algorithm
+        from ami.ml.models.algorithm import AlgorithmTaskType
+
+        taxon = Taxon.objects.create(name="Recompute species", rank="SPECIES")
+        algorithm = Algorithm.objects.create(
+            name="recompute-classifier", task_type=AlgorithmTaskType.CLASSIFICATION.value
+        )
+        occ = self._make_occurrence(0)
+        detection = Detection.objects.create(source_image=self.source_image, bbox=[0, 0, 1, 1], occurrence=occ)
+        Classification.objects.create(
+            detection=detection, taxon=taxon, algorithm=algorithm, score=0.9, terminal=True, timestamp=timezone.now()
+        )
+        # Creating the classification did not recompute the occurrence determination.
+        occ.refresh_from_db()
+        self.assertIsNone(occ.determination)
+
+        request = self._request()
+        request.session = {}
+        setattr(request, "_messages", FallbackStorage(request))
+        self.admin.recompute_determination(request, Occurrence.objects.filter(pk=occ.pk))
+        occ.refresh_from_db()
+        self.assertEqual(occ.determination, taxon)
+
+
+class DetectionAdminChangelistTest(TestCase):
+    """DetectionAdmin changelist counts classifications with a correlated subquery,
+    including the zero-classification case (Coalesced to 0). The grouped Count it
+    replaces could exhaust work_mem and error out on a large table.
+
+    The id search box is the shared ``IdSearchAdminMixin``, exercised once in
+    ``OccurrenceAdminChangelistTest``; it is not re-tested per admin."""
+
+    def setUp(self):
+        from django.contrib.admin.sites import AdminSite
+        from django.test import RequestFactory
+
+        from ami.main.admin import DetectionAdmin
+        from ami.ml.models import Algorithm
+        from ami.ml.models.algorithm import AlgorithmTaskType
+
+        self.admin = DetectionAdmin(Detection, AdminSite())
+        self.factory = RequestFactory()
+        self.superuser = User.objects.create_superuser(email="det-admin@insectai.org", password="x")  # type: ignore
+        self.project = Project.objects.create(name="Detection Admin Test Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.source_image = SourceImage.objects.create(
+            deployment=self.deployment, project=self.project, path="det-admin-test.jpg"
+        )
+        self.algorithm = Algorithm.objects.create(
+            name="det-admin-classifier", task_type=AlgorithmTaskType.CLASSIFICATION.value
+        )
+
+    def _request(self):
+        request = self.factory.get("/admin/main/detection/")
+        request.user = self.superuser
+        return request
+
+    def test_classifications_count_counts_per_detection_including_zero(self):
+        two = Detection.objects.create(source_image=self.source_image, bbox=[0, 0, 1, 1])
+        for _ in range(2):
+            Classification.objects.create(detection=two, algorithm=self.algorithm, timestamp=timezone.now())
+        zero = Detection.objects.create(source_image=self.source_image, bbox=[0, 0, 1, 1])
+
+        by_pk = {d.pk: d.classifications_count for d in self.admin.get_queryset(self._request())}
+        self.assertEqual(by_pk[two.pk], 2)
+        self.assertEqual(by_pk[zero.pk], 0)
+
+
+class ClassificationAdminChangelistTest(TestCase):
+    """ClassificationAdmin counts the scores/logits arrays in SQL (cardinality) and
+    defers the arrays, so the changelist doesn't transfer thousands of floats per
+    row just to show their length."""
+
+    def setUp(self):
+        from django.contrib.admin.sites import AdminSite
+        from django.test import RequestFactory
+
+        from ami.main.admin import ClassificationAdmin
+        from ami.ml.models import Algorithm
+        from ami.ml.models.algorithm import AlgorithmTaskType
+
+        self.admin = ClassificationAdmin(Classification, AdminSite())
+        self.factory = RequestFactory()
+        self.superuser = User.objects.create_superuser(email="clf-admin@insectai.org", password="x")  # type: ignore
+        self.project = Project.objects.create(name="Classification Admin Test Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.source_image = SourceImage.objects.create(
+            deployment=self.deployment, project=self.project, path="clf-admin-test.jpg"
+        )
+        self.detection = Detection.objects.create(source_image=self.source_image, bbox=[0, 0, 1, 1])
+        self.algorithm = Algorithm.objects.create(
+            name="clf-admin-classifier", task_type=AlgorithmTaskType.CLASSIFICATION.value
+        )
+
+    def _request(self):
+        request = self.factory.get("/admin/main/classification/")
+        request.user = self.superuser
+        return request
+
+    def test_scores_and_logits_counted_in_sql_including_empty(self):
+        clf = Classification.objects.create(
+            detection=self.detection,
+            algorithm=self.algorithm,
+            timestamp=timezone.now(),
+            scores=[0.1, 0.2, 0.3],
+            logits=None,
+        )
+        row = next(c for c in self.admin.get_queryset(self._request()) if c.pk == clf.pk)
+        self.assertEqual(row.scores_count, 3)
+        self.assertEqual(row.logits_count, 0)
+
+
+class TestCaptureSetChoices(APITestCase):
+    """Choices endpoint for capture set filters and pickers.
+
+    Pins the contract those consumers rely on: names without counts, most recently
+    updated first, and a single capped response rather than pages.
+    """
+
+    def setUp(self) -> None:
+        self.user = User.objects.create_user(email="picker@insectai.org", is_staff=False)
+        self.project = Project.objects.create(name="Picker project", owner=self.user)
+        self.other_project = Project.objects.create(name="Other project", owner=self.user)
+        # A new project starts with a capture set holding all of its captures.
+        self.starting_collection = SourceImageCollection.objects.get(project=self.project)
+        self.oldest, self.middle, self.newest = (
+            SourceImageCollection.objects.create(name=name, project=self.project, method="manual")
+            for name in ("Oldest", "Middle", "Newest")
+        )
+        # updated_at is auto_now, so write the timestamps directly instead of relying on
+        # the order the rows were created in.
+        for days_ago, collection in enumerate([self.newest, self.middle, self.oldest, self.starting_collection]):
+            SourceImageCollection.objects.filter(pk=collection.pk).update(
+                updated_at=timezone.now() - datetime.timedelta(days=days_ago)
+            )
+        self.expected_order = ["Newest", "Middle", "Oldest", self.starting_collection.name]
+        self.other_collection = SourceImageCollection.objects.create(
+            name="Elsewhere", project=self.other_project, method="manual"
+        )
+        self.url = f"/api/v2/captures/collections/choices/?project_id={self.project.pk}"
+
+    def test_most_recently_updated_capture_set_comes_first(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([row["name"] for row in response.json()["results"]], self.expected_order)
+
+    def test_choices_omit_the_capture_occurrence_and_taxa_counts(self):
+        response = self.client.get(self.url)
+        row = response.json()["results"][0]
+        self.assertEqual(sorted(row.keys()), ["details", "id", "method", "name", "user_permissions"])
+
+    def test_choices_are_limited_to_the_requested_project(self):
+        response = self.client.get(self.url)
+        returned_ids = {row["id"] for row in response.json()["results"]}
+        self.assertEqual(
+            returned_ids,
+            {self.oldest.pk, self.middle.pk, self.newest.pk, self.starting_collection.pk},
+        )
+
+    def test_a_project_is_required(self):
+        response = self.client.get("/api/v2/captures/collections/choices/")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_capture_sets_in_a_draft_project_are_hidden_from_non_members(self):
+        draft_project = Project.objects.create(name="Draft project", owner=self.user, draft=True)
+        SourceImageCollection.objects.create(name="Secret", project=draft_project, method="manual")
+
+        response = self.client.get(f"/api/v2/captures/collections/choices/?project_id={draft_project.pk}")
+
+        self.assertEqual(response.json()["results"], [])
+
+    def test_the_list_endpoint_still_reports_capture_counts(self):
+        response = self.client.get(f"/api/v2/captures/collections/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = response.json()["results"][0]
+        self.assertIn("source_images_count", row)
+
+    def test_the_list_endpoint_also_defaults_to_most_recently_updated_first(self):
+        response = self.client.get(f"/api/v2/captures/collections/?project_id={self.project.pk}")
+        self.assertEqual([row["name"] for row in response.json()["results"]], self.expected_order)
+
+    def test_sorting_by_a_count_still_works_on_the_list_endpoint(self):
+        response = self.client.get(
+            f"/api/v2/captures/collections/?project_id={self.project.pk}&ordering=source_images_count"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_a_dropdown_gets_one_capped_response_instead_of_pages(self):
+        """The response size is the same whether or not a caller asks for a limit.
+
+        A dropdown cannot page, so the endpoint neither falls back to the small
+        project-wide default nor lets a caller raise the cap. Reaching capture sets
+        past the cap is what the search field in #1380 is for.
+        """
+        SourceImageCollection.objects.bulk_create(
+            SourceImageCollection(name=f"Bulk {index}", project=self.project, method="manual") for index in range(120)
+        )
+        for query in ("", "&limit=500"):
+            with self.subTest(query=query):
+                body = self.client.get(f"{self.url}{query}").json()
+                self.assertEqual(len(body["results"]), 100)
+                # The total still reports every capture set, so a caller can tell that
+                # what it received is a subset.
+                self.assertEqual(body["count"], SourceImageCollection.objects.filter(project=self.project).count())
+
+
+BULK_IDENTIFICATIONS_ENDPOINT = "/api/v2/identifications/bulk/"
+
+
+class BulkIdentificationTestCase(APITestCase):
+    """
+    Shared fixture for the bulk identifications endpoint: one project with
+    several occurrences and a user per role.
+
+    The subclasses pin the parts of the contract that are easy to break without
+    noticing: per-occurrence permission enforcement, the withdraw-previous and
+    determination-recompute side effects in ``Identification.save()``, and that
+    validation cost does not grow with batch size. See #1371.
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(project=self.project)
+        create_captures(deployment=self.deployment)
+        create_occurrences(deployment=self.deployment, num=4)
+
+        self.identifier = User.objects.create_user(email="identifier@insectai.org")  # type: ignore[attr-defined]
+        self.basic_member = User.objects.create_user(email="basic@insectai.org")  # type: ignore[attr-defined]
+        self.non_member = User.objects.create_user(email="stranger@insectai.org")  # type: ignore[attr-defined]
+        self.superuser = User.objects.create_user(  # type: ignore[attr-defined]
+            email="super@insectai.org", is_staff=True, is_superuser=True
+        )
+        Identifier.assign_user(self.identifier, self.project)
+        BasicMember.assign_user(self.basic_member, self.project)
+        ProjectManager.assign_user(self.superuser, self.project)
+
+        self.occurrences = list(Occurrence.objects.filter(project=self.project).exclude(determination=None))
+        assert len(self.occurrences) >= 4, "Fixture must provide enough occurrences to catch per-row query growth"
+
+        self.taxon = Taxon.objects.exclude(pk=self.occurrences[0].determination_id).first()
+        assert self.taxon is not None
+
+        return super().setUp()
+
+    def post_bulk(self, items: list[dict], user: User | None = None):
+        if user is not None:
+            self.client.force_authenticate(user=user)
+        return self.client.post(BULK_IDENTIFICATIONS_ENDPOINT, {"identifications": items}, format="json")
+
+    def item(self, occurrence: Occurrence, taxon: Taxon | None = None, **extra) -> dict:
+        return {"occurrence_id": occurrence.pk, "taxon_id": (taxon or self.taxon).pk, **extra}
+
+
+class TestBulkIdentificationSuccess(BulkIdentificationTestCase):
+    def test_creates_one_identification_per_item_and_updates_determinations(self):
+        """The happy path: every item becomes an Identification and moves its occurrence's determination."""
+        targets = self.occurrences[:3]
+        response = self.post_bulk([self.item(occurrence) for occurrence in targets], user=self.identifier)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        body = response.json()
+        self.assertEqual(body["created_count"], 3)
+        self.assertEqual(body["error_count"], 0)
+        self.assertEqual([result["status"] for result in body["results"]], ["created"] * 3)
+
+        for occurrence in targets:
+            occurrence.refresh_from_db()
+            self.assertEqual(occurrence.determination, self.taxon)
+            self.assertEqual(
+                Identification.objects.filter(occurrence=occurrence, user=self.identifier, withdrawn=False).count(),
+                1,
+            )
+
+    def test_accepts_ids_sent_as_strings(self):
+        """
+        The frontend sends occurrence and taxon IDs as JSON strings.
+
+        The request body is built from the identification form, where IDs are
+        strings, so the endpoint has to accept "123" and not only 123. This pins
+        the frontend-to-backend contract; a stricter integer-only field would 400
+        every real bulk identification.
+        """
+        occurrence = self.occurrences[0]
+        response = self.post_bulk(
+            [{"occurrence_id": str(occurrence.pk), "taxon_id": str(self.taxon.pk)}],
+            user=self.identifier,
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        self.assertEqual(response.json()["created_count"], 1)
+
+    def test_results_are_returned_in_request_order(self):
+        """Clients match results to submitted items by index, so order and index must be stable."""
+        targets = self.occurrences[:3]
+        response = self.post_bulk([self.item(occurrence) for occurrence in targets], user=self.identifier)
+
+        body = response.json()
+        self.assertEqual([result["index"] for result in body["results"]], [0, 1, 2])
+        self.assertEqual(
+            [result["occurrence_id"] for result in body["results"]],
+            [occurrence.pk for occurrence in targets],
+        )
+
+    def test_comment_is_saved(self):
+        response = self.post_bulk(
+            [self.item(self.occurrences[0], comment="Wing pattern matches")], user=self.identifier
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        identification = Identification.objects.get(pk=response.json()["results"][0]["id"])
+        self.assertEqual(identification.comment, "Wing pattern matches")
+
+    def test_withdraws_previous_identification_by_the_same_user(self):
+        """
+        A user has one active identification per occurrence.
+
+        ``Identification.save()`` withdraws the user's earlier identifications on that
+        occurrence. A test using only fresh occurrences passes whether or not the bulk
+        path preserves that, so this pins it with a pre-existing identification.
+        """
+        occurrence = self.occurrences[0]
+        previous = Identification.objects.create(occurrence=occurrence, taxon=self.taxon, user=self.identifier)
+        self.assertFalse(previous.withdrawn)
+
+        other_taxon = Taxon.objects.exclude(pk__in=[self.taxon.pk]).first()
+        assert other_taxon is not None
+        response = self.post_bulk([self.item(occurrence, taxon=other_taxon)], user=self.identifier)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        previous.refresh_from_db()
+        self.assertTrue(previous.withdrawn, "The user's earlier identification must be withdrawn")
+        occurrence.refresh_from_db()
+        self.assertEqual(occurrence.determination, other_taxon)
+
+    def test_does_not_withdraw_identifications_by_other_users(self):
+        """Withdrawing is scoped to the submitting user; another identifier's opinion must survive."""
+        occurrence = self.occurrences[0]
+        other_user_id = Identification.objects.create(occurrence=occurrence, taxon=self.taxon, user=self.superuser)
+
+        self.post_bulk([self.item(occurrence)], user=self.identifier)
+
+        other_user_id.refresh_from_db()
+        self.assertFalse(other_user_id.withdrawn)
+
+    def test_agreeing_with_the_current_determination_raises_the_score_to_the_human_score(self):
+        """
+        Agreeing with an occurrence's existing determination keeps the taxon and lifts
+        the score to the human identification's score of 1.0.
+
+        This mirrors what a single POST to /identifications/ already does, which is the
+        behaviour that matters: the bulk endpoint is a faster way to do the same thing,
+        not a different thing. `determination_score` feeds the project's score-threshold
+        filters, so a bulk path that left the machine score in place would quietly change
+        which occurrences appear in a filtered list.
+        """
+        occurrence = self.occurrences[0]
+        original_taxon = occurrence.determination
+        self.assertEqual(occurrence.determination_score, 0.9)
+
+        response = self.post_bulk(
+            [self.item(occurrence, taxon=original_taxon, agreed_with_prediction_id=occurrence.best_prediction.pk)],
+            user=self.identifier,
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        occurrence.refresh_from_db()
+        self.assertEqual(occurrence.determination, original_taxon)
+        self.assertEqual(occurrence.determination_score, 1.0)
+
+    def test_bulk_and_single_post_leave_an_occurrence_in_the_same_state(self):
+        """
+        The bulk endpoint must be indistinguishable from the single-item endpoint.
+
+        Anything the bulk path reimplements or skips — withdrawing the user's previous
+        identification, recomputing the determination, the resulting score — shows up
+        here as a divergence, without this test having to name each rule.
+        """
+        via_single, via_bulk = self.occurrences[0], self.occurrences[1]
+
+        # Seed both with an earlier identification by the same user, so that
+        # withdraw-previous is part of what the two paths have to agree on.
+        other_taxon = Taxon.objects.exclude(pk=self.taxon.pk).first()
+        assert other_taxon is not None
+        for occurrence in (via_single, via_bulk):
+            Identification.objects.create(occurrence=occurrence, taxon=other_taxon, user=self.identifier)
+
+        self.client.force_authenticate(user=self.identifier)
+        single_response = self.client.post(
+            "/api/v2/identifications/",
+            {"occurrence_id": via_single.pk, "taxon_id": self.taxon.pk, "comment": "same"},
+            format="json",
+        )
+        self.assertEqual(single_response.status_code, status.HTTP_201_CREATED, single_response.content)
+
+        bulk_response = self.post_bulk([self.item(via_bulk, comment="same")], user=self.identifier)
+        self.assertEqual(bulk_response.status_code, status.HTTP_200_OK, bulk_response.content)
+
+        via_single.refresh_from_db()
+        via_bulk.refresh_from_db()
+        self.assertEqual(via_bulk.determination_id, via_single.determination_id)
+        self.assertEqual(via_bulk.determination_score, via_single.determination_score)
+
+        def identification_state(occurrence):
+            return sorted(
+                Identification.objects.filter(occurrence=occurrence).values_list("taxon_id", "withdrawn", "comment")
+            )
+
+        self.assertEqual(identification_state(via_bulk), identification_state(via_single))
+
+    def test_agreed_with_prediction_is_recorded(self):
+        """The agree provenance FK is stored so exports can report what the user agreed with."""
+        occurrence = self.occurrences[0]
+        prediction = occurrence.best_prediction
+        response = self.post_bulk(
+            [self.item(occurrence, taxon=occurrence.determination, agreed_with_prediction_id=prediction.pk)],
+            user=self.identifier,
+        )
+
+        identification = Identification.objects.get(pk=response.json()["results"][0]["id"])
+        self.assertEqual(identification.agreed_with_prediction_id, prediction.pk)
+
+
+class TestBulkIdentificationPartialFailure(BulkIdentificationTestCase):
+    def test_valid_items_are_saved_when_one_item_fails(self):
+        """
+        One bad item must not discard the rest of the batch.
+
+        Mass identification is the point of this endpoint; failing 49 good rows because
+        a 50th occurrence was deleted mid-session would be worse than the N-request
+        version it replaces.
+        """
+        items = [
+            self.item(self.occurrences[0]),
+            {"occurrence_id": 9_999_999, "taxon_id": self.taxon.pk},
+            self.item(self.occurrences[1]),
+        ]
+        response = self.post_bulk(items, user=self.identifier)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        body = response.json()
+        self.assertEqual(body["created_count"], 2)
+        self.assertEqual(body["error_count"], 1)
+        self.assertEqual([result["status"] for result in body["results"]], ["created", "error", "created"])
+        self.assertIn("occurrence_id", body["results"][1]["errors"])
+
+        for occurrence in self.occurrences[:2]:
+            occurrence.refresh_from_db()
+            self.assertEqual(occurrence.determination, self.taxon)
+
+    def test_unknown_taxon_is_reported_per_item(self):
+        items = [self.item(self.occurrences[0]), {"occurrence_id": self.occurrences[1].pk, "taxon_id": 9_999_999}]
+        response = self.post_bulk(items, user=self.identifier)
+
+        body = response.json()
+        self.assertEqual(body["created_count"], 1)
+        self.assertIn("taxon_id", body["results"][1]["errors"])
+
+    def test_agreed_with_identification_from_another_occurrence_is_rejected(self):
+        """Agree provenance must point at the occurrence being identified, not an unrelated one."""
+        foreign = Identification.objects.create(occurrence=self.occurrences[1], taxon=self.taxon, user=self.superuser)
+        response = self.post_bulk(
+            [self.item(self.occurrences[0], agreed_with_identification_id=foreign.pk)],
+            user=self.identifier,
+        )
+
+        body = response.json()
+        self.assertEqual(body["created_count"], 0)
+        self.assertIn("agreed_with_identification_id", body["results"][0]["errors"])
+
+    def test_a_failed_item_does_not_roll_back_successful_items(self):
+        """A rejected item must not undo the identifications already made in the batch."""
+        items = [self.item(self.occurrences[0]), {"occurrence_id": self.occurrences[1].pk, "taxon_id": 9_999_999}]
+        self.post_bulk(items, user=self.identifier)
+
+        self.assertTrue(Identification.objects.filter(occurrence=self.occurrences[0]).exists())
+        self.assertFalse(Identification.objects.filter(occurrence=self.occurrences[1]).exists())
+
+    def test_a_database_failure_on_one_item_is_reported_without_losing_the_others(self):
+        """
+        A write that fails inside save() costs that item only.
+
+        The request runs in a single transaction (ATOMIC_REQUESTS), so each item is
+        saved inside a savepoint and its failure is caught. Without that, the first
+        failure would abort the transaction, discard every identification already
+        made in the request, and return a 500 instead of a per-item error. This is
+        the case that made the endpoint's partial-success promise real, so it is
+        pinned by forcing a failure rather than by trusting the arrangement.
+        """
+        failing_occurrence_id = self.occurrences[1].pk
+        original_save = Identification.save
+
+        def save_but_fail_for_one(identification_self, *args, **kwargs):
+            if identification_self.occurrence_id == failing_occurrence_id:
+                raise IntegrityError("simulated conflict while saving")
+            return original_save(identification_self, *args, **kwargs)
+
+        items = [self.item(occurrence) for occurrence in self.occurrences[:3]]
+        with mock.patch.object(Identification, "save", save_but_fail_for_one):
+            response = self.post_bulk(items, user=self.identifier)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        body = response.json()
+        self.assertEqual(body["created_count"], 2)
+        self.assertEqual(body["error_count"], 1)
+        self.assertEqual([result["status"] for result in body["results"]], ["created", "error", "created"])
+
+        # The surviving items are really committed, not merely reported as created.
+        self.assertTrue(Identification.objects.filter(occurrence=self.occurrences[0]).exists())
+        self.assertFalse(Identification.objects.filter(occurrence=self.occurrences[1]).exists())
+        self.assertTrue(Identification.objects.filter(occurrence=self.occurrences[2]).exists())
+
+    def test_every_occurrence_missing_is_reported_per_item(self):
+        """
+        A batch where nothing resolves answers like any other batch of failures.
+
+        A batch of one deleted occurrence and a batch where only some are deleted are
+        the same kind of failure, so they must not return different shapes.
+        """
+        response = self.post_bulk([{"occurrence_id": 9_999_998, "taxon_id": self.taxon.pk}], user=self.identifier)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        body = response.json()
+        self.assertEqual(body["created_count"], 0)
+        self.assertEqual(body["error_count"], 1)
+        self.assertIn("occurrence_id", body["results"][0]["errors"])
+
+    def test_unknown_agreement_targets_are_reported_per_item(self):
+        response = self.post_bulk(
+            [
+                self.item(self.occurrences[0], agreed_with_identification_id=9_999_999),
+                self.item(self.occurrences[1], agreed_with_prediction_id=9_999_999),
+            ],
+            user=self.identifier,
+        )
+
+        body = response.json()
+        self.assertEqual(body["created_count"], 0)
+        self.assertIn("agreed_with_identification_id", body["results"][0]["errors"])
+        self.assertIn("agreed_with_prediction_id", body["results"][1]["errors"])
+
+    def test_agreed_with_prediction_from_another_occurrence_is_rejected(self):
+        foreign_prediction = self.occurrences[1].best_prediction
+        response = self.post_bulk(
+            [self.item(self.occurrences[0], agreed_with_prediction_id=foreign_prediction.pk)],
+            user=self.identifier,
+        )
+
+        body = response.json()
+        self.assertEqual(body["created_count"], 0)
+        self.assertIn("agreed_with_prediction_id", body["results"][0]["errors"])
+
+    def test_a_missing_occurrence_does_not_produce_a_spurious_agreement_error(self):
+        """
+        With no occurrence to compare against, the agreement target cannot be
+        cross-checked, so the item reports the missing occurrence and nothing else.
+
+        The target here is real, so the only error that could appear alongside would
+        be an unwarranted "not the same occurrence" complaint.
+        """
+        real_target = Identification.objects.create(
+            occurrence=self.occurrences[1], taxon=self.taxon, user=self.superuser
+        )
+        response = self.post_bulk(
+            [{"occurrence_id": 9_999_997, "taxon_id": self.taxon.pk, "agreed_with_identification_id": real_target.pk}],
+            user=self.identifier,
+        )
+
+        errors = response.json()["results"][0]["errors"]
+        self.assertEqual(list(errors), ["occurrence_id"])
+
+    def test_an_item_reports_every_problem_it_has(self):
+        """Errors are reported per field, so one item with two problems names both."""
+        response = self.post_bulk(
+            [{"occurrence_id": 9_999_997, "taxon_id": 9_999_996}],
+            user=self.identifier,
+        )
+
+        errors = response.json()["results"][0]["errors"]
+        self.assertIn("occurrence_id", errors)
+        self.assertIn("taxon_id", errors)
+
+
+class TestBulkIdentificationValidation(BulkIdentificationTestCase):
+    def test_empty_batch_is_rejected(self):
+        response = self.post_bulk([], user=self.identifier)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_missing_identifications_key_is_rejected(self):
+        self.client.force_authenticate(user=self.identifier)
+        response = self.client.post(BULK_IDENTIFICATIONS_ENDPOINT, {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_non_integer_occurrence_id_returns_400_not_500(self):
+        self.client.force_authenticate(user=self.identifier)
+        response = self.client.post(
+            BULK_IDENTIFICATIONS_ENDPOINT,
+            {"identifications": [{"occurrence_id": "abc", "taxon_id": self.taxon.pk}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_batch_larger_than_the_cap_is_rejected(self):
+        """
+        The cap is what fails an oversized batch, not some other rule.
+
+        Repeating one occurrence 201 times would be rejected by the duplicate check
+        instead, and unknown IDs would be reported per item, so both would pass this
+        test with the cap removed. Distinct IDs plus an assertion on the message pin
+        the cap itself.
+        """
+        items = [
+            {"occurrence_id": 9_000_000 + offset, "taxon_id": self.taxon.pk}
+            for offset in range(MAX_BULK_IDENTIFICATIONS + 1)
+        ]
+        response = self.post_bulk(items, user=self.identifier)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn(str(MAX_BULK_IDENTIFICATIONS), str(response.json()))
+
+    def test_a_batch_at_the_cap_is_accepted(self):
+        """The cap rejects what is over it, not what is exactly at it."""
+        items = [
+            {"occurrence_id": 9_000_000 + offset, "taxon_id": self.taxon.pk}
+            for offset in range(MAX_BULK_IDENTIFICATIONS)
+        ]
+        response = self.post_bulk(items, user=self.identifier)
+
+        # Every occurrence is unknown, so each is reported as an error rather than
+        # the request being rejected outright.
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        self.assertEqual(response.json()["error_count"], MAX_BULK_IDENTIFICATIONS)
+
+    def test_duplicate_occurrence_ids_are_rejected(self):
+        """
+        Two identifications for one occurrence in a single batch have no defined outcome.
+
+        Which one wins would depend on insert-order tiebreaks rather than on anything the
+        client asked for, so the batch is rejected instead.
+        """
+        response = self.post_bulk(
+            [self.item(self.occurrences[0]), self.item(self.occurrences[0])], user=self.identifier
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_batch_spanning_two_projects_is_rejected(self):
+        """A batch is authorized against a single project, so it must not span projects."""
+        other_project, other_deployment = setup_test_project(reuse=False)
+        create_taxa(project=other_project)
+        create_captures(deployment=other_deployment)
+        create_occurrences(deployment=other_deployment, num=1)
+        Identifier.assign_user(self.identifier, other_project)
+        other_occurrence = Occurrence.objects.filter(project=other_project).exclude(determination=None).first()
+        assert other_occurrence is not None
+
+        response = self.post_bulk([self.item(self.occurrences[0]), self.item(other_occurrence)], user=self.identifier)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_withdrawn_cannot_be_set_through_the_bulk_endpoint(self):
+        """`withdrawn` is managed by the model; accepting it from a client would corrupt the invariant."""
+        response = self.post_bulk([self.item(self.occurrences[0], withdrawn=True)], user=self.identifier)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        identification = Identification.objects.get(pk=response.json()["results"][0]["id"])
+        self.assertFalse(identification.withdrawn)
+
+
+class TestBulkIdentificationPermissions(BulkIdentificationTestCase):
+    """
+    The permission matrix.
+
+    A `detail=False` action is never routed through `has_object_permission`, so the
+    endpoint has to run the check itself. These cases fail loudly if it stops doing so.
+    """
+
+    def test_identifier_can_create(self):
+        response = self.post_bulk([self.item(self.occurrences[0])], user=self.identifier)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+
+    def test_project_manager_can_create(self):
+        manager = User.objects.create_user(email="manager@insectai.org")  # type: ignore[attr-defined]
+        ProjectManager.assign_user(manager, self.project)
+        response = self.post_bulk([self.item(self.occurrences[0])], user=manager)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+
+    def test_superuser_can_create(self):
+        response = self.post_bulk([self.item(self.occurrences[0])], user=self.superuser)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+
+    def test_basic_member_is_forbidden(self):
+        """A project member without the identifier role must not be able to identify."""
+        response = self.post_bulk([self.item(self.occurrences[0])], user=self.basic_member)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(Identification.objects.filter(user=self.basic_member).exists())
+
+    def test_non_member_is_forbidden(self):
+        response = self.post_bulk([self.item(self.occurrences[0])], user=self.non_member)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(Identification.objects.filter(user=self.non_member).exists())
+
+    def test_anonymous_is_rejected(self):
+        response = self.client.post(
+            BULK_IDENTIFICATIONS_ENDPOINT, {"identifications": [self.item(self.occurrences[0])]}, format="json"
+        )
+        self.assertIn(
+            response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN), response.content
+        )
+        self.assertFalse(Identification.objects.exists())
+
+    def test_permission_is_denied_for_the_whole_batch(self):
+        """An unauthorized batch writes nothing at all, not a partial prefix."""
+        items = [self.item(occurrence) for occurrence in self.occurrences[:3]]
+        self.post_bulk(items, user=self.non_member)
+        self.assertFalse(Identification.objects.exists())
+
+
+class TestBulkIdentificationQueryCount(BulkIdentificationTestCase):
+    """
+    Query cost must stay linear in the batch, with a small and stable per-item slope.
+
+    Asserting one exact number for one batch size cannot distinguish fixed cost from
+    per-item cost, so it cannot catch an N+1 hidden in validation or in the response.
+    Measuring two batch sizes and comparing the slope can.
+    """
+
+    def measure(self, size: int) -> int:
+        # A fresh project per measurement keeps the two runs independent.
+        project, deployment = setup_test_project(reuse=False)
+        create_taxa(project=project)
+        create_captures(deployment=deployment)
+        create_occurrences(deployment=deployment, num=size)
+        Identifier.assign_user(self.identifier, project)
+        occurrences = list(Occurrence.objects.filter(project=project).exclude(determination=None))[:size]
+        taxon = Taxon.objects.exclude(pk=occurrences[0].determination_id).first()
+        assert taxon is not None
+        items = [{"occurrence_id": occurrence.pk, "taxon_id": taxon.pk} for occurrence in occurrences]
+
+        self.client.force_authenticate(user=self.identifier)
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.post(BULK_IDENTIFICATIONS_ENDPOINT, {"identifications": items}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        self.assertEqual(response.json()["created_count"], size)
+        return len(captured.captured_queries)
+
+    def test_per_item_query_cost_stays_within_budget(self):
+        """
+        Each extra identification in a batch costs a bounded number of queries.
+
+        Measured at the time of writing: 8 queries per item, all of them inside
+        `Identification.save()` (withdraw previous, insert, then
+        `update_occurrence_determination` reading the current determination,
+        `best_identification` and `best_prediction` before saving the occurrence).
+        Resolving occurrences and taxa is batched and costs 2 queries for the whole
+        request, so it does not appear in this slope.
+
+        The budget is the measured cost, so any new per-item query fails this test.
+        If a change to the write path legitimately adds one, update the number here
+        deliberately rather than widening the budget to accommodate it.
+        """
+        small, large = 2, 6
+        queries_small = self.measure(small)
+        queries_large = self.measure(large)
+
+        slope = (queries_large - queries_small) / (large - small)
+        self.assertLessEqual(
+            slope,
+            8,
+            f"Each identification should cost a bounded number of queries, measured {slope:.1f} "
+            f"({queries_small} queries for {small} items, {queries_large} for {large}). "
+            f"A jump here usually means something started querying per item.",
+        )

@@ -80,6 +80,10 @@ export class Species extends Taxon {
     return this._species.occurrences_count ?? 0
   }
 
+  get numVerified(): number {
+    return this._species.verified_count ?? 0
+  }
+
   get score(): number | undefined {
     const score = this._species.best_determination_score
 

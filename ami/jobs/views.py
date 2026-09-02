@@ -7,10 +7,10 @@ from asgiref.sync import async_to_sync
 from django.core.cache import cache
 from django.db.models import Q
 from django.db.models.query import QuerySet
-from django.forms import IntegerField
 from django.utils import timezone
 from django_filters import rest_framework as filters
-from drf_spectacular.utils import extend_schema
+from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.filters import BaseFilterBackend
@@ -18,8 +18,10 @@ from rest_framework.response import Response
 
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import ObjectPermission
+from ami.base.serializers import SingleParamSerializer
 from ami.base.views import ProjectMixin
-from ami.jobs.schemas import ids_only_param, incomplete_only_param
+from ami.jobs.models import JOB_LOGS_MAX_LIMIT
+from ami.jobs.schemas import ids_only_param, incomplete_only_param, logs_limit_param
 from ami.jobs.serializers import (
     MLJobResultsRequestSerializer,
     MLJobResultsResponseSerializer,
@@ -178,6 +180,9 @@ class IncompleteJobFilter(BaseFilterBackend):
         return queryset
 
 
+@extend_schema_view(
+    retrieve=extend_schema(parameters=[logs_limit_param]),
+)
 class JobViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows jobs to be viewed or edited.
@@ -233,6 +238,21 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
             return JobListSerializer
         else:
             return JobSerializer
+
+    def get_serializer_context(self):
+        # Validate ``?logs_limit=`` once at the view boundary so a bad value
+        # raises DRF ``ValidationError`` (→ HTTP 400) before the serializer
+        # runs. ``get_logs`` then reads the cleaned value off context. Pattern
+        # mirrors ``ami.base.views.get_active_project`` and the other
+        # ``SingleParamSerializer`` callers in ``ami/main/api/views.py``.
+        context = super().get_serializer_context()
+        if self.action == "retrieve" and self.request is not None:
+            context["logs_limit"] = SingleParamSerializer[int].clean(
+                param_name="logs_limit",
+                field=serializers.IntegerField(required=False, min_value=1, max_value=JOB_LOGS_MAX_LIMIT),
+                data=self.request.query_params,
+            )
+        return context
 
     @action(detail=True, methods=["post"], name="run")
     def run(self, request, pk=None):
@@ -298,8 +318,13 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         project = self.get_active_project()
         if project:
             jobs = jobs.filter(project=project)
-        cutoff_hours = IntegerField(required=False, min_value=0).clean(
-            self.request.query_params.get("cutoff_hours", Job.FAILED_JOBS_DISPLAY_MAX_HOURS)
+        # Validate via SingleParamSerializer so a bad value 400s instead of
+        # 500ing through django.forms.IntegerField (raises django.core
+        # ValidationError, which DRF's default handler does NOT convert).
+        cutoff_hours = SingleParamSerializer[int].clean(
+            param_name="cutoff_hours",
+            field=serializers.IntegerField(required=False, min_value=0, default=Job.FAILED_JOBS_DISPLAY_MAX_HOURS),
+            data=self.request.query_params,
         )
         # Filter out completed jobs that have not been updated in the last X hours
         cutoff_datetime = timezone.now() - timezone.timedelta(hours=cutoff_hours)

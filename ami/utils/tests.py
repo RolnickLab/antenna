@@ -1,6 +1,6 @@
 import datetime
 from unittest import TestCase
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import requests
 
@@ -68,3 +68,36 @@ class TestUtils(TestCase):
         mock_response.content = b"Raw error bytes"
         result = extract_error_message_from_response(mock_response)
         self.assertIn("Response content: b'Raw error bytes'", result)
+
+    def test_fetch_image_content_passes_default_timeout(self):
+        """``fetch_image_content`` must pass a finite timeout to ``requests.get`` so
+        an unresponsive upstream cannot hang a gunicorn worker forever (the
+        thumbnail-generation path runs synchronously inside web requests).
+        """
+        from ami.utils.media import fetch_image_content
+
+        with patch("ami.utils.media.requests.get") as mocked:
+            mocked.return_value.raise_for_status = Mock()
+            mocked.return_value.content = b"\x00\x01\x02"
+
+            result = fetch_image_content("http://example.invalid/x.jpg")
+
+        self.assertEqual(result, b"\x00\x01\x02")
+        _, kwargs = mocked.call_args
+        # Default is ``(connect, read)`` — both finite, both positive.
+        self.assertIn("timeout", kwargs)
+        connect, read = kwargs["timeout"]
+        self.assertGreater(connect, 0)
+        self.assertGreater(read, 0)
+
+    def test_fetch_image_content_respects_explicit_timeout(self):
+        from ami.utils.media import fetch_image_content
+
+        with patch("ami.utils.media.requests.get") as mocked:
+            mocked.return_value.raise_for_status = Mock()
+            mocked.return_value.content = b""
+
+            fetch_image_content("http://example.invalid/x.jpg", timeout=(2.0, 10.0))
+
+        _, kwargs = mocked.call_args
+        self.assertEqual(kwargs["timeout"], (2.0, 10.0))

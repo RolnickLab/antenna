@@ -1,9 +1,11 @@
 import { FormRow } from 'components/form/layout/layout'
 import { useTestProcessingServiceConnection } from 'data-services/hooks/processing-services/useTestProcessingServiceConnection'
-import { InputValue } from 'design-system/components/input/input'
-import { StatusInfo } from 'design-system/components/status-info/status-info'
-import { Status } from 'design-system/components/status-info/types'
-import * as Wizard from 'design-system/components/wizard/wizard'
+import {
+  ConnectionStatusInfo,
+  InputValue,
+  ConnectionStatus as Status,
+  Wizard,
+} from 'nova-ui-kit'
 import { useEffect, useState } from 'react'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
@@ -123,7 +125,7 @@ export const ConnectionStatus = ({
             className={styles.wizardTrigger}
             showToggle
           >
-            <StatusInfo status={status} tooltip={details} />
+            <ConnectionStatusInfo status={status} tooltip={details} />
           </Wizard.Trigger>
           <Wizard.Content className={styles.wizardContent}>
             <FormRow>

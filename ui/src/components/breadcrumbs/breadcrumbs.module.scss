@@ -1,20 +1,17 @@
-@import 'src/design-system/variables/colors.scss';
-@import 'src/design-system/variables/typography.scss';
-
 .breadcrumbs {
   display: flex;
   align-items: center;
 
   > :not(:last-child) {
-    margin-right: 16px;
+    margin-right: 12px;
   }
 }
 
 .breadcrumb {
   display: block;
-  @include paragraph-x-small();
-  font-weight: 600;
-  color: $color-neutral-700;
+  @include body-small;
+  font-weight: 500;
+  color: var(--color-foreground);
 
   span {
     &:last-child {
@@ -23,11 +20,11 @@
   }
 
   &.link {
-    color: $color-primary-1-600;
+    color: var(--color-primary);
   }
 }
 
-@media only screen and (max-width: $small-screen-breakpoint) {
+@media only screen and (max-width: $breakpoint-md) {
   .breadcrumb:not(:first-child):not(:last-child) {
     span {
       &:first-child {

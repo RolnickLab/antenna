@@ -4,8 +4,8 @@ import {
   FormRow,
   FormSection,
 } from 'components/form/layout/layout'
+import { MarkerPosition } from 'components/map/types'
 import { DeploymentFieldValues } from 'data-services/models/deployment-details'
-import { MarkerPosition } from 'design-system/map/types'
 import _ from 'lodash'
 import { Button } from 'nova-ui-kit'
 import { useContext, useMemo, useState } from 'react'

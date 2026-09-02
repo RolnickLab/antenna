@@ -1,7 +1,3 @@
-@import 'src/design-system/variables/variables.scss';
-@import 'src/design-system/variables/colors.scss';
-@import 'src/design-system/variables/typography.scss';
-
 .buttonWrapper {
   display: flex;
   gap: 16px;
@@ -25,7 +21,7 @@
 .image {
   width: fit-content;
   border-radius: 4px;
-  border: 1px solid $color-neutral-100;
+  border: 1px solid var(--color-border);
   overflow: hidden;
 
   img {
@@ -34,7 +30,7 @@
   }
 }
 
-@media only screen and (max-width: $small-screen-breakpoint) {
+@media only screen and (max-width: $breakpoint-md) {
   .section {
     margin: 16px 0;
   }

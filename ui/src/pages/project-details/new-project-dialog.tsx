@@ -1,7 +1,6 @@
 import { useCreateProject } from 'data-services/hooks/projects/useCreateProject'
-import * as Dialog from 'design-system/components/dialog/dialog'
 import { PlusIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
+import { Button, Dialog } from 'nova-ui-kit'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -15,27 +14,27 @@ export const NewProjectDialog = ({
   buttonSize = 'small',
   buttonVariant = 'outline',
 }: {
-  buttonSize?: string
-  buttonVariant?: string
+  buttonSize?: 'default' | 'small'
+  buttonVariant?: 'outline' | 'success'
 }) => {
   const navigate = useNavigate()
   const { createProject, isLoading, isSuccess, error } = useCreateProject()
   const [isOpen, setIsOpen] = useState(false)
-
-  const label = translate(STRING.ENTITY_CREATE, {
-    type: translate(STRING.ENTITY_TYPE_PROJECT),
-  })
 
   return (
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
       <Dialog.Trigger asChild>
         <Button size={buttonSize} variant={buttonVariant}>
           <PlusIcon className="w-4 h-4" />
-          <span>{label}</span>
+          <span>{translate(STRING.CREATE_NEW)}</span>
         </Button>
       </Dialog.Trigger>
       <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)} isCompact>
-        <Dialog.Header title={label} />
+        <Dialog.Header
+          title={translate(STRING.ENTITY_CREATE, {
+            type: translate(STRING.ENTITY_TYPE_PROJECT),
+          })}
+        />
         <NewProjectForm
           error={error}
           isLoading={isLoading}

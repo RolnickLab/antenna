@@ -1,9 +1,8 @@
 import classNames from 'classnames'
 import { usePopulateCaptureSet } from 'data-services/hooks/capture-sets/usePopulateCaptureSet'
 import { CaptureSet } from 'data-services/models/capture-set'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { AlertCircleIcon, Loader2, RefreshCcwIcon } from 'lucide-react'
-import { Button } from 'nova-ui-kit'
+import { BasicTooltip, Button } from 'nova-ui-kit'
 import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
 

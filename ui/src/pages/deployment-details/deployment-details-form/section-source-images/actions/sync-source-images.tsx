@@ -1,7 +1,6 @@
 import { useSyncDeploymentSourceImages } from 'data-services/hooks/deployments/useSyncDeploymentSourceImages'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { CheckIcon, EyeIcon, Loader2Icon } from 'lucide-react'
-import { Button, buttonVariants } from 'nova-ui-kit'
+import { BasicTooltip, Button, buttonVariants } from 'nova-ui-kit'
 import { Link } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'

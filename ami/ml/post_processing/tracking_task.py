@@ -1,38 +1,64 @@
-import dataclasses
 import logging
 import math
 import typing
 from collections.abc import Iterable
 
 import numpy as np
+import pydantic
 from django.db import transaction
 from django.db.models import Count
 
-from ami.main.models import Classification, Detection, Event, Occurrence, SourceImage
+from ami.main.models import Classification, Detection, Event, Occurrence, SourceImage, SourceImageCollection
 from ami.ml.models import Algorithm
 from ami.ml.post_processing.base import BasePostProcessingTask
 
-if typing.TYPE_CHECKING:
-    pass
 
+class TrackingConfig(pydantic.BaseModel):
+    """Scope and tunables for a tracking run.
 
-@dataclasses.dataclass
-class TrackingParams:
-    # cost_threshold: max sum of (1-cosine) + (1-IoU) + (1-box_ratio) + (distance/diag).
-    # WARNING: calibrated against synthetic features in tests. Real backbone embeddings
-    # have very different statistical properties (sparsity, norm distribution); tune
-    # per-dataset before relying on the default.
+    Scope: exactly one of ``source_image_collection_id`` or ``event_ids`` says
+    which sessions to track. A capture set is the bulk path; an explicit event
+    list is what the Events admin page sends.
+    """
+
+    source_image_collection_id: int | None = None
+    event_ids: list[int] = []
+
+    # Maximum matching cost between two detections in consecutive captures. The cost
+    # sums (1 - cosine similarity of embeddings), (1 - IoU), (1 - box area ratio) and
+    # (centre distance / image diagonal), so a lower threshold links only detections
+    # that barely moved and look alike.
+    # WARNING: the default is calibrated against synthetic features in tests. Tune it
+    # per dataset, and raise it when running without embeddings (see require_features).
     cost_threshold: float = 0.2
+
+    # When True, a pair of detections is only considered if both carry a feature
+    # embedding. When False, pairs without embeddings are still matched on geometry
+    # alone (the appearance term is dropped, which makes matching more permissive) —
+    # this is what lets tracking run on data processed before embeddings were stored.
+    require_features: bool = True
+
     skip_if_human_identifications: bool = True
     require_completely_processed_session: bool = False
+
     # v1 only operates on fresh data: every detection has its own auto-created
     # occurrence (1:1) and no chain links exist yet. Re-tracking previously-tracked
-    # data is a v2 concern (see PR #1272 for incremental/append-prepend plan).
+    # data is a v2 concern (see #1272 for the incremental append/prepend plan).
     require_fresh_event: bool = True
+
+    # Which feature extractor's embeddings to compare. Left unset, the task infers it
+    # when exactly one algorithm produced embeddings for the event.
     feature_extraction_algorithm_id: int | None = None
 
+    @pydantic.root_validator(skip_on_failure=True)
+    def _exactly_one_scope(cls, values: dict) -> dict:
+        scopes = [values.get("source_image_collection_id"), values.get("event_ids") or None]
+        if sum(s is not None for s in scopes) != 1:
+            raise ValueError("Provide exactly one of source_image_collection_id or event_ids")
+        return values
 
-DEFAULT_TRACKING_PARAMS = TrackingParams()
+    class Config:
+        extra = "forbid"
 
 
 def cosine_similarity(v1: Iterable[float], v2: Iterable[float]) -> float:
@@ -74,12 +100,16 @@ def image_diagonal(width: int, height: int) -> int:
 
 
 def total_cost(f1, f2, bb1, bb2, diag) -> float:
-    return (
-        (1 - cosine_similarity(f1, f2))
-        + (1 - iou(bb1, bb2))
-        + (1 - box_ratio(bb1, bb2))
-        + distance_ratio(bb1, bb2, diag)
-    )
+    """Matching cost between two detections; lower means more likely the same insect.
+
+    The appearance term is dropped when either detection has no embedding, leaving
+    a geometry-only cost. Dropping a non-negative term lowers the total, so a
+    geometry-only run matches more readily at the same threshold.
+    """
+    geometry = (1 - iou(bb1, bb2)) + (1 - box_ratio(bb1, bb2)) + distance_ratio(bb1, bb2, diag)
+    if f1 is None or f2 is None:
+        return geometry
+    return (1 - cosine_similarity(f1, f2)) + geometry
 
 
 def get_unique_feature_algorithm_for_event(event: Event) -> tuple[Algorithm | None, list[Algorithm]]:
@@ -154,7 +184,9 @@ def get_feature_vector(detection: Detection, algorithm: Algorithm):
     )
 
 
-def assign_occurrences_from_detection_chains(source_images: list[SourceImage], logger: logging.Logger) -> None:
+def assign_occurrences_from_detection_chains(
+    source_images: list[SourceImage], logger: logging.Logger
+) -> dict[str, int]:
     """
     Walk chains via ``Detection.next_detection`` and consolidate each chain into
     a single occurrence using a merge-into-first strategy:
@@ -166,6 +198,8 @@ def assign_occurrences_from_detection_chains(source_images: list[SourceImage], l
 
     Designed for fresh-event input (1:1 detection/occurrence). v2 incremental tracking
     can reuse this primitive for prepend/append: keeper survives, new detections fold in.
+
+    Returns counters for the caller's stage metrics.
     """
     visited: set[int] = set()
     created = 0
@@ -239,6 +273,12 @@ def assign_occurrences_from_detection_chains(source_images: list[SourceImage], l
         f"Materialized {created} new occurrences across {len(source_images)} images. "
         f"Occurrences before: {existing}, after: {new_count}. Detections processed: {len(visited)}."
     )
+    return {
+        "occurrences_before": existing,
+        "occurrences_after": new_count,
+        "occurrences_created": created,
+        "occurrences_merged": merged,
+    }
 
 
 def pair_detections(
@@ -247,28 +287,36 @@ def pair_detections(
     image_width: int,
     image_height: int,
     cost_threshold: float,
-    algorithm: Algorithm,
+    algorithm: Algorithm | None,
     logger: logging.Logger,
-) -> None:
+    require_features: bool = True,
+) -> int:
     """
     Greedy lowest-cost matching between two adjacent images. Sets `next_detection`
     on each detection in `current_detections` for the best partner in `next_detections`,
     if that partner's cost is below `cost_threshold` and not already claimed.
+
+    With ``require_features=False``, detections that carry no embedding are still
+    matched, on geometry alone. Returns the number of links created.
     """
     diag = image_diagonal(image_width, image_height)
     candidates: list[tuple[Detection, Detection, float]] = []
 
     # Cache feature lookups: one query per detection instead of O(m*n).
-    current_vectors = {det.pk: get_feature_vector(det, algorithm) for det in current_detections}
-    next_vectors = {nxt.pk: get_feature_vector(nxt, algorithm) for nxt in next_detections}
+    if algorithm is None:
+        current_vectors: dict[int, typing.Any] = {}
+        next_vectors: dict[int, typing.Any] = {}
+    else:
+        current_vectors = {det.pk: get_feature_vector(det, algorithm) for det in current_detections}
+        next_vectors = {nxt.pk: get_feature_vector(nxt, algorithm) for nxt in next_detections}
 
     for det in current_detections:
-        det_vec = current_vectors[det.pk]
-        if det_vec is None:
+        det_vec = current_vectors.get(det.pk)
+        if det_vec is None and require_features:
             continue
         for nxt in next_detections:
-            nxt_vec = next_vectors[nxt.pk]
-            if nxt_vec is None:
+            nxt_vec = next_vectors.get(nxt.pk)
+            if nxt_vec is None and require_features:
                 continue
             cost = total_cost(det_vec, nxt_vec, det.bbox, nxt.bbox, diag)
             if cost < cost_threshold:
@@ -279,6 +327,7 @@ def pair_detections(
 
     claimed_current: set[int] = set()
     claimed_next: set[int] = set()
+    links = 0
 
     for det, nxt, cost in candidates:
         if det.id in claimed_current or nxt.id in claimed_next:
@@ -296,23 +345,27 @@ def pair_detections(
         det.save()
         claimed_current.add(det.id)
         claimed_next.add(nxt.id)
+        links += 1
         logger.debug(f"Linked detection {det.id} -> {nxt.id} (cost {cost:.4f})")
+
+    return links
 
 
 def assign_occurrences_by_tracking_images(
     event: Event,
     logger: logging.Logger,
-    algorithm: Algorithm,
-    params: TrackingParams = DEFAULT_TRACKING_PARAMS,
+    algorithm: Algorithm | None,
+    config: TrackingConfig,
     progress_cb: typing.Callable[[float], None] | None = None,
-) -> None:
+) -> dict[str, int]:
     source_images = list(event.captures.order_by("timestamp"))
     if len(source_images) < 2:
         logger.warning(f"Event {event.pk}: not enough images to track ({len(source_images)})")
-        return
+        return {}
 
     transitions = len(source_images) - 1
     skipped_transitions = 0
+    links = 0
     # Per-event atomic boundary: a crash mid-event rolls back chain links + occurrence
     # consolidation for THIS event only, leaving other events in the job intact.
     with transaction.atomic():
@@ -330,14 +383,15 @@ def assign_occurrences_by_tracking_images(
                     progress_cb((i + 1) / transitions)
                 continue
 
-            pair_detections(
+            links += pair_detections(
                 list(cur.detections.all()),
                 list(nxt.detections.all()),
                 image_width=cur.width,
                 image_height=cur.height,
-                cost_threshold=params.cost_threshold,
+                cost_threshold=config.cost_threshold,
                 algorithm=algorithm,
                 logger=logger,
+                require_features=config.require_features,
             )
             if progress_cb:
                 progress_cb((i + 1) / transitions)
@@ -348,47 +402,44 @@ def assign_occurrences_by_tracking_images(
                 "due to missing image dimensions."
             )
 
-        assign_occurrences_from_detection_chains(source_images, logger)
+        counters = assign_occurrences_from_detection_chains(source_images, logger)
+
+    counters["links_created"] = links
+    return counters
 
 
 class TrackingTask(BasePostProcessingTask):
     """
-    Reconstruct occurrences in a SourceImageCollection by tracking detections across
-    consecutive captures using feature embeddings + bbox geometry. Updates each
-    Detection's `next_detection` link and creates one Occurrence per chain.
+    Reconstruct occurrences by tracking detections across consecutive captures using
+    feature embeddings and bbox geometry. Updates each Detection's ``next_detection``
+    link and folds each chain of detections into a single Occurrence.
     """
 
     key = "tracking"
     name = "Occurrence Tracking"
+    config_schema = TrackingConfig
 
-    # Scope keys live outside TrackingParams (which is reserved for algorithm tunables).
-    # Mirrors the pattern: scope = where to run; params = how to run.
-    _SCOPE_CONFIG_KEYS = frozenset({"event_ids"})
-
-    def _params(self) -> TrackingParams:
-        config_keys = {f.name for f in dataclasses.fields(TrackingParams)}
-        overrides = {k: v for k, v in self.config.items() if k in config_keys}
-        unknown = set(self.config) - config_keys - self._SCOPE_CONFIG_KEYS
-        if unknown:
-            self.logger.warning(f"Ignoring unknown tracking config keys: {sorted(unknown)}")
-        return dataclasses.replace(DEFAULT_TRACKING_PARAMS, **overrides)
+    config: TrackingConfig
 
     def _resolve_events(self) -> list[Event]:
         """
-        Returns events to track from ``config["event_ids"]``.
+        Return the events to track, from either scope in the config.
 
-        Both admin entry-points (EventAdmin, SourceImageCollectionAdmin) compute the
-        event id list at action time and pass it through ``config``. The task only
-        understands events; collections are flattened to event ids by the trigger.
-
-        If a job is attached, every resolved event must belong to ``job.project``;
-        cross-project IDs are dropped with a warning. This guards against a trigger
-        that smuggles event IDs from a project the operator can't see.
+        A capture set is flattened to the events its images belong to. When a job is
+        attached, every resolved event must belong to ``job.project``; cross-project
+        IDs are dropped with a warning. That guards against a trigger smuggling event
+        IDs from a project the operator cannot see.
         """
-        event_ids = self.config.get("event_ids")
-        if not event_ids:
-            raise ValueError("Tracking task requires `event_ids` in config.")
-        qs = Event.objects.filter(pk__in=event_ids)
+        if self.config.source_image_collection_id is not None:
+            collection = SourceImageCollection.objects.filter(pk=self.config.source_image_collection_id).first()
+            if collection is None:
+                raise ValueError(f"Capture set {self.config.source_image_collection_id} not found.")
+            qs = Event.objects.filter(captures__collections=collection).distinct()
+            requested: list[int] | None = None
+        else:
+            requested = list(self.config.event_ids)
+            qs = Event.objects.filter(pk__in=requested)
+
         if self.job and self.job.project_id:
             cross_project = list(qs.exclude(project_id=self.job.project_id).values_list("pk", flat=True))
             if cross_project:
@@ -397,29 +448,64 @@ class TrackingTask(BasePostProcessingTask):
                     f"{self.job.project_id}: {cross_project}"
                 )
                 qs = qs.filter(project_id=self.job.project_id)
-        events = list(qs.order_by("created_at").distinct())
-        missing = set(event_ids) - {e.pk for e in events}
-        if missing:
-            self.logger.warning(f"Tracking requested {sorted(missing)} but those events were not found.")
+
+        events = list(qs.order_by("pk").distinct())
+        if requested is not None:
+            missing = set(requested) - {e.pk for e in events}
+            if missing:
+                self.logger.warning(f"Tracking requested {sorted(missing)} but those events were not found.")
         return events
 
+    def _resolve_algorithm(self, event: Event) -> tuple[Algorithm | None, bool]:
+        """Return ``(algorithm, should_track)`` for one event.
+
+        ``algorithm`` is the feature extractor whose embeddings to compare, or None
+        when the run falls back to geometry alone.
+        """
+        if self.config.feature_extraction_algorithm_id is not None:
+            algorithm = Algorithm.objects.filter(pk=self.config.feature_extraction_algorithm_id).first()
+            if algorithm is None:
+                self.logger.warning(
+                    f"Configured feature_extraction_algorithm_id="
+                    f"{self.config.feature_extraction_algorithm_id} not found; skipping event {event.pk}."
+                )
+                return None, False
+            return algorithm, True
+
+        algorithm, candidates = get_unique_feature_algorithm_for_event(event)
+        if algorithm is not None:
+            return algorithm, True
+
+        if candidates:
+            candidate_names = [f"#{a.pk} {a.name}" for a in candidates]
+            message = (
+                f"Event {event.pk}: detections classified by {len(candidates)} different "
+                f"feature-extraction algorithms ({candidate_names}). Pass "
+                "feature_extraction_algorithm_id in the job config to disambiguate."
+            )
+        else:
+            message = f"Event {event.pk}: no detections carry feature embeddings."
+
+        if self.config.require_features:
+            self.logger.warning(f"{message} Skipping.")
+            return None, False
+
+        self.logger.info(f"{message} Matching on bounding-box geometry alone.")
+        return None, True
+
     def run(self) -> None:
-        params = self._params()
-        self.logger.info(f"Tracking starting with params: {params}")
+        self.logger.info(f"Tracking starting with config: {self.config.dict()}")
 
         events = self._resolve_events()
         total = len(events)
-        collection_ref = (
-            f" (job collection #{self.job.source_image_collection.pk})"
-            if self.job and self.job.source_image_collection
-            else ""
-        )
-        self.logger.info(f"Tracking: {total} events{collection_ref}")
+        self.logger.info(f"Tracking: {total} event(s) in scope")
+
+        totals = {"events_tracked": 0, "events_skipped": 0, "links_created": 0, "occurrences_merged": 0}
 
         for idx, event in enumerate(events, start=1):
             self.logger.info(f"Tracking event {idx}/{total} (id={event.pk})")
 
-            if params.require_fresh_event:
+            if self.config.require_fresh_event:
                 fresh, reason = event_is_fresh(event)
                 if not fresh:
                     self.logger.info(
@@ -427,45 +513,29 @@ class TrackingTask(BasePostProcessingTask):
                         "v1 only handles 1:1 detection/occurrence input. "
                         "Re-tracking previously-tracked data lands in v2 (incremental)."
                     )
+                    totals["events_skipped"] += 1
                     continue
 
-            if params.feature_extraction_algorithm_id is not None:
-                algorithm = Algorithm.objects.filter(pk=params.feature_extraction_algorithm_id).first()
-                if algorithm is None:
-                    self.logger.warning(
-                        f"Configured feature_extraction_algorithm_id="
-                        f"{params.feature_extraction_algorithm_id} not found; skipping event {event.pk}."
-                    )
-                    continue
-                self.logger.info(f"Using configured feature-extraction algorithm {algorithm.pk} for event {event.pk}.")
-            else:
-                algorithm, candidates = get_unique_feature_algorithm_for_event(event)
-                if algorithm is None:
-                    if candidates:
-                        candidate_names = [f"#{a.pk} {a.name}" for a in candidates]
-                        self.logger.warning(
-                            f"Event {event.pk}: detections classified by {len(candidates)} different "
-                            f"feature-extraction algorithms ({candidate_names}). Pass "
-                            "feature_extraction_algorithm_id in the job config to disambiguate. Skipping."
-                        )
-                    else:
-                        self.logger.warning(
-                            f"Event {event.pk}: no detections with feature embeddings. "
-                            "Run the processing pipeline first. Skipping."
-                        )
-                    continue
+            algorithm, should_track = self._resolve_algorithm(event)
+            if not should_track:
+                totals["events_skipped"] += 1
+                continue
 
             if (
-                params.skip_if_human_identifications
+                self.config.skip_if_human_identifications
                 and Occurrence.objects.filter(event=event, identifications__isnull=False).exists()
             ):
                 self.logger.info(f"Skipping event {event.pk}: has human identifications.")
+                totals["events_skipped"] += 1
                 continue
 
-            if params.require_completely_processed_session and not event_fully_processed(
-                event, logger=self.logger, algorithm=algorithm
+            if (
+                self.config.require_completely_processed_session
+                and algorithm is not None
+                and not event_fully_processed(event, logger=self.logger, algorithm=algorithm)
             ):
                 self.logger.info(f"Skipping event {event.pk}: not fully processed.")
+                totals["events_skipped"] += 1
                 continue
 
             def _stage_progress(p: float, _idx=idx, _total=total) -> None:
@@ -473,13 +543,24 @@ class TrackingTask(BasePostProcessingTask):
                 overall = ((_idx - 1) + p) / _total
                 self.update_progress(overall)
 
-            assign_occurrences_by_tracking_images(
+            counters = assign_occurrences_by_tracking_images(
                 event=event,
                 logger=self.logger,
                 algorithm=algorithm,
-                params=params,
+                config=self.config,
                 progress_cb=_stage_progress,
             )
+            totals["events_tracked"] += 1
+            totals["links_created"] += counters.get("links_created", 0)
+            totals["occurrences_merged"] += counters.get("occurrences_merged", 0)
 
+        self.report_stage_metrics(
+            {
+                "Events tracked": totals["events_tracked"],
+                "Events skipped": totals["events_skipped"],
+                "Detection links created": totals["links_created"],
+                "Occurrences merged": totals["occurrences_merged"],
+            }
+        )
         self.update_progress(1.0)
-        self.logger.info("Tracking finished.")
+        self.logger.info(f"Tracking finished: {totals}")

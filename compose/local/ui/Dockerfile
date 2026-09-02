@@ -1,5 +1,5 @@
 # Node version should always match the version in `ui/.nvmrc`
-FROM node:18
+FROM node:22
 
 # Set the working directory in the container
 WORKDIR /app

@@ -1,8 +1,6 @@
 import { FormSection } from 'components/form/layout/layout'
-import { FileInput } from 'design-system/components/file-input/file-input'
-import { FileInputAccept } from 'design-system/components/file-input/types'
 import { PlusIcon, XIcon } from 'lucide-react'
-import { Button, buttonVariants } from 'nova-ui-kit'
+import { Button, buttonVariants, FileInput } from 'nova-ui-kit'
 import { ReactNode } from 'react'
 import { API_MAX_UPLOAD_SIZE } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
@@ -65,7 +63,7 @@ export const SelectImagesSection = ({
         {canUpload && (
           <Card>
             <FileInput
-              accept={FileInputAccept.Images}
+              accept="images"
               multiple
               name="select-captures"
               renderInput={({ onClick }) => (

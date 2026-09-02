@@ -2,20 +2,18 @@ import {
   BlueprintCollection,
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
+import { TaxonDetails } from 'components/taxon-details/taxon-details'
 import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
-import {
-  InfoBlockField,
-  InfoBlockFieldValue,
-} from 'design-system/components/info-block/info-block'
-import * as Tabs from 'design-system/components/tabs/tabs'
-import { BasicTooltip } from 'design-system/components/tooltip/basic-tooltip'
 import { SearchIcon } from 'lucide-react'
 import {
+  BasicTooltip,
   Box,
   Button,
   CodeBlock,
   IdentificationScore,
-  TaxonDetails,
+  InfoBlockField,
+  InfoBlockFieldValue,
+  Tabs,
 } from 'nova-ui-kit'
 import { useMemo, useRef, useState } from 'react'
 import { Helmet } from 'react-helmet-async'
@@ -193,7 +191,6 @@ export const OccurrenceDetails = ({
                 <span>{translate(STRING.SUGGEST_ID)}</span>
               </Button>
               <IdQuickActions
-                containerRef={containerRef}
                 occurrenceIds={[occurrence.id]}
                 occurrenceTaxa={[occurrence.determinationTaxon]}
               />

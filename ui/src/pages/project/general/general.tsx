@@ -1,7 +1,7 @@
 import classNames from 'classnames'
 import { useUpdateProject } from 'data-services/hooks/projects/useUpdateProject'
 import { Project } from 'data-services/models/project'
-import styles from 'design-system/components/dialog/dialog.module.scss'
+import styles from 'nova-ui-kit/components/dialog/dialog.module.scss'
 import { DeleteProjectDialog } from 'pages/project-details/delete-project-dialog'
 import { ProjectDetailsForm } from 'pages/project-details/project-details-form'
 import { useEffect } from 'react'

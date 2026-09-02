@@ -26,7 +26,7 @@ export const ErrorState = ({ compact, error }: ErrorStateProps) => {
     return (
       <div className="flex items-center gap-2">
         <AlertCircleIcon className="w-4 h-4 text-destructive" />
-        <span className="pt-0.5 body-small text-muted-foreground">{title}</span>
+        <span className="pt-0.5 text-muted-foreground">{title}</span>
       </div>
     )
   }

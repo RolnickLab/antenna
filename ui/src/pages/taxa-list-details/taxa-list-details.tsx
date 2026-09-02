@@ -1,12 +1,14 @@
 import { useSpecies } from 'data-services/hooks/species/useSpecies'
 import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
 import { useTaxaListDetails } from 'data-services/hooks/taxa-lists/useTaxaListDetails'
-import * as Dialog from 'design-system/components/dialog/dialog'
-import { PageFooter } from 'design-system/components/page-footer/page-footer'
-import { PageHeader } from 'design-system/components/page-header/page-header'
-import { PaginationBar } from 'design-system/components/pagination-bar/pagination-bar'
-import { SortControl } from 'design-system/components/sort-control'
-import { Table } from 'design-system/components/table/table/table'
+import {
+  Dialog,
+  PageFooter,
+  PageHeader,
+  PaginationBar,
+  SortControl,
+  Table,
+} from 'nova-ui-kit'
 import { SpeciesDetails, TABS } from 'pages/species-details/species-details'
 import { useContext, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'

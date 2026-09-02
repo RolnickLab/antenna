@@ -1,0 +1,75 @@
+.tableHeader {
+  white-space: nowrap;
+  vertical-align: middle;
+  padding: 2px;
+  border-bottom: 2px solid var(--color-border);
+  background-color: var(--color-neutral-50);
+  text-align: left;
+
+  &.sticky {
+    width: 100%;
+  }
+}
+
+.content {
+  padding: 16px 32px 16px 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.columnName {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+
+  span {
+    @include body-base;
+    font-weight: 600;
+    color: var(--color-muted-foreground);
+  }
+}
+
+.sortButton {
+  outline: none;
+  display: flex;
+  align-items: center;
+  position: relative;
+
+  .columnName {
+    position: relative;
+  }
+
+  &:hover {
+    opacity: 0.7;
+    cursor: pointer;
+  }
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px var(--color-generic-black);
+  }
+}
+
+.iconWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center;
+
+  &.ascending {
+    transform: rotate(180deg);
+  }
+}
+
+.visuallyHidden {
+  width: 0;
+  height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+@media only screen and (max-width: $breakpoint-md) {
+  .content {
+    padding: 12px 16px;
+  }
+}

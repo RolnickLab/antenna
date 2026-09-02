@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { MarkerPosition } from 'design-system/map/types'
+import { MarkerPosition } from 'components/map/types'
 import _ from 'lodash'
 import { useEffect, useState } from 'react'
 import { SearchResult, ServerSearchResult } from './types'

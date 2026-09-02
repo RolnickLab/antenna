@@ -1,0 +1,32 @@
+.wrapper {
+  width: 100%;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pageSettings {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.pageWindow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.divider {
+  @include body-small;
+  font-weight: 600;
+  color: var(--color-border);
+}
+
+@media only screen and (max-width: $breakpoint-md) {
+  .wrapper {
+    justify-content: center;
+  }
+}

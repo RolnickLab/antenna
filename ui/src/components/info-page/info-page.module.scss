@@ -1,7 +1,3 @@
-@import 'src/design-system/variables/colors.scss';
-@import 'src/design-system/variables/typography.scss';
-@import 'src/design-system/variables/variables.scss';
-
 .wrapper {
   position: relative;
   width: 100%;
@@ -23,18 +19,18 @@
 .container {
   padding: 64px;
   border-radius: 8px;
-  border: 1px solid $color-neutral-100;
-  background: $color-generic-white;
-  color: $color-neutral-700;
+  border: 1px solid var(--color-border);
+  background: var(--color-generic-white);
+  color: var(--color-foreground);
 }
 
 .content {
-  max-width: $small-screen-breakpoint;
+  max-width: $breakpoint-md;
   min-height: 320px;
   margin: 0 auto;
 
   h1 {
-    @include heading-5();
+    @include heading-small;
     margin: 0;
 
     &:not(:last-child) {
@@ -43,7 +39,7 @@
   }
 
   h2 {
-    @include heading-6();
+    @include body-xlarge;
     margin: 0;
 
     &:not(:last-child) {
@@ -52,7 +48,7 @@
   }
 
   h3 {
-    @include paragraph-medium();
+    @include body-base;
     font-weight: 600;
     margin: 0;
 
@@ -62,7 +58,7 @@
   }
 
   p {
-    @include paragraph-medium();
+    @include body-base;
     margin: 0;
 
     &:not(:last-child) {
@@ -71,7 +67,7 @@
   }
 
   a {
-    color: $color-primary-1-600;
+    color: var(--color-primary);
     font-weight: 600;
   }
 
@@ -85,7 +81,7 @@
 
     li {
       display: list-item;
-      @include paragraph-medium();
+      @include body-base;
 
       &:not(:last-child) {
         margin-bottom: 8px;
@@ -101,7 +97,7 @@
 
     li {
       display: list-item;
-      @include paragraph-medium();
+      @include body-base;
 
       &:not(:last-child) {
         margin-bottom: 8px;
@@ -112,7 +108,7 @@
       margin: 0 0 8px;
 
       li {
-        @include heading-6();
+        @include body-xlarge;
 
         h2 {
           display: inline;
