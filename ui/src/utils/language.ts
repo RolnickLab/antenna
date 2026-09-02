@@ -344,6 +344,7 @@ export enum STRING {
   SET_PASSWORD,
   SETTINGS,
   SHOW_DETECTIONS,
+  SHOW_OCCURRENCE_TRAIL,
   SNAP_TO_DETECTIONS,
   SORT_BY,
   SORT_JOBS_ACTIVITY,
@@ -776,6 +777,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SET_PASSWORD_DETAILS]: 'Please set a new password for your acccount.',
   [STRING.SET_PASSWORD]: 'Set password',
   [STRING.SETTINGS]: 'Settings',
+  [STRING.SHOW_OCCURRENCE_TRAIL]:
+    'Show path of selected occurrences',
   [STRING.SHOW_DETECTIONS]: 'Show detections',
   [STRING.SNAP_TO_DETECTIONS]: 'Snap to captures with detections',
   [STRING.SORT_BY]: 'Sort by',

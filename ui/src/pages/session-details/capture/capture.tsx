@@ -1,6 +1,7 @@
 import classNames from 'classnames'
 import { DeterminationScore } from 'components/determination-score'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
+import { useOccurrenceTrails } from 'data-services/hooks/occurrences/useOccurrenceTrails'
 import { CaptureDetection } from 'data-services/models/capture'
 import { Dialog, LoadingSpinner, Tooltip } from 'nova-ui-kit'
 import {
@@ -16,6 +17,8 @@ import {
 import { SCORE_THRESHOLDS } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import { useActiveOccurrences } from '../hooks/useActiveOccurrences'
+import { BoxStyle, bboxToPercentStyle } from './bbox'
+import { CaptureGhostTrail } from './capture-ghost-trail'
 import { TierSources } from './capture-tiers'
 import styles from './capture.module.scss'
 import { useCaptureTiers } from './useCaptureTiers'
@@ -27,32 +30,31 @@ const FALLBACK_RATIO = 16 / 9
 const DEFAULT_MAX_SCALE = 8
 const MAX_OVERZOOM = 2
 
-interface BoxStyle {
-  width: string
-  height: string
-  top: string
-  left: string
-}
-
 interface CaptureProps {
+  captureId?: string
   defaultFilters: boolean
   detections: CaptureDetection[]
   height: number | null
   showDetections?: boolean
+  showTrails?: boolean
   sources?: TierSources
   transformRef: React.RefObject<ReactZoomPanPinchRef>
   width: number | null
 }
 
 export const Capture = ({
+  captureId,
   defaultFilters,
   detections,
   height,
   showDetections,
+  showTrails,
   sources,
   transformRef,
   width,
 }: CaptureProps) => {
+  const { activeOccurrences } = useActiveOccurrences()
+  const { trails } = useOccurrenceTrails(showTrails ? activeOccurrences : [])
   const wrapperRef = useRef<HTMLDivElement>(null)
   const [naturalSize, setNaturalSize] = useState<{
     width: number
@@ -109,21 +111,10 @@ export const Capture = ({
   const boxStyles = useMemo(
     () =>
       detections.reduce((result: { [key: string]: BoxStyle }, detection) => {
-        const [boxLeft, boxTop, boxRight, boxBottom] = detection.bbox
-        const boxWidth = boxRight - boxLeft
-        const boxHeight = boxBottom - boxTop
+        const style = bboxToPercentStyle(detection.bbox, width, height)
 
-        // Boxes are in the original image's pixel space and the rendered image
-        // may be a downscaled thumbnail, so only stored dimensions can scale them.
-        if (!width || !height) {
-          return result
-        }
-
-        result[detection.id] = {
-          width: `${(boxWidth / width) * 100}%`,
-          height: `${(boxHeight / height) * 100}%`,
-          top: `${(boxTop / height) * 100}%`,
-          left: `${(boxLeft / width) * 100}%`,
+        if (style) {
+          result[detection.id] = style
         }
 
         return result
@@ -217,6 +208,9 @@ export const Capture = ({
             })}
           >
             {renderOverlay ? <CaptureOverlay boxStyles={boxStyles} /> : null}
+            {trails.length ? (
+              <CaptureGhostTrail activeCaptureId={captureId} trails={trails} />
+            ) : null}
             <CaptureDetections
               boxStyles={boxStyles}
               defaultFilters={defaultFilters}

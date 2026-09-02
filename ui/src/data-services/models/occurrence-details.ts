@@ -36,7 +36,11 @@ export interface MachinePrediction extends Identification {
 }
 
 export interface TrackFrame {
+  bbox: number[]
+  /** Stored dimensions of this frame's own capture, which its bbox is measured in. */
+  captureHeight?: number
   captureId?: string
+  captureWidth?: number
   id: string
   timestamp: Date
   timeLabel: string
@@ -56,7 +60,10 @@ export class OccurrenceDetails extends Occurrence {
     // ordering the endpoint happens to prefetch. See #1272.
     this._frames = this._occurrence.detections
       .map((d: any) => ({
+        bbox: d.bbox ?? [],
+        captureHeight: d.capture?.height ?? undefined,
         captureId: d.capture?.id !== undefined ? `${d.capture.id}` : undefined,
+        captureWidth: d.capture?.width ?? undefined,
         id: `${d.id}`,
         timestamp: new Date(d.timestamp),
         timeLabel: getFormatedTimeString({

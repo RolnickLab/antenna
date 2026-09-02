@@ -89,6 +89,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
   const [settings, setSettings] = useState({
     defaultFilters: true,
     showDetections: true,
+    showTrails: true,
   })
 
   // Data
@@ -165,10 +166,12 @@ const Content = ({ session }: { session: SessionDetails }) => {
         <div className="grow flex flex-col bg-background rounded-lg border border-border overflow-hidden md:rounded-xl">
           <div className="grow flex items-center justify-center bg-foreground">
             <Capture
+              captureId={activeCaptureId}
               defaultFilters={settings.defaultFilters}
               detections={activeCapture?.detections ?? []}
               height={activeCapture?.height ?? session.firstCapture.height}
               showDetections={settings.showDetections}
+              showTrails={settings.showTrails}
               sources={
                 activeCapture
                   ? {
