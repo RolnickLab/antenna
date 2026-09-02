@@ -8,8 +8,9 @@ import { useUser } from 'utils/user/userContext'
  * Shared plumbing for the track editing actions on an occurrence.
  *
  * Every one of them can change which detections the occurrence holds, and any such
- * change clears the grouping confirmation server-side, so all of them invalidate the
- * occurrence queries rather than patching the cache.
+ * change clears the grouping confirmation server-side, so all of them invalidate rather
+ * than patching the cache. Captures are invalidated alongside occurrences because a
+ * capture payload carries the occurrence behind each box, which an edit can change.
  */
 export const useTrackAction = <Body, Result>(
   occurrenceId: string,
@@ -28,6 +29,7 @@ export const useTrackAction = <Body, Result>(
         ),
       onSuccess: () => {
         queryClient.invalidateQueries([API_ROUTES.OCCURRENCES])
+        queryClient.invalidateQueries([API_ROUTES.CAPTURES])
       },
     }
   )
