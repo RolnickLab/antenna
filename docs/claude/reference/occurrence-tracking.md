@@ -178,6 +178,32 @@ always showing chains of length one.
   snapshots column shows several crops. Sorting by duration descending is the fastest
   check that a pass produced anything sensible.
 
+## The front end
+
+`ui/src/pages/occurrence-details/track/` and `ui/src/pages/session-details/capture/`.
+
+Occurrence detail carries the repair path: a per-frame menu (split, move, remove) and an
+occurrence-level bar (merge, confirm/undo, and a badge naming who confirmed and when).
+Session detail draws the rest of a selected occurrence's frames over the current capture
+as fading dashed boxes joined by the path through their centres, capped at sixteen boxes
+and toggled from view settings.
+
+Four things that are easy to get wrong here:
+
+- **The strip is newest-first but a split cuts by time.** `OccurrenceDetails` sorts frames
+  by timestamp rather than taking payload order, so display position and split semantics
+  cannot drift apart. The confirmation copy names the boundary time and the counts either
+  side.
+- **The confirmation dialogs are rendered by the page, not by the frame menu.** An edit
+  moves the clicked frame off the occurrence, so a dialog owned by that frame is unmounted
+  by the refresh before it can report its result.
+- **Controls are gated on `user_permissions` from the detail payload** — `delete` for
+  restructuring, `delete` or `update` for confirming, mirroring
+  `Occurrence.check_custom_permission`.
+- **A ghost box is measured in its own capture.** `bboxToPercentStyle` takes the
+  dimensions explicitly; scaling a neighbouring frame's box by the displayed capture's
+  dimensions puts it in the wrong place.
+
 ## Editing and confirming a grouping
 
 `ami/main/models_future/tracks.py`, exposed as six actions on `OccurrenceViewSet`. All
@@ -256,10 +282,13 @@ which is what forced the `or`.
 
 ## Open work
 
-- **A front end for any of it.** The six editing endpoints exist and are tested; nothing
-  in the interface calls them. Five directions are mocked up, the cheapest being a ghost
-  trail of neighbouring frames drawn over the session capture, which reuses the overlay
-  already at `ui/src/.../capture.tsx`.
+- **An edit can create an occurrence the API then hides.** A split or a removal makes a
+  new occurrence whose determination score may fall below the project's default score
+  threshold, at which point `apply_default_filters` excludes it from every list and detail
+  response — the row exists and passes `valid()`, but `GET /occurrences/<id>/` returns 404
+  and it cannot be offered back in a merge picker. Measured on a project with a 0.5
+  threshold: a detached frame scored 0.343. Some edits are therefore not reversible
+  through the interface.
 - **Sequence defect + a maximum pair gap** — see the section above; these ship together.
 - **A re-run must not overrule a confirmation.** Nothing currently stops a second tracking
   pass from re-merging a grouping a person split and confirmed. `event_is_fresh` refuses
