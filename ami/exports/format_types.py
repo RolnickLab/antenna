@@ -268,7 +268,6 @@ class DetectionsTabularSerializer(serializers.ModelSerializer):
 
     source_image_id = serializers.IntegerField(source="source_image.id", allow_null=True)
     source_image_path = serializers.CharField(source="source_image.path", allow_null=True)
-    source_image_url = serializers.SerializerMethodField()
 
     detection_bbox = serializers.CharField(source="bbox", allow_null=True)
     detection_crop_url = serializers.SerializerMethodField()
@@ -290,7 +289,6 @@ class DetectionsTabularSerializer(serializers.ModelSerializer):
             "project_name",
             "source_image_id",
             "source_image_path",
-            "source_image_url",
             "detection_bbox",
             "detection_crop_url",
             "detection_score",
@@ -303,10 +301,6 @@ class DetectionsTabularSerializer(serializers.ModelSerializer):
         """Returns the full URL to the cropped detection image."""
         path = getattr(obj, "path", None)
         return get_media_url(path) if path else None
-
-    def get_source_image_url(self, obj):
-        """Returns the full URL to the public capture image."""
-        return obj.source_image.public_url()
 
 
 class DetectionsCSVExporter(BaseCSVExporter):

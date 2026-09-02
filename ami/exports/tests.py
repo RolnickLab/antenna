@@ -576,5 +576,30 @@ class DetectionsExportFieldsTest(ExportDataTestCase):
         self.assertEqual(row["detection_bbox"], str(detection.bbox))
         self.assertEqual(row["detection_crop_url"], "/media/" + detection.path)
         self.assertEqual(row["source_image_path"], detection.source_image.path)
-        self.assertEqual(row["source_image_url"], detection.source_image.public_url())
         self.assertAlmostEqual(float(row["determination_score"]), 0.85, places=2)
+
+    def test_csv_has_expected_fields(self):
+        """fields are present as CSV column headers."""
+        self._create_occurrence_with_prediction()
+        rows = self._run_csv_export()
+        self.assertGreater(len(rows), 0)
+        headers = rows[0].keys()
+        expected_fields = [
+            "id",
+            "event_id",
+            "event_name",
+            "deployment_id",
+            "deployment_name",
+            "project_id",
+            "project_name",
+            "source_image_id",
+            "source_image_path",
+            "detection_bbox",
+            "detection_crop_url",
+            "detection_score",
+            "determination_id",
+            "determination_name",
+            "determination_score",
+        ]
+        for field in expected_fields:
+            self.assertIn(field, headers, f"Missing CSV field: {field}")
