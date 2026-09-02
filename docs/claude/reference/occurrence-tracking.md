@@ -96,6 +96,34 @@ a 4-second-interval session that was only sampled has almost nothing to link.
 This is also why `require_completely_processed_session` defaults off: "the whole session
 has been processed" is a state most real sessions never reach.
 
+## Defect: the sequence is built from all captures, not processed ones
+
+`tracking_task.py:358` is `source_images = list(event.captures.order_by("timestamp"))` —
+every capture — and the loop pairs `source_images[i]` with `[i+1]`. On a sampled session a
+processed capture's neighbours are unprocessed and hold no detections, so two processed
+captures with unprocessed ones between them are **never compared to each other**, at any
+threshold or time bound.
+
+Measured 2026-09-02 (transitions with detections on both sides):
+
+| event | captures | processed | evaluated | usable now | usable if fixed | median gap |
+|---|---|---|---|---|---|---|
+| 2610 | 4,138 | 663 | 4,137 | **0** | 662 | 60 s |
+| 349 | 17,555 | 23 | 17,554 | **0** | 22 | 1,200 s |
+| 6834 | 2,545 | 391 | 2,544 | 69 | 390 | 50 s |
+| 6719 | 453 | 294 | 452 | 272 | 293 | 60 s |
+
+Event 6719 is 65% processed and densely contiguous, so it barely shows the defect — which
+is why every demo number came from it. Do not generalise from that session.
+
+The fix is to build the sequence from processed captures only (a capture counts as
+processed when any `Detection` row references it, sentinel included — the same signal
+`filter_processed_images` uses). **Do not ship it alone.** Once pairs form between
+processed captures the interval between them is unbounded, and `total_cost` has no elapsed-time
+term, so a different insect settling in the same spot a night later scores like a
+stationary one. Pair the fix with a configurable maximum gap; the minimum is bounded by
+the data model, which has no sub-second timestamps.
+
 ## Choosing `cost_threshold`
 
 Measure, do not guess. Best-match cost is bimodal. Geometry-only over one real session:
@@ -117,6 +145,23 @@ Built with `make_post_processing_action` (`ami/ml/post_processing/admin/actions.
 the same factory as Small Size Filter and Class Masking. Form in
 `ami/ml/post_processing/admin/tracking_form.py`; the Events job builder in
 `admin/tracking_actions.py`.
+
+## Getting a session to try it on
+
+`python manage.py create_demo_project` adds one night built for tracking: 24 captures two
+minutes apart in an event of their own, ten simulated insects (six staying for a run of
+six or more frames, four appearing once), 99 detections each on its own occurrence, and a
+2048-d embedding per classification under algorithm `demo-tracking-classifier`. It needs
+no processing service. The command prints which detections belong to which simulated
+insect, and `--ground-truth-output PATH` writes that mapping as JSON so a run can be
+scored against it — `score_tracking_run()` in `ami/tests/fixtures/tracking.py` does the
+comparison.
+
+Measured on the generated frames: an insect's own consecutive detections score under 0.15
+geometry-only, unrelated pairs never below 1.2. Both a geometry-only run at
+`cost_threshold=0.4` and a default run using the embeddings recover all ten groups
+exactly. `--tracking-motion-scale` above its 0.2 default makes the session harder.
+`--no-tracking-session` skips the extra night.
 
 ## Where results are visible
 
@@ -215,6 +260,7 @@ which is what forced the `or`.
   in the interface calls them. Five directions are mocked up, the cheapest being a ghost
   trail of neighbouring frames drawn over the session capture, which reuses the overlay
   already at `ui/src/.../capture.tsx`.
+- **Sequence defect + a maximum pair gap** — see the section above; these ship together.
 - **A re-run must not overrule a confirmation.** Nothing currently stops a second tracking
   pass from re-merging a grouping a person split and confirmed. `event_is_fresh` refuses
   already-grouped sessions wholesale, which is a blunt substitute.
