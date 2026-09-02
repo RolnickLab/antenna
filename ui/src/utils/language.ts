@@ -217,6 +217,7 @@ export enum STRING {
   MESSAGE_RESET_INSTRUCTIONS_SENT,
   MESSAGE_RESULT_RANGE,
   MESSAGE_SIGNED_UP,
+  MESSAGE_STATS_NO_COMPARABLE,
   MESSAGE_SYNC_ALL_CONFIRM,
   MESSAGE_SYNC_CONFIRM,
   MESSAGE_VALUE_INVALID,
@@ -285,12 +286,20 @@ export enum STRING {
   TOOLTIP_SCORE,
   TOOLTIP_SESSION,
   TOOLTIP_SITE,
+  TOOLTIP_STATS,
+  TOOLTIP_STATS_AGREEMENT_ANY_RANK,
+  TOOLTIP_STATS_AGREEMENT_EXACT,
+  TOOLTIP_STATS_KAPPA,
+  TOOLTIP_STATS_VERIFIED,
   TOOLTIP_STORAGE,
   TOOLTIP_VIEW_SOURCE_FILE,
 
   /* OTHER */
   ABOUT_ROLE,
   ABOUT_ROLES,
+  AGREEMENT_ANY_RANK,
+  AGREEMENT_EXACT,
+  AGREEMENT_KAPPA,
   ALGORITHMS,
   ANONYMOUS_USER,
   APPLY_ID_SHORT,
@@ -350,6 +359,7 @@ export enum STRING {
   SORT_OCCURRENCE_UPDATES,
   SORT_RECENT_CAPTURES,
   STAGES,
+  STATS,
   SUMMARY,
   TABLE_COLUMNS,
   TERMINAL_CLASSIFICATION,
@@ -361,6 +371,7 @@ export enum STRING {
   USER_INFO,
   VALUE_NOT_AVAILABLE,
   VERIFIED_BY,
+  VERIFIED_OCCURRENCES,
   VERIFIED,
   VIEW_IN_SESSION,
   VIEW_SETTINGS,
@@ -613,6 +624,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'Reset intructions has been sent to {{email}}!',
   [STRING.MESSAGE_RESULT_RANGE]:
     'Showing {{start}}-{{end}} of {{total}} result(s)',
+  [STRING.MESSAGE_STATS_NO_COMPARABLE]:
+    'None of the verified occurrences matching the current filters have both a model prediction and a confirmed taxon, so there is nothing to compare.',
   [STRING.MESSAGE_SIGNED_UP]: 'Signed up successfully!',
   [STRING.MESSAGE_SYNC_ALL_CONFIRM]:
     'This starts a background sync job for each of the {{count}} station(s) with a storage source.',
@@ -697,6 +710,16 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'A session is a fixed period of time of monitoring for one station. The period is typically one night.',
   [STRING.TOOLTIP_SITE]:
     'A site is a physical location where monitoring is taking place. One or many stations can be connected to a site.',
+  [STRING.TOOLTIP_STATS]:
+    "How closely the model agrees with people, for the occurrences currently shown by the filters. Agreement is given as a 95% confidence range rather than a single number, so a wide range means there are still too few verifications to be sure. Two things push these numbers up: confirmations made by clicking Agree on the model's own suggestion match by definition, and people tend to verify the striking or unusual detections first, so the verified set is not a random sample of the project.",
+  [STRING.TOOLTIP_STATS_AGREEMENT_ANY_RANK]:
+    'The model landed on the same branch of the tree of life as the confirmed taxon, for example the right genus or family even when the species differs, for {{count}} of {{comparable}} comparable occurrences ({{pct}}%).',
+  [STRING.TOOLTIP_STATS_AGREEMENT_EXACT]:
+    'The model predicted exactly the taxon a person confirmed, for {{count}} of {{comparable}} comparable occurrences ({{pct}}%).',
+  [STRING.TOOLTIP_STATS_KAPPA]:
+    "Cohen's kappa adjusts exact agreement for luck. Where one species dominates a project, a person and the model agree often just by both picking the common one. 1 means perfect agreement, 0 means no better than chance, and below 0 means worse than chance.",
+  [STRING.TOOLTIP_STATS_VERIFIED]:
+    '{{verified}} of {{total}} occurrences matching the current filters have been verified by a person. {{comparable}} of those can be compared against a model prediction, which is what the agreement numbers are measured on.',
   [STRING.TOOLTIP_STORAGE]:
     'A storage is a place where captures are kept, for example a S3 bucket. One or many stations can be connected to a storage.',
   [STRING.TOOLTIP_VIEW_SOURCE_FILE]: 'View source file',
@@ -704,6 +727,9 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   /* OTHER */
   [STRING.ABOUT_ROLE]: 'About role',
   [STRING.ABOUT_ROLES]: 'About roles',
+  [STRING.AGREEMENT_ANY_RANK]: 'Agreement (any rank)',
+  [STRING.AGREEMENT_EXACT]: 'Agreement (exact taxon)',
+  [STRING.AGREEMENT_KAPPA]: "Cohen's kappa (beyond chance)",
   [STRING.ALGORITHMS]: 'Algorithms',
   [STRING.ANONYMOUS_USER]: 'Anonymous user',
   [STRING.APPLY_ID_SHORT]: 'Apply',
@@ -762,6 +788,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SORT_OCCURRENCE_UPDATES]: 'Occurrence updates',
   [STRING.SORT_RECENT_CAPTURES]: 'Recent captures',
   [STRING.STAGES]: 'Stages',
+  [STRING.STATS]: 'Stats',
   [STRING.SUMMARY]: 'Summary',
   [STRING.TABLE_COLUMNS]: 'Table columns',
   [STRING.TERMINAL_CLASSIFICATION]: 'Terminal classification',
@@ -773,6 +800,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.USER_INFO]: 'User info',
   [STRING.VALUE_NOT_AVAILABLE]: 'n/a',
   [STRING.VERIFIED_BY]: 'Verified by\n{{name}}',
+  [STRING.VERIFIED_OCCURRENCES]: 'Verified occurrences',
   [STRING.VERIFIED]: 'Verified',
   [STRING.VIEW_IN_SESSION]: 'View in session',
   [STRING.VIEW_SETTINGS]: 'View settings',
