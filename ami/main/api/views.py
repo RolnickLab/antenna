@@ -1251,6 +1251,7 @@ class OccurrenceCollectionFilter(filters.BaseFilterBackend):
     Filter occurrences by the capture set their detections' captures belong to.
     """
 
+    queryset_filter_path = "detections__source_image__collections"
     query_params = ["collection_id", "collection"]  # @TODO remove "collection" param when UI is updated
 
     def filter_queryset(self, request, queryset, view):
@@ -1261,7 +1262,7 @@ class OccurrenceCollectionFilter(filters.BaseFilterBackend):
                 break
         if collection_id:
             # Here the queryset is the Occurrence queryset
-            return queryset.filter(detections__source_image__collections=collection_id)
+            return queryset.filter(**{self.queryset_filter_path: collection_id})
         else:
             return queryset
 
