@@ -271,8 +271,16 @@ which is what forced the `or`.
 - **`Occurrence.save()` recomputes determination** via `update_occurrence_determination`.
   After moving detections between occurrences, save both.
 - **`Identification.occurrence` CASCADEs.** Any merge that deletes an absorbed occurrence
-  must reassign its identifications to the survivor first — `_absorb()` does. The batch
-  tracking task sidesteps the question entirely by refusing already-grouped sessions.
+  must reassign its identifications to the survivor first. Both paths now do:
+  `_absorb()` for human edits, and `assign_occurrences_from_detection_chains()` for the
+  batch pass. **Do not reintroduce the assumption that a fresh event has no
+  identifications** — the code claimed exactly that and it is false. Freshness means no
+  chains exist, which says nothing about whether anyone has reviewed the detections; an
+  untracked-but-reviewed session is ordinary. Measured on one real session: 12
+  identifications, of which a simulated run would have deleted 11, because the keeper is
+  the chain's first occurrence and an identified one survives only at roughly one in the
+  mean chain length. `skip_if_human_identifications` is a guard an operator can switch
+  off from the form, not an invariant.
 - **pgvector must be in the Postgres image AND the Python environment of both the django
   and celeryworker images.** With `VectorField` on the model but the module missing from
   the worker, `bulk_create` can save the row and silently drop the vector.
