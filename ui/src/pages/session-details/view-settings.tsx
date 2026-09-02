@@ -12,12 +12,10 @@ export const ViewSettings = ({
   onSettingsChange: (settings: {
     defaultFilters: boolean
     showDetections: boolean
-    showTrails: boolean
   }) => void
   settings: {
     defaultFilters: boolean
     showDetections: boolean
-    showTrails: boolean
   }
 }) => {
   const { projectId } = useParams()
@@ -49,17 +47,6 @@ export const ViewSettings = ({
               onSettingsChange({
                 ...settings,
                 showDetections: !settings.showDetections,
-              })
-            }
-          />
-          <Checkbox
-            id="show-trails"
-            label={translate(STRING.SHOW_OCCURRENCE_TRAIL)}
-            checked={settings.showTrails}
-            onCheckedChange={() =>
-              onSettingsChange({
-                ...settings,
-                showTrails: !settings.showTrails,
               })
             }
           />

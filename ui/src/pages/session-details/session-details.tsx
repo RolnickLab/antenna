@@ -89,7 +89,6 @@ const Content = ({ session }: { session: SessionDetails }) => {
   const [settings, setSettings] = useState({
     defaultFilters: true,
     showDetections: true,
-    showTrails: true,
   })
 
   // Data
@@ -171,7 +170,6 @@ const Content = ({ session }: { session: SessionDetails }) => {
               detections={activeCapture?.detections ?? []}
               height={activeCapture?.height ?? session.firstCapture.height}
               showDetections={settings.showDetections}
-              showTrails={settings.showTrails}
               sources={
                 activeCapture
                   ? {

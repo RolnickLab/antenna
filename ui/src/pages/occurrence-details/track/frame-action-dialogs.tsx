@@ -7,10 +7,10 @@ import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
-import { OccurrencePicker } from './occurrence-picker'
-import { TrackEditDialog } from './track-edit-dialog'
+import { OccurrencePicker } from 'components/track/occurrence-picker'
+import { TrackEditDialog } from 'components/track/track-edit-dialog'
 import { PendingFrameAction } from './types'
-import { useTrackCandidates } from './useTrackCandidates'
+import { useTrackCandidates } from 'components/track/useTrackCandidates'
 
 export const FrameActionDialogs = ({
   occurrence,

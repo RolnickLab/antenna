@@ -1,8 +1,9 @@
 import classNames from 'classnames'
 import { DeterminationScore } from 'components/determination-score'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
-import { useOccurrenceTrails } from 'data-services/hooks/occurrences/useOccurrenceTrails'
+import { useOccurrencePath } from 'data-services/hooks/occurrences/useOccurrencePath'
 import { CaptureDetection } from 'data-services/models/capture'
+import { PathFrame } from 'data-services/models/occurrence-path'
 import { Dialog, LoadingSpinner, Tooltip } from 'nova-ui-kit'
 import {
   OccurrenceDetails,
@@ -15,11 +16,14 @@ import {
   TransformWrapper,
 } from 'react-zoom-pan-pinch'
 import { SCORE_THRESHOLDS } from 'utils/constants'
+import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { STRING, translate } from 'utils/language'
 import { useActiveOccurrences } from '../hooks/useActiveOccurrences'
 import { BoxStyle, bboxToPercentStyle } from './bbox'
-import { CaptureGhostTrail } from './capture-ghost-trail'
+import { buildTrail, CaptureGhostTrail } from './capture-ghost-trail'
 import { TierSources } from './capture-tiers'
+import { OccurrenceToolbar } from './occurrence-toolbar'
+import { SessionTrackEdit, SessionTrackEdits } from './session-track-edits'
 import styles from './capture.module.scss'
 import { useCaptureTiers } from './useCaptureTiers'
 
@@ -36,7 +40,6 @@ interface CaptureProps {
   detections: CaptureDetection[]
   height: number | null
   showDetections?: boolean
-  showTrails?: boolean
   sources?: TierSources
   transformRef: React.RefObject<ReactZoomPanPinchRef>
   width: number | null
@@ -48,13 +51,26 @@ export const Capture = ({
   detections,
   height,
   showDetections,
-  showTrails,
   sources,
   transformRef,
   width,
 }: CaptureProps) => {
   const { activeOccurrences } = useActiveOccurrences()
-  const { trails } = useOccurrenceTrails(showTrails ? activeOccurrences : [])
+  // Which occurrence the operator asked to see the path of. Kept while that
+  // occurrence stays selected, so stepping between captures redraws the same path.
+  const [pathOccurrenceId, setPathOccurrenceId] = useState<string>()
+  const shownPathId =
+    pathOccurrenceId && activeOccurrences.includes(pathOccurrenceId)
+      ? pathOccurrenceId
+      : undefined
+  const { path, isLoading: isLoadingPath } = useOccurrencePath(
+    shownPathId,
+    !!shownPathId
+  )
+  const trail = useMemo(
+    () => (path?.length ? buildTrail(path, captureId) : undefined),
+    [path, captureId]
+  )
   const wrapperRef = useRef<HTMLDivElement>(null)
   const [naturalSize, setNaturalSize] = useState<{
     width: number
@@ -208,13 +224,18 @@ export const Capture = ({
             })}
           >
             {renderOverlay ? <CaptureOverlay boxStyles={boxStyles} /> : null}
-            {trails.length ? (
-              <CaptureGhostTrail activeCaptureId={captureId} trails={trails} />
-            ) : null}
+            {trail ? <CaptureGhostTrail trail={trail} /> : null}
             <CaptureDetections
               boxStyles={boxStyles}
               defaultFilters={defaultFilters}
               detections={detections}
+              captureId={captureId}
+              isLoadingPath={isLoadingPath}
+              onHidePath={() => setPathOccurrenceId(undefined)}
+              onShowPath={setPathOccurrenceId}
+              path={path}
+              pathOccurrenceId={shownPathId}
+              shownFrames={trail?.shownCount}
               showDetections={showDetections}
             />
           </div>
@@ -276,18 +297,49 @@ const CaptureOverlay = ({
 
 const CaptureDetections = ({
   boxStyles,
+  captureId,
   defaultFilters,
   detections,
+  isLoadingPath,
+  onHidePath,
+  onShowPath,
+  path,
+  pathOccurrenceId,
   showDetections,
+  shownFrames,
 }: {
   boxStyles: { [key: number]: BoxStyle }
+  captureId?: string
   defaultFilters: boolean
   detections: CaptureDetection[]
+  isLoadingPath?: boolean
+  onHidePath: () => void
+  onShowPath: (occurrenceId: string) => void
+  path?: PathFrame[]
+  pathOccurrenceId?: string
   showDetections?: boolean
+  shownFrames?: number
 }) => {
   const containerRef = useRef(null)
   const [activeOccurrence, setActiveOccurrence] = useState<string>()
+  const [trackEdit, setTrackEdit] = useState<SessionTrackEdit>()
   const { activeOccurrences, setActiveOccurrences } = useActiveOccurrences()
+
+  // Worded while the path is still the one on screen: the split moves the boundary
+  // frame off this occurrence, so the refreshed path can no longer describe it.
+  const describeSplit = (detectionId: string) => {
+    const index =
+      path?.findIndex((frame) => frame.detectionId === detectionId) ?? -1
+    const timestamp = index >= 0 ? path?.[index].timestamp : undefined
+
+    return {
+      movedBySplit: path && index >= 0 ? path.length - index : 0,
+      timeLabel: timestamp
+        ? getFormatedTimeString({ date: timestamp, options: { second: true } })
+        : translate(STRING.VALUE_NOT_AVAILABLE),
+      total: path?.length ?? 0,
+    }
+  }
 
   const toggleActiveState = (occurrenceId: string) => {
     const isActive = activeOccurrences.includes(occurrenceId)
@@ -343,22 +395,75 @@ const CaptureDetections = ({
                   collisionBoundary={containerRef?.current}
                   side="bottom"
                 >
-                  <div className="flex flex-col items-start gap-1">
-                    <button
-                      className="body-base text-primary font-medium"
-                      disabled={!detection.occurrenceId}
-                      onClick={() =>
+                  {detection.occurrenceId ? (
+                    <OccurrenceToolbar
+                      isLoadingPath={
+                        isLoadingPath &&
+                        pathOccurrenceId === detection.occurrenceId
+                      }
+                      occurrence={{
+                        frameCount: detection.frameCount,
+                        groupingVerified: detection.groupingVerified,
+                        groupingVerifiedAt: detection.groupingVerifiedAt,
+                        groupingVerifiedBy: detection.groupingVerifiedBy,
+                        id: detection.occurrenceId,
+                        label: detection.label,
+                        score: detection.score,
+                        scoreLabel: detection.scoreLabel,
+                      }}
+                      onHidePath={onHidePath}
+                      onMerge={() =>
+                        setTrackEdit({
+                          action: 'merge',
+                          detectionId: detection.id,
+                          occurrenceId: detection.occurrenceId as string,
+                        })
+                      }
+                      onOpenOccurrence={() =>
                         setActiveOccurrence(detection.occurrenceId)
                       }
-                    >
-                      <span>{detection.label}</span>
-                    </button>
-                    <DeterminationScore
-                      score={detection.score}
-                      scoreLabel={detection.scoreLabel}
-                      verified={detection.score === 1}
+                      onShowPath={() =>
+                        onShowPath(detection.occurrenceId as string)
+                      }
+                      onSplit={() =>
+                        setTrackEdit({
+                          action: 'split',
+                          detectionId: detection.id,
+                          occurrenceId: detection.occurrenceId as string,
+                          ...describeSplit(detection.id),
+                        })
+                      }
+                      onVerify={() =>
+                        setTrackEdit({
+                          action: 'verify',
+                          detectionId: detection.id,
+                          occurrenceId: detection.occurrenceId as string,
+                          verified: detection.groupingVerified,
+                        })
+                      }
+                      path={
+                        pathOccurrenceId === detection.occurrenceId
+                          ? path
+                          : undefined
+                      }
+                      shownFrames={
+                        pathOccurrenceId === detection.occurrenceId
+                          ? shownFrames
+                          : undefined
+                      }
                     />
-                  </div>
+                  ) : (
+                    <div className="flex flex-col items-start gap-1">
+                      <span className="body-base font-medium">
+                        {detection.label}
+                      </span>
+                      <DeterminationScore
+                        score={detection.score}
+                        scoreLabel={detection.scoreLabel}
+                        verified={detection.score === 1}
+                      />
+                    </div>
+                  )}
                 </Tooltip.Content>
               </Tooltip.Root>
             </Tooltip.Provider>
@@ -370,6 +475,11 @@ const CaptureDetections = ({
             onClose={() => setActiveOccurrence(undefined)}
           />
         ) : null}
+        <SessionTrackEdits
+          captureId={captureId}
+          edit={trackEdit}
+          onClose={() => setTrackEdit(undefined)}
+        />
       </div>
     </>
   )

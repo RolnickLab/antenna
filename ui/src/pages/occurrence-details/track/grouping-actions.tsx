@@ -9,9 +9,9 @@ import { useParams } from 'react-router-dom'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
 import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
-import { OccurrencePicker } from './occurrence-picker'
-import { TrackEditDialog } from './track-edit-dialog'
-import { useTrackCandidates } from './useTrackCandidates'
+import { OccurrencePicker } from 'components/track/occurrence-picker'
+import { TrackEditDialog } from 'components/track/track-edit-dialog'
+import { useTrackCandidates } from 'components/track/useTrackCandidates'
 
 export const GroupingActions = ({
   canRestructure,
