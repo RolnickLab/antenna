@@ -3434,7 +3434,7 @@ class OccurrenceQuerySet(BaseQuerySet):
         """Add prefetches the detail serializer needs (detections + source_image + classifications)."""
         from ami.main.models_future.occurrence import prefetch_detections_for_detail
 
-        return self.prefetch_related(prefetch_detections_for_detail())
+        return self.select_related("grouping_verified_by").prefetch_related(prefetch_detections_for_detail())
 
     def with_best_detection(self):
         """

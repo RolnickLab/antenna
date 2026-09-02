@@ -1459,11 +1459,17 @@ class OccurrenceListSerializer(DefaultSerializer):
         request: Request = self.context["request"]
         user = request.user
         project = instance.get_project()
+        project_perms = get_perms(user, project)
         permissions = set()
-        if Project.Permissions.CREATE_IDENTIFICATION in get_perms(user, project):
+        if Project.Permissions.CREATE_IDENTIFICATION in project_perms:
             # check if the user has identification permissions on this project,
             # then add  update permission to response
             permissions.add("update")
+        if Project.Permissions.DELETE_OCCURRENCES in project_perms:
+            # Mirrors Occurrence.check_custom_permission: this is the right the track
+            # editing actions are gated on, so the interface can only offer them when
+            # the API would accept them.
+            permissions.add("delete")
 
         instance_data["user_permissions"] = list(permissions)
         return instance_data
@@ -1569,6 +1575,7 @@ class OccurrenceSerializer(OccurrenceListSerializer):
     predictions = ClassificationNestedSerializer(many=True, read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
+    grouping_verified_by = UserNestedSerializer(read_only=True)
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
 
     class Meta:
@@ -1577,6 +1584,11 @@ class OccurrenceSerializer(OccurrenceListSerializer):
             "determination_id",
             "detections",
             "predictions",
+            # Whether a person confirmed this occurrence holds the right detections,
+            # which is a separate judgement from the taxon it was identified as.
+            "grouping_verified",
+            "grouping_verified_at",
+            "grouping_verified_by",
         ]
         read_only_fields = [
             "determination_score",

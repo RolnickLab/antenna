@@ -7855,6 +7855,22 @@ class TrackEditTestCase(APITestCase):
         self.assertIn(response.status_code, (401, 403))
         self.assertEqual(self.occurrence.detections.count(), len(self.detections))
 
+    def test_split_reports_the_counts_the_edit_left_behind(self):
+        """Both counts come from the database, not from the prefetched detections.
+
+        The detail queryset prefetches an occurrence's detections, and the related
+        manager answers .count() from that cache, so a response built from it would
+        report the detections the split had just moved away.
+        """
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.post(
+            f"/api/v2/occurrences/{self.occurrence.pk}/split-track/",
+            {"detection_id": self.detections[2].pk},
+            format="json",
+        )
+        self.assertEqual(response.data["occurrence_detections_count"], 2)
+        self.assertEqual(response.data["new_occurrence_detections_count"], len(self.detections) - 2)
+
 
 class OccurrenceGroupingTestCase(TrackEditTestCase):
     """Building the other half of a human-verified test set.
@@ -7997,3 +8013,32 @@ class OccurrenceGroupingTestCase(TrackEditTestCase):
             format="json",
         )
         self.assertEqual(restructure.status_code, 403)
+
+    def test_detail_advertises_the_rights_the_track_actions_need(self):
+        """The interface decides which controls to draw from these permissions.
+
+        Restructuring is gated on the occurrence delete right and confirming on
+        either right, so a reader who is offered a split button would only meet a
+        403 after clicking it.
+        """
+        self.client.force_authenticate(user=self.curator)
+        curator_view = self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/")
+        self.assertIn("delete", curator_view.data["user_permissions"])
+
+        self.client.force_authenticate(user=self.reader)
+        reader_view = self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/")
+        self.assertNotIn("delete", reader_view.data["user_permissions"])
+
+    def test_detail_reports_the_grouping_confirmation(self):
+        self.client.force_authenticate(user=self.curator)
+        before = self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/")
+        self.assertFalse(before.data["grouping_verified"])
+        self.assertIsNone(before.data["grouping_verified_by"])
+
+        self.client.post(f"/api/v2/occurrences/{self.occurrence.pk}/verify-grouping/", format="json")
+
+        after = self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/")
+        self.assertTrue(after.data["grouping_verified"])
+        self.assertIsNotNone(after.data["grouping_verified_at"])
+        self.assertEqual(after.data["grouping_verified_by"]["id"], self.curator.pk)
+        self.assertNotIn("email", after.data["grouping_verified_by"])

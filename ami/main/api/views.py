@@ -1559,13 +1559,21 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
 
     @staticmethod
     def _track_edit_response(occurrence: Occurrence, new_occurrence: Occurrence) -> Response:
+        # Count against the database rather than occurrence.detections: the detail
+        # queryset prefetches the detections, and the related manager answers .count()
+        # from that cache, which still holds the detections the edit just moved away.
+        counts = dict(
+            Detection.objects.filter(occurrence_id__in=[occurrence.pk, new_occurrence.pk])
+            .values_list("occurrence_id")
+            .annotate(total=models.Count("pk"))
+        )
         return Response(
             TrackEditResultSerializer(
                 {
                     "occurrence_id": occurrence.pk,
-                    "occurrence_detections_count": occurrence.detections.count(),
+                    "occurrence_detections_count": counts.get(occurrence.pk, 0),
                     "new_occurrence_id": new_occurrence.pk,
-                    "new_occurrence_detections_count": new_occurrence.detections.count(),
+                    "new_occurrence_detections_count": counts.get(new_occurrence.pk, 0),
                 }
             ).data
         )
