@@ -367,8 +367,10 @@ export enum STRING {
   TRACK_MOVE_DESCRIPTION,
   TRACK_MOVE_FRAME,
   TRACK_MOVE_RESULT,
+  TRACK_OPEN_NEW_OCCURRENCE,
   TRACK_NO_OTHER_OCCURRENCES,
   TRACK_PICK_OCCURRENCE,
+  TRACK_PICK_OCCURRENCE_SCOPE,
   TRACK_REMOVE_DESCRIPTION,
   TRACK_REMOVE_FRAME,
   TRACK_REMOVE_RESULT,
@@ -808,9 +810,12 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_MOVE_FRAME]: 'Move to another occurrence',
   [STRING.TRACK_MOVE_RESULT]:
     'Moved. Occurrence #{{id}} now holds {{count}} frames.',
+  [STRING.TRACK_OPEN_NEW_OCCURRENCE]: 'Open it',
   [STRING.TRACK_NO_OTHER_OCCURRENCES]:
-    'This session holds no other occurrence to pick.',
-  [STRING.TRACK_PICK_OCCURRENCE]: 'Occurrences in this session',
+    'No other occurrence shares a capture with this frame or the ones either side of it.',
+  [STRING.TRACK_PICK_OCCURRENCE]: 'Candidates near this frame',
+  [STRING.TRACK_PICK_OCCURRENCE_SCOPE]:
+    'Occurrences sharing a capture with this frame or the ones either side of it. Occurrences further away in time are not listed.',
   [STRING.TRACK_REMOVE_DESCRIPTION]:
     'The frame at {{time}} becomes an occurrence of its own, leaving {{remaining}} of {{total}} frames here. The rest of the track is stitched back together.',
   [STRING.TRACK_REMOVE_FRAME]: 'Remove this frame',

@@ -1,7 +1,8 @@
 import { FormError, FormMessage } from 'components/form/layout/layout'
-import { Loader2Icon } from 'lucide-react'
-import { Button, Dialog } from 'nova-ui-kit'
+import { ChevronRightIcon, Loader2Icon } from 'lucide-react'
+import { Button, buttonVariants, Dialog } from 'nova-ui-kit'
 import { ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
 
@@ -20,6 +21,7 @@ export const TrackEditDialog = ({
   onOpenChange,
   open,
   result,
+  resultLink,
   title,
 }: {
   children?: ReactNode
@@ -32,6 +34,8 @@ export const TrackEditDialog = ({
   onOpenChange: (open: boolean) => void
   open: boolean
   result?: string
+  /** Where the occurrence the edit created can be opened, once there is a result. */
+  resultLink?: string
   title: string
 }) => {
   const errorMessage = error ? parseServerError(error).message : undefined
@@ -46,7 +50,22 @@ export const TrackEditDialog = ({
           </span>
           {children}
           {errorMessage ? <FormError message={errorMessage} /> : null}
-          {result ? <FormMessage message={result} withIcon /> : null}
+          {result ? (
+            <FormMessage message={result} withIcon>
+              {resultLink ? (
+                <Link
+                  className={buttonVariants({
+                    size: 'small',
+                    variant: 'ghost',
+                  })}
+                  to={resultLink}
+                >
+                  <span>{translate(STRING.TRACK_OPEN_NEW_OCCURRENCE)}</span>
+                  <ChevronRightIcon className="w-4 h-4" />
+                </Link>
+              ) : null}
+            </FormMessage>
+          ) : null}
           <div className="flex justify-end gap-4">
             <Button
               onClick={() => onOpenChange(false)}

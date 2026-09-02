@@ -32,8 +32,11 @@ export const OccurrencePicker = ({
 
   return (
     <div className="flex flex-col gap-1 max-h-64 overflow-y-auto">
-      <span className="body-small text-muted-foreground">
+      <span className="body-small">
         {translate(STRING.TRACK_PICK_OCCURRENCE)}
+      </span>
+      <span className="body-small text-muted-foreground">
+        {translate(STRING.TRACK_PICK_OCCURRENCE_SCOPE)}
       </span>
       {candidates.map((candidate) => (
         <button

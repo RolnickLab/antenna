@@ -4,6 +4,8 @@ import { useSplitTrack } from 'data-services/hooks/occurrences/track/useSplitTra
 import { OccurrenceDetails } from 'data-services/models/occurrence-details'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { OccurrencePicker } from './occurrence-picker'
 import { TrackEditDialog } from './track-edit-dialog'
@@ -31,6 +33,18 @@ export const FrameActionDialogs = ({
     excludeIds: [occurrence.id],
     projectId: projectId as string,
   })
+
+  // A split or a removal can leave the new occurrence scoring under the project's
+  // default threshold, which hides it from every lookup. Carry the bypass on the link
+  // so the operator can still open — and undo — what they just made.
+  const openNewOccurrence = (occurrenceId: number) =>
+    getAppRoute({
+      to: APP_ROUTES.OCCURRENCE_DETAILS({
+        projectId: projectId as string,
+        occurrenceId: `${occurrenceId}`,
+      }),
+      filters: { apply_defaults: 'false' },
+    })
 
   const close = () => {
     setTargetId(undefined)
@@ -66,6 +80,11 @@ export const FrameActionDialogs = ({
               })
             : undefined
         }
+        resultLink={
+          split.result
+            ? openNewOccurrence(split.result.new_occurrence_id)
+            : undefined
+        }
         title={translate(STRING.TRACK_SPLIT_HERE)}
       />
 
@@ -86,6 +105,11 @@ export const FrameActionDialogs = ({
             ? translate(STRING.TRACK_REMOVE_RESULT, {
                 id: `${remove.result.new_occurrence_id}`,
               })
+            : undefined
+        }
+        resultLink={
+          remove.result
+            ? openNewOccurrence(remove.result.new_occurrence_id)
             : undefined
         }
         title={translate(STRING.TRACK_REMOVE_FRAME)}

@@ -35,7 +35,13 @@ export const useOccurrencesInCaptures = ({
       const params = {
         projectId,
         pagination: { page: 0, perPage: OCCURRENCES_PER_CAPTURE },
-        filters: [{ field: 'detections__source_image', value: captureId }],
+        filters: [
+          { field: 'detections__source_image', value: captureId },
+          // An occurrence a track edit created can score under the project's default
+          // threshold, which would keep it out of this list and make that edit
+          // impossible to undo from here.
+          { field: 'apply_defaults', value: 'false' },
+        ],
       }
 
       return {
