@@ -625,7 +625,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_RESULT_RANGE]:
     'Showing {{start}}-{{end}} of {{total}} result(s)',
   [STRING.MESSAGE_STATS_NO_COMPARABLE]:
-    'No verified occurrences with a model prediction match these filters yet, so there is nothing to compare.',
+    'None of the verified occurrences matching the current filters have both a model prediction and a confirmed taxon, so there is nothing to compare.',
   [STRING.MESSAGE_SIGNED_UP]: 'Signed up successfully!',
   [STRING.MESSAGE_SYNC_ALL_CONFIRM]:
     'This starts a background sync job for each of the {{count}} station(s) with a storage source.',
