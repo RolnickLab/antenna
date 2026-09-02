@@ -2026,3 +2026,35 @@ class TrackEditResultSerializer(serializers.Serializer):
     occurrence_detections_count = serializers.IntegerField(help_text="Detections it has left.")
     new_occurrence_id = serializers.IntegerField(help_text="The occurrence the detections moved into.")
     new_occurrence_detections_count = serializers.IntegerField(help_text="Detections it received.")
+
+
+class OccurrenceMergeSerializer(serializers.Serializer):
+    """Body for merging other occurrences into this one."""
+
+    occurrence_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        min_length=1,
+        help_text="Occurrences to fold into this one. They must be in the same session.",
+    )
+
+
+class OccurrenceAddDetectionsSerializer(serializers.Serializer):
+    """Body for moving individual detections into this occurrence."""
+
+    detection_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        min_length=1,
+        help_text="Detections to move into this occurrence, from wherever they are now.",
+    )
+
+
+class OccurrenceGroupingSerializer(serializers.Serializer):
+    """The state of one occurrence after its detections or its verification changed."""
+
+    occurrence_id = serializers.IntegerField()
+    detections_count = serializers.IntegerField()
+    grouping_verified = serializers.BooleanField(
+        help_text="Whether a person has confirmed this occurrence holds the right detections."
+    )
+    grouping_verified_at = serializers.DateTimeField(allow_null=True)
+    grouping_verified_by = serializers.CharField(allow_null=True)

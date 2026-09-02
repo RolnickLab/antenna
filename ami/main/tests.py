@@ -7854,3 +7854,146 @@ class TrackEditTestCase(APITestCase):
         )
         self.assertIn(response.status_code, (401, 403))
         self.assertEqual(self.occurrence.detections.count(), len(self.detections))
+
+
+class OccurrenceGroupingTestCase(TrackEditTestCase):
+    """Building the other half of a human-verified test set.
+
+    Splitting alone cannot produce ground truth: a reviewer also has to be able to
+    say "these two occurrences are one animal" and "this grouping is right as it
+    stands". What these pin is that neither of those loses data — a merge must
+    carry identifications across rather than cascade them away, and a confirmation
+    must not survive a later change to the detections it was given.
+    """
+
+    def _make_identification(self, occurrence: Occurrence) -> Identification:
+        return Identification.objects.create(occurrence=occurrence, taxon=self.taxon, user=self.curator)
+
+    def test_merge_moves_detections_and_identifications_to_the_survivor(self):
+        other, other_detections = self._make_track(2)
+        identification = self._make_identification(other)
+
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.post(
+            f"/api/v2/occurrences/{self.occurrence.pk}/merge/",
+            {"occurrence_ids": [other.pk]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+
+        self.assertEqual(response.data["detections_count"], len(self.detections) + len(other_detections))
+        self.assertFalse(Occurrence.objects.filter(pk=other.pk).exists())
+        identification.refresh_from_db()
+        self.assertEqual(
+            identification.occurrence_id,
+            self.occurrence.pk,
+            "A merge must carry identifications to the survivor, not cascade them away",
+        )
+
+    def test_merge_refuses_an_occurrence_from_another_session(self):
+        other_project, other_deployment = setup_test_project(reuse=False)
+        create_captures(deployment=other_deployment, num_nights=1, images_per_night=2, interval_minutes=1)
+        create_taxa(other_project)
+        create_occurrences(deployment=other_deployment, num=1)
+        foreign = Occurrence.objects.filter(project=other_project).first()
+        assert foreign is not None
+
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.post(
+            f"/api/v2/occurrences/{self.occurrence.pk}/merge/",
+            {"occurrence_ids": [foreign.pk]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        foreign.refresh_from_db()
+        self.assertEqual(foreign.project_id, other_project.pk)
+
+    def test_adding_a_stray_detection_absorbs_the_occurrence_it_emptied(self):
+        stray, stray_detections = self._make_track(1)
+        identification = self._make_identification(stray)
+
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.post(
+            f"/api/v2/occurrences/{self.occurrence.pk}/add-detections/",
+            {"detection_ids": [stray_detections[0].pk]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+
+        self.assertEqual(response.data["detections_count"], len(self.detections) + 1)
+        self.assertFalse(Occurrence.objects.filter(pk=stray.pk).exists())
+        identification.refresh_from_db()
+        self.assertEqual(identification.occurrence_id, self.occurrence.pk)
+
+    def test_a_chain_link_never_crosses_an_occurrence_boundary(self):
+        # Take the middle detection out of its track; the link that pointed into it
+        # from the detection left behind must not survive the move.
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.post(
+            f"/api/v2/occurrences/{self.occurrence.pk}/add-detections/",
+            {"detection_ids": [self.detections[1].pk]},
+            format="json",
+        )
+        # It is already in this occurrence, so this is a no-op the API rejects.
+        self.assertEqual(response.status_code, 400)
+
+        other, other_detections = self._make_track(3)
+        self.client.post(
+            f"/api/v2/occurrences/{self.occurrence.pk}/add-detections/",
+            {"detection_ids": [other_detections[1].pk]},
+            format="json",
+        )
+        moved = Detection.objects.get(pk=other_detections[1].pk)
+        self.assertEqual(moved.occurrence_id, self.occurrence.pk)
+        self.assertIsNone(moved.next_detection_id, "Outbound link to a detection left behind must be cut")
+        self.assertFalse(
+            Detection.objects.filter(next_detection_id=moved.pk).exclude(occurrence_id=self.occurrence.pk).exists(),
+            "Inbound link from a detection left behind must be cut",
+        )
+
+    def test_verifying_records_who_and_when(self):
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.post(f"/api/v2/occurrences/{self.occurrence.pk}/verify-grouping/", format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(response.data["grouping_verified"])
+        self.assertIsNotNone(response.data["grouping_verified_at"])
+
+        self.occurrence.refresh_from_db()
+        self.assertEqual(self.occurrence.grouping_verified_by_id, self.curator.pk)
+
+    def test_changing_the_detections_withdraws_the_confirmation(self):
+        self.client.force_authenticate(user=self.curator)
+        self.client.post(f"/api/v2/occurrences/{self.occurrence.pk}/verify-grouping/", format="json")
+        self.occurrence.refresh_from_db()
+        self.assertTrue(self.occurrence.grouping_verified)
+
+        self.post("split-track", self.detections[2], user=self.curator)
+
+        self.occurrence.refresh_from_db()
+        self.assertFalse(
+            self.occurrence.grouping_verified,
+            "A person confirmed the detections they were shown, not the ones left after an edit",
+        )
+
+    def test_unverifying_leaves_the_detections_alone(self):
+        self.client.force_authenticate(user=self.curator)
+        self.client.post(f"/api/v2/occurrences/{self.occurrence.pk}/verify-grouping/", format="json")
+        response = self.client.post(f"/api/v2/occurrences/{self.occurrence.pk}/unverify-grouping/", format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertFalse(response.data["grouping_verified"])
+        self.assertEqual(self.occurrence.detections.count(), len(self.detections))
+
+    def test_identifying_rights_allow_confirming_but_not_restructuring(self):
+        identifier = User.objects.create_user(email="identifier-grouping@insectai.org")  # type: ignore[attr-defined]
+        Identifier.assign_user(identifier, self.project)
+
+        self.client.force_authenticate(user=identifier)
+        confirm = self.client.post(f"/api/v2/occurrences/{self.occurrence.pk}/verify-grouping/", format="json")
+        self.assertEqual(confirm.status_code, 200, confirm.data)
+
+        restructure = self.client.post(
+            f"/api/v2/occurrences/{self.occurrence.pk}/split-track/",
+            {"detection_id": self.detections[2].pk},
+            format="json",
+        )
+        self.assertEqual(restructure.status_code, 403)

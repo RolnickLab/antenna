@@ -36,7 +36,15 @@ from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
-from ami.main.models_future.tracks import TrackEditError, detach_detection, split_track
+from ami.main.models_future.tracks import (
+    TrackEditError,
+    add_detections,
+    detach_detection,
+    merge_occurrences,
+    split_track,
+    unverify_grouping,
+    verify_grouping,
+)
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
 from ami.utils.requests import get_default_classification_threshold
@@ -81,7 +89,10 @@ from .serializers import (
     EventTimelineSerializer,
     IdentificationSerializer,
     ModelAgreementSerializer,
+    OccurrenceAddDetectionsSerializer,
+    OccurrenceGroupingSerializer,
     OccurrenceListSerializer,
+    OccurrenceMergeSerializer,
     OccurrenceSerializer,
     PageListSerializer,
     PageSerializer,
@@ -1524,7 +1535,14 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         # The viewset as a whole is staff-only for writes. Track edits are the
         # exception: they are a curation tool, gated per object by
         # Occurrence.check_custom_permission on the project's occurrence rights.
-        if self.action in ("split_track", "remove_detection"):
+        if self.action in (
+            "split_track",
+            "remove_detection",
+            "merge",
+            "add_detections",
+            "verify_grouping",
+            "unverify_grouping",
+        ):
             return [ObjectPermission()]
         return super().get_permissions()
 
@@ -1583,6 +1601,95 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         except TrackEditError as e:
             raise api_exceptions.ValidationError({"detection_id": str(e)})
         return self._track_edit_response(occurrence, new_occurrence)
+
+    @staticmethod
+    def _grouping_response(occurrence: Occurrence) -> Response:
+        occurrence.refresh_from_db()
+        verified_by = occurrence.grouping_verified_by
+        return Response(
+            OccurrenceGroupingSerializer(
+                {
+                    "occurrence_id": occurrence.pk,
+                    "detections_count": occurrence.detections.count(),
+                    "grouping_verified": occurrence.grouping_verified,
+                    "grouping_verified_at": occurrence.grouping_verified_at,
+                    "grouping_verified_by": verified_by.name if verified_by else None,
+                }
+            ).data
+        )
+
+    @extend_schema(request=OccurrenceMergeSerializer, responses=OccurrenceGroupingSerializer)
+    @action(detail=True, methods=["post"], name="merge")
+    def merge(self, request: Request, pk=None) -> Response:
+        """Fold other occurrences into this one: one animal that tracking recorded as several.
+
+        Their detections and identifications move here and the emptied occurrences
+        are removed. All of them must belong to this occurrence's session.
+        """
+        occurrence = self.get_object()
+        body = OccurrenceMergeSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        requested = body.validated_data["occurrence_ids"]
+        sources = list(self.get_queryset().filter(pk__in=requested))
+        missing = sorted(set(requested) - {o.pk for o in sources} - {occurrence.pk})
+        if missing:
+            raise api_exceptions.ValidationError({"occurrence_ids": f"Occurrence(s) {missing} were not found."})
+        try:
+            merge_occurrences(occurrence, sources)
+        except TrackEditError as e:
+            raise api_exceptions.ValidationError({"occurrence_ids": str(e)})
+        return self._grouping_response(occurrence)
+
+    @extend_schema(request=OccurrenceAddDetectionsSerializer, responses=OccurrenceGroupingSerializer)
+    @action(detail=True, methods=["post"], name="add-detections", url_path="add-detections")
+    def add_detections(self, request: Request, pk=None) -> Response:
+        """Move individual detections into this occurrence.
+
+        Use when a frame belongs to this animal but was left on its own or attached
+        to the wrong occurrence. An occurrence emptied by the move is absorbed, so
+        identifications on it are kept.
+        """
+        occurrence = self.get_object()
+        body = OccurrenceAddDetectionsSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        requested = body.validated_data["detection_ids"]
+        detections = list(
+            Detection.objects.filter(pk__in=requested, occurrence__project=occurrence.project).select_related(
+                "source_image"
+            )
+        )
+        missing = sorted(set(requested) - {d.pk for d in detections})
+        if missing:
+            raise api_exceptions.ValidationError(
+                {"detection_ids": f"Detection(s) {missing} were not found in this project."}
+            )
+        try:
+            add_detections(occurrence, detections)
+        except TrackEditError as e:
+            raise api_exceptions.ValidationError({"detection_ids": str(e)})
+        return self._grouping_response(occurrence)
+
+    @extend_schema(request=None, responses=OccurrenceGroupingSerializer)
+    @action(detail=True, methods=["post"], name="verify-grouping", url_path="verify-grouping")
+    def verify_grouping(self, request: Request, pk=None) -> Response:
+        """Confirm that this occurrence holds the right detections.
+
+        Separate from identifying the taxon. Confirmed occurrences are the ground
+        truth the tracking methods are measured against, so this is only ever set
+        deliberately — no other operation sets it as a side effect, and any later
+        change to the detections clears it.
+        """
+        occurrence = self.get_object()
+        verify_grouping(occurrence, request.user)
+        return self._grouping_response(occurrence)
+
+    @extend_schema(request=None, responses=OccurrenceGroupingSerializer)
+    @action(detail=True, methods=["post"], name="unverify-grouping", url_path="unverify-grouping")
+    def unverify_grouping(self, request: Request, pk=None) -> Response:
+        """Withdraw a previous confirmation. The detections are left untouched."""
+        occurrence = self.get_object()
+        unverify_grouping(occurrence)
+        return self._grouping_response(occurrence)
 
     @extend_schema(parameters=[project_id_doc_param], responses=AlgorithmSerializer(many=True))
     @action(detail=False, methods=["get"], name="algorithms")

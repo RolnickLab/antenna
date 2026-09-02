@@ -3648,10 +3648,28 @@ class Occurrence(BaseModel):
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     project = models.ForeignKey("Project", on_delete=models.SET_NULL, null=True, related_name="occurrences")
 
+    # Whether a person has confirmed that this occurrence's set of detections is right —
+    # that they are all the same individual and none are missing. Separate from taxon
+    # verification, which is what an Identification records. Confirmed occurrences are the
+    # ground truth the tracking methods are evaluated against, so anything that changes the
+    # detection set must clear this. See #1272.
+    grouping_verified_at = models.DateTimeField(null=True, blank=True)
+    grouping_verified_by = models.ForeignKey(
+        "users.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="verified_occurrence_groupings",
+    )
+
     detections: models.QuerySet[Detection]
     identifications: models.QuerySet[Identification]
 
     objects = OccurrenceManager()
+
+    @property
+    def grouping_verified(self) -> bool:
+        return self.grouping_verified_at is not None
 
     def __str__(self) -> str:
         name = f"Occurrence #{self.pk}"
@@ -3815,8 +3833,16 @@ class Occurrence(BaseModel):
         # occurrence's determination changed, so it is gated on the permission that
         # already governs restructuring occurrence records rather than on
         # identification rights.
-        if action in ("split_track", "remove_detection"):
+        if action in ("split_track", "remove_detection", "merge", "add_detections"):
             return user.has_perm(Project.Permissions.DELETE_OCCURRENCES, self.get_project())
+        # Confirming a grouping is an expert judgement rather than a restructuring, so
+        # identifying rights are enough — but the roles that restructure occurrences do
+        # not inherit those, and they need to confirm their own corrections.
+        if action in ("verify_grouping", "unverify_grouping"):
+            project = self.get_project()
+            return user.has_perm(Project.Permissions.CREATE_IDENTIFICATION, project) or user.has_perm(
+                Project.Permissions.DELETE_OCCURRENCES, project
+            )
         return super().check_custom_permission(user, action)
 
     class Meta:
