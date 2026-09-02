@@ -320,7 +320,9 @@ const CaptureDetections = ({
   showDetections?: boolean
   shownFrames?: number
 }) => {
-  const containerRef = useRef(null)
+  // Held in state, not a ref: Radix needs the element itself to keep a toolbar inside
+  // the image, and a ref assignment does not re-render to hand it over.
+  const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const [activeOccurrence, setActiveOccurrence] = useState<string>()
   const [trackEdit, setTrackEdit] = useState<SessionTrackEdit>()
   const { activeOccurrences, setActiveOccurrences } = useActiveOccurrences()
@@ -355,7 +357,7 @@ const CaptureDetections = ({
 
   return (
     <>
-      <div className={styles.detections} ref={containerRef}>
+      <div className={styles.detections} ref={setContainer}>
         {Object.entries(boxStyles).map(([id, style]) => {
           const detection = detections.find((d) => d.id === id)
 
@@ -392,7 +394,8 @@ const CaptureDetections = ({
                 </Tooltip.Trigger>
                 <Tooltip.Content
                   className="p-3 z-[1]"
-                  collisionBoundary={containerRef?.current}
+                  collisionBoundary={container}
+                  collisionPadding={8}
                   side="bottom"
                 >
                   {detection.occurrenceId ? (

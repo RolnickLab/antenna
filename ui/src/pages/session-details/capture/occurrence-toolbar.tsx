@@ -74,7 +74,7 @@ export const OccurrenceToolbar = ({
   }
 
   return (
-    <div className="flex flex-col items-start gap-2 min-w-48">
+    <div className="flex flex-col items-start gap-2 min-w-48 max-w-80">
       <button
         className="body-base text-primary font-medium text-left"
         onClick={onOpenOccurrence}
