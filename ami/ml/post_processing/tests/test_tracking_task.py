@@ -7,7 +7,7 @@ from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from ami.jobs.models import Job
-from ami.main.models import Classification, Detection, Event, Occurrence, SourceImageCollection
+from ami.main.models import Classification, Detection, Event, Identification, Occurrence, SourceImageCollection, Taxon
 from ami.ml.models import Algorithm
 from ami.ml.post_processing.tracking_task import (
     TrackingConfig,
@@ -18,6 +18,7 @@ from ami.ml.post_processing.tracking_task import (
 from ami.tests.fixtures.images import generate_moth_series
 from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 from ami.tests.fixtures.tracking import create_tracking_session, score_tracking_run
+from ami.users.tests.factories import UserFactory
 
 logger = logging.getLogger(__name__)
 
@@ -333,3 +334,66 @@ class TestTrackingDemoSession(TestCase):
 
         result = score_tracking_run(self.ground_truth)
         self.assertEqual(result["exactly_recovered"], result["simulated_insects"], result)
+
+
+class TestIdentificationsSurviveMerging(TestCase):
+    """Merging chains must not destroy a person's taxonomic work.
+
+    ``Identification.occurrence`` cascades on delete, and consolidating a chain
+    deletes every occurrence except the keeper. A session that has never been
+    tracked can still have been reviewed, so identifications have to be moved to
+    the keeper before the occurrences holding them are removed.
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=5, interval_minutes=1)
+        create_taxa(self.project)
+        create_occurrences(deployment=self.deployment, num=6)
+
+        self.event = self.project.events.first()
+        assert self.event is not None
+        _give_captures_dimensions(list(self.event.captures.all()))
+
+        self.user = UserFactory()
+        taxon = Taxon.objects.filter(occurrences__event=self.event).first() or Taxon.objects.first()
+        assert taxon is not None
+        # Identify every occurrence in the event. The keeper is the chain's first
+        # occurrence, so identifying only one would pass by luck roughly as often
+        # as the chain is long.
+        self.identified = list(Occurrence.objects.filter(event=self.event))
+        self.assertGreater(len(self.identified), 1, "Need several occurrences for a merge to happen")
+        for occurrence in self.identified:
+            Identification.objects.create(user=self.user, taxon=taxon, occurrence=occurrence)
+        self.identification_count = Identification.objects.filter(occurrence__event=self.event).count()
+
+    def test_identifications_move_to_the_keeper_instead_of_being_deleted(self):
+        task = TrackingTask(
+            logger=logger,
+            event_ids=[self.event.pk],
+            require_features=False,
+            cost_threshold=0.5,
+            # The guard would refuse this event; the point of the test is what happens
+            # when an operator turns it off, which the admin form allows.
+            skip_if_human_identifications=False,
+        )
+        task.run()
+
+        merged_away = Occurrence.objects.filter(pk__in=[o.pk for o in self.identified]).count()
+        self.assertLess(merged_away, len(self.identified), "This test only means something if a merge occurred")
+
+        self.assertEqual(
+            Identification.objects.filter(user=self.user).count(),
+            self.identification_count,
+            "Every identification must survive the merge",
+        )
+        self.assertFalse(
+            Identification.objects.filter(user=self.user, occurrence__isnull=True).exists(),
+            "No identification should be left without an occurrence",
+        )
+        surviving = Occurrence.objects.filter(event=self.event).values_list("pk", flat=True)
+        self.assertTrue(
+            set(Identification.objects.filter(user=self.user).values_list("occurrence_id", flat=True))
+            <= set(surviving),
+            "Every identification must point at an occurrence that still exists",
+        )

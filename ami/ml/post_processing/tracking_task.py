@@ -8,7 +8,15 @@ import pydantic
 from django.db import transaction
 from django.db.models import Count
 
-from ami.main.models import Classification, Detection, Event, Occurrence, SourceImage, SourceImageCollection
+from ami.main.models import (
+    Classification,
+    Detection,
+    Event,
+    Identification,
+    Occurrence,
+    SourceImage,
+    SourceImageCollection,
+)
 from ami.ml.models import Algorithm
 from ami.ml.post_processing.base import BasePostProcessingTask
 
@@ -190,7 +198,7 @@ def assign_occurrences_from_detection_chains(
 
     - Pick the first existing occurrence in the chain as the keeper.
     - Reassign every other detection in the chain to the keeper.
-    - Delete now-empty sibling occurrences.
+    - Move any identifications off the siblings onto the keeper, then delete them.
     - If no detection in the chain has an occurrence yet, create one.
 
     Designed for fresh-event input (1:1 detection/occurrence). v2 incremental tracking
@@ -201,6 +209,7 @@ def assign_occurrences_from_detection_chains(
     visited: set[int] = set()
     created = 0
     merged = 0
+    identifications_moved = 0
     existing = Occurrence.objects.filter(detections__source_image__in=source_images).distinct().count()
 
     for image in source_images:
@@ -249,11 +258,17 @@ def assign_occurrences_from_detection_chains(
                     d.occurrence = keeper
                     d.save()
 
-            # Delete now-empty sibling occurrences. v1's fresh-event invariant guarantees
-            # these have no Identifications attached (nothing has been ratified yet), so
-            # CASCADE on Identification.occurrence is harmless. v2 must instead reassign
-            # Identification.occurrence to the keeper before deleting.
-            for occ_id in old_occ_ids - {keeper.pk}:
+            # Move identifications onto the keeper before deleting the occurrences that
+            # held them. Identification.occurrence CASCADEs, so deleting first destroys a
+            # person's work. A fresh event is not protection: freshness means no chains
+            # exist yet, which says nothing about whether anyone has reviewed the
+            # detections. An untracked-but-reviewed session is ordinary.
+            doomed = old_occ_ids - {keeper.pk}
+            if doomed:
+                identifications_moved += Identification.objects.filter(occurrence_id__in=doomed).update(
+                    occurrence=keeper
+                )
+            for occ_id in doomed:
                 try:
                     Occurrence.objects.filter(id=occ_id).delete()
                     merged += 1
@@ -266,6 +281,8 @@ def assign_occurrences_from_detection_chains(
     removed = existing - new_count
     if removed > 0:
         logger.info(f"Merged {merged} sibling occurrences into chain keepers (net -{removed}).")
+    if identifications_moved:
+        logger.info(f"Moved {identifications_moved} identification(s) onto chain keepers before merging.")
     logger.info(
         f"Materialized {created} new occurrences across {len(source_images)} images. "
         f"Occurrences before: {existing}, after: {new_count}. Detections processed: {len(visited)}."
@@ -275,6 +292,7 @@ def assign_occurrences_from_detection_chains(
         "occurrences_after": new_count,
         "occurrences_created": created,
         "occurrences_merged": merged,
+        "identifications_moved": identifications_moved,
     }
 
 
