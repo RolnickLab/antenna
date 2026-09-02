@@ -7855,6 +7855,97 @@ class TrackEditTestCase(APITestCase):
         self.assertIn(response.status_code, (401, 403))
         self.assertEqual(self.occurrence.detections.count(), len(self.detections))
 
+    def test_path_returns_a_frame_per_detection_earliest_first(self):
+        """The drawing payload: a box plus the dimensions of the capture it was measured in.
+
+        Without the capture's dimensions a neighbouring frame's box cannot be placed
+        on the frame being viewed, and no other payload carries them.
+        """
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/path/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data), len(self.detections))
+
+        timestamps = [frame["capture"]["timestamp"] for frame in response.data]
+        self.assertEqual(timestamps, sorted(timestamps), "Frames must run earliest first")
+
+        first = response.data[0]
+        self.assertEqual(first["detection_id"], self.detections[0].pk)
+        self.assertEqual(first["capture"]["id"], self.captures[0].pk)
+        self.assertEqual(first["bbox"], self.detections[0].bbox)
+        self.assertIn("width", first["capture"])
+        self.assertIn("height", first["capture"])
+
+    def test_path_order_matches_the_order_a_split_acts_on(self):
+        """A split moves the chosen detection and every later one.
+
+        The interface reads which frames move off this payload, so if the two
+        disagreed it would describe a split that keeps the wrong half.
+        """
+        self.client.force_authenticate(user=self.curator)
+        path = self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/path/")
+        path_order = [frame["detection_id"] for frame in path.data]
+
+        boundary = path_order[2]
+        response = self.client.post(
+            f"/api/v2/occurrences/{self.occurrence.pk}/split-track/",
+            {"detection_id": boundary},
+            format="json",
+        )
+        moved = Occurrence.objects.get(pk=response.data["new_occurrence_id"])
+        self.assertEqual(
+            path_order[2:],
+            list(moved.detections.order_by("timestamp", "pk").values_list("pk", flat=True)),
+        )
+
+    def test_path_reads_every_frame_in_one_query(self):
+        """Frame count must not move the query count.
+
+        The fixture holds several frames, so a per-frame read would show up here as
+        several more queries. The occurrence is looked up without the detail
+        prefetch, which this payload never uses.
+        """
+        self.assertGreater(len(self.detections), 1, "A single-frame fixture cannot catch an N+1")
+        self.client.force_authenticate(user=self.curator)
+
+        with self.assertNumQueries(5):
+            response = self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/path/")
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data), len(self.detections))
+
+    def test_path_is_readable_by_anyone_who_can_read_the_occurrence(self):
+        """Read-only, so it follows ordinary occurrence visibility rather than the edit gates.
+
+        A reader cannot split a track but must be able to look at its path, which is
+        the evidence the confirmation is based on.
+        """
+        self.client.force_authenticate(user=self.reader)
+        self.assertEqual(self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/path/").status_code, 200)
+
+        self.client.force_authenticate(user=None)
+        detail = self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/")
+        path = self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/path/")
+        self.assertEqual(
+            path.status_code,
+            detail.status_code,
+            "Path must be exactly as visible as the occurrence it describes",
+        )
+
+    def test_capture_payload_says_how_many_frames_an_occurrence_spans(self):
+        """The toolbar offers "N frames" or "one frame only" before asking for a path.
+
+        Counted in SQL through the detections prefetch, so the number of occurrences
+        drawn on a capture does not change the number of queries.
+        """
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.get(f"/api/v2/captures/{self.captures[0].pk}/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200, response.data)
+
+        occurrences = [d["occurrence"] for d in response.data["detections"] if d.get("occurrence")]
+        self.assertTrue(occurrences, "Fixture must put a detection with an occurrence on this capture")
+        self.assertEqual(occurrences[0]["detections_count"], len(self.detections))
+
     def test_split_reports_the_counts_the_edit_left_behind(self):
         """Both counts come from the database, not from the prefetched detections.
 

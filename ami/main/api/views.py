@@ -35,7 +35,7 @@ from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
-from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
+from ami.main.models_future.occurrence import model_agreement_for_project, occurrence_path, top_identifiers_for_project
 from ami.main.models_future.tracks import (
     TrackEditError,
     add_detections,
@@ -93,6 +93,7 @@ from .serializers import (
     OccurrenceGroupingSerializer,
     OccurrenceListSerializer,
     OccurrenceMergeSerializer,
+    OccurrencePathFrameSerializer,
     OccurrenceSerializer,
     PageListSerializer,
     PageSerializer,
@@ -803,8 +804,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         score = get_default_classification_threshold(project, self.request)
 
         prefetch_queryset = (
-            Detection.objects.valid()
-            .annotate(
+            Detection.objects.valid().annotate(
                 determination_score=models.Max("occurrence__detections__classifications__score"),
                 # Store whether this occurrence should be included based on default filters
                 occurrence_meets_criteria=models.Case(
@@ -817,7 +817,17 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
                 ),
                 score_threshold=models.Value(score, output_field=models.FloatField()),
             )
-            .select_related("occurrence", "occurrence__determination")
+            # Prefetch rather than select_related the occurrence: the session toolbar
+            # needs its detections_count to say "9 frames" or "one frame only" before
+            # asking for a path, and an annotation cannot ride along on a join.
+            .prefetch_related(
+                Prefetch(
+                    "occurrence",
+                    queryset=Occurrence.objects.with_detections_count().select_related(  # type: ignore
+                        "determination"
+                    ),
+                )
+            )
         )
 
         related_detections = Prefetch(
@@ -1499,7 +1509,10 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         qs = qs.apply_default_filters(project, self.request)  # type: ignore
         if self.action == "list":
             qs = qs.with_list_prefetches()  # type: ignore
-        else:
+        elif self.action != "path":
+            # `path` builds its own values() query and never serializes the occurrence,
+            # so the detail prefetch would only be waste: measured at 249ms/4 queries
+            # against 6ms/2 for the same object without it, on a 37-detection occurrence.
             qs = qs.with_detail_prefetches()  # type: ignore
 
         return qs
@@ -1530,6 +1543,26 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        parameters=[project_id_doc_param],
+        responses=OccurrencePathFrameSerializer(many=True),
+    )
+    @action(detail=True, methods=["get"], name="path")
+    def path(self, request: Request, pk=None) -> Response:
+        """Where this occurrence was in every frame it appears in, earliest first.
+
+        Enough to draw the whole path of one animal over any single capture of the
+        session: each frame's box plus the dimensions of the capture that box was
+        measured against, which no other payload carries. Reading a grouping from
+        the frame is what makes a wrong merge visible, since two individuals of the
+        same species are indistinguishable as cropped thumbnails.
+
+        Fetched on request rather than with the session, because a session holds
+        thousands of occurrences and an operator looks at one.
+        """
+        occurrence = self.get_object()
+        return Response(OccurrencePathFrameSerializer(occurrence_path(occurrence), many=True).data)
 
     def get_permissions(self):
         # The viewset as a whole is staff-only for writes. Track edits are the

@@ -1010,6 +1010,10 @@ class TaxonSerializer(DefaultSerializer):
 class CaptureOccurrenceSerializer(DefaultSerializer):
     determination = TaxonNoParentNestedSerializer(read_only=True)
     determination_algorithm = AlgorithmSerializer(read_only=True)
+    # Annotated by the capture viewset's detections prefetch. The session toolbar reads
+    # it to say how many frames an occurrence spans before deciding whether to ask for
+    # its path, so a one-frame occurrence is never offered a fetch that returns nothing.
+    detections_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = Occurrence
@@ -1019,6 +1023,7 @@ class CaptureOccurrenceSerializer(DefaultSerializer):
             "determination",
             "determination_score",
             "determination_algorithm",
+            "detections_count",
         ]
 
 
@@ -2070,3 +2075,25 @@ class OccurrenceGroupingSerializer(serializers.Serializer):
     )
     grouping_verified_at = serializers.DateTimeField(allow_null=True)
     grouping_verified_by = serializers.CharField(allow_null=True)
+
+
+class OccurrencePathCaptureSerializer(serializers.Serializer):
+    """The capture one frame of a path was measured against."""
+
+    id = serializers.IntegerField()
+    timestamp = serializers.DateTimeField(allow_null=True)
+    width = serializers.IntegerField(
+        allow_null=True,
+        help_text="Stored pixel width of the capture. A box is measured in this space, "
+        "so drawing it over a different frame requires these dimensions rather than "
+        "those of the frame being viewed.",
+    )
+    height = serializers.IntegerField(allow_null=True)
+
+
+class OccurrencePathFrameSerializer(serializers.Serializer):
+    """One frame of an occurrence's path: a box and the capture it belongs to."""
+
+    detection_id = serializers.IntegerField()
+    bbox = serializers.ListField(child=serializers.FloatField(), allow_null=True)
+    capture = OccurrencePathCaptureSerializer()
