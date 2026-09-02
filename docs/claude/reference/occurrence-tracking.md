@@ -133,20 +133,56 @@ always showing chains of length one.
   snapshots column shows several crops. Sorting by duration descending is the fastest
   check that a pass produced anything sensible.
 
-## Editing an occurrence's detections
+## Editing and confirming a grouping
 
-`ami/main/models_future/tracks.py`, exposed as two actions on `OccurrenceViewSet`:
+`ami/main/models_future/tracks.py`, exposed as six actions on `OccurrenceViewSet`. All
+operate on the occurrence's detections in timestamp order, so they behave sensibly on
+occurrences that were never tracked.
 
-- `POST /api/v2/occurrences/{id}/split-track/` `{"detection_id": N}` — that detection and
-  every **later** one move to a new occurrence; the link across the boundary is cut.
-- `POST /api/v2/occurrences/{id}/remove-detection/` `{"detection_id": N}` — one detection
-  moves to an occurrence of its own; the chain is stitched across the gap.
+| Endpoint (`POST /api/v2/occurrences/{id}/…`) | Body | Effect |
+|---|---|---|
+| `split-track/` | `{"detection_id": N}` | That detection and every **later** one move to a new occurrence |
+| `remove-detection/` | `{"detection_id": N}` | One detection moves to an occurrence of its own |
+| `merge/` | `{"occurrence_ids": [...]}` | Those occurrences are absorbed into this one and deleted |
+| `add-detections/` | `{"detection_ids": [...]}` | Chosen detections move here from wherever they were |
+| `verify-grouping/` | — | Records that a person confirmed this set of detections |
+| `unverify-grouping/` | — | Clears that confirmation |
 
-Both work on the occurrence's detections in timestamp order, so they behave sensibly on
-occurrences that were never tracked. Gated per object on
-`Project.Permissions.DELETE_OCCURRENCES` via `Occurrence.check_custom_permission`; the
-viewset stays staff-only for its other writes (see the DRF default-permission trap
-below).
+Adding a single frame is the one-detection case of merge, since a lone detection is
+already an occurrence.
+
+### Why verification is a separate axis
+
+`Identification` records *what the animal is*. Nothing recorded *these detections are one
+animal and none are missing*, so `Occurrence.grouping_verified_at` / `grouping_verified_by`
+were added (migration `0099`). The two judgements are independent: a correctly grouped
+occurrence can carry the wrong species, and vice versa. Confirmed groupings are the ground
+truth that tracking changes get scored against — without them, evaluating a threshold
+change is spot-checking.
+
+### Two invariants every operation upholds
+
+- **A chain link never crosses an occurrence boundary.** If a `next_detection` link
+  survives across a human's split, the next tracking pass walks that chain and re-merges
+  what they separated. `_cut_links_leaving()` cuts the links leaving any moved set.
+- **Any edit that changes the detection set clears verification.** A person confirmed the
+  set they were shown. `_clear_verification()` clears the **loaded instances as well as
+  the rows** — clearing only via queryset `.update()` lets a later `occurrence.save()`
+  write the stale confirmation straight back. That was a real test failure, not a
+  hypothetical.
+
+Ordering hazard inside `_absorb()`: identifications are reassigned *before* source
+occurrences are deleted, because `Identification.occurrence` CASCADEs.
+
+### Permissions
+
+Restructuring (`split_track`, `remove_detection`, `merge`, `add_detections`) requires
+`Project.Permissions.DELETE_OCCURRENCES`. Confirming (`verify_grouping`,
+`unverify_grouping`) accepts **either** `CREATE_IDENTIFICATION` or `DELETE_OCCURRENCES` —
+confirming is an expert judgement rather than a restructuring, but the roles that
+restructure do not inherit identifying rights and must be able to confirm their own
+corrections. `MLDataManager` holds `DELETE_OCCURRENCES` but not `CREATE_IDENTIFICATION`,
+which is what forced the `or`.
 
 ## Gotchas
 
@@ -164,8 +200,8 @@ below).
 - **`Occurrence.save()` recomputes determination** via `update_occurrence_determination`.
   After moving detections between occurrences, save both.
 - **`Identification.occurrence` CASCADEs.** Any merge that deletes an absorbed occurrence
-  must reassign its identifications to the survivor first. The current batch
-  implementation sidesteps this by refusing already-grouped sessions.
+  must reassign its identifications to the survivor first — `_absorb()` does. The batch
+  tracking task sidesteps the question entirely by refusing already-grouped sessions.
 - **pgvector must be in the Postgres image AND the Python environment of both the django
   and celeryworker images.** With `VectorField` on the model but the module missing from
   the worker, `bulk_create` can save the row and silently drop the vector.
@@ -175,11 +211,13 @@ below).
 
 ## Open work
 
-- **Verification state.** The point of the collaboration is a human-verified test set, so
-  an occurrence's grouping needs to be markable as *confirmed correct*, not only
-  correctable. Not yet modelled.
-- **Merge / add a detection to an occurrence** — the inverse of split, needed before a
-  test set can be complete. Not yet built; must migrate identifications.
+- **A front end for any of it.** The six editing endpoints exist and are tested; nothing
+  in the interface calls them. Five directions are mocked up, the cheapest being a ghost
+  trail of neighbouring frames drawn over the session capture, which reuses the overlay
+  already at `ui/src/.../capture.tsx`.
+- **A re-run must not overrule a confirmation.** Nothing currently stops a second tracking
+  pass from re-merging a grouping a person split and confirmed. `event_is_fresh` refuses
+  already-grouped sessions wholesale, which is a blunt substitute.
 - **Idempotent incremental tracking** — see `docs/claude/planning/idempotent-incremental-tracking.md`.
   The unit of work becomes a pair of adjacent processed captures rather than a session,
   so a pass is always safe to re-run and picks up only new work.
