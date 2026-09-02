@@ -42,7 +42,7 @@ class DataExportTest(TestCase):
         self.export_formats = [
             "occurrences_simple_csv",
             "occurrences_api_json",
-            "detections_simple_csv",
+            "detections_csv",
         ]
 
     def _create_export_with_file(self, format_type):
@@ -118,8 +118,8 @@ class DataExportTest(TestCase):
                 self.validate_csv_records(f)
             elif format_type == "occurrences_api_json":
                 self.validate_json_records(f)
-            elif format_type == "detections_simple_csv":
-                # TODO this checks against Occurrence count not Detections, which is 1:1
+            elif format_type == "detections_csv":
+                # TODO this checks against Occurrence count not Detections, but 1:1 for now
                 self.validate_csv_records(f)
 
         # Clean up the exported file after the test
@@ -577,7 +577,7 @@ class ExportNewFieldsTest(ExportDataTestCase):
 
 
 class DetectionsExportFieldsTest(ExportDataTestCase):
-    format_type = "detections_simple_csv"
+    format_type = "detections_csv"
 
     def test_detection_row(self):
         """Detection has expected columns"""

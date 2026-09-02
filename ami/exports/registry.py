@@ -27,4 +27,4 @@ class ExportRegistry:
 
 ExportRegistry.register("occurrences_api_json")(format_types.OccurrencesJSONExporter)
 ExportRegistry.register("occurrences_simple_csv")(format_types.OccurrencesCSVExporter)
-ExportRegistry.register("detections_simple_csv")(format_types.DetectionsCSVExporter)
+ExportRegistry.register("detections_csv")(format_types.DetectionsCSVExporter)
