@@ -327,6 +327,7 @@ class DetectionsCSVExporter(BaseCSVExporter):
                 "occurrence",
                 "occurrence__determination",
                 "source_image",
+                "source_image__project",
                 "source_image__deployment",
                 "source_image__event",
             )
