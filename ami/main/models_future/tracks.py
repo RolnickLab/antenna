@@ -47,6 +47,11 @@ def split_track(occurrence: Occurrence, detection: Detection) -> Occurrence:
 
     Use when a track ran two animals together: the frame where the second one
     takes over is the split point. Returns the new occurrence holding the tail.
+
+    "After" means later in time. Note that the occurrence detail endpoint
+    serves detections newest-first (prefetch_detections_for_detail), so an
+    interface that splits at the frame the operator clicked must map the
+    displayed position back to timestamp order, or it will keep the wrong half.
     """
     ordered = _ordered_detections(occurrence)
     index = next((i for i, d in enumerate(ordered) if d.pk == detection.pk), None)
