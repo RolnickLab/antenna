@@ -24,6 +24,7 @@ from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.tasks import create_detection_images
 from ami.tests.fixtures.storage import GeneratedTestFrame, create_storage_source, populate_bucket
+from ami.tests.fixtures.tracking import create_tracking_session
 from ami.users.models import User
 
 logger = logging.getLogger(__name__)
@@ -206,14 +207,21 @@ def create_captures_from_files(
 def create_taxa(project: Project) -> TaxaList:
     taxa_list = TaxaList.objects.create(name="Test Taxa List")
     taxa_list.projects.add(project)
-    root, _created = Taxon.objects.get_or_create(name="Lepidoptera", rank=TaxonRank.ORDER.name)
+    # Taxon names are unique across the whole database, so match on the name alone and let
+    # the rank and parent apply only to a taxon this fixture creates. Matching on the parent
+    # as well fails outright against a database that already holds these names.
+    root, _created = Taxon.objects.get_or_create(name="Lepidoptera", defaults=dict(rank=TaxonRank.ORDER.name))
     root.projects.add(project)
-    family_taxon, _ = Taxon.objects.get_or_create(name="Nymphalidae", parent=root, rank=TaxonRank.FAMILY.name)
+    family_taxon, _ = Taxon.objects.get_or_create(
+        name="Nymphalidae", defaults=dict(parent=root, rank=TaxonRank.FAMILY.name)
+    )
     family_taxon.projects.add(project)
-    genus_taxon, _ = Taxon.objects.get_or_create(name="Vanessa", parent=family_taxon, rank=TaxonRank.GENUS.name)
+    genus_taxon, _ = Taxon.objects.get_or_create(
+        name="Vanessa", defaults=dict(parent=family_taxon, rank=TaxonRank.GENUS.name)
+    )
     genus_taxon.projects.add(project)
+    species_taxa = []
     for species in ["Vanessa itea", "Vanessa cardui", "Vanessa atalanta"]:
-        species_taxa = []
         taxon, _ = Taxon.objects.get_or_create(
             name=species,
             defaults=dict(
@@ -315,7 +323,12 @@ def create_occurrences_from_frame_data(
             identifier = make_identifier(frame.series_id, bbox.identifier)
             detections_by_identifier.setdefault(identifier, []).append((source_image, bbox.bbox))
 
-    algorithm = Algorithm.objects.get(key="random-species-classifier")
+    # The processing service registers this algorithm when it is reachable. Fall back to a
+    # placeholder with the same key so the demo project can be built with no backend running.
+    algorithm, _ = Algorithm.objects.get_or_create(
+        key="random-species-classifier",
+        defaults=dict(name="Random Species Classifier", task_type="classification"),
+    )
 
     for identifier, detections in detections_by_identifier.items():
         assert source_image.deployment
@@ -405,13 +418,25 @@ def create_occurrences(
         assert occurrence.determination_score is not None
 
 
-def create_complete_test_project():
+def create_complete_test_project(with_tracking_session: bool = False, **tracking_kwargs):
+    """
+    Build a project with a couple of nights of captures, detections and occurrences.
+
+    Returns the project and, when ``with_tracking_session`` is set, the ground truth of a
+    further night shaped for occurrence tracking. That night is off by default because this
+    function also runs from the ``post_migrate`` signal that seeds an empty database, and it
+    costs another two dozen generated images.
+    """
     with transaction.atomic():
         project, deployment = setup_test_project(reuse=False)
         frame_data = create_captures_from_files(deployment)
         taxa_list = create_taxa(project)
         create_occurrences_from_frame_data(frame_data, taxa_list=taxa_list)
+        ground_truth = None
+        if with_tracking_session:
+            ground_truth = create_tracking_session(deployment, taxa_list=taxa_list, **tracking_kwargs)
         logger.info(f"Created test project {project}")
+        return project, ground_truth
 
 
 def create_local_admin_user():

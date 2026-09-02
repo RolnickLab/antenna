@@ -3,11 +3,11 @@ from collections import defaultdict
 
 import numpy as np
 import pydantic
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from ami.jobs.models import Job
-from ami.main.models import Classification, Detection, Occurrence, SourceImageCollection
+from ami.main.models import Classification, Detection, Event, Occurrence, SourceImageCollection
 from ami.ml.models import Algorithm
 from ami.ml.post_processing.tracking_task import (
     TrackingConfig,
@@ -15,7 +15,9 @@ from ami.ml.post_processing.tracking_task import (
     assign_occurrences_by_tracking_images,
     event_is_fresh,
 )
+from ami.tests.fixtures.images import generate_moth_series
 from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
+from ami.tests.fixtures.tracking import create_tracking_session, score_tracking_run
 
 logger = logging.getLogger(__name__)
 
@@ -253,3 +255,81 @@ class TestTrackingTaskResolveEvents(TestCase):
         task = TrackingTask(job=job, event_ids=[self.event.pk, foreign_event.pk])
         events = task._resolve_events()
         self.assertEqual([e.pk for e in events], [self.event.pk])
+
+
+class TestGeneratedMothLifespans(SimpleTestCase):
+    """The generator has to offer tracking both multi-frame chains and single-frame strays.
+
+    A series where every moth is in every frame cannot show whether tracking knows when to
+    stop a chain, and one with no repeat visitors cannot show that it builds chains at all.
+    """
+
+    def test_moths_span_contiguous_runs_and_transients_appear_once(self):
+        frames = generate_moth_series(
+            num_frames=10,
+            num_moths=3,
+            num_transient_moths=2,
+            min_frames_per_moth=4,
+            save_images=False,
+        )
+
+        frames_by_moth = defaultdict(list)
+        for frame in frames:
+            for box in frame.bounding_boxes:
+                frames_by_moth[box.identifier].append(frame.frame_num)
+
+        self.assertEqual(len(frames_by_moth), 5)
+        for identifier, frame_numbers in frames_by_moth.items():
+            self.assertEqual(
+                frame_numbers,
+                list(range(min(frame_numbers), max(frame_numbers) + 1)),
+                f"Moth {identifier} should be visible for one unbroken run of frames",
+            )
+        spans = sorted(len(frame_numbers) for frame_numbers in frames_by_moth.values())
+        self.assertEqual(spans[:2], [1, 1], "Both transient moths should appear in exactly one frame")
+        self.assertGreaterEqual(spans[2], 4, "Every other moth should stay for at least min_frames_per_moth")
+
+
+class TestTrackingDemoSession(TestCase):
+    """The demo session must reach tracking in the shape it needs, and be rebuilt from it.
+
+    Two properties make the session trackable and both are easy to lose: the captures carry
+    dimensions, without which the matching cost has no image diagonal and skips the
+    transition, and every detection starts on an occurrence of its own, without which
+    ``event_is_fresh`` refuses the event outright.
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.ground_truth = create_tracking_session(
+            self.deployment,
+            taxa_list=create_taxa(self.project),
+            num_frames=8,
+            num_moths=3,
+            num_transient_moths=2,
+            min_frames_per_moth=4,
+            create_crops=False,
+        )
+        self.event = Event.objects.get(pk=self.ground_truth.event_id)
+
+    def test_session_arrives_ready_to_track(self):
+        self.assertEqual(self.event.captures.count(), self.ground_truth.capture_count)
+        self.assertFalse(self.event.captures.filter(width__isnull=True).exists())
+        self.assertEqual(
+            Occurrence.objects.filter(event=self.event).count(),
+            self.ground_truth.detection_count,
+            "Every detection should start on an occurrence of its own",
+        )
+        fresh, reason = event_is_fresh(self.event)
+        self.assertTrue(fresh, reason)
+
+    def test_tracking_recovers_every_simulated_insect(self):
+        TrackingTask(
+            logger=logger,
+            event_ids=[self.event.pk],
+            require_features=False,
+            cost_threshold=0.4,
+        ).run()
+
+        result = score_tracking_run(self.ground_truth)
+        self.assertEqual(result["exactly_recovered"], result["simulated_insects"], result)
