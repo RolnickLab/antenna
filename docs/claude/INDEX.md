@@ -17,6 +17,7 @@ archived.
 | `reference/react-form-to-drf-values.md` | How form values travel from React Hook Form through the API into DRF serializers (empty string vs null vs undefined). Keywords: forms, serializers, frontend |
 | `reference/captures-processed-count-strategies.md` | COUNT strategies for the captures `processed`/`has_detections` annotations (PR #1326). Keywords: captures, counts, performance |
 | `reference/hierarchical-rollup-query-performance.md` | Per-taxon rollup counts on `GET /api/v2/taxa/` — query patterns and pitfalls. Keywords: taxa, rollup, counts |
+| `reference/occurrence-tracking.md` | How occurrences are populated by tracking: data model (`next_detection`, `features_2048`), cost function, config knobs, the adjacent-processed-captures constraint, how to run it, where results show up, split/remove endpoints, permission traps. Keywords: tracking, occurrences, pgvector, embeddings, abundance |
 
 ## Architecture notes
 
