@@ -3810,6 +3810,15 @@ class Occurrence(BaseModel):
             else:
                 self.save(update_determination=False)
 
+    def check_custom_permission(self, user, action: str) -> bool:
+        # Editing a track moves detections between occurrences and can leave an
+        # occurrence's determination changed, so it is gated on the permission that
+        # already governs restructuring occurrence records rather than on
+        # identification rights.
+        if action in ("split_track", "remove_detection"):
+            return user.has_perm(Project.Permissions.DELETE_OCCURRENCES, self.get_project())
+        return super().check_custom_permission(user, action)
+
     class Meta:
         ordering = ["-determination_score"]
         indexes = [

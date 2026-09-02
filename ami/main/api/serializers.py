@@ -2004,3 +2004,25 @@ class ModelAgreementSerializer(serializers.Serializer):
         required=False,
         help_text="agreed_coarser_rank_count / verified_with_prediction_count. Null when no threshold supplied.",
     )
+
+
+class TrackEditSerializer(serializers.Serializer):
+    """Body for the track edit actions: which detection in the track to act on."""
+
+    detection_id = serializers.IntegerField(
+        help_text="A detection belonging to this occurrence.",
+    )
+
+
+class TrackEditResultSerializer(serializers.Serializer):
+    """What a track edit produced.
+
+    Only identifiers are returned: the caller refetches both occurrences through
+    the list or detail endpoints, which is where the prefetches those serializers
+    require are wired up.
+    """
+
+    occurrence_id = serializers.IntegerField(help_text="The occurrence that was edited.")
+    occurrence_detections_count = serializers.IntegerField(help_text="Detections it has left.")
+    new_occurrence_id = serializers.IntegerField(help_text="The occurrence the detections moved into.")
+    new_occurrence_detections_count = serializers.IntegerField(help_text="Detections it received.")

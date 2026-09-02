@@ -7717,3 +7717,140 @@ class TestBulkIdentificationQueryCount(BulkIdentificationTestCase):
             f"({queries_small} queries for {small} items, {queries_large} for {large}). "
             f"A jump here usually means something started querying per item.",
         )
+
+
+class TrackEditTestCase(APITestCase):
+    """Correcting a track that tracking got wrong.
+
+    Tracking prefers to leave one animal as two occurrences over merging two
+    animals into one, because a wrong merge destroys a record nothing downstream
+    recovers. These endpoints are the repair for the merges it still makes, so
+    what they must protect is that a repair never loses a detection and never
+    leaves the surviving track broken in the middle.
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(project=self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=4, interval_minutes=1)
+
+        self.captures = list(SourceImage.objects.filter(deployment=self.deployment).order_by("timestamp"))
+        assert len(self.captures) >= 4, "Fixture must provide four consecutive captures"
+        self.event = self.captures[0].event
+
+        self.curator = User.objects.create_user(email="curator@insectai.org")  # type: ignore[attr-defined]
+        self.reader = User.objects.create_user(email="reader@insectai.org")  # type: ignore[attr-defined]
+        MLDataManager.assign_user(self.curator, self.project)
+        BasicMember.assign_user(self.reader, self.project)
+
+        taxon = Taxon.objects.filter(projects=self.project).first()
+        assert taxon is not None, "Fixture must provide a taxon to determine occurrences with"
+        self.taxon = taxon
+
+        self.occurrence, self.detections = self._make_track(len(self.captures))
+        return super().setUp()
+
+    def _make_track(self, length: int) -> tuple[Occurrence, list[Detection]]:
+        """One occurrence holding `length` detections, chained in capture order.
+
+        Each detection carries a classification: an occurrence with no determination
+        is filtered out of the API's queryset entirely, so a track without them
+        would 404 rather than exercise the endpoints.
+        """
+        occurrence = Occurrence.objects.create(event=self.event, deployment=self.deployment, project=self.project)
+        detections = []
+        for capture in self.captures[:length]:
+            detection = Detection.objects.create(
+                source_image=capture,
+                timestamp=capture.timestamp,
+                bbox=[10, 10, 40, 40],
+                occurrence=occurrence,
+            )
+            detection.classifications.create(taxon=self.taxon, score=0.9, timestamp=capture.timestamp)
+            detections.append(detection)
+        for earlier, later in zip(detections, detections[1:]):
+            earlier.next_detection = later
+            earlier.save(update_fields=["next_detection"])
+        occurrence.save()
+        return occurrence, detections
+
+    def post(self, action: str, detection: Detection, user: User | None = None):
+        if user is not None:
+            self.client.force_authenticate(user=user)
+        return self.client.post(
+            f"/api/v2/occurrences/{self.occurrence.pk}/{action}/",
+            {"detection_id": detection.pk},
+            format="json",
+        )
+
+    def test_split_moves_the_tail_into_a_new_occurrence(self):
+        response = self.post("split-track", self.detections[2], user=self.curator)
+        self.assertEqual(response.status_code, 200, response.data)
+
+        new_occurrence = Occurrence.objects.get(pk=response.data["new_occurrence_id"])
+        self.assertEqual(
+            [d.pk for d in self.detections[:2]],
+            list(self.occurrence.detections.order_by("timestamp").values_list("pk", flat=True)),
+        )
+        self.assertEqual(
+            [d.pk for d in self.detections[2:]],
+            list(new_occurrence.detections.order_by("timestamp").values_list("pk", flat=True)),
+        )
+
+    def test_split_cuts_the_link_across_the_new_boundary(self):
+        self.post("split-track", self.detections[2], user=self.curator)
+
+        boundary = Detection.objects.get(pk=self.detections[1].pk)
+        self.assertIsNone(boundary.next_detection_id, "The two tracks must stop referring to each other")
+        still_linked = Detection.objects.get(pk=self.detections[2].pk)
+        self.assertEqual(still_linked.next_detection_id, self.detections[3].pk, "The tail stays one track")
+
+    def test_split_at_the_first_detection_is_rejected(self):
+        response = self.post("split-track", self.detections[0], user=self.curator)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Occurrence.objects.filter(event=self.event).count(), 1)
+
+    def test_removing_a_middle_detection_stitches_the_rest_together(self):
+        response = self.post("remove-detection", self.detections[1], user=self.curator)
+        self.assertEqual(response.status_code, 200, response.data)
+
+        self.assertEqual(
+            [self.detections[0].pk, self.detections[2].pk, self.detections[3].pk],
+            list(self.occurrence.detections.order_by("timestamp").values_list("pk", flat=True)),
+        )
+        stitched = Detection.objects.get(pk=self.detections[0].pk)
+        self.assertEqual(
+            stitched.next_detection_id,
+            self.detections[2].pk,
+            "Removing a frame from the middle must not also split what remains",
+        )
+        removed = Detection.objects.get(pk=self.detections[1].pk)
+        self.assertIsNone(removed.next_detection_id)
+        self.assertEqual(removed.occurrence_id, response.data["new_occurrence_id"])
+
+    def test_a_detection_from_another_occurrence_is_rejected(self):
+        other_occurrence, other_detections = self._make_track(2)
+        response = self.post("remove-detection", other_detections[0], user=self.curator)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(other_detections[0].occurrence_id, other_occurrence.pk)
+
+    def test_the_last_detection_cannot_be_removed(self):
+        self.occurrence.detections.exclude(pk=self.detections[0].pk).delete()
+        response = self.post("remove-detection", self.detections[0], user=self.curator)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(self.occurrence.detections.count(), 1)
+
+    def test_a_member_without_curation_rights_cannot_edit_a_track(self):
+        response = self.post("split-track", self.detections[2], user=self.reader)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.occurrence.detections.count(), len(self.detections))
+
+    def test_anonymous_users_cannot_edit_a_track(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.post(
+            f"/api/v2/occurrences/{self.occurrence.pk}/split-track/",
+            {"detection_id": self.detections[2].pk},
+            format="json",
+        )
+        self.assertIn(response.status_code, (401, 403))
+        self.assertEqual(self.occurrence.detections.count(), len(self.detections))
