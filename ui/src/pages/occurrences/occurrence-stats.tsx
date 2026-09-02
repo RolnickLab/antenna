@@ -263,8 +263,6 @@ const StatsContent = ({
   }
 
   const comparable = data.comparable_count
-  const hasCoarser =
-    data.agreement_coarsest_rank != null && data.agreed_coarser_rank_pct != null
 
   return (
     <>
@@ -332,24 +330,6 @@ const StatsContent = ({
                   data.agreed_any_rank_ci_high
                 )}
               />
-              {hasCoarser && data.agreed_coarser_rank_pct != null ? (
-                <Bar
-                  fill={data.agreed_coarser_rank_pct}
-                  label={translate(STRING.AGREEMENT_COARSER_RANK, {
-                    rank: data.agreement_coarsest_rank as string,
-                  })}
-                  tooltip={translate(
-                    STRING.TOOLTIP_STATS_AGREEMENT_COARSER_RANK,
-                    {
-                      comparable,
-                      count: data.agreed_coarser_rank_count ?? 0,
-                      pct: clampPct(data.agreed_coarser_rank_pct),
-                      rank: data.agreement_coarsest_rank as string,
-                    }
-                  )}
-                  valueText={`${clampPct(data.agreed_coarser_rank_pct)}%`}
-                />
-              ) : null}
               <SignedBar
                 label={translate(STRING.AGREEMENT_KAPPA)}
                 tooltip={translate(STRING.TOOLTIP_STATS_KAPPA)}

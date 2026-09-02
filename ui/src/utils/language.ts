@@ -288,7 +288,6 @@ export enum STRING {
   TOOLTIP_SITE,
   TOOLTIP_STATS,
   TOOLTIP_STATS_AGREEMENT_ANY_RANK,
-  TOOLTIP_STATS_AGREEMENT_COARSER_RANK,
   TOOLTIP_STATS_AGREEMENT_EXACT,
   TOOLTIP_STATS_KAPPA,
   TOOLTIP_STATS_VERIFIED,
@@ -299,7 +298,6 @@ export enum STRING {
   ABOUT_ROLE,
   ABOUT_ROLES,
   AGREEMENT_ANY_RANK,
-  AGREEMENT_COARSER_RANK,
   AGREEMENT_EXACT,
   AGREEMENT_KAPPA,
   ALGORITHMS,
@@ -716,14 +714,12 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     "How closely the model agrees with people, for the occurrences currently shown by the filters. Agreement is given as a 95% confidence range rather than a single number, so a wide range means there are still too few verifications to be sure. Two things push these numbers up: confirmations made by clicking Agree on the model's own suggestion match by definition, and people tend to verify the striking or unusual detections first, so the verified set is not a random sample of the project.",
   [STRING.TOOLTIP_STATS_AGREEMENT_ANY_RANK]:
     'The model landed on the same branch of the tree of life as the confirmed taxon, for example the right genus or family even when the species differs, for {{count}} of {{comparable}} comparable occurrences ({{pct}}%).',
-  [STRING.TOOLTIP_STATS_AGREEMENT_COARSER_RANK]:
-    'The model matched the confirmed taxon at {{rank}} or a coarser rank, for {{count}} of {{comparable}} comparable occurrences ({{pct}}%).',
   [STRING.TOOLTIP_STATS_AGREEMENT_EXACT]:
     'The model predicted exactly the taxon a person confirmed, for {{count}} of {{comparable}} comparable occurrences ({{pct}}%).',
   [STRING.TOOLTIP_STATS_KAPPA]:
     "Cohen's kappa adjusts exact agreement for luck. Where one species dominates a project, a person and the model agree often just by both picking the common one. 1 means perfect agreement, 0 means no better than chance, and below 0 means worse than chance.",
   [STRING.TOOLTIP_STATS_VERIFIED]:
-    '{{verified}} of {{total}} occurrences in the current filter have been verified by a person. {{comparable}} of those can be compared against a model prediction, which is what the agreement numbers are measured on.',
+    '{{verified}} of {{total}} occurrences matching the current filters have been verified by a person. {{comparable}} of those can be compared against a model prediction, which is what the agreement numbers are measured on.',
   [STRING.TOOLTIP_STORAGE]:
     'A storage is a place where captures are kept, for example a S3 bucket. One or many stations can be connected to a storage.',
   [STRING.TOOLTIP_VIEW_SOURCE_FILE]: 'View source file',
@@ -732,7 +728,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.ABOUT_ROLE]: 'About role',
   [STRING.ABOUT_ROLES]: 'About roles',
   [STRING.AGREEMENT_ANY_RANK]: 'Agreement (any rank)',
-  [STRING.AGREEMENT_COARSER_RANK]: 'Agreement ({{rank}} or coarser)',
   [STRING.AGREEMENT_EXACT]: 'Agreement (exact taxon)',
   [STRING.AGREEMENT_KAPPA]: "Cohen's kappa (beyond chance)",
   [STRING.ALGORITHMS]: 'Algorithms',

@@ -37,8 +37,8 @@ import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
 import { columns } from './occurrence-columns'
 import { OccurrenceGallery } from './occurrence-gallery'
-import { OccurrenceStats } from './occurrence-stats'
 import { OccurrenceNavigation } from './occurrence-navigation'
+import { OccurrenceStats } from './occurrence-stats'
 import { OccurrencesActions } from './occurrences-actions'
 
 export const Occurrences = () => {

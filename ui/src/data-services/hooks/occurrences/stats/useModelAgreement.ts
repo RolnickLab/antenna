@@ -60,11 +60,14 @@ export const useModelAgreement = (
       params.set(key, String(value))
     })
   }
+  // Sort so two equivalent filter maps produce one query string, and so one
+  // react-query cache key.
+  params.sort()
   const queryString = params.toString()
 
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<ModelAgreementResponse>({
-      enabled,
+      enabled: !!projectId && enabled !== false,
       queryKey: [
         API_ROUTES.OCCURRENCES,
         'stats',
