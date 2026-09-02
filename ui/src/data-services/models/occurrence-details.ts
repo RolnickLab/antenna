@@ -35,15 +35,39 @@ export interface MachinePrediction extends Identification {
   terminal: boolean
 }
 
+export interface TrackFrame {
+  captureId?: string
+  id: string
+  timestamp: Date
+  timeLabel: string
+}
+
 export class OccurrenceDetails extends Occurrence {
-  private readonly _detections: string[] = []
+  private readonly _frames: TrackFrame[] = []
   private readonly _humanIdentifications: HumanIdentification[]
   private readonly _machinePredictions: MachinePrediction[]
 
   public constructor(occurrence: ServerOccurrenceDetails) {
     super(occurrence)
 
-    this._detections = this._occurrence.detections.map((d: any) => `${d.id}`)
+    // Sorted here rather than taken in payload order: the track editing actions
+    // describe a split as "this frame and everything later in time", so the order
+    // the frames are listed in has to be a property of this model, not of whatever
+    // ordering the endpoint happens to prefetch. See #1272.
+    this._frames = this._occurrence.detections
+      .map((d: any) => ({
+        captureId: d.capture?.id !== undefined ? `${d.capture.id}` : undefined,
+        id: `${d.id}`,
+        timestamp: new Date(d.timestamp),
+        timeLabel: getFormatedTimeString({
+          date: new Date(d.timestamp),
+          options: { second: true },
+        }),
+      }))
+      .sort(
+        (f1: TrackFrame, f2: TrackFrame) =>
+          f2.timestamp.getTime() - f1.timestamp.getTime()
+      )
 
     const sortByDate = (i1: any, i2: any) => {
       const date1 = new Date(i1.created_at)
@@ -109,7 +133,35 @@ export class OccurrenceDetails extends Occurrence {
   }
 
   get detections(): string[] {
-    return this._detections
+    return this._frames.map((frame) => frame.id)
+  }
+
+  /** Detections of this occurrence, newest first — the order the strip renders them in. */
+  get frames(): TrackFrame[] {
+    return this._frames
+  }
+
+  get groupingVerified(): boolean {
+    return !!this._occurrence.grouping_verified
+  }
+
+  get groupingVerifiedAt(): Date | undefined {
+    return this._occurrence.grouping_verified_at
+      ? new Date(this._occurrence.grouping_verified_at)
+      : undefined
+  }
+
+  get groupingVerifiedBy(): { id: string; name: string } | undefined {
+    const user = this._occurrence.grouping_verified_by
+
+    if (!user) {
+      return undefined
+    }
+
+    return {
+      id: `${user.id}`,
+      name: user.name?.length ? user.name : translate(STRING.ANONYMOUS_USER),
+    }
   }
 
   get humanIdentifications(): HumanIdentification[] {

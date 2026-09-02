@@ -52,11 +52,17 @@ export class CaptureDetails extends Capture {
   }
 
   get nextCaptureId(): string | undefined {
-    return this._capture.event_next_capture_id
+    return this._capture.event_next_capture_id !== null &&
+      this._capture.event_next_capture_id !== undefined
+      ? `${this._capture.event_next_capture_id}`
+      : undefined
   }
 
   get prevCaptureId(): string | undefined {
-    return this._capture.event_prev_capture_id
+    return this._capture.event_prev_capture_id !== null &&
+      this._capture.event_prev_capture_id !== undefined
+      ? `${this._capture.event_prev_capture_id}`
+      : undefined
   }
 
   get sizeLabel(): string {

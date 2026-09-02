@@ -354,6 +354,27 @@ export enum STRING {
   TABLE_COLUMNS,
   TERMINAL_CLASSIFICATION,
   TIP,
+  TRACK_CLEARS_CONFIRMATION,
+  TRACK_CONFIRM_GROUPING,
+  TRACK_FRAME_MENU,
+  TRACK_GROUPING_CONFIRMED_BY,
+  TRACK_GROUPING_CONFIRMED,
+  TRACK_GROUPING_NOT_CONFIRMED,
+  TRACK_MERGE_DESCRIPTION,
+  TRACK_MERGE_RESULT,
+  TRACK_MERGE,
+  TRACK_MOVE_DESCRIPTION,
+  TRACK_MOVE_FRAME,
+  TRACK_MOVE_RESULT,
+  TRACK_NO_OTHER_OCCURRENCES,
+  TRACK_PICK_OCCURRENCE,
+  TRACK_REMOVE_DESCRIPTION,
+  TRACK_REMOVE_FRAME,
+  TRACK_REMOVE_RESULT,
+  TRACK_SPLIT_DESCRIPTION,
+  TRACK_SPLIT_HERE,
+  TRACK_SPLIT_RESULT,
+  TRACK_UNDO_CONFIRMATION,
   UNKNOWN_ERROR,
   UNKNOWN,
   UPDATING_DATA,
@@ -766,6 +787,38 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TABLE_COLUMNS]: 'Table columns',
   [STRING.TERMINAL_CLASSIFICATION]: 'Terminal classification',
   [STRING.TIP]: 'Tip',
+  [STRING.TRACK_CLEARS_CONFIRMATION]:
+    'This clears the confirmation that the grouping is correct.',
+  [STRING.TRACK_CONFIRM_GROUPING]: 'Mark grouping correct',
+  [STRING.TRACK_FRAME_MENU]: 'Frame actions',
+  [STRING.TRACK_GROUPING_CONFIRMED_BY]: 'by {{name}} on {{date}}',
+  [STRING.TRACK_GROUPING_CONFIRMED]: 'Grouping confirmed',
+  [STRING.TRACK_GROUPING_NOT_CONFIRMED]:
+    'Grouping not yet confirmed by a person',
+  [STRING.TRACK_MERGE_DESCRIPTION]:
+    'The detections and identifications of the occurrence you pick move here, and that occurrence is deleted. Only occurrences from this session can be merged.',
+  [STRING.TRACK_MERGE_RESULT]:
+    'Merged. This occurrence now holds {{count}} frames.',
+  [STRING.TRACK_MERGE]: 'Merge with another occurrence',
+  [STRING.TRACK_MOVE_DESCRIPTION]:
+    'The frame at {{time}} moves to the occurrence you pick. The rest of this occurrence stays together.',
+  [STRING.TRACK_MOVE_FRAME]: 'Move to another occurrence',
+  [STRING.TRACK_MOVE_RESULT]:
+    'Moved. Occurrence #{{id}} now holds {{count}} frames.',
+  [STRING.TRACK_NO_OTHER_OCCURRENCES]:
+    'This session holds no other occurrence to pick.',
+  [STRING.TRACK_PICK_OCCURRENCE]: 'Occurrences in this session',
+  [STRING.TRACK_REMOVE_DESCRIPTION]:
+    'The frame at {{time}} becomes an occurrence of its own, leaving {{remaining}} of {{total}} frames here. The rest of the track is stitched back together.',
+  [STRING.TRACK_REMOVE_FRAME]: 'Remove this frame',
+  [STRING.TRACK_REMOVE_RESULT]:
+    'Removed. The frame is now occurrence #{{id}} on its own.',
+  [STRING.TRACK_SPLIT_DESCRIPTION]:
+    'Everything from {{time}} onwards — {{moved}} of {{total}} frames — becomes a new occurrence. The earlier frames stay here.',
+  [STRING.TRACK_SPLIT_HERE]: 'Split here',
+  [STRING.TRACK_SPLIT_RESULT]:
+    'Split. {{count}} frames moved to occurrence #{{id}}.',
+  [STRING.TRACK_UNDO_CONFIRMATION]: 'Undo confirmation',
   [STRING.UNKNOWN_ERROR]: 'Unknown error',
   [STRING.UNKNOWN]: 'Unknown',
   [STRING.UPDATING_DATA]: 'Updating data',
