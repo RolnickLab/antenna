@@ -8,6 +8,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from ami.exports.models import DataExport
+from ami.exports.registry import ExportRegistry
 from ami.main.models import Detection, Identification, Occurrence, SourceImageCollection, Taxon
 from ami.ml.models import Algorithm
 from ami.tests.fixtures.main import (
@@ -38,7 +39,11 @@ class DataExportTest(TestCase):
         # Create a collection using the provided method
         self.collection = self._create_collection()
         # Define export formats
-        self.export_formats = ["occurrences_simple_csv", "occurrences_api_json", "detections_simple_csv"]
+        self.export_formats = [
+            "occurrences_simple_csv",
+            "occurrences_api_json",
+            "detections_simple_csv",
+        ]
 
     def _create_export_with_file(self, format_type):
         filename = f"exports/test_export_file_{format_type}.json"
@@ -346,6 +351,7 @@ class ExportDataTestCase(TestCase):
             format=self.format_type,
             job=None,
         )
+        self.data_export = data_export
         file_url = data_export.run_export()
         self.assertIsNotNone(file_url)
         file_path = file_url.replace("/media/", "")
@@ -373,6 +379,14 @@ class ExportDataTestCase(TestCase):
         )
         occurrence = detection.associate_new_occurrence()
         return occurrence, classification
+
+    def test_export_filename_label(self):
+        if not self.format_type:
+            return
+        label = ExportRegistry.get_exporter(self.format_type).filename_label
+        occurrence, classification = self._create_occurrence_with_prediction()
+        self._run_csv_export()
+        self.assertIn(label, self.data_export.file_url or "")
 
 
 class ExportNewFieldsTest(ExportDataTestCase):

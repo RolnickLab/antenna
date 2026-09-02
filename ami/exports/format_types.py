@@ -38,6 +38,7 @@ def get_export_serializer():
 class OccurrencesJSONExporter(BaseExporter):
     """Handles JSON export of occurrences."""
 
+    filename_label = "occurrences"
     file_format = "json"
 
     def get_serializer_class(self):
@@ -236,6 +237,7 @@ class BaseCSVExporter(BaseExporter):
 class OccurrencesCSVExporter(BaseCSVExporter):
     """Handles CSV export of occurrences."""
 
+    filename_label = "occurrences"
     serializer_class = OccurrenceTabularSerializer
 
     def get_queryset(self):
@@ -306,6 +308,7 @@ class DetectionsTabularSerializer(serializers.ModelSerializer):
 class DetectionsCSVExporter(BaseCSVExporter):
     """Handles CSV export of detections."""
 
+    filename_label = "detections"
     serializer_class = DetectionsTabularSerializer
 
     def get_filter_backends(self):
