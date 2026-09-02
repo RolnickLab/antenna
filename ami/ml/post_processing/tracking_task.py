@@ -137,19 +137,16 @@ def get_unique_feature_algorithm_for_event(event: Event) -> tuple[Algorithm | No
 
 
 def event_is_fresh(event: Event) -> tuple[bool, str]:
-    """
-    Fresh = every detection in the event has an occurrence AND every occurrence
-    in the event has exactly one detection. v1 tracking only operates on fresh
-    data (the state after pipeline processing creates 1:1 detection/occurrence
-    auto-mappings, before any chain consolidation).
-    """
-    orphan_detections = Detection.objects.filter(
-        source_image__event=event,
-        occurrence__isnull=True,
-    ).count()
-    if orphan_detections:
-        return False, f"{orphan_detections} detection(s) without an occurrence"
+    """Has this event's detections already been grouped into chains?
 
+    The guard exists to keep v1 away from events that were already consolidated:
+    merging those again can delete an occurrence that carries identifications.
+    An occurrence spanning more than one detection is the signal for that.
+
+    A detection with no occurrence at all is not that signal — the chain walk
+    creates an occurrence for a chain that has none — so orphans do not block a
+    run. Real sessions routinely carry a handful of them.
+    """
     multi_detection_occurrences = (
         Occurrence.objects.filter(event=event).annotate(_n=Count("detections")).filter(_n__gt=1).count()
     )

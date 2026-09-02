@@ -9,7 +9,12 @@ from django.utils import timezone
 from ami.jobs.models import Job
 from ami.main.models import Classification, Detection, Occurrence, SourceImageCollection
 from ami.ml.models import Algorithm
-from ami.ml.post_processing.tracking_task import TrackingConfig, TrackingTask, assign_occurrences_by_tracking_images
+from ami.ml.post_processing.tracking_task import (
+    TrackingConfig,
+    TrackingTask,
+    assign_occurrences_by_tracking_images,
+    event_is_fresh,
+)
 from ami.tests.fixtures.main import create_captures, create_occurrences, create_taxa, setup_test_project
 
 logger = logging.getLogger(__name__)
@@ -164,6 +169,44 @@ class TestTrackingWithoutFeatures(TestCase):
         self.assertEqual(
             Detection.objects.filter(source_image__event=self.event, next_detection__isnull=False).count(), 0
         )
+
+
+class TestFreshEventGuard(TestCase):
+    """The guard refuses already-grouped sessions, and only those.
+
+    Real sessions carry a few detections with no occurrence; refusing those would
+    put most production data out of reach of tracking.
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=3, interval_minutes=1)
+        create_taxa(self.project)
+        create_occurrences(deployment=self.deployment, num=3)
+        event = self.project.events.first()
+        assert event is not None
+        self.event = event
+
+    def test_orphan_detection_does_not_block_a_run(self):
+        orphan = Detection.objects.filter(source_image__event=self.event).first()
+        assert orphan is not None
+        occurrence = orphan.occurrence
+        orphan.occurrence = None
+        orphan.save(update_fields=["occurrence"])
+        if occurrence:
+            occurrence.delete()
+
+        fresh, reason = event_is_fresh(self.event)
+        self.assertTrue(fresh, reason)
+
+    def test_occurrence_spanning_two_detections_blocks_a_run(self):
+        first, second = list(Detection.objects.filter(source_image__event=self.event)[:2])
+        second.occurrence = first.occurrence
+        second.save(update_fields=["occurrence"])
+
+        fresh, reason = event_is_fresh(self.event)
+        self.assertFalse(fresh)
+        self.assertIn("already span", reason)
 
 
 class TestTrackingTaskResolveEvents(TestCase):
