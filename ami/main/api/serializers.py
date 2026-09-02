@@ -1014,6 +1014,7 @@ class CaptureOccurrenceSerializer(DefaultSerializer):
     # it to say how many frames an occurrence spans before deciding whether to ask for
     # its path, so a one-frame occurrence is never offered a fetch that returns nothing.
     detections_count = serializers.IntegerField(read_only=True)
+    grouping_verified_by = serializers.SerializerMethodField()
 
     class Meta:
         model = Occurrence
@@ -1024,7 +1025,16 @@ class CaptureOccurrenceSerializer(DefaultSerializer):
             "determination_score",
             "determination_algorithm",
             "detections_count",
+            # Whether a person confirmed this occurrence holds the right detections.
+            # The session view offers to undo a confirmation rather than repeat it, and
+            # can show which occurrences have been checked without a further request.
+            "grouping_verified",
+            "grouping_verified_at",
+            "grouping_verified_by",
         ]
+
+    def get_grouping_verified_by(self, obj: Occurrence) -> str | None:
+        return obj.grouping_verified_by.name if obj.grouping_verified_by else None
 
 
 class ClassificationPredictionItemSerializer(serializers.Serializer):

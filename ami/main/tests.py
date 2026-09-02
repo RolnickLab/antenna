@@ -7946,6 +7946,30 @@ class TrackEditTestCase(APITestCase):
         self.assertTrue(occurrences, "Fixture must put a detection with an occurrence on this capture")
         self.assertEqual(occurrences[0]["detections_count"], len(self.detections))
 
+    def test_capture_payload_says_whether_a_grouping_was_confirmed(self):
+        """A capture's boxes carry the confirmation, so the toolbar can offer to undo it.
+
+        Without this the session view would have to fetch each occurrence separately to
+        find out, or would offer to confirm something a person had already confirmed.
+        """
+        self.client.force_authenticate(user=self.curator)
+        url = f"/api/v2/captures/{self.captures[0].pk}/?project_id={self.project.pk}"
+
+        response = self.client.get(url)
+        occurrence = next(d["occurrence"] for d in response.data["detections"] if d.get("occurrence"))
+        self.assertFalse(occurrence["grouping_verified"])
+        self.assertIsNone(occurrence["grouping_verified_by"])
+
+        self.curator.name = "Test Curator"
+        self.curator.save()
+        self.client.post(f"/api/v2/occurrences/{self.occurrence.pk}/verify-grouping/")
+
+        response = self.client.get(url)
+        occurrence = next(d["occurrence"] for d in response.data["detections"] if d.get("occurrence"))
+        self.assertTrue(occurrence["grouping_verified"])
+        self.assertIsNotNone(occurrence["grouping_verified_at"])
+        self.assertEqual(occurrence["grouping_verified_by"], "Test Curator")
+
     def test_split_reports_the_counts_the_edit_left_behind(self):
         """Both counts come from the database, not from the prefetched detections.
 

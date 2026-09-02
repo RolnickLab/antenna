@@ -824,7 +824,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
                 Prefetch(
                     "occurrence",
                     queryset=Occurrence.objects.with_detections_count().select_related(  # type: ignore
-                        "determination"
+                        "determination", "grouping_verified_by"
                     ),
                 )
             )
