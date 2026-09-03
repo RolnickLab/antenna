@@ -13,11 +13,13 @@ from ami.main.models import (
     Deployment,
     Detection,
     Event,
+    Identification,
     Occurrence,
     Project,
     SourceImage,
     SourceImageCollection,
     Taxon,
+    TaxonRank,
     group_images_into_events,
 )
 from ami.ml.models import Algorithm, Pipeline, ProcessingService
@@ -1436,24 +1438,29 @@ class TestAlgorithmCategoryMaps(TestCase):
 
 
 class TestPostProcessingTasks(TestCase):
-    def setUp(self):
-        # Create test project, deployment, and default setup
-        self.project, self.deployment = setup_test_project()
-        create_taxa(project=self.project)
-        self._create_images_with_dimensions(deployment=self.deployment)
-        group_images_into_events(deployment=self.deployment)
+    @classmethod
+    def setUpTestData(cls):
+        # Project, taxa, images, events, and the collection are read-only from the
+        # tests' point of view — build them once per class. Detections (and the
+        # task runs that mutate them) happen per-test inside each test's
+        # rolled-back transaction.
+        cls.project, cls.deployment = setup_test_project()
+        create_taxa(project=cls.project)
+        cls._create_images_with_dimensions(deployment=cls.deployment)
+        group_images_into_events(deployment=cls.deployment)
 
         # Create a simple SourceImageCollection for testing
-        self.collection = SourceImageCollection.objects.create(
+        cls.collection = SourceImageCollection.objects.create(
             name="Test PostProcessing Collection",
-            project=self.project,
+            project=cls.project,
             method="manual",
-            kwargs={"image_ids": list(self.deployment.captures.values_list("pk", flat=True))},
+            kwargs={"image_ids": list(cls.deployment.captures.values_list("pk", flat=True))},
         )
-        self.collection.populate_sample()
+        cls.collection.populate_sample()
 
+    @classmethod
     def _create_images_with_dimensions(
-        self,
+        cls,
         deployment,
         num_images: int = 5,
         width: int = 640,
@@ -1525,6 +1532,217 @@ class TestPostProcessingTasks(TestCase):
                 not_identifiable_taxon,
                 f"Occurrence {occurrence.pk} should have its determination set to 'Not identifiable'.",
             )
+
+    def test_occurrence_scope_only_touches_that_occurrence(self):
+        """Per-occurrence scope: running with ``occurrence_id`` flags only that
+        occurrence's detections and leaves sibling occurrences untouched."""
+        detections = []
+        for image in self.collection.images.all():
+            det = Detection.objects.create(
+                source_image=image,
+                bbox=[0, 0, 10, 10],  # small
+                created_at=datetime.datetime.now(datetime.timezone.utc),
+            )
+            det.associate_new_occurrence()
+            detections.append(det)
+        self.assertGreaterEqual(len(detections), 2)
+
+        target = detections[0]
+        SmallSizeFilterTask(occurrence_id=target.occurrence_id, size_threshold=0.01).run()
+
+        not_identifiable_taxon = Taxon.objects.get(name="Not identifiable")
+        self.assertEqual(
+            Classification.objects.filter(detection=target, taxon=not_identifiable_taxon).count(),
+            1,
+            "The scoped occurrence's detection should be flagged.",
+        )
+        for other in detections[1:]:
+            self.assertFalse(
+                Classification.objects.filter(detection=other, taxon=not_identifiable_taxon).exists(),
+                f"Detection {other.pk} outside the scoped occurrence should be untouched.",
+            )
+
+    def test_run_reports_stage_metrics_on_job(self):
+        """The task surfaces ``detections_checked`` / ``detections_flagged`` /
+        ``occurrences_updated`` as stage params on its Job so an operator can see
+        what a run examined and changed without reading the log."""
+        from ami.jobs.models import Job
+
+        for image in self.collection.images.all():
+            Detection.objects.create(
+                source_image=image,
+                bbox=[0, 0, 10, 10],  # small → flagged
+                created_at=datetime.datetime.now(datetime.timezone.utc),
+            ).associate_new_occurrence()
+        total = Detection.objects.filter(source_image__in=self.collection.images.all()).count()
+        self.assertGreater(total, 0)
+
+        job = Job.objects.create(
+            project=self.project,
+            name="stage metrics test",
+            job_type_key="post_processing",
+            params={
+                "task": "small_size_filter",
+                "config": {"source_image_collection_id": self.collection.pk, "size_threshold": 0.01},
+            },
+        )
+        job.progress.add_stage("Post Processing", key="post_processing")
+        job.save()
+
+        SmallSizeFilterTask(
+            job=job,
+            source_image_collection_id=self.collection.pk,
+            size_threshold=0.01,
+        ).run()
+
+        job.refresh_from_db()
+        params = {p.name: p.value for p in job.progress.get_stage("post_processing").params}
+        self.assertEqual(params.get("detections_checked"), total)
+        self.assertEqual(params.get("detections_flagged"), total)  # every detection is small
+        # Each detection has its own occurrence here, so the deduped occurrence
+        # count equals the detection count.
+        self.assertEqual(params.get("occurrences_updated"), total)
+
+    def test_progress_save_bumps_updated_at_for_reaper(self):
+        """A progress heartbeat bumps ``Job.updated_at`` so the stale-job reaper
+        leaves an actively-running post-processing job alone.
+
+        ``check_stale_jobs`` revokes running jobs whose ``updated_at`` is older
+        than ``STALLED_JOBS_MAX_MINUTES``. The progress save narrows to
+        ``update_fields``, and Django does not auto-add ``auto_now`` fields to
+        that list, so ``update_progress`` / ``report_stage_metrics`` must include
+        ``updated_at`` explicitly. Without it a long run looks frozen and is
+        reaped mid-flight even while streaming progress. This pins that both save
+        paths move ``updated_at`` forward.
+        """
+        from ami.jobs.models import Job
+
+        job = Job.objects.create(
+            project=self.project,
+            name="reaper heartbeat test",
+            job_type_key="post_processing",
+            params={
+                "task": "small_size_filter",
+                "config": {"source_image_collection_id": self.collection.pk, "size_threshold": 0.01},
+            },
+        )
+        job.progress.add_stage("Post Processing", key="post_processing")
+        job.save()
+
+        task = SmallSizeFilterTask(
+            job=job,
+            source_image_collection_id=self.collection.pk,
+            size_threshold=0.01,
+        )
+
+        # Freeze a baseline older than the reaper cutoff, then confirm each
+        # heartbeat path drags updated_at back to "now". USE_TZ is False, so
+        # updated_at is naive local time — mirror check_stale_jobs' own
+        # naive datetime.now() comparison.
+        stale = datetime.datetime.now() - datetime.timedelta(minutes=Job.STALLED_JOBS_MAX_MINUTES + 5)
+
+        Job.objects.filter(pk=job.pk).update(updated_at=stale)
+        task.update_progress(0.5)
+        job.refresh_from_db()
+        self.assertGreater(job.updated_at, stale, "update_progress must bump updated_at")
+
+        Job.objects.filter(pk=job.pk).update(updated_at=stale)
+        task.report_stage_metrics({"classifications_checked": 1})
+        job.refresh_from_db()
+        self.assertGreater(job.updated_at, stale, "report_stage_metrics must bump updated_at")
+
+    def test_post_processing_stage_is_started_before_the_task_runs(self):
+        """The stage reads as running from the moment the job starts.
+
+        A task's first progress report can be minutes into a large run, and a stage
+        left at CREATED renders as "Waiting to start" until then. See #1376.
+        """
+        from unittest.mock import patch
+
+        from ami.jobs.models import Job, JobState, PostProcessingJob
+
+        job = Job.objects.create(
+            project=self.project,
+            name="stage status test",
+            job_type_key="post_processing",
+            params={
+                "task": "small_size_filter",
+                "config": {"source_image_collection_id": self.collection.pk, "size_threshold": 0.01},
+            },
+        )
+
+        observed = {}
+
+        def _capture(self_task):
+            stage = self_task.job.progress.get_stage("post_processing")
+            observed["status"] = stage.status
+            observed["label"] = stage.status_label
+
+        with patch.object(SmallSizeFilterTask, "run", _capture):
+            PostProcessingJob.run(job)
+
+        self.assertEqual(observed["status"], JobState.STARTED)
+        self.assertEqual(observed["label"], "0% complete")
+
+    def test_occurrences_updated_counts_only_changed_determinations(self):
+        """``occurrences_updated`` counts occurrences whose determination actually
+        changed, not every occurrence the filter re-saved.
+
+        An occurrence already pinned to a human identification keeps that
+        determination when its detection is flagged "Not identifiable", so it must
+        not inflate the metric. Only the un-identified occurrence, whose
+        determination flips, is counted.
+        """
+        from ami.jobs.models import Job
+
+        images = list(self.collection.images.all())
+        self.assertGreaterEqual(len(images), 2)
+
+        # Occurrence A: small detection, but a human identification pins the
+        # determination — flagging the detection does not change it.
+        human_taxon = Taxon.objects.create(name="Human-pinned species", rank=TaxonRank.SPECIES)
+        identifier = User.objects.create_user(email="identifier@insectai.org")  # type: ignore[attr-defined]
+        det_with_id = Detection.objects.create(
+            source_image=images[0],
+            bbox=[0, 0, 10, 10],
+            created_at=datetime.datetime.now(datetime.timezone.utc),
+        )
+        det_with_id.associate_new_occurrence()
+        Identification.objects.create(user=identifier, occurrence=det_with_id.occurrence, taxon=human_taxon)
+
+        # Occurrence B: small detection, no identification — its determination
+        # flips to "Not identifiable" and is the only real change.
+        det_plain = Detection.objects.create(
+            source_image=images[1],
+            bbox=[0, 0, 10, 10],
+            created_at=datetime.datetime.now(datetime.timezone.utc),
+        )
+        det_plain.associate_new_occurrence()
+
+        job = Job.objects.create(
+            project=self.project,
+            name="changed-determination metric test",
+            job_type_key="post_processing",
+            params={
+                "task": "small_size_filter",
+                "config": {"source_image_collection_id": self.collection.pk, "size_threshold": 0.01},
+            },
+        )
+        job.progress.add_stage("Post Processing", key="post_processing")
+        job.save()
+
+        SmallSizeFilterTask(
+            job=job,
+            source_image_collection_id=self.collection.pk,
+            size_threshold=0.01,
+        ).run()
+
+        job.refresh_from_db()
+        params = {p.name: p.value for p in job.progress.get_stage("post_processing").params}
+        # Both detections are flagged small, but only the un-identified
+        # occurrence's determination changes, so only it is counted.
+        self.assertEqual(params.get("detections_flagged"), 2)
+        self.assertEqual(params.get("occurrences_updated"), 1)
 
 
 class TestTaskStateManager(TestCase):
@@ -1850,10 +2068,13 @@ class TestSaveResultsRefreshesDeploymentCounts(TestCase):
         )
 
 
-class TestAlgorithmViewSetProjectFilter(APITestCase):
-    """
-    The algorithm list endpoint is scoped to algorithms belonging to
-    pipelines enabled for the active project.
+class AlgorithmProjectTestBase(APITestCase):
+    """Shared fixture for the two project-scoped algorithm listings.
+
+    Project A has an enabled pipeline carrying one algorithm that ran ("Algo Used")
+    and one that never did ("Algo Configured Unused"), plus a disabled pipeline whose
+    algorithm's determinations survive ("Algo Superseded"). Project B has its own
+    used algorithm. "Algo Orphan" belongs to no pipeline and never ran anywhere.
     """
 
     def setUp(self):
@@ -1863,27 +2084,57 @@ class TestAlgorithmViewSetProjectFilter(APITestCase):
         self.project = Project.objects.create(name="Algo Project A", create_defaults=False)
         self.other_project = Project.objects.create(name="Algo Project B", create_defaults=False)
 
-        # Project A: one enabled pipeline, one disabled pipeline
-        self.algo_enabled = Algorithm.objects.create(name="Algo Enabled", version=1)
-        self.algo_disabled = Algorithm.objects.create(name="Algo Disabled", version=1)
-        # Project B: a different pipeline/algorithm
+        # Project A: an enabled-pipeline algorithm that has run, and one that never did.
+        self.algo_used = Algorithm.objects.create(name="Algo Used", version=1)
+        self.algo_configured_unused = Algorithm.objects.create(name="Algo Configured Unused", version=1)
+        # Project A: an old version on a now-disabled pipeline, whose determinations survive.
+        self.algo_superseded = Algorithm.objects.create(name="Algo Superseded", version=1)
+        # Project B: a different algorithm, also used.
         self.algo_other_project = Algorithm.objects.create(name="Algo Other Project", version=1)
-        # Unrelated algorithm not attached to any pipeline
+        # Unrelated algorithm attached to no pipeline and never run.
         self.algo_orphan = Algorithm.objects.create(name="Algo Orphan", version=1)
 
         enabled_pipeline = Pipeline.objects.create(name="Enabled Pipeline")
-        enabled_pipeline.algorithms.add(self.algo_enabled)
+        enabled_pipeline.algorithms.add(self.algo_used, self.algo_configured_unused)
         ProjectPipelineConfig.objects.create(project=self.project, pipeline=enabled_pipeline, enabled=True)
 
         disabled_pipeline = Pipeline.objects.create(name="Disabled Pipeline")
-        disabled_pipeline.algorithms.add(self.algo_disabled)
+        disabled_pipeline.algorithms.add(self.algo_superseded)
         ProjectPipelineConfig.objects.create(project=self.project, pipeline=disabled_pipeline, enabled=False)
 
         other_pipeline = Pipeline.objects.create(name="Other Project Pipeline")
         other_pipeline.algorithms.add(self.algo_other_project)
         ProjectPipelineConfig.objects.create(project=self.other_project, pipeline=other_pipeline, enabled=True)
 
+        self._classify_in_project(self.algo_used, self.project)
+        self._classify_in_project(self.algo_superseded, self.project)
+        self._classify_in_project(self.algo_other_project, self.other_project)
+
         self.client.force_authenticate(user=self.user)
+
+    def _classify_in_project(self, algorithm, project):
+        """Give ``algorithm`` a classification whose capture belongs to ``project``."""
+        source_image = SourceImage.objects.create(project=project)
+        detection = Detection.objects.create(source_image=source_image)
+        return Classification.objects.create(
+            detection=detection,
+            algorithm=algorithm,
+            timestamp=datetime.datetime.now(datetime.timezone.utc),
+        )
+
+
+class TestAlgorithmViewSetProjectFilter(AlgorithmProjectTestBase):
+    """
+    The algorithm list endpoint scoped to a project shows what the project can run:
+    the algorithms on its enabled pipelines.
+
+    It reflects configuration, not history — a freshly configured project sees its
+    algorithms before anything has run, and an algorithm only on a disabled pipeline
+    is not offered even if it ran in the past. The algorithms that actually produced
+    results are served separately as occurrence filter choices (see
+    TestOccurrenceAlgorithmChoices), and detail pages stay reachable for any
+    algorithm through the unscoped detail endpoint.
+    """
 
     def _list_algorithm_names(self, project_id=None):
         params = {"project_id": project_id} if project_id is not None else {}
@@ -1892,9 +2143,19 @@ class TestAlgorithmViewSetProjectFilter(APITestCase):
         self.assertEqual(response.status_code, 200)
         return {row["name"] for row in response.json()["results"]}
 
-    def test_lists_only_enabled_pipeline_algorithms_for_project(self):
+    def test_project_list_shows_enabled_pipeline_algorithms(self):
+        """The scoped list is exactly the enabled pipelines' algorithms — including
+        one that has never run, so a new project can see what it is set up to use
+        before any job has completed."""
         names = self._list_algorithm_names(project_id=self.project.pk)
-        self.assertEqual(names, {"Algo Enabled"})
+        self.assertEqual(names, {"Algo Used", "Algo Configured Unused"})
+
+    def test_disabled_pipeline_algorithm_is_not_listed(self):
+        """An algorithm only on a pipeline the project has disabled is not part of
+        what the project can run, even though its past determinations survive. Those
+        stay reachable through the occurrence filter choices and the detail endpoint."""
+        names = self._list_algorithm_names(project_id=self.project.pk)
+        self.assertNotIn("Algo Superseded", names)
 
     def test_other_project_only_sees_its_own_algorithms(self):
         names = self._list_algorithm_names(project_id=self.other_project.pk)
@@ -1903,18 +2164,127 @@ class TestAlgorithmViewSetProjectFilter(APITestCase):
     def test_unscoped_request_returns_all_algorithms(self):
         """Without project_id, current behavior lists all algorithms (unchanged)."""
         names = self._list_algorithm_names()
-        self.assertIn("Algo Enabled", names)
-        self.assertIn("Algo Disabled", names)
-        self.assertIn("Algo Other Project", names)
-        self.assertIn("Algo Orphan", names)
+        for name in (
+            "Algo Used",
+            "Algo Superseded",
+            "Algo Configured Unused",
+            "Algo Other Project",
+            "Algo Orphan",
+        ):
+            self.assertIn(name, names)
 
     def test_detail_endpoint_unscoped_even_with_project_id(self):
-        """Detail stays unscoped so historical classification links still resolve."""
+        """Detail stays unscoped so a link from a historical classification — here an
+        algorithm outside the project's enabled set — still resolves to its details
+        and category map."""
         url = reverse_with_params(
             "api:algorithm-detail",
-            kwargs={"pk": self.algo_disabled.pk},
+            kwargs={"pk": self.algo_orphan.pk},
             params={"project_id": self.project.pk},
         )
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["name"], "Algo Disabled")
+        self.assertEqual(response.json()["name"], "Algo Orphan")
+
+
+class TestOccurrenceAlgorithmChoices(AlgorithmProjectTestBase):
+    """
+    The occurrence filter's algorithm choices, served at /occurrences/algorithms/,
+    are exactly the algorithms that produced results in the project.
+
+    An algorithm qualifies by owning output rows: a detection made by it (detectors,
+    which never author a Classification) or a classification from it (classifiers and
+    standalone post-processing algorithms such as class masking). A superseded
+    pipeline version stays a choice as long as its results survive, and a configured
+    algorithm that never ran is not offered — the filter never lists a value with
+    zero matching occurrences.
+    """
+
+    def _choice_names(self, project_id):
+        url = reverse_with_params("api:occurrence-algorithms", params={"project_id": project_id})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        return {row["name"] for row in response.json()["results"]}
+
+    def test_choices_are_exactly_the_algorithms_that_produced_results(self):
+        """The classifier that ran and the superseded version whose determinations
+        survive are choices; the enabled pipeline's never-run algorithm is not.
+        This pins the semantic that choices follow results, not setup."""
+        names = self._choice_names(self.project.pk)
+        self.assertEqual(names, {"Algo Used", "Algo Superseded"})
+
+    def test_configured_but_never_run_algorithm_is_not_a_choice(self):
+        """Filtering by an algorithm that never produced a result would always return
+        zero occurrences, so configuration alone does not admit one."""
+        names = self._choice_names(self.project.pk)
+        self.assertNotIn("Algo Configured Unused", names)
+
+    def test_detector_that_ran_is_a_choice_although_it_never_classified(self):
+        """Detectors set ``Detection.detection_algorithm`` and never write a
+        Classification, so they are reachable only through their detections. This pins
+        the regression where scoping choices purely by classification authorship
+        dropped every localizer."""
+        detector = Algorithm.objects.create(name="Algo Detector", version=1, task_type="localization")
+
+        source_image = SourceImage.objects.create(project=self.project)
+        Detection.objects.create(source_image=source_image, detection_algorithm=detector)
+        self.assertFalse(Classification.objects.filter(algorithm=detector).exists())
+
+        self.assertIn("Algo Detector", self._choice_names(self.project.pk))
+
+    def test_post_processing_algorithm_with_classifications_is_a_choice(self):
+        """A post-processing algorithm has no pipeline but produces determinations in
+        the project, so it must be offered — otherwise the user cannot filter
+        occurrences by the masked result."""
+        masked_algo = Algorithm.objects.create(name="Class Masked Classifier", version=1)
+        self._classify_in_project(masked_algo, self.project)
+
+        self.assertIn("Class Masked Classifier", self._choice_names(self.project.pk))
+
+    def test_classifications_in_other_project_do_not_leak(self):
+        """An algorithm whose classifications live in another project must not appear."""
+        other_masked_algo = Algorithm.objects.create(name="Other Project Masked", version=1)
+        self._classify_in_project(other_masked_algo, self.other_project)
+
+        self.assertNotIn("Other Project Masked", self._choice_names(self.project.pk))
+
+    def test_project_id_is_required(self):
+        """Choices are relative to a project; without one the request is rejected
+        rather than listing every algorithm on the platform."""
+        url = reverse_with_params("api:occurrence-algorithms")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 400)
+
+    def test_response_is_paginated_like_a_list_endpoint(self):
+        """The endpoint returns the standard ``{count, results}`` shape the
+        frontend's entity picker consumes."""
+        url = reverse_with_params("api:occurrence-algorithms", params={"project_id": self.project.pk})
+        data = self.client.get(url).json()
+        self.assertEqual(data["count"], 2)
+        self.assertEqual(len(data["results"]), 2)
+
+    def test_used_lookup_is_deduplicated_in_the_database(self):
+        """``used_in_project`` matches one classification row per determination, so it
+        must deduplicate in SQL rather than in Python.
+
+        Without that, the rows fetched grow with a project's classification count —
+        hundreds of thousands on a real masking run — to identify a handful of algorithms.
+        The listed names are correct either way, so this asserts the row count of the
+        underlying lookup rather than the endpoint's output. The ``.order_by()`` matters:
+        Classification's default ordering would otherwise widen the DISTINCT back to one
+        row per classification.
+        """
+        masked_algo = Algorithm.objects.create(name="Chatty Masked Classifier", version=1)
+        for _ in range(5):
+            self._classify_in_project(masked_algo, self.project)
+
+        lookup = Classification.objects.filter(
+            algorithm_id=masked_algo.pk,
+            detection__source_image__project=self.project,
+        ).values_list("algorithm_id", flat=True)
+
+        self.assertEqual(len(list(lookup)), 5, "The lookup matches one row per classification")
+        self.assertEqual(
+            len(list(lookup.order_by().distinct())), 1, "Deduplicating collapses them to the one algorithm"
+        )
+        self.assertIn("Chatty Masked Classifier", self._choice_names(self.project.pk))

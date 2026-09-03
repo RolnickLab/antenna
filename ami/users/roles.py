@@ -141,6 +141,9 @@ class MLDataManager(Role):
         Project.Permissions.RUN_ML_JOB,
         Project.Permissions.RUN_POPULATE_CAPTURES_COLLECTION_JOB,
         Project.Permissions.RUN_DATA_STORAGE_SYNC_JOB,
+        # Can start a storage sync from a station, not only run/retry the job it
+        # creates. ProjectManager also has this (inherits MLDataManager).
+        Project.Permissions.SYNC_DEPLOYMENT,
         Project.Permissions.RUN_REGROUP_EVENTS_JOB,
         Project.Permissions.RUN_DATA_EXPORT_JOB,
         Project.Permissions.DELETE_OCCURRENCES,

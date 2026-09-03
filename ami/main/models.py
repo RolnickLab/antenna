@@ -278,7 +278,7 @@ class ProjectFeatureFlags(pydantic.BaseModel):
     default_filters: bool = False  # Whether to show default filters form in UI
     # Feature flag for jobs to reprocess all images in the project, even if already processed
     reprocess_all_images: bool = False
-    async_pipeline_workers: bool = False  # Whether to use async pipeline workers that pull tasks from a queue
+    async_pipeline_workers: bool = True  # Whether to use async pipeline workers that pull tasks from a queue
 
 
 def get_default_feature_flags() -> ProjectFeatureFlags:
@@ -1336,7 +1336,15 @@ class Event(BaseModel):
         # Ideally this would be an annotated field, rather than an additional query.
         # raise NotImplementedError("This is added an annotated field, it should not be called directly.")
         # return SourceImage.objects.filter(event=self).order_by("timestamp").first().with_detections()
-        return SourceImage.objects.filter(event=self).order_by("timestamp").first()
+        # with_thumbnails() satisfies the thumbnail_urls prefetch contract for the nested serializer;
+        # select_related("project") feeds its project.thumbnails_enabled guard without an extra query.
+        return (
+            SourceImage.objects.filter(event=self)
+            .select_related("project")
+            .order_by("timestamp")
+            .with_thumbnails()
+            .first()
+        )
 
     def summary_data(self):
         """
@@ -2119,6 +2127,12 @@ class SourceImageQuerySet(BaseQuerySet):
         processed_exists = models.Exists(Detection.objects.filter(source_image_id=models.OuterRef("pk")))
         return self.annotate(was_processed=processed_exists)
 
+    def with_thumbnails(self):
+        """Prefetch ``thumbnails`` so :meth:`SourceImage.thumbnail_urls` decides
+        warm/cold in memory instead of firing a SELECT per row.
+        """
+        return self.prefetch_related("thumbnails")
+
 
 class SourceImageManager(models.Manager.from_queryset(SourceImageQuerySet)):
     pass
@@ -2274,7 +2288,7 @@ class SourceImage(BaseModel):
         ``SourceImageQuerySet.with_was_processed()``). Falls back to a DB query otherwise.
 
         Do not call in bulk without the annotation — use ``with_was_processed()``
-        on the queryset instead to avoid N+1 queries.
+        on the queryset instead so each row does not trigger its own DB query.
 
         :param algorithm_key: If provided, only detections from this algorithm are checked.
                               The annotation does not filter by algorithm; per-algorithm
@@ -2426,6 +2440,59 @@ class SourceImage(BaseModel):
             custom_perms.add(Project.Permissions.RUN_SINGLE_IMAGE_JOB)
         return list(custom_perms)
 
+    def thumbnail_is_valid(self, spec: dict, thumb: "SourceImageThumbnail | None") -> bool:
+        """Whether ``thumb`` satisfies ``spec`` and need not be regenerated.
+
+        ``thumb.width`` stores the requested spec width (see the generator), so the
+        comparison is strict equality; legacy encoder-width rows read invalid and
+        self-heal on next generation. A None ``last_modified`` on either side means
+        "no signal of change" (matches ``NULL < x`` → ``False`` in SQL).
+        """
+        if thumb is None or not thumb.path or thumb.width != spec["width"]:
+            return False
+        source_changed = (
+            self.last_modified is not None
+            and thumb.last_modified is not None
+            and thumb.last_modified < self.last_modified
+        )
+        return not source_changed
+
+    def thumbnail_urls(self, request: Request | None = None) -> dict[str, str]:
+        """Per-label ``{label: url}`` for this capture's thumbnails.
+
+        Warm (cached row valid for the spec) → direct storage URL. Cold/stale →
+        route URL into the thumbnail viewset, which (re)generates lazily.
+
+        The warm path needs prefetched ``thumbnails``
+        (:meth:`SourceImageQuerySet.with_thumbnails`). Without the prefetch — a
+        freshly created instance in a write response, or a caller that skipped
+        ``with_thumbnails`` — every label falls back to the route URL without
+        querying. This never lazily loads per object (which would be an N+1 in
+        list contexts); list endpoints must apply ``with_thumbnails`` to get the
+        warm storage URLs, and the list query-count tests pin that.
+        """
+        # Local import avoids a models ↔ serializers cycle at module load time.
+        from ami.base.serializers import reverse_with_params
+
+        prefetched = "thumbnails" in getattr(self, "_prefetched_objects_cache", {})
+        thumbs: dict[str, "SourceImageThumbnail"] = {t.label: t for t in self.thumbnails.all()} if prefetched else {}
+
+        out: dict[str, str] = {}
+        for label, spec in settings.THUMBNAILS["SIZES"].items():
+            thumb = thumbs.get(label)
+            if self.thumbnail_is_valid(spec, thumb):
+                out[label] = default_storage.url(thumb.path)
+            else:
+                # Qualified ``api:`` namespace so this also resolves when ``request``
+                # is None (management commands, template tags).
+                out[label] = reverse_with_params(
+                    "api:sourceimagethumbnail-detail",
+                    args=(self.pk,),
+                    request=request,
+                    params={"label": label},
+                )
+        return out
+
     def find_or_generate_thumbnail_for_label(self, label):
         try:
             thumb = self.thumbnails.get(label=label)
@@ -2434,14 +2501,9 @@ class SourceImage(BaseModel):
         size = settings.THUMBNAILS["SIZES"].get(label)
         prefix = settings.THUMBNAILS["STORAGE_PREFIX"]
 
-        # ``self.last_modified`` can be None on legacy rows synced before upload
-        # backfill — treat None as "no signal of change", not an error.
-        source_changed = (
-            self.last_modified is not None and thumb is not None and thumb.last_modified < self.last_modified
-        )
         # The row is trusted without a storage existence check; an orphan row (blob
         # deleted out of band) shows a broken image until the row is removed.
-        if not thumb or not thumb.path or thumb.width != size["width"] or source_changed:
+        if not self.thumbnail_is_valid(size, thumb):
             img = PIL.Image.open(BytesIO(fetch_image_content(self.public_url(raise_errors=True))))
             # JPEG only supports L, RGB, CMYK — convert other modes (e.g. RGBA PNGs)
             # or PIL raises ``OSError: cannot write mode <X> as JPEG``.
@@ -2457,6 +2519,8 @@ class SourceImage(BaseModel):
             img.thumbnail(new_size)
 
             buffer = BytesIO()
+            # No ``exif=`` argument: detection boxes are overlaid on thumbnails in raw
+            # pixel coordinates, so the EXIF Orientation tag must not propagate.
             img.save(buffer, format="JPEG", progressive=True, optimize=True, quality=82)
             contents = buffer.getvalue()
             file_size = len(contents)
@@ -2850,7 +2914,13 @@ class Identification(BaseModel):
         update_occurrence_determination(self.occurrence, current_determination=self.taxon)
 
     def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
-        """Custom permission check logic for Identification model."""
+        """
+        Custom permission check logic for Identification model.
+
+        The "create" branch depends only on the occurrence's project. The bulk
+        endpoint relies on that to check once per batch instead of once per
+        occurrence — revisit it if this path gains per-occurrence logic. See #1371.
+        """
         import ami.users.roles as roles
 
         project = self.get_project()
@@ -3291,6 +3361,33 @@ class OccurrenceQuerySet(BaseQuerySet):
     def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
 
+    def _processed_by_algorithm_q(self, algorithm_ids) -> Exists:
+        """Subquery matching occurrences with any result from the given algorithms —
+        a detection made by one (detectors) or a classification from one (classifiers
+        and post-processing algorithms such as class masking or a size filter)."""
+        return Exists(
+            Detection.objects.filter(occurrence_id=OuterRef("pk")).filter(
+                models.Q(detection_algorithm__in=algorithm_ids)
+                | models.Q(classifications__algorithm__in=algorithm_ids)
+            )
+        )
+
+    def processed_by_algorithm(self, algorithm_ids) -> "OccurrenceQuerySet":
+        """Occurrences with at least one result from the given algorithms.
+
+        Matches detectors through Detection.detection_algorithm and classifiers or
+        post-processing algorithms through their classifications, so every algorithm
+        listed by ``Algorithm.objects.used_in_project()`` can match here. The EXISTS
+        form returns each occurrence once; a join through
+        ``detections__classifications`` returns one row per matching result, which
+        inflates pagination counts and duplicates rows across pages.
+        """
+        return self.filter(self._processed_by_algorithm_q(algorithm_ids))
+
+    def not_processed_by_algorithm(self, algorithm_ids) -> "OccurrenceQuerySet":
+        """Occurrences with no result from any of the given algorithms."""
+        return self.exclude(self._processed_by_algorithm_q(algorithm_ids))
+
     def with_timestamps(self):
         """
         These are timestamps used for filtering and ordering in the UI.
@@ -3718,6 +3815,11 @@ class Occurrence(BaseModel):
             # Supports sorting projects by their most recently updated occurrence
             # (see ProjectViewSet ordering "last_occurrence_updated_at").
             models.Index(fields=["project", "-updated_at"], name="occur_proj_updated_desc_idx"),
+            # Backs the default occurrence list sort: per-project, ordered by
+            # determination_score DESC (Meta.ordering). Without it the planner
+            # sorts the whole project's occurrences per page (on-disk merge sort
+            # on large projects). DESC = NULLS FIRST to match the ORM's ORDER BY.
+            models.Index(fields=["project", "-determination_score"], name="occur_proj_score_desc_idx"),
         ]
 
 
