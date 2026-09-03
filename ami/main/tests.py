@@ -6019,7 +6019,8 @@ class TestDeviceAndSiteFilters(APITestCase):
     one site so they can, for example, build a presence matrix per site. These tests
     pin that the occurrence list filters exactly to the chosen device/site, that the
     taxa list restricts membership the same way (not just its annotated counts), and
-    that an unknown device/site id is rejected with a 404 on the taxa endpoint.
+    that an unknown or foreign-project device/site id is rejected with a 404 on the taxa
+    endpoint.
     """
 
     def setUp(self):
@@ -6085,6 +6086,15 @@ class TestDeviceAndSiteFilters(APITestCase):
     def test_unknown_device_or_site_returns_404_on_taxa(self):
         for param in ("deployment__device", "deployment__research_site"):
             res = self.client.get(f"/api/v2/taxa/?project_id={self.project.pk}&{param}=999999")
+            self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND, param)
+
+    def test_other_projects_device_or_site_returns_404_on_taxa(self):
+        """A foreign project's id is rejected like an unknown one, not answered with an empty list."""
+        other_project, _ = setup_test_project(reuse=False)
+        other_device = Device.objects.create(name="Other device", project=other_project)
+        other_site = Site.objects.create(name="Other site", project=other_project)
+        for param, obj in (("deployment__device", other_device), ("deployment__research_site", other_site)):
+            res = self.client.get(f"/api/v2/taxa/?project_id={self.project.pk}&{param}={obj.pk}")
             self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND, param)
 
     def test_non_integer_id_returns_400_not_500(self):
