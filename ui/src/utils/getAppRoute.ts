@@ -4,6 +4,8 @@ type FilterType =
   | 'collection'
   | 'collections'
   | 'deployment'
+  | 'deployment__device'
+  | 'deployment__research_site'
   | 'detections__source_image'
   | 'event'
   | 'include_unobserved'
@@ -14,6 +16,10 @@ type FilterType =
   | 'taxon'
   | 'timestamp'
   | 'verified'
+  // Not a data filter: the id of the occurrence whose verification modal should
+  // open over the current list. Kept here so getAppRoute can set it as a search
+  // param alongside the active filters.
+  | 'verifyOccurrence'
 
 export const getAppRoute = ({
   to,

@@ -12,8 +12,10 @@ import typing
 from django.contrib.postgres.fields import ArrayField
 from django.db import models
 from django.utils.text import slugify
+from django_pydantic_field import SchemaField
 
 from ami.base.models import BaseModel, BaseQuerySet
+from ami.ml.schemas import AlgorithmTrainingConfig, AlgorithmTrainingInfo
 
 
 @typing.final
@@ -247,6 +249,32 @@ class Algorithm(BaseModel):
         blank=True,
         null=True,
         help_text=("A URI to the weights or model details. Could be a public web URL or object store path."),
+    )
+
+    trainable = models.BooleanField(
+        default=False,
+        help_text=(
+            "Whether the processing service reports that this algorithm can be retrained. "
+            "Mirrored from the service's /info response so the UI does not have to ask it."
+        ),
+    )
+    # Seeded from the service on first registration, then owned here so an admin's edits
+    # are not overwritten every time /info is read.
+    training_config = SchemaField(
+        AlgorithmTrainingConfig,
+        default=AlgorithmTrainingConfig,
+        null=False,
+        blank=True,
+        help_text="Settings used when retraining this algorithm.",
+    )
+    # Written by the training job. Every retrain creates a new version, so this records
+    # where one particular set of weights came from.
+    training_info = SchemaField(
+        AlgorithmTrainingInfo,
+        default=AlgorithmTrainingInfo,
+        null=False,
+        blank=True,
+        help_text="Where this version's weights came from. Empty on a version that was never retrained.",
     )
 
     category_map = models.ForeignKey(
