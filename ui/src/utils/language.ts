@@ -109,6 +109,7 @@ export enum STRING {
   FIELD_LABEL_EMAIL,
   FIELD_LABEL_ENDPOINT,
   FIELD_LABEL_ERRORS,
+  FIELD_LABEL_EXAMPLE,
   FIELD_LABEL_FILE_SIZE,
   FIELD_LABEL_FILENAME,
   FIELD_LABEL_FINISHED_AT,
@@ -293,6 +294,7 @@ export enum STRING {
   TOOLTIP_STATS_KAPPA,
   TOOLTIP_STATS_VERIFIED,
   TOOLTIP_STORAGE,
+  TOOLTIP_VERIFY_EXAMPLE,
   TOOLTIP_VIEW_SOURCE_FILE,
 
   /* OTHER */
@@ -469,6 +471,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_EMAIL]: 'Email',
   [STRING.FIELD_LABEL_ENDPOINT]: 'Endpoint URL',
   [STRING.FIELD_LABEL_ERRORS]: 'Errors',
+  [STRING.FIELD_LABEL_EXAMPLE]: 'Example',
   [STRING.FIELD_LABEL_FILE_SIZE]: 'File size',
   [STRING.FIELD_LABEL_FILENAME]: 'Filename',
   [STRING.FIELD_LABEL_FINISHED_AT]: 'Finished at',
@@ -724,6 +727,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     '{{verified}} of {{total}} occurrences matching the current filters have been verified by a person. {{comparable}} of those can be compared against a model prediction, which is what the agreement numbers are measured on.',
   [STRING.TOOLTIP_STORAGE]:
     'A storage is a place where captures are kept, for example a S3 bucket. One or many stations can be connected to a storage.',
+  [STRING.TOOLTIP_VERIFY_EXAMPLE]: 'Verify one occurrence of this taxon.',
   [STRING.TOOLTIP_VIEW_SOURCE_FILE]: 'View source file',
 
   /* OTHER */

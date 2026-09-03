@@ -55,6 +55,8 @@ export const useCreateIdentifications = (
       setLastAttempt({ failed, total: submitted.length })
       queryClient.invalidateQueries([API_ROUTES.IDENTIFICATIONS])
       queryClient.invalidateQueries([API_ROUTES.OCCURRENCES])
+      // Keep the taxa list in sync (verified counts + example thumbnail).
+      queryClient.invalidateQueries([API_ROUTES.SPECIES])
       onSuccess?.()
       if (!failed.length) {
         successResetTimeout.current = setTimeout(() => reset(), SUCCESS_TIMEOUT)
