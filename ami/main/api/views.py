@@ -12,7 +12,7 @@ from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
 from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
-from django_filters.rest_framework import DjangoFilterBackend, FilterSet, NumberFilter
+from django_filters.rest_framework import DjangoFilterBackend, FilterSet
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import exceptions as api_exceptions
@@ -25,7 +25,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ami.base.filters import NullsLastOrderingFilter, ThresholdFilter
+from ami.base.filters import NullsLastOrderingFilter, RelatedIdFilter, ThresholdFilter
 from ami.base.metadata import ResponseSchemaMetadata
 from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
@@ -1164,17 +1164,9 @@ class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
 
 
 class DetectionFilterSet(FilterSet):
-    """Declared filterset so the browsable API form stays lightweight.
+    """Declared so the browsable API form does not enumerate the source image table."""
 
-    ``source_image`` is a ``NumberFilter`` because the auto-generated
-    ``ModelChoiceFilter`` for a foreign key renders the browsable API's filter
-    form as a ``<select>`` enumerating the entire related table. The source
-    image table holds tens of millions of rows, so building that form times
-    out the request. A plain number input accepts the same
-    ``?source_image=<id>`` query parameter without loading the related table.
-    """
-
-    source_image = NumberFilter()
+    source_image = RelatedIdFilter()
 
     class Meta:
         model = Detection
@@ -1454,17 +1446,12 @@ OCCURRENCE_FILTERSET_FIELDS = (
 
 
 class OccurrenceFilterSet(FilterSet):
-    """Declared filterset shared by the occurrence list and stats viewsets.
+    """Shared by the occurrence list and stats viewsets.
 
-    ``detections__source_image`` is a ``NumberFilter`` because the
-    auto-generated ``ModelChoiceFilter`` renders the browsable API's filter
-    form as a ``<select>`` enumerating the source image table (tens of
-    millions of rows), which times out the request. A plain number input
-    accepts the same ``?detections__source_image=<id>`` query parameter
-    without loading the related table.
+    Declared so the browsable API form does not enumerate the source image table.
     """
 
-    detections__source_image = NumberFilter()
+    detections__source_image = RelatedIdFilter()
 
     class Meta:
         model = Occurrence
@@ -1780,16 +1767,9 @@ class TagInverseFilter(filters.BaseFilterBackend):
 
 
 class TaxonFilterSet(FilterSet):
-    """Declared filterset so the browsable API form stays lightweight.
+    """Declared so the browsable API form does not enumerate the taxon table."""
 
-    ``parent`` is a ``NumberFilter`` because the auto-generated
-    ``ModelChoiceFilter`` renders the browsable API's filter form as a
-    ``<select>`` enumerating the taxon table itself, which makes the page take
-    many seconds to load. A plain number input accepts the same
-    ``?parent=<id>`` query parameter without loading the table.
-    """
-
-    parent = NumberFilter()
+    parent = RelatedIdFilter()
 
     class Meta:
         model = Taxon
@@ -2208,17 +2188,9 @@ class TagViewSet(DefaultViewSet, ProjectMixin):
 
 
 class ClassificationFilterSet(FilterSet):
-    """Declared filterset so the browsable API form stays lightweight.
+    """Declared so the browsable API form does not enumerate the taxon table."""
 
-    ``taxon`` is a ``NumberFilter`` because the auto-generated
-    ``ModelChoiceFilter`` renders the browsable API's filter form as a
-    ``<select>`` enumerating the entire taxon table, which makes the page take
-    many seconds to load. A plain number input accepts the same
-    ``?taxon=<id>`` query parameter without loading the related table. See
-    https://www.django-rest-framework.org/topics/browsable-api/#handling-choicefield-with-large-numbers-of-items
-    """
-
-    taxon = NumberFilter()
+    taxon = RelatedIdFilter()
 
     class Meta:
         model = Classification
@@ -2375,18 +2347,10 @@ class PageViewSet(DefaultViewSet):
 
 
 class IdentificationFilterSet(FilterSet):
-    """Declared filterset so the browsable API form stays lightweight.
+    """Declared so the browsable API form does not enumerate the occurrence or taxon tables."""
 
-    ``occurrence`` and ``taxon`` are ``NumberFilter``s because the
-    auto-generated ``ModelChoiceFilter`` renders the browsable API's filter
-    form as a ``<select>`` enumerating the related table, and both the
-    occurrence and taxon tables are far too large for that. Plain number
-    inputs accept the same ``?occurrence=<id>`` and ``?taxon=<id>`` query
-    parameters without loading the related tables.
-    """
-
-    occurrence = NumberFilter()
-    taxon = NumberFilter()
+    occurrence = RelatedIdFilter()
+    taxon = RelatedIdFilter()
 
     class Meta:
         model = Identification

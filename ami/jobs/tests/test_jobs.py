@@ -1666,15 +1666,11 @@ class TestDataStorageSyncJobIncludesRegroupStage(TestCase):
 class TestJobSourceImageSingleFilter(APITestCase):
     """Pin the ``?source_image_single=<id>`` query-parameter contract.
 
-    ``JobFilterSet`` declares ``source_image_single`` as a ``NumberFilter`` so
-    the browsable API renders a number input instead of a ``<select>``
-    enumerating the source image table (tens of millions of rows in
-    production, which times out the page). The parameter must keep filtering
-    jobs by the exact source image id.
-
-    One deliberate difference from the auto-generated ``ModelChoiceFilter``:
-    an id with no matching row returns an empty page instead of a validation
-    error. Non-numeric values are still rejected.
+    ``JobFilterSet`` declares it as a ``RelatedIdFilter`` (see ``ami/base/filters.py``),
+    and it must keep filtering jobs by the exact source image id. One deliberate
+    difference from the auto-generated ``ModelChoiceFilter``: an id with no matching row
+    returns an empty page instead of a validation error. Non-integer values are still
+    rejected.
     """
 
     def setUp(self):
@@ -1713,6 +1709,15 @@ class TestJobSourceImageSingleFilter(APITestCase):
         url = reverse_with_params(
             "api:job-list",
             params={"project_id": self.project.pk, "source_image_single": "abc"},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_fractional_id_is_rejected(self):
+        """``1.5`` must 400 rather than be truncated to id 1 and match the wrong image."""
+        url = reverse_with_params(
+            "api:job-list",
+            params={"project_id": self.project.pk, "source_image_single": "1.5"},
         )
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

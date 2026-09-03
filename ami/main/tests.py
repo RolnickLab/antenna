@@ -7655,21 +7655,22 @@ class TestBulkIdentificationQueryCount(BulkIdentificationTestCase):
 
 
 class TestHugeTableFilterParams(APITestCase):
-    """Pin the query-parameter contract for filters on huge related tables.
+    """Pin the query-parameter contract for ``RelatedIdFilter`` params on huge related tables.
 
-    ``source_image`` (detections), ``detections__source_image`` (occurrences)
-    and ``taxon`` (classifications) are declared as ``NumberFilter``s so the
-    browsable API renders a number input instead of a ``<select>`` enumerating
-    the related table (the source image table holds tens of millions of rows
-    in production, so enumerating it times out the page). These tests pin the
-    invariant that the query parameters still filter by id exactly as the
-    auto-generated ``ModelChoiceFilter`` did.
-
-    One deliberate difference from the auto-generated filter: an id with no
-    matching row returns an empty page instead of a validation error, because
-    a plain number filter does not check that the id exists. Non-numeric
-    values are still rejected.
+    Each param in ``ENDPOINT_PARAMS`` must filter by id exactly as the auto-generated
+    ``ModelChoiceFilter`` did. One deliberate difference: an id with no matching row
+    returns an empty page instead of a validation error, because a plain number filter
+    does not check that the id exists. Non-integer values are still rejected.
     """
+
+    ENDPOINT_PARAMS = [
+        ("/api/v2/detections/", "source_image"),
+        ("/api/v2/occurrences/", "detections__source_image"),
+        ("/api/v2/classifications/", "taxon"),
+        ("/api/v2/taxa/", "parent"),
+        ("/api/v2/identifications/", "occurrence"),
+        ("/api/v2/identifications/", "taxon"),
+    ]
 
     def setUp(self):
         self.project, self.deployment = setup_test_project(reuse=False)
@@ -7751,27 +7752,22 @@ class TestHugeTableFilterParams(APITestCase):
 
     def test_unknown_id_returns_empty_page(self):
         """A well-formed id that matches nothing filters everything out rather than erroring."""
-        for path, param in [
-            ("/api/v2/detections/", "source_image"),
-            ("/api/v2/occurrences/", "detections__source_image"),
-            ("/api/v2/classifications/", "taxon"),
-            ("/api/v2/taxa/", "parent"),
-            ("/api/v2/identifications/", "occurrence"),
-        ]:
-            with self.subTest(path=path):
+        for path, param in self.ENDPOINT_PARAMS:
+            with self.subTest(path=path, param=param):
                 ids = self._get_ids(path, {"project_id": self.project.pk, "limit": 200, param: 99999999})
                 self.assertEqual(ids, set())
 
     def test_non_numeric_id_is_rejected(self):
-        for path, param in [
-            ("/api/v2/detections/", "source_image"),
-            ("/api/v2/occurrences/", "detections__source_image"),
-            ("/api/v2/classifications/", "taxon"),
-            ("/api/v2/taxa/", "parent"),
-            ("/api/v2/identifications/", "occurrence"),
-        ]:
-            with self.subTest(path=path):
+        for path, param in self.ENDPOINT_PARAMS:
+            with self.subTest(path=path, param=param):
                 response = self.client.get(f"{path}?project_id={self.project.pk}&{param}=abc")
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_fractional_id_is_rejected(self):
+        """``?taxon=1.5`` must 400 rather than be truncated to id 1 and filter by the wrong row."""
+        for path, param in self.ENDPOINT_PARAMS:
+            with self.subTest(path=path, param=param):
+                response = self.client.get(f"{path}?project_id={self.project.pk}&{param}=1.5")
                 self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
