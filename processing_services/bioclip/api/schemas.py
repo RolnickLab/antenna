@@ -133,6 +133,7 @@ class DetectionRequest(pydantic.BaseModel):
 
 
 class DetectionResponse(pydantic.BaseModel):
+    # these fields are populated with values from a Detection, excluding source_image details
     source_image_id: str
     bbox: BoundingBox
     inference_time: float | None = None
@@ -143,6 +144,10 @@ class DetectionResponse(pydantic.BaseModel):
 
 
 class Detection(BaseImage):
+    """
+    An internal representation of a detection with reference to a source image instance.
+    """
+
     source_image: SourceImage  # the 'original' uncropped image
     bbox: BoundingBox
     inference_time: float | None = None
@@ -182,6 +187,43 @@ class AlgorithmCategoryMapResponse(pydantic.BaseModel):
     )
 
 
+class AlgorithmTrainingConfig(pydantic.BaseModel):
+    """
+    Default settings for retraining this algorithm. Antenna seeds its own copy from this
+    and an admin can then override it, so these are defaults, not rules.
+    """
+
+    # Used by Antenna when it builds the training set.
+    min_per_species: int = 2
+    test_fraction: float = 0.2
+    split_salt: str = "antenna-head-v1"
+
+    # Used here when fitting.
+    head_type: str = "linear"
+    epochs: int = 300
+    learning_rate: float = 0.01
+    weight_decay: float = 1e-4
+    min_improvement: float = 0.0
+
+    model_config = pydantic.ConfigDict(extra="allow")
+
+
+class AlgorithmTrainingInfo(pydantic.BaseModel):
+    """Where a retrained version's weights came from."""
+
+    trained_at: datetime.datetime | None = None
+    dataset_url: str | None = None
+    dataset_rows: int | None = None
+    dataset_classes: int | None = None
+    metrics: dict = pydantic.Field(default_factory=dict)
+    previous_metrics: dict = pydantic.Field(default_factory=dict)
+    parent_algorithm_key: str | None = None
+    job_id: int | None = None
+    warnings: list[str] = pydantic.Field(default_factory=list)
+
+    model_config = pydantic.ConfigDict(extra="allow")
+
+
 class AlgorithmConfigResponse(pydantic.BaseModel):
     name: str
     key: str = pydantic.Field(
@@ -205,20 +247,60 @@ class AlgorithmConfigResponse(pydantic.BaseModel):
         default=None,
         description="A URI to the weights or model details, could be a public web URL or object store path.",
     )
+    trainable: bool = pydantic.Field(
+        default=False,
+        description=(
+            "Whether this algorithm can be retrained from labelled data. Only the classifier head "
+            "over the frozen backbone is cheap enough to retrain; the backbone and the detector are not."
+        ),
+    )
+    training_config: AlgorithmTrainingConfig | None = None
+    training_info: AlgorithmTrainingInfo | None = None
     category_map: AlgorithmCategoryMapResponse | None = None
 
     class Config:
         extra = "ignore"
 
 
-PipelineChoice = typing.Literal["random", "constant", "random-detection-random-species"]
+PipelineChoice = typing.Literal[
+    "bioclip-2-5-logreg-pipeline",
+    "bioclip-2-5-panama-pipeline",
+    "zero-shot-hf-classifier-pipeline",
+    "zero-shot-object-detector-pipeline",
+    "zero-shot-object-detector-with-constant-classifier-pipeline",
+    "zero-shot-object-detector-with-random-species-classifier-pipeline",
+]
+
+
+class PipelineRequestConfigParameters(pydantic.BaseModel):
+    """Parameters used to configure a pipeline request.
+
+    Accepts any serializable key-value pair.
+    Example: {"force_reprocess": True, "auth_token": "abc123"}
+
+    Supported parameters are defined by the pipeline in the processing service
+    and should be published in the Pipeline's info response.
+    """
+
+    force_reprocess: bool = pydantic.Field(
+        default=False,
+        description="Force reprocessing of the image, even if it has already been processed.",
+    )
+    auth_token: str | None = pydantic.Field(
+        default=None,
+        description="An optional authentication token to use for the pipeline.",
+    )
+    candidate_labels: list[str] | None = pydantic.Field(
+        default=None,
+        description="A list of candidate labels to use for the zero-shot object detector.",
+    )
 
 
 class PipelineRequest(pydantic.BaseModel):
     pipeline: PipelineChoice
     source_images: list[SourceImageRequest]
     detections: list[DetectionRequest] | None = None
-    config: dict
+    config: PipelineRequestConfigParameters | dict | None = None
 
     # Example for API docs:
     class Config:
@@ -231,6 +313,7 @@ class PipelineRequest(pydantic.BaseModel):
                         "url": "https://archive.org/download/mma_various_moths_and_butterflies_54143/54143.jpg",
                     }
                 ],
+                "config": {"force_reprocess": True, "auth_token": "abc123"},
             }
         }
 
@@ -249,6 +332,7 @@ class PipelineResultsResponse(pydantic.BaseModel):
     )
     source_images: list[SourceImageResponse]
     detections: list[DetectionResponse]
+    errors: list | str | None = None
 
 
 class PipelineStageParam(pydantic.BaseModel):

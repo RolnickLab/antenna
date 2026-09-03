@@ -1,0 +1,62 @@
+[
+  {
+    "index": 0,
+    "label": "Actias luna",
+    "taxon_rank": "SPECIES",
+    "source_class": "0"
+  },
+  {
+    "index": 1,
+    "label": "Automeris io",
+    "taxon_rank": "SPECIES",
+    "source_class": "1"
+  },
+  {
+    "index": 2,
+    "label": "Hyalophora cecropia",
+    "taxon_rank": "SPECIES",
+    "source_class": "2"
+  },
+  {
+    "index": 3,
+    "label": "Malacosoma disstria",
+    "taxon_rank": "SPECIES",
+    "source_class": "3"
+  },
+  {
+    "index": 4,
+    "label": "Orgyia leucostigma",
+    "taxon_rank": "SPECIES",
+    "source_class": "4"
+  },
+  {
+    "index": 5,
+    "label": "Lymantria dispar",
+    "taxon_rank": "SPECIES",
+    "source_class": "5"
+  },
+  {
+    "index": 6,
+    "label": "Spilosoma virginica",
+    "taxon_rank": "SPECIES",
+    "source_class": "6"
+  },
+  {
+    "index": 7,
+    "label": "Halysidota tessellaris",
+    "taxon_rank": "SPECIES",
+    "source_class": "7"
+  },
+  {
+    "index": 8,
+    "label": "Datana ministra",
+    "taxon_rank": "SPECIES",
+    "source_class": "8"
+  },
+  {
+    "index": 9,
+    "label": "Euchaetes egle",
+    "taxon_rank": "SPECIES",
+    "source_class": "9"
+  }
+]
