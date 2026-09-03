@@ -4,6 +4,8 @@ type FilterType =
   | 'collection'
   | 'collections'
   | 'deployment'
+  | 'deployment__device'
+  | 'deployment__research_site'
   | 'detections__source_image'
   | 'event'
   | 'include_unobserved'
