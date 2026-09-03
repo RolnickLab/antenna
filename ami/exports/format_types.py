@@ -1,14 +1,17 @@
 import csv
 import json
 import logging
+import os
 import tempfile
 
 from django.core.serializers.json import DjangoJSONEncoder
 from rest_framework import serializers
 
 from ami.exports.base import BaseExporter
+from ami.exports.taxa_list import COLUMN_ORDER as TAXA_LIST_COLUMNS
+from ami.exports.taxa_list import TaxonAccumulator, empty_row_for_taxon, row_for_taxon
 from ami.exports.utils import get_data_in_batches
-from ami.main.models import Occurrence, SourceImage, get_media_url
+from ami.main.models import Occurrence, SourceImage, Taxon, get_media_url
 from ami.ml.schemas import BoundingBox
 
 logger = logging.getLogger(__name__)
@@ -252,3 +255,147 @@ class CSVExporter(BaseExporter):
                 self.update_job_progress(records_exported)
         self.update_export_stats(file_temp_path=temp_file.name)
         return temp_file.name  # Return the file path
+
+
+class TaxaListCSVExporter(BaseExporter):
+    """Export the unique taxa observed in a SourceImageCollection as a CSV.
+
+    One row per `Taxon` that appears as the `determination` of at least one
+    valid occurrence (after applying the project's default filters) within the
+    selected collection. Aggregations cover occurrence count, classification
+    score, occurrence date, and time-of-night.
+
+    Future hooks (intentionally stubbed; see project design doc):
+
+    1. **Absence rows.** When a project declares an explicit "taxonomic scope"
+       (today: `Project.default_filters_include_taxa` recursively expanded;
+       eventually a per-Project default `TaxaList`, and per-Site `TaxaList`
+       for the deployment-level case), this exporter will emit a row per
+       scope-taxon that was not observed, with `direct_occurrences_count = 0`.
+       That turns the file into a presence/absence checklist. Wired via
+       `_get_expected_taxa()`; v1 returns nothing so the column shape is
+       stable when absence rows turn on.
+
+    2. **Darwin Core Taxon-Core archive variant.** A sibling `taxa_list_dwca`
+       format can ship later by reusing this aggregator + Taxon fetch and
+       emitting a DwC `taxon.txt` (plus `meta.xml` / `eml.xml`) zip instead of
+       a flat CSV. The columns this format produces are intentionally a
+       superset of DwC Taxon-Core fields. See PR #1131 for the surrounding
+       DwC-A export and `targetscope.derive_target_taxonomic_scope` for the
+       expected-taxa derivation.
+    """
+
+    file_format = "csv"
+    filename_label = "taxa_list"
+
+    def __init__(self, data_export):
+        super().__init__(data_export)
+        self._rows_written = 0
+        # The base class's `total_records` counts occurrences, but each output
+        # row is one taxon. Reset progress denominators so the percentage
+        # tracks the file we're actually writing.
+        unique_taxa_count = (
+            self.queryset.filter(determination__isnull=False).values("determination_id").distinct().count()
+        )
+        self.total_records = unique_taxa_count
+        if self.job:
+            self.job.progress.add_or_update_stage_param(
+                self.job.job_type_key, "Total records to export", self.total_records
+            )
+            self.job.save()
+
+    def get_queryset(self):
+        """Filtered occurrence queryset.
+
+        We start from the Occurrence model (not Taxon) so the existing
+        `OccurrenceCollectionFilter` filter backend can scope to the user's
+        selected collection. The taxa set is derived from this queryset's
+        `determination_id` column during `export()`.
+        """
+        return (
+            Occurrence.objects.valid()  # type: ignore[union-attr]  Custom queryset method
+            .filter(project=self.project, determination__isnull=False)
+            .apply_default_filters(self.project)  # type: ignore[union-attr]  Custom queryset method
+            .with_timestamps()  # type: ignore[union-attr]  Custom queryset method
+        )
+
+    def _get_expected_taxa(self):
+        """Return the taxa expected to be observable in this project.
+
+        Stub for the future "absence rows" feature. Currently returns an empty
+        queryset, so v1 only emits rows for taxa actually observed. When a
+        project gets a populated taxonomic scope (any of:
+          - `Project.default_filters_include_taxa`, recursively expanded via
+            `parents_json__contains`,
+          - a per-project default TaxaList,
+          - a per-Site TaxaList),
+        this method will be updated to return that set, and the writer below
+        will emit zero-count rows for any expected taxon not in the observed
+        accumulator.
+        """
+        return Taxon.objects.none()
+
+    def update_export_stats(self, file_temp_path=None):
+        """Override base behaviour: report the number of CSV rows we actually
+        wrote (one per unique taxon), not the occurrence count from the source
+        queryset.
+        """
+        self.data_export.record_count = self._rows_written
+        if file_temp_path and os.path.exists(file_temp_path):
+            self.data_export.file_size = os.path.getsize(file_temp_path)
+        self.data_export.save()
+
+    def export(self):
+        """Stream filtered occurrences once, aggregate per-taxon, write CSV."""
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode="w", newline="", encoding="utf-8")
+
+        # Streaming pass: build per-taxon accumulators.
+        accumulators: dict[int, TaxonAccumulator] = {}
+        occurrence_values = self.queryset.values(
+            "determination_id",
+            "determination_score",
+            "first_appearance_timestamp",
+            "last_appearance_timestamp",
+        )
+        for occ in occurrence_values.iterator(chunk_size=500):
+            det_id = occ["determination_id"]
+            if det_id is None:
+                continue
+            accum = accumulators.get(det_id)
+            if accum is None:
+                accum = TaxonAccumulator()
+                accumulators[det_id] = accum
+            accum.add(
+                score=occ.get("determination_score"),
+                first_dt=occ.get("first_appearance_timestamp"),
+                last_dt=occ.get("last_appearance_timestamp"),
+            )
+
+        # Fetch taxon rows in a single query, ordered by name for stable output.
+        observed_taxa = list(Taxon.objects.filter(id__in=accumulators.keys()).order_by("name"))
+
+        # Future absence rows: any expected taxon not in `accumulators` would
+        # be emitted with a zero-count placeholder row. v1 returns an empty
+        # queryset so this loop is a no-op.
+        observed_ids = set(accumulators.keys())
+        absent_taxa = list(self._get_expected_taxa().exclude(id__in=observed_ids).order_by("name"))
+
+        records_exported = 0
+        with open(temp_file.name, "w", newline="", encoding="utf-8") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=TAXA_LIST_COLUMNS)
+            writer.writeheader()
+
+            for taxon in observed_taxa:
+                row = row_for_taxon(taxon, accumulators[taxon.pk])
+                writer.writerow(row)
+                records_exported += 1
+                self.update_job_progress(records_exported)
+
+            for taxon in absent_taxa:
+                writer.writerow(empty_row_for_taxon(taxon))
+                records_exported += 1
+                self.update_job_progress(records_exported)
+
+        self._rows_written = records_exported
+        self.update_export_stats(file_temp_path=temp_file.name)
+        return temp_file.name
