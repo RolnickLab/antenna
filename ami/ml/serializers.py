@@ -2,12 +2,13 @@ from django_pydantic_field.rest_framework import SchemaField
 from rest_framework import serializers
 
 from ami.main.api.serializers import DefaultSerializer, MinimalNestedModelSerializer
+from ami.ml import training_data
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline, PipelineStage
 from .models.processing_service import ProcessingService
 from .models.project_pipeline_config import ProjectPipelineConfig
-from .schemas import PipelineConfigResponse
+from .schemas import AlgorithmTrainingConfig, AlgorithmTrainingInfo, PipelineConfigResponse
 
 
 class AlgorithmCategoryMapSerializer(DefaultSerializer):
@@ -30,6 +31,10 @@ MinimalCategoryMapNestedSerializer = MinimalNestedModelSerializer.create_for_mod
 
 class AlgorithmSerializer(DefaultSerializer):
     category_map = MinimalCategoryMapNestedSerializer(read_only=True, source="category_map_id")
+    # Pydantic-backed model fields have to be declared, the way the job serializers do.
+    # A bare name in Meta.fields raises ImproperlyConfigured at import time.
+    training_config = SchemaField(schema=AlgorithmTrainingConfig, required=False)
+    training_info = SchemaField(schema=AlgorithmTrainingInfo, read_only=True)
 
     class Meta:
         model = Algorithm
@@ -43,6 +48,9 @@ class AlgorithmSerializer(DefaultSerializer):
             "version",
             "version_name",
             "task_type",
+            "trainable",
+            "training_config",
+            "training_info",
             "category_map",
             "category_count",
             "created_at",
@@ -168,3 +176,20 @@ class ProcessingServiceSerializer(DefaultSerializer):
 class PipelineRegistrationSerializer(serializers.Serializer):
     processing_service_name = serializers.CharField()
     pipelines = SchemaField(schema=list[PipelineConfigResponse], default=[])
+
+
+class TrainingDataRowSerializer(serializers.Serializer):
+    """
+    One verified crop: its human label and the embedding to train on.
+
+    Not a ModelSerializer — the useful fields live on the related occurrence and on the
+    pgvector column, and the split is computed, so building the dict directly is clearer.
+    """
+
+    def to_representation(self, instance):
+        return training_data.row_as_dict(
+            instance,
+            salt=self.context.get("split_salt", training_data.DEFAULT_SPLIT_SALT),
+            test_fraction=self.context.get("test_fraction", training_data.DEFAULT_TEST_FRACTION),
+            include_features=self.context.get("include_features", True),
+        )

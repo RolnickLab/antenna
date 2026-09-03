@@ -29,3 +29,15 @@ class LimitOffsetPaginationWithPermissions(LimitOffsetPagination):
         if hasattr(view, "get_active_project"):
             return view.get_active_project()
         return None
+
+
+class TrainingDataPagination(LimitOffsetPagination):
+    """
+    Paging for embedding rows, which are far bigger than a normal API row.
+
+    A 1024-dimension vector serialises to roughly 20 KB of JSON, so the platform default
+    of 10 is uselessly small and an unbounded limit would return hundreds of megabytes.
+    """
+
+    default_limit = 200
+    max_limit = 1000

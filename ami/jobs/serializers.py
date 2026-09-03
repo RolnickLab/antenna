@@ -55,6 +55,9 @@ class JobListSerializer(DefaultSerializer):
     # All jobs created from the Jobs UI are ML jobs (datasync, etc. are created for the user)
     # @TODO Remove this when the UI is updated pass a job type. This should be a required field.
     job_type_key = serializers.SlugField(write_only=True, default=MLJob.key)
+    # Free-form, and read by the job type that consumes it. A train_classifier job
+    # carries its algorithm_key here; an ML job ignores it entirely.
+    params = serializers.JSONField(required=False, allow_null=True)
 
     project_id = serializers.PrimaryKeyRelatedField(
         label="Project",
@@ -129,6 +132,7 @@ class JobListSerializer(DefaultSerializer):
             "logs",
             "job_type",
             "job_type_key",
+            "params",
             "data_export",
             "dispatch_mode",
             # "duration",

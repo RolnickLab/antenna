@@ -1,9 +1,13 @@
 import concurrent.futures
 import datetime
+import io
+import json
 import pathlib
 import unittest
 import uuid
 
+import numpy as np
+from django.core.files.storage import default_storage
 from django.test import TestCase
 from rest_framework.test import APIRequestFactory, APITestCase
 
@@ -22,7 +26,9 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
-from ami.ml.models import Algorithm, Pipeline, ProcessingService
+from ami.ml import training_data
+from ami.ml.models import Algorithm, DetectionEmbedding, Pipeline, ProcessingService
+from ami.ml.models.embedding import EMBEDDING_DIMENSIONS
 from ami.ml.models.pipeline import collect_images, get_or_create_algorithm_and_category_map, save_results
 from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
 from ami.ml.schemas import (
@@ -2288,3 +2294,820 @@ class TestOccurrenceAlgorithmChoices(AlgorithmProjectTestBase):
             len(list(lookup.order_by().distinct())), 1, "Deduplicating collapses them to the one algorithm"
         )
         self.assertIn("Chatty Masked Classifier", self._choice_names(self.project.pk))
+
+
+class TestDetectionEmbeddings(TestCase):
+    """
+    Feature vectors returned with a classification are stored as DetectionEmbedding rows,
+    so that a classifier head can be retrained from verified labels later without running
+    the backbone over every crop again.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Embedding Test Project")
+        self.test_images = [
+            SourceImage.objects.create(path="embed1-20240101000000.jpg", project=self.project),
+            SourceImage.objects.create(path="embed2-20240101001000.jpg", project=self.project),
+        ]
+        self.pipeline = Pipeline.objects.create(name="Embedding Test Pipeline")
+        self.algorithms = {
+            key: get_or_create_algorithm_and_category_map(val) for key, val in ALGORITHM_CHOICES.items()
+        }
+        self.pipeline.algorithms.set(
+            [
+                self.algorithms["random-detector"],
+                self.algorithms["random-species-classifier"],
+            ]
+        )
+
+    def _results(self, features: list[float] | None) -> PipelineResultsResponse:
+        detector = ALGORITHM_CHOICES["random-detector"]
+        classifier = ALGORITHM_CHOICES["random-species-classifier"]
+        assert classifier.category_map
+        return PipelineResultsResponse(
+            pipeline=self.pipeline.slug,
+            total_time=0.01,
+            source_images=[SourceImageResponse(id=image.pk, url=image.path) for image in self.test_images],
+            detections=[
+                DetectionResponse(
+                    source_image_id=image.pk,
+                    bbox=BoundingBox(x1=0.0, y1=0.0, x2=1.0, y2=1.0),
+                    algorithm=AlgorithmReference(name=detector.name, key=detector.key),
+                    timestamp=datetime.datetime.now(),
+                    classifications=[
+                        ClassificationResponse(
+                            classification=classifier.category_map.labels[0],
+                            labels=classifier.category_map.labels,
+                            scores=[0.77],
+                            features=features,
+                            algorithm=AlgorithmReference(name=classifier.name, key=classifier.key),
+                            timestamp=datetime.datetime.now(),
+                            terminal=True,
+                        ),
+                    ],
+                )
+                for image in self.test_images
+            ],
+        )
+
+    def _enable_flag(self):
+        self.project.feature_flags.store_classification_embeddings = True
+        self.project.save()
+
+    def test_embeddings_are_not_saved_when_the_flag_is_off(self):
+        save_results(self._results(features=[0.5] * EMBEDDING_DIMENSIONS))
+        self.assertEqual(DetectionEmbedding.objects.count(), 0, "Storing embeddings must be opt-in")
+
+    def test_embeddings_are_saved_when_the_flag_is_on(self):
+        self._enable_flag()
+        save_results(self._results(features=[0.5] * EMBEDDING_DIMENSIONS))
+
+        self.assertEqual(DetectionEmbedding.objects.count(), len(self.test_images))
+        embedding = DetectionEmbedding.objects.first()
+        assert embedding
+        self.assertEqual(embedding.algorithm, self.algorithms["random-species-classifier"])
+        self.assertEqual(len(embedding.vector.to_list()), EMBEDDING_DIMENSIONS)
+
+    def test_a_classification_without_features_stores_nothing(self):
+        self._enable_flag()
+        save_results(self._results(features=None))
+        self.assertEqual(DetectionEmbedding.objects.count(), 0)
+
+    def test_a_vector_of_the_wrong_width_is_skipped_not_fatal(self):
+        """A backbone of a different width must not break the job."""
+        self._enable_flag()
+        save_results(self._results(features=[0.5] * 768))
+        self.assertEqual(DetectionEmbedding.objects.count(), 0)
+        self.assertEqual(
+            Classification.objects.filter(detection__source_image__project=self.project).count(),
+            len(self.test_images),
+            "Classifications are still saved",
+        )
+
+    def test_reprocessing_the_same_detections_does_not_raise(self):
+        """
+        The unique constraint on (detection, algorithm) must be ignored, not raised,
+        so re-running a pipeline over processed captures stays safe.
+        """
+        self._enable_flag()
+        results = self._results(features=[0.5] * EMBEDDING_DIMENSIONS)
+        save_results(results)
+        self.project.feature_flags.reprocess_all_images = True
+        self.project.save()
+        save_results(results)
+        self.assertEqual(DetectionEmbedding.objects.count(), len(self.test_images), "No duplicate embeddings")
+
+    def test_nearest_neighbour_search_finds_the_closest_vector(self):
+        """The point of storing these: find similar crops without leaving the database."""
+        from pgvector.django import CosineDistance
+
+        self._enable_flag()
+        save_results(self._results(features=[0.5] * EMBEDDING_DIMENSIONS))
+
+        near = [0.5] * EMBEDDING_DIMENSIONS
+        far = [0.5] * (EMBEDDING_DIMENSIONS - 1) + [-40.0]
+        # Constrained to one algorithm: vectors from different backbones are not comparable.
+        results = (
+            DetectionEmbedding.objects.filter(algorithm=self.algorithms["random-species-classifier"])
+            .annotate(near=CosineDistance("vector", near))
+            .annotate(far=CosineDistance("vector", far))
+            .first()
+        )
+        assert results
+        self.assertLess(results.near, results.far, "An identical vector must be closer than a different one")
+
+
+class TestExportVerifiedTrainingData(TestCase):
+    """
+    The export command turns what people verified in the UI into a training set for a
+    classifier head: embeddings in, labels from the human identifications.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Export Test Project")
+        self.project.feature_flags.store_classification_embeddings = True
+        self.project.save()
+
+        self.user = User.objects.create_user(email="verifier@example.com", password="testpass123")
+        self.images = [
+            SourceImage.objects.create(path=f"export{i}-2024010100{i:02d}00.jpg", project=self.project)
+            for i in range(6)
+        ]
+        self.pipeline = Pipeline.objects.create(name="Export Test Pipeline")
+        self.algorithms = {
+            key: get_or_create_algorithm_and_category_map(val) for key, val in ALGORITHM_CHOICES.items()
+        }
+        self.classifier = self.algorithms["random-species-classifier"]
+        self.pipeline.algorithms.set([self.algorithms["random-detector"], self.classifier])
+
+        save_results(self._results())
+        self.taxa = [
+            Taxon.objects.create(name="Testus unus", rank=TaxonRank.SPECIES.name),
+            Taxon.objects.create(name="Testus duo", rank=TaxonRank.SPECIES.name),
+        ]
+
+    def _results(self) -> PipelineResultsResponse:
+        detector = ALGORITHM_CHOICES["random-detector"]
+        classifier = ALGORITHM_CHOICES["random-species-classifier"]
+        assert classifier.category_map
+        return PipelineResultsResponse(
+            pipeline=self.pipeline.slug,
+            total_time=0.01,
+            source_images=[SourceImageResponse(id=image.pk, url=image.path) for image in self.images],
+            detections=[
+                DetectionResponse(
+                    source_image_id=image.pk,
+                    bbox=BoundingBox(x1=0.0, y1=0.0, x2=1.0, y2=1.0),
+                    algorithm=AlgorithmReference(name=detector.name, key=detector.key),
+                    timestamp=datetime.datetime.now(),
+                    classifications=[
+                        ClassificationResponse(
+                            classification=classifier.category_map.labels[0],
+                            labels=classifier.category_map.labels,
+                            scores=[0.5],
+                            # A different vector per image, so the classes are separable.
+                            features=[float(i)] * EMBEDDING_DIMENSIONS,
+                            algorithm=AlgorithmReference(name=classifier.name, key=classifier.key),
+                            timestamp=datetime.datetime.now(),
+                            terminal=True,
+                        ),
+                    ],
+                )
+                for i, image in enumerate(self.images)
+            ],
+        )
+
+    def _verify_all(self):
+        """A human confirms a species for every occurrence, alternating between two taxa."""
+        for i, occurrence in enumerate(Occurrence.objects.filter(project=self.project).order_by("pk")):
+            Identification.objects.create(
+                occurrence=occurrence,
+                taxon=self.taxa[i % len(self.taxa)],
+                user=self.user,
+            )
+
+    def _run_export(self, **kwargs) -> dict:
+        import tempfile
+
+        from django.core.management import call_command
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = pathlib.Path(tmp) / "export"
+            call_command(
+                "export_verified_training_data",
+                project=self.project.pk,
+                algorithm=self.classifier.key,
+                output=str(out),
+                stdout=io.StringIO(),
+                **kwargs,
+            )
+            data = np.load(out.with_suffix(".npz"))
+            meta = json.loads(out.with_suffix(".json").read_text())
+            return {"npz": {k: data[k] for k in data.files}, "meta": meta}
+
+    def test_export_requires_something_verified(self):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+
+        with self.assertRaises(CommandError):
+            call_command(
+                "export_verified_training_data",
+                project=self.project.pk,
+                algorithm=self.classifier.key,
+                stdout=io.StringIO(),
+            )
+
+    def test_export_pairs_embeddings_with_human_labels(self):
+        self._verify_all()
+        result = self._run_export(min_per_species=1)
+
+        self.assertEqual(result["npz"]["embeddings"].shape, (len(self.images), EMBEDDING_DIMENSIONS))
+        self.assertEqual(sorted(result["meta"]["classes"]), ["Testus duo", "Testus unus"])
+        self.assertEqual(result["meta"]["rows"], len(self.images))
+        self.assertEqual(result["meta"]["algorithm"]["key"], self.classifier.key)
+
+    def test_a_withdrawn_identification_is_not_exported(self):
+        self._verify_all()
+        Identification.objects.all().update(withdrawn=True)
+
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+
+        with self.assertRaises(CommandError):
+            call_command(
+                "export_verified_training_data",
+                project=self.project.pk,
+                algorithm=self.classifier.key,
+                stdout=io.StringIO(),
+            )
+
+    def test_the_split_is_stable_across_runs(self):
+        """An eval set that moves between runs cannot be used to compare two heads."""
+        self._verify_all()
+        first = self._run_export(min_per_species=1)
+        second = self._run_export(min_per_species=1)
+        self.assertTrue((first["npz"]["split"] == second["npz"]["split"]).all())
+        self.assertEqual(first["meta"]["settings"]["split_grouped_by"], "occurrence")
+
+    def test_rare_species_are_dropped(self):
+        self._verify_all()
+        # Give one occurrence a species nothing else has.
+        rare = Taxon.objects.create(name="Testus rarus", rank=TaxonRank.SPECIES.name)
+        occurrence = Occurrence.objects.filter(project=self.project).order_by("pk").first()
+        assert occurrence
+        Identification.objects.create(occurrence=occurrence, taxon=rare, user=self.user)
+
+        result = self._run_export(min_per_species=2)
+        self.assertNotIn("Testus rarus", result["meta"]["classes"])
+
+
+class TestTrainingDataAPI(APITestCase):
+    """
+    The endpoint a trainer pulls from: verified labels paired with their embeddings.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Training API Project")
+        self.project.feature_flags.store_classification_embeddings = True
+        self.project.save()
+        self.user = User.objects.create_user(email="trainer@example.com", password="testpass123")
+        self.project.members.add(self.user)
+
+        self.images = [
+            SourceImage.objects.create(path=f"train{i}-2024010100{i:02d}00.jpg", project=self.project)
+            for i in range(4)
+        ]
+        self.pipeline = Pipeline.objects.create(name="Training API Pipeline")
+        self.algorithms = {
+            key: get_or_create_algorithm_and_category_map(val) for key, val in ALGORITHM_CHOICES.items()
+        }
+        self.classifier = self.algorithms["random-species-classifier"]
+        self.pipeline.algorithms.set([self.algorithms["random-detector"], self.classifier])
+
+        detector = ALGORITHM_CHOICES["random-detector"]
+        classifier = ALGORITHM_CHOICES["random-species-classifier"]
+        assert classifier.category_map
+        save_results(
+            PipelineResultsResponse(
+                pipeline=self.pipeline.slug,
+                total_time=0.01,
+                source_images=[SourceImageResponse(id=i.pk, url=i.path) for i in self.images],
+                detections=[
+                    DetectionResponse(
+                        source_image_id=image.pk,
+                        bbox=BoundingBox(x1=0.0, y1=0.0, x2=1.0, y2=1.0),
+                        algorithm=AlgorithmReference(name=detector.name, key=detector.key),
+                        timestamp=datetime.datetime.now(),
+                        classifications=[
+                            ClassificationResponse(
+                                classification=classifier.category_map.labels[0],
+                                labels=classifier.category_map.labels,
+                                scores=[0.5],
+                                features=[float(i)] * EMBEDDING_DIMENSIONS,
+                                algorithm=AlgorithmReference(name=classifier.name, key=classifier.key),
+                                timestamp=datetime.datetime.now(),
+                                terminal=True,
+                            )
+                        ],
+                    )
+                    for i, image in enumerate(self.images)
+                ],
+            )
+        )
+        self.taxon = Taxon.objects.create(name="Trainicus testus", rank=TaxonRank.SPECIES.name)
+        for occurrence in Occurrence.objects.filter(project=self.project):
+            Identification.objects.create(occurrence=occurrence, taxon=self.taxon, user=self.user)
+
+        self.url = reverse_with_params("api:training-data-list")
+        self.summary_url = reverse_with_params("api:training-data-summary")
+        self.params = {"project_id": self.project.pk, "algorithm": self.classifier.key}
+
+    def test_anonymous_users_get_nothing(self):
+        response = self.client.get(self.url, self.params)
+        self.assertEqual(response.status_code, 401)
+
+    def test_rows_carry_the_human_label_and_the_embedding(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(self.url, self.params)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["count"], len(self.images))
+        row = response.json()["results"][0]
+        self.assertEqual(row["label"], self.taxon.name)
+        self.assertEqual(len(row["features"]), EMBEDDING_DIMENSIONS)
+        self.assertIn(row["split"], ("train", "test"))
+
+    def test_features_can_be_left_out(self):
+        """Callers deciding whether a retrain is worth it should not pull megabytes."""
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(self.url, {**self.params, "include_features": "false"})
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("features", response.json()["results"][0])
+
+    def test_algorithm_is_required(self):
+        """Mixing backbones would produce a meaningless training set, so it cannot be omitted."""
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(self.url, {"project_id": self.project.pk})
+        self.assertEqual(response.status_code, 400)
+
+    def test_unknown_algorithm_is_404(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(self.url, {**self.params, "algorithm": "does-not-exist"})
+        self.assertEqual(response.status_code, 404)
+
+    def test_project_is_required(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(self.url, {"algorithm": self.classifier.key})
+        self.assertEqual(response.status_code, 400)
+
+    def test_unverified_occurrences_are_not_returned(self):
+        self.client.force_authenticate(user=self.user)
+        Identification.objects.all().update(withdrawn=True)
+        response = self.client.get(self.url, self.params)
+        self.assertEqual(response.json()["count"], 0)
+
+    def test_summary_reports_counts_without_sending_vectors(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(self.summary_url, self.params)
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["rows"], len(self.images))
+        self.assertEqual(body["counts"][self.taxon.name], len(self.images))
+        self.assertEqual(body["dimensions"], EMBEDDING_DIMENSIONS)
+        self.assertEqual(body["train"] + body["test"], len(self.images))
+        self.assertEqual(body["settings"]["split_grouped_by"], "occurrence")
+
+    def test_the_split_matches_the_export_command(self):
+        """The API and the export must not disagree about what is held out."""
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(self.url, {**self.params, "include_features": "false"})
+        for row in response.json()["results"]:
+            self.assertEqual(row["split"], training_data.split_for(row["occurrence_id"]))
+
+
+class TestTrainableFlag(TestCase):
+    """A service declares which of its algorithms can be retrained; Antenna mirrors that."""
+
+    def test_trainable_is_mirrored_from_the_service_config(self):
+        config = ALGORITHM_CHOICES["random-species-classifier"].copy(update={"trainable": True})
+        algorithm = get_or_create_algorithm_and_category_map(config)
+        self.assertTrue(algorithm.trainable)
+
+    def test_algorithms_are_not_trainable_by_default(self):
+        algorithm = get_or_create_algorithm_and_category_map(ALGORITHM_CHOICES["random-detector"])
+        self.assertFalse(algorithm.trainable)
+
+    def test_the_flag_follows_the_service_when_it_changes(self):
+        """A service that gains training support must not need its algorithm deleted."""
+        key = "random-species-classifier"
+        get_or_create_algorithm_and_category_map(ALGORITHM_CHOICES[key])
+        updated = get_or_create_algorithm_and_category_map(ALGORITHM_CHOICES[key].copy(update={"trainable": True}))
+        self.assertTrue(updated.trainable)
+
+
+class TestTrainingDatasetAndJob(TestCase):
+    """
+    Antenna prepares the training set as a file and hands the service a URL to it.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Training Job Project")
+        self.project.feature_flags.store_classification_embeddings = True
+        self.project.save()
+        self.user = User.objects.create_user(email="trainjob@example.com", password="testpass123")
+
+        self.images = [
+            SourceImage.objects.create(path=f"tj{i}-2024010100{i:02d}00.jpg", project=self.project) for i in range(12)
+        ]
+        self.pipeline = Pipeline.objects.create(name="Training Job Pipeline")
+        self.algorithms = {
+            key: get_or_create_algorithm_and_category_map(val) for key, val in ALGORITHM_CHOICES.items()
+        }
+        self.classifier = self.algorithms["random-species-classifier"]
+        self.classifier.trainable = True
+        self.classifier.save()
+        self.pipeline.algorithms.set([self.algorithms["random-detector"], self.classifier])
+
+        detector = ALGORITHM_CHOICES["random-detector"]
+        classifier = ALGORITHM_CHOICES["random-species-classifier"]
+        assert classifier.category_map
+        save_results(
+            PipelineResultsResponse(
+                pipeline=self.pipeline.slug,
+                total_time=0.01,
+                source_images=[SourceImageResponse(id=i.pk, url=i.path) for i in self.images],
+                detections=[
+                    DetectionResponse(
+                        source_image_id=image.pk,
+                        bbox=BoundingBox(x1=0.0, y1=0.0, x2=1.0, y2=1.0),
+                        algorithm=AlgorithmReference(name=detector.name, key=detector.key),
+                        timestamp=datetime.datetime.now(),
+                        classifications=[
+                            ClassificationResponse(
+                                classification=classifier.category_map.labels[0],
+                                labels=classifier.category_map.labels,
+                                scores=[0.5],
+                                features=[float(i)] * EMBEDDING_DIMENSIONS,
+                                algorithm=AlgorithmReference(name=classifier.name, key=classifier.key),
+                                timestamp=datetime.datetime.now(),
+                                terminal=True,
+                            )
+                        ],
+                    )
+                    for i, image in enumerate(self.images)
+                ],
+            )
+        )
+        self.taxa = [
+            Taxon.objects.create(name="Datasetus unus", rank=TaxonRank.SPECIES.name),
+            Taxon.objects.create(name="Datasetus duo", rank=TaxonRank.SPECIES.name),
+        ]
+
+    def _verify_all(self):
+        for i, occurrence in enumerate(Occurrence.objects.filter(project=self.project).order_by("pk")):
+            Identification.objects.create(occurrence=occurrence, taxon=self.taxa[i % 2], user=self.user)
+
+    def test_dataset_holds_the_embeddings_and_the_human_labels(self):
+        from ami.ml.training_dataset import build_training_dataset
+
+        self._verify_all()
+        result = build_training_dataset(
+            project=self.project, algorithm=self.classifier, min_per_species=1, test_fraction=0.5
+        )
+
+        with default_storage.open(result["path"], "rb") as f:
+            archive = np.load(f, allow_pickle=True)
+            features = archive["features"]
+            classes = [str(c) for c in archive["classes"]]
+            metadata = json.loads(str(archive["metadata"]))
+
+        self.assertEqual(features.shape, (len(self.images), EMBEDDING_DIMENSIONS))
+        self.assertEqual(sorted(classes), sorted(t.name for t in self.taxa))
+        self.assertEqual(metadata["rows"], len(self.images))
+        self.assertEqual(metadata["train"] + metadata["test"], len(self.images))
+        default_storage.delete(result["path"])
+
+    def test_vectors_are_stored_as_float16(self):
+        """float16 is what Postgres holds, so anything wider ships bytes that carry nothing."""
+        from ami.ml.training_dataset import build_training_dataset
+
+        self._verify_all()
+        result = build_training_dataset(
+            project=self.project, algorithm=self.classifier, min_per_species=1, test_fraction=0.5
+        )
+        with default_storage.open(result["path"], "rb") as f:
+            self.assertEqual(np.load(f, allow_pickle=True)["features"].dtype, np.float16)
+        default_storage.delete(result["path"])
+
+    def test_nothing_verified_means_no_file_is_written(self):
+        from ami.ml.training_dataset import NotEnoughVerifiedData, build_training_dataset
+
+        with self.assertRaises(NotEnoughVerifiedData):
+            build_training_dataset(project=self.project, algorithm=self.classifier)
+
+    def test_the_job_fails_cleanly_when_there_is_nothing_to_train_on(self):
+        """A data problem should read as a message, not a traceback."""
+        from ami.jobs.models import Job, JobState, TrainClassifierJob
+
+        job = Job.objects.create(
+            project=self.project,
+            name="Retrain",
+            job_type_key=TrainClassifierJob.key,
+            params={"algorithm_key": self.classifier.key},
+        )
+        job.run()
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.FAILURE.name)
+        self.assertIn("error", job.result)
+
+    def test_the_job_refuses_an_algorithm_the_service_cannot_train(self):
+        from ami.jobs.models import Job, TrainClassifierJob
+
+        self._verify_all()
+        job = Job.objects.create(
+            project=self.project,
+            name="Retrain a detector",
+            job_type_key=TrainClassifierJob.key,
+            params={"algorithm_key": self.algorithms["random-detector"].key},
+        )
+        with self.assertRaises(ValueError):
+            job.run()
+
+    def test_the_job_refuses_when_only_a_pull_worker_serves_the_algorithm(self):
+        """Antenna cannot POST to a worker with no endpoint, so it must say so, not hang."""
+        from ami.jobs.models import Job, TrainClassifierJob
+
+        self._verify_all()
+        self.project.processing_services.clear()
+        worker = ProcessingService.objects.create(name="Pull worker", endpoint_url=None)
+        worker.projects.add(self.project)
+        worker.pipelines.add(self.pipeline)
+
+        job = Job.objects.create(
+            project=self.project,
+            name="Retrain",
+            job_type_key=TrainClassifierJob.key,
+            params={"algorithm_key": self.classifier.key, "min_per_species": 1},
+        )
+        with self.assertRaises(ValueError) as ctx:
+            job.run()
+        self.assertIn("pull-mode", str(ctx.exception).lower())
+
+
+class TestAbsoluteMediaURL(TestCase):
+    def test_an_absolute_url_is_left_alone(self):
+        """In production MEDIA_URL is already an S3 URL."""
+        from ami.ml.training_dispatch import absolute_media_url
+
+        url = "https://bucket.s3.amazonaws.com/uploads/training/set.npz"
+        self.assertEqual(absolute_media_url(url), url)
+
+    def test_a_relative_path_gets_a_base(self):
+        from ami.ml.training_dispatch import absolute_media_url
+
+        self.assertEqual(
+            absolute_media_url("/media/training/set.npz", "http://antenna:8000"),
+            "http://antenna:8000/media/training/set.npz",
+        )
+
+
+class TestGenerateEmbeddingsJob(TestCase):
+    """
+    The job that fills in embeddings for verified crops, so a head can be retrained
+    without running the backbone over the same image twice.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Embedding Job Project")
+        self.project.feature_flags.store_classification_embeddings = True
+        self.project.save()
+        self.user = User.objects.create_user(email="embedder@example.com", password="testpass123")
+        self.images = [
+            SourceImage.objects.create(path=f"ej{i}-2024010100{i:02d}00.jpg", project=self.project) for i in range(3)
+        ]
+        self.pipeline = Pipeline.objects.create(name="Embedding Job Pipeline")
+        self.algorithms = {
+            key: get_or_create_algorithm_and_category_map(val) for key, val in ALGORITHM_CHOICES.items()
+        }
+        self.classifier = self.algorithms["random-species-classifier"]
+        self.classifier.trainable = True
+        self.classifier.save()
+        self.detector = self.algorithms["random-detector"]
+        self.pipeline.algorithms.set([self.detector, self.classifier])
+        self.taxon = Taxon.objects.create(name="Embeddicus testus", rank=TaxonRank.SPECIES.name)
+
+    def _job(self, **params):
+        from ami.jobs.models import GenerateEmbeddingsJob, Job
+
+        return Job.objects.create(
+            project=self.project,
+            name="Generate embeddings",
+            job_type_key=GenerateEmbeddingsJob.key,
+            pipeline=self.pipeline,
+            params=params or None,
+        )
+
+    def _detections_with_occurrences(self, verified: bool):
+        for image in self.images:
+            detection = Detection.objects.create(
+                source_image=image, bbox=[0, 0, 10, 10], detection_algorithm=self.detector
+            )
+            occurrence = detection.associate_new_occurrence()
+            if verified:
+                Identification.objects.create(occurrence=occurrence, taxon=self.taxon, user=self.user)
+
+    def test_it_refuses_when_the_project_would_discard_the_result(self):
+        """Running the backbone to throw the vectors away is pure waste."""
+        from ami.jobs.models import GenerateEmbeddingsJob
+
+        self.project.feature_flags.store_classification_embeddings = False
+        self.project.save()
+        with self.assertRaises(ValueError) as ctx:
+            GenerateEmbeddingsJob.run(self._job())
+        self.assertIn("store_classification_embeddings", str(ctx.exception))
+
+    def test_it_refuses_a_pipeline_with_no_trainable_algorithm(self):
+        from ami.jobs.models import GenerateEmbeddingsJob
+
+        self.classifier.trainable = False
+        self.classifier.save()
+        with self.assertRaises(ValueError) as ctx:
+            GenerateEmbeddingsJob.run(self._job())
+        self.assertIn("trainable", str(ctx.exception))
+
+    def test_it_targets_the_trainable_algorithm(self):
+        from ami.jobs.models import GenerateEmbeddingsJob
+
+        self.assertEqual(GenerateEmbeddingsJob.target_algorithm(self._job()), self.classifier)
+
+    def test_an_unknown_algorithm_key_is_rejected(self):
+        from ami.jobs.models import GenerateEmbeddingsJob
+
+        with self.assertRaises(ValueError):
+            GenerateEmbeddingsJob.target_algorithm(self._job(algorithm_key="not-on-this-pipeline"))
+
+    def test_only_verified_detections_are_collected(self):
+        """Embedding everything would cost gigabytes; only a labelled crop can train a head."""
+        from ami.jobs.models import GenerateEmbeddingsJob
+
+        self._detections_with_occurrences(verified=False)
+        job = self._job()
+        self.assertEqual(GenerateEmbeddingsJob.images_needing_embeddings(job, self.classifier), [])
+
+        self._detections_with_occurrences(verified=True)
+        images = GenerateEmbeddingsJob.images_needing_embeddings(job, self.classifier)
+        self.assertEqual(len(images), len(self.images))
+
+    def test_detections_that_already_have_an_embedding_are_skipped(self):
+        """The whole point is not to compute the same vector twice."""
+        from ami.jobs.models import GenerateEmbeddingsJob
+
+        self._detections_with_occurrences(verified=True)
+        job = self._job()
+        for detection in Detection.objects.filter(source_image__project=self.project):
+            DetectionEmbedding.objects.create(
+                detection=detection, algorithm=self.classifier, vector=[0.1] * EMBEDDING_DIMENSIONS
+            )
+        self.assertEqual(GenerateEmbeddingsJob.images_needing_embeddings(job, self.classifier), [])
+
+    def test_nothing_to_do_finishes_successfully(self):
+        from ami.jobs.models import GenerateEmbeddingsJob, JobState
+
+        job = self._job()
+        GenerateEmbeddingsJob.run(job)
+        job.refresh_from_db()
+        self.assertEqual(job.status, JobState.SUCCESS.name)
+
+
+class TestAlgorithmVersioning(TestCase):
+    """
+    Every retrain produces a new algorithm version, so a prediction can always be traced
+    back to the exact weights that made it.
+    """
+
+    def setUp(self):
+        from ami.jobs.models import Job, TrainClassifierJob
+
+        self.project = Project.objects.create(name="Versioning Project")
+        self.parent = get_or_create_algorithm_and_category_map(ALGORITHM_CHOICES["random-species-classifier"])
+        self.parent.trainable = True
+        self.parent.save()
+        self.job = Job.objects.create(
+            project=self.project,
+            name="Retrain",
+            job_type_key=TrainClassifierJob.key,
+            params={"algorithm_key": self.parent.key},
+        )
+        self.payload = {
+            "result": {
+                "labels": ["Alpha one", "Beta two", "Gamma three"],
+                "rows": {"total": 30, "kept": 30, "train": 24, "test": 6},
+                "candidate_metrics": {"top1": 0.9, "macro_recall": 0.88, "n": 6},
+                "incumbent_metrics": {"top1": 0.7, "n": 6},
+                "trained_at": "2026-09-03T21:08:03",
+                "warnings": ["only 6 held-out rows"],
+                "promote": True,
+            },
+            "dataset": {"rows": 30},
+            "dataset_url": "/media/training/set-job-1.npz",
+        }
+
+    def _register(self):
+        from ami.jobs.models import TrainClassifierJob
+
+        return TrainClassifierJob.register_new_version(job=self.job, payload=self.payload)
+
+    def test_a_retrain_creates_a_new_row_not_an_edit(self):
+        """A Classification points at an Algorithm row, so a version must never change in place."""
+        before = Algorithm.objects.count()
+        new = self._register()
+        assert new
+        self.assertEqual(Algorithm.objects.count(), before + 1)
+        self.assertNotEqual(new.pk, self.parent.pk)
+        self.parent.refresh_from_db()
+        self.assertEqual(self.parent.version, 1)
+
+    def test_the_new_version_keeps_the_name_and_bumps_the_number(self):
+        new = self._register()
+        assert new
+        self.assertEqual(new.name, self.parent.name)
+        self.assertEqual(new.version, self.parent.version + 1)
+        self.assertNotEqual(new.key, self.parent.key)
+
+    def test_versions_keep_incrementing(self):
+        first = self._register()
+        second = self._register()
+        assert first and second
+        self.assertEqual(second.version, first.version + 1)
+
+    def test_provenance_is_recorded(self):
+        new = self._register()
+        assert new
+        info = new.training_info
+        self.assertEqual(info.dataset_url, "/media/training/set-job-1.npz")
+        self.assertEqual(info.dataset_classes, 3)
+        self.assertEqual(info.dataset_rows, 30)
+        self.assertEqual(info.metrics["top1"], 0.9)
+        self.assertEqual(info.previous_metrics["top1"], 0.7)
+        self.assertEqual(info.parent_algorithm_key, self.parent.key)
+        self.assertEqual(info.job_id, self.job.pk)
+        self.assertEqual(info.warnings, ["only 6 held-out rows"])
+
+    def test_the_new_version_carries_its_own_class_list(self):
+        """The retrained head predicts a different set of species than its parent."""
+        new = self._register()
+        assert new
+        assert new.category_map
+        self.assertEqual(new.category_map.labels, ["Alpha one", "Beta two", "Gamma three"])
+        self.assertNotEqual(new.category_map_id, self.parent.category_map_id)
+
+    def test_no_class_list_means_no_version(self):
+        """Registering a head that cannot say what it predicts would be untraceable."""
+        self.payload["result"]["labels"] = []
+        self.assertIsNone(self._register())
+
+    def test_an_unknown_parent_means_no_version(self):
+        self.job.params = {"algorithm_key": "does-not-exist"}
+        self.job.save()
+        self.assertIsNone(self._register())
+
+
+class TestAlgorithmTrainingConfig(TestCase):
+    """Settings are seeded from the service once, then owned by Antenna."""
+
+    def test_config_is_seeded_from_the_service(self):
+        from ami.ml.schemas import AlgorithmTrainingConfig
+
+        # A key nothing else registers, so this exercises the create path rather than
+        # finding an algorithm some other fixture already made.
+        config = ALGORITHM_CHOICES["random-species-classifier"].copy(
+            update={
+                # Unique name as well as key: Algorithm is unique on (name, version) too.
+                "name": "Seeded Config Classifier",
+                "key": "seeded-config-classifier",
+                "training_config": AlgorithmTrainingConfig(head_type="mlp1", epochs=50),
+            }
+        )
+        algorithm = get_or_create_algorithm_and_category_map(config)
+        self.assertEqual(algorithm.training_config.head_type, "mlp1")
+        self.assertEqual(algorithm.training_config.epochs, 50)
+
+    def test_re_registering_does_not_overwrite_an_edited_config(self):
+        """An admin who tunes these must not have them reset on the next /info read."""
+        from ami.ml.schemas import AlgorithmTrainingConfig
+
+        base = ALGORITHM_CHOICES["random-species-classifier"].copy(
+            update={"name": "Edited Config Classifier", "key": "edited-config-classifier"}
+        )
+        algorithm = get_or_create_algorithm_and_category_map(base)
+        algorithm.training_config = AlgorithmTrainingConfig(head_type="mlp1", epochs=999)
+        algorithm.save()
+
+        again = get_or_create_algorithm_and_category_map(
+            base.copy(update={"training_config": AlgorithmTrainingConfig(epochs=300)})
+        )
+        self.assertEqual(again.training_config.epochs, 999)
+
+    def test_defaults_exist_without_the_service_sending_any(self):
+        algorithm = get_or_create_algorithm_and_category_map(ALGORITHM_CHOICES["random-detector"])
+        self.assertEqual(algorithm.training_config.min_per_species, 2)
+        self.assertEqual(algorithm.training_info.trained_at, None)
