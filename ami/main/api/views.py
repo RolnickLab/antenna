@@ -36,6 +36,7 @@ from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
+from ami.main.models_future.tracks import TrackEditError, detach_detection, split_track
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
 from ami.utils.requests import get_default_classification_threshold
@@ -101,6 +102,8 @@ from .serializers import (
     TaxonSearchResultSerializer,
     TaxonSerializer,
     TopIdentifiersResponseSerializer,
+    TrackEditResultSerializer,
+    TrackEditSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -1516,6 +1519,70 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    def get_permissions(self):
+        # The viewset as a whole is staff-only for writes. Track edits are the
+        # exception: they are a curation tool, gated per object by
+        # Occurrence.check_custom_permission on the project's occurrence rights.
+        if self.action in ("split_track", "remove_detection"):
+            return [ObjectPermission()]
+        return super().get_permissions()
+
+    def _detection_in_track(self, request: Request, occurrence: Occurrence) -> Detection:
+        """Resolve the detection named in the request body, or raise a 400."""
+        body = TrackEditSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        detection = occurrence.detections.filter(pk=body.validated_data["detection_id"]).first()
+        if detection is None:
+            raise api_exceptions.ValidationError(
+                {"detection_id": f"Detection {body.validated_data['detection_id']} is not in this occurrence."}
+            )
+        return detection
+
+    @staticmethod
+    def _track_edit_response(occurrence: Occurrence, new_occurrence: Occurrence) -> Response:
+        return Response(
+            TrackEditResultSerializer(
+                {
+                    "occurrence_id": occurrence.pk,
+                    "occurrence_detections_count": occurrence.detections.count(),
+                    "new_occurrence_id": new_occurrence.pk,
+                    "new_occurrence_detections_count": new_occurrence.detections.count(),
+                }
+            ).data
+        )
+
+    @extend_schema(request=TrackEditSerializer, responses=TrackEditResultSerializer)
+    @action(detail=True, methods=["post"], name="split-track", url_path="split-track")
+    def split_track(self, request: Request, pk=None) -> Response:
+        """Split this occurrence at a detection: that detection and every later one move to a new occurrence.
+
+        Use when tracking ran two insects together and you can point at the frame
+        where the second one takes over.
+        """
+        occurrence = self.get_object()
+        detection = self._detection_in_track(request, occurrence)
+        try:
+            new_occurrence = split_track(occurrence, detection)
+        except TrackEditError as e:
+            raise api_exceptions.ValidationError({"detection_id": str(e)})
+        return self._track_edit_response(occurrence, new_occurrence)
+
+    @extend_schema(request=TrackEditSerializer, responses=TrackEditResultSerializer)
+    @action(detail=True, methods=["post"], name="remove-detection", url_path="remove-detection")
+    def remove_detection(self, request: Request, pk=None) -> Response:
+        """Move one detection out of this occurrence into an occurrence of its own.
+
+        The rest of the track is stitched back together, so removing a frame from
+        the middle does not also split what remains.
+        """
+        occurrence = self.get_object()
+        detection = self._detection_in_track(request, occurrence)
+        try:
+            new_occurrence = detach_detection(occurrence, detection)
+        except TrackEditError as e:
+            raise api_exceptions.ValidationError({"detection_id": str(e)})
+        return self._track_edit_response(occurrence, new_occurrence)
 
     @extend_schema(parameters=[project_id_doc_param], responses=AlgorithmSerializer(many=True))
     @action(detail=False, methods=["get"], name="algorithms")
