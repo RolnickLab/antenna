@@ -146,25 +146,25 @@ docker compose run --rm django python manage.py create_demo_project
 ##### Run tests
 
 ```bash
-docker compose run --rm django python manage.py test
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test
 ```
 
 ##### Run tests with a specific pattern in the test name
 
 ```bash
-docker compose run --rm django python manage.py test -k pattern
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test -k pattern
 ```
 
 ##### Run tests and drop into interactive shell on failure
 
 ```bash
-docker compose run --rm django python manage.py test -k pattern --failfast --pdb
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test -k pattern --failfast --pdb
 ```
 
 ##### Speed up development of tests by reusing the db between test runs
 
 ```bash
-docker compose run --rm django python manage.py test --keepdb
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test --keepdb
 ```
 
 ##### Run management scripts

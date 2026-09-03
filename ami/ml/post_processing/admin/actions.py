@@ -247,10 +247,12 @@ def make_post_processing_action(
             )
             return None
 
+        # Hand the form the selected rows so it can scope its fields to the
+        # selection (e.g. only offer algorithms that ran on the chosen occurrence).
         if not request.POST.get("confirm"):
-            return _render(form_class())
+            return _render(form_class(scope_queryset=queryset))
 
-        form = form_class(request.POST)
+        form = form_class(request.POST, scope_queryset=queryset)
         if not form.is_valid():
             return _render(form)
 

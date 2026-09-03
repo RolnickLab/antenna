@@ -75,7 +75,11 @@ class BasePostProcessingTask(abc.ABC):
 
         if self.job:
             self.job.progress.update_stage(self.job.job_type_key, progress=progress)
-            self.job.save(update_fields=["progress"])
+            # Bump updated_at alongside progress: the stale-job reaper
+            # (check_stale_jobs) revokes running jobs whose updated_at is older
+            # than STALLED_JOBS_MAX_MINUTES. A long post-processing run that only
+            # touched "progress" would look frozen and be reaped mid-flight.
+            self.job.save(update_fields=["progress", "updated_at"])
 
         else:
             # No job object — fallback to plain logging
@@ -99,7 +103,9 @@ class BasePostProcessingTask(abc.ABC):
         stage_key = self.job.job_type_key
         for label, value in metrics.items():
             self.job.progress.add_or_update_stage_param(stage_key, label, value)
-        self.job.save(update_fields=["progress"])
+        # Bump updated_at so the stale-job reaper sees an actively-progressing
+        # run; see update_progress for the full reasoning.
+        self.job.save(update_fields=["progress", "updated_at"])
 
     @abc.abstractmethod
     def run(self) -> None:

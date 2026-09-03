@@ -34,7 +34,10 @@ from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
+from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
+from ami.ml.models.algorithm import Algorithm
+from ami.ml.serializers import AlgorithmSerializer
 from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
@@ -63,6 +66,8 @@ from ..models import (
     verified_taxon_counts,
 )
 from .serializers import (
+    BulkIdentificationRequestSerializer,
+    BulkIdentificationResponseSerializer,
     ClassificationListSerializer,
     ClassificationSerializer,
     ClassificationWithTaxaSerializer,
@@ -84,6 +89,7 @@ from .serializers import (
     ProjectListSerializer,
     ProjectSerializer,
     SiteSerializer,
+    SourceImageCollectionNestedSerializer,
     SourceImageCollectionSerializer,
     SourceImageListSerializer,
     SourceImageSerializer,
@@ -355,24 +361,47 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         """
         Queue a task to sync data from the deployment's data source.
         """
+        from ami.jobs.models import DataStorageSyncJob
+
         deployment: Deployment = self.get_object()
         if deployment and deployment.data_source:
-            # queued_task = tasks.sync_source_images.delay(deployment.pk)
-            from ami.jobs.models import DataStorageSyncJob, Job
-
-            job = Job.objects.create(
-                name=f"Sync captures for deployment {deployment.pk}",
-                deployment=deployment,
-                project=deployment.project,
-                job_type_key=DataStorageSyncJob.key,
+            job = DataStorageSyncJob.enqueue_for(deployment)
+            logger.info(
+                f"Syncing captures for deployment {deployment.pk} from {deployment.data_source_uri} in background."
             )
-            job.enqueue()
-            msg = f"Syncing captures for deployment {deployment.pk} from {deployment.data_source_uri} in background."
-            logger.info(msg)
-            assert deployment.project
-            return Response({"job_id": job.pk, "project_id": deployment.project.pk})
+            return Response({"job_id": job.pk, "project_id": deployment.project_id})
         else:
             raise api_exceptions.ValidationError(detail="Deployment must have a data source to sync captures from")
+
+    @action(detail=False, methods=["post"], name="sync-all", url_path="sync-all")
+    def sync_all(self, request) -> Response:
+        """
+        Queue a sync job for every station in the project that has a storage source.
+
+        Enqueues one ``DataStorageSyncJob`` per connected station (separate jobs,
+        not one consolidated job), matching the per-row ``sync`` action and the
+        admin bulk action. Requires the ``project_id`` query parameter and the
+        sync permission on the project.
+        """
+        project = self.get_active_project()
+        if not project:
+            raise api_exceptions.ValidationError(detail="A project_id is required to sync all stations.")
+
+        # ObjectPermission.has_permission() is a no-op and has_object_permission()
+        # only runs for detail actions (via get_object()), so a detail=False action
+        # must check permissions itself. Probe the same sync permission the per-row
+        # action enforces, resolved against the project.
+        if not Deployment(project=project).check_permission(request.user, "sync"):
+            raise api_exceptions.PermissionDenied(
+                detail="You do not have permission to sync stations in this project."
+            )
+
+        from ami.jobs.models import DataStorageSyncJob
+
+        deployments = self.get_queryset().filter(data_source__isnull=False)
+        job_ids = [DataStorageSyncJob.enqueue_for(deployment).pk for deployment in deployments]
+        logger.info(f"Queued {len(job_ids)} DataStorageSyncJob(s) for project {project.pk}: {job_ids}")
+        return Response({"job_ids": job_ids, "queued": len(job_ids), "project_id": project.pk})
 
     @action(detail=True, methods=["post"], name="regroup-sessions", url_path="regroup-sessions")
     def regroup_sessions(self, _request, pk=None) -> Response:
@@ -913,18 +942,23 @@ class SourceImageThumbnailViewSet(DefaultReadOnlyViewSet, ProjectMixin):
         return response
 
 
+class CaptureSetChoicesPagination(LimitOffsetPaginationWithPermissions):
+    """Sends a whole project's capture set choices in one response.
+
+    Dropdowns cannot page, so the limit is set here rather than by each caller. It is
+    capped as well as defaulted, so no caller can ask for a larger one.
+    """
+
+    default_limit = 100
+    max_limit = 100
+
+
 class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
     """
     Endpoint for viewing capture sets or samples of captures.
     """
 
-    queryset = (
-        SourceImageCollection.objects.all()
-        .with_source_images_count()  # type: ignore
-        .with_source_images_with_detections_count()
-        .with_source_images_processed_count()
-        .prefetch_related("jobs")
-    )
+    queryset = SourceImageCollection.objects.all().prefetch_related("jobs")
     serializer_class = SourceImageCollectionSerializer
     permission_classes = [
         ObjectPermission,
@@ -941,17 +975,32 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
         "source_images_processed_count",
         "occurrences_count",
     ]
+    # Recently updated first, so a caller reading one page gets the sets a user is most
+    # likely to want. Without a default the row order is whatever Postgres returns, which
+    # also makes pages unstable.
+    ordering = ["-updated_at"]
 
     def get_queryset(self) -> QuerySet:
         query_set: QuerySet = super().get_queryset()
         with_counts_default = False
-        # If with_counts is explicitly requested, require project
-        if "with_counts" in self.request.query_params:
+        # If with_counts is explicitly requested, require project.
+        # Picker choices are always scoped to one project.
+        if "with_counts" in self.request.query_params or self.action == "choices":
             self.require_project = True
         project = self.get_active_project()
 
         if project:
             query_set = query_set.filter(project=project)
+
+        if self.action == "choices":
+            # Choices are names, so skip the counts and the jobs each set has run.
+            return query_set.prefetch_related(None)
+
+        query_set = (
+            query_set.with_source_images_count()  # type: ignore
+            .with_source_images_with_detections_count()
+            .with_source_images_processed_count()
+        )
 
         if self.action == "retrieve":
             # For detail view, include counts by default
@@ -970,6 +1019,26 @@ class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
             )
 
         return query_set
+
+    @extend_schema(
+        parameters=[project_id_doc_param],
+        responses=SourceImageCollectionNestedSerializer(many=True),
+    )
+    @action(detail=False, methods=["get"], name="choices")
+    def choices(self, request: Request) -> Response:
+        """Choices for capture set filters and pickers.
+
+        Returns only what those consumers need to name a capture set, most recently
+        updated first, and enough of them that a dropdown never has to page. A project
+        with more capture sets than the cap needs the search field in #1380.
+        """
+        # Sorting by a count would fail here, since the counts are never annotated.
+        self.ordering_fields = ["id", "created_at", "updated_at", "name", "method"]
+        queryset = self.filter_queryset(self.get_queryset())
+        paginator = CaptureSetChoicesPagination()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        serializer = SourceImageCollectionNestedSerializer(page, many=True, context=self.get_serializer_context())
+        return paginator.get_paginated_response(serializer.data)
 
     @action(detail=True, methods=["post"], name="populate")
     def populate(self, request, pk=None):
@@ -1213,11 +1282,15 @@ class OccurrenceCollectionFilter(filters.BaseFilterBackend):
 
 class OccurrenceAlgorithmFilter(filters.BaseFilterBackend):
     """
-    Filter occurrences by the detection algorithm that detected them.
+    Filter occurrences by any algorithm that produced a result on them.
 
-    Accepts a list of algorithm ids to filter by or exclude by.
+    Matches an occurrence when one of its detections was made by the given
+    algorithm (detectors) or one of its classifications came from it
+    (classifiers and post-processing algorithms), so every algorithm listed
+    by ``Algorithm.objects.used_in_project()`` can be filtered here.
 
-    This filter can be both inclusive and exclusive.
+    Accepts a list of algorithm ids to filter by (``algorithm``) or exclude
+    by (``not_algorithm``). Both are supported and may be combined.
     """
 
     query_param = "algorithm"
@@ -1228,9 +1301,9 @@ class OccurrenceAlgorithmFilter(filters.BaseFilterBackend):
         algorithm_ids_exclusive = request.query_params.getlist(self.query_param_exclusive)
 
         if algorithm_ids:
-            queryset = queryset.filter(detections__classifications__algorithm__in=algorithm_ids)
+            queryset = queryset.processed_by_algorithm(algorithm_ids)
         if algorithm_ids_exclusive:
-            queryset = queryset.exclude(detections__classifications__algorithm__in=algorithm_ids_exclusive)
+            queryset = queryset.not_processed_by_algorithm(algorithm_ids_exclusive)
 
         return queryset
 
@@ -1457,6 +1530,33 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @extend_schema(parameters=[project_id_doc_param], responses=AlgorithmSerializer(many=True))
+    @action(detail=False, methods=["get"], name="algorithms")
+    def algorithms(self, request: Request) -> Response:
+        """Choices for the occurrence algorithm filter: every algorithm that produced a result in the project.
+
+        Includes superseded pipeline versions and standalone post-processing algorithms
+        (their output is still filterable), so it differs from the project's algorithm
+        list at ``/ml/algorithms/``, which shows what the project can run — its
+        enabled-pipeline algorithms. Serving choices from what actually ran means the
+        filter never offers a value with zero results.
+        """
+        project = self.get_active_project()
+        if project is None:
+            raise api_exceptions.ValidationError({"project_id": "This parameter is required."})
+        if not Project.objects.visible_for_user(request.user).filter(pk=project.pk).exists():
+            raise NotFound("Project not found.")
+
+        qs = (
+            Algorithm.objects.all()
+            .with_category_count()  # type: ignore[union-attr] # Custom queryset method
+            .used_in_project(project)
+            .order_by("name")
+        )
+        page = self.paginate_queryset(qs)
+        serializer = AlgorithmSerializer(page, many=True, context=self.get_serializer_context())
+        return self.get_paginated_response(serializer.data)
 
 
 class OccurrenceStatsViewSet(viewsets.GenericViewSet, ProjectMixin):
@@ -2170,7 +2270,7 @@ class ClassificationViewSet(DefaultViewSet, ProjectMixin):
     """
 
     require_project_for_list = True  # Unfiltered list scans are too expensive on this table
-    queryset = Classification.objects.all().select_related("taxon", "algorithm")  # , "detection")
+    queryset = Classification.objects.all().select_related("taxon", "algorithm", "applied_to__algorithm")
     serializer_class = ClassificationSerializer
     filterset_fields = [
         # Docs about slow loading API browser because of large choice fields
@@ -2346,6 +2446,64 @@ class IdentificationViewSet(DefaultViewSet):
         self.check_object_permissions(self.request, obj)
 
         serializer.save(user=self.request.user)
+
+    @extend_schema(
+        request=BulkIdentificationRequestSerializer,
+        responses={200: BulkIdentificationResponseSerializer},
+    )
+    @action(detail=False, methods=["post"])
+    def bulk(self, request):
+        """
+        Create many identifications in one request.
+
+        Each item is saved independently: a bad item reports its error under its
+        own index in ``results`` while the rest of the batch still succeeds, so
+        a per-item problem never fails the request. Only a batch-level problem
+        (too many items, a duplicate occurrence, occurrences from more than one
+        project) rejects the whole request with a 400 serializer error instead
+        of the per-item ``results`` shape. See #1371.
+        """
+        request_serializer = BulkIdentificationRequestSerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+        items = request_serializer.validated_data["identifications"]
+
+        occurrences = resolve_occurrences(items)
+        self._authorize_batch(request, occurrences)
+        results = create_identifications_batch(items, request.user, occurrences)
+
+        created_count = sum(1 for result in results if result["status"] == "created")
+        return Response(
+            {
+                "created_count": created_count,
+                "error_count": len(items) - created_count,
+                "results": results,
+            }
+        )
+
+    def _authorize_batch(self, request, occurrences: dict[int, Occurrence]) -> None:
+        """
+        Authorize the batch against the single project it belongs to.
+
+        A `detail=False` action never passes through `has_object_permission`.
+        Create permission is granted per project, so one check per batch is
+        equivalent to one per occurrence — see `Identification.check_permission`.
+        """
+        if not occurrences:
+            # Nothing resolved, so there is nothing to authorize against or to
+            # write; every item is reported as not found instead.
+            return
+
+        projects = {occurrence.project for occurrence in occurrences.values()}
+        if len(projects) > 1:
+            raise api_exceptions.ValidationError(
+                {"identifications": ["All occurrences in a request must belong to the same project."]}
+            )
+
+        probe = Identification(occurrence=next(iter(occurrences.values())))
+        # Check "create", not the action name: "bulk" is not in the model's CRUD
+        # permission map and would fall through to a permission no role grants.
+        if not probe.check_permission(request.user, "create"):
+            raise PermissionDenied("You do not have permission to identify occurrences in this project.")
 
 
 class SiteViewSet(DefaultViewSet, ProjectMixin):

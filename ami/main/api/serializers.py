@@ -1,3 +1,4 @@
+import collections
 import datetime
 
 from django.db.models import QuerySet
@@ -186,6 +187,7 @@ class DeploymentListSerializer(DefaultSerializer):
     device = DeviceNestedSerializer(read_only=True)
     research_site = SiteNestedSerializer(read_only=True)
     jobs = JobStatusSerializer(many=True, read_only=True)
+    data_source_connected = serializers.SerializerMethodField()
 
     class Meta:
         model = Deployment
@@ -210,7 +212,18 @@ class DeploymentListSerializer(DefaultSerializer):
             "device",
             "research_site",
             "jobs",
+            "data_source_connected",
         ]
+
+    def get_data_source_connected(self, obj: Deployment) -> bool:
+        """
+        Whether the station has a storage source configured.
+
+        The stations list uses this to show the per-row Sync button only where a
+        sync can succeed, and to count how many stations "Sync all" would cover.
+        Reads the foreign key id already on the row, so it adds no query.
+        """
+        return obj.data_source_id is not None
 
     def get_events(self, obj):
         """
@@ -839,6 +852,80 @@ class IdentificationSerializer(DefaultSerializer):
         ]
 
 
+#: Upper bound on a single bulk identification request.
+#: Every identification in a batch is written inside the request's transaction, which
+#: holds row locks on each occurrence until the request finishes, so an unbounded batch
+#: would block other people identifying the same occurrences for as long as it ran. The
+#: identification interface can only select occurrences on the page being displayed, so
+#: real batches are far smaller than this; the cap bounds the worst case rather than
+#: shaping the interface.
+MAX_BULK_IDENTIFICATIONS = 200
+
+
+class BulkIdentificationItemSerializer(serializers.Serializer):
+    """
+    One identification within a bulk request.
+
+    Related objects are declared as plain integers rather than
+    `PrimaryKeyRelatedField` so that the view can resolve the whole batch in a
+    fixed number of queries. `PrimaryKeyRelatedField` issues one query per field
+    per item, which would make validation alone scale with the size of the batch.
+
+    `withdrawn` is deliberately absent: the model maintains it, and letting a
+    client set it would break the "one active identification per user per
+    occurrence" invariant.
+    """
+
+    occurrence_id = serializers.IntegerField()
+    taxon_id = serializers.IntegerField()
+    comment = serializers.CharField(required=False, allow_blank=True, default="")
+    agreed_with_identification_id = serializers.IntegerField(required=False, allow_null=True, default=None)
+    agreed_with_prediction_id = serializers.IntegerField(required=False, allow_null=True, default=None)
+
+
+class BulkIdentificationRequestSerializer(serializers.Serializer):
+    """Validates the shape of a bulk request, before any occurrence is looked up."""
+
+    identifications = BulkIdentificationItemSerializer(many=True, allow_empty=False)
+
+    def validate_identifications(self, value: list[dict]) -> list[dict]:
+        if len(value) > MAX_BULK_IDENTIFICATIONS:
+            raise serializers.ValidationError(
+                f"A single request may contain at most {MAX_BULK_IDENTIFICATIONS} identifications, "
+                f"got {len(value)}."
+            )
+
+        counts = collections.Counter(item["occurrence_id"] for item in value)
+        duplicates = sorted(pk for pk, count in counts.items() if count > 1)
+        if duplicates:
+            # Two identifications for one occurrence in one batch have no defined
+            # winner: the outcome would depend on insert ordering rather than on
+            # anything the client asked for.
+            raise serializers.ValidationError(
+                f"Each occurrence may appear only once per request. Repeated occurrence IDs: {duplicates}."
+            )
+
+        return value
+
+
+class BulkIdentificationResultSerializer(serializers.Serializer):
+    """The outcome of a single submitted item, matched to the request by `index`."""
+
+    index = serializers.IntegerField()
+    occurrence_id = serializers.IntegerField()
+    status = serializers.ChoiceField(choices=["created", "error"])
+    id = serializers.IntegerField(required=False)
+    errors = serializers.DictField(required=False)
+
+
+class BulkIdentificationResponseSerializer(serializers.Serializer):
+    """Per-item outcomes for a bulk request, in the order the items were submitted."""
+
+    created_count = serializers.IntegerField()
+    error_count = serializers.IntegerField()
+    results = BulkIdentificationResultSerializer(many=True)
+
+
 class TaxonDetectionsSerializer(DefaultSerializer):
     class Meta:
         model = Detection
@@ -980,10 +1067,26 @@ class ClassificationPredictionItemSerializer(serializers.Serializer):
     logit = serializers.FloatField(read_only=True)
 
 
+class ClassificationAppliedToSerializer(serializers.ModelSerializer):
+    """Lightweight nested representation of the parent classification this was derived from.
+
+    Post-processing tasks (class masking, rank rollup) record provenance via
+    ``Classification.applied_to``; this exposes just enough to show what a result
+    was derived from without recursing back into the full classification.
+    """
+
+    algorithm = AlgorithmSerializer(read_only=True)
+
+    class Meta:
+        model = Classification
+        fields = ["id", "created_at", "algorithm"]
+
+
 class ClassificationSerializer(DefaultSerializer):
     taxon = TaxonNestedSerializer(read_only=True)
     algorithm = AlgorithmSerializer(read_only=True)
     top_n = ClassificationPredictionItemSerializer(many=True, read_only=True)
+    applied_to = ClassificationAppliedToSerializer(read_only=True)
 
     class Meta:
         model = Classification
@@ -996,6 +1099,7 @@ class ClassificationSerializer(DefaultSerializer):
             "scores",
             "logits",
             "top_n",
+            "applied_to",
             "created_at",
             "updated_at",
         ]
@@ -1018,6 +1122,8 @@ class ClassificationWithTaxaSerializer(ClassificationSerializer):
 
 
 class ClassificationListSerializer(DefaultSerializer):
+    applied_to = ClassificationAppliedToSerializer(read_only=True)
+
     class Meta:
         model = Classification
         fields = [
@@ -1026,6 +1132,7 @@ class ClassificationListSerializer(DefaultSerializer):
             "taxon",
             "score",
             "algorithm",
+            "applied_to",
             "created_at",
             "updated_at",
         ]
@@ -1045,6 +1152,7 @@ class ClassificationNestedSerializer(ClassificationSerializer):
             "score",
             "terminal",
             "algorithm",
+            "applied_to",
             "created_at",
         ]
 
@@ -1873,14 +1981,14 @@ class ModelAgreementSerializer(serializers.Serializer):
         max_value=1.0,
         allow_null=True,
         required=False,
-        help_text="Wilson 95% CI lower bound for agreed_exact_pct. Null when verified_with_prediction_count is 0.",
+        help_text="Wilson 95% CI lower bound for agreed_exact_pct. Null when comparable_count is 0.",
     )
     agreed_exact_ci_high = serializers.FloatField(
         min_value=0.0,
         max_value=1.0,
         allow_null=True,
         required=False,
-        help_text="Wilson 95% CI upper bound for agreed_exact_pct. Null when verified_with_prediction_count is 0.",
+        help_text="Wilson 95% CI upper bound for agreed_exact_pct. Null when comparable_count is 0.",
     )
     agreed_any_rank_count = serializers.IntegerField(
         help_text="Exact matches plus disagreements whose LCA is at any real rank (UNKNOWN excluded)."
@@ -1888,21 +1996,21 @@ class ModelAgreementSerializer(serializers.Serializer):
     agreed_any_rank_pct = serializers.FloatField(
         min_value=0.0,
         max_value=1.0,
-        help_text="agreed_any_rank_count / verified_with_prediction_count",
+        help_text="agreed_any_rank_count / comparable_count",
     )
     agreed_any_rank_ci_low = serializers.FloatField(
         min_value=0.0,
         max_value=1.0,
         allow_null=True,
         required=False,
-        help_text="Wilson 95% CI lower bound for agreed_any_rank_pct. Null when verified_with_prediction_count is 0.",
+        help_text="Wilson 95% CI lower bound for agreed_any_rank_pct. Null when comparable_count is 0.",
     )
     agreed_any_rank_ci_high = serializers.FloatField(
         min_value=0.0,
         max_value=1.0,
         allow_null=True,
         required=False,
-        help_text="Wilson 95% CI upper bound for agreed_any_rank_pct. Null when verified_with_prediction_count is 0.",
+        help_text="Wilson 95% CI upper bound for agreed_any_rank_pct. Null when comparable_count is 0.",
     )
     cohens_kappa = serializers.FloatField(
         min_value=-1.0,
@@ -1933,5 +2041,5 @@ class ModelAgreementSerializer(serializers.Serializer):
         max_value=1.0,
         allow_null=True,
         required=False,
-        help_text="agreed_coarser_rank_count / verified_with_prediction_count. Null when no threshold supplied.",
+        help_text="agreed_coarser_rank_count / comparable_count. Null when no threshold supplied.",
     )

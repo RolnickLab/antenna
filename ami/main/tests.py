@@ -3,12 +3,14 @@ import datetime
 import logging
 import typing
 from io import BytesIO
+from unittest import mock
 
 from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import connection, models
+from django.db import IntegrityError, connection, models
 from django.test import TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from guardian.shortcuts import assign_perm, get_perms, remove_perm
 from PIL import Image
@@ -18,6 +20,7 @@ from rich import print
 
 from ami.exports.models import DataExport
 from ami.jobs.models import VALID_JOB_TYPES, Job
+from ami.main.api.serializers import MAX_BULK_IDENTIFICATIONS
 from ami.main.models import (
     Classification,
     Deployment,
@@ -51,7 +54,14 @@ from ami.tests.fixtures.main import (
 )
 from ami.tests.fixtures.storage import populate_bucket
 from ami.users.models import User
-from ami.users.roles import BasicMember, Identifier, MLDataManager, ProjectManager, create_roles_for_project
+from ami.users.roles import (
+    BasicMember,
+    Identifier,
+    MLDataManager,
+    ProjectManager,
+    Researcher,
+    create_roles_for_project,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -254,6 +264,46 @@ class TestImageThumbnailViews(TestCase):
         self.assertEqual(thumb.width, 1024)
         self.assertEqual(thumb.height, 768)
         self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_new_with_large_size(self):
+        response = self.client.get(f"/api/v2/captures/thumbnails/{self.first_capture.pk}/?label=large")
+        self.assertEqual(response.status_code, 302)
+        thumb = self.first_capture.thumbnails.get(label="large")
+        # ``width`` stores the requested spec width for the regen gate, not the
+        # encoder output. The test fixture is 1024px wide and PIL's thumbnail()
+        # never upscales, so the stored file keeps its original dimensions.
+        self.assertEqual(thumb.width, 2560)
+        self.assertEqual(thumb.height, 768)
+        self.assertEqual(response.headers["Location"], f"/media/{thumb.path}")
+
+    def test_thumbnail_strips_exif_orientation(self):
+        """Thumbnails must stay in the source file's raw pixel space so detection
+        boxes (stored in raw coordinates) align when overlaid in the UI: neither
+        rotate the pixels nor propagate the EXIF Orientation tag to the output.
+        """
+        from django.core.files.storage import default_storage
+
+        from ami.utils import s3
+
+        ORIENTATION_TAG = 274  # EXIF tag id for Orientation
+        source = Image.new("RGB", (320, 240), (10, 120, 30))
+        exif = source.getexif()
+        exif[ORIENTATION_TAG] = 6  # stored landscape, rotate 90° CW to view
+        buffer = BytesIO()
+        source.save(buffer, format="JPEG", exif=exif)
+
+        assert self.deployment.data_source is not None
+        s3.write_file(self.deployment.data_source.config, self.first_capture.path, buffer.getvalue())
+
+        thumb = self.first_capture.find_or_generate_thumbnail_for_label("large")
+
+        with default_storage.open(thumb.path) as f:
+            output = Image.open(f)
+            output.load()
+
+        # Pixels stay in raw (landscape) space and the orientation tag is gone.
+        self.assertEqual(output.size, (320, 240))
+        self.assertIsNone(output.getexif().get(ORIENTATION_TAG))
 
     def test_thumbnail_blank_path_row_regenerates(self):
         """A row with an empty ``path`` (failed or interrupted generation) must
@@ -2898,6 +2948,179 @@ class TestDeploymentSyncCreatesEvents(TestCase):
             "Deployment events_count should reflect updated event count",
         )
         logger.info(f"Initial events count: {initial_events_count}, Updated events count: {updated_events.count()}")
+
+
+class TestDeploymentSyncAll(APITestCase):
+    """
+    The bulk "Sync all" endpoint enqueues one sync job per connected station and
+    is gated by the same sync permission the per-row action enforces.
+
+    Pins three guarantees: the ``data_source_connected`` flag the frontend reads,
+    the permission matrix (a ``detail=False`` action must check permissions
+    itself), and that only stations with a storage source get a job.
+    """
+
+    def setUp(self):
+        super().setUp()
+        from unittest import mock
+
+        self.project = Project.objects.create(name="Sync All Project", description="Sync-all tests")
+        create_roles_for_project(self.project)
+
+        self.superuser = User.objects.create_superuser(email="super-syncall@insectai.org", password="password123")
+        self.pm_user = User.objects.create_user(email="pm-syncall@insectai.org", password="password123")
+        self.ml_user = User.objects.create_user(email="ml-syncall@insectai.org", password="password123")
+        self.researcher = User.objects.create_user(email="researcher-syncall@insectai.org", password="password123")
+        self.identifier = User.objects.create_user(email="identifier-syncall@insectai.org", password="password123")
+        self.basic_user = User.objects.create_user(email="basic-syncall@insectai.org", password="password123")
+        self.outsider = User.objects.create_user(email="outsider-syncall@insectai.org", password="password123")
+        ProjectManager.assign_user(self.pm_user, self.project)
+        MLDataManager.assign_user(self.ml_user, self.project)
+        Researcher.assign_user(self.researcher, self.project)
+        Identifier.assign_user(self.identifier, self.project)
+        BasicMember.assign_user(self.basic_user, self.project)
+
+        source = S3StorageSource.objects.create(
+            name="Sync All Source",
+            bucket="test-bucket",
+            access_key="fake-access-key",
+            secret_key="fake-secret-key",
+            project=self.project,
+        )
+        self.connected = Deployment.objects.create(name="Connected", project=self.project, data_source=source)
+        self.unconnected = Deployment.objects.create(name="Unconnected", project=self.project)
+
+        # Keep the endpoint tests off the broker: assert the job rows and enqueue
+        # calls, not real Celery dispatch.
+        patcher = mock.patch("ami.jobs.models.Job.enqueue")
+        self.mock_enqueue = patcher.start()
+        self.addCleanup(patcher.stop)
+
+        self.url = "/api/v2/deployments/sync-all/"
+
+    def test_data_source_connected_field_in_list(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.get(f"/api/v2/deployments/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        flags = {row["id"]: row["data_source_connected"] for row in response.data["results"]}
+        self.assertTrue(flags[self.connected.pk], "Connected station should report data_source_connected=True")
+        self.assertFalse(flags[self.unconnected.pk], "Unconnected station should report data_source_connected=False")
+
+    def test_requires_project_id(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.post(self.url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_permission_matrix(self):
+        # Sync is allowed for MLDataManager and ProjectManager (and superusers),
+        # not for Researcher, Identifier, BasicMember, or non-members.
+        matrix = [
+            ("superuser", self.superuser, status.HTTP_200_OK),
+            ("ProjectManager", self.pm_user, status.HTTP_200_OK),
+            ("MLDataManager", self.ml_user, status.HTTP_200_OK),
+            ("Researcher", self.researcher, status.HTTP_403_FORBIDDEN),
+            ("Identifier", self.identifier, status.HTTP_403_FORBIDDEN),
+            ("BasicMember", self.basic_user, status.HTTP_403_FORBIDDEN),
+            ("outsider", self.outsider, status.HTTP_403_FORBIDDEN),
+        ]
+        for role_name, user, expected in matrix:
+            with self.subTest(role=role_name):
+                self.client.force_authenticate(user)
+                response = self.client.post(f"{self.url}?project_id={self.project.pk}")
+                self.assertEqual(response.status_code, expected, f"{role_name} got {response.status_code}")
+
+    def test_anonymous_denied(self):
+        self.client.force_authenticate(None)
+        response = self.client.post(f"{self.url}?project_id={self.project.pk}")
+        self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
+
+    def test_enqueues_one_job_per_connected_station(self):
+        from ami.jobs.models import DataStorageSyncJob
+
+        self.client.force_authenticate(self.pm_user)
+        response = self.client.post(f"{self.url}?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["queued"], 1)
+        self.assertEqual(len(response.data["job_ids"]), 1)
+        self.assertEqual(self.mock_enqueue.call_count, 1, "One job should be enqueued")
+
+        jobs = Job.objects.filter(project=self.project, job_type_key=DataStorageSyncJob.key)
+        self.assertEqual(jobs.count(), 1, "Exactly one sync job, for the connected station")
+        self.assertEqual(jobs.first().deployment_id, self.connected.pk, "Unconnected station must be skipped")
+
+    def test_per_row_sync_permission_matrix(self):
+        # The per-row POST /deployments/{id}/sync/ action enforces the same
+        # sync_deployment permission as the bulk endpoint. This pins that the
+        # newly-granted MLDataManager role can start a sync and that roles
+        # without the permission are refused (403), so the per-row and bulk
+        # paths cannot silently diverge on who may sync.
+        url = f"/api/v2/deployments/{self.connected.pk}/sync/"
+        matrix = [
+            ("superuser", self.superuser, status.HTTP_200_OK),
+            ("ProjectManager", self.pm_user, status.HTTP_200_OK),
+            ("MLDataManager", self.ml_user, status.HTTP_200_OK),
+            ("Researcher", self.researcher, status.HTTP_403_FORBIDDEN),
+            ("Identifier", self.identifier, status.HTTP_403_FORBIDDEN),
+            ("BasicMember", self.basic_user, status.HTTP_403_FORBIDDEN),
+            ("outsider", self.outsider, status.HTTP_403_FORBIDDEN),
+        ]
+        for role_name, user, expected in matrix:
+            with self.subTest(role=role_name):
+                self.client.force_authenticate(user)
+                response = self.client.post(url)
+                self.assertEqual(response.status_code, expected, f"{role_name} got {response.status_code}")
+
+
+class TestSyncDeploymentBackfillMigration(APITestCase):
+    """The 0095 backfill grants OBJECT-LEVEL sync_deployment to existing projects'
+    MLDataManager groups, not just a global group permission.
+
+    A global-only grant (``group.permissions.add``) would leave ``get_perms`` and
+    ``has_perm(perm, project)`` — the checks the endpoint and UI actually use —
+    returning False, so the backfill would silently no-op for existing projects.
+    This pins the object-level path.
+    """
+
+    def test_backfill_grants_object_level_sync_to_mldatamanager(self):
+        import importlib
+        from unittest import mock
+
+        from django.apps import apps as global_apps
+        from django.contrib.auth.models import Group
+
+        project = Project.objects.create(name="Sync Backfill Project")
+        create_roles_for_project(project)
+        ml_user = User.objects.create_user(email="ml-backfill@insectai.org", password="password123")
+        MLDataManager.assign_user(ml_user, project)
+        source = S3StorageSource.objects.create(
+            name="Backfill Source",
+            bucket="test-bucket",
+            access_key="fake-access-key",
+            secret_key="fake-secret-key",
+            project=project,
+        )
+        Deployment.objects.create(name="Backfill Station", project=project, data_source=source)
+
+        mldm_group = Group.objects.get(name=f"{project.pk}_{project.name}_MLDataManager")
+
+        # Simulate a project created before MLDataManager gained the permission:
+        # strip the object-level grant so the sync endpoint is denied.
+        remove_perm("sync_deployment", mldm_group, project)
+        self.assertNotIn("sync_deployment", get_perms(mldm_group, project))
+
+        self.client.force_authenticate(ml_user)
+        denied = self.client.post(f"/api/v2/deployments/sync-all/?project_id={project.pk}")
+        self.assertEqual(denied.status_code, status.HTTP_403_FORBIDDEN)
+
+        # Run the backfill and confirm it restores the object-level permission
+        # (a global-only grant would leave get_perms unchanged and the POST 403).
+        migration = importlib.import_module("ami.main.migrations.0095_grant_sync_deployment_to_mldatamanager")
+        migration.grant_sync_to_mldatamanager(global_apps, None)
+
+        self.assertIn("sync_deployment", get_perms(mldm_group, project))
+        with mock.patch("ami.jobs.models.Job.enqueue"):
+            granted = self.client.post(f"/api/v2/deployments/sync-all/?project_id={project.pk}")
+        self.assertEqual(granted.status_code, status.HTTP_200_OK)
 
 
 class TestFineGrainedJobRunPermission(APITestCase):
@@ -5835,6 +6058,28 @@ class TestModelAgreementForProject(APITestCase):
         # 1 exact agreement out of 1 comparable → 100%, not 50%.
         self.assertEqual(result["agreed_exact_count"], 1)
         self.assertAlmostEqual(result["agreed_exact_pct"], 1.0)
+        self.assertAlmostEqual(result["agreed_any_rank_pct"], 1.0)
+
+    def test_confidence_intervals_null_when_nothing_is_comparable(self):
+        """Wilson bounds are null once nothing is comparable, even though every
+        verified occurrence here carries a machine prediction.
+
+        comparable_count falls below verified_with_prediction_count whenever a
+        verification has no taxon, and the intervals key off the former.
+        """
+        from ami.main.models_future.occurrence import model_agreement_for_project
+
+        occurrences = list(Occurrence.objects.filter(project=self.project).order_by("pk"))
+        for occurrence in occurrences[:2]:
+            Identification.objects.create(user=self.user, occurrence=occurrence, taxon=None)
+
+        result = model_agreement_for_project(Occurrence.objects.filter(project=self.project))
+        self.assertEqual(result["verified_with_prediction_count"], 2)
+        self.assertEqual(result["comparable_count"], 0)
+        self.assertIsNone(result["agreed_exact_ci_low"])
+        self.assertIsNone(result["agreed_exact_ci_high"])
+        self.assertIsNone(result["agreed_any_rank_ci_low"])
+        self.assertIsNone(result["agreed_any_rank_ci_high"])
 
 
 class TestOccurrenceStatsViewSet(APITestCase):
@@ -6562,6 +6807,108 @@ class TestOccurrenceValidQuerySet(TestCase):
         self.assertNotIn(no_determination.pk, valid_pks)
 
 
+class TestOccurrenceAlgorithmFilterQuerySet(TestCase):
+    """
+    Covers OccurrenceQuerySet.processed_by_algorithm / not_processed_by_algorithm,
+    which back the ?algorithm= and ?not_algorithm= occurrence filters (PR #1368).
+
+    The filter must match an algorithm by either role it can play: the detector that
+    made a detection, or the classifier / post-processing algorithm that authored a
+    classification. It must also count each occurrence once — the previous join form
+    (``detections__classifications__algorithm__in``) returned one row per matching
+    classification, inflating the paginator's COUNT and duplicating occurrences across
+    pages.
+    """
+
+    def setUp(self):
+        from ami.main.models import Taxon
+        from ami.ml.models.algorithm import Algorithm
+
+        self.project = Project.objects.create(name="Occurrence Algo Filter Project")
+        self.deployment = Deployment.objects.create(project=self.project, name="dep")
+        self.event = Event.objects.create(
+            project=self.project,
+            deployment=self.deployment,
+            group_by="2024-01-01",
+            start=datetime.datetime(2024, 1, 1, 0, 0),
+        )
+        self.source_image = SourceImage.objects.create(
+            deployment=self.deployment,
+            project=self.project,
+            event=self.event,
+            path="occ-algo-filter.jpg",
+        )
+        self.taxon = Taxon.objects.create(name="Occurrence Algo Filter Taxon")
+
+        self.detector = Algorithm.objects.create(name="Filter Detector", version=1, task_type="localization")
+        self.classifier = Algorithm.objects.create(name="Filter Classifier", version=1, task_type="classification")
+        self.other = Algorithm.objects.create(name="Filter Other", version=1, task_type="classification")
+
+        # Detected by `detector`, classified once by `classifier`.
+        self.occ_classified = self._make_occurrence(detector=self.detector, classifiers=[self.classifier])
+        # Same pair, but classified three times — the double-count trap.
+        self.occ_multi = self._make_occurrence(
+            detector=self.detector, classifiers=[self.classifier, self.classifier, self.classifier]
+        )
+        # A different algorithm entirely, to prove filters are exclusive.
+        self.occ_other = self._make_occurrence(detector=self.other, classifiers=[self.other])
+
+    def _make_occurrence(self, detector, classifiers) -> Occurrence:
+        occ = Occurrence.objects.create(
+            project=self.project,
+            event=self.event,
+            deployment=self.deployment,
+            determination=self.taxon,
+        )
+        detection = Detection.objects.create(
+            source_image=self.source_image,
+            bbox=[0.0, 0.0, 1.0, 1.0],
+            detection_algorithm=detector,
+            occurrence=occ,
+        )
+        for classifier in classifiers:
+            detection.classifications.create(
+                taxon=self.taxon,
+                algorithm=classifier,
+                score=0.9,
+                timestamp=datetime.datetime.now(),
+            )
+        return occ
+
+    def _pks(self, queryset):
+        return set(queryset.values_list("pk", flat=True))
+
+    def test_filter_by_classifier_matches_its_occurrences(self):
+        matched = Occurrence.objects.filter(project=self.project).processed_by_algorithm([self.classifier.pk])
+        self.assertEqual(self._pks(matched), {self.occ_classified.pk, self.occ_multi.pk})
+
+    def test_filter_by_detector_matches_occurrences_it_detected(self):
+        """A detector authors no Classification, so the old classification-join form
+        returned nothing for it. Matching through Detection.detection_algorithm is what
+        lets the user filter by a localizer at all."""
+        matched = Occurrence.objects.filter(project=self.project).processed_by_algorithm([self.detector.pk])
+        self.assertEqual(self._pks(matched), {self.occ_classified.pk, self.occ_multi.pk})
+
+    def test_count_not_inflated_by_multiple_classifications(self):
+        """The occurrence with three classifications by the same algorithm must count
+        once. The paginator calls this same COUNT, so an inflated value would report
+        four occurrences where there are two and repeat rows across pages."""
+        matched = Occurrence.objects.filter(project=self.project).processed_by_algorithm([self.classifier.pk])
+        self.assertEqual(matched.count(), 2)
+
+    def test_exclude_removes_matching_occurrences(self):
+        remaining = Occurrence.objects.filter(project=self.project).not_processed_by_algorithm([self.other.pk])
+        self.assertEqual(self._pks(remaining), {self.occ_classified.pk, self.occ_multi.pk})
+
+    def test_exclude_is_the_complement_of_include(self):
+        base = Occurrence.objects.filter(project=self.project)
+        ids = [self.classifier.pk]
+        included = self._pks(base.processed_by_algorithm(ids))
+        excluded = self._pks(base.not_processed_by_algorithm(ids))
+        self.assertEqual(included | excluded, self._pks(base))
+        self.assertEqual(included & excluded, set())
+
+
 class TestCleanupNullOnlyOccurrencesCommand(TestCase):
     """
     Covers ami/main/management/commands/cleanup_null_only_occurrences.py.
@@ -6899,3 +7246,663 @@ class ClassificationAdminChangelistTest(TestCase):
         row = next(c for c in self.admin.get_queryset(self._request()) if c.pk == clf.pk)
         self.assertEqual(row.scores_count, 3)
         self.assertEqual(row.logits_count, 0)
+
+
+class TestCaptureSetChoices(APITestCase):
+    """Choices endpoint for capture set filters and pickers.
+
+    Pins the contract those consumers rely on: names without counts, most recently
+    updated first, and a single capped response rather than pages.
+    """
+
+    def setUp(self) -> None:
+        self.user = User.objects.create_user(email="picker@insectai.org", is_staff=False)
+        self.project = Project.objects.create(name="Picker project", owner=self.user)
+        self.other_project = Project.objects.create(name="Other project", owner=self.user)
+        # A new project starts with a capture set holding all of its captures.
+        self.starting_collection = SourceImageCollection.objects.get(project=self.project)
+        self.oldest, self.middle, self.newest = (
+            SourceImageCollection.objects.create(name=name, project=self.project, method="manual")
+            for name in ("Oldest", "Middle", "Newest")
+        )
+        # updated_at is auto_now, so write the timestamps directly instead of relying on
+        # the order the rows were created in.
+        for days_ago, collection in enumerate([self.newest, self.middle, self.oldest, self.starting_collection]):
+            SourceImageCollection.objects.filter(pk=collection.pk).update(
+                updated_at=timezone.now() - datetime.timedelta(days=days_ago)
+            )
+        self.expected_order = ["Newest", "Middle", "Oldest", self.starting_collection.name]
+        self.other_collection = SourceImageCollection.objects.create(
+            name="Elsewhere", project=self.other_project, method="manual"
+        )
+        self.url = f"/api/v2/captures/collections/choices/?project_id={self.project.pk}"
+
+    def test_most_recently_updated_capture_set_comes_first(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual([row["name"] for row in response.json()["results"]], self.expected_order)
+
+    def test_choices_omit_the_capture_occurrence_and_taxa_counts(self):
+        response = self.client.get(self.url)
+        row = response.json()["results"][0]
+        self.assertEqual(sorted(row.keys()), ["details", "id", "method", "name", "user_permissions"])
+
+    def test_choices_are_limited_to_the_requested_project(self):
+        response = self.client.get(self.url)
+        returned_ids = {row["id"] for row in response.json()["results"]}
+        self.assertEqual(
+            returned_ids,
+            {self.oldest.pk, self.middle.pk, self.newest.pk, self.starting_collection.pk},
+        )
+
+    def test_a_project_is_required(self):
+        response = self.client.get("/api/v2/captures/collections/choices/")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_capture_sets_in_a_draft_project_are_hidden_from_non_members(self):
+        draft_project = Project.objects.create(name="Draft project", owner=self.user, draft=True)
+        SourceImageCollection.objects.create(name="Secret", project=draft_project, method="manual")
+
+        response = self.client.get(f"/api/v2/captures/collections/choices/?project_id={draft_project.pk}")
+
+        self.assertEqual(response.json()["results"], [])
+
+    def test_the_list_endpoint_still_reports_capture_counts(self):
+        response = self.client.get(f"/api/v2/captures/collections/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        row = response.json()["results"][0]
+        self.assertIn("source_images_count", row)
+
+    def test_the_list_endpoint_also_defaults_to_most_recently_updated_first(self):
+        response = self.client.get(f"/api/v2/captures/collections/?project_id={self.project.pk}")
+        self.assertEqual([row["name"] for row in response.json()["results"]], self.expected_order)
+
+    def test_sorting_by_a_count_still_works_on_the_list_endpoint(self):
+        response = self.client.get(
+            f"/api/v2/captures/collections/?project_id={self.project.pk}&ordering=source_images_count"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_a_dropdown_gets_one_capped_response_instead_of_pages(self):
+        """The response size is the same whether or not a caller asks for a limit.
+
+        A dropdown cannot page, so the endpoint neither falls back to the small
+        project-wide default nor lets a caller raise the cap. Reaching capture sets
+        past the cap is what the search field in #1380 is for.
+        """
+        SourceImageCollection.objects.bulk_create(
+            SourceImageCollection(name=f"Bulk {index}", project=self.project, method="manual") for index in range(120)
+        )
+        for query in ("", "&limit=500"):
+            with self.subTest(query=query):
+                body = self.client.get(f"{self.url}{query}").json()
+                self.assertEqual(len(body["results"]), 100)
+                # The total still reports every capture set, so a caller can tell that
+                # what it received is a subset.
+                self.assertEqual(body["count"], SourceImageCollection.objects.filter(project=self.project).count())
+
+
+BULK_IDENTIFICATIONS_ENDPOINT = "/api/v2/identifications/bulk/"
+
+
+class BulkIdentificationTestCase(APITestCase):
+    """
+    Shared fixture for the bulk identifications endpoint: one project with
+    several occurrences and a user per role.
+
+    The subclasses pin the parts of the contract that are easy to break without
+    noticing: per-occurrence permission enforcement, the withdraw-previous and
+    determination-recompute side effects in ``Identification.save()``, and that
+    validation cost does not grow with batch size. See #1371.
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(project=self.project)
+        create_captures(deployment=self.deployment)
+        create_occurrences(deployment=self.deployment, num=4)
+
+        self.identifier = User.objects.create_user(email="identifier@insectai.org")  # type: ignore[attr-defined]
+        self.basic_member = User.objects.create_user(email="basic@insectai.org")  # type: ignore[attr-defined]
+        self.non_member = User.objects.create_user(email="stranger@insectai.org")  # type: ignore[attr-defined]
+        self.superuser = User.objects.create_user(  # type: ignore[attr-defined]
+            email="super@insectai.org", is_staff=True, is_superuser=True
+        )
+        Identifier.assign_user(self.identifier, self.project)
+        BasicMember.assign_user(self.basic_member, self.project)
+        ProjectManager.assign_user(self.superuser, self.project)
+
+        self.occurrences = list(Occurrence.objects.filter(project=self.project).exclude(determination=None))
+        assert len(self.occurrences) >= 4, "Fixture must provide enough occurrences to catch per-row query growth"
+
+        self.taxon = Taxon.objects.exclude(pk=self.occurrences[0].determination_id).first()
+        assert self.taxon is not None
+
+        return super().setUp()
+
+    def post_bulk(self, items: list[dict], user: User | None = None):
+        if user is not None:
+            self.client.force_authenticate(user=user)
+        return self.client.post(BULK_IDENTIFICATIONS_ENDPOINT, {"identifications": items}, format="json")
+
+    def item(self, occurrence: Occurrence, taxon: Taxon | None = None, **extra) -> dict:
+        return {"occurrence_id": occurrence.pk, "taxon_id": (taxon or self.taxon).pk, **extra}
+
+
+class TestBulkIdentificationSuccess(BulkIdentificationTestCase):
+    def test_creates_one_identification_per_item_and_updates_determinations(self):
+        """The happy path: every item becomes an Identification and moves its occurrence's determination."""
+        targets = self.occurrences[:3]
+        response = self.post_bulk([self.item(occurrence) for occurrence in targets], user=self.identifier)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        body = response.json()
+        self.assertEqual(body["created_count"], 3)
+        self.assertEqual(body["error_count"], 0)
+        self.assertEqual([result["status"] for result in body["results"]], ["created"] * 3)
+
+        for occurrence in targets:
+            occurrence.refresh_from_db()
+            self.assertEqual(occurrence.determination, self.taxon)
+            self.assertEqual(
+                Identification.objects.filter(occurrence=occurrence, user=self.identifier, withdrawn=False).count(),
+                1,
+            )
+
+    def test_accepts_ids_sent_as_strings(self):
+        """
+        The frontend sends occurrence and taxon IDs as JSON strings.
+
+        The request body is built from the identification form, where IDs are
+        strings, so the endpoint has to accept "123" and not only 123. This pins
+        the frontend-to-backend contract; a stricter integer-only field would 400
+        every real bulk identification.
+        """
+        occurrence = self.occurrences[0]
+        response = self.post_bulk(
+            [{"occurrence_id": str(occurrence.pk), "taxon_id": str(self.taxon.pk)}],
+            user=self.identifier,
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        self.assertEqual(response.json()["created_count"], 1)
+
+    def test_results_are_returned_in_request_order(self):
+        """Clients match results to submitted items by index, so order and index must be stable."""
+        targets = self.occurrences[:3]
+        response = self.post_bulk([self.item(occurrence) for occurrence in targets], user=self.identifier)
+
+        body = response.json()
+        self.assertEqual([result["index"] for result in body["results"]], [0, 1, 2])
+        self.assertEqual(
+            [result["occurrence_id"] for result in body["results"]],
+            [occurrence.pk for occurrence in targets],
+        )
+
+    def test_comment_is_saved(self):
+        response = self.post_bulk(
+            [self.item(self.occurrences[0], comment="Wing pattern matches")], user=self.identifier
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        identification = Identification.objects.get(pk=response.json()["results"][0]["id"])
+        self.assertEqual(identification.comment, "Wing pattern matches")
+
+    def test_withdraws_previous_identification_by_the_same_user(self):
+        """
+        A user has one active identification per occurrence.
+
+        ``Identification.save()`` withdraws the user's earlier identifications on that
+        occurrence. A test using only fresh occurrences passes whether or not the bulk
+        path preserves that, so this pins it with a pre-existing identification.
+        """
+        occurrence = self.occurrences[0]
+        previous = Identification.objects.create(occurrence=occurrence, taxon=self.taxon, user=self.identifier)
+        self.assertFalse(previous.withdrawn)
+
+        other_taxon = Taxon.objects.exclude(pk__in=[self.taxon.pk]).first()
+        assert other_taxon is not None
+        response = self.post_bulk([self.item(occurrence, taxon=other_taxon)], user=self.identifier)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        previous.refresh_from_db()
+        self.assertTrue(previous.withdrawn, "The user's earlier identification must be withdrawn")
+        occurrence.refresh_from_db()
+        self.assertEqual(occurrence.determination, other_taxon)
+
+    def test_does_not_withdraw_identifications_by_other_users(self):
+        """Withdrawing is scoped to the submitting user; another identifier's opinion must survive."""
+        occurrence = self.occurrences[0]
+        other_user_id = Identification.objects.create(occurrence=occurrence, taxon=self.taxon, user=self.superuser)
+
+        self.post_bulk([self.item(occurrence)], user=self.identifier)
+
+        other_user_id.refresh_from_db()
+        self.assertFalse(other_user_id.withdrawn)
+
+    def test_agreeing_with_the_current_determination_raises_the_score_to_the_human_score(self):
+        """
+        Agreeing with an occurrence's existing determination keeps the taxon and lifts
+        the score to the human identification's score of 1.0.
+
+        This mirrors what a single POST to /identifications/ already does, which is the
+        behaviour that matters: the bulk endpoint is a faster way to do the same thing,
+        not a different thing. `determination_score` feeds the project's score-threshold
+        filters, so a bulk path that left the machine score in place would quietly change
+        which occurrences appear in a filtered list.
+        """
+        occurrence = self.occurrences[0]
+        original_taxon = occurrence.determination
+        self.assertEqual(occurrence.determination_score, 0.9)
+
+        response = self.post_bulk(
+            [self.item(occurrence, taxon=original_taxon, agreed_with_prediction_id=occurrence.best_prediction.pk)],
+            user=self.identifier,
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        occurrence.refresh_from_db()
+        self.assertEqual(occurrence.determination, original_taxon)
+        self.assertEqual(occurrence.determination_score, 1.0)
+
+    def test_bulk_and_single_post_leave_an_occurrence_in_the_same_state(self):
+        """
+        The bulk endpoint must be indistinguishable from the single-item endpoint.
+
+        Anything the bulk path reimplements or skips — withdrawing the user's previous
+        identification, recomputing the determination, the resulting score — shows up
+        here as a divergence, without this test having to name each rule.
+        """
+        via_single, via_bulk = self.occurrences[0], self.occurrences[1]
+
+        # Seed both with an earlier identification by the same user, so that
+        # withdraw-previous is part of what the two paths have to agree on.
+        other_taxon = Taxon.objects.exclude(pk=self.taxon.pk).first()
+        assert other_taxon is not None
+        for occurrence in (via_single, via_bulk):
+            Identification.objects.create(occurrence=occurrence, taxon=other_taxon, user=self.identifier)
+
+        self.client.force_authenticate(user=self.identifier)
+        single_response = self.client.post(
+            "/api/v2/identifications/",
+            {"occurrence_id": via_single.pk, "taxon_id": self.taxon.pk, "comment": "same"},
+            format="json",
+        )
+        self.assertEqual(single_response.status_code, status.HTTP_201_CREATED, single_response.content)
+
+        bulk_response = self.post_bulk([self.item(via_bulk, comment="same")], user=self.identifier)
+        self.assertEqual(bulk_response.status_code, status.HTTP_200_OK, bulk_response.content)
+
+        via_single.refresh_from_db()
+        via_bulk.refresh_from_db()
+        self.assertEqual(via_bulk.determination_id, via_single.determination_id)
+        self.assertEqual(via_bulk.determination_score, via_single.determination_score)
+
+        def identification_state(occurrence):
+            return sorted(
+                Identification.objects.filter(occurrence=occurrence).values_list("taxon_id", "withdrawn", "comment")
+            )
+
+        self.assertEqual(identification_state(via_bulk), identification_state(via_single))
+
+    def test_agreed_with_prediction_is_recorded(self):
+        """The agree provenance FK is stored so exports can report what the user agreed with."""
+        occurrence = self.occurrences[0]
+        prediction = occurrence.best_prediction
+        response = self.post_bulk(
+            [self.item(occurrence, taxon=occurrence.determination, agreed_with_prediction_id=prediction.pk)],
+            user=self.identifier,
+        )
+
+        identification = Identification.objects.get(pk=response.json()["results"][0]["id"])
+        self.assertEqual(identification.agreed_with_prediction_id, prediction.pk)
+
+
+class TestBulkIdentificationPartialFailure(BulkIdentificationTestCase):
+    def test_valid_items_are_saved_when_one_item_fails(self):
+        """
+        One bad item must not discard the rest of the batch.
+
+        Mass identification is the point of this endpoint; failing 49 good rows because
+        a 50th occurrence was deleted mid-session would be worse than the N-request
+        version it replaces.
+        """
+        items = [
+            self.item(self.occurrences[0]),
+            {"occurrence_id": 9_999_999, "taxon_id": self.taxon.pk},
+            self.item(self.occurrences[1]),
+        ]
+        response = self.post_bulk(items, user=self.identifier)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        body = response.json()
+        self.assertEqual(body["created_count"], 2)
+        self.assertEqual(body["error_count"], 1)
+        self.assertEqual([result["status"] for result in body["results"]], ["created", "error", "created"])
+        self.assertIn("occurrence_id", body["results"][1]["errors"])
+
+        for occurrence in self.occurrences[:2]:
+            occurrence.refresh_from_db()
+            self.assertEqual(occurrence.determination, self.taxon)
+
+    def test_unknown_taxon_is_reported_per_item(self):
+        items = [self.item(self.occurrences[0]), {"occurrence_id": self.occurrences[1].pk, "taxon_id": 9_999_999}]
+        response = self.post_bulk(items, user=self.identifier)
+
+        body = response.json()
+        self.assertEqual(body["created_count"], 1)
+        self.assertIn("taxon_id", body["results"][1]["errors"])
+
+    def test_agreed_with_identification_from_another_occurrence_is_rejected(self):
+        """Agree provenance must point at the occurrence being identified, not an unrelated one."""
+        foreign = Identification.objects.create(occurrence=self.occurrences[1], taxon=self.taxon, user=self.superuser)
+        response = self.post_bulk(
+            [self.item(self.occurrences[0], agreed_with_identification_id=foreign.pk)],
+            user=self.identifier,
+        )
+
+        body = response.json()
+        self.assertEqual(body["created_count"], 0)
+        self.assertIn("agreed_with_identification_id", body["results"][0]["errors"])
+
+    def test_a_failed_item_does_not_roll_back_successful_items(self):
+        """A rejected item must not undo the identifications already made in the batch."""
+        items = [self.item(self.occurrences[0]), {"occurrence_id": self.occurrences[1].pk, "taxon_id": 9_999_999}]
+        self.post_bulk(items, user=self.identifier)
+
+        self.assertTrue(Identification.objects.filter(occurrence=self.occurrences[0]).exists())
+        self.assertFalse(Identification.objects.filter(occurrence=self.occurrences[1]).exists())
+
+    def test_a_database_failure_on_one_item_is_reported_without_losing_the_others(self):
+        """
+        A write that fails inside save() costs that item only.
+
+        The request runs in a single transaction (ATOMIC_REQUESTS), so each item is
+        saved inside a savepoint and its failure is caught. Without that, the first
+        failure would abort the transaction, discard every identification already
+        made in the request, and return a 500 instead of a per-item error. This is
+        the case that made the endpoint's partial-success promise real, so it is
+        pinned by forcing a failure rather than by trusting the arrangement.
+        """
+        failing_occurrence_id = self.occurrences[1].pk
+        original_save = Identification.save
+
+        def save_but_fail_for_one(identification_self, *args, **kwargs):
+            if identification_self.occurrence_id == failing_occurrence_id:
+                raise IntegrityError("simulated conflict while saving")
+            return original_save(identification_self, *args, **kwargs)
+
+        items = [self.item(occurrence) for occurrence in self.occurrences[:3]]
+        with mock.patch.object(Identification, "save", save_but_fail_for_one):
+            response = self.post_bulk(items, user=self.identifier)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        body = response.json()
+        self.assertEqual(body["created_count"], 2)
+        self.assertEqual(body["error_count"], 1)
+        self.assertEqual([result["status"] for result in body["results"]], ["created", "error", "created"])
+
+        # The surviving items are really committed, not merely reported as created.
+        self.assertTrue(Identification.objects.filter(occurrence=self.occurrences[0]).exists())
+        self.assertFalse(Identification.objects.filter(occurrence=self.occurrences[1]).exists())
+        self.assertTrue(Identification.objects.filter(occurrence=self.occurrences[2]).exists())
+
+    def test_every_occurrence_missing_is_reported_per_item(self):
+        """
+        A batch where nothing resolves answers like any other batch of failures.
+
+        A batch of one deleted occurrence and a batch where only some are deleted are
+        the same kind of failure, so they must not return different shapes.
+        """
+        response = self.post_bulk([{"occurrence_id": 9_999_998, "taxon_id": self.taxon.pk}], user=self.identifier)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        body = response.json()
+        self.assertEqual(body["created_count"], 0)
+        self.assertEqual(body["error_count"], 1)
+        self.assertIn("occurrence_id", body["results"][0]["errors"])
+
+    def test_unknown_agreement_targets_are_reported_per_item(self):
+        response = self.post_bulk(
+            [
+                self.item(self.occurrences[0], agreed_with_identification_id=9_999_999),
+                self.item(self.occurrences[1], agreed_with_prediction_id=9_999_999),
+            ],
+            user=self.identifier,
+        )
+
+        body = response.json()
+        self.assertEqual(body["created_count"], 0)
+        self.assertIn("agreed_with_identification_id", body["results"][0]["errors"])
+        self.assertIn("agreed_with_prediction_id", body["results"][1]["errors"])
+
+    def test_agreed_with_prediction_from_another_occurrence_is_rejected(self):
+        foreign_prediction = self.occurrences[1].best_prediction
+        response = self.post_bulk(
+            [self.item(self.occurrences[0], agreed_with_prediction_id=foreign_prediction.pk)],
+            user=self.identifier,
+        )
+
+        body = response.json()
+        self.assertEqual(body["created_count"], 0)
+        self.assertIn("agreed_with_prediction_id", body["results"][0]["errors"])
+
+    def test_a_missing_occurrence_does_not_produce_a_spurious_agreement_error(self):
+        """
+        With no occurrence to compare against, the agreement target cannot be
+        cross-checked, so the item reports the missing occurrence and nothing else.
+
+        The target here is real, so the only error that could appear alongside would
+        be an unwarranted "not the same occurrence" complaint.
+        """
+        real_target = Identification.objects.create(
+            occurrence=self.occurrences[1], taxon=self.taxon, user=self.superuser
+        )
+        response = self.post_bulk(
+            [{"occurrence_id": 9_999_997, "taxon_id": self.taxon.pk, "agreed_with_identification_id": real_target.pk}],
+            user=self.identifier,
+        )
+
+        errors = response.json()["results"][0]["errors"]
+        self.assertEqual(list(errors), ["occurrence_id"])
+
+    def test_an_item_reports_every_problem_it_has(self):
+        """Errors are reported per field, so one item with two problems names both."""
+        response = self.post_bulk(
+            [{"occurrence_id": 9_999_997, "taxon_id": 9_999_996}],
+            user=self.identifier,
+        )
+
+        errors = response.json()["results"][0]["errors"]
+        self.assertIn("occurrence_id", errors)
+        self.assertIn("taxon_id", errors)
+
+
+class TestBulkIdentificationValidation(BulkIdentificationTestCase):
+    def test_empty_batch_is_rejected(self):
+        response = self.post_bulk([], user=self.identifier)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_missing_identifications_key_is_rejected(self):
+        self.client.force_authenticate(user=self.identifier)
+        response = self.client.post(BULK_IDENTIFICATIONS_ENDPOINT, {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_non_integer_occurrence_id_returns_400_not_500(self):
+        self.client.force_authenticate(user=self.identifier)
+        response = self.client.post(
+            BULK_IDENTIFICATIONS_ENDPOINT,
+            {"identifications": [{"occurrence_id": "abc", "taxon_id": self.taxon.pk}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_batch_larger_than_the_cap_is_rejected(self):
+        """
+        The cap is what fails an oversized batch, not some other rule.
+
+        Repeating one occurrence 201 times would be rejected by the duplicate check
+        instead, and unknown IDs would be reported per item, so both would pass this
+        test with the cap removed. Distinct IDs plus an assertion on the message pin
+        the cap itself.
+        """
+        items = [
+            {"occurrence_id": 9_000_000 + offset, "taxon_id": self.taxon.pk}
+            for offset in range(MAX_BULK_IDENTIFICATIONS + 1)
+        ]
+        response = self.post_bulk(items, user=self.identifier)
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn(str(MAX_BULK_IDENTIFICATIONS), str(response.json()))
+
+    def test_a_batch_at_the_cap_is_accepted(self):
+        """The cap rejects what is over it, not what is exactly at it."""
+        items = [
+            {"occurrence_id": 9_000_000 + offset, "taxon_id": self.taxon.pk}
+            for offset in range(MAX_BULK_IDENTIFICATIONS)
+        ]
+        response = self.post_bulk(items, user=self.identifier)
+
+        # Every occurrence is unknown, so each is reported as an error rather than
+        # the request being rejected outright.
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        self.assertEqual(response.json()["error_count"], MAX_BULK_IDENTIFICATIONS)
+
+    def test_duplicate_occurrence_ids_are_rejected(self):
+        """
+        Two identifications for one occurrence in a single batch have no defined outcome.
+
+        Which one wins would depend on insert-order tiebreaks rather than on anything the
+        client asked for, so the batch is rejected instead.
+        """
+        response = self.post_bulk(
+            [self.item(self.occurrences[0]), self.item(self.occurrences[0])], user=self.identifier
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_batch_spanning_two_projects_is_rejected(self):
+        """A batch is authorized against a single project, so it must not span projects."""
+        other_project, other_deployment = setup_test_project(reuse=False)
+        create_taxa(project=other_project)
+        create_captures(deployment=other_deployment)
+        create_occurrences(deployment=other_deployment, num=1)
+        Identifier.assign_user(self.identifier, other_project)
+        other_occurrence = Occurrence.objects.filter(project=other_project).exclude(determination=None).first()
+        assert other_occurrence is not None
+
+        response = self.post_bulk([self.item(self.occurrences[0]), self.item(other_occurrence)], user=self.identifier)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_withdrawn_cannot_be_set_through_the_bulk_endpoint(self):
+        """`withdrawn` is managed by the model; accepting it from a client would corrupt the invariant."""
+        response = self.post_bulk([self.item(self.occurrences[0], withdrawn=True)], user=self.identifier)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        identification = Identification.objects.get(pk=response.json()["results"][0]["id"])
+        self.assertFalse(identification.withdrawn)
+
+
+class TestBulkIdentificationPermissions(BulkIdentificationTestCase):
+    """
+    The permission matrix.
+
+    A `detail=False` action is never routed through `has_object_permission`, so the
+    endpoint has to run the check itself. These cases fail loudly if it stops doing so.
+    """
+
+    def test_identifier_can_create(self):
+        response = self.post_bulk([self.item(self.occurrences[0])], user=self.identifier)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+
+    def test_project_manager_can_create(self):
+        manager = User.objects.create_user(email="manager@insectai.org")  # type: ignore[attr-defined]
+        ProjectManager.assign_user(manager, self.project)
+        response = self.post_bulk([self.item(self.occurrences[0])], user=manager)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+
+    def test_superuser_can_create(self):
+        response = self.post_bulk([self.item(self.occurrences[0])], user=self.superuser)
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+
+    def test_basic_member_is_forbidden(self):
+        """A project member without the identifier role must not be able to identify."""
+        response = self.post_bulk([self.item(self.occurrences[0])], user=self.basic_member)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(Identification.objects.filter(user=self.basic_member).exists())
+
+    def test_non_member_is_forbidden(self):
+        response = self.post_bulk([self.item(self.occurrences[0])], user=self.non_member)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(Identification.objects.filter(user=self.non_member).exists())
+
+    def test_anonymous_is_rejected(self):
+        response = self.client.post(
+            BULK_IDENTIFICATIONS_ENDPOINT, {"identifications": [self.item(self.occurrences[0])]}, format="json"
+        )
+        self.assertIn(
+            response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN), response.content
+        )
+        self.assertFalse(Identification.objects.exists())
+
+    def test_permission_is_denied_for_the_whole_batch(self):
+        """An unauthorized batch writes nothing at all, not a partial prefix."""
+        items = [self.item(occurrence) for occurrence in self.occurrences[:3]]
+        self.post_bulk(items, user=self.non_member)
+        self.assertFalse(Identification.objects.exists())
+
+
+class TestBulkIdentificationQueryCount(BulkIdentificationTestCase):
+    """
+    Query cost must stay linear in the batch, with a small and stable per-item slope.
+
+    Asserting one exact number for one batch size cannot distinguish fixed cost from
+    per-item cost, so it cannot catch an N+1 hidden in validation or in the response.
+    Measuring two batch sizes and comparing the slope can.
+    """
+
+    def measure(self, size: int) -> int:
+        # A fresh project per measurement keeps the two runs independent.
+        project, deployment = setup_test_project(reuse=False)
+        create_taxa(project=project)
+        create_captures(deployment=deployment)
+        create_occurrences(deployment=deployment, num=size)
+        Identifier.assign_user(self.identifier, project)
+        occurrences = list(Occurrence.objects.filter(project=project).exclude(determination=None))[:size]
+        taxon = Taxon.objects.exclude(pk=occurrences[0].determination_id).first()
+        assert taxon is not None
+        items = [{"occurrence_id": occurrence.pk, "taxon_id": taxon.pk} for occurrence in occurrences]
+
+        self.client.force_authenticate(user=self.identifier)
+        with CaptureQueriesContext(connection) as captured:
+            response = self.client.post(BULK_IDENTIFICATIONS_ENDPOINT, {"identifications": items}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        self.assertEqual(response.json()["created_count"], size)
+        return len(captured.captured_queries)
+
+    def test_per_item_query_cost_stays_within_budget(self):
+        """
+        Each extra identification in a batch costs a bounded number of queries.
+
+        Measured at the time of writing: 8 queries per item, all of them inside
+        `Identification.save()` (withdraw previous, insert, then
+        `update_occurrence_determination` reading the current determination,
+        `best_identification` and `best_prediction` before saving the occurrence).
+        Resolving occurrences and taxa is batched and costs 2 queries for the whole
+        request, so it does not appear in this slope.
+
+        The budget is the measured cost, so any new per-item query fails this test.
+        If a change to the write path legitimately adds one, update the number here
+        deliberately rather than widening the budget to accommodate it.
+        """
+        small, large = 2, 6
+        queries_small = self.measure(small)
+        queries_large = self.measure(large)
+
+        slope = (queries_large - queries_small) / (large - small)
+        self.assertLessEqual(
+            slope,
+            8,
+            f"Each identification should cost a bounded number of queries, measured {slope:.1f} "
+            f"({queries_small} queries for {small} items, {queries_large} for {large}). "
+            f"A jump here usually means something started querying per item.",
+        )

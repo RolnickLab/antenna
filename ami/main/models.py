@@ -2519,6 +2519,8 @@ class SourceImage(BaseModel):
             img.thumbnail(new_size)
 
             buffer = BytesIO()
+            # No ``exif=`` argument: detection boxes are overlaid on thumbnails in raw
+            # pixel coordinates, so the EXIF Orientation tag must not propagate.
             img.save(buffer, format="JPEG", progressive=True, optimize=True, quality=82)
             contents = buffer.getvalue()
             file_size = len(contents)
@@ -2912,7 +2914,13 @@ class Identification(BaseModel):
         update_occurrence_determination(self.occurrence, current_determination=self.taxon)
 
     def check_permission(self, user: AbstractUser | AnonymousUser, action: str) -> bool:
-        """Custom permission check logic for Identification model."""
+        """
+        Custom permission check logic for Identification model.
+
+        The "create" branch depends only on the occurrence's project. The bulk
+        endpoint relies on that to check once per batch instead of once per
+        occurrence — revisit it if this path gains per-occurrence logic. See #1371.
+        """
         import ami.users.roles as roles
 
         project = self.get_project()
@@ -3352,6 +3360,33 @@ class OccurrenceQuerySet(BaseQuerySet):
 
     def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
+
+    def _processed_by_algorithm_q(self, algorithm_ids) -> Exists:
+        """Subquery matching occurrences with any result from the given algorithms —
+        a detection made by one (detectors) or a classification from one (classifiers
+        and post-processing algorithms such as class masking or a size filter)."""
+        return Exists(
+            Detection.objects.filter(occurrence_id=OuterRef("pk")).filter(
+                models.Q(detection_algorithm__in=algorithm_ids)
+                | models.Q(classifications__algorithm__in=algorithm_ids)
+            )
+        )
+
+    def processed_by_algorithm(self, algorithm_ids) -> "OccurrenceQuerySet":
+        """Occurrences with at least one result from the given algorithms.
+
+        Matches detectors through Detection.detection_algorithm and classifiers or
+        post-processing algorithms through their classifications, so every algorithm
+        listed by ``Algorithm.objects.used_in_project()`` can match here. The EXISTS
+        form returns each occurrence once; a join through
+        ``detections__classifications`` returns one row per matching result, which
+        inflates pagination counts and duplicates rows across pages.
+        """
+        return self.filter(self._processed_by_algorithm_q(algorithm_ids))
+
+    def not_processed_by_algorithm(self, algorithm_ids) -> "OccurrenceQuerySet":
+        """Occurrences with no result from any of the given algorithms."""
+        return self.exclude(self._processed_by_algorithm_q(algorithm_ids))
 
     def with_timestamps(self):
         """

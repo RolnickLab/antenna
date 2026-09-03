@@ -19,6 +19,8 @@ Every call to the AI model API incurs a cost and requires electricity. Be smart 
 - Focus on optimizing cold queries first before adding caching
 - When ordering by annotated fields, pagination COUNT queries include those annotations - use `.values('pk')` to strip them
 - For large tables (>10k rows), consider fuzzy counting using PostgreSQL's pg_class.reltuples
+- **Run `EXPLAIN (ANALYZE)` before claiming anything about a query plan.** Do not describe a query as "uses the index", "stays off the table", or "only touches N rows" from reading the ORM expression — verify it. A filter that looks bounded can still trigger a `Seq Scan`: an anti-join such as `pipelines__isnull=True` hides the candidate ids at plan time, so Postgres scans the whole table despite an index being available. Materializing the ids first and filtering on `field__in=[literal ids]` is what lets the planner use the index.
+- **Measure on the largest project in the local database, and survey several project sizes.** The local DB is a copy of production — use it. A small or empty project routinely hides the defect. If a query's cost does not move with project size, it is bound by total table size and will degrade as the platform grows regardless of tenant. Wrap timing loops in `cachalot_disabled()` and rebuild the queryset each iteration, or a reused queryset serves from `_result_cache` and reports a fake ~0 ms.
 
 **Git Commit Guidelines:**
 - Do NOT include "Generated with Claude Code" in commit messages
@@ -69,6 +71,13 @@ A confident but wrong comment is worse than no comment — future developers and
 - **Keep the load-bearing fact; cut unverified mechanism.** A reader changing a constant should not have to trust a paragraph of speculation. State what the code does and the one reason that matters.
 - **Label guesses as guesses.** Use "best-guess", "not measured", "appears to" for anything you have not tested or profiled. Never state a hunch in the authoritative voice.
 - **Short, then link.** Point to the PR or issue for the long reasoning (`See #1231`) instead of embedding it as truth. A PR thread is dated and discussable; an inline comment reads as eternal fact.
+- **Keep comments to a few lines; put the investigation in the PR.** A rationale comment states the rule a future editor must not break, the one reason it exists, and a `See #NNNN` link — normally two or three lines, rarely more than four. Benchmark tables, before/after measurements, the history of what was tried, and anything a reviewer would want to argue with belong in the PR description, where they are dated and can be replied to. The same limit applies to docstrings on tests and helpers: say what the test protects, then link out for why it matters. Long explanatory blocks also age badly, because the next person to change the code updates the line and leaves the essay.
+
+  ```python
+  # Do not add .distinct(): neither scope can duplicate a row, and de-duplicating
+  # sorts the logits and scores arrays — 208s versus 0.5s on a 55,530-row scope.
+  # See #1376.
+  ```
 - **In PR descriptions, distinguish measured from inferred.** Numbers from a profiler, logs, or `ps` are measurements; numbers from reading code are estimates. Say which.
 
 ## Project Overview
@@ -173,27 +182,27 @@ Two routes — bind-mount worktree subdirs into the main stack (code-only change
 
 Run tests:
 ```bash
-docker compose run --rm django python manage.py test
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test
 ```
 
 Run specific test pattern:
 ```bash
-docker compose run --rm django python manage.py test -k pattern
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test -k pattern
 ```
 
 Run tests with debugger on failure:
 ```bash
-docker compose run --rm django python manage.py test -k pattern --failfast --pdb
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test -k pattern --failfast --pdb
 ```
 
 Speed up test development (reuse database):
 ```bash
-docker compose run --rm django python manage.py test --keepdb
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test --keepdb
 ```
 
 Run pytest (alternative test runner):
 ```bash
-docker compose run --rm django pytest --ds=config.settings.test --reuse-db
+docker compose -f docker-compose.ci.yml run --rm django pytest --ds=config.settings.test --reuse-db
 ```
 
 Django shell:
@@ -459,7 +468,7 @@ These map 1:1 to the most frequent review findings across this repo's history. R
 
 Run an end-to-end ML job test:
 ```bash
-docker compose run --rm django python manage.py test_ml_job_e2e \
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test_ml_job_e2e \
   --project 18 --dispatch-mode async_api --collection 142 --pipeline "global_moths_2024"
 ```
 
@@ -473,13 +482,13 @@ Unit tests for the async result handler do not exercise `autoretry_for`, real Ce
 
 ```bash
 # Run specific test class
-docker compose run --rm django python manage.py test ami.main.tests.test_models.ProjectTestCase
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test ami.main.tests.test_models.ProjectTestCase
 
 # Run specific test method
-docker compose run --rm django python manage.py test ami.main.tests.test_models.ProjectTestCase.test_project_creation
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test ami.main.tests.test_models.ProjectTestCase.test_project_creation
 
 # Run with pattern matching
-docker compose run --rm django python manage.py test -k test_detection
+docker compose -f docker-compose.ci.yml run --rm django python manage.py test -k test_detection
 ```
 
 ### Pre-commit Hooks
