@@ -40,9 +40,11 @@ from ami.main.models import (
 )
 from ami.ml.exceptions import PipelineNotConfigured
 from ami.ml.models.algorithm import Algorithm, AlgorithmCategoryMap
+from ami.ml.models.embedding import EMBEDDING_DIMENSIONS, DetectionEmbedding
 from ami.ml.schemas import (
     AlgorithmConfigResponse,
     AlgorithmReference,
+    AlgorithmTrainingConfig,
     ClassificationResponse,
     DetectionRequest,
     DetectionResponse,
@@ -461,6 +463,9 @@ def get_or_create_algorithm_and_category_map(
             "version_name": algorithm_config.version_name,
             "uri": algorithm_config.uri,
             "category_map": None,
+            # Seeded once. Deliberately not in fields_to_update below: an admin who tunes
+            # these settings must not have them reset the next time /info is read.
+            "training_config": algorithm_config.training_config or AlgorithmTrainingConfig(),
         },
     )
     if _created:
@@ -503,7 +508,11 @@ def get_or_create_algorithm_and_category_map(
     fields_to_update = {
         "task_type": algorithm_config.task_type,
         "uri": algorithm_config.uri,
+        "trainable": algorithm_config.trainable,
     }
+    if algorithm_config.training_info:
+        # A fact about where these weights came from, so the service always wins.
+        fields_to_update["training_info"] = algorithm_config.training_info
     for field in fields_to_update:
         new_value = fields_to_update[field]
         if getattr(algo, field) != new_value:
@@ -901,6 +910,66 @@ def create_classifications(
     return existing_classifications + new_classifications
 
 
+def create_detection_embeddings(
+    detections: list[Detection],
+    detection_responses: list[DetectionResponse],
+    algorithms_known: dict[str, Algorithm],
+    logger: logging.Logger = logger,
+) -> int:
+    """
+    Save the feature vectors a processing service returned with its classifications.
+
+    Returns the number offered to the database. Existing rows are ignored rather than
+    raised on, so re-running a pipeline over the same detections stays safe.
+    """
+    to_create: list[DetectionEmbedding] = []
+    seen: set[tuple[int, int]] = set()
+    wrong_size = 0
+
+    for detection, detection_resp in zip(detections, detection_responses):
+        if not detection.pk:
+            # A detection that failed to save has nothing to attach an embedding to.
+            continue
+        for classification_resp in detection_resp.classifications:
+            features = classification_resp.features
+            if not features:
+                continue
+            algorithm = algorithms_known.get(classification_resp.algorithm.key)
+            if not algorithm:
+                # create_classification already raises on unknown algorithms; skip quietly.
+                continue
+            if len(features) != EMBEDDING_DIMENSIONS:
+                wrong_size += 1
+                continue
+            # One vector per (detection, algorithm). A pipeline that returns several
+            # classifications from the same algorithm sends the same vector each time.
+            key = (detection.pk, algorithm.pk)
+            if key in seen:
+                continue
+            seen.add(key)
+            to_create.append(
+                DetectionEmbedding(
+                    detection=detection,
+                    algorithm=algorithm,
+                    vector=features,
+                )
+            )
+
+    if wrong_size:
+        logger.warning(
+            f"Skipped {wrong_size} feature vector(s) that were not {EMBEDDING_DIMENSIONS} dimensions. "
+            "DetectionEmbedding.vector has a fixed width, so a backbone of a different width "
+            "needs its own column or table."
+        )
+
+    if not to_create:
+        return 0
+
+    DetectionEmbedding.objects.bulk_create(to_create, batch_size=500, ignore_conflicts=True)
+    logger.info(f"Saved {len(to_create)} detection embedding(s), ignoring any that already existed")
+    return len(to_create)
+
+
 def create_and_update_occurrences_for_detections(
     detections: list[Detection],
     logger: logging.Logger = logger,
@@ -1083,6 +1152,17 @@ def save_results(
         algorithms_known=algorithms_known,
         logger=job_logger,
     )
+
+    # Opt-in per project: a stored vector costs roughly 5 KB once the vector index is
+    # counted, so this is only worth paying for on projects that will retrain a head.
+    project = next((image.project for image in source_images if image.project_id), None)
+    if project and project.feature_flags.store_classification_embeddings:
+        create_detection_embeddings(
+            detections=detections,
+            detection_responses=results.detections,
+            algorithms_known=algorithms_known,
+            logger=job_logger,
+        )
 
     # Create a new occurrence for each detection (no tracking yet)
     # @TODO remove when we implement tracking!

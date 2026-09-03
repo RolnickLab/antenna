@@ -562,7 +562,14 @@ class MLJob(JobType):
             cls.process_images(job, images)
 
     @classmethod
-    def process_images(cls, job, images):
+    def process_images(cls, job, images, reprocess_all_images: bool | None = None):
+        """
+        `reprocess_all_images` defaults to the project flag. An embedding job overrides it,
+        because it must always send the existing detections: it needs the vectors for crops
+        that are already detected, not a fresh run of the detector.
+        """
+        if reprocess_all_images is None:
+            reprocess_all_images = job.project.feature_flags.reprocess_all_images
         image_count = len(images)
         # Keep track of sub-tasks for saving results, pair with batch number
         save_tasks: list[tuple[int, AsyncResult]] = []
@@ -585,7 +592,7 @@ class MLJob(JobType):
                     images=chunk,
                     job_id=job.pk,
                     project_id=job.project.pk,
-                    reprocess_all_images=job.project.feature_flags.reprocess_all_images,
+                    reprocess_all_images=reprocess_all_images,
                 )
                 job.logger.info(f"Processed image batch {i+1} in {time.time() - request_sent:.2f}s")
             except Exception as e:
@@ -920,6 +927,340 @@ class PostProcessingJob(JobType):
         job.save()
 
 
+class GenerateEmbeddingsJob(JobType):
+    """
+    Fill in the embeddings that a classifier head needs to be retrained.
+
+    Runs the same inference pipeline as an ML job, but only over detections that a person
+    has verified and that have no embedding yet. The backbone is frozen, so an embedding
+    is computed once and reused by every later retrain.
+
+    Existing detections are sent with the request, so the detector does not run again and
+    no new detections are created. Only the vectors are new.
+    """
+
+    name = "Generate embeddings"
+    key = "generate_embeddings"
+
+    @classmethod
+    def run(cls, job: "Job"):
+        if not job.pipeline:
+            raise ValueError("A generate_embeddings job needs a pipeline to run the backbone.")
+        if not job.project.feature_flags.store_classification_embeddings:
+            raise ValueError(
+                f"Project '{job.project}' does not have store_classification_embeddings enabled, "
+                "so the embeddings this job produces would be thrown away."
+            )
+
+        algorithm = cls.target_algorithm(job)
+        job.progress.add_stage("Finding detections", "collect")
+        job.progress.add_stage("Computing embeddings", "process")
+        job.update_status(JobState.STARTED)
+        job.started_at = datetime.datetime.now()
+        job.finished_at = None
+        job.progress.update_stage("collect", status=JobState.STARTED, progress=0)
+        job.save()
+
+        images = cls.images_needing_embeddings(job, algorithm)
+        job.progress.add_stage_param("collect", "Algorithm", algorithm.key)
+        job.progress.add_stage_param("collect", "Captures", len(images))
+        job.progress.update_stage("collect", status=JobState.SUCCESS, progress=1, total_images=len(images))
+        job.save()
+
+        if not images:
+            job.logger.info(f"Every verified detection already has an embedding from {algorithm.key}. Nothing to do.")
+            job.progress.update_stage("process", status=JobState.SUCCESS, progress=1)
+            job.finished_at = datetime.datetime.now()
+            job.update_status(JobState.SUCCESS, save=True)
+            return
+
+        job.logger.info(f"Computing {algorithm.key} embeddings for detections in {len(images)} capture(s)")
+        before = cls.embedding_count(algorithm)
+
+        # Reuse the ML job's dispatch loop rather than a parallel copy of it: batching,
+        # progress and result saving are already handled there.
+        MLJob.process_images(job, images, reprocess_all_images=True)
+
+        created = cls.embedding_count(algorithm) - before
+        job.logger.info(f"Stored {created} new embedding(s)")
+        job.progress.add_stage_param("process", "Embeddings stored", created)
+        job.save()
+
+    @classmethod
+    def target_algorithm(cls, job: "Job"):
+        """The pipeline's trainable algorithm. That is the one whose embeddings are worth storing."""
+        candidates = list(job.pipeline.algorithms.filter(trainable=True)) if job.pipeline else []
+        key = (job.params or {}).get("algorithm_key")
+        if key:
+            match = next((a for a in candidates if a.key == key), None)
+            if not match:
+                raise ValueError(
+                    f"Algorithm '{key}' is not a trainable algorithm on pipeline '{job.pipeline}'. "
+                    f"Trainable algorithms: {[a.key for a in candidates] or 'none'}"
+                )
+            return match
+        if not candidates:
+            raise ValueError(
+                f"Pipeline '{job.pipeline}' has no algorithm marked trainable, so there is no head "
+                "whose embeddings are worth storing."
+            )
+        if len(candidates) > 1:
+            raise ValueError(
+                f"Pipeline '{job.pipeline}' has several trainable algorithms "
+                f"({[a.key for a in candidates]}). Pass algorithm_key in the job params to choose one."
+            )
+        return candidates[0]
+
+    @classmethod
+    def images_needing_embeddings(cls, job: "Job", algorithm) -> list[SourceImage]:
+        """
+        Captures holding at least one verified detection with no embedding from this algorithm.
+
+        Verified only, by decision: an embedding is ~2 KB and only a labelled crop can train
+        a head, so embedding everything would cost gigabytes to no purpose.
+        """
+        from ami.main.models import Detection
+        from ami.ml import training_data
+
+        detections = (
+            Detection.objects.filter(occurrence_id__in=training_data.verified_occurrence_ids(job.project))
+            .exclude(embeddings__algorithm=algorithm)
+            .order_by()
+        )
+        image_ids = list(detections.values_list("source_image_id", flat=True).distinct())
+        if job.limit:
+            image_ids = image_ids[: job.limit]
+        return list(SourceImage.objects.filter(pk__in=image_ids))
+
+    @classmethod
+    def embedding_count(cls, algorithm) -> int:
+        from ami.ml.models import DetectionEmbedding
+
+        return DetectionEmbedding.objects.filter(algorithm=algorithm).count()
+
+
+class TrainClassifierJob(JobType):
+    """
+    Retrain a classifier head from the species people have verified in this project.
+
+    Antenna prepares the training set and hands the processing service a URL to it, rather
+    than posting the rows: a project with a few hundred thousand verified labels runs to
+    hundreds of megabytes, which is fragile to send in one request and has to start over if
+    the connection drops.
+
+    The job does not wait for training to finish. It dispatches and leaves the job STARTED;
+    the service reports back through the job's result endpoint. Waiting inline would hit the
+    sub-task timeout on anything but a toy dataset.
+    """
+
+    name = "Train classifier"
+    key = "train_classifier"
+
+    STAGE_PREPARE = "prepare"
+    STAGE_DISPATCH = "dispatch"
+    STAGE_TRAIN = "train"
+
+    @classmethod
+    def run(cls, job: "Job"):
+        from ami.ml.models import Algorithm
+        from ami.ml.models.processing_service import ProcessingService
+        from ami.ml.training_dataset import NotEnoughVerifiedData, build_training_dataset
+
+        params = job.params or {}
+        algorithm_key = params.get("algorithm_key")
+        if not algorithm_key:
+            raise ValueError("A train_classifier job needs an 'algorithm_key' in its params.")
+
+        algorithm = Algorithm.objects.filter(key=algorithm_key).first()
+        if not algorithm:
+            raise ValueError(f"No algorithm with key '{algorithm_key}'.")
+        if not algorithm.trainable:
+            raise ValueError(
+                f"Algorithm '{algorithm_key}' is not marked trainable by its processing service. "
+                "Re-register the pipelines if the service has since been updated."
+            )
+
+        job.progress.add_stage("Preparing training set", cls.STAGE_PREPARE)
+        job.progress.add_stage("Sending to processing service", cls.STAGE_DISPATCH)
+        job.progress.add_stage("Training", cls.STAGE_TRAIN)
+        job.update_status(JobState.STARTED)
+        job.started_at = datetime.datetime.now()
+        job.finished_at = None
+        job.progress.update_stage(cls.STAGE_PREPARE, status=JobState.STARTED, progress=0)
+        job.save()
+
+        try:
+            dataset = build_training_dataset(
+                project=job.project,
+                algorithm=algorithm,
+                min_per_species=params.get("min_per_species", 2),
+                job_id=job.pk,
+            )
+        except NotEnoughVerifiedData as e:
+            # A data problem, not a crash. Say so plainly rather than failing with a traceback.
+            job.logger.error(str(e))
+            job.progress.update_stage(cls.STAGE_PREPARE, status=JobState.FAILURE, progress=0)
+            job.finished_at = datetime.datetime.now()
+            job.result = {"error": str(e)}
+            job.update_status(JobState.FAILURE, save=True)
+            return
+
+        meta = dataset["metadata"]
+        job.logger.info(
+            f"Training set: {meta['rows']} verified crops over {len(meta['classes'])} species "
+            f"({meta['train']} train / {meta['test']} held out)"
+        )
+        if meta["verified_detections_without_embedding"]:
+            job.logger.warning(
+                f"{meta['verified_detections_without_embedding']} verified detection(s) have no embedding "
+                "from this algorithm and were left out. Re-run the pipeline over them to include them."
+            )
+        job.progress.add_stage_param(cls.STAGE_PREPARE, "Rows", meta["rows"])
+        job.progress.add_stage_param(cls.STAGE_PREPARE, "Species", len(meta["classes"]))
+        job.progress.add_stage_param(cls.STAGE_PREPARE, "Dataset", dataset["url"])
+        job.progress.update_stage(cls.STAGE_PREPARE, status=JobState.SUCCESS, progress=1)
+        job.save()
+
+        service = (
+            ProcessingService.objects.filter(
+                projects=job.project,
+                pipelines__algorithms=algorithm,
+                endpoint_url__isnull=False,
+            )
+            .exclude(endpoint_url="")
+            .distinct()
+            .first()
+        )
+        if not service:
+            # Pull-mode workers register with a null endpoint_url, so there is nothing to
+            # send a training request to. Supporting them means routing this through the
+            # task queue instead.
+            raise ValueError(
+                f"No push-mode processing service in this project serves '{algorithm_key}'. "
+                "Training cannot be dispatched to a pull-mode worker."
+            )
+
+        job.progress.update_stage(cls.STAGE_DISPATCH, status=JobState.STARTED, progress=0)
+        job.save()
+        cls.dispatch(job=job, service=service, algorithm=algorithm, dataset=dataset)
+
+    @classmethod
+    def dispatch(cls, job: "Job", service, algorithm, dataset: dict) -> None:
+        """Hand the service the dataset URL and leave the job running until it reports back."""
+        from ami.ml.training_dispatch import send_training_request
+
+        response = send_training_request(job=job, service=service, algorithm=algorithm, dataset=dataset)
+        job.progress.update_stage(cls.STAGE_DISPATCH, status=JobState.SUCCESS, progress=1)
+        job.progress.update_stage(cls.STAGE_TRAIN, status=JobState.STARTED, progress=0)
+        job.logger.info(f"Training request accepted by {service.name}. Waiting for it to report back.")
+        job.save()
+
+        if response is not None:
+            # The service answered synchronously, which small datasets do. Record it now
+            # rather than leaving the job waiting for a callback that already happened.
+            cls.record_result(
+                job=job,
+                payload={
+                    "result": response,
+                    "dataset": dataset["metadata"],
+                    # Kept alongside the metadata so the registered version can point at the
+                    # exact file it was fitted on, not just describe it.
+                    "dataset_url": dataset["url"],
+                },
+            )
+
+    @classmethod
+    def record_result(cls, job: "Job", payload: dict) -> None:
+        """Store what the service reported, register the new version, and finish the job."""
+        result = payload.get("result") or {}
+        job.result = payload
+
+        for warning in result.get("warnings", []):
+            job.logger.warning(warning)
+
+        candidate = result.get("candidate_metrics") or {}
+        incumbent = result.get("incumbent_metrics") or {}
+        job.progress.add_stage_param(cls.STAGE_TRAIN, "New head top-1", candidate.get("top1"))
+        job.progress.add_stage_param(cls.STAGE_TRAIN, "Current head top-1", incumbent.get("top1"))
+        job.progress.add_stage_param(cls.STAGE_TRAIN, "Better", result.get("promote"))
+        job.logger.info(result.get("reason", "Training finished."))
+
+        new_version = cls.register_new_version(job=job, payload=payload)
+        if new_version:
+            job.progress.add_stage_param(cls.STAGE_TRAIN, "New version", new_version.key)
+            job.logger.info(f"Registered {new_version} as version {new_version.version}")
+
+        job.progress.update_stage(cls.STAGE_TRAIN, status=JobState.SUCCESS, progress=1)
+        job.finished_at = datetime.datetime.now()
+        job.update_status(JobState.SUCCESS, save=True)
+        job.save()
+
+    @classmethod
+    def register_new_version(cls, job: "Job", payload: dict):
+        """
+        Record the trained head as a new version of the algorithm it was trained from.
+
+        A Classification points at an Algorithm row, so a version that changed in place
+        would make past predictions untraceable. Each retrain therefore gets its own row:
+        same name, next version number, and a new key, because key is unique on its own.
+        """
+        from ami.ml.models import Algorithm, AlgorithmCategoryMap
+        from ami.ml.schemas import AlgorithmTrainingInfo
+
+        result = payload.get("result") or {}
+        dataset = payload.get("dataset") or {}
+        parent_key = (job.params or {}).get("algorithm_key")
+        parent = Algorithm.objects.filter(key=parent_key).first()
+        if not parent:
+            job.logger.warning(f"Cannot register a new version: no algorithm with key '{parent_key}'.")
+            return None
+
+        labels = result.get("labels") or []
+        if not labels:
+            job.logger.warning("The service returned no class list, so no new version was registered.")
+            return None
+
+        trained_at = result.get("trained_at") or ""
+        stamp = str(trained_at).replace(":", "").replace("-", "").replace(".", "")[:15] or f"job{job.pk}"
+        version = (
+            Algorithm.objects.filter(name=parent.name).order_by("-version").values_list("version", flat=True).first()
+            or parent.version
+        ) + 1
+
+        category_map = AlgorithmCategoryMap.objects.create(
+            labels=labels,
+            data=[{"label": label, "index": i} for i, label in enumerate(labels)],
+            version=stamp,
+            description=(
+                f"Retrained from {dataset.get('rows', len(labels))} verified crops in "
+                f"project '{job.project.name}' by job #{job.pk}."
+            ),
+        )
+
+        return Algorithm.objects.create(
+            name=parent.name,
+            key=f"{parent.key}-v{version}-{stamp}",
+            version=version,
+            version_name=str(trained_at) or stamp,
+            task_type=parent.task_type,
+            description=parent.description,
+            trainable=parent.trainable,
+            training_config=parent.training_config,
+            category_map=category_map,
+            training_info=AlgorithmTrainingInfo(
+                trained_at=trained_at or None,
+                dataset_url=payload.get("dataset_url") or dataset.get("url"),
+                dataset_rows=(result.get("rows") or {}).get("kept"),
+                dataset_classes=len(labels),
+                metrics=result.get("candidate_metrics") or {},
+                previous_metrics=result.get("incumbent_metrics") or {},
+                parent_algorithm_key=parent.key,
+                job_id=job.pk,
+                warnings=result.get("warnings") or [],
+            ),
+        )
+
+
 class RegroupEventsJob(JobType):
     """
     Regroup a deployment's captures into Events using the project's
@@ -985,6 +1326,8 @@ VALID_JOB_TYPES = [
     UnknownJobType,
     DataExportJob,
     PostProcessingJob,
+    TrainClassifierJob,
+    GenerateEmbeddingsJob,
 ]
 
 
