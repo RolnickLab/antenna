@@ -2159,22 +2159,11 @@ class TestProjectRequiredOnListEndpoints(APITestCase):
 
 
 class TestProjectScopingOnListEndpoints(APITestCase):
-    """
-    Every list endpoint that requires a project_id must also filter its results
-    by that project.
+    """Every list endpoint that requires a project_id must also filter its results by it.
 
-    Requiring the parameter without filtering by it is a silent failure mode:
-    the request is accepted, but the response mixes in other projects' rows and
-    reports a count over the whole table — so the pagination COUNT the
-    requirement exists to prevent still runs. The status-code tests above
-    cannot catch that, because they never look at the response body. This test
-    pins the other half of the contract: with two projects that both have data
-    in every hot table, a scoped list request returns only the requested
-    project's rows and a count that matches.
-
-    The expected rows are resolved generically through each model's
-    ``get_project_accessor()``, so any future viewset added to the endpoint
-    list below is checked the same way.
+    Requiring the parameter without applying it accepts the request but mixes in other
+    projects' rows and counts the whole table, which the status-code tests above cannot
+    see. Expected rows resolve through each model's ``get_project_accessor()``. See #1390.
     """
 
     def setUp(self) -> None:
@@ -2233,15 +2222,10 @@ class TestProjectScopingOnListEndpoints(APITestCase):
                     )
 
     def test_detail_route_rejects_a_project_it_does_not_belong_to(self):
-        """
-        A detail request naming the wrong project returns 404 rather than the object.
+        """A detail request naming the wrong project returns 404 rather than the object.
 
-        Scoping happens in ``get_queryset()``, which every action reads, so the
-        project constraint reaches detail routes as well as the list. Naming a
-        project the object does not belong to therefore yields 404, matching the
-        occurrences and classifications detail routes. This is pinned here
-        because the behaviour is a consequence of where the filter lives, and a
-        later refactor that scoped only the list action would silently drop it.
+        Scoping lives in ``get_queryset()``, which every action reads, so it reaches detail
+        routes too, matching occurrences and classifications. See #1390.
         """
         detection = Detection.objects.filter(source_image__project=self.project_a).first()
         assert detection, "fixture produced no detections in the first project"
