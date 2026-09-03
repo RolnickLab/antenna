@@ -1,6 +1,6 @@
 # Class masking: batched scope reads (branch `fix/class-masking-batch-fetch-latency`)
 
-Follow-up to #1376. Prod job 2834 (project 86, Ogden St.) was still revoked as stalled on
+Follow-up to #1376. A production job over a 70,000-row scope was still revoked as stalled on
 2026-07-27 with `classifications_checked: 0`, despite #1376 having shipped.
 
 ## What #1376 fixed, and what it missed
@@ -97,7 +97,7 @@ the reaping; it does not make a 70k-row run fast. Ranked follow-ups:
    is a kept class and cannot be dethroned — the determination is unchanged by construction.
    `.exclude(taxon_id__in=<taxa in list>)` is therefore a safe prefilter on an indexed column,
    and skipped rows never have their logits fetched. Two caveats: #1377 measured only
-   948/3,814 = 24.9% of masked rows repeating the source taxon on serbia, so this is roughly a
+   948/3,814 = 24.9% of masked rows repeating the source taxon on one project, so this is roughly a
    quarter fewer rows rather than an order of magnitude; and it assumes `taxon_id` equals
    `index_to_taxon[argmax(logits)]`, which held 100/100 on a local sample but is unverified at
    scale.
