@@ -6020,6 +6020,28 @@ class TestModelAgreementForProject(APITestCase):
         # 1 exact agreement out of 1 comparable → 100%, not 50%.
         self.assertEqual(result["agreed_exact_count"], 1)
         self.assertAlmostEqual(result["agreed_exact_pct"], 1.0)
+        self.assertAlmostEqual(result["agreed_any_rank_pct"], 1.0)
+
+    def test_confidence_intervals_null_when_nothing_is_comparable(self):
+        """Wilson bounds are null once nothing is comparable, even though every
+        verified occurrence here carries a machine prediction.
+
+        comparable_count falls below verified_with_prediction_count whenever a
+        verification has no taxon, and the intervals key off the former.
+        """
+        from ami.main.models_future.occurrence import model_agreement_for_project
+
+        occurrences = list(Occurrence.objects.filter(project=self.project).order_by("pk"))
+        for occurrence in occurrences[:2]:
+            Identification.objects.create(user=self.user, occurrence=occurrence, taxon=None)
+
+        result = model_agreement_for_project(Occurrence.objects.filter(project=self.project))
+        self.assertEqual(result["verified_with_prediction_count"], 2)
+        self.assertEqual(result["comparable_count"], 0)
+        self.assertIsNone(result["agreed_exact_ci_low"])
+        self.assertIsNone(result["agreed_exact_ci_high"])
+        self.assertIsNone(result["agreed_any_rank_ci_low"])
+        self.assertIsNone(result["agreed_any_rank_ci_high"])
 
 
 class TestOccurrenceStatsViewSet(APITestCase):
