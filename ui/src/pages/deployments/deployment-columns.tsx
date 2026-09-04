@@ -80,6 +80,24 @@ export const columns = ({
     ),
   },
   {
+    id: 'last-seen',
+    name: translate(STRING.FIELD_LABEL_LAST_SEEN),
+    sortField: 'last_status_at',
+    renderCell: (item: Deployment) => (
+      <BasicTableCell
+        value={item.lastSeenLabel}
+        details={
+          [
+            item.lastStatus?.status,
+            item.batteryLabel
+              ? `${translate(STRING.FIELD_LABEL_BATTERY)}: ${item.batteryLabel}`
+              : undefined,
+          ].filter(Boolean) as string[]
+        }
+      />
+    ),
+  },
+  {
     id: 'status',
     name: translate(STRING.FIELD_LABEL_LATEST_JOB_STATUS),
     tooltip: translate(STRING.TOOLTIP_LATEST_JOB_STATUS, {

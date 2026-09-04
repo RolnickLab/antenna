@@ -2,6 +2,7 @@ import collections
 import datetime
 
 from django.db.models import QuerySet
+from django_pydantic_field.rest_framework import SchemaField
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -20,6 +21,7 @@ from ami.users.roles import ProjectManager
 from ..models import (
     Classification,
     Deployment,
+    DeploymentStatus,
     Detection,
     Device,
     Event,
@@ -33,6 +35,7 @@ from ..models import (
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
+    StationStatusPayload,
     TaxaList,
     Taxon,
 )
@@ -178,6 +181,40 @@ class JobStatusSerializer(DefaultSerializer):
         ]
 
 
+class DeploymentStatusSerializer(serializers.ModelSerializer):
+    """
+    One heartbeat from a station, as stored.
+
+    Plain ``ModelSerializer`` rather than the hyperlinked default: a status report has
+    no detail route of its own, it is only ever read through its station.
+    """
+
+    status = SchemaField(schema=StationStatusPayload)
+
+    class Meta:
+        model = DeploymentStatus
+        fields = [
+            "id",
+            "recorded_at",
+            "status",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
+
+
+class DeploymentStatusRequestSerializer(serializers.Serializer):
+    """
+    What a station sends when it reports in.
+
+    ``recorded_at`` defaults to the moment the report arrives, so a station with no
+    reliable clock can still check in. Everything else travels inside ``status``,
+    which keeps fields it does not recognise (see ``StationStatusPayload``).
+    """
+
+    recorded_at = serializers.DateTimeField(required=False)
+    status = SchemaField(schema=StationStatusPayload, required=False)
+
+
 class DeploymentListSerializer(DefaultSerializer):
     events = serializers.SerializerMethodField()
     occurrences = serializers.SerializerMethodField()
@@ -186,6 +223,7 @@ class DeploymentListSerializer(DefaultSerializer):
     research_site = SiteNestedSerializer(read_only=True)
     jobs = JobStatusSerializer(many=True, read_only=True)
     data_source_connected = serializers.SerializerMethodField()
+    last_status = SchemaField(schema=StationStatusPayload, read_only=True)
 
     class Meta:
         model = Deployment
@@ -211,6 +249,8 @@ class DeploymentListSerializer(DefaultSerializer):
             "research_site",
             "jobs",
             "data_source_connected",
+            "last_status_at",
+            "last_status",
         ]
 
     def get_data_source_connected(self, obj: Deployment) -> bool:
