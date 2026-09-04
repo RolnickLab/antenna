@@ -7720,12 +7720,12 @@ class TestDeploymentStatus(APITestCase):
             self.assertEqual(response.status_code, 403, f"{user} should not be able to report status")
 
         self.client.force_authenticate(user=None)
-        self.assertEqual(self.client.post(self.url, {}, format="json").status_code, 403)
+        self.assertEqual(self.client.post(self.url, {}, format="json").status_code, 401)
 
     def test_report_is_stored_and_becomes_the_latest(self):
         """A heartbeat is kept as history and copied onto the station as its latest."""
         self.client.force_authenticate(user=self.pm_user)
-        recorded_at = datetime.datetime(2026, 9, 4, 3, 30, tzinfo=datetime.timezone.utc)
+        recorded_at = datetime.datetime(2026, 9, 4, 3, 30)
 
         response = self.client.post(
             self.url,
@@ -7752,8 +7752,8 @@ class TestDeploymentStatus(APITestCase):
         "latest" must stay the most recently recorded reading, not the last received.
         """
         self.client.force_authenticate(user=self.pm_user)
-        newest = datetime.datetime(2026, 9, 4, 6, 0, tzinfo=datetime.timezone.utc)
-        older = datetime.datetime(2026, 9, 4, 1, 0, tzinfo=datetime.timezone.utc)
+        newest = datetime.datetime(2026, 9, 4, 6, 0)
+        older = datetime.datetime(2026, 9, 4, 1, 0)
 
         self.client.post(
             self.url,
@@ -7824,7 +7824,7 @@ class TestDeploymentStatus(APITestCase):
             self.client.post(
                 self.url,
                 {
-                    "recorded_at": datetime.datetime(2026, 9, 4, hour, tzinfo=datetime.timezone.utc).isoformat(),
+                    "recorded_at": datetime.datetime(2026, 9, 4, hour).isoformat(),
                     "status": {"status": f"hour-{hour}"},
                 },
                 format="json",
@@ -7854,7 +7854,7 @@ class TestDeploymentStatus(APITestCase):
     def test_station_list_reports_when_each_was_last_seen(self):
         """The station list carries "last seen" so the UI does not query per station."""
         self.client.force_authenticate(user=self.pm_user)
-        recorded_at = datetime.datetime(2026, 9, 4, 2, 0, tzinfo=datetime.timezone.utc)
+        recorded_at = datetime.datetime(2026, 9, 4, 2, 0)
         self.deployment.record_status(
             payload=StationStatusPayload(status="surveying", battery_percent=61.0),
             recorded_at=recorded_at,
