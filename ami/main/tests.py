@@ -3071,6 +3071,307 @@ class TestDeploymentSyncAll(APITestCase):
                 self.assertEqual(response.status_code, expected, f"{role_name} got {response.status_code}")
 
 
+class TestDeploymentUploadRequest(APITestCase):
+    """POST /deployments/{id}/upload-request/ mints presigned PUT URLs.
+
+    Signing is a local operation (no network), so the permission and validation
+    tests run without MinIO; only the E2E flagship needs the live storage stack.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.project = Project.objects.create(name="Upload Request Project")
+        create_roles_for_project(self.project)
+
+        self.superuser = User.objects.create_superuser(email="super-upload@insectai.org", password="pw")
+        self.pm_user = User.objects.create_user(email="pm-upload@insectai.org", password="pw")
+        self.ml_user = User.objects.create_user(email="ml-upload@insectai.org", password="pw")
+        self.researcher = User.objects.create_user(email="researcher-upload@insectai.org", password="pw")
+        self.basic_user = User.objects.create_user(email="basic-upload@insectai.org", password="pw")
+        self.outsider = User.objects.create_user(email="outsider-upload@insectai.org", password="pw")
+        ProjectManager.assign_user(self.pm_user, self.project)
+        MLDataManager.assign_user(self.ml_user, self.project)
+        Researcher.assign_user(self.researcher, self.project)
+        BasicMember.assign_user(self.basic_user, self.project)
+
+        # Real-AWS-style source (no endpoint_url) so generate_presigned_url signs
+        # locally without contacting any server.
+        self.source = S3StorageSource.objects.create(
+            name="Upload Source",
+            bucket="test-bucket",
+            region="us-east-1",
+            prefix="uploads",
+            access_key="AKIA_TEST",
+            secret_key="secret",
+            project=self.project,
+        )
+        self.deployment = Deployment.objects.create(
+            name="Uploader",
+            project=self.project,
+            data_source=self.source,
+            data_source_subdir="station-1",
+        )
+        self.no_source = Deployment.objects.create(name="No source", project=self.project)
+        self.url = f"/api/v2/deployments/{self.deployment.pk}/upload-request/"
+
+    def _payload(self, filename="20240101T120000_0001.jpg", size=1024, **extra):
+        file = {"filename": filename, "size": size}
+        file.update(extra)
+        return {"files": [file]}
+
+    def test_permission_matrix(self):
+        matrix = [
+            ("superuser", self.superuser, status.HTTP_200_OK),
+            ("ProjectManager", self.pm_user, status.HTTP_200_OK),
+            ("MLDataManager", self.ml_user, status.HTTP_200_OK),
+            ("Researcher", self.researcher, status.HTTP_403_FORBIDDEN),
+            ("BasicMember", self.basic_user, status.HTTP_403_FORBIDDEN),
+            ("outsider", self.outsider, status.HTTP_403_FORBIDDEN),
+        ]
+        for role_name, user, expected in matrix:
+            with self.subTest(role=role_name):
+                self.client.force_authenticate(user)
+                response = self.client.post(self.url, self._payload(), format="json")
+                self.assertEqual(response.status_code, expected, f"{role_name} got {response.status_code}")
+
+    def test_anonymous_denied(self):
+        self.client.force_authenticate(None)
+        response = self.client.post(self.url, self._payload(), format="json")
+        self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
+
+    def test_no_data_source_returns_400(self):
+        self.client.force_authenticate(self.superuser)
+        url = f"/api/v2/deployments/{self.no_source.pk}/upload-request/"
+        response = self.client.post(url, self._payload(), format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_valid_file_mints_url(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.post(self.url, self._payload(content_type="image/jpeg"), format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["errors"], [])
+        self.assertEqual(len(response.data["urls"]), 1)
+        entry = response.data["urls"][0]
+        self.assertEqual(entry["filename"], "20240101T120000_0001.jpg")
+        self.assertEqual(entry["key"], "uploads/station-1/20240101T120000_0001.jpg")
+        self.assertEqual(entry["method"], "PUT")
+        self.assertIn("X-Amz-Signature", entry["url"])
+        self.assertEqual(entry["headers"]["Content-Type"], "image/jpeg")
+        self.assertIn("expires_at", entry)
+
+    def test_deterministic_key(self):
+        self.client.force_authenticate(self.superuser)
+        r1 = self.client.post(self.url, self._payload(), format="json")
+        r2 = self.client.post(self.url, self._payload(), format="json")
+        self.assertEqual(r1.data["urls"][0]["key"], r2.data["urls"][0]["key"])
+
+    def test_unparseable_timestamp_rejected(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.post(self.url, self._payload(filename="photo.jpg"), format="json")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["urls"], [])
+        self.assertEqual(response.data["errors"][0]["code"], "unparseable_timestamp")
+
+    def test_invalid_extension_rejected(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.post(self.url, self._payload(filename="20240101T120000_0001.txt"), format="json")
+        self.assertEqual(response.data["errors"][0]["code"], "invalid_extension")
+        self.assertEqual(response.data["urls"], [])
+
+    def test_path_traversal_rejected(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.post(self.url, self._payload(filename="../20240101T120000_0001.jpg"), format="json")
+        self.assertEqual(response.data["errors"][0]["code"], "invalid_filename")
+
+    def test_zero_size_rejected(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.post(self.url, self._payload(size=0), format="json")
+        self.assertEqual(response.data["errors"][0]["code"], "invalid_size")
+
+    def test_key_too_long_rejected(self):
+        """
+        The guard is on the object key, not the filename: the storage prefix and the
+        station's subdirectory are prepended before the key has to fit the 255
+        characters SourceImage.path allows. So the filename here is itself legal
+        (the request serializer caps filenames at 255) and only becomes too long
+        once "uploads/station-1/" is in front of it.
+        """
+        self.client.force_authenticate(self.superuser)
+        long_name = "20240101T120000_" + "a" * 230 + ".jpg"
+        self.assertLessEqual(len(long_name), 255)
+        response = self.client.post(self.url, self._payload(filename=long_name), format="json")
+        self.assertEqual(response.data["errors"][0]["code"], "key_too_long")
+        self.assertEqual(response.data["urls"], [])
+
+    def test_regex_mismatch_rejected(self):
+        self.deployment.data_source_regex = r"WILLNOTMATCH"
+        self.deployment.save()
+        self.client.force_authenticate(self.superuser)
+        response = self.client.post(self.url, self._payload(), format="json")
+        self.assertEqual(response.data["errors"][0]["code"], "regex_mismatch")
+        self.assertEqual(response.data["urls"], [])
+
+    def test_too_many_files_returns_400(self):
+        self.client.force_authenticate(self.superuser)
+        files = [{"filename": f"20240101T12000{i:04d}.jpg", "size": 10} for i in range(1001)]
+        response = self.client.post(self.url, {"files": files}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_invalid_subdir_returns_400(self):
+        self.client.force_authenticate(self.superuser)
+        payload = self._payload()
+        payload["subdir"] = "../escape"
+        response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class TestDeploymentUploadRequestE2E(TestCase):
+    """Flagship end-to-end test against live MinIO.
+
+    Mints a PUT URL via the endpoint, uploads bytes straight to storage with
+    ``requests.put``, runs ``sync_captures``, and asserts a SourceImage lands at
+    exactly the minted key. Requires the MinIO Docker stack.
+    """
+
+    def test_mint_put_upload_then_sync(self):
+        import requests
+
+        from ami.utils import s3
+
+        project, deployment = setup_test_project(reuse=False)
+        assert deployment.data_source is not None
+
+        superuser = User.objects.filter(is_superuser=True).first()
+        client = APIClient()
+        client.force_authenticate(superuser)
+
+        filename = "20240101T120000_0001.jpg"
+        client_subdir = f"deployment_{deployment.pk}"
+        url = f"/api/v2/deployments/{deployment.pk}/upload-request/"
+        response = client.post(
+            url,
+            {"subdir": client_subdir, "files": [{"filename": filename, "size": 4, "content_type": "image/jpeg"}]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data["errors"], [])
+        entry = response.data["urls"][0]
+        minted_key = entry["key"]
+
+        # Upload the bytes directly to storage using the minted URL + headers.
+        put_resp = requests.put(entry["url"], data=b"test", headers=entry["headers"])
+        put_resp.raise_for_status()
+
+        # Sanity: the object is listed at exactly the minted key (config.prefix is
+        # already baked into minted_key, so compare against the full listed Key).
+        listed_keys = [obj["Key"] for obj, _ in s3.list_files_paginated(deployment.data_source.config) if obj]
+        self.assertIn(minted_key, listed_keys)
+
+        # Now ingest via the same path the deployment normally syncs through.
+        deployment.sync_captures()
+
+        self.assertTrue(
+            SourceImage.objects.filter(deployment=deployment, path=minted_key).exists(),
+            f"No SourceImage stored at minted key {minted_key}",
+        )
+
+
+class TestDeploymentAndProjectFilters(APITestCase):
+    """A5 filters: deployment research_site_id/device_id, project writable role, site/device project_id."""
+
+    def setUp(self):
+        super().setUp()
+        self.superuser = User.objects.create_superuser(email="super-filters@insectai.org", password="pw")
+        self.client.force_authenticate(self.superuser)
+
+        self.project = Project.objects.create(name="Filters Project")
+        create_roles_for_project(self.project)
+        self.site_a = Site.objects.create(name="Site A", project=self.project)
+        self.site_b = Site.objects.create(name="Site B", project=self.project)
+        self.device_a = Device.objects.create(name="Device A", project=self.project)
+        self.device_b = Device.objects.create(name="Device B", project=self.project)
+        self.dep_a = Deployment.objects.create(
+            name="Dep A", project=self.project, research_site=self.site_a, device=self.device_a
+        )
+        self.dep_b = Deployment.objects.create(
+            name="Dep B", project=self.project, research_site=self.site_b, device=self.device_b
+        )
+
+    def test_deployment_research_site_id_filter(self):
+        response = self.client.get(
+            f"/api/v2/deployments/?project_id={self.project.pk}&research_site_id={self.site_a.pk}"
+        )
+        self.assertEqual(response.status_code, 200)
+        ids = {row["id"] for row in response.data["results"]}
+        self.assertEqual(ids, {self.dep_a.pk})
+
+    def test_deployment_device_id_filter(self):
+        response = self.client.get(f"/api/v2/deployments/?project_id={self.project.pk}&device_id={self.device_b.pk}")
+        self.assertEqual(response.status_code, 200)
+        ids = {row["id"] for row in response.data["results"]}
+        self.assertEqual(ids, {self.dep_b.pk})
+
+    def test_site_project_id_scoping(self):
+        other = Project.objects.create(name="Other Project")
+        Site.objects.create(name="Other Site", project=other)
+        other_site = Site.objects.create(name="Other Site Two", project=other)
+        response = self.client.get(f"/api/v2/deployments/sites/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        ids = {row["id"] for row in response.data["results"]}
+        self.assertIn(self.site_a.pk, ids)
+        self.assertIn(self.site_b.pk, ids)
+        self.assertNotIn(other_site.pk, ids)
+
+    def test_device_project_id_scoping(self):
+        other = Project.objects.create(name="Other Project 2")
+        Device.objects.create(name="Other Device", project=other)
+        other_device = Device.objects.create(name="Other Device Two", project=other)
+        response = self.client.get(f"/api/v2/deployments/devices/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        ids = {row["id"] for row in response.data["results"]}
+        self.assertIn(self.device_a.pk, ids)
+        self.assertIn(self.device_b.pk, ids)
+        self.assertNotIn(other_device.pk, ids)
+
+
+class TestProjectWritableFilter(APITestCase):
+    """`?role=manager` / `?writable=true` returns only projects the user can write to."""
+
+    def setUp(self):
+        super().setUp()
+        self.manager = User.objects.create_user(email="mgr-writable@insectai.org", password="pw")
+
+        self.managed = Project.objects.create(name="Managed Project")
+        create_roles_for_project(self.managed)
+        ProjectManager.assign_user(self.manager, self.managed)
+
+        self.readonly = Project.objects.create(name="Readonly Project")
+        create_roles_for_project(self.readonly)
+        BasicMember.assign_user(self.manager, self.readonly)
+
+    def test_role_manager_returns_only_writable(self):
+        self.client.force_authenticate(self.manager)
+        response = self.client.get("/api/v2/projects/?role=manager")
+        self.assertEqual(response.status_code, 200)
+        ids = {row["id"] for row in response.data["results"]}
+        self.assertIn(self.managed.pk, ids)
+        self.assertNotIn(self.readonly.pk, ids)
+
+    def test_writable_true_returns_only_writable(self):
+        self.client.force_authenticate(self.manager)
+        response = self.client.get("/api/v2/projects/?writable=true")
+        ids = {row["id"] for row in response.data["results"]}
+        self.assertIn(self.managed.pk, ids)
+        self.assertNotIn(self.readonly.pk, ids)
+
+    def test_without_role_returns_all_visible(self):
+        self.client.force_authenticate(self.manager)
+        response = self.client.get("/api/v2/projects/")
+        ids = {row["id"] for row in response.data["results"]}
+        self.assertIn(self.managed.pk, ids)
+        self.assertIn(self.readonly.pk, ids)
+
+
 class TestSyncDeploymentBackfillMigration(APITestCase):
     """The 0095 backfill grants OBJECT-LEVEL sync_deployment to existing projects'
     MLDataManager groups, not just a global group permission.

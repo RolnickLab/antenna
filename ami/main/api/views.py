@@ -1,7 +1,10 @@
 import datetime
 import logging
+import pathlib
+import re
 from statistics import mode
 
+import django_filters
 from django.conf import settings
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
@@ -14,7 +17,8 @@ from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from guardian.shortcuts import get_objects_for_user
 from rest_framework import exceptions as api_exceptions
 from rest_framework import filters, serializers, status, viewsets
 from rest_framework.decorators import action
@@ -38,8 +42,11 @@ from ami.main.models_future.identifications import create_identifications_batch,
 from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
+from ami.utils import s3
+from ami.utils.dates import get_image_timestamp_from_filename
+from ami.utils.fields import url_boolean_param
 from ami.utils.requests import get_default_classification_threshold
-from ami.utils.storages import ConnectionTestResult
+from ami.utils.storages import IMAGE_FILE_EXTENSIONS, ConnectionTestResult
 
 from ..models import (
     Classification,
@@ -101,6 +108,8 @@ from .serializers import (
     TaxonSearchResultSerializer,
     TaxonSerializer,
     TopIdentifiersResponseSerializer,
+    UploadRequestResponseSerializer,
+    UploadRequestSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -193,6 +202,30 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
             if user:
                 qs = qs.filter_by_user(user)
 
+        # `?role=manager` (or `?writable=true`) narrows to projects the user may
+        # write to. get_objects_for_user on `update_project` covers ProjectManagers
+        # AND owners (owners are auto-assigned ProjectManager, see main/signals.py),
+        # unlike filter_by_user (members) or role group names (fragile).
+        role = self.request.query_params.get("role")
+        writable = url_boolean_param(self.request, "writable", default=False)
+        if role == "manager" or writable:
+            user = self.request.user
+            if not user or not user.is_authenticated:
+                qs = qs.none()
+            elif not user.is_superuser:
+                # accept_global_perms=False is load-bearing. Role groups carry the
+                # model-level permission as well as the per-project one (see
+                # create_roles_for_project), so a user who manages any one project
+                # holds update_project globally, and guardian's default would answer
+                # with every project in the database.
+                writable_ids = get_objects_for_user(
+                    user,
+                    Project.Permissions.UPDATE_PROJECT,
+                    Project,
+                    accept_global_perms=False,
+                ).values("pk")
+                qs = qs.filter(pk__in=writable_ids)
+
         # Annotate "recent activity" fields only when sorting by them, so the
         # default list stays cheap. Each is a correlated subquery returning one
         # row via a covering index, and only one is ever added per request.
@@ -281,10 +314,68 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
                 required=False,
                 type=OpenApiTypes.INT,
             ),
+            OpenApiParameter(
+                name="role",
+                description=(
+                    "Set to `manager` to return only projects the current user can write to "
+                    "(project managers and owners). Equivalent to `writable=true`."
+                ),
+                required=False,
+                type=OpenApiTypes.STR,
+            ),
+            OpenApiParameter(
+                name="writable",
+                description="Set to `true` to return only projects the current user can write to.",
+                required=False,
+                type=OpenApiTypes.BOOL,
+            ),
         ]
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+
+class DeploymentFilterSet(django_filters.FilterSet):
+    """Expose the exact param names the mobile client sends.
+
+    ``research_site_id`` / ``device_id`` map straight to the FK id columns.
+    (``StationService.resolve`` on the Swift client sends those names.)
+    """
+
+    research_site_id = django_filters.NumberFilter(field_name="research_site_id")
+    device_id = django_filters.NumberFilter(field_name="device_id")
+
+    class Meta:
+        model = Deployment
+        fields = ["research_site_id", "device_id"]
+
+
+def _validate_upload_filename(filename: str, size: int) -> dict | None:
+    """Validate a single upload filename. Return an ``{code, detail}`` dict on
+    rejection, or ``None`` when the file is acceptable to sign.
+
+    These mirror the constraints ``sync_captures`` later imposes so we never
+    mint a URL for a file the sync would silently drop or the DB would reject.
+    """
+    if ".." in filename or filename.startswith("/") or "\\" in filename or any(ord(c) < 32 for c in filename):
+        return {
+            "code": "invalid_filename",
+            "detail": "Filename must not contain '..', a leading '/', backslashes, or control characters.",
+        }
+    if get_image_timestamp_from_filename(filename) is None:
+        return {
+            "code": "unparseable_timestamp",
+            "detail": "Filename has no parseable timestamp; sync would drop it.",
+        }
+    suffix = pathlib.Path(filename).suffix.lower().lstrip(".")
+    if suffix not in IMAGE_FILE_EXTENSIONS:
+        return {
+            "code": "invalid_extension",
+            "detail": f"'{suffix}' is not a supported image extension.",
+        }
+    if size <= 0:
+        return {"code": "invalid_size", "detail": "File size must be greater than zero."}
+    return None
 
 
 class DeploymentViewSet(DefaultViewSet, ProjectMixin):
@@ -294,6 +385,7 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
     """
 
     queryset = Deployment.objects.select_related("project", "device", "research_site")
+    filterset_class = DeploymentFilterSet
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -342,6 +434,24 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
 
         return qs
 
+    @extend_schema(
+        request=None,
+        responses=inline_serializer(
+            name="DeploymentSyncResponse",
+            fields={
+                "job_id": serializers.IntegerField(),
+                "project_id": serializers.IntegerField(),
+            },
+        ),
+        description=(
+            "Queue a background job to sync captures from the deployment's data source.\n\n"
+            "Returns the `job_id` of the enqueued `data_storage_sync` job. Poll its status at "
+            "`GET /api/v2/jobs/{job_id}/` (also filterable via "
+            "`GET /api/v2/jobs/?deployment={id}&job_type_key=data_storage_sync`). The job is "
+            "finished when its `status` reaches one of the three terminal states: "
+            "`SUCCESS`, `FAILURE`, or `REVOKED`."
+        ),
+    )
     @action(detail=True, methods=["post"], name="sync")
     def sync(self, _request, pk=None) -> Response:
         """
@@ -358,6 +468,89 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
             return Response({"job_id": job.pk, "project_id": deployment.project_id})
         else:
             raise api_exceptions.ValidationError(detail="Deployment must have a data source to sync captures from")
+
+    @extend_schema(request=UploadRequestSerializer, responses=UploadRequestResponseSerializer)
+    @action(detail=True, methods=["post"], url_path="upload-request")
+    def upload_request(self, request, pk=None) -> Response:
+        """
+        Mint short-lived presigned PUT URLs for direct-to-storage capture uploads.
+
+        The client uploads each file straight to the deployment's storage source,
+        then calls ``sync`` to ingest them. Each requested file is validated up
+        front; rejected files come back in ``errors`` (with no URL) while valid
+        files come back in ``urls``. The minted ``key`` is exactly the object Key
+        the subsequent sync will store as ``SourceImage.path``, so re-requesting
+        and re-uploading the same file is idempotent.
+        """
+        deployment: Deployment = self.get_object()
+        if not deployment.data_source:
+            raise api_exceptions.ValidationError(detail="Deployment must have a data source to upload captures to.")
+
+        request_serializer = UploadRequestSerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+        subdir = request_serializer.validated_data.get("subdir") or ""
+        files = request_serializer.validated_data["files"]
+
+        config = deployment.data_source.config
+        regex = re.compile(deployment.data_source_regex) if deployment.data_source_regex else None
+        expires_in = 60 * 60
+        # Single wall-clock read shared by every URL so the batch expires together.
+        expires_at = timezone.now() + datetime.timedelta(seconds=expires_in)
+
+        urls: list[dict] = []
+        errors: list[dict] = []
+        for file in files:
+            filename = file["filename"]
+            error = _validate_upload_filename(filename, file["size"])
+            if error:
+                errors.append({"filename": filename, **error})
+                continue
+
+            full_key = s3.derive_upload_key(config, filename, [deployment.data_source_subdir, subdir])
+
+            # SourceImage.path is max_length=255; a longer key would fail to ingest.
+            if len(full_key) > 255:
+                errors.append(
+                    {
+                        "filename": filename,
+                        "code": "key_too_long",
+                        "detail": f"Resulting object key is {len(full_key)} chars (max 255).",
+                    }
+                )
+                continue
+
+            # Same semantics as sync's _filter_single_key: don't sign uploads the
+            # deployment's regex would exclude from ingestion.
+            if regex and not regex.search(full_key):
+                errors.append(
+                    {
+                        "filename": filename,
+                        "code": "regex_mismatch",
+                        "detail": "Object key does not match the deployment's data_source_regex.",
+                    }
+                )
+                continue
+
+            url, headers = s3.get_presigned_put_url(
+                config,
+                full_key,
+                content_type=file.get("content_type") or None,
+                checksum_sha256_b64=file.get("sha256") or None,
+                expires_in=expires_in,
+            )
+            urls.append(
+                {
+                    "filename": filename,
+                    "key": full_key,
+                    "url": url,
+                    "method": "PUT",
+                    "headers": headers,
+                    "expires_at": expires_at,
+                }
+            )
+
+        response = UploadRequestResponseSerializer({"urls": urls, "errors": errors})
+        return Response(response.data)
 
     @action(detail=False, methods=["post"], name="sync-all", url_path="sync-all")
     def sync_all(self, request) -> Response:
