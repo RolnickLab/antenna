@@ -213,7 +213,17 @@ class ProjectViewSet(DefaultViewSet, ProjectMixin):
             if not user or not user.is_authenticated:
                 qs = qs.none()
             elif not user.is_superuser:
-                writable_ids = get_objects_for_user(user, Project.Permissions.UPDATE_PROJECT, Project).values("pk")
+                # accept_global_perms=False is load-bearing. Role groups carry the
+                # model-level permission as well as the per-project one (see
+                # create_roles_for_project), so a user who manages any one project
+                # holds update_project globally, and guardian's default would answer
+                # with every project in the database.
+                writable_ids = get_objects_for_user(
+                    user,
+                    Project.Permissions.UPDATE_PROJECT,
+                    Project,
+                    accept_global_perms=False,
+                ).values("pk")
                 qs = qs.filter(pk__in=writable_ids)
 
         # Annotate "recent activity" fields only when sorting by them, so the
