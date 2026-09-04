@@ -56,3 +56,4 @@ archived.
 | `.agents/DATABASE_SCHEMA.md` | Visual ERD (Mermaid) organized by domain layers |
 | `.agents/USER_PERMISSION_ROLES.md` | Permission roles reference |
 | `ui/AGENTS.md` (symlinked as `ui/CLAUDE.md`) | Frontend conventions (i18n, types, mutations, naming, active lint rules) |
+| `planning/2026-09-04-station-status-heartbeat.md` | Station heartbeat endpoint `POST /deployments/{id}/status/`: pydantic status payload that keeps unknown fields, DeploymentStatus history, denormalized last-seen, why it avoids Deployment.save(). Keywords: heartbeat, telemetry, station status, battery, mobile |

@@ -94,6 +94,49 @@ export const DeploymentDetailsInfo = ({
           )}
         </FormSection>
 
+        {deployment.lastStatusAt ? (
+          <FormSection title={translate(STRING.FIELD_LABEL_STATION_STATUS)}>
+            <FormRow>
+              <InputValue
+                label={translate(STRING.FIELD_LABEL_LAST_SEEN)}
+                value={deployment.lastSeenLabel}
+              />
+              <InputValue
+                label={translate(STRING.FIELD_LABEL_REPORTED_STATUS)}
+                value={deployment.lastStatus?.status}
+              />
+            </FormRow>
+            <FormRow>
+              <InputValue
+                label={translate(STRING.FIELD_LABEL_BATTERY)}
+                value={
+                  deployment.batteryLabel && deployment.lastStatus?.battery_state
+                    ? `${deployment.batteryLabel} (${deployment.lastStatus.battery_state})`
+                    : deployment.batteryLabel
+                }
+              />
+              <InputValue
+                label={translate(STRING.FIELD_LABEL_STORAGE_FREE)}
+                value={deployment.storageFreeLabel}
+              />
+            </FormRow>
+            <FormRow>
+              <InputValue
+                label={translate(STRING.FIELD_LABEL_SOFTWARE_VERSION)}
+                value={deployment.lastStatus?.app_version}
+              />
+              <InputValue
+                label={translate(STRING.FIELD_LABEL_CAPTURES)}
+                value={
+                  deployment.lastStatus?.captures_count !== undefined
+                    ? `${deployment.lastStatus.captures_count}`
+                    : undefined
+                }
+              />
+            </FormRow>
+          </FormSection>
+        ) : null}
+
         <FormSection title={translate(STRING.FIELD_LABEL_LOCATION)}>
           <MultiMarkerMap markers={markers} />
           <FormRow>

@@ -6,6 +6,30 @@ import { Job } from './job'
 
 export type ServerDeployment = any // TODO: Update this type
 
+/**
+ * What a station last reported about itself.
+ *
+ * The named fields are the ones the platform stores and displays. A station may
+ * report readings the platform has no name for yet, and those are kept too, which
+ * is why the type stays open.
+ */
+export interface StationStatus {
+  app_version?: string
+  app_build?: string
+  os_version?: string
+  device_model?: string
+  status?: string
+  session_id?: string
+  captures_count?: number
+  pending_upload_count?: number
+  last_capture_at?: string
+  battery_percent?: number
+  battery_state?: string
+  storage_free_bytes?: number
+  survey_config?: Record<string, unknown>
+  [key: string]: unknown
+}
+
 export class Deployment extends Entity {
   private readonly _jobs: Job[] = []
 
@@ -109,6 +133,45 @@ export class Deployment extends Entity {
     return this.numImages
       ? getFormatedDateString({ date: new Date(this._deployment.last_date) })
       : undefined
+  }
+
+  /** The station's own most recent report, if it has ever checked in. */
+  get lastStatus(): StationStatus | undefined {
+    return this._deployment.last_status ?? undefined
+  }
+
+  get lastStatusAt(): Date | undefined {
+    return this._deployment.last_status_at
+      ? new Date(this._deployment.last_status_at)
+      : undefined
+  }
+
+  get lastSeenLabel(): string | undefined {
+    const lastStatusAt = this.lastStatusAt
+
+    return lastStatusAt
+      ? getFormatedDateTimeString({ date: lastStatusAt })
+      : undefined
+  }
+
+  get batteryLabel(): string | undefined {
+    const percent = this.lastStatus?.battery_percent
+
+    return percent !== undefined ? `${Math.round(percent)}%` : undefined
+  }
+
+  get storageFreeLabel(): string | undefined {
+    const bytes = this.lastStatus?.storage_free_bytes
+
+    if (bytes === undefined) {
+      return undefined
+    }
+
+    const gigabytes = bytes / 1_000_000_000
+
+    return gigabytes >= 1
+      ? `${gigabytes.toFixed(1)} GB`
+      : `${Math.round(bytes / 1_000_000)} MB`
   }
 
   get dataSourceDetails(): {

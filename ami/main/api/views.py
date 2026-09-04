@@ -306,6 +306,7 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         "taxa_count",
         "first_capture_timestamp",
         "last_capture_timestamp",
+        "last_status_at",
         "name",
     ]
 
