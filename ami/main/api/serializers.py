@@ -223,7 +223,7 @@ class DeploymentListSerializer(DefaultSerializer):
     research_site = SiteNestedSerializer(read_only=True)
     jobs = JobStatusSerializer(many=True, read_only=True)
     data_source_connected = serializers.SerializerMethodField()
-    last_status = SchemaField(schema=StationStatusPayload | None, read_only=True)
+    last_status = SchemaField(schema=StationStatusPayload, read_only=True)
 
     class Meta:
         model = Deployment

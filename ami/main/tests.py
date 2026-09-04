@@ -7863,6 +7863,18 @@ class TestDeploymentStatus(APITestCase):
         response = self.client.get(f"/api/v2/deployments/?project_id={self.project.pk}")
 
         self.assertEqual(response.status_code, 200)
-        entry = next(item for item in response.data["results"] if item["id"] == self.deployment.pk)
+        entry = next(item for item in response.json()["results"] if item["id"] == self.deployment.pk)
         self.assertEqual(entry["last_status"]["battery_percent"], 61.0)
+        self.assertEqual(entry["last_status"]["status"], "surveying")
         self.assertIsNotNone(entry["last_status_at"])
+
+    def test_a_station_that_never_reported_says_so(self):
+        """A station with no heartbeat answers null rather than an empty reading."""
+        self.client.force_authenticate(user=self.pm_user)
+        silent = Deployment.objects.create(name="Never reported", project=self.project)
+
+        response = self.client.get(f"/api/v2/deployments/?project_id={self.project.pk}")
+
+        entry = next(item for item in response.json()["results"] if item["id"] == silent.pk)
+        self.assertIsNone(entry["last_status"])
+        self.assertIsNone(entry["last_status_at"])
