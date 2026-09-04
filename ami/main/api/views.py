@@ -57,6 +57,7 @@ from ..models import (
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
+    StationStatusPayload,
     Tag,
     TaxaList,
     Taxon,
@@ -72,6 +73,8 @@ from .serializers import (
     ClassificationWithTaxaSerializer,
     DeploymentListSerializer,
     DeploymentSerializer,
+    DeploymentStatusRequestSerializer,
+    DeploymentStatusSerializer,
     DetectionListSerializer,
     DetectionSerializer,
     DeviceSerializer,
@@ -358,6 +361,40 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
             return Response({"job_id": job.pk, "project_id": deployment.project_id})
         else:
             raise api_exceptions.ValidationError(detail="Deployment must have a data source to sync captures from")
+
+    @action(detail=True, methods=["get", "post"], name="status")
+    def status(self, request, pk=None) -> Response:
+        """
+        Report or read a station's own status.
+
+        A station checks in with what it knows about itself — the software it is
+        running, whether it is capturing, how much battery and storage are left, and
+        the configuration it is capturing under. A report is stored as history and
+        copied onto the station as its latest, so an operator can see that a station
+        needs attention before it goes quiet.
+
+        Fields the platform does not recognise are kept rather than rejected, so a
+        station can report something new without waiting for a release here.
+
+        ``GET`` returns the reports most recently recorded, newest first.
+        """
+        deployment: Deployment = self.get_object()
+
+        if request.method == "GET":
+            reports = deployment.status_reports.all()
+            page = self.paginate_queryset(reports)
+            if page is not None:
+                return self.get_paginated_response(DeploymentStatusSerializer(page, many=True).data)
+            return Response(DeploymentStatusSerializer(reports, many=True).data)
+
+        request_serializer = DeploymentStatusRequestSerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+        payload = request_serializer.validated_data.get("status") or StationStatusPayload()
+        recorded_at = request_serializer.validated_data.get("recorded_at") or timezone.now()
+
+        report = deployment.record_status(payload=payload, recorded_at=recorded_at)
+        logger.info(f"Station {deployment.pk} reported status recorded at {recorded_at}")
+        return Response(DeploymentStatusSerializer(report).data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["post"], name="sync-all", url_path="sync-all")
     def sync_all(self, request) -> Response:

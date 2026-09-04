@@ -24,6 +24,7 @@ from ami.main.api.serializers import MAX_BULK_IDENTIFICATIONS
 from ami.main.models import (
     Classification,
     Deployment,
+    DeploymentStatus,
     Detection,
     Device,
     Event,
@@ -35,6 +36,7 @@ from ami.main.models import (
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
+    StationStatusPayload,
     Tag,
     TaxaList,
     Taxon,
@@ -7674,3 +7676,193 @@ class TestBulkIdentificationQueryCount(BulkIdentificationTestCase):
             f"({queries_small} queries for {small} items, {queries_large} for {large}). "
             f"A jump here usually means something started querying per item.",
         )
+
+
+class TestDeploymentStatus(APITestCase):
+    """
+    A station reports on itself through ``POST /deployments/{id}/status/``.
+
+    The endpoint has to work for a station that is offline most of the night, runs
+    software newer than the platform, and must never be expensive to call: these tests
+    pin each of those.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.project = Project.objects.create(name="Station Status Project")
+        create_roles_for_project(self.project)
+
+        self.superuser = User.objects.create_superuser(email="super-status@insectai.org", password="pw")
+        self.pm_user = User.objects.create_user(email="pm-status@insectai.org", password="pw")
+        self.ml_user = User.objects.create_user(email="ml-status@insectai.org", password="pw")
+        self.basic_user = User.objects.create_user(email="basic-status@insectai.org", password="pw")
+        self.outsider = User.objects.create_user(email="outsider-status@insectai.org", password="pw")
+        ProjectManager.assign_user(self.pm_user, self.project)
+        MLDataManager.assign_user(self.ml_user, self.project)
+        BasicMember.assign_user(self.basic_user, self.project)
+
+        self.deployment = Deployment.objects.create(name="Shed station", project=self.project)
+        self.url = f"/api/v2/deployments/{self.deployment.pk}/status/"
+
+    def test_permission_matrix(self):
+        """Reporting status is trusted at the same level as syncing a station's captures."""
+        allowed = [self.superuser, self.pm_user, self.ml_user]
+        denied = [self.basic_user, self.outsider]
+
+        for user in allowed:
+            self.client.force_authenticate(user=user)
+            response = self.client.post(self.url, {"status": {"status": "surveying"}}, format="json")
+            self.assertEqual(response.status_code, 201, f"{user} should be able to report status")
+
+        for user in denied:
+            self.client.force_authenticate(user=user)
+            response = self.client.post(self.url, {"status": {"status": "surveying"}}, format="json")
+            self.assertEqual(response.status_code, 403, f"{user} should not be able to report status")
+
+        self.client.force_authenticate(user=None)
+        self.assertEqual(self.client.post(self.url, {}, format="json").status_code, 403)
+
+    def test_report_is_stored_and_becomes_the_latest(self):
+        """A heartbeat is kept as history and copied onto the station as its latest."""
+        self.client.force_authenticate(user=self.pm_user)
+        recorded_at = datetime.datetime(2026, 9, 4, 3, 30, tzinfo=datetime.timezone.utc)
+
+        response = self.client.post(
+            self.url,
+            {
+                "recorded_at": recorded_at.isoformat(),
+                "status": {"status": "surveying", "battery_percent": 82.5, "captures_count": 120},
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        report = DeploymentStatus.objects.get(deployment=self.deployment)
+        self.assertEqual(report.recorded_at, recorded_at)
+        self.assertEqual(report.status.battery_percent, 82.5)
+
+        self.deployment.refresh_from_db()
+        self.assertEqual(self.deployment.last_status_at, recorded_at)
+        assert self.deployment.last_status is not None
+        self.assertEqual(self.deployment.last_status.captures_count, 120)
+
+    def test_late_report_does_not_overwrite_a_newer_one(self):
+        """
+        A station offline all night uploads its backlog out of order. The station's
+        "latest" must stay the most recently recorded reading, not the last received.
+        """
+        self.client.force_authenticate(user=self.pm_user)
+        newest = datetime.datetime(2026, 9, 4, 6, 0, tzinfo=datetime.timezone.utc)
+        older = datetime.datetime(2026, 9, 4, 1, 0, tzinfo=datetime.timezone.utc)
+
+        self.client.post(
+            self.url,
+            {"recorded_at": newest.isoformat(), "status": {"status": "idle"}},
+            format="json",
+        )
+        self.client.post(
+            self.url,
+            {"recorded_at": older.isoformat(), "status": {"status": "surveying"}},
+            format="json",
+        )
+
+        self.deployment.refresh_from_db()
+        self.assertEqual(self.deployment.last_status_at, newest)
+        assert self.deployment.last_status is not None
+        self.assertEqual(self.deployment.last_status.status, "idle")
+        self.assertEqual(DeploymentStatus.objects.filter(deployment=self.deployment).count(), 2)
+
+    def test_unrecognised_fields_are_kept(self):
+        """
+        A station running newer software reports things the platform has no field for.
+        Those readings are stored and returned rather than dropped, so the data exists
+        before the platform models it.
+        """
+        self.client.force_authenticate(user=self.pm_user)
+        response = self.client.post(
+            self.url,
+            {"status": {"battery_percent": 44.0, "lamp_hours": 3.25, "pack_volts": 12.4}},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["status"]["lamp_hours"], 3.25)
+
+        report = DeploymentStatus.objects.get(deployment=self.deployment)
+        self.assertEqual(report.status.lamp_hours, 3.25)  # type: ignore[attr-defined]
+        self.assertEqual(report.status.pack_volts, 12.4)  # type: ignore[attr-defined]
+
+    def test_capture_configuration_round_trips(self):
+        """
+        The configuration a station is capturing under is recorded verbatim, so a
+        capture's settings are never lost while the platform has no field for them.
+        """
+        self.client.force_authenticate(user=self.pm_user)
+        survey_config = {
+            "interval_seconds": 60,
+            "schedule": {"mode": "sun", "start_offset_minutes": -30},
+            "camera": {"lens": "1x", "resolution": "12MP"},
+        }
+
+        self.client.post(self.url, {"status": {"survey_config": survey_config}}, format="json")
+
+        report = DeploymentStatus.objects.get(deployment=self.deployment)
+        self.assertEqual(report.status.survey_config, survey_config)
+
+    def test_recorded_at_defaults_to_arrival(self):
+        """A station with no reliable clock can still check in."""
+        self.client.force_authenticate(user=self.pm_user)
+        response = self.client.post(self.url, {"status": {"status": "idle"}}, format="json")
+
+        self.assertEqual(response.status_code, 201)
+        self.deployment.refresh_from_db()
+        self.assertIsNotNone(self.deployment.last_status_at)
+
+    def test_history_is_newest_first(self):
+        self.client.force_authenticate(user=self.pm_user)
+        for hour in (1, 5, 3):
+            self.client.post(
+                self.url,
+                {
+                    "recorded_at": datetime.datetime(2026, 9, 4, hour, tzinfo=datetime.timezone.utc).isoformat(),
+                    "status": {"status": f"hour-{hour}"},
+                },
+                format="json",
+            )
+
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        results = response.data["results"] if "results" in response.data else response.data
+        self.assertEqual([entry["status"]["status"] for entry in results], ["hour-5", "hour-3", "hour-1"])
+
+    def test_reporting_status_does_not_recount_the_station(self):
+        """
+        Stations report every few minutes. Saving a Deployment recounts its captures,
+        occurrences and taxa and can queue a regrouping job, so a heartbeat must not
+        go through Deployment.save().
+        """
+        self.client.force_authenticate(user=self.pm_user)
+
+        with mock.patch.object(Deployment, "save", autospec=True) as deployment_save:
+            response = self.client.post(self.url, {"status": {"status": "surveying"}}, format="json")
+
+        self.assertEqual(response.status_code, 201)
+        deployment_save.assert_not_called()
+        self.deployment.refresh_from_db()
+        self.assertIsNotNone(self.deployment.last_status_at)
+
+    def test_station_list_reports_when_each_was_last_seen(self):
+        """The station list carries "last seen" so the UI does not query per station."""
+        self.client.force_authenticate(user=self.pm_user)
+        recorded_at = datetime.datetime(2026, 9, 4, 2, 0, tzinfo=datetime.timezone.utc)
+        self.deployment.record_status(
+            payload=StationStatusPayload(status="surveying", battery_percent=61.0),
+            recorded_at=recorded_at,
+        )
+
+        response = self.client.get(f"/api/v2/deployments/?project_id={self.project.pk}")
+
+        self.assertEqual(response.status_code, 200)
+        entry = next(item for item in response.data["results"] if item["id"] == self.deployment.pk)
+        self.assertEqual(entry["last_status"]["battery_percent"], 61.0)
+        self.assertIsNotNone(entry["last_status_at"])

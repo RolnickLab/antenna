@@ -760,6 +760,52 @@ def _compare_totals_for_sync(deployment: "Deployment", total_files_found: int):
 
 
 @final
+class StationStatusPayload(pydantic.BaseModel):
+    """
+    What a station reports about itself between uploads.
+
+    Every field is optional. A station sends what it knows, and a heartbeat carrying
+    nothing but a timestamp is still useful, because it proves the station is alive.
+
+    Unknown fields are kept rather than dropped, so a station can report something the
+    platform has no name for yet — a capture configuration, a new sensor — without the
+    reading being lost while the schema catches up. Anything reported often enough to
+    filter or chart on should graduate into a named field here.
+    """
+
+    # What the station is running
+    app_version: str | None = None
+    app_build: str | None = None
+    os_version: str | None = None
+    device_model: str | None = None
+
+    # What the station is doing
+    status: str | None = None
+    session_id: str | None = None
+    captures_count: int | None = None
+    pending_upload_count: int | None = None
+    last_capture_at: datetime.datetime | None = None
+
+    # Power and storage: the two reasons an unattended station stops working
+    battery_percent: float | None = None
+    battery_state: str | None = None
+    storage_free_bytes: int | None = None
+
+    # The configuration the station is capturing under, kept verbatim. Untyped on
+    # purpose while the capture app's own configuration is still changing shape:
+    # storing it unparsed is better than dropping it, and it means a capture's
+    # settings are recorded somewhere from the first heartbeat onward, rather than
+    # waiting for the platform to model every field.
+    survey_config: dict[str, typing.Any] | None = None
+
+    class Config:
+        extra = "allow"
+
+
+def get_default_station_status() -> StationStatusPayload:
+    return StationStatusPayload()
+
+
 class Deployment(BaseModel):
     """
     Class that describes a deployment of a device (camera & hardware) at a research site.
@@ -799,6 +845,12 @@ class Deployment(BaseModel):
     taxa_count = models.IntegerField(blank=True, null=True)
     first_capture_timestamp = models.DateTimeField(blank=True, null=True)
     last_capture_timestamp = models.DateTimeField(blank=True, null=True)
+
+    # The most recent heartbeat the station sent about itself, copied from its
+    # DeploymentStatus record so a list of stations can be sorted and filtered on
+    # "last seen" without an aggregate query over the whole time series.
+    last_status_at = models.DateTimeField(blank=True, null=True)
+    last_status = SchemaField(StationStatusPayload | None, null=True, blank=True, default=None)
 
     research_site = models.ForeignKey(
         Site,
@@ -1131,6 +1183,43 @@ class Deployment(BaseModel):
         if save:
             self.save(update_calculated_fields=False)
 
+    def record_status(
+        self,
+        payload: "StationStatusPayload",
+        recorded_at: datetime.datetime,
+    ) -> "DeploymentStatus":
+        """
+        Store one heartbeat from the station and remember it as the latest.
+
+        The denormalized copy is written with a queryset update rather than
+        ``self.save()``: saving a Deployment recounts its captures, occurrences and
+        taxa and can queue a regrouping job, which is far too much work to do on
+        every heartbeat.
+        """
+        report = DeploymentStatus.objects.create(
+            deployment=self,
+            recorded_at=recorded_at,
+            status=payload,
+        )
+        latest = self.status_reports.order_by("-recorded_at").first()
+        if latest and latest.pk == report.pk:
+            Deployment.objects.filter(pk=self.pk).update(
+                last_status_at=report.recorded_at,
+                last_status=report.status,
+            )
+            self.last_status_at = report.recorded_at
+            self.last_status = report.status
+        return report
+
+    def check_custom_permission(self, user, action: str) -> bool:
+        """
+        Reporting a station's status is trusted at the same level as syncing its
+        captures, so it reuses that permission instead of introducing one of its own.
+        """
+        if action == "status":
+            return user.has_perm(Project.Permissions.SYNC_DEPLOYMENT, self.project)
+        return super().check_custom_permission(user, action)
+
     def save(self, update_calculated_fields=True, regroup_async=True, *args, **kwargs):
         super().save(*args, **kwargs)
         if self.pk and update_calculated_fields:
@@ -1145,6 +1234,43 @@ class Deployment(BaseModel):
                 self.update_children()
                 # @TODO this isn't working as a background task
                 # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
+
+
+@final
+class DeploymentStatus(BaseModel):
+    """
+    One heartbeat from a station: what it reported about itself, and when.
+
+    Stations in the field are offline for most of a night, so a report may arrive long
+    after the moment it describes. ``recorded_at`` is the station's own clock and orders
+    the series; ``created_at`` is when the platform received it, and the gap between them
+    is how late the station is running.
+    """
+
+    deployment = models.ForeignKey(
+        Deployment,
+        on_delete=models.CASCADE,
+        related_name="status_reports",
+    )
+    recorded_at = models.DateTimeField(help_text="When the station recorded this status, by its own clock.")
+    status = SchemaField(
+        StationStatusPayload,
+        default=get_default_station_status,
+        null=False,
+        blank=True,
+    )
+
+    project_accessor = "deployment__project"
+
+    class Meta:
+        ordering = ["-recorded_at"]
+        verbose_name_plural = "Deployment statuses"
+        indexes = [
+            models.Index(fields=["deployment", "-recorded_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.deployment} at {self.recorded_at}"
 
 
 class EventQuerySet(BaseQuerySet):
