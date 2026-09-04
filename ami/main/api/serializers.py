@@ -2000,14 +2000,14 @@ class ModelAgreementSerializer(serializers.Serializer):
         max_value=1.0,
         allow_null=True,
         required=False,
-        help_text="Wilson 95% CI lower bound for agreed_exact_pct. Null when verified_with_prediction_count is 0.",
+        help_text="Wilson 95% CI lower bound for agreed_exact_pct. Null when comparable_count is 0.",
     )
     agreed_exact_ci_high = serializers.FloatField(
         min_value=0.0,
         max_value=1.0,
         allow_null=True,
         required=False,
-        help_text="Wilson 95% CI upper bound for agreed_exact_pct. Null when verified_with_prediction_count is 0.",
+        help_text="Wilson 95% CI upper bound for agreed_exact_pct. Null when comparable_count is 0.",
     )
     agreed_any_rank_count = serializers.IntegerField(
         help_text="Exact matches plus disagreements whose LCA is at any real rank (UNKNOWN excluded)."
@@ -2015,21 +2015,21 @@ class ModelAgreementSerializer(serializers.Serializer):
     agreed_any_rank_pct = serializers.FloatField(
         min_value=0.0,
         max_value=1.0,
-        help_text="agreed_any_rank_count / verified_with_prediction_count",
+        help_text="agreed_any_rank_count / comparable_count",
     )
     agreed_any_rank_ci_low = serializers.FloatField(
         min_value=0.0,
         max_value=1.0,
         allow_null=True,
         required=False,
-        help_text="Wilson 95% CI lower bound for agreed_any_rank_pct. Null when verified_with_prediction_count is 0.",
+        help_text="Wilson 95% CI lower bound for agreed_any_rank_pct. Null when comparable_count is 0.",
     )
     agreed_any_rank_ci_high = serializers.FloatField(
         min_value=0.0,
         max_value=1.0,
         allow_null=True,
         required=False,
-        help_text="Wilson 95% CI upper bound for agreed_any_rank_pct. Null when verified_with_prediction_count is 0.",
+        help_text="Wilson 95% CI upper bound for agreed_any_rank_pct. Null when comparable_count is 0.",
     )
     cohens_kappa = serializers.FloatField(
         min_value=-1.0,
@@ -2060,5 +2060,5 @@ class ModelAgreementSerializer(serializers.Serializer):
         max_value=1.0,
         allow_null=True,
         required=False,
-        help_text="agreed_coarser_rank_count / verified_with_prediction_count. Null when no threshold supplied.",
+        help_text="agreed_coarser_rank_count / comparable_count. Null when no threshold supplied.",
     )
