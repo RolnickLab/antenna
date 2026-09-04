@@ -1722,6 +1722,17 @@ class TestJobSourceImageSingleFilter(APITestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_out_of_range_id_returns_empty_page(self):
+        """An id wider than a bigint is an unknown id, not a server error: Postgres compares
+        it as numeric and matches nothing."""
+        url = reverse_with_params(
+            "api:job-list",
+            params={"project_id": self.project.pk, "source_image_single": "9" * 20},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["results"], [])
+
     def test_browsable_page_renders_number_input(self):
         """The HTML filter form must not enumerate the source image table."""
         url = reverse_with_params("api:job-list", params={"project_id": self.project.pk})

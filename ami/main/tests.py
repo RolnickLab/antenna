@@ -7792,6 +7792,14 @@ class TestHugeTableFilterParams(APITestCase):
                 response = self.client.get(f"{path}?project_id={self.project.pk}&{param}=1.5")
                 self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+    def test_out_of_range_id_returns_empty_page(self):
+        """An id wider than a bigint is an unknown id, not a server error: Postgres compares
+        it as numeric and matches nothing."""
+        for path, param in self.ENDPOINT_PARAMS:
+            with self.subTest(path=path, param=param):
+                ids = self._get_ids(path, {"project_id": self.project.pk, "limit": 200, param: "9" * 20})
+                self.assertEqual(ids, set())
+
 
 class TestBrowsableApiFilterFormsStayLightweight(APITestCase):
     """The browsable API's filter form must not enumerate huge related tables.
