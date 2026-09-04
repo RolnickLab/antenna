@@ -110,7 +110,8 @@ export const DeploymentDetailsInfo = ({
               <InputValue
                 label={translate(STRING.FIELD_LABEL_BATTERY)}
                 value={
-                  deployment.batteryLabel && deployment.lastStatus?.battery_state
+                  deployment.batteryLabel &&
+                  deployment.lastStatus?.battery_state
                     ? `${deployment.batteryLabel} (${deployment.lastStatus.battery_state})`
                     : deployment.batteryLabel
                 }
