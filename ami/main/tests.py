@@ -3305,7 +3305,7 @@ class TestDeploymentAndProjectFilters(APITestCase):
     def test_site_project_id_scoping(self):
         other = Project.objects.create(name="Other Project")
         Site.objects.create(name="Other Site", project=other)
-        response = self.client.get(f"/api/v2/sites/?project_id={self.project.pk}")
+        response = self.client.get(f"/api/v2/deployments/sites/?project_id={self.project.pk}")
         self.assertEqual(response.status_code, 200)
         ids = {row["id"] for row in response.data["results"]}
         self.assertEqual(ids, {self.site_a.pk, self.site_b.pk})
@@ -3313,7 +3313,7 @@ class TestDeploymentAndProjectFilters(APITestCase):
     def test_device_project_id_scoping(self):
         other = Project.objects.create(name="Other Project 2")
         Device.objects.create(name="Other Device", project=other)
-        response = self.client.get(f"/api/v2/devices/?project_id={self.project.pk}")
+        response = self.client.get(f"/api/v2/deployments/devices/?project_id={self.project.pk}")
         self.assertEqual(response.status_code, 200)
         ids = {row["id"] for row in response.data["results"]}
         self.assertEqual(ids, {self.device_a.pk, self.device_b.pk})
