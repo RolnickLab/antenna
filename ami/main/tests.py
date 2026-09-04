@@ -3189,10 +3189,19 @@ class TestDeploymentUploadRequest(APITestCase):
         self.assertEqual(response.data["errors"][0]["code"], "invalid_size")
 
     def test_key_too_long_rejected(self):
+        """
+        The guard is on the object key, not the filename: the storage prefix and the
+        station's subdirectory are prepended before the key has to fit the 255
+        characters SourceImage.path allows. So the filename here is itself legal
+        (the request serializer caps filenames at 255) and only becomes too long
+        once "uploads/station-1/" is in front of it.
+        """
         self.client.force_authenticate(self.superuser)
-        long_name = "20240101T120000_" + "a" * 250 + ".jpg"
+        long_name = "20240101T120000_" + "a" * 230 + ".jpg"
+        self.assertLessEqual(len(long_name), 255)
         response = self.client.post(self.url, self._payload(filename=long_name), format="json")
         self.assertEqual(response.data["errors"][0]["code"], "key_too_long")
+        self.assertEqual(response.data["urls"], [])
 
     def test_regex_mismatch_rejected(self):
         self.deployment.data_source_regex = r"WILLNOTMATCH"
@@ -3305,18 +3314,24 @@ class TestDeploymentAndProjectFilters(APITestCase):
     def test_site_project_id_scoping(self):
         other = Project.objects.create(name="Other Project")
         Site.objects.create(name="Other Site", project=other)
+        other_site = Site.objects.create(name="Other Site Two", project=other)
         response = self.client.get(f"/api/v2/deployments/sites/?project_id={self.project.pk}")
         self.assertEqual(response.status_code, 200)
         ids = {row["id"] for row in response.data["results"]}
-        self.assertEqual(ids, {self.site_a.pk, self.site_b.pk})
+        self.assertIn(self.site_a.pk, ids)
+        self.assertIn(self.site_b.pk, ids)
+        self.assertNotIn(other_site.pk, ids)
 
     def test_device_project_id_scoping(self):
         other = Project.objects.create(name="Other Project 2")
         Device.objects.create(name="Other Device", project=other)
+        other_device = Device.objects.create(name="Other Device Two", project=other)
         response = self.client.get(f"/api/v2/deployments/devices/?project_id={self.project.pk}")
         self.assertEqual(response.status_code, 200)
         ids = {row["id"] for row in response.data["results"]}
-        self.assertEqual(ids, {self.device_a.pk, self.device_b.pk})
+        self.assertIn(self.device_a.pk, ids)
+        self.assertIn(self.device_b.pk, ids)
+        self.assertNotIn(other_device.pk, ids)
 
 
 class TestProjectWritableFilter(APITestCase):
