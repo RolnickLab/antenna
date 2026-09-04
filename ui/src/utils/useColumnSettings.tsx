@@ -12,7 +12,7 @@ export const useColumnSettings = (
     // picks up its default visibility instead of being silently dropped.
     columnSettings: {
       ...defaultSettings,
-      ...userPreferences.columnSettings[tableKey],
+      ...userPreferences.columnSettings?.[tableKey],
     },
     setColumnSettings: (settings: { [columnKey: string]: boolean }) => {
       setUserPreferences({

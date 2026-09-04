@@ -61,6 +61,8 @@ export const Species = () => {
     sort,
     pagination,
     filters,
+    // This list renders the Example column and links Last-seen / Best-score to an occurrence.
+    withExampleOccurrences: true,
   })
   // Ordered example occurrences, one per taxon row that has one, so the modal's
   // prev/next steps to the next taxon's example (rows without an example are skipped).
