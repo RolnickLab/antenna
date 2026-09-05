@@ -1,7 +1,7 @@
 # define an alias for the specific python version used in this file.
 # 3.11.12 has a bug with an incompatible version of wheel
 # will be fixed in 3.11.13
-FROM python:3.11.11-slim-bullseye as python
+FROM python:3.11.11-slim-bookworm as python
 
 # Python build stage
 FROM python as python-build-stage
