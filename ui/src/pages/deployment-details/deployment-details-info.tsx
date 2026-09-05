@@ -63,7 +63,7 @@ export const DeploymentDetailsInfo = ({
     () => toRows(deployment.reportedStatusEntries),
     [deployment]
   )
-  const markers = useMemo
+  const markers = useMemo(
     () => [
       {
         position: new MarkerPosition(deployment.latitude, deployment.longitude),
