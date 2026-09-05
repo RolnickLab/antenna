@@ -18,9 +18,11 @@ import {
   Table,
   ToggleGroup,
 } from 'nova-ui-kit'
+import { OccurrenceDetailsDialog } from 'pages/occurrences/occurrence-details-dialog'
+import { TABS as OCCURRENCE_TABS } from 'pages/occurrence-details/occurrence-details'
 import { SpeciesDetails, TABS } from 'pages/species-details/species-details'
-import { useContext, useEffect, useMemo } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useContext, useEffect, useMemo, useRef } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -36,9 +38,14 @@ import { SpeciesGallery } from './species-gallery'
 
 export const Species = () => {
   const { projectId, id } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  // Occurrence to verify in a modal over the taxa list. Keyed off a search
+  // param (not the :id path segment, which already means taxon detail).
+  const verifyOccurrenceId = searchParams.get('verifyOccurrence') ?? undefined
   const { project } = useProjectDetails(projectId as string, true)
   const { columnSettings, setColumnSettings } = useColumnSettings('species', {
     'cover-image': true,
+    example: true,
     name: true,
     rank: false,
     'last-seen': true,
@@ -56,7 +63,69 @@ export const Species = () => {
     sort,
     pagination,
     filters,
+    // This list renders the Example column and links Last-seen / Best-score to an occurrence.
+    withExampleOccurrences: true,
   })
+  // Ordered example occurrences, one per taxon row that has one, so the modal's
+  // prev/next steps to the next taxon's example (rows without an example are skipped).
+  const exampleNavItems = useMemo(
+    () =>
+      (species ?? []).flatMap((item) =>
+        item.verificationExample
+          ? [{ id: String(item.verificationExample.id) }]
+          : []
+      ),
+    [species]
+  )
+  // Remember where the open example sits in the list so the sweep can continue if it
+  // drops out. After verifying, that row's example rolls to a different occurrence (or,
+  // under ?verified=false, the row leaves the list), so the open ?verifyOccurrence id is
+  // no longer in exampleNavItems. Advance to whatever example now occupies that position
+  // instead of dead-ending with both nav buttons disabled.
+  const verifyIndexRef = useRef(-1)
+  useEffect(() => {
+    if (!verifyOccurrenceId) {
+      return
+    }
+    if (exampleNavItems.length === 0) {
+      // The list emptied after a verification (not a fetch in flight or a fresh deep
+      // link), so the sweep is finished: close the modal instead of leaving it open on
+      // an occurrence that is no longer listed.
+      if (!isFetching && verifyIndexRef.current >= 0) {
+        verifyIndexRef.current = -1
+        setSearchParams(
+          (prev) => {
+            const next = new URLSearchParams(prev)
+            next.delete('verifyOccurrence')
+            return next
+          },
+          { replace: true }
+        )
+      }
+      return
+    }
+    const index = exampleNavItems.findIndex(
+      (item) => item.id === verifyOccurrenceId
+    )
+    if (index >= 0) {
+      verifyIndexRef.current = index
+      return
+    }
+    const nextId =
+      exampleNavItems[
+        Math.min(verifyIndexRef.current, exampleNavItems.length - 1)
+      ]?.id
+    if (nextId) {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.set('verifyOccurrence', nextId)
+          return next
+        },
+        { replace: true }
+      )
+    }
+  }, [exampleNavItems, verifyOccurrenceId, isFetching, setSearchParams])
   const { selectedView, setSelectedView } = useSelectedView('table')
   const { taxaLists = [] } = useTaxaLists({ projectId: projectId as string })
   const { tags = [] } = useTags({ projectId: projectId as string })
@@ -159,9 +228,12 @@ export const Species = () => {
                 carryFilters,
               }).filter((column) => !!columnSettings[column.id])}
               error={error}
-              isLoading={!id && isLoading}
+              isLoading={!id && !verifyOccurrenceId && isLoading}
               items={species}
               onSortSettingsChange={setSort}
+              rowClassName={(item) =>
+                item.numVerified > 0 ? 'opacity-50' : undefined
+              }
               sortable
               sortSettings={sort}
             />
@@ -169,7 +241,7 @@ export const Species = () => {
           {selectedView === 'gallery' && (
             <SpeciesGallery
               error={error}
-              isLoading={!id && isLoading}
+              isLoading={!id && !verifyOccurrenceId && isLoading}
               species={species}
             />
           )}
@@ -185,6 +257,23 @@ export const Species = () => {
         ) : null}
       </PageFooter>
       {id ? <SpeciesDetailsDialog id={id} /> : null}
+      {verifyOccurrenceId ? (
+        <OccurrenceDetailsDialog
+          id={verifyOccurrenceId}
+          occurrences={exampleNavItems}
+          defaultTab={OCCURRENCE_TABS.IDENTIFICATION}
+          onNavigate={(occurrenceId) => {
+            const nextParams = new URLSearchParams(searchParams)
+            nextParams.set('verifyOccurrence', occurrenceId)
+            setSearchParams(nextParams)
+          }}
+          onClose={() => {
+            const nextParams = new URLSearchParams(searchParams)
+            nextParams.delete('verifyOccurrence')
+            setSearchParams(nextParams)
+          }}
+        />
+      ) : null}
     </>
   )
 }
