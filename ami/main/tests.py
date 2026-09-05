@@ -2158,6 +2158,86 @@ class TestProjectRequiredOnListEndpoints(APITestCase):
                 self.assertEqual(response.status_code, status.HTTP_200_OK, path)
 
 
+class TestProjectScopingOnListEndpoints(APITestCase):
+    """Every list endpoint that requires a project_id must also filter its results by it.
+
+    Requiring the parameter without applying it accepts the request but mixes in other
+    projects' rows and counts the whole table, which the status-code tests above cannot
+    see. Expected rows resolve through each model's ``get_project_accessor()``. See #1390.
+    """
+
+    def setUp(self) -> None:
+        self.project_a, deployment_a = setup_test_project(reuse=False)
+        self.project_b, deployment_b = setup_test_project(reuse=False)
+        for project, deployment in [
+            (self.project_a, deployment_a),
+            (self.project_b, deployment_b),
+        ]:
+            create_captures(deployment=deployment)
+            create_taxa(project=project)
+            create_occurrences(deployment=deployment, num=5)
+        self.user = User.objects.create_user(email="scopingtestuser@insectai.org", is_staff=True)  # type: ignore
+        self.client.force_authenticate(user=self.user)
+        return super().setUp()
+
+    def test_list_results_are_scoped_to_requested_project(self):
+        endpoints: list[tuple[str, type[models.Model]]] = [
+            ("/api/v2/captures/", SourceImage),
+            ("/api/v2/detections/", Detection),
+            ("/api/v2/occurrences/", Occurrence),
+            ("/api/v2/classifications/", Classification),
+        ]
+
+        for path, model in endpoints:
+            accessor = model.get_project_accessor()
+            assert accessor, f"{model.__name__} has no project accessor"
+            for project in [self.project_a, self.project_b]:
+                with self.subTest(path=path, project=project.pk):
+                    expected_ids = set(model.objects.filter(**{accessor: project}).values_list("id", flat=True))
+                    other_ids = set(model.objects.exclude(**{accessor: project}).values_list("id", flat=True))
+                    # Both projects must have rows, otherwise the scoping
+                    # assertions below would pass vacuously.
+                    self.assertTrue(expected_ids, f"No {model.__name__} rows in the requested project")
+                    self.assertTrue(other_ids, f"No {model.__name__} rows outside the requested project")
+
+                    response = self.client.get(f"{path}?project_id={project.pk}&limit=200")
+                    self.assertEqual(response.status_code, status.HTTP_200_OK, path)
+                    data = response.json()
+
+                    returned_ids = {result["id"] for result in data["results"]}
+                    leaked_ids = returned_ids & other_ids
+                    self.assertFalse(
+                        leaked_ids,
+                        f"{path} returned rows from other projects: {sorted(leaked_ids)}",
+                    )
+                    # Exact equality, not a subset: a subset check passes when the
+                    # response silently omits rows that belong to the project. The
+                    # fixtures are far smaller than the requested page size, so every
+                    # expected row must appear.
+                    self.assertSetEqual(returned_ids, expected_ids, path)
+                    self.assertEqual(
+                        data["count"],
+                        len(expected_ids),
+                        f"{path} count spans more than the requested project",
+                    )
+
+    def test_detail_route_rejects_a_project_it_does_not_belong_to(self):
+        """A detail request naming the wrong project returns 404 rather than the object.
+
+        Scoping lives in ``get_queryset()``, which every action reads, so it reaches detail
+        routes too, matching occurrences and classifications. See #1390.
+        """
+        detection = Detection.objects.filter(source_image__project=self.project_a).first()
+        assert detection, "fixture produced no detections in the first project"
+
+        same_project = self.client.get(f"/api/v2/detections/{detection.pk}/?project_id={self.project_a.pk}")
+        self.assertEqual(same_project.status_code, status.HTTP_200_OK)
+        self.assertEqual(same_project.json()["id"], detection.pk)
+
+        other_project = self.client.get(f"/api/v2/detections/{detection.pk}/?project_id={self.project_b.pk}")
+        self.assertEqual(other_project.status_code, status.HTTP_404_NOT_FOUND)
+
+
 class TestCapturesProcessedFilter(APITestCase):
     """
     The captures list distinguishes two related filters:
@@ -6655,6 +6735,102 @@ class TestTaxaExampleOccurrence(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
 
+class TestDeviceAndSiteFilters(APITestCase):
+    """Filtering occurrences and taxa by the deployment's device and research site.
+
+    A deployment records both a ``device`` (the camera/hardware configuration) and a
+    ``research_site``. Users can scope the occurrence and taxa lists to one device or
+    one site so they can, for example, build a presence matrix per site. These tests
+    pin that the occurrence list filters exactly to the chosen device/site, that the
+    taxa list restricts membership the same way (not just its annotated counts), and
+    that an unknown or foreign-project device/site id is rejected with a 404 on the taxa
+    endpoint.
+    """
+
+    def setUp(self):
+        self.project, self.deployment_a = setup_test_project(reuse=False)
+        create_taxa(self.project)
+        self.cardui = Taxon.objects.get(name="Vanessa cardui")
+        self.atalanta = Taxon.objects.get(name="Vanessa atalanta")
+
+        # Two devices and two sites, each pinned to its own deployment.
+        self.device_a = Device.objects.create(name="Device A", project=self.project)
+        self.device_b = Device.objects.create(name="Device B", project=self.project)
+        self.site_a = Site.objects.create(name="Site A", project=self.project)
+        self.site_b = Site.objects.create(name="Site B", project=self.project)
+
+        self.deployment_a.device = self.device_a
+        self.deployment_a.research_site = self.site_a
+        self.deployment_a.save()
+        self.deployment_b = Deployment.objects.create(
+            name="Deployment B",
+            project=self.project,
+            device=self.device_b,
+            research_site=self.site_b,
+        )
+
+        # Deployment A only sees cardui; deployment B only sees atalanta. This lets the
+        # device/site filter be checked by both the occurrence count and the taxa membership.
+        create_captures(deployment=self.deployment_a, num_nights=1, images_per_night=2)
+        create_captures(deployment=self.deployment_b, num_nights=1, images_per_night=2)
+        create_occurrences(deployment=self.deployment_a, num=3, taxon=self.cardui, determination_score=0.9)
+        create_occurrences(deployment=self.deployment_b, num=2, taxon=self.atalanta, determination_score=0.9)
+
+    def _occurrence_count(self, **params):
+        query = "&".join(f"{k}={v}" for k, v in params.items())
+        res = self.client.get(f"/api/v2/occurrences/?project_id={self.project.pk}&{query}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return res.json()["count"]
+
+    def _taxa_names(self, **params):
+        query = "&".join(f"{k}={v}" for k, v in params.items())
+        res = self.client.get(f"/api/v2/taxa/?project_id={self.project.pk}&limit=1000&{query}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return {row["name"] for row in res.json()["results"]}
+
+    def test_occurrences_filtered_by_device(self):
+        self.assertEqual(self._occurrence_count(), 5)
+        self.assertEqual(self._occurrence_count(deployment__device=self.device_a.pk), 3)
+        self.assertEqual(self._occurrence_count(deployment__device=self.device_b.pk), 2)
+
+    def test_occurrences_filtered_by_site(self):
+        self.assertEqual(self._occurrence_count(deployment__research_site=self.site_a.pk), 3)
+        self.assertEqual(self._occurrence_count(deployment__research_site=self.site_b.pk), 2)
+
+    def test_taxa_membership_restricted_by_device(self):
+        # The taxa list must drop to only the taxa observed on the chosen device, not
+        # merely re-scope the counts of the full taxa set.
+        self.assertEqual(self._taxa_names(deployment__device=self.device_a.pk), {"Vanessa cardui"})
+        self.assertEqual(self._taxa_names(deployment__device=self.device_b.pk), {"Vanessa atalanta"})
+
+    def test_taxa_membership_restricted_by_site(self):
+        self.assertEqual(self._taxa_names(deployment__research_site=self.site_a.pk), {"Vanessa cardui"})
+        self.assertEqual(self._taxa_names(deployment__research_site=self.site_b.pk), {"Vanessa atalanta"})
+
+    def test_unknown_device_or_site_returns_404_on_taxa(self):
+        for param in ("deployment__device", "deployment__research_site"):
+            res = self.client.get(f"/api/v2/taxa/?project_id={self.project.pk}&{param}=999999")
+            self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND, param)
+
+    def test_other_projects_device_or_site_returns_404_on_taxa(self):
+        """A foreign project's id is rejected like an unknown one, not answered with an empty list."""
+        other_project, _ = setup_test_project(reuse=False)
+        other_device = Device.objects.create(name="Other device", project=other_project)
+        other_site = Site.objects.create(name="Other site", project=other_project)
+        for param, obj in (("deployment__device", other_device), ("deployment__research_site", other_site)):
+            res = self.client.get(f"/api/v2/taxa/?project_id={self.project.pk}&{param}={obj.pk}")
+            self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND, param)
+
+    def test_non_integer_id_returns_400_not_500(self):
+        # A malformed id must be a client error on both endpoints, not an unhandled 500.
+        # The taxa view validates the id before the existence lookup; the occurrence view
+        # gets the same 400 from django-filter. Both must agree.
+        for endpoint in ("taxa", "occurrences"):
+            for param in ("deployment__device", "deployment__research_site"):
+                res = self.client.get(f"/api/v2/{endpoint}/?project_id={self.project.pk}&{param}=abc")
+                self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST, f"{endpoint}?{param}=abc")
+
+
 class TestDetectionNullMarker(TestCase):
     """
     Covers the null-marker abstraction added for Issue #1310 follow-up:
@@ -7906,3 +8082,178 @@ class TestBulkIdentificationQueryCount(BulkIdentificationTestCase):
             f"({queries_small} queries for {small} items, {queries_large} for {large}). "
             f"A jump here usually means something started querying per item.",
         )
+
+
+class TestHugeTableFilterParams(APITestCase):
+    """Pin the query-parameter contract for ``RelatedIdFilter`` params on huge related tables.
+
+    Each param in ``ENDPOINT_PARAMS`` must filter by id exactly as the auto-generated
+    ``ModelChoiceFilter`` did. One deliberate difference: an id with no matching row
+    returns an empty page instead of a validation error, because a plain number filter
+    does not check that the id exists. Non-integer values are still rejected.
+    """
+
+    ENDPOINT_PARAMS = [
+        ("/api/v2/detections/", "source_image"),
+        ("/api/v2/occurrences/", "detections__source_image"),
+        ("/api/v2/classifications/", "taxon"),
+        ("/api/v2/taxa/", "parent"),
+        ("/api/v2/identifications/", "occurrence"),
+        ("/api/v2/identifications/", "taxon"),
+    ]
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=10)
+        taxa = list(Taxon.objects.filter(projects=self.project)[:2])
+        assert len(taxa) == 2
+        self.taxon_a, self.taxon_b = taxa
+        create_occurrences(deployment=self.deployment, num=4, taxon=self.taxon_a)
+        create_occurrences(deployment=self.deployment, num=4, taxon=self.taxon_b)
+
+        # Let every occurrence through the project's default score filters so
+        # the ORM mirrors below match the list endpoints row for row.
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        self.user = User.objects.create_user(  # type: ignore
+            email="hugetablefilters@insectai.org",
+            is_staff=True,
+            is_superuser=True,
+        )
+        self.client.force_authenticate(user=self.user)
+
+        self.capture = SourceImage.objects.filter(deployment=self.deployment, detections__isnull=False).first()
+        assert self.capture is not None
+
+        occurrences = list(Occurrence.objects.filter(project=self.project)[:2])
+        assert len(occurrences) == 2
+        self.identification_a = Identification.objects.create(
+            user=self.user, occurrence=occurrences[0], taxon=self.taxon_a
+        )
+        self.identification_b = Identification.objects.create(
+            user=self.user, occurrence=occurrences[1], taxon=self.taxon_b
+        )
+
+    def _get_ids(self, path: str, params: dict) -> set[int]:
+        query = "&".join(f"{key}={value}" for key, value in params.items())
+        response = self.client.get(f"{path}?{query}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return {row["id"] for row in response.json()["results"]}
+
+    def _assert_filters_by_id(self, path: str, param: str, value: int, expected_pks: set[int]):
+        """The filtered page must equal the unfiltered page restricted to expected_pks."""
+        base_params = {"project_id": self.project.pk, "limit": 200}
+        unfiltered = self._get_ids(path, base_params)
+        filtered = self._get_ids(path, {**base_params, param: value})
+        self.assertEqual(filtered, unfiltered & expected_pks)
+        # Guard against a filter that silently stops restricting anything.
+        self.assertTrue(filtered)
+        self.assertLess(len(filtered), len(unfiltered))
+
+    def test_detections_filter_by_source_image(self):
+        expected = set(Detection.objects.filter(source_image=self.capture).values_list("pk", flat=True))
+        self._assert_filters_by_id("/api/v2/detections/", "source_image", self.capture.pk, expected)
+
+    def test_occurrences_filter_by_source_image(self):
+        expected = set(Occurrence.objects.filter(detections__source_image=self.capture).values_list("pk", flat=True))
+        self._assert_filters_by_id("/api/v2/occurrences/", "detections__source_image", self.capture.pk, expected)
+
+    def test_classifications_filter_by_taxon(self):
+        expected = set(Classification.objects.filter(taxon=self.taxon_a).values_list("pk", flat=True))
+        self._assert_filters_by_id("/api/v2/classifications/", "taxon", self.taxon_a.pk, expected)
+
+    def test_taxa_filter_by_parent(self):
+        parent = Taxon.objects.filter(direct_children__isnull=False).first()
+        assert parent is not None
+        expected = set(Taxon.objects.filter(parent=parent).values_list("pk", flat=True))
+        self._assert_filters_by_id("/api/v2/taxa/", "parent", parent.pk, expected)
+
+    def test_identifications_filter_by_occurrence(self):
+        expected = {self.identification_a.pk}
+        self._assert_filters_by_id(
+            "/api/v2/identifications/", "occurrence", self.identification_a.occurrence.pk, expected
+        )
+
+    def test_identifications_filter_by_taxon(self):
+        expected = {self.identification_a.pk}
+        self._assert_filters_by_id("/api/v2/identifications/", "taxon", self.taxon_a.pk, expected)
+
+    def test_unknown_id_returns_empty_page(self):
+        """A well-formed id that matches nothing filters everything out rather than erroring."""
+        for path, param in self.ENDPOINT_PARAMS:
+            with self.subTest(path=path, param=param):
+                ids = self._get_ids(path, {"project_id": self.project.pk, "limit": 200, param: 99999999})
+                self.assertEqual(ids, set())
+
+    def test_non_numeric_id_is_rejected(self):
+        for path, param in self.ENDPOINT_PARAMS:
+            with self.subTest(path=path, param=param):
+                response = self.client.get(f"{path}?project_id={self.project.pk}&{param}=abc")
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_fractional_id_is_rejected(self):
+        """``?taxon=1.5`` must 400 rather than be truncated to id 1 and filter by the wrong row."""
+        for path, param in self.ENDPOINT_PARAMS:
+            with self.subTest(path=path, param=param):
+                response = self.client.get(f"{path}?project_id={self.project.pk}&{param}=1.5")
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_out_of_range_id_returns_empty_page(self):
+        """An id wider than a bigint is an unknown id, not a server error: Postgres compares
+        it as numeric and matches nothing."""
+        for path, param in self.ENDPOINT_PARAMS:
+            with self.subTest(path=path, param=param):
+                ids = self._get_ids(path, {"project_id": self.project.pk, "limit": 200, param: "9" * 20})
+                self.assertEqual(ids, set())
+
+
+class TestBrowsableApiFilterFormsStayLightweight(APITestCase):
+    """The browsable API's filter form must not enumerate huge related tables.
+
+    For each list endpoint whose filterset touches the source image or taxon
+    tables, the HTML page must render those filters as number inputs. A
+    ``<select>`` for one of these fields means django-filter regenerated a
+    ``ModelChoiceFilter``, which builds an option per row of the related table
+    and times out against production-sized tables.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=3)
+        create_occurrences(deployment=self.deployment, num=3)
+        # A regular authenticated user sees the page but gets no create forms,
+        # so the only form fields on the page belong to the filter form.
+        self.user = User.objects.create_user(email="browsableforms@insectai.org")  # type: ignore
+        self.client.force_authenticate(user=self.user)
+
+    def _get_html(self, path: str) -> str:
+        response = self.client.get(f"{path}?project_id={self.project.pk}", headers={"accept": "text/html"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.content.decode()
+
+    def _assert_number_input(self, html: str, field_name: str):
+        self.assertNotIn(f'<select name="{field_name}"', html)
+        self.assertIn(f'<input type="number" name="{field_name}"', html)
+
+    def test_detections_browsable_page(self):
+        self._assert_number_input(self._get_html("/api/v2/detections/"), "source_image")
+
+    def test_occurrences_browsable_page(self):
+        self._assert_number_input(self._get_html("/api/v2/occurrences/"), "detections__source_image")
+
+    def test_classifications_browsable_page(self):
+        self._assert_number_input(self._get_html("/api/v2/classifications/"), "taxon")
+
+    def test_taxa_browsable_page(self):
+        self._assert_number_input(self._get_html("/api/v2/taxa/"), "parent")
+
+    def test_identifications_browsable_page(self):
+        # Unauthenticated so no create form is rendered; the identification
+        # create form would itself contain selects for these field names.
+        self.client.force_authenticate(user=None)
+        html = self._get_html("/api/v2/identifications/")
+        self._assert_number_input(html, "occurrence")
+        self._assert_number_input(html, "taxon")

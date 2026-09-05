@@ -12,7 +12,7 @@ from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
 from django.shortcuts import get_object_or_404, redirect
 from django.utils import timezone
-from django_filters.rest_framework import DjangoFilterBackend
+from django_filters.rest_framework import DjangoFilterBackend, FilterSet
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import exceptions as api_exceptions
@@ -25,7 +25,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from ami.base.filters import NullsLastOrderingFilter, ThresholdFilter
+from ami.base.filters import NullsLastOrderingFilter, RelatedIdFilter, ThresholdFilter
 from ami.base.metadata import ResponseSchemaMetadata
 from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
@@ -1177,6 +1177,16 @@ class SourceImageUploadViewSet(DefaultViewSet, ProjectMixin):
         obj.save()
 
 
+class DetectionFilterSet(FilterSet):
+    """Declared so the browsable API form does not enumerate the source image table."""
+
+    source_image = RelatedIdFilter()
+
+    class Meta:
+        model = Detection
+        fields = ["source_image", "detection_algorithm", "source_image__project"]
+
+
 class DetectionViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows detections to be viewed or edited.
@@ -1185,7 +1195,7 @@ class DetectionViewSet(DefaultViewSet, ProjectMixin):
     require_project_for_list = True  # Unfiltered list scans are too expensive on this table
     queryset = Detection.objects.valid().select_related("source_image", "detection_algorithm")
     serializer_class = DetectionSerializer
-    filterset_fields = ["source_image", "detection_algorithm", "source_image__project"]
+    filterset_class = DetectionFilterSet
     ordering_fields = ["created_at", "updated_at", "detection_score", "timestamp"]
 
     def get_serializer_class(self):
@@ -1197,10 +1207,17 @@ class DetectionViewSet(DefaultViewSet, ProjectMixin):
         else:
             return DetectionSerializer
 
+    def get_queryset(self) -> QuerySet:
+        qs = super().get_queryset()
+        # Resolving the project here also enforces the list-action project_id
+        # requirement before pagination runs its COUNT over the full table.
+        project = self.get_active_project()
+        if project:
+            qs = qs.filter(source_image__project=project)
+        return qs
+
     @extend_schema(parameters=[project_id_doc_param])
     def list(self, request, *args, **kwargs):
-        # Force project_id validation before pagination triggers a full-table COUNT.
-        self.get_active_project()
         return super().list(request, *args, **kwargs)
 
 
@@ -1444,9 +1461,24 @@ OCCURRENCE_FILTER_BACKENDS = (
 OCCURRENCE_FILTERSET_FIELDS = (
     "event",
     "deployment",
+    "deployment__device",
+    "deployment__research_site",
     "determination__rank",
     "detections__source_image",
 )
+
+
+class OccurrenceFilterSet(FilterSet):
+    """Shared by the occurrence list and stats viewsets.
+
+    Declared so the browsable API form does not enumerate the source image table.
+    """
+
+    detections__source_image = RelatedIdFilter()
+
+    class Meta:
+        model = Occurrence
+        fields = list(OCCURRENCE_FILTERSET_FIELDS)
 
 
 class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
@@ -1459,7 +1491,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
 
     serializer_class = OccurrenceSerializer
     filter_backends = DefaultViewSetMixin.filter_backends + list(OCCURRENCE_FILTER_BACKENDS)
-    filterset_fields = list(OCCURRENCE_FILTERSET_FIELDS)
+    filterset_class = OccurrenceFilterSet
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -1592,7 +1624,7 @@ class OccurrenceStatsViewSet(viewsets.GenericViewSet, ProjectMixin):
     # `top_identifiers` doesn't call it, so its behavior is unchanged.
     queryset = Occurrence.objects.none()
     filter_backends = [DjangoFilterBackend, *OCCURRENCE_FILTER_BACKENDS]
-    filterset_fields = list(OCCURRENCE_FILTERSET_FIELDS)
+    filterset_class = OccurrenceFilterSet
 
     @extend_schema(
         parameters=[project_id_doc_param, limit_doc_param],
@@ -1757,6 +1789,24 @@ class TagInverseFilter(filters.BaseFilterBackend):
         return queryset.distinct()
 
 
+class TaxonFilterSet(FilterSet):
+    """Declared so the browsable API form does not enumerate the taxon table."""
+
+    parent = RelatedIdFilter()
+
+    class Meta:
+        model = Taxon
+        fields = [
+            "name",
+            "rank",
+            "parent",
+            "occurrences__event",
+            "occurrences__deployment",
+            "occurrences__project",
+            "projects",
+        ]
+
+
 class TaxonViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint that allows taxa to be viewed or edited.
@@ -1777,15 +1827,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         TaxonTagFilter,
         TagInverseFilter,
     ]
-    filterset_fields = [
-        "name",
-        "rank",
-        "parent",
-        "occurrences__event",
-        "occurrences__deployment",
-        "occurrences__project",
-        "projects",
-    ]
+    filterset_class = TaxonFilterSet
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -1866,6 +1908,8 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         deployment_id = self.request.query_params.get("deployment") or self.request.query_params.get(
             "occurrences__deployment"
         )
+        device_id = self.request.query_params.get("deployment__device")
+        site_id = self.request.query_params.get("deployment__research_site")
         event_id = self.request.query_params.get("event") or self.request.query_params.get("occurrences__event")
         collection_id = self.request.query_params.get("collection")
 
@@ -1876,26 +1920,34 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
 
         filters = models.Q(**{field("project"): project, field("event__isnull"): False})
         try:
-            """
-            Ensure that the related objects exist before filtering by them.
-            This may be overkill!
-            """
+            # Each related object must exist and belong to this project, otherwise 404, so an
+            # id from another project is indistinguishable from an unknown one.
             if occurrence_id:
-                Occurrence.objects.get(id=occurrence_id)
-                # This query does not need the same filtering as the others
+                Occurrence.objects.get(id=occurrence_id, project=project)
                 filters &= models.Q(**{field("id"): occurrence_id})
             if deployment_id:
-                Deployment.objects.get(id=deployment_id)
+                Deployment.objects.get(id=deployment_id, project=project)
                 filters &= models.Q(**{field("deployment"): deployment_id})
+            if device_id:
+                Device.objects.get(id=device_id, project=project)
+                filters &= models.Q(**{field("deployment__device"): device_id})
+            if site_id:
+                Site.objects.get(id=site_id, project=project)
+                filters &= models.Q(**{field("deployment__research_site"): site_id})
             if event_id:
-                Event.objects.get(id=event_id)
+                Event.objects.get(id=event_id, project=project)
                 filters &= models.Q(**{field("event"): event_id})
             if collection_id:
-                SourceImageCollection.objects.get(id=collection_id)
+                SourceImageCollection.objects.get(id=collection_id, project=project)
                 filters &= models.Q(**{field("detections__source_image__collections"): collection_id})
         except exceptions.ObjectDoesNotExist as e:
             # Raise a 404 if any of the related objects don't exist
-            raise NotFound(detail=str(e))
+            raise NotFound(detail=str(e)) from e
+        except (ValueError, TypeError) as e:
+            # A non-integer id (e.g. ?deployment__device=abc) is a client error. Return a
+            # 400 instead of letting the .get(id=...) lookup surface an unhandled 500, so
+            # this endpoint matches the 400 the occurrence list returns for the same input.
+            raise api_exceptions.ValidationError(detail="Filter ids must be integers.") from e
 
         return filters
 
@@ -2264,6 +2316,21 @@ class TagViewSet(DefaultViewSet, ProjectMixin):
         return qs
 
 
+class ClassificationFilterSet(FilterSet):
+    """Declared so the browsable API form does not enumerate the taxon table."""
+
+    taxon = RelatedIdFilter()
+
+    class Meta:
+        model = Classification
+        fields = [
+            "taxon",
+            "algorithm",
+            "detection__source_image__project",
+            "detection__source_image__collections",
+        ]
+
+
 class ClassificationViewSet(DefaultViewSet, ProjectMixin):
     """
     API endpoint for viewing and adding classification results from a model.
@@ -2272,14 +2339,7 @@ class ClassificationViewSet(DefaultViewSet, ProjectMixin):
     require_project_for_list = True  # Unfiltered list scans are too expensive on this table
     queryset = Classification.objects.all().select_related("taxon", "algorithm", "applied_to__algorithm")
     serializer_class = ClassificationSerializer
-    filterset_fields = [
-        # Docs about slow loading API browser because of large choice fields
-        # https://www.django-rest-framework.org/topics/browsable-api/#handling-choicefield-with-large-numbers-of-items
-        "taxon",
-        "algorithm",
-        "detection__source_image__project",
-        "detection__source_image__collections",
-    ]
+    filterset_class = ClassificationFilterSet
     ordering_fields = [
         "created_at",
         "updated_at",
@@ -2415,6 +2475,21 @@ class PageViewSet(DefaultViewSet):
             return PageSerializer
 
 
+class IdentificationFilterSet(FilterSet):
+    """Declared so the browsable API form does not enumerate the occurrence or taxon tables."""
+
+    occurrence = RelatedIdFilter()
+    taxon = RelatedIdFilter()
+
+    class Meta:
+        model = Identification
+        fields = [
+            "occurrence",
+            "user",
+            "taxon",
+        ]
+
+
 class IdentificationViewSet(DefaultViewSet):
     """
     API endpoint that allows identifications to be viewed or edited.
@@ -2422,11 +2497,7 @@ class IdentificationViewSet(DefaultViewSet):
 
     queryset = Identification.objects.all()
     serializer_class = IdentificationSerializer
-    filterset_fields = [
-        "occurrence",
-        "user",
-        "taxon",
-    ]
+    filterset_class = IdentificationFilterSet
     ordering_fields = [
         "created_at",
         "updated_at",

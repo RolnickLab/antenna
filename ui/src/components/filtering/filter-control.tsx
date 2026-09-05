@@ -6,9 +6,11 @@ import { AlgorithmFilter, NotAlgorithmFilter } from './filters/algorithm-filter'
 import { BooleanFilter } from './filters/boolean-filter'
 import { CaptureSetFilter } from './filters/capture-set-filter'
 import { DateFilter } from './filters/date-filter'
+import { DeviceFilter } from './filters/device-filter'
 import { ImageFilter } from './filters/image-filter'
 import { PipelineFilter } from './filters/pipeline-filter'
 import { SessionFilter } from './filters/session-filter'
+import { SiteFilter } from './filters/site-filter'
 import { StationFilter } from './filters/station-filter'
 import { StatusFilter } from './filters/status-filter'
 import { TagFilter } from './filters/tag-filter'
@@ -29,6 +31,8 @@ const ComponentMap: {
   date_end: DateFilter,
   date_start: DateFilter,
   deployment: StationFilter,
+  deployment__device: DeviceFilter,
+  deployment__research_site: SiteFilter,
   detections__source_image: ImageFilter,
   event: SessionFilter,
   processed: ProcessingStatusFilter,
