@@ -1661,3 +1661,86 @@ class TestDataStorageSyncJobIncludesRegroupStage(TestCase):
         ):
             with self.assertRaises(RuntimeError):
                 job.run()
+
+
+class TestJobSourceImageSingleFilter(APITestCase):
+    """Pin the ``?source_image_single=<id>`` query-parameter contract.
+
+    ``JobFilterSet`` declares it as a ``RelatedIdFilter`` (see ``ami/base/filters.py``),
+    and it must keep filtering jobs by the exact source image id. One deliberate
+    difference from the auto-generated ``ModelChoiceFilter``: an id with no matching row
+    returns an empty page instead of a validation error. Non-integer values are still
+    rejected.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Job Filter Test Project")
+        self.image_a = SourceImage.objects.create(path="a.jpg", project=self.project)
+        self.image_b = SourceImage.objects.create(path="b.jpg", project=self.project)
+        self.job_a = Job.objects.create(project=self.project, name="Job A", source_image_single=self.image_a)
+        self.job_b = Job.objects.create(project=self.project, name="Job B", source_image_single=self.image_b)
+        self.user = User.objects.create_user(  # type: ignore
+            email="jobfilters@insectai.org",
+            is_staff=True,
+            is_superuser=True,
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_filters_jobs_by_source_image_id(self):
+        url = reverse_with_params(
+            "api:job-list",
+            params={"project_id": self.project.pk, "source_image_single": self.image_a.pk},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertEqual([row["id"] for row in data["results"]], [self.job_a.pk])
+
+    def test_unknown_id_returns_empty_page(self):
+        url = reverse_with_params(
+            "api:job-list",
+            params={"project_id": self.project.pk, "source_image_single": 99999999},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["results"], [])
+
+    def test_non_numeric_id_is_rejected(self):
+        url = reverse_with_params(
+            "api:job-list",
+            params={"project_id": self.project.pk, "source_image_single": "abc"},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_fractional_id_is_rejected(self):
+        """``1.5`` must 400 rather than be truncated to id 1 and match the wrong image."""
+        url = reverse_with_params(
+            "api:job-list",
+            params={"project_id": self.project.pk, "source_image_single": "1.5"},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_out_of_range_id_returns_empty_page(self):
+        """An id wider than a bigint is an unknown id, not a server error: Postgres compares
+        it as numeric and matches nothing."""
+        url = reverse_with_params(
+            "api:job-list",
+            params={"project_id": self.project.pk, "source_image_single": "9" * 20},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["results"], [])
+
+    def test_browsable_page_renders_number_input(self):
+        """The HTML filter form must not enumerate the source image table."""
+        url = reverse_with_params("api:job-list", params={"project_id": self.project.pk})
+        # An unauthenticated read gets the page without create forms, so the
+        # only form fields on the page belong to the filter form.
+        self.client.force_authenticate(user=None)
+        response = self.client.get(url, headers={"accept": "text/html"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        html = response.content.decode()
+        self.assertNotIn('<select name="source_image_single"', html)
+        self.assertIn('<input type="number" name="source_image_single"', html)
