@@ -206,13 +206,14 @@ class DeploymentStatusRequestSerializer(serializers.Serializer):
     """
     What a station sends when it reports in.
 
-    ``recorded_at`` defaults to the moment the report arrives, so a station with no
-    reliable clock can still check in. Everything else travels inside ``status``,
-    which keeps fields it does not recognise (see ``StationStatusPayload``).
+    ``recorded_at`` defaults to the moment the report arrives, so a device with no
+    reliable clock can still check in. Everything the device has to say travels inside
+    ``status``: three identity fields it must answer, and then whatever it can measure
+    (see ``StationStatusPayload``).
     """
 
     recorded_at = serializers.DateTimeField(required=False)
-    status = SchemaField(schema=StationStatusPayload, required=False)
+    status = SchemaField(schema=StationStatusPayload)
 
 
 class DeploymentListSerializer(DefaultSerializer):

@@ -7680,11 +7680,11 @@ class TestBulkIdentificationQueryCount(BulkIdentificationTestCase):
 
 class TestDeploymentStatus(APITestCase):
     """
-    A station reports on itself through ``POST /deployments/{id}/status/``.
+    A connected device reports on itself through ``POST /deployments/{id}/status/``.
 
-    The endpoint has to work for a station that is offline most of the night, runs
-    software newer than the platform, and must never be expensive to call: these tests
-    pin each of those.
+    The endpoint has to serve devices that measure different things, work for a device
+    that is offline most of the night, and never be expensive to call: these pin each
+    of those.
     """
 
     def setUp(self):
@@ -7704,98 +7704,112 @@ class TestDeploymentStatus(APITestCase):
         self.deployment = Deployment.objects.create(name="Shed station", project=self.project)
         self.url = f"/api/v2/deployments/{self.deployment.pk}/status/"
 
+    def _identity(self, **extra):
+        """The three fields every device answers, plus whatever this device measured."""
+        payload = {
+            "device_id": "AW-0001",
+            "device_type": "iPhone 12 mini",
+            "software_version": "1.4.0",
+        }
+        payload.update(extra)
+        return {"status": payload}
+
     def test_permission_matrix(self):
-        """Reporting status is trusted at the same level as syncing a station's captures."""
-        allowed = [self.superuser, self.pm_user, self.ml_user]
-        denied = [self.basic_user, self.outsider]
-
-        for user in allowed:
+        """Reporting is trusted at the same level as syncing a station's captures."""
+        for user in [self.superuser, self.pm_user, self.ml_user]:
             self.client.force_authenticate(user=user)
-            response = self.client.post(self.url, {"status": {"status": "surveying"}}, format="json")
-            self.assertEqual(response.status_code, 201, f"{user} should be able to report status")
+            response = self.client.post(self.url, self._identity(), format="json")
+            self.assertEqual(response.status_code, 201, f"{user} should be able to report")
 
-        for user in denied:
+        for user in [self.basic_user, self.outsider]:
             self.client.force_authenticate(user=user)
-            response = self.client.post(self.url, {"status": {"status": "surveying"}}, format="json")
-            self.assertEqual(response.status_code, 403, f"{user} should not be able to report status")
+            response = self.client.post(self.url, self._identity(), format="json")
+            self.assertEqual(response.status_code, 403, f"{user} should not be able to report")
 
         self.client.force_authenticate(user=None)
-        self.assertEqual(self.client.post(self.url, {}, format="json").status_code, 401)
+        self.assertEqual(self.client.post(self.url, self._identity(), format="json").status_code, 401)
+
+    def test_identity_is_required(self):
+        """
+        A report has to say which device sent it and what that device is running.
+        Everything past those three fields is the device's own business.
+        """
+        self.client.force_authenticate(user=self.pm_user)
+
+        response = self.client.post(self.url, {"status": {"battery_percent": 80}}, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(DeploymentStatus.objects.filter(deployment=self.deployment).exists())
 
     def test_report_is_stored_and_becomes_the_latest(self):
-        """A heartbeat is kept as history and copied onto the station as its latest."""
+        """A report is kept as history and copied onto the station as its latest."""
         self.client.force_authenticate(user=self.pm_user)
         recorded_at = datetime.datetime(2026, 9, 4, 3, 30)
 
         response = self.client.post(
             self.url,
-            {
-                "recorded_at": recorded_at.isoformat(),
-                "status": {"status": "surveying", "battery_percent": 82.5, "captures_count": 120},
-            },
+            {"recorded_at": recorded_at.isoformat(), **self._identity(status="surveying")},
             format="json",
         )
 
         self.assertEqual(response.status_code, 201)
         report = DeploymentStatus.objects.get(deployment=self.deployment)
         self.assertEqual(report.recorded_at, recorded_at)
-        self.assertEqual(report.status.battery_percent, 82.5)
+        self.assertEqual(report.status.device_id, "AW-0001")
 
         self.deployment.refresh_from_db()
         self.assertEqual(self.deployment.last_status_at, recorded_at)
         assert self.deployment.last_status is not None
-        self.assertEqual(self.deployment.last_status.captures_count, 120)
+        self.assertEqual(self.deployment.last_status.software_version, "1.4.0")
 
-    def test_late_report_does_not_overwrite_a_newer_one(self):
+    def test_devices_report_what_they_can_measure(self):
         """
-        A station offline all night uploads its backlog out of order. The station's
-        "latest" must stay the most recently recorded reading, not the last received.
+        Two devices with different sensors use the same endpoint: a phone that knows its
+        battery percentage, and a mains-powered box that knows only that it is powered.
+        Neither is asked for a reading it cannot take, and neither loses the one it can.
         """
         self.client.force_authenticate(user=self.pm_user)
-        newest = datetime.datetime(2026, 9, 4, 6, 0)
-        older = datetime.datetime(2026, 9, 4, 1, 0)
+        mains_station = Deployment.objects.create(name="Mains station", project=self.project)
 
         self.client.post(
             self.url,
-            {"recorded_at": newest.isoformat(), "status": {"status": "idle"}},
+            self._identity(battery_percent=82.5, battery_state="charging"),
             format="json",
         )
         self.client.post(
-            self.url,
-            {"recorded_at": older.isoformat(), "status": {"status": "surveying"}},
+            f"/api/v2/deployments/{mains_station.pk}/status/",
+            {
+                "status": {
+                    "device_id": "TRAP-77",
+                    "device_type": "trail camera",
+                    "software_version": "0.9.1",
+                    "power_source": "mains",
+                    "lamp_hours": 3.25,
+                }
+            },
             format="json",
         )
 
-        self.deployment.refresh_from_db()
-        self.assertEqual(self.deployment.last_status_at, newest)
-        assert self.deployment.last_status is not None
-        self.assertEqual(self.deployment.last_status.status, "idle")
-        self.assertEqual(DeploymentStatus.objects.filter(deployment=self.deployment).count(), 2)
+        phone = DeploymentStatus.objects.get(deployment=self.deployment).status
+        trap = DeploymentStatus.objects.get(deployment=mains_station).status
 
-    def test_unrecognised_fields_are_kept(self):
-        """
-        A station running newer software reports things the platform has no field for.
-        Those readings are stored and returned rather than dropped, so the data exists
-        before the platform models it.
-        """
+        self.assertEqual(phone.reported(), {"battery_percent": 82.5, "battery_state": "charging"})
+        self.assertEqual(trap.reported(), {"power_source": "mains", "lamp_hours": 3.25})
+
+    def test_a_device_may_report_identity_alone(self):
+        """A box with no sensors still proves it is alive by checking in."""
         self.client.force_authenticate(user=self.pm_user)
-        response = self.client.post(
-            self.url,
-            {"status": {"battery_percent": 44.0, "lamp_hours": 3.25, "pack_volts": 12.4}},
-            format="json",
-        )
+
+        response = self.client.post(self.url, self._identity(), format="json")
 
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.data["status"]["lamp_hours"], 3.25)
+        self.assertEqual(DeploymentStatus.objects.get(deployment=self.deployment).status.reported(), {})
 
-        report = DeploymentStatus.objects.get(deployment=self.deployment)
-        self.assertEqual(report.status.lamp_hours, 3.25)  # type: ignore[attr-defined]
-        self.assertEqual(report.status.pack_volts, 12.4)  # type: ignore[attr-defined]
-
-    def test_capture_configuration_round_trips(self):
+    def test_nested_readings_round_trip(self):
         """
-        The configuration a station is capturing under is recorded verbatim, so a
-        capture's settings are never lost while the platform has no field for them.
+        A device publishing a structure — the configuration it is capturing under, a
+        group of sensor readings — gets it back unchanged, so nothing is lost while the
+        platform has no field for it.
         """
         self.client.force_authenticate(user=self.pm_user)
         survey_config = {
@@ -7804,15 +7818,37 @@ class TestDeploymentStatus(APITestCase):
             "camera": {"lens": "1x", "resolution": "12MP"},
         }
 
-        self.client.post(self.url, {"status": {"survey_config": survey_config}}, format="json")
+        response = self.client.post(self.url, self._identity(survey_config=survey_config), format="json")
 
+        self.assertEqual(response.json()["status"]["survey_config"], survey_config)
         report = DeploymentStatus.objects.get(deployment=self.deployment)
-        self.assertEqual(report.status.survey_config, survey_config)
+        self.assertEqual(report.status.reported()["survey_config"], survey_config)
+
+    def test_late_report_does_not_overwrite_a_newer_one(self):
+        """
+        A device offline all night uploads its backlog out of order. The station's
+        latest must stay the most recently recorded reading, not the last received.
+        """
+        self.client.force_authenticate(user=self.pm_user)
+        newest = datetime.datetime(2026, 9, 4, 6, 0)
+        older = datetime.datetime(2026, 9, 4, 1, 0)
+
+        self.client.post(self.url, {"recorded_at": newest.isoformat(), **self._identity(status="idle")}, format="json")
+        self.client.post(
+            self.url, {"recorded_at": older.isoformat(), **self._identity(status="surveying")}, format="json"
+        )
+
+        self.deployment.refresh_from_db()
+        self.assertEqual(self.deployment.last_status_at, newest)
+        assert self.deployment.last_status is not None
+        self.assertEqual(self.deployment.last_status.reported()["status"], "idle")
+        self.assertEqual(DeploymentStatus.objects.filter(deployment=self.deployment).count(), 2)
 
     def test_recorded_at_defaults_to_arrival(self):
-        """A station with no reliable clock can still check in."""
+        """A device with no reliable clock can still check in."""
         self.client.force_authenticate(user=self.pm_user)
-        response = self.client.post(self.url, {"status": {"status": "idle"}}, format="json")
+
+        response = self.client.post(self.url, self._identity(), format="json")
 
         self.assertEqual(response.status_code, 201)
         self.deployment.refresh_from_db()
@@ -7825,26 +7861,27 @@ class TestDeploymentStatus(APITestCase):
                 self.url,
                 {
                     "recorded_at": datetime.datetime(2026, 9, 4, hour).isoformat(),
-                    "status": {"status": f"hour-{hour}"},
+                    **self._identity(status=f"hour-{hour}"),
                 },
                 format="json",
             )
 
         response = self.client.get(self.url)
+
         self.assertEqual(response.status_code, 200)
-        results = response.data["results"] if "results" in response.data else response.data
+        results = response.json()["results"]
         self.assertEqual([entry["status"]["status"] for entry in results], ["hour-5", "hour-3", "hour-1"])
 
     def test_reporting_status_does_not_recount_the_station(self):
         """
-        Stations report every few minutes. Saving a Deployment recounts its captures,
-        occurrences and taxa and can queue a regrouping job, so a heartbeat must not
-        go through Deployment.save().
+        Devices report every few minutes. Saving a Deployment recounts its captures,
+        occurrences and taxa and can queue a regrouping job, so a report must not go
+        through Deployment.save().
         """
         self.client.force_authenticate(user=self.pm_user)
 
         with mock.patch.object(Deployment, "save", autospec=True) as deployment_save:
-            response = self.client.post(self.url, {"status": {"status": "surveying"}}, format="json")
+            response = self.client.post(self.url, self._identity(), format="json")
 
         self.assertEqual(response.status_code, 201)
         deployment_save.assert_not_called()
@@ -7856,7 +7893,12 @@ class TestDeploymentStatus(APITestCase):
         self.client.force_authenticate(user=self.pm_user)
         recorded_at = datetime.datetime(2026, 9, 4, 2, 0)
         self.deployment.record_status(
-            payload=StationStatusPayload(status="surveying", battery_percent=61.0),
+            payload=StationStatusPayload(
+                device_id="AW-0001",
+                device_type="iPhone 12 mini",
+                software_version="1.4.0",
+                battery_percent=61.0,
+            ),
             recorded_at=recorded_at,
         )
 
@@ -7864,12 +7906,12 @@ class TestDeploymentStatus(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         entry = next(item for item in response.json()["results"] if item["id"] == self.deployment.pk)
+        self.assertEqual(entry["last_status"]["device_type"], "iPhone 12 mini")
         self.assertEqual(entry["last_status"]["battery_percent"], 61.0)
-        self.assertEqual(entry["last_status"]["status"], "surveying")
         self.assertIsNotNone(entry["last_status_at"])
 
     def test_a_station_that_never_reported_says_so(self):
-        """A station with no heartbeat answers null rather than an empty reading."""
+        """A station with no report answers null rather than an empty reading."""
         self.client.force_authenticate(user=self.pm_user)
         silent = Deployment.objects.create(name="Never reported", project=self.project)
 

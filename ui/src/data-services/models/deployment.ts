@@ -7,28 +7,24 @@ import { Job } from './job'
 export type ServerDeployment = any // TODO: Update this type
 
 /**
- * What a station last reported about itself.
+ * What a connected device last reported about itself.
  *
- * The named fields are the ones the platform stores and displays. A station may
- * report readings the platform has no name for yet, and those are kept too, which
- * is why the type stays open.
+ * The three identity fields are the only ones every device answers. Everything past
+ * them depends on what that particular device can measure, so the type stays open and
+ * the UI lists whatever arrived rather than a fixed set of rows.
  */
 export interface StationStatus {
-  app_version?: string
-  app_build?: string
-  os_version?: string
-  device_model?: string
-  status?: string
-  session_id?: string
-  captures_count?: number
-  pending_upload_count?: number
-  last_capture_at?: string
-  battery_percent?: number
-  battery_state?: string
-  storage_free_bytes?: number
-  survey_config?: Record<string, unknown>
+  device_id: string
+  device_type: string
+  software_version: string
   [key: string]: unknown
 }
+
+export const STATION_STATUS_IDENTITY_KEYS = [
+  'device_id',
+  'device_type',
+  'software_version',
+]
 
 export class Deployment extends Entity {
   private readonly _jobs: Job[] = []
@@ -154,24 +150,23 @@ export class Deployment extends Entity {
       : undefined
   }
 
-  get batteryLabel(): string | undefined {
-    const percent = this.lastStatus?.battery_percent
+  /**
+   * Everything the device published beyond its identity, in the order it sent it.
+   *
+   * Devices differ in what they can measure, so this is a list to render rather than a
+   * set of known fields to read: a phone reports its battery, a mains-powered box
+   * reports that it is on mains, and neither is shown rows it never answered.
+   */
+  get reportedStatusEntries(): [string, unknown][] {
+    const status = this.lastStatus
 
-    return percent !== undefined ? `${Math.round(percent)}%` : undefined
-  }
-
-  get storageFreeLabel(): string | undefined {
-    const bytes = this.lastStatus?.storage_free_bytes
-
-    if (bytes === undefined) {
-      return undefined
+    if (!status) {
+      return []
     }
 
-    const gigabytes = bytes / 1_000_000_000
-
-    return gigabytes >= 1
-      ? `${gigabytes.toFixed(1)} GB`
-      : `${Math.round(bytes / 1_000_000)} MB`
+    return Object.entries(status).filter(
+      ([key]) => !STATION_STATUS_IDENTITY_KEYS.includes(key)
+    )
   }
 
   get dataSourceDetails(): {

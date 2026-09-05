@@ -15,6 +15,40 @@ import { APP_ROUTES } from 'utils/constants'
 import { STRING, translate } from 'utils/language'
 import styles from './styles.module.scss'
 
+/** "battery_percent" reads as "Battery percent" — the device names its own readings. */
+const humanizeReportedKey = (key: string) =>
+  key.replace(/_/g, ' ').replace(/^./, (character) => character.toUpperCase())
+
+/**
+ * Render a reported value without knowing what it is. Structures a device publishes
+ * (a capture configuration, a group of sensor readings) are shown as they arrived
+ * rather than dropped for having no field of their own.
+ */
+const formatReportedValue = (value: unknown): string | undefined => {
+  if (value === null || value === undefined) {
+    return undefined
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'Yes' : 'No'
+  }
+  if (typeof value === 'object') {
+    return JSON.stringify(value)
+  }
+
+  return String(value)
+}
+
+/** Two readings to a row, matching the rest of the dialog. */
+const toRows = <T,>(items: T[], perRow = 2): T[][] =>
+  items.reduce<T[][]>((rows, item, index) => {
+    if (index % perRow === 0) {
+      rows.push([])
+    }
+    rows[rows.length - 1].push(item)
+
+    return rows
+  }, [])
+
 export const DeploymentDetailsInfo = ({
   deployment,
   title,
@@ -25,7 +59,11 @@ export const DeploymentDetailsInfo = ({
   onEditClick: () => void
 }) => {
   const { projectId } = useParams()
-  const markers = useMemo(
+  const reportedRows = useMemo(
+    () => toRows(deployment.reportedStatusEntries),
+    [deployment]
+  )
+  const markers = useMemo
     () => [
       {
         position: new MarkerPosition(deployment.latitude, deployment.longitude),
@@ -102,39 +140,38 @@ export const DeploymentDetailsInfo = ({
                 value={deployment.lastSeenLabel}
               />
               <InputValue
-                label={translate(STRING.FIELD_LABEL_REPORTED_STATUS)}
-                value={deployment.lastStatus?.status}
+                label={translate(STRING.FIELD_LABEL_DEVICE)}
+                value={deployment.lastStatus?.device_type}
               />
             </FormRow>
             <FormRow>
               <InputValue
-                label={translate(STRING.FIELD_LABEL_BATTERY)}
-                value={
-                  deployment.batteryLabel &&
-                  deployment.lastStatus?.battery_state
-                    ? `${deployment.batteryLabel} (${deployment.lastStatus.battery_state})`
-                    : deployment.batteryLabel
-                }
+                label={translate(STRING.FIELD_LABEL_DEVICE_ID)}
+                value={deployment.lastStatus?.device_id}
               />
-              <InputValue
-                label={translate(STRING.FIELD_LABEL_STORAGE_FREE)}
-                value={deployment.storageFreeLabel}
-              />
-            </FormRow>
-            <FormRow>
               <InputValue
                 label={translate(STRING.FIELD_LABEL_SOFTWARE_VERSION)}
-                value={deployment.lastStatus?.app_version}
-              />
-              <InputValue
-                label={translate(STRING.FIELD_LABEL_CAPTURES)}
-                value={
-                  deployment.lastStatus?.captures_count !== undefined
-                    ? `${deployment.lastStatus.captures_count}`
-                    : undefined
-                }
+                value={deployment.lastStatus?.software_version}
               />
             </FormRow>
+          </FormSection>
+        ) : null}
+
+        {reportedRows.length ? (
+          <FormSection
+            title={translate(STRING.FIELD_LABEL_REPORTED_BY_DEVICE)}
+          >
+            {reportedRows.map((row, index) => (
+              <FormRow key={index}>
+                {row.map(([key, value]) => (
+                  <InputValue
+                    key={key}
+                    label={humanizeReportedKey(key)}
+                    value={formatReportedValue(value)}
+                  />
+                ))}
+              </FormRow>
+            ))}
           </FormSection>
         ) : null}
 

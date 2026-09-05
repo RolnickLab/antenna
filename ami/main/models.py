@@ -762,48 +762,56 @@ def _compare_totals_for_sync(deployment: "Deployment", total_files_found: int):
 @final
 class StationStatusPayload(pydantic.BaseModel):
     """
-    What a station reports about itself between uploads.
+    What a connected device reports about itself between uploads.
 
-    Every field is optional. A station sends what it knows, and a heartbeat carrying
-    nothing but a timestamp is still useful, because it proves the station is alive.
+    Devices differ in what they can measure. A phone knows its battery percentage; a
+    trail camera may know only that it is on mains; a box with no fuel gauge knows
+    nothing about power at all. So the schema asks for identity and accepts capability:
+    three fields every device can answer, and then whatever that particular device is
+    able to gather.
 
-    Unknown fields are kept rather than dropped, so a station can report something the
-    platform has no name for yet — a capture configuration, a new sensor — without the
-    reading being lost while the schema catches up. Anything reported often enough to
-    filter or chart on should graduate into a named field here.
+    Anything else the device sends is kept exactly as published (``extra = "allow"``),
+    which is what makes one endpoint serve devices with different sensors — and what
+    stops a reading being thrown away because the platform has no name for it yet.
+
+    Conventional keys, so devices that do report the same thing agree on spelling.
+    None of them is required and none is validated here:
+
+    - ``status`` — what the device is doing, e.g. "surveying", "idle", "uploading"
+    - ``session_id``, ``captures_count``, ``pending_upload_count``, ``last_capture_at``
+    - ``battery_percent`` (0-100), ``battery_state``, ``storage_free_bytes``
+    - ``survey_config`` — the configuration the device is capturing under, verbatim
+
+    A reading that turns out to be common across devices, and that the platform wants to
+    filter or chart on, is the one to promote into a named field here later.
     """
 
-    # What the station is running
-    app_version: str | None = None
-    app_build: str | None = None
-    os_version: str | None = None
-    device_model: str | None = None
-
-    # What the station is doing
-    status: str | None = None
-    session_id: str | None = None
-    captures_count: int | None = None
-    pending_upload_count: int | None = None
-    last_capture_at: datetime.datetime | None = None
-
-    # Power and storage: the two reasons an unattended station stops working
-    battery_percent: float | None = None
-    battery_state: str | None = None
-    storage_free_bytes: int | None = None
-
-    # The configuration the station is capturing under, kept verbatim. Untyped on
-    # purpose while the capture app's own configuration is still changing shape:
-    # storing it unparsed is better than dropping it, and it means a capture's
-    # settings are recorded somewhere from the first heartbeat onward, rather than
-    # waiting for the platform to model every field.
-    survey_config: dict[str, typing.Any] | None = None
+    # Identity: the three things any reporting device can answer, and that the platform
+    # needs in order to say which box sent this and what it was running.
+    device_id: str
+    device_type: str
+    software_version: str
 
     class Config:
         extra = "allow"
 
+    @property
+    def identity(self) -> dict[str, str]:
+        """The declared identity fields, separated from whatever else was reported."""
+        return {
+            "device_id": self.device_id,
+            "device_type": self.device_type,
+            "software_version": self.software_version,
+        }
 
-def get_default_station_status() -> StationStatusPayload:
-    return StationStatusPayload()
+    def reported(self) -> dict[str, typing.Any]:
+        """
+        Everything the device published beyond its identity, in the order it sent it.
+
+        This is what a station detail view lists: the capabilities of this particular
+        device, rather than a fixed set of rows that are blank for everything else.
+        """
+        return {key: value for key, value in self.dict().items() if key not in self.identity}
 
 
 class Deployment(BaseModel):
@@ -1253,12 +1261,7 @@ class DeploymentStatus(BaseModel):
         related_name="status_reports",
     )
     recorded_at = models.DateTimeField(help_text="When the station recorded this status, by its own clock.")
-    status = SchemaField(
-        StationStatusPayload,
-        default=get_default_station_status,
-        null=False,
-        blank=True,
-    )
+    status = SchemaField(StationStatusPayload, null=False)
 
     project_accessor = "deployment__project"
 

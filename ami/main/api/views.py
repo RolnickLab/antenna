@@ -57,7 +57,6 @@ from ..models import (
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
-    StationStatusPayload,
     Tag,
     TaxaList,
     Taxon,
@@ -368,14 +367,15 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         """
         Report or read a station's own status.
 
-        A station checks in with what it knows about itself — the software it is
-        running, whether it is capturing, how much battery and storage are left, and
-        the configuration it is capturing under. A report is stored as history and
-        copied onto the station as its latest, so an operator can see that a station
-        needs attention before it goes quiet.
+        A device says which box it is, what it is running, and then whatever it is
+        able to measure — battery on a phone, nothing at all on a box with no fuel
+        gauge. A report is stored as history and copied onto the station as its
+        latest, so an operator can see that a station needs attention before it goes
+        quiet.
 
-        Fields the platform does not recognise are kept rather than rejected, so a
-        station can report something new without waiting for a release here.
+        Only the three identity fields are required. Everything else is kept exactly
+        as published, so devices with different sensors share one endpoint and no
+        reading waits on a release here.
 
         ``GET`` returns the reports most recently recorded, newest first.
         """
@@ -390,7 +390,7 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
 
         request_serializer = DeploymentStatusRequestSerializer(data=request.data)
         request_serializer.is_valid(raise_exception=True)
-        payload = request_serializer.validated_data.get("status") or StationStatusPayload()
+        payload = request_serializer.validated_data["status"]
         recorded_at = request_serializer.validated_data.get("recorded_at") or timezone.now()
 
         report = deployment.record_status(payload=payload, recorded_at=recorded_at)
