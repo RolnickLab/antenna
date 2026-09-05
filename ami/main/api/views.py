@@ -1447,6 +1447,8 @@ OCCURRENCE_FILTER_BACKENDS = (
 OCCURRENCE_FILTERSET_FIELDS = (
     "event",
     "deployment",
+    "deployment__device",
+    "deployment__research_site",
     "determination__rank",
     "detections__source_image",
 )
@@ -1891,6 +1893,8 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         deployment_id = self.request.query_params.get("deployment") or self.request.query_params.get(
             "occurrences__deployment"
         )
+        device_id = self.request.query_params.get("deployment__device")
+        site_id = self.request.query_params.get("deployment__research_site")
         event_id = self.request.query_params.get("event") or self.request.query_params.get("occurrences__event")
         collection_id = self.request.query_params.get("collection")
 
@@ -1901,26 +1905,34 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
 
         filters = models.Q(**{field("project"): project, field("event__isnull"): False})
         try:
-            """
-            Ensure that the related objects exist before filtering by them.
-            This may be overkill!
-            """
+            # Each related object must exist and belong to this project, otherwise 404, so an
+            # id from another project is indistinguishable from an unknown one.
             if occurrence_id:
-                Occurrence.objects.get(id=occurrence_id)
-                # This query does not need the same filtering as the others
+                Occurrence.objects.get(id=occurrence_id, project=project)
                 filters &= models.Q(**{field("id"): occurrence_id})
             if deployment_id:
-                Deployment.objects.get(id=deployment_id)
+                Deployment.objects.get(id=deployment_id, project=project)
                 filters &= models.Q(**{field("deployment"): deployment_id})
+            if device_id:
+                Device.objects.get(id=device_id, project=project)
+                filters &= models.Q(**{field("deployment__device"): device_id})
+            if site_id:
+                Site.objects.get(id=site_id, project=project)
+                filters &= models.Q(**{field("deployment__research_site"): site_id})
             if event_id:
-                Event.objects.get(id=event_id)
+                Event.objects.get(id=event_id, project=project)
                 filters &= models.Q(**{field("event"): event_id})
             if collection_id:
-                SourceImageCollection.objects.get(id=collection_id)
+                SourceImageCollection.objects.get(id=collection_id, project=project)
                 filters &= models.Q(**{field("detections__source_image__collections"): collection_id})
         except exceptions.ObjectDoesNotExist as e:
             # Raise a 404 if any of the related objects don't exist
-            raise NotFound(detail=str(e))
+            raise NotFound(detail=str(e)) from e
+        except (ValueError, TypeError) as e:
+            # A non-integer id (e.g. ?deployment__device=abc) is a client error. Return a
+            # 400 instead of letting the .get(id=...) lookup surface an unhandled 500, so
+            # this endpoint matches the 400 the occurrence list returns for the same input.
+            raise api_exceptions.ValidationError(detail="Filter ids must be integers.") from e
 
         return filters
 
