@@ -14,19 +14,25 @@ of any kind, so a station's own account of itself had nowhere to land.
 
 - `StationStatusPayload` (`ami/main/models.py`) — a pydantic schema stored through
   `django_pydantic_field.SchemaField`, the same pattern as `Project.feature_flags`.
-  Named fields for the readings an operator acts on: battery, storage, whether the
-  station is capturing, what software it is running.
-  - `Config.extra = "allow"`, so a station running newer software can report a reading
-    the platform has no field for and the reading is stored rather than dropped. A
-    reading reported often enough to filter or chart on should graduate into a named
-    field.
-  - `survey_config` holds the capture configuration verbatim, untyped. The capture
-    app's own configuration is still changing shape, and storing it unparsed is better
-    than losing it. It also means a capture's settings are recorded from the first
-    heartbeat, rather than waiting for every field to be modelled here.
-- `DeploymentStatus` — one row per report. `recorded_at` is the station's clock and
-  orders the series; `created_at` is arrival. A station that was offline all night
-  uploads a backlog, so the two differ by design, and the gap is how late it is running.
+  **Three required identity fields — `device_id`, `device_type`, `software_version` —
+  and nothing else declared.** `Config.extra = "allow"` keeps whatever the device
+  publishes beyond them.
+
+  This is the shape because devices differ in what they can sense. A phone knows its
+  battery percentage; a mains-powered box knows only that it is powered; a box with no
+  fuel gauge knows nothing about power at all. Naming battery, storage and capture
+  counts in the schema made the platform's guesses look like a contract and left every
+  station with blank rows for readings its hardware cannot take.
+
+  The docstring lists conventional key names (`status`, `battery_percent`,
+  `storage_free_bytes`, `survey_config`, …) so devices that do report the same reading
+  agree on spelling. None is required or validated. A reading that turns out to be
+  common, and that the platform wants to filter or chart on, is the one to promote into
+  a named field later — which is a migration, not a guess.
+
+- `DeploymentStatus` — one row per report. `recorded_at` is the device's clock and
+  orders the series; `created_at` is arrival. A device offline all night uploads a
+  backlog, so the two differ by design, and the gap is how late it is running.
 - `Deployment.last_status_at` / `Deployment.last_status` — the latest report copied onto
   the station, so a list can sort and filter on "last seen" without an aggregate query.
   Written by `Deployment.record_status()` with a queryset update, never `save()`:
@@ -34,19 +40,20 @@ of any kind, so a station's own account of itself had nowhere to land.
   job, which is far too much work for a call that arrives every few minutes. A test pins
   this (`test_reporting_status_does_not_recount_the_station`).
 - Permission: `Deployment.check_custom_permission` maps the `status` action to
-  `SYNC_DEPLOYMENT`. Reporting a station's status is trusted at the same level as
-  syncing its captures, and reusing that permission means no new guardian permission and
-  no permission migration. Project managers and ML data managers hold it.
-- A late report does not overwrite a newer one: `record_status` only refreshes the
-  denormalized copy when the report it just stored is the newest by `recorded_at`.
+  `SYNC_DEPLOYMENT`. Reporting is trusted at the same level as syncing a station's
+  captures, so no new guardian permission and no permission migration.
+- A late report does not overwrite a newer one: `record_status` refreshes the
+  denormalized copy only when the report it just stored is the newest by `recorded_at`.
 
 ## UI
 
-- Station list: a "Last seen" column, sortable on `last_status_at`, with the reported
-  status and battery underneath.
-- Station detail: a "Station status" section, shown only once a station has ever
-  reported — last seen, reported status, battery and state, storage free, software
-  version, captures.
+- **Station list: "Last seen" only** — a date, sortable on `last_status_at`. Nothing
+  else, because nothing else is common to every device yet.
+- **Station detail: two sections.** "Station status" carries last seen plus the three
+  identity fields. "Reported by the device" lists everything else that arrived, label
+  derived from the key and value rendered by type, so a phone shows its battery and a
+  trail camera shows its lamp hours without either being given the other's empty rows.
+  Both sections appear only once a station has reported.
 
 ## Where the rest of a capture's provenance lives
 
