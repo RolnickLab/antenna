@@ -8,6 +8,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from ami.exports.models import DataExport
+from ami.exports.registry import ExportRegistry
 from ami.main.models import Detection, Identification, Occurrence, SourceImageCollection, Taxon
 from ami.ml.models import Algorithm
 from ami.tests.fixtures.main import (
@@ -38,7 +39,11 @@ class DataExportTest(TestCase):
         # Create a collection using the provided method
         self.collection = self._create_collection()
         # Define export formats
-        self.export_formats = ["occurrences_simple_csv", "occurrences_api_json"]
+        self.export_formats = [
+            "occurrences_simple_csv",
+            "occurrences_api_json",
+            "detections_csv",
+        ]
 
     def _create_export_with_file(self, format_type):
         filename = f"exports/test_export_file_{format_type}.json"
@@ -113,6 +118,9 @@ class DataExportTest(TestCase):
                 self.validate_csv_records(f)
             elif format_type == "occurrences_api_json":
                 self.validate_json_records(f)
+            elif format_type == "detections_csv":
+                # TODO this checks against Occurrence count not Detections, but 1:1 for now
+                self.validate_csv_records(f)
 
         # Clean up the exported file after the test
         default_storage.delete(file_path)
@@ -305,8 +313,8 @@ class DataExportPermissionTest(TestCase):
         )
 
 
-class ExportNewFieldsTest(TestCase):
-    """Test the new machine prediction, verification, and detection fields in CSV exports."""
+class ExportDataTestCase(TestCase):
+    format_type = None
 
     def setUp(self):
         self.project, self.deployment = setup_test_project(reuse=False)
@@ -335,6 +343,23 @@ class ExportNewFieldsTest(TestCase):
             self.taxon_b = Taxon.objects.create(name="Test Taxon B")
             self.taxon_b.projects.add(self.project)
 
+    def _run_csv_export(self):
+        """Run a CSV export and return the rows as a list of dicts."""
+        data_export = DataExport.objects.create(
+            user=self.user,
+            project=self.project,
+            format=self.format_type,
+            job=None,
+        )
+        self.data_export = data_export
+        file_url = data_export.run_export()
+        self.assertIsNotNone(file_url)
+        file_path = file_url.replace("/media/", "")
+        with default_storage.open(file_path, "r") as f:
+            rows = list(csv.DictReader(f))
+        default_storage.delete(file_path)
+        return rows
+
     def _create_occurrence_with_prediction(self, taxon=None, score=0.85):
         """Create an occurrence with a single detection and ML classification."""
         taxon = taxon or self.taxon_a
@@ -355,21 +380,19 @@ class ExportNewFieldsTest(TestCase):
         occurrence = detection.associate_new_occurrence()
         return occurrence, classification
 
-    def _run_csv_export(self):
-        """Run a CSV export and return the rows as a list of dicts."""
-        data_export = DataExport.objects.create(
-            user=self.user,
-            project=self.project,
-            format="occurrences_simple_csv",
-            job=None,
-        )
-        file_url = data_export.run_export()
-        self.assertIsNotNone(file_url)
-        file_path = file_url.replace("/media/", "")
-        with default_storage.open(file_path, "r") as f:
-            rows = list(csv.DictReader(f))
-        default_storage.delete(file_path)
-        return rows
+    def test_export_filename_label(self):
+        if not self.format_type:
+            return
+        label = ExportRegistry.get_exporter(self.format_type).filename_label
+        occurrence, classification = self._create_occurrence_with_prediction()
+        self._run_csv_export()
+        self.assertIn(label, self.data_export.file_url or "")
+
+
+class ExportNewFieldsTest(ExportDataTestCase):
+    """Test the new machine prediction, verification, and detection fields in CSV exports."""
+
+    format_type = "occurrences_simple_csv"
 
     def test_ml_prediction_only(self):
         """Occurrence with only ML prediction: machine prediction fields populated, verified_by null."""
@@ -548,6 +571,49 @@ class ExportNewFieldsTest(TestCase):
             "determination_matches_machine_prediction",
             "best_detection_bbox",
             "best_detection_capture_url",
+        ]
+        for field in expected_fields:
+            self.assertIn(field, headers, f"Missing CSV field: {field}")
+
+
+class DetectionsExportFieldsTest(ExportDataTestCase):
+    format_type = "detections_csv"
+
+    def test_detection_row(self):
+        """Detection has expected columns"""
+        occurrence, classification = self._create_occurrence_with_prediction()
+        detection = occurrence.detections.first()
+        rows = self._run_csv_export()
+
+        row = next(r for r in rows if int(r["id"]) == detection.pk)
+        self.assertEqual(row["determination_name"], self.taxon_a.name)
+        self.assertEqual(row["detection_bbox"], str(detection.bbox))
+        self.assertEqual(row["detection_crop_url"], "/media/" + detection.path)
+        self.assertEqual(row["source_image_path"], detection.source_image.path)
+        self.assertAlmostEqual(float(row["determination_score"]), 0.85, places=2)
+
+    def test_csv_has_expected_fields(self):
+        """fields are present as CSV column headers."""
+        self._create_occurrence_with_prediction()
+        rows = self._run_csv_export()
+        self.assertGreater(len(rows), 0)
+        headers = rows[0].keys()
+        expected_fields = [
+            "id",
+            "event_id",
+            "event_name",
+            "deployment_id",
+            "deployment_name",
+            "project_id",
+            "project_name",
+            "source_image_id",
+            "source_image_path",
+            "detection_bbox",
+            "detection_crop_url",
+            "detection_score",
+            "determination_id",
+            "determination_name",
+            "determination_score",
         ]
         for field in expected_fields:
             self.assertIn(field, headers, f"Missing CSV field: {field}")

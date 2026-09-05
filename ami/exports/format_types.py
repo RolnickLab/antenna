@@ -8,7 +8,7 @@ from rest_framework import serializers
 
 from ami.exports.base import BaseExporter
 from ami.exports.utils import get_data_in_batches
-from ami.main.models import Occurrence, SourceImage, get_media_url
+from ami.main.models import Detection, Occurrence, SourceImage, get_media_url
 from ami.ml.schemas import BoundingBox
 
 logger = logging.getLogger(__name__)
@@ -35,9 +35,10 @@ def get_export_serializer():
     return OccurrenceExportSerializer
 
 
-class JSONExporter(BaseExporter):
+class OccurrencesJSONExporter(BaseExporter):
     """Handles JSON export of occurrences."""
 
+    filename_label = "occurrences"
     file_format = "json"
 
     def get_serializer_class(self):
@@ -209,11 +210,34 @@ class OccurrenceTabularSerializer(serializers.ModelSerializer):
         return None
 
 
-class CSVExporter(BaseExporter):
-    """Handles CSV export of occurrences."""
-
+class BaseCSVExporter(BaseExporter):
     file_format = "csv"
 
+    def export(self):
+        """Exports to CSV format."""
+
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode="w", newline="", encoding="utf-8")
+
+        # Extract field names dynamically from the serializer
+        serializer = self.serializer_class()
+        field_names = list(serializer.fields.keys())
+        records_exported = 0
+        with open(temp_file.name, "w", newline="", encoding="utf-8") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=field_names)
+            writer.writeheader()
+
+            for i, batch in enumerate(get_data_in_batches(self.queryset, self.serializer_class)):
+                writer.writerows(batch)
+                records_exported += len(batch)
+                self.update_job_progress(records_exported)
+        self.update_export_stats(file_temp_path=temp_file.name)
+        return temp_file.name  # Return the file path
+
+
+class OccurrencesCSVExporter(BaseCSVExporter):
+    """Handles CSV export of occurrences."""
+
+    filename_label = "occurrences"
     serializer_class = OccurrenceTabularSerializer
 
     def get_queryset(self):
@@ -233,22 +257,78 @@ class CSVExporter(BaseExporter):
             .with_verification_info()
         )
 
-    def export(self):
-        """Exports occurrences to CSV format."""
 
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode="w", newline="", encoding="utf-8")
+class DetectionsTabularSerializer(serializers.ModelSerializer):
+    """Serializer to format occurrences for tabular data export."""
 
-        # Extract field names dynamically from the serializer
-        serializer = self.serializer_class()
-        field_names = list(serializer.fields.keys())
-        records_exported = 0
-        with open(temp_file.name, "w", newline="", encoding="utf-8") as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=field_names)
-            writer.writeheader()
+    event_id = serializers.IntegerField(source="source_image.event.id", allow_null=True)
+    event_name = serializers.CharField(source="source_image.event.name", allow_null=True)
+    deployment_id = serializers.IntegerField(source="source_image.deployment.id", allow_null=True)
+    deployment_name = serializers.CharField(source="source_image.deployment.name", allow_null=True)
+    project_id = serializers.IntegerField(source="source_image.project.id", allow_null=True)
+    project_name = serializers.CharField(source="source_image.project.name", allow_null=True)
 
-            for i, batch in enumerate(get_data_in_batches(self.queryset, self.serializer_class)):
-                writer.writerows(batch)
-                records_exported += len(batch)
-                self.update_job_progress(records_exported)
-        self.update_export_stats(file_temp_path=temp_file.name)
-        return temp_file.name  # Return the file path
+    source_image_id = serializers.IntegerField(source="source_image.id", allow_null=True)
+    source_image_path = serializers.CharField(source="source_image.path", allow_null=True)
+
+    detection_bbox = serializers.CharField(source="bbox", allow_null=True)
+    detection_crop_url = serializers.SerializerMethodField()
+    detection_score = serializers.FloatField(allow_null=True)
+
+    determination_id = serializers.IntegerField(source="occurrence.determination.id", allow_null=True)
+    determination_name = serializers.CharField(source="occurrence.determination.name", allow_null=True)
+    determination_score = serializers.FloatField(source="occurrence.determination_score", allow_null=True)
+
+    class Meta:
+        model = Detection
+        fields = [
+            "id",
+            "event_id",
+            "event_name",
+            "deployment_id",
+            "deployment_name",
+            "project_id",
+            "project_name",
+            "source_image_id",
+            "source_image_path",
+            "detection_bbox",
+            "detection_crop_url",
+            "detection_score",
+            "determination_id",
+            "determination_name",
+            "determination_score",
+        ]
+
+    def get_detection_crop_url(self, obj):
+        """Returns the full URL to the cropped detection image."""
+        path = getattr(obj, "path", None)
+        return get_media_url(path) if path else None
+
+
+class DetectionsCSVExporter(BaseCSVExporter):
+    """Handles CSV export of detections."""
+
+    filename_label = "detections"
+    serializer_class = DetectionsTabularSerializer
+
+    def get_filter_backends(self):
+        from ami.main.api.views import OccurrenceCollectionFilter
+
+        class DetectionCollectionFilter(OccurrenceCollectionFilter):
+            queryset_filter_path = "source_image__collections"
+
+        return [DetectionCollectionFilter]
+
+    def get_queryset(self):
+        return (
+            Detection.objects.valid()  # type: ignore[union-attr]  Custom queryset method
+            .filter(source_image__project=self.project)
+            .select_related(
+                "occurrence",
+                "occurrence__determination",
+                "source_image",
+                "source_image__project",
+                "source_image__deployment",
+                "source_image__event",
+            )
+        )
