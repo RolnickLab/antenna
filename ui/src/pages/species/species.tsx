@@ -84,7 +84,24 @@ export const Species = () => {
   // instead of dead-ending with both nav buttons disabled.
   const verifyIndexRef = useRef(-1)
   useEffect(() => {
-    if (!verifyOccurrenceId || exampleNavItems.length === 0) {
+    if (!verifyOccurrenceId) {
+      return
+    }
+    if (exampleNavItems.length === 0) {
+      // The list emptied after a verification (not a fetch in flight or a fresh deep
+      // link), so the sweep is finished: close the modal instead of leaving it open on
+      // an occurrence that is no longer listed.
+      if (!isFetching && verifyIndexRef.current >= 0) {
+        verifyIndexRef.current = -1
+        setSearchParams(
+          (prev) => {
+            const next = new URLSearchParams(prev)
+            next.delete('verifyOccurrence')
+            return next
+          },
+          { replace: true }
+        )
+      }
       return
     }
     const index = exampleNavItems.findIndex(
@@ -108,7 +125,7 @@ export const Species = () => {
         { replace: true }
       )
     }
-  }, [exampleNavItems, verifyOccurrenceId, setSearchParams])
+  }, [exampleNavItems, verifyOccurrenceId, isFetching, setSearchParams])
   const { selectedView, setSelectedView } = useSelectedView('table')
   const { taxaLists = [] } = useTaxaLists({ projectId: projectId as string })
   const { tags = [] } = useTags({ projectId: projectId as string })

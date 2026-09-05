@@ -4195,17 +4195,17 @@ class TaxonQuerySet(BaseQuerySet):
         # resolves to the inner Occurrence.
         not_verified = ~Exists(Identification.objects.filter(occurrence=OuterRef("pk"), withdrawn=False))
 
-        best_scoring = Occurrence.objects.filter(base_filter).order_by("-determination_score", "-id").values("id")[:1]
+        # nulls_last: a NULL determination_score would otherwise sort first under DESC and
+        # be picked as "best" whenever the score threshold is not applied.
+        by_score_desc = (models.F("determination_score").desc(nulls_last=True), "-id")
+        best_scoring = Occurrence.objects.filter(base_filter).order_by(*by_score_desc).values("id")[:1]
         latest = (
             Occurrence.objects.filter(base_filter, detections__timestamp__isnull=False)
             .order_by("-detections__timestamp", "-id")
             .values("id")[:1]
         )
         best_unverified = (
-            Occurrence.objects.filter(base_filter)
-            .filter(not_verified)
-            .order_by("-determination_score", "-id")
-            .values("id")[:1]
+            Occurrence.objects.filter(base_filter).filter(not_verified).order_by(*by_score_desc).values("id")[:1]
         )
 
         return self.annotate(

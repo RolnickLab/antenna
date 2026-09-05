@@ -6629,6 +6629,16 @@ class TestTaxaExampleOccurrence(APITestCase):
         self.assertEqual(row["last_detected_occurrence_id"], self.itea_low_late.id)
         self.assertNotEqual(example["id"], row["last_detected_occurrence_id"])
 
+    def test_null_score_occurrence_is_never_the_best_example(self):
+        """A NULL determination_score sorts after real scores (Postgres puts NULLs first under
+        DESC), so ``?apply_defaults=false``, which stops filtering NULLs out, still picks the
+        highest real score."""
+        unscored = self._make_occurrence(self.itea, self.images[1], score=0.50)
+        Occurrence.objects.filter(pk=unscored.pk).update(determination_score=None)
+        row = self._rows(self.base_url + "&with_example_occurrences=true&apply_defaults=false")["Vanessa itea"]
+        self.assertEqual(row["best_scoring_occurrence_id"], self.itea_high_early.id)
+        self.assertEqual(row["example_occurrence"]["id"], self.itea_high_early.id)
+
     def test_verified_row_returns_latest(self):
         # Verified row -> the latest occurrence (is it still showing up?), NOT the
         # best-scoring-unverified one that an unverified row would surface.
