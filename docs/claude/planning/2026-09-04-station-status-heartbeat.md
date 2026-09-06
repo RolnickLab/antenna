@@ -64,6 +64,25 @@ nothing, and loses nothing.
   and value rendered by type. It appears only when a device has reported, so a station
   configured for offline sync looks exactly as it did before.
 
+## The client example
+
+`ami/tests/test_station_status_client.py` is both the integration test for the endpoint
+and the documentation a device author copies. It runs against a live server over real
+HTTP, so the requests in it are exactly what a device sends; the client itself is the
+two functions at the top of the file. Four situations are covered as tests: readings
+through a night arriving in order, a device reporting only what it can measure, a report
+refused for not naming the unit that sent it, and a backlog uploaded late without
+overwriting what is current.
+
+## Related, and deliberately not here
+
+Device types and deployments both want configurable metadata of their own — a JSON field
+per record, edited in the UI, queryable and publishable (#507, and #307 for the
+deployment half). That is a different shape from this one: it is metadata a person
+configures about a station, where this is a reading a device publishes about itself. The
+two will sit beside each other on the same record, and this pull request stays on the
+heartbeat.
+
 ## Where the rest of a capture's provenance lives
 
 This endpoint records what a station is doing *now*, including the configuration it is
