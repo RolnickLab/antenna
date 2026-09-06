@@ -133,34 +133,25 @@ export const DeploymentDetailsInfo = ({
         </FormSection>
 
         {deployment.lastStatusAt ? (
-          <FormSection title={translate(STRING.FIELD_LABEL_STATION_STATUS)}>
+          <FormSection
+            title={translate(STRING.FIELD_LABEL_REPORTED_BY_DEVICE)}
+          >
             <FormRow>
               <InputValue
                 label={translate(STRING.FIELD_LABEL_LAST_SEEN)}
                 value={deployment.lastSeenLabel}
               />
               <InputValue
-                label={translate(STRING.FIELD_LABEL_DEVICE)}
-                value={deployment.lastStatus?.device_type}
-              />
-            </FormRow>
-            <FormRow>
-              <InputValue
                 label={translate(STRING.FIELD_LABEL_DEVICE_ID)}
                 value={deployment.lastStatus?.device_id}
               />
+            </FormRow>
+            <FormRow>
               <InputValue
                 label={translate(STRING.FIELD_LABEL_SOFTWARE_VERSION)}
                 value={deployment.lastStatus?.software_version}
               />
             </FormRow>
-          </FormSection>
-        ) : null}
-
-        {reportedRows.length ? (
-          <FormSection
-            title={translate(STRING.FIELD_LABEL_REPORTED_BY_DEVICE)}
-          >
             {reportedRows.map((row, index) => (
               <FormRow key={index}>
                 {row.map(([key, value]) => (

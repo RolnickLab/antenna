@@ -7705,12 +7705,8 @@ class TestDeploymentStatus(APITestCase):
         self.url = f"/api/v2/deployments/{self.deployment.pk}/status/"
 
     def _identity(self, **extra):
-        """The three fields every device answers, plus whatever this device measured."""
-        payload = {
-            "device_id": "AW-0001",
-            "device_type": "iPhone 12 mini",
-            "software_version": "1.4.0",
-        }
+        """The two fields every device answers, plus whatever this device measured."""
+        payload = {"device_id": "AW-0001", "software_version": "1.4.0"}
         payload.update(extra)
         return {"status": payload}
 
@@ -7731,8 +7727,12 @@ class TestDeploymentStatus(APITestCase):
 
     def test_identity_is_required(self):
         """
-        A report has to say which device sent it and what that device is running.
-        Everything past those three fields is the device's own business.
+        A report has to say which unit sent it and what it is running. Everything past
+        those two fields is that device's own business.
+
+        The station's configured ``device`` says what kind of hardware it is, so a
+        device reporting its own type would only duplicate a field that already exists
+        and can disagree with it.
         """
         self.client.force_authenticate(user=self.pm_user)
 
@@ -7781,7 +7781,6 @@ class TestDeploymentStatus(APITestCase):
             {
                 "status": {
                     "device_id": "TRAP-77",
-                    "device_type": "trail camera",
                     "software_version": "0.9.1",
                     "power_source": "mains",
                     "lamp_hours": 3.25,
@@ -7895,7 +7894,6 @@ class TestDeploymentStatus(APITestCase):
         self.deployment.record_status(
             payload=StationStatusPayload(
                 device_id="AW-0001",
-                device_type="iPhone 12 mini",
                 software_version="1.4.0",
                 battery_percent=61.0,
             ),
@@ -7906,7 +7904,7 @@ class TestDeploymentStatus(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         entry = next(item for item in response.json()["results"] if item["id"] == self.deployment.pk)
-        self.assertEqual(entry["last_status"]["device_type"], "iPhone 12 mini")
+        self.assertEqual(entry["last_status"]["device_id"], "AW-0001")
         self.assertEqual(entry["last_status"]["battery_percent"], 61.0)
         self.assertIsNotNone(entry["last_status_at"])
 

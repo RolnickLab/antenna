@@ -9,22 +9,17 @@ export type ServerDeployment = any // TODO: Update this type
 /**
  * What a connected device last reported about itself.
  *
- * The three identity fields are the only ones every device answers. Everything past
- * them depends on what that particular device can measure, so the type stays open and
- * the UI lists whatever arrived rather than a fixed set of rows.
+ * The two identity fields are the only ones every device answers. Everything past them
+ * depends on what that particular device can measure, so the type stays open and the UI
+ * lists whatever arrived rather than a fixed set of rows.
  */
 export interface StationStatus {
   device_id: string
-  device_type: string
   software_version: string
   [key: string]: unknown
 }
 
-export const STATION_STATUS_IDENTITY_KEYS = [
-  'device_id',
-  'device_type',
-  'software_version',
-]
+export const STATION_STATUS_IDENTITY_KEYS = ['device_id', 'software_version']
 
 export class Deployment extends Entity {
   private readonly _jobs: Job[] = []

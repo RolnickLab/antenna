@@ -5,24 +5,34 @@ two fields on `Deployment`). The capture app is the first client.
 
 ## Why
 
-A station in the field runs unattended for weeks. When it stops working — a flat
-battery, a full disk, a survey that never started — the platform sees only an absence
-of captures, which looks the same as a quiet night. `Deployment` carried no telemetry
-of any kind, so a station's own account of itself had nowhere to land.
+Most stations never report anything. They are configured in Antenna and synced on
+demand from an SD card or object storage, and that stays the normal case. This is for
+the minority that have a device on the network: when one of those goes quiet, the
+platform previously saw only an absence of captures, which looks exactly like a quiet
+night. `Deployment` carried no telemetry of any kind, so a device's own account of
+itself had nowhere to land.
+
+Because a connected device is the exception rather than a property of every station,
+none of this is presented as something a station has. A station that never reports shows
+nothing, and loses nothing.
 
 ## Shape
 
 - `StationStatusPayload` (`ami/main/models.py`) — a pydantic schema stored through
   `django_pydantic_field.SchemaField`, the same pattern as `Project.feature_flags`.
-  **Three required identity fields — `device_id`, `device_type`, `software_version` —
-  and nothing else declared.** `Config.extra = "allow"` keeps whatever the device
-  publishes beyond them.
+  **Two required fields — `device_id` and `software_version` — and nothing else
+  declared.** `Config.extra = "allow"` keeps whatever the device publishes beyond them.
 
-  This is the shape because devices differ in what they can sense. A phone knows its
-  battery percentage; a mains-powered box knows only that it is powered; a box with no
-  fuel gauge knows nothing about power at all. Naming battery, storage and capture
-  counts in the schema made the platform's guesses look like a contract and left every
-  station with blank rows for readings its hardware cannot take.
+  Those two are required because nothing else records them: a station's `device` says
+  what *kind* of hardware was configured, not which physical box is on site or what it
+  is running. A device does not report its own type — that would duplicate the `Device`
+  the station already carries, and the two could then disagree.
+
+  Everything else is capability, and devices differ. A phone knows its battery
+  percentage; a mains-powered box knows only that it is powered; a box with no fuel
+  gauge knows nothing about power at all. Naming battery, storage and capture counts in
+  the schema made the platform's guesses look like a contract and left every station
+  with blank rows for readings its hardware cannot take.
 
   The docstring lists conventional key names (`status`, `battery_percent`,
   `storage_free_bytes`, `survey_config`, …) so devices that do report the same reading
@@ -47,13 +57,12 @@ of any kind, so a station's own account of itself had nowhere to land.
 
 ## UI
 
-- **Station list: "Last seen" only** — a date, sortable on `last_status_at`. Nothing
-  else, because nothing else is common to every device yet.
-- **Station detail: two sections.** "Station status" carries last seen plus the three
-  identity fields. "Reported by the device" lists everything else that arrived, label
-  derived from the key and value rendered by type, so a phone shows its battery and a
-  trail camera shows its lamp hours without either being given the other's empty rows.
-  Both sections appear only once a station has reported.
+- **Station list: "Last seen" only** — a date, sortable on `last_status_at`, blank for
+  every station that syncs offline. That blank is the honest answer, not a gap.
+- **Station detail: one section, "Reported by the device"** — last seen, the device's
+  id and software version, then everything else that arrived, label derived from the key
+  and value rendered by type. It appears only when a device has reported, so a station
+  configured for offline sync looks exactly as it did before.
 
 ## Where the rest of a capture's provenance lives
 

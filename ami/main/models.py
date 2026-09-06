@@ -764,18 +764,23 @@ class StationStatusPayload(pydantic.BaseModel):
     """
     What a connected device reports about itself between uploads.
 
-    Devices differ in what they can measure. A phone knows its battery percentage; a
-    trail camera may know only that it is on mains; a box with no fuel gauge knows
-    nothing about power at all. So the schema asks for identity and accepts capability:
-    three fields every device can answer, and then whatever that particular device is
-    able to gather.
+    Most stations never report at all: they are configured here and synced on demand
+    from an SD card or object storage. This describes the minority that have a device
+    on the network, and it asks that device for as little as possible.
 
-    Anything else the device sends is kept exactly as published (``extra = "allow"``),
-    which is what makes one endpoint serve devices with different sensors — and what
-    stops a reading being thrown away because the platform has no name for it yet.
+    Two fields are required — which unit is reporting, and what software it is running.
+    Neither is recorded anywhere else: a station's ``device`` says what kind of hardware
+    was configured, not which physical box is on site or what it is running.
 
-    Conventional keys, so devices that do report the same thing agree on spelling.
-    None of them is required and none is validated here:
+    Everything else is whatever that device can gather, kept exactly as published
+    (``extra = "allow"``). Devices differ: a phone knows its battery percentage, a
+    mains-powered box knows only that it is powered, a box with no fuel gauge knows
+    nothing about power at all. Naming those readings here would turn the platform's
+    guesses into a contract and leave every station showing blank rows for readings its
+    hardware cannot take.
+
+    Conventional key names, so devices reporting the same thing agree on spelling. None
+    is required and none is validated:
 
     - ``status`` — what the device is doing, e.g. "surveying", "idle", "uploading"
     - ``session_id``, ``captures_count``, ``pending_upload_count``, ``last_capture_at``
@@ -783,13 +788,10 @@ class StationStatusPayload(pydantic.BaseModel):
     - ``survey_config`` — the configuration the device is capturing under, verbatim
 
     A reading that turns out to be common across devices, and that the platform wants to
-    filter or chart on, is the one to promote into a named field here later.
+    filter or chart on, is the one to promote into a named field later.
     """
 
-    # Identity: the three things any reporting device can answer, and that the platform
-    # needs in order to say which box sent this and what it was running.
     device_id: str
-    device_type: str
     software_version: str
 
     class Config:
@@ -798,18 +800,14 @@ class StationStatusPayload(pydantic.BaseModel):
     @property
     def identity(self) -> dict[str, str]:
         """The declared identity fields, separated from whatever else was reported."""
-        return {
-            "device_id": self.device_id,
-            "device_type": self.device_type,
-            "software_version": self.software_version,
-        }
+        return {"device_id": self.device_id, "software_version": self.software_version}
 
     def reported(self) -> dict[str, typing.Any]:
         """
         Everything the device published beyond its identity, in the order it sent it.
 
-        This is what a station detail view lists: the capabilities of this particular
-        device, rather than a fixed set of rows that are blank for everything else.
+        This is what a station detail lists: the capabilities of this particular device,
+        rather than a fixed set of rows that are blank for everything else.
         """
         return {key: value for key, value in self.dict().items() if key not in self.identity}
 
