@@ -133,9 +133,7 @@ export const DeploymentDetailsInfo = ({
         </FormSection>
 
         {deployment.lastStatusAt ? (
-          <FormSection
-            title={translate(STRING.FIELD_LABEL_REPORTED_BY_DEVICE)}
-          >
+          <FormSection title={translate(STRING.FIELD_LABEL_REPORTED_BY_DEVICE)}>
             <FormRow>
               <InputValue
                 label={translate(STRING.FIELD_LABEL_LAST_SEEN)}
