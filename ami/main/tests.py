@@ -7908,6 +7908,52 @@ class TestDeploymentStatus(APITestCase):
         self.assertEqual(entry["last_status"]["battery_percent"], 61.0)
         self.assertIsNotNone(entry["last_status_at"])
 
+    def test_only_project_members_see_what_a_device_reported(self):
+        """
+        Which unit is on site, what it runs and how much battery it has left is
+        operational detail for the people running the project. Anyone else — including
+        an anonymous reader, who can list stations in a project that is not a draft —
+        sees a station with nothing reported.
+        """
+        self.client.force_authenticate(user=self.pm_user)
+        self.client.post(self.url, self._identity(battery_percent=61.0), format="json")
+        list_url = f"/api/v2/deployments/?project_id={self.project.pk}"
+
+        for user in [self.pm_user, self.basic_user]:
+            self.client.force_authenticate(user=user)
+            entry = next(
+                item for item in self.client.get(list_url).json()["results"] if item["id"] == self.deployment.pk
+            )
+            self.assertEqual(entry["last_status"]["device_id"], "AW-0001", f"{user} is a member and should see it")
+            self.assertIsNotNone(entry["last_status_at"])
+
+        for user in [self.outsider, None]:
+            self.client.force_authenticate(user=user)
+            entry = next(
+                item for item in self.client.get(list_url).json()["results"] if item["id"] == self.deployment.pk
+            )
+            self.assertIsNone(entry["last_status"], f"{user} is not a member and should see nothing")
+            self.assertIsNone(entry["last_status_at"])
+
+    def test_reading_the_history_needs_membership_and_writing_needs_more(self):
+        """
+        Reading what a station reported is open to any member of its project; sending a
+        report stays at the same trust level as syncing that station's captures. A basic
+        member can therefore read the history and not add to it.
+        """
+        self.client.force_authenticate(user=self.pm_user)
+        self.client.post(self.url, self._identity(), format="json")
+
+        self.client.force_authenticate(user=self.basic_user)
+        self.assertEqual(self.client.get(self.url).status_code, 200)
+        self.assertEqual(self.client.post(self.url, self._identity(), format="json").status_code, 403)
+
+        self.client.force_authenticate(user=self.outsider)
+        self.assertEqual(self.client.get(self.url).status_code, 403)
+
+        self.client.force_authenticate(user=None)
+        self.assertEqual(self.client.get(self.url).status_code, 401)
+
     def test_a_station_that_never_reported_says_so(self):
         """A station with no report answers null rather than an empty reading."""
         self.client.force_authenticate(user=self.pm_user)

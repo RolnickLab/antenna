@@ -377,17 +377,29 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         as published, so devices with different sensors share one endpoint and no
         reading waits on a release here.
 
-        ``GET`` returns the reports most recently recorded, newest first.
+        ``GET`` returns the reports most recently recorded, newest first, and is for
+        members of the station's project only: what a device reports about itself —
+        which unit is on site, what it runs, how much battery it has left — is
+        operational detail for the people running the project rather than for everyone
+        who can see that the project exists. Posting a report stays at the same trust
+        level as syncing the station's captures.
         """
-        deployment: Deployment = self.get_object()
-
         if request.method == "GET":
+            # Read the object directly rather than through get_object(), whose object
+            # permission check is the write-level one this action declares.
+            deployment = get_object_or_404(self.get_queryset(), pk=pk)
+            if not (deployment.project and deployment.project.is_member(request.user)):
+                raise api_exceptions.PermissionDenied(
+                    detail="Only members of this project may read a station's reported status."
+                )
+
             reports = deployment.status_reports.all()
             page = self.paginate_queryset(reports)
             if page is not None:
                 return self.get_paginated_response(DeploymentStatusSerializer(page, many=True).data)
             return Response(DeploymentStatusSerializer(reports, many=True).data)
 
+        deployment: Deployment = self.get_object()
         request_serializer = DeploymentStatusRequestSerializer(data=request.data)
         request_serializer.is_valid(raise_exception=True)
         payload = request_serializer.validated_data["status"]

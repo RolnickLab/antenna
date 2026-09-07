@@ -330,6 +330,22 @@ class Project(ProjectSettingsMixin, BaseModel):
 
     objects = ProjectManager()
 
+    def is_member(self, user) -> bool:
+        """
+        Whether a user belongs to this project.
+
+        Membership, not a specific permission, is the line for seeing operational detail
+        about a station: what device is on site, what it is running, how much battery it
+        has left. Owners are always members (see ``ensure_owner_membership``), and
+        superusers count everywhere.
+        """
+        if not user or not user.is_authenticated:
+            return False
+        if user.is_superuser:
+            return True
+
+        return self.members.filter(pk=user.pk).exists()
+
     def ensure_owner_membership(self):
         """Add owner to members if they are not already a member"""
         if self.owner and not self.members.filter(id=self.owner.pk).exists():
