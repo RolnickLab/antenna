@@ -388,6 +388,10 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
             # Read the object directly rather than through get_object(), whose object
             # permission check is the write-level one this action declares.
             deployment = get_object_or_404(self.get_queryset(), pk=pk)
+            if not request.user or not request.user.is_authenticated:
+                # Answer an anonymous reader the way the rest of the endpoint does:
+                # "sign in", not "you are not allowed".
+                raise api_exceptions.NotAuthenticated()
             if not (deployment.project and deployment.project.is_member(request.user)):
                 raise api_exceptions.PermissionDenied(
                     detail="Only members of this project may read a station's reported status."

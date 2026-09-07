@@ -49,9 +49,19 @@ nothing, and loses nothing.
   saving a Deployment recounts captures, occurrences and taxa and can queue a regrouping
   job, which is far too much work for a call that arrives every few minutes. A test pins
   this (`test_reporting_status_does_not_recount_the_station`).
-- Permission: `Deployment.check_custom_permission` maps the `status` action to
-  `SYNC_DEPLOYMENT`. Reporting is trusted at the same level as syncing a station's
-  captures, so no new guardian permission and no permission migration.
+- Permission, in two layers. **Sending** a report maps the `status` action to
+  `SYNC_DEPLOYMENT` through `Deployment.check_custom_permission`, so it is trusted at the
+  same level as syncing a station's captures — no new guardian permission and no
+  permission migration. **Reading** what a device reported requires membership of the
+  station's project and nothing more, so a basic member can see that a station needs
+  attention without being able to speak for it.
+- Membership is the line for reading because the report is operational detail — which
+  unit is on site, what it runs, how much battery it has left — and a project that is
+  not a draft is otherwise readable by anyone, including an anonymous visitor. The
+  `last_status` and `last_status_at` fields are answered as null for a non-member rather
+  than omitted, so the shape of the response does not change with the reader.
+  `Project.is_member()` is the single test, asked once per project per response so a
+  list of stations costs one extra query however many stations it holds.
 - A late report does not overwrite a newer one: `record_status` refreshes the
   denormalized copy only when the report it just stored is the newest by `recorded_at`.
 
