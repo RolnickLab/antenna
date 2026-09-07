@@ -6,20 +6,26 @@ Everything runs against a real HTTP server, so the requests below are exactly wh
 device on the network sends: no test client shortcuts, no serializer internals.
 
 The client is the two functions at the top, ``get_auth_token`` and ``report_status``.
-They are about twenty lines together and a device needs nothing else. The tests then
-show the four situations a device implementer has to get right:
+They are short, and a device needs nothing else. Both refuse to send a credential over
+anything but HTTPS — the loopback exception exists so this test can run against a local
+server — and neither follows redirects, because a redirect would carry the password or
+the token to whatever host the response names.
+
+The tests show the situations a device implementer has to get right:
 
 1. A device with sensors reports readings through the night, and they come back in order.
 2. A device with different sensors — or none — reports what it can, and is asked for
    nothing it cannot measure.
 3. A report that does not say which unit sent it is refused.
 4. A device that was offline uploads its backlog late without clobbering what is current.
+5. The client refuses to send a credential over plain HTTP.
 
 Most stations never do any of this. They are configured in Antenna and synced on demand
 from an SD card or object storage, and nothing here applies to them.
 """
 
 import datetime
+from urllib.parse import urlparse
 
 import requests
 from rest_framework.test import APILiveServerTestCase
@@ -30,6 +36,27 @@ from ami.users.roles import ProjectManager, create_roles_for_project
 
 TIMEOUT_SECONDS = 30
 
+# A live test server speaks plain HTTP on the loopback interface, where nothing can read
+# the traffic. Anywhere else, a credential sent in the clear is a credential given away.
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+def require_secure_transport(base_url: str) -> None:
+    """
+    Refuse to send a password or a token anywhere but over HTTPS.
+
+    A device carries a credential that is good for as long as nobody rotates it, and it
+    often reports over networks it does not control. This is the check to keep when you
+    copy the client below: without it, one mistyped setting sends that credential in
+    plain text, and the device has no way of noticing.
+    """
+    if base_url.startswith("https://"):
+        return
+    if urlparse(base_url).hostname in LOCAL_HOSTS:
+        return
+
+    raise ValueError(f"Refusing to send credentials in the clear to {base_url}; use https://.")
+
 
 def get_auth_token(base_url: str, email: str, password: str) -> str:
     """
@@ -38,10 +65,13 @@ def get_auth_token(base_url: str, email: str, password: str) -> str:
     Store the token on the device and reuse it. A device should not hold a password
     any longer than this call takes.
     """
+    require_secure_transport(base_url)
     response = requests.post(
         f"{base_url}/api/v2/auth/token/login/",
         json={"email": email, "password": password},
         timeout=TIMEOUT_SECONDS,
+        # A redirect would hand the credential to whatever host the response names.
+        allow_redirects=False,
     )
     response.raise_for_status()
 
@@ -73,11 +103,15 @@ def report_status(
     if recorded_at is not None:
         body["recorded_at"] = recorded_at.isoformat()
 
+    require_secure_transport(base_url)
     response = requests.post(
         f"{base_url}/api/v2/deployments/{deployment_id}/status/",
         json=body,
         headers={"Authorization": f"Token {token}"},
         timeout=TIMEOUT_SECONDS,
+        # Never follow a redirect while carrying the token: the Authorization header
+        # would travel to the host in the Location response.
+        allow_redirects=False,
     )
     response.raise_for_status()
 
@@ -236,6 +270,25 @@ class TestStationStatusClient(APILiveServerTestCase):
         self.assertEqual(self.deployment.last_status_at, current)
         self.assertEqual(self.deployment.last_status.reported()["status"], "idle")
         self.assertEqual(len(self._history()), 4)
+
+    def test_the_client_refuses_to_send_credentials_in_the_clear(self):
+        """
+        Both calls carry something worth stealing — a password once, a long-lived token
+        every few minutes — so the client refuses plain HTTP to anything but a local
+        server rather than trusting whoever configured it.
+        """
+        insecure = "http://gateway.example.org"
+
+        with self.assertRaises(ValueError):
+            get_auth_token(insecure, self.operator.email, self.password)
+
+        with self.assertRaises(ValueError):
+            report_status(
+                insecure,
+                self.token,
+                self.deployment.pk,
+                status={"device_id": "AW-0001", "software_version": "1.4.0"},
+            )
 
     def test_an_operator_sees_when_each_station_was_last_heard_from(self):
         """
