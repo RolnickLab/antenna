@@ -40,6 +40,7 @@ archived.
 | `planning/celery-queue-split-rollout.md` | Rollout plan for the Celery queue split (`feat/celery-queue-split`) |
 | `planning/2026-05-28-captures-processed-filter-design.md` | Design: captures "Processed / Not processed" filter |
 | `planning/2026-05-28-captures-processed-filter-plan.md` | Implementation plan (checkbox tasks) for the captures processed filter |
+| `planning/2026-09-07-configurable-metadata-fields.md` | Free-form `metadata` JSON object on Deployment & Device (issue #507): why the shape is validated but the contents are not, why it differs from `Project.feature_flags`, detail-vs-list exposure, and what #307 still asks for. Keywords: metadata, JSONField, jsonb, GBIF, deployments, devices |
 
 ## Archive / session snapshots
 
