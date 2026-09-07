@@ -8,7 +8,7 @@ from unittest import mock
 from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import IntegrityError, connection, models
+from django.db import IntegrityError, connection, models, transaction
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
@@ -6597,6 +6597,119 @@ class TestDeviceAndSiteFilters(APITestCase):
             for param in ("deployment__device", "deployment__research_site"):
                 res = self.client.get(f"/api/v2/{endpoint}/?project_id={self.project.pk}&{param}=abc")
                 self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST, f"{endpoint}?{param}=abc")
+
+
+class TestConfigurableMetadataFields(APITestCase):
+    """Free-form ``metadata`` on stations and device types.
+
+    Every project records attributes that Antenna does not model natively: the height a
+    camera was mounted at, a description of the habitat, the make of a light. Deployments
+    and device types each carry a ``metadata`` column for those. Its contents are
+    unconstrained, but its shape is not — it must be a JSON object, so that individual keys
+    stay queryable in Postgres and can be mapped onto a term when records are published.
+
+    These tests pin that an object survives a write and reads back unchanged, that a value
+    which is not an object is refused and leaves the stored value alone, that writing
+    metadata demands exactly the update permission the record already required, and that a
+    record created without metadata holds an empty object rather than null.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Metadata Project")
+        self.deployment = Deployment.objects.create(name="Metadata Deployment", project=self.project)
+        self.device = Device.objects.create(name="Metadata Device", project=self.project)
+
+        self.project_manager = User.objects.create_user(email="metadata_manager@insectai.org")
+        ProjectManager.assign_user(self.project_manager, self.project)
+        self.basic_member = User.objects.create_user(email="metadata_member@insectai.org")
+        BasicMember.assign_user(self.basic_member, self.project)
+
+        # Both models expose metadata on their detail endpoint, which is also the write path.
+        self.endpoints = {
+            "deployment": f"/api/v2/deployments/{self.deployment.pk}/",
+            "device": f"/api/v2/deployments/devices/{self.device.pk}/",
+        }
+
+    def test_metadata_object_round_trips(self):
+        """A nested object written through the API reads back exactly as it was sent."""
+        metadata = {
+            "camera_height_m": 2.5,
+            "habitat": "mixed deciduous woodland",
+            "lamp": {"type": "actinic", "watts": 15},
+            "visits": ["2026-05-01", "2026-06-01"],
+        }
+        self.client.force_authenticate(user=self.project_manager)
+
+        for name, endpoint in self.endpoints.items():
+            response = self.client.patch(endpoint, {"metadata": metadata}, format="json")
+            self.assertEqual(response.status_code, status.HTTP_200_OK, f"{name}: {response.content}")
+            self.assertEqual(response.json()["metadata"], metadata, name)
+
+            # Read it back on a fresh request: nesting, numbers and lists must all survive
+            # the round trip through the database rather than only the write response.
+            read_back = self.client.get(endpoint)
+            self.assertEqual(read_back.status_code, status.HTTP_200_OK, name)
+            self.assertEqual(read_back.json()["metadata"], metadata, name)
+
+    def test_non_object_metadata_is_rejected(self):
+        """An array, string, number or boolean is not metadata, and leaves the record untouched."""
+        self.client.force_authenticate(user=self.project_manager)
+
+        for name, endpoint in self.endpoints.items():
+            for value in ([1, 2, 3], "camera height 2.5m", 42, True):
+                response = self.client.patch(endpoint, {"metadata": value}, format="json")
+                self.assertEqual(
+                    response.status_code,
+                    status.HTTP_400_BAD_REQUEST,
+                    f"{name} accepted {value!r}",
+                )
+                self.assertIn("metadata", response.json(), f"{name} did not blame the metadata field")
+
+        self.deployment.refresh_from_db()
+        self.device.refresh_from_db()
+        self.assertEqual(self.deployment.metadata, {})
+        self.assertEqual(self.device.metadata, {})
+
+    def test_metadata_write_requires_the_records_update_permission(self):
+        """Metadata follows the update permission each record already had, and adds none of its own."""
+        self.client.force_authenticate(user=self.basic_member)
+
+        for name, endpoint in self.endpoints.items():
+            # A basic member may read the record, so the refusal below is about writing.
+            self.assertEqual(self.client.get(endpoint).status_code, status.HTTP_200_OK, name)
+
+            response = self.client.patch(endpoint, {"metadata": {"habitat": "hedgerow"}}, format="json")
+            self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN, name)
+
+        self.deployment.refresh_from_db()
+        self.device.refresh_from_db()
+        self.assertEqual(self.deployment.metadata, {})
+        self.assertEqual(self.device.metadata, {})
+
+    def test_metadata_defaults_to_an_empty_object(self):
+        """A record created without metadata holds an empty object, and null is refused everywhere."""
+        deployment = Deployment.objects.create(name="Station without metadata", project=self.project)
+        device = Device.objects.create(name="Device without metadata", project=self.project)
+        self.assertEqual(deployment.metadata, {})
+        self.assertEqual(device.metadata, {})
+
+        self.client.force_authenticate(user=self.project_manager)
+        fresh_endpoints = {
+            "deployment": f"/api/v2/deployments/{deployment.pk}/",
+            "device": f"/api/v2/deployments/devices/{device.pk}/",
+        }
+        for name, endpoint in fresh_endpoints.items():
+            self.assertEqual(self.client.get(endpoint).json()["metadata"], {}, name)
+
+        for name, endpoint in self.endpoints.items():
+            response = self.client.patch(endpoint, {"metadata": None}, format="json")
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, name)
+
+        # The column refuses null as well, so no code path can leave one behind for a
+        # reader to guard against.
+        for model in (Deployment, Device):
+            with self.assertRaises(IntegrityError, msg=model.__name__), transaction.atomic():
+                model.objects.create(name="Null metadata", project=self.project, metadata=None)
 
 
 class TestDetectionNullMarker(TestCase):
