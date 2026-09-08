@@ -32,6 +32,15 @@ and a published term nothing to map onto, so accepting one would quietly produce
 that no later feature can read. Refusing it at the point of writing keeps every stored
 value queryable.
 
+Refusing an array is a decision, not an oversight. The discussion on issue #307 floated
+modelling metadata as an array of `{title, value}` pairs, and that shape is deliberately
+closed off. An object gives Postgres a key to index and look up, and gives a published
+term something to map onto. An array of pairs gives neither unless the reader already
+knows a private convention for what `title` and `value` mean. Anyone who genuinely needs
+ordered pairs can still hold them in an array *under a key* —
+`{"attributes": [{"title": ..., "value": ...}]}` — which keeps the outer shape queryable
+and loses nothing.
+
 This is a deliberate departure from `Project.feature_flags`, the other JSON column on
 these models' neighbours. That field is a `SchemaField` backed by the pydantic model
 `ProjectFeatureFlags` (`ami/main/models.py`, `ProjectFeatureFlags`, around line 271),
@@ -54,6 +63,13 @@ opposite case — the keys belong to the operator, not to the code — so it is 
   `DeploymentSerializer.Meta.fields` (around line 538) — the exposure.
 - `ami/main/migrations/0096_deployment_metadata_device_metadata.py` — one migration
   adding both columns.
+
+**Known merge step:** three open branches each number their migration `0096` — this one,
+the deployment status heartbeat work, and a model-coverage backfill. Whichever lands
+second and third has to be renumbered onto the new head. Renumbering ahead of time only
+moves the collision, so it is left for merge time. The heartbeat branch also adds columns
+to `Deployment`, so it may merge cleanly against this file while still needing that
+rename; a clean merge is not evidence of a correct one here.
 
 ## Two decisions worth knowing about
 
@@ -103,7 +119,7 @@ endpoint itself.
 
 ## Testing
 
-`ami/main/tests.py`, `TestConfigurableMetadataFields` (around line 6602), six tests
+`ami/main/tests.py`, `TestConfigurableMetadataFields` (around line 6602), seven tests
 covering both models:
 
 1. A nested object containing numbers, strings, a sub-object and an array is written
@@ -115,9 +131,14 @@ covering both models:
 4. A record created without metadata holds `{}`; `null` is refused by the API, and the
    column itself raises `IntegrityError` on a null, so no code path can leave one behind
    for a reader to guard against.
-5. A station update submitted as `multipart/form-data` with metadata as JSON text stores
+5. `null` is refused on both write paths, which reject it by different mechanisms: as
+   JSON it is stopped before the shape check because the field is not nullable, while
+   through the form it arrives as the text `null`, is parsed to `None`, and the shape
+   check refuses it. A change to either mechanism would leave the other looking correct,
+   so both are pinned.
+6. A station update submitted as `multipart/form-data` with metadata as JSON text stores
    an object, asserted by type rather than by value so that a stored string cannot pass.
-6. The same form-encoded path refuses an array, a quoted string, a number, `true`, `null`
+7. The same form-encoded path refuses an array, a quoted string, a number, `true`, `null`
    and text that is not JSON at all, and leaves the stored value untouched.
 
 Run them the way the rest of the suite is run against a worktree, per

@@ -6705,15 +6705,41 @@ class TestConfigurableMetadataFields(APITestCase):
         for name, endpoint in fresh_endpoints.items():
             self.assertEqual(self.client.get(endpoint).json()["metadata"], {}, name)
 
-        for name, endpoint in self.endpoints.items():
-            response = self.client.patch(endpoint, {"metadata": None}, format="json")
-            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, name)
-
         # The column refuses null as well, so no code path can leave one behind for a
         # reader to guard against.
         for model in (Deployment, Device):
             with self.assertRaises(IntegrityError, msg=model.__name__), transaction.atomic():
                 model.objects.create(name="Null metadata", project=self.project, metadata=None)
+
+    def test_null_is_refused_on_both_write_paths(self):
+        """Null is refused whichever way it arrives, by two different mechanisms.
+
+        A client serialiser emitting ``None`` for an absent value is the likeliest way a
+        null reaches this field by accident. Sent as JSON it never gets as far as the
+        shape check, because the field is not nullable and the framework stops it first.
+        Sent through the station form it arrives as the text ``null``, is parsed into
+        ``None``, and the shape check is what refuses it. Both are pinned, because a
+        change to either mechanism would leave the other still looking correct.
+        """
+        self.client.force_authenticate(user=self.project_manager)
+
+        for name, endpoint in self.endpoints.items():
+            response = self.client.patch(endpoint, {"metadata": None}, format="json")
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, name)
+            self.assertIn("metadata", response.json(), name)
+
+        response = self.client.patch(
+            self.endpoints["deployment"],
+            {"metadata": "null"},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.content)
+        self.assertIn("null", str(response.json()["metadata"]).lower())
+
+        self.deployment.refresh_from_db()
+        self.device.refresh_from_db()
+        self.assertEqual(self.deployment.metadata, {})
+        self.assertEqual(self.device.metadata, {})
 
     def test_station_metadata_survives_a_form_encoded_submission(self):
         """A station is edited as a form, so its metadata arrives as JSON text and must be stored as an object.
