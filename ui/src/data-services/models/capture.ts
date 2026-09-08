@@ -6,14 +6,23 @@ export type ServerCapture = any // TODO: Update this type
 
 export type DetectionOccurrence = {
   id: string
+  detections_count: number | null
   determination: {
     name: string
   }
   determination_score: number
+  grouping_verified: boolean
+  grouping_verified_at: string | null
+  grouping_verified_by: string | null
 }
 
 export type CaptureDetection = {
   bbox: number[]
+  /** Frames this detection's occurrence spans, so the toolbar can offer a path or say there is none. */
+  frameCount: number
+  groupingVerified: boolean
+  groupingVerifiedAt: Date | null
+  groupingVerifiedBy: string | null
   id: string
   label: string
   occurrence?: DetectionOccurrence
@@ -65,6 +74,14 @@ export class Capture {
         (detection: any): CaptureDetection => {
           return {
             bbox: detection.bbox,
+            frameCount: detection.occurrence?.detections_count ?? 0,
+            groupingVerified: !!detection.occurrence?.grouping_verified,
+            groupingVerifiedAt: detection.occurrence?.grouping_verified_at
+              ? new Date(detection.occurrence.grouping_verified_at)
+              : null,
+            // Accounts without a display name serialize as an empty string.
+            groupingVerifiedBy:
+              detection.occurrence?.grouping_verified_by || null,
             id: `${detection.id}`,
             label: getDetectionLabel(detection),
             occurrenceId: detection.occurrence

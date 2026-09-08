@@ -1010,6 +1010,11 @@ class TaxonSerializer(DefaultSerializer):
 class CaptureOccurrenceSerializer(DefaultSerializer):
     determination = TaxonNoParentNestedSerializer(read_only=True)
     determination_algorithm = AlgorithmSerializer(read_only=True)
+    # Annotated by the capture viewset's detections prefetch. The session toolbar reads
+    # it to say how many frames an occurrence spans before deciding whether to ask for
+    # its path, so a one-frame occurrence is never offered a fetch that returns nothing.
+    detections_count = serializers.IntegerField(read_only=True)
+    grouping_verified_by = serializers.SerializerMethodField()
 
     class Meta:
         model = Occurrence
@@ -1019,7 +1024,17 @@ class CaptureOccurrenceSerializer(DefaultSerializer):
             "determination",
             "determination_score",
             "determination_algorithm",
+            "detections_count",
+            # Whether a person confirmed this occurrence holds the right detections.
+            # The session view offers to undo a confirmation rather than repeat it, and
+            # can show which occurrences have been checked without a further request.
+            "grouping_verified",
+            "grouping_verified_at",
+            "grouping_verified_by",
         ]
+
+    def get_grouping_verified_by(self, obj: Occurrence) -> str | None:
+        return obj.grouping_verified_by.name if obj.grouping_verified_by else None
 
 
 class ClassificationPredictionItemSerializer(serializers.Serializer):
@@ -1459,11 +1474,17 @@ class OccurrenceListSerializer(DefaultSerializer):
         request: Request = self.context["request"]
         user = request.user
         project = instance.get_project()
+        project_perms = get_perms(user, project)
         permissions = set()
-        if Project.Permissions.CREATE_IDENTIFICATION in get_perms(user, project):
+        if Project.Permissions.CREATE_IDENTIFICATION in project_perms:
             # check if the user has identification permissions on this project,
             # then add  update permission to response
             permissions.add("update")
+        if Project.Permissions.DELETE_OCCURRENCES in project_perms:
+            # Mirrors Occurrence.check_custom_permission: this is the right the track
+            # editing actions are gated on, so the interface can only offer them when
+            # the API would accept them.
+            permissions.add("delete")
 
         instance_data["user_permissions"] = list(permissions)
         return instance_data
@@ -1569,6 +1590,7 @@ class OccurrenceSerializer(OccurrenceListSerializer):
     predictions = ClassificationNestedSerializer(many=True, read_only=True)
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
+    grouping_verified_by = UserNestedSerializer(read_only=True)
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
 
     class Meta:
@@ -1577,6 +1599,11 @@ class OccurrenceSerializer(OccurrenceListSerializer):
             "determination_id",
             "detections",
             "predictions",
+            # Whether a person confirmed this occurrence holds the right detections,
+            # which is a separate judgement from the taxon it was identified as.
+            "grouping_verified",
+            "grouping_verified_at",
+            "grouping_verified_by",
         ]
         read_only_fields = [
             "determination_score",
@@ -2004,3 +2031,79 @@ class ModelAgreementSerializer(serializers.Serializer):
         required=False,
         help_text="agreed_coarser_rank_count / comparable_count. Null when no threshold supplied.",
     )
+
+
+class TrackEditSerializer(serializers.Serializer):
+    """Body for the track edit actions: which detection in the track to act on."""
+
+    detection_id = serializers.IntegerField(
+        help_text="A detection belonging to this occurrence.",
+    )
+
+
+class TrackEditResultSerializer(serializers.Serializer):
+    """What a track edit produced.
+
+    Only identifiers are returned: the caller refetches both occurrences through
+    the list or detail endpoints, which is where the prefetches those serializers
+    require are wired up.
+    """
+
+    occurrence_id = serializers.IntegerField(help_text="The occurrence that was edited.")
+    occurrence_detections_count = serializers.IntegerField(help_text="Detections it has left.")
+    new_occurrence_id = serializers.IntegerField(help_text="The occurrence the detections moved into.")
+    new_occurrence_detections_count = serializers.IntegerField(help_text="Detections it received.")
+
+
+class OccurrenceMergeSerializer(serializers.Serializer):
+    """Body for merging other occurrences into this one."""
+
+    occurrence_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        min_length=1,
+        help_text="Occurrences to fold into this one. They must be in the same session.",
+    )
+
+
+class OccurrenceAddDetectionsSerializer(serializers.Serializer):
+    """Body for moving individual detections into this occurrence."""
+
+    detection_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        min_length=1,
+        help_text="Detections to move into this occurrence, from wherever they are now.",
+    )
+
+
+class OccurrenceGroupingSerializer(serializers.Serializer):
+    """The state of one occurrence after its detections or its verification changed."""
+
+    occurrence_id = serializers.IntegerField()
+    detections_count = serializers.IntegerField()
+    grouping_verified = serializers.BooleanField(
+        help_text="Whether a person has confirmed this occurrence holds the right detections."
+    )
+    grouping_verified_at = serializers.DateTimeField(allow_null=True)
+    grouping_verified_by = serializers.CharField(allow_null=True)
+
+
+class OccurrencePathCaptureSerializer(serializers.Serializer):
+    """The capture one frame of a path was measured against."""
+
+    id = serializers.IntegerField()
+    timestamp = serializers.DateTimeField(allow_null=True)
+    width = serializers.IntegerField(
+        allow_null=True,
+        help_text="Stored pixel width of the capture. A box is measured in this space, "
+        "so drawing it over a different frame requires these dimensions rather than "
+        "those of the frame being viewed.",
+    )
+    height = serializers.IntegerField(allow_null=True)
+
+
+class OccurrencePathFrameSerializer(serializers.Serializer):
+    """One frame of an occurrence's path: a box and the capture it belongs to."""
+
+    detection_id = serializers.IntegerField()
+    bbox = serializers.ListField(child=serializers.FloatField(), allow_null=True)
+    capture = OccurrencePathCaptureSerializer()

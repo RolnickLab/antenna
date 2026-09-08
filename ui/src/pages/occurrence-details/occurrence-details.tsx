@@ -31,6 +31,10 @@ import { MachinePrediction } from './identification-card/machine-prediction'
 import styles from './occurrence-details.module.scss'
 import { StatusLabel } from './status-label/status-label'
 import { SuggestId } from './suggest-id/suggest-id'
+import { FrameActionDialogs } from './track/frame-action-dialogs'
+import { FrameMenu } from './track/frame-menu'
+import { GroupingActions } from './track/grouping-actions'
+import { PendingFrameAction } from './track/types'
 
 export const TABS = {
   FIELDS: 'fields',
@@ -57,7 +61,15 @@ export const OccurrenceDetails = ({
   const navigate = useNavigate()
   const location = useLocation()
   const [suggestIdOpen, setSuggestIdOpen] = useState(false)
+  const [pendingFrameAction, setPendingFrameAction] =
+    useState<PendingFrameAction>()
   const canUpdate = occurrence.userPermissions.includes(UserPermission.Update)
+  // Restructuring a grouping is gated on the occurrence delete right, confirming one
+  // on either right — the same split the API makes. See #1272.
+  const canRestructure = occurrence.userPermissions.includes(
+    UserPermission.Delete
+  )
+  const canVerifyGrouping = canUpdate || canRestructure
 
   const blueprintItems = useMemo(
     () =>
@@ -292,11 +304,44 @@ export const OccurrenceDetails = ({
         </div>
         <div className={styles.blueprintWrapper}>
           <div className={styles.blueprintContainer}>
+            {(canRestructure || canVerifyGrouping) && (
+              <GroupingActions
+                canRestructure={canRestructure}
+                canVerify={canVerifyGrouping}
+                occurrence={occurrence}
+              />
+            )}
             <BlueprintCollection showLicenseInfo={blueprintItems.length > 0}>
-              {blueprintItems.map((item) => (
-                <BlueprintItem key={item.id} item={item} />
+              {blueprintItems.map((item, index) => (
+                <BlueprintItem
+                  actions={
+                    canRestructure ? (
+                      <FrameMenu
+                        isFirstInTime={index === blueprintItems.length - 1}
+                        isOnlyFrame={blueprintItems.length < 2}
+                        onAction={(action) =>
+                          setPendingFrameAction({
+                            action,
+                            captureId: item.captureId,
+                            detectionId: item.id,
+                            movedBySplit: index + 1,
+                            timeLabel: item.timeLabel,
+                            total: blueprintItems.length,
+                          })
+                        }
+                      />
+                    ) : undefined
+                  }
+                  key={item.id}
+                  item={item}
+                />
               ))}
             </BlueprintCollection>
+            <FrameActionDialogs
+              occurrence={occurrence}
+              onClose={() => setPendingFrameAction(undefined)}
+              pending={pendingFrameAction}
+            />
           </div>
         </div>
       </div>

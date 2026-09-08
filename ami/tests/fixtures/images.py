@@ -136,6 +136,8 @@ class GeneratedTestFrame:
     filename: str
     bounding_boxes: list[BoundingBoxWithIdentifier]
     object_store_key: str | None = None
+    # Position of this frame in its series, counting from zero.
+    frame_num: int = 0
 
 
 def generate_moth_series(
@@ -148,12 +150,29 @@ def generate_moth_series(
     minutes_interval_variation: int = 10,
     save_images: bool = True,
     output_dir: str = "generated_test_captures",
+    motion_scale: float | None = None,
+    moth_size_range: tuple[int, int] = (30, 60),
+    min_frames_per_moth: int | None = None,
+    num_transient_moths: int = 0,
 ) -> list[GeneratedTestFrame]:
+    """
+    Draw a series of frames in which the same simulated moths move a little between captures.
+
+    ``motion_scale`` sets how far a moth travels and turns between two frames. Left unset it
+    grows with ``minutes_interval``, which suits captures far enough apart that nothing is
+    expected to stay in place. Occurrence tracking matches on bounding-box overlap, so data
+    meant for tracking wants a small scale (well under 1) and closely-spaced captures.
+
+    ``min_frames_per_moth`` staggers arrivals and departures so each moth is visible for a
+    contiguous run of at least that many frames instead of the whole series.
+    ``num_transient_moths`` adds moths that show up in exactly one frame.
+    """
     background = create_background(width, height)
     moths = []
     image_data = []
 
     num_moths = num_moths or random.randint(2, 8)
+    total_moths = num_moths + num_transient_moths
 
     # pick random day, start at 10pm in the last 10 years
     if beginning_timestamp is None:
@@ -166,18 +185,39 @@ def generate_moth_series(
 
     # Generate unique identifiers
     # identifiers = ["".join(random.choices(string.ascii_uppercase + string.digits, k=2)) for _ in range(num_moths)]
-    # The font is very hard to read, so replace with a simple number repeated 3 times
-    identifiers = [f"{i}{i}{i}" for i in range(num_moths)]
+    # The font is very hard to read, so replace with a simple number repeated 3 times.
+    # Past the tenth moth there is no single digit left to repeat, so fall back to a
+    # zero-padded number, which is still three characters wide.
+    identifiers = [f"{i}{i}{i}" if i < 10 else f"{i:03d}" for i in range(total_moths)]
 
-    # Initialize moths
-    for i in range(num_moths):
-        size = random.randint(30, 60)
+    # Initialize moths. A moth is drawn in frames first_frame..last_frame inclusive;
+    # the ones added after the first num_moths appear in a single frame each.
+    for i in range(total_moths):
+        transient = i >= num_moths
+        size = random.randint(*moth_size_range)
         x = random.randint(size // 2, width - size // 2)
         y = random.randint(size // 2, height - size // 2)
         color = random_base_color()
         rotation = random.uniform(0, 360)
+        if transient:
+            first_frame = last_frame = random.randint(0, num_frames - 1)
+        elif min_frames_per_moth is None:
+            first_frame, last_frame = 0, num_frames - 1
+        else:
+            span = random.randint(min(min_frames_per_moth, num_frames), num_frames)
+            first_frame = random.randint(0, num_frames - span)
+            last_frame = first_frame + span - 1
         moths.append(
-            {"identifier": identifiers[i], "size": size, "x": x, "y": y, "color": color, "rotation": rotation}
+            {
+                "identifier": identifiers[i],
+                "size": size,
+                "x": x,
+                "y": y,
+                "color": color,
+                "rotation": rotation,
+                "first_frame": first_frame,
+                "last_frame": last_frame,
+            }
         )
 
     for frame in range(num_frames):
@@ -189,9 +229,12 @@ def generate_moth_series(
         bounding_boxes = []
 
         for moth in moths:
+            if not moth["first_frame"] <= frame <= moth["last_frame"]:
+                continue
+
             # Update position and rotation
             # Add multiply factor based on interval minutes to make movement more noticeable. min is 1, max is 120.
-            mult_factor = max(minutes_interval / 120, 1) + 2
+            mult_factor = motion_scale if motion_scale is not None else max(minutes_interval / 120, 1) + 2
             # moth["x"] += random.randint(-10, 10)
             # moth["y"] += random.randint(-10, 10)
             # moth["rotation"] += random.uniform(-15, 15)
@@ -226,6 +269,7 @@ def generate_moth_series(
             filename=image_filename,
             bounding_boxes=bounding_boxes,
             image=image,
+            frame_num=frame,
         )
 
         if save_images:

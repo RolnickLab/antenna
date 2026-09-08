@@ -168,6 +168,42 @@ def detection_image_urls_from_prefetch(occurrence: Occurrence, limit: int | None
     return [get_media_url(det.path) for det in detections]
 
 
+def occurrence_path(occurrence: Occurrence) -> list[dict]:
+    """Where this occurrence was in every frame it appears in, earliest first.
+
+    A drawing payload: enough to place each frame's box on any other frame of the
+    same session, and nothing else. The capture's dimensions are the part no other
+    payload carries, and a box cannot be placed without them because it is measured
+    in the pixel space of its own capture, which need not match the one on screen.
+
+    Ordered by the capture's timestamp rather than ``Detection.timestamp``, which is
+    copied from it but is nullable. The two agree wherever the copy has been made,
+    so this is the same order ``split_track`` acts on.
+    """
+    rows = occurrence.detections.order_by("source_image__timestamp", "pk").values(
+        "pk",
+        "bbox",
+        "source_image_id",
+        "source_image__timestamp",
+        "source_image__width",
+        "source_image__height",
+    )
+
+    return [
+        {
+            "detection_id": row["pk"],
+            "bbox": row["bbox"],
+            "capture": {
+                "id": row["source_image_id"],
+                "timestamp": row["source_image__timestamp"],
+                "width": row["source_image__width"],
+                "height": row["source_image__height"],
+            },
+        }
+        for row in rows
+    ]
+
+
 def model_agreement_for_project(
     queryset: QuerySet[Occurrence],
     coarsest_rank: TaxonRank | None = None,

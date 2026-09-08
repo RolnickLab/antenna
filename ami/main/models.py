@@ -11,6 +11,7 @@ import uuid
 from io import BytesIO
 from typing import Final, final  # noqa: F401
 
+import pgvector.django
 import PIL.Image
 import pydantic
 from django.apps import apps
@@ -2987,6 +2988,11 @@ class Classification(BaseModel):
         null=True,
         help_text="The probabilities the model, calibrated by the model maker, likely the softmax output",
     )
+    features_2048 = pgvector.django.VectorField(
+        dimensions=2048,
+        null=True,
+        help_text="Feature embedding from the model backbone",
+    )
     category_map = models.ForeignKey("ml.AlgorithmCategoryMap", on_delete=models.PROTECT, null=True)
 
     algorithm = models.ForeignKey(
@@ -3196,6 +3202,15 @@ class Detection(BaseModel):
     # )
 
     similarity_vector = models.JSONField(null=True, blank=True)
+
+    next_detection = models.OneToOneField(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="previous_detection",
+        help_text="The detection that follows this one in the tracking sequence.",
+    )
 
     # For type hints
     classifications: models.QuerySet["Classification"]
@@ -3419,7 +3434,7 @@ class OccurrenceQuerySet(BaseQuerySet):
         """Add prefetches the detail serializer needs (detections + source_image + classifications)."""
         from ami.main.models_future.occurrence import prefetch_detections_for_detail
 
-        return self.prefetch_related(prefetch_detections_for_detail())
+        return self.select_related("grouping_verified_by").prefetch_related(prefetch_detections_for_detail())
 
     def with_best_detection(self):
         """
@@ -3633,10 +3648,28 @@ class Occurrence(BaseModel):
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     project = models.ForeignKey("Project", on_delete=models.SET_NULL, null=True, related_name="occurrences")
 
+    # Whether a person has confirmed that this occurrence's set of detections is right —
+    # that they are all the same individual and none are missing. Separate from taxon
+    # verification, which is what an Identification records. Confirmed occurrences are the
+    # ground truth the tracking methods are evaluated against, so anything that changes the
+    # detection set must clear this. See #1272.
+    grouping_verified_at = models.DateTimeField(null=True, blank=True)
+    grouping_verified_by = models.ForeignKey(
+        "users.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="verified_occurrence_groupings",
+    )
+
     detections: models.QuerySet[Detection]
     identifications: models.QuerySet[Identification]
 
     objects = OccurrenceManager()
+
+    @property
+    def grouping_verified(self) -> bool:
+        return self.grouping_verified_at is not None
 
     def __str__(self) -> str:
         name = f"Occurrence #{self.pk}"
@@ -3795,6 +3828,23 @@ class Occurrence(BaseModel):
             else:
                 self.save(update_determination=False)
 
+    def check_custom_permission(self, user, action: str) -> bool:
+        # Editing a track moves detections between occurrences and can leave an
+        # occurrence's determination changed, so it is gated on the permission that
+        # already governs restructuring occurrence records rather than on
+        # identification rights.
+        if action in ("split_track", "remove_detection", "merge", "add_detections"):
+            return user.has_perm(Project.Permissions.DELETE_OCCURRENCES, self.get_project())
+        # Confirming a grouping is an expert judgement rather than a restructuring, so
+        # identifying rights are enough — but the roles that restructure occurrences do
+        # not inherit those, and they need to confirm their own corrections.
+        if action in ("verify_grouping", "unverify_grouping"):
+            project = self.get_project()
+            return user.has_perm(Project.Permissions.CREATE_IDENTIFICATION, project) or user.has_perm(
+                Project.Permissions.DELETE_OCCURRENCES, project
+            )
+        return super().check_custom_permission(user, action)
+
     class Meta:
         ordering = ["-determination_score"]
         indexes = [
@@ -3864,9 +3914,17 @@ def update_occurrence_determination(
         new_score = top_identification.score
     elif not top_identification:
         top_prediction = occurrence.best_prediction
-        if top_prediction and top_prediction.taxon and top_prediction.taxon != current_determination:
-            new_determination = top_prediction.taxon
-            new_score = top_prediction.score
+        if top_prediction and top_prediction.taxon:
+            if top_prediction.taxon != current_determination:
+                new_determination = top_prediction.taxon
+                new_score = top_prediction.score
+            elif top_prediction.score != occurrence.determination_score:
+                # Taxon unchanged but a higher-scoring classification has appeared
+                # for the same taxon (e.g. tracking merged a new detection into the
+                # chain whose top species classification scored higher than the
+                # keeper's). Refresh the score so determination_score reflects the
+                # best evidence available across the occurrence's detections.
+                new_score = top_prediction.score
 
     if new_determination and new_determination != current_determination:
         logger.debug(f"Changing det. of {occurrence} from {current_determination} to {new_determination}")
