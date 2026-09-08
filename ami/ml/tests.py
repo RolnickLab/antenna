@@ -1960,6 +1960,26 @@ class TestTaskStateManager(TestCase):
         progress = self.manager.update_state({"img1", "img2"}, "process")
         self.assertIsNone(progress)
 
+    def test_diagnose_missing_state_omits_host_but_connection_target_keeps_it(self):
+        """
+        The public diagnostic must not leak the internal Redis host/port, but the
+        operator-only connection_target() must still carry host:port/db for the
+        server-side cross-host DB-drift diagnosis.
+        """
+        kwargs = self.manager._get_redis().connection_pool.connection_kwargs
+        host = str(kwargs.get("host", ""))
+
+        public = self.manager.diagnose_missing_state()
+        target = self.manager.connection_target()
+
+        # The leak is the host:port connection detail, so assert the host:port pattern is
+        # absent from the public string (not the bare host substring — the public string
+        # legitimately contains the word "redis").
+        if host:
+            self.assertNotIn(f"{host}:", public)
+            self.assertIn(f"{host}:", target)
+        self.assertIn("/db", target)
+
 
 class TestSaveResultsRefreshesDeploymentCounts(TestCase):
     """save_results must refresh Deployment cached counts, not just Event counts.
