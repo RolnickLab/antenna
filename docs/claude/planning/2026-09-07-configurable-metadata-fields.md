@@ -78,9 +78,32 @@ copied onto the serializer field by DRF's `get_field_kwargs`, so the single vali
 the model governs the API write path, the Django admin and any direct `full_clean()`
 alike. There is no separate serializer-level check to keep in step.
 
+## The form-encoded seam, and why the field is left auto-generated
+
+A station is edited through a form submitted as `multipart/form-data`, because the record
+carries a cover image. Multipart has no JSON types, so `metadata` reaches the server as a
+string containing JSON rather than as an object. Storing that string verbatim would look
+like a success at the time and surface much later, when something reads the row back and
+finds text where a mapping should be.
+
+The field is therefore left for `ModelSerializer` to generate from the model, which makes
+it a plain `serializers.JSONField`. That class marks a value taken from form input as a
+JSON string and runs `json.loads` on it, so an object is what reaches the column. Anything
+that overrides how the value is read — a `CharField`, or a subclass with its own
+`get_value` — takes the plain-string branch instead and stores the text. Declaring
+`metadata` explicitly is safe only as `serializers.JSONField`; declaring it as anything
+else silently changes what is stored, which is why it is not declared at all.
+
+The shape rule is enforced on the server rather than in the form. The station form
+refuses a bare array, a quoted string, a number, `true` and `null` before they leave the
+browser, but the Django admin, the browsable API and any other client bypass that form
+entirely. The validator on the model is what makes "an object, or nothing" an invariant
+instead of one client's good manners, and the tests exercise all five shapes against the
+endpoint itself.
+
 ## Testing
 
-`ami/main/tests.py`, `TestConfigurableMetadataFields` (around line 6602), four tests
+`ami/main/tests.py`, `TestConfigurableMetadataFields` (around line 6602), six tests
 covering both models:
 
 1. A nested object containing numbers, strings, a sub-object and an array is written
@@ -92,6 +115,10 @@ covering both models:
 4. A record created without metadata holds `{}`; `null` is refused by the API, and the
    column itself raises `IntegrityError` on a null, so no code path can leave one behind
    for a reader to guard against.
+5. A station update submitted as `multipart/form-data` with metadata as JSON text stores
+   an object, asserted by type rather than by value so that a stored string cannot pass.
+6. The same form-encoded path refuses an array, a quoted string, a number, `true`, `null`
+   and text that is not JSON at all, and leaves the stored value untouched.
 
 Run them the way the rest of the suite is run against a worktree, per
 `docs/claude/reference/worktree-testing.md`:

@@ -1,5 +1,6 @@
 import copy
 import datetime
+import json
 import logging
 import typing
 from io import BytesIO
@@ -6664,6 +6665,9 @@ class TestConfigurableMetadataFields(APITestCase):
                     f"{name} accepted {value!r}",
                 )
                 self.assertIn("metadata", response.json(), f"{name} did not blame the metadata field")
+                # The message has to say what is wrong, because the browsable API and the
+                # Django admin show it to a person with no form validation in front of them.
+                self.assertIn("object", str(response.json()["metadata"]).lower(), name)
 
         self.deployment.refresh_from_db()
         self.device.refresh_from_db()
@@ -6710,6 +6714,57 @@ class TestConfigurableMetadataFields(APITestCase):
         for model in (Deployment, Device):
             with self.assertRaises(IntegrityError, msg=model.__name__), transaction.atomic():
                 model.objects.create(name="Null metadata", project=self.project, metadata=None)
+
+    def test_station_metadata_survives_a_form_encoded_submission(self):
+        """A station is edited as a form, so its metadata arrives as JSON text and must be stored as an object.
+
+        The station form is submitted as multipart because the record carries a cover
+        image, and multipart has no JSON types. The value therefore reaches the serializer
+        as a string of JSON. Storing that string verbatim would look like a success and
+        only surface later, when a reader finds text where a mapping should be.
+        """
+        metadata = {"habitat": "mixed deciduous woodland", "camera_height_m": 2.5}
+        self.client.force_authenticate(user=self.project_manager)
+
+        response = self.client.patch(
+            self.endpoints["deployment"],
+            {"metadata": json.dumps(metadata)},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+
+        self.deployment.refresh_from_db()
+        self.assertIsInstance(self.deployment.metadata, dict)
+        self.assertEqual(self.deployment.metadata, metadata)
+
+    def test_form_encoded_submission_is_held_to_the_same_shape_rule(self):
+        """The shape rule is enforced on the server, not only by the form that usually feeds it.
+
+        The station form refuses these five shapes before they leave the browser, but the
+        Django admin, the browsable API and any other client bypass that form entirely, so
+        each one is checked here against the endpoint itself.
+        """
+        self.client.force_authenticate(user=self.project_manager)
+
+        for value in ("[1, 2, 3]", '"a bare string"', "42", "true", "null"):
+            response = self.client.patch(
+                self.endpoints["deployment"],
+                {"metadata": value},
+                format="multipart",
+            )
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, f"accepted {value}")
+            self.assertIn("metadata", response.json(), f"{value} did not blame the metadata field")
+
+        # Text that is not JSON at all is refused too, rather than being stored as a string.
+        response = self.client.patch(
+            self.endpoints["deployment"],
+            {"metadata": "habitat: woodland"},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.content)
+
+        self.deployment.refresh_from_db()
+        self.assertEqual(self.deployment.metadata, {})
 
 
 class TestDetectionNullMarker(TestCase):
