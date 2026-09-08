@@ -41,6 +41,7 @@ archived.
 | `planning/2026-05-28-captures-processed-filter-design.md` | Design: captures "Processed / Not processed" filter |
 | `planning/2026-05-28-captures-processed-filter-plan.md` | Implementation plan (checkbox tasks) for the captures processed filter |
 | `planning/2026-09-07-configurable-metadata-fields.md` | Free-form `metadata` JSON object on Deployment & Device (issue #507): why the shape is validated but the contents are not, why it differs from `Project.feature_flags`, detail-vs-list exposure, and what #307 still asks for. Keywords: metadata, JSONField, jsonb, GBIF, deployments, devices |
+| `planning/2026-09-07-configurable-metadata-fields-ui.md` | Frontend for issue #507: free-form JSON metadata field on the station and device-type forms. Text-not-object form value, validation helpers in `utils/fieldProcessors.ts`, multipart JSON seam. Keywords: metadata, JSON, forms, deployments, devices |
 
 ## Archive / session snapshots
 

@@ -131,6 +131,7 @@ export enum STRING {
   FIELD_LABEL_LOCATION,
   FIELD_LABEL_LOGS,
   FIELD_LABEL_LONGITUDE,
+  FIELD_LABEL_METADATA,
   FIELD_LABEL_MOST_RECENT,
   FIELD_LABEL_NAME,
   FIELD_LABEL_NEW_PASSWORD,
@@ -203,6 +204,9 @@ export enum STRING {
   MESSAGE_IMAGE_SIZE,
   MESSAGE_IMAGE_TOO_BIG,
   MESSAGE_LEAVE_TEAM_CONFIRM,
+  MESSAGE_METADATA_DESCRIPTION,
+  MESSAGE_METADATA_INVALID,
+  MESSAGE_METADATA_NOT_OBJECT,
   MESSAGE_NO_ACCOUNT_YET,
   MESSAGE_NO_IMAGE,
   MESSAGE_NO_RESULTS_FOR_FILTERING,
@@ -491,6 +495,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_LOCATION]: 'Location',
   [STRING.FIELD_LABEL_LOGS]: 'Logs',
   [STRING.FIELD_LABEL_LONGITUDE]: 'Longitude',
+  [STRING.FIELD_LABEL_METADATA]: 'Metadata',
   [STRING.FIELD_LABEL_MOST_RECENT]: 'Most recent',
   [STRING.FIELD_LABEL_NAME]: 'Name',
   [STRING.FIELD_LABEL_NEW_PASSWORD]: 'New password',
@@ -603,6 +608,12 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_IMAGE_TOO_BIG]: 'Please provide a smaller image',
   [STRING.MESSAGE_LEAVE_TEAM_CONFIRM]:
     'Are you sure you want to leave the team? This is permanent.',
+  [STRING.MESSAGE_METADATA_DESCRIPTION]:
+    'Extra fields for this record, written as JSON. For example: {"habitat": "forest", "elevation_m": 320}. Leave empty if there are none.',
+  [STRING.MESSAGE_METADATA_INVALID]:
+    'This is not valid JSON. Check for a missing quote, comma or bracket.',
+  [STRING.MESSAGE_METADATA_NOT_OBJECT]:
+    'Metadata must be a set of names and values wrapped in curly brackets, for example {"habitat": "forest"}.',
   [STRING.MESSAGE_NO_ACCOUNT_YET]: 'No account yet?',
   [STRING.MESSAGE_NO_IMAGE]: 'No image',
   [STRING.MESSAGE_NO_RESULTS_FOR_FILTERING]:
