@@ -76,6 +76,14 @@ PipelineChoice = typing.Literal[
     "new-pipeline-slug",
 ]
 ```
+## Algorithm and Category Map Registration
+
+Algorithms and their category maps must be registered with Antenna **before** a pipeline processes any images. Registration happens when you register (or re-register) the processing service: Antenna reads the service's `/info` endpoint (`ProcessingServiceInfoResponse`) and creates an `Algorithm` record, and its `AlgorithmCategoryMap`, for every algorithm each pipeline declares there.
+
+Because of this, every algorithm a pipeline uses must appear in the `/info` response for that pipeline. When you add or change an algorithm, update its `algorithm_config_response` (see step 1 above) and re-register the processing service so Antenna picks up the change. Classification algorithms must also include a category map in `/info`; processing an image with a classifier that has no registered category map raises an error.
+
+Antenna deliberately ignores the `algorithms` field on `PipelineResultsResponse` (the per-result algorithm dictionary). That field is deprecated and is only there for backwards compatibility. Registering algorithms exclusively through `/info` avoids near-duplicate `Algorithm` records: results from different runs sometimes report the same algorithm with slightly different names (for example an extra space), and because an algorithm is currently identified by its name and version, each variant would otherwise create a separate record. If a pipeline's results reference an algorithm that was not registered through `/info`, the save step raises an error rather than silently creating one.
+
 ## Demo
 
 ## `minimal` Pipelines and Output Images
