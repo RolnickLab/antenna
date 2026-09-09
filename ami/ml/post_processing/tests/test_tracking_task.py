@@ -151,6 +151,28 @@ class TestTracking(TestCase):
         self.assertFalse(Detection.objects.filter(next_detection=sentinel).exists())
         self.assertLessEqual(Occurrence.objects.filter(event=self.event).count(), occurrences_before)
 
+    def test_a_tracking_run_stores_track_statistics_on_every_occurrence_it_settles(self):
+        """After a run, the merged keeper and every coherent single-frame occurrence in the
+        images carry stored stats, so a re-run also fills in rows from before the fields existed."""
+        tracking_algorithm = Algorithm.objects.create(name="Occurrence Tracking", key="tracking")
+        det_a, det_b, _, _ = self._two_frame_chain(first_score=0.3, second_score=0.9)
+        images = self.source_images[:2]
+        self.assertTrue(
+            Occurrence.objects.filter(detections__source_image__in=images, track_motion__isnull=True).exists()
+        )
+
+        assign_occurrences_from_detection_chains(images, logger, record_as=tracking_algorithm)
+
+        keeper = Occurrence.objects.get(pk=det_a.occurrence_id)
+        self.assertEqual(keeper.detections.count(), 2)
+        self.assertGreaterEqual(keeper.track_motion, 0.0)
+        self.assertGreaterEqual(keeper.track_size_ratio, 1.0)
+        self.assertEqual(keeper.track_distinct_taxa, 2, "The two frames predict different taxa")
+        self.assertTrue(0.0 < keeper.track_id_agreement < 1.0, "The determination matches only some of the labels")
+        settled = Occurrence.objects.filter(detections__source_image__in=images).distinct()
+        self.assertGreater(settled.count(), 1)
+        self.assertFalse(settled.filter(track_motion__isnull=True).exists())
+
     def test_tracking_reproduces_occurrence_groups(self):
         # v1 fresh-data scenario: pipeline already created 1:1 detection/occurrence.
         # Wipe only chain links so tracking has to rebuild them; occurrences stay so

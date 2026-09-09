@@ -1556,8 +1556,10 @@ class OccurrenceListSerializer(DefaultSerializer):
 
     @extend_schema_field(TrackStatsSerializer(allow_null=True))
     def get_track_stats(self, obj: Occurrence) -> dict | None:
-        # Attached by the viewset for the page when ``?with_track_stats=true``; null otherwise.
-        return getattr(obj, "track_stats", None)
+        from ami.main.models_future.track_stats import stored_track_stats
+
+        # Null until tracking, a track edit or the backfill has stored the numbers.
+        return stored_track_stats(obj, frames=obj.detections_count)  # type: ignore[attr-defined]
 
     def get_determination_details(self, obj: Occurrence):
         from ami.main.models_future.occurrence import best_identification_from_prefetch, best_prediction_from_prefetch
@@ -1632,8 +1634,8 @@ class OccurrenceSerializer(OccurrenceListSerializer):
 
     class Meta:
         model = Occurrence
-        # The page-scoped track_stats belong to the list; the detail carries the fuller
-        # grouping_summary instead.
+        # The stored track_stats belong to the list; the detail carries grouping_summary,
+        # computed live from the current detections, instead.
         fields = [name for name in OccurrenceListSerializer.Meta.fields if name != "track_stats"] + [
             "determination_id",
             "detections",
