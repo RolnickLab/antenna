@@ -13,6 +13,7 @@ from ami.ml.post_processing.tracking_task import (
     TrackingConfig,
     TrackingTask,
     assign_occurrences_by_tracking_images,
+    assign_occurrences_from_detection_chains,
     event_is_fresh,
 )
 from ami.tests.fixtures.images import generate_moth_series
@@ -76,6 +77,62 @@ class TestTracking(TestCase):
                     },
                 )
         return algorithm
+
+    def _two_frame_chain(self, first_score: float, second_score: float):
+        """Two singleton occurrences in consecutive captures, linked into one chain, whose
+        frames predict different taxa with the given scores."""
+        taxon_a, taxon_b = list(Taxon.objects.filter(projects=self.project).order_by("pk")[:2])
+        det_a = self.source_images[0].detections.order_by("pk").first()
+        det_b = self.source_images[1].detections.order_by("pk").first()
+        for det, taxon, score in ((det_a, taxon_a, first_score), (det_b, taxon_b, second_score)):
+            occurrence = Occurrence.objects.create(event=self.event, deployment=self.deployment, project=self.project)
+            det.occurrence = occurrence
+            det.next_detection = None
+            det.save()
+            Classification.objects.filter(detection=det).update(taxon=taxon, score=score)
+            occurrence.save()
+        det_a.next_detection = det_b
+        det_a.save()
+        return det_a, det_b, taxon_a, taxon_b
+
+    def test_a_changed_determination_is_recorded_as_a_tracking_classification(self):
+        """When the merge moves the determination to a later frame's prediction, one terminal
+        classification attributed to the tracking algorithm points at that prediction; a
+        second pass over the same chain adds nothing."""
+        tracking_algorithm = Algorithm.objects.create(name="Occurrence Tracking", key="tracking")
+        det_a, det_b, taxon_a, taxon_b = self._two_frame_chain(first_score=0.3, second_score=0.9)
+        assign_occurrences_from_detection_chains(self.source_images[:2], logger, record_as=tracking_algorithm)
+
+        keeper = Occurrence.objects.get(pk=det_a.occurrence_id)
+        self.assertEqual(keeper.determination, taxon_b)
+        recorded = Classification.objects.filter(algorithm=tracking_algorithm)
+        self.assertEqual(recorded.count(), 1)
+        record = recorded.get()
+        self.assertEqual(
+            (record.detection_id, record.taxon, record.score, record.terminal), (det_b.pk, taxon_b, 0.9, True)
+        )
+        # The fixture gives a detection more than one row for the same prediction, so pin the
+        # lineage by content rather than by row identity.
+        self.assertEqual(
+            (record.applied_to.detection_id, record.applied_to.taxon, record.applied_to.score),
+            (det_b.pk, taxon_b, 0.9),
+        )
+        self.assertNotEqual(record.applied_to.algorithm_id, tracking_algorithm.pk)
+
+        assign_occurrences_from_detection_chains(self.source_images[:2], logger, record_as=tracking_algorithm)
+        self.assertEqual(Classification.objects.filter(algorithm=tracking_algorithm).count(), 1)
+
+    def test_an_unchanged_determination_leaves_no_tracking_classification(self):
+        """A merge whose keeper already held the winning prediction records nothing."""
+        tracking_algorithm = Algorithm.objects.create(name="Occurrence Tracking", key="tracking")
+        det_a, det_b, taxon_a, _ = self._two_frame_chain(first_score=0.9, second_score=0.3)
+
+        assign_occurrences_from_detection_chains(self.source_images[:2], logger, record_as=tracking_algorithm)
+
+        keeper = Occurrence.objects.get(pk=det_a.occurrence_id)
+        self.assertEqual(keeper.determination, taxon_a)
+        self.assertEqual(keeper.detections.count(), 2)
+        self.assertFalse(Classification.objects.filter(algorithm=tracking_algorithm).exists())
 
     def test_tracking_reproduces_occurrence_groups(self):
         # v1 fresh-data scenario: pipeline already created 1:1 detection/occurrence.

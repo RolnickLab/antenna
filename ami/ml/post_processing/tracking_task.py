@@ -7,6 +7,7 @@ import numpy as np
 import pydantic
 from django.db import transaction
 from django.db.models import Count
+from django.utils import timezone
 
 from ami.main.models import (
     Classification,
@@ -189,8 +190,31 @@ def get_feature_vector(detection: Detection, algorithm: Algorithm):
     )
 
 
+def record_tracking_determination(occurrence: Occurrence, algorithm: Algorithm) -> Classification | None:
+    """Leave a terminal classification, attributed to the tracking algorithm, when a merge
+    changed the occurrence's determination, so the history shows what tracking decided.
+
+    Mirrors class masking: the row carries the winning prediction and points back at it via
+    ``applied_to``. It copies the merge's best score; a per-track vote is a separate change.
+    """
+    winner = occurrence.best_prediction
+    if winner is None or winner.detection_id is None or winner.taxon_id is None:
+        return None
+    if winner.algorithm_id == algorithm.pk:
+        return None
+    return Classification.objects.create(
+        detection=winner.detection,
+        taxon=winner.taxon,
+        score=winner.score,
+        terminal=True,
+        algorithm=algorithm,
+        timestamp=timezone.now(),
+        applied_to=winner,
+    )
+
+
 def assign_occurrences_from_detection_chains(
-    source_images: list[SourceImage], logger: logging.Logger
+    source_images: list[SourceImage], logger: logging.Logger, record_as: Algorithm | None = None
 ) -> dict[str, int]:
     """
     Walk chains via ``Detection.next_detection`` and consolidate each chain into
@@ -200,6 +224,8 @@ def assign_occurrences_from_detection_chains(
     - Reassign every other detection in the chain to the keeper.
     - Move any identifications off the siblings onto the keeper, then delete them.
     - If no detection in the chain has an occurrence yet, create one.
+    - With ``record_as`` set, a merge that changes the keeper's determination leaves a
+      classification attributed to that algorithm (see ``record_tracking_determination``).
 
     Designed for fresh-event input (1:1 detection/occurrence). v2 incremental tracking
     can reuse this primitive for prepend/append: keeper survives, new detections fold in.
@@ -210,6 +236,7 @@ def assign_occurrences_from_detection_chains(
     created = 0
     merged = 0
     identifications_moved = 0
+    determinations_recorded = 0
     existing = Occurrence.objects.filter(detections__source_image__in=source_images).distinct().count()
 
     for image in source_images:
@@ -244,6 +271,7 @@ def assign_occurrences_from_detection_chains(
                     keeper = d.occurrence
                     break
 
+            previous_determination_id = keeper.determination_id if keeper is not None else None
             if keeper is None:
                 keeper = Occurrence.objects.create(
                     event=chain[0].source_image.event,
@@ -276,6 +304,9 @@ def assign_occurrences_from_detection_chains(
                     logger.error(f"Failed to delete occurrence {occ_id}: {e}")
 
             keeper.save()
+            if record_as is not None and keeper.determination_id != previous_determination_id:
+                if record_tracking_determination(keeper, record_as) is not None:
+                    determinations_recorded += 1
 
     new_count = Occurrence.objects.filter(detections__source_image__in=source_images).distinct().count()
     removed = existing - new_count
@@ -283,6 +314,8 @@ def assign_occurrences_from_detection_chains(
         logger.info(f"Merged {merged} sibling occurrences into chain keepers (net -{removed}).")
     if identifications_moved:
         logger.info(f"Moved {identifications_moved} identification(s) onto chain keepers before merging.")
+    if determinations_recorded:
+        logger.info(f"Recorded {determinations_recorded} determination change(s) as tracking classifications.")
     logger.info(
         f"Materialized {created} new occurrences across {len(source_images)} images. "
         f"Occurrences before: {existing}, after: {new_count}. Detections processed: {len(visited)}."
@@ -293,6 +326,7 @@ def assign_occurrences_from_detection_chains(
         "occurrences_created": created,
         "occurrences_merged": merged,
         "identifications_moved": identifications_moved,
+        "determinations_recorded": determinations_recorded,
     }
 
 
@@ -372,6 +406,7 @@ def assign_occurrences_by_tracking_images(
     algorithm: Algorithm | None,
     config: TrackingConfig,
     progress_cb: typing.Callable[[float], None] | None = None,
+    record_as: Algorithm | None = None,
 ) -> dict[str, int]:
     source_images = list(event.captures.order_by("timestamp"))
     if len(source_images) < 2:
@@ -417,7 +452,7 @@ def assign_occurrences_by_tracking_images(
                 "due to missing image dimensions."
             )
 
-        counters = assign_occurrences_from_detection_chains(source_images, logger)
+        counters = assign_occurrences_from_detection_chains(source_images, logger, record_as=record_as)
 
     counters["links_created"] = links
     return counters
@@ -563,6 +598,7 @@ class TrackingTask(BasePostProcessingTask):
                 logger=self.logger,
                 algorithm=algorithm,
                 config=self.config,
+                record_as=self.algorithm,
                 progress_cb=_stage_progress,
             )
             totals["events_tracked"] += 1
