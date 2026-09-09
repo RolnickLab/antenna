@@ -32,6 +32,11 @@ export class CaptureDetails extends Capture {
     })[0]
   }
 
+  /** Valid detections with a classification that stored a feature embedding; detail endpoint only. */
+  get detectionsWithFeatures(): number | undefined {
+    return this._capture.detections_with_features ?? undefined
+  }
+
   get hasJobInProgress(): boolean {
     return this._jobs.some(
       (job) =>

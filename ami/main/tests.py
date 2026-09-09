@@ -1,6 +1,7 @@
 import copy
 import datetime
 import logging
+import re
 import typing
 from io import BytesIO
 from unittest import mock
@@ -9018,3 +9019,151 @@ class TrackStatsTestCase(APITestCase):
         with cachalot_disabled(), self.assertNumQueries(0):
             summary = grouping_summary_from_prefetch(occurrence, algorithm)
         self.assertEqual(summary["frames"], 3)
+
+
+class FeatureVectorPresenceTestCase(APITestCase):
+    """Whether a feature embedding was stored, told without ever loading the embedding.
+
+    Tracking and merge ranking read the vectors; the review interface only needs to
+    know they exist. These pin that the flag and the two counts come from SQL, that the
+    2048-float column is only ever tested for NULL by the detail endpoints, and that
+    reporting them adds no query.
+    """
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(project=self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=3, interval_minutes=1)
+        self.captures = list(SourceImage.objects.filter(deployment=self.deployment).order_by("timestamp"))
+        self.event = self.captures[0].event
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        taxon = Taxon.objects.filter(projects=self.project).first()
+        assert taxon is not None, "Fixture must provide a taxon to classify with"
+        self.taxon = taxon
+        self.vector = [0.5] * 2048
+
+        self.reader = User.objects.create_user(email="features-reader@insectai.org")  # type: ignore[attr-defined]
+        BasicMember.assign_user(self.reader, self.project)
+        self.client.force_authenticate(user=self.reader)
+        return super().setUp()
+
+    def _make_occurrence(self, frames: list[bool]) -> Occurrence:
+        """One detection per frame, in capture order; True stores a vector on its classification."""
+        occurrence = Occurrence.objects.create(event=self.event, deployment=self.deployment, project=self.project)
+        for capture, with_vector in zip(self.captures, frames):
+            detection = Detection.objects.create(
+                source_image=capture, timestamp=capture.timestamp, bbox=[10, 10, 40, 40], occurrence=occurrence
+            )
+            detection.classifications.create(
+                taxon=self.taxon,
+                score=0.9,
+                timestamp=capture.timestamp,
+                features_2048=self.vector if with_vector else None,
+            )
+        occurrence.save()
+        return occurrence
+
+    def _get(self, url: str) -> tuple[typing.Any, list[dict]]:
+        from cachalot.api import cachalot_disabled
+
+        with cachalot_disabled(), CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, 200, response.data)
+        return response, ctx.captured_queries
+
+    @staticmethod
+    def _reads_the_vector(queries: list[dict]) -> bool:
+        """True if any query touches the embedding column other than to test it for NULL."""
+        sql = "\n".join(query["sql"] for query in queries)
+        return re.search(r'"features_2048"(?! IS NOT NULL)', sql) is not None
+
+    def _occurrence_url(self, occurrence: Occurrence) -> str:
+        return f"/api/v2/occurrences/{occurrence.pk}/?project_id={self.project.pk}"
+
+    def test_occurrence_detail_says_which_classifications_stored_a_vector(self):
+        occurrence = self._make_occurrence([True, False])
+        response, queries = self._get(self._occurrence_url(occurrence))
+
+        by_capture = {
+            detection["capture"]["id"]: [c["has_features"] for c in detection["classifications"]]
+            for detection in response.data["detections"]
+        }
+        self.assertEqual(by_capture, {self.captures[0].pk: [True], self.captures[1].pk: [False]})
+        self.assertCountEqual([p["has_features"] for p in response.data["predictions"]], [True, False])
+        self.assertNotIn("features_2048", response.data["detections"][0]["classifications"][0])
+        self.assertFalse(self._reads_the_vector(queries), "The embedding must never be selected")
+
+    def test_the_flag_costs_no_query(self):
+        """The same detail request runs the same queries whether or not vectors are stored."""
+        from cachalot.api import cachalot_disabled
+
+        occurrence = self._make_occurrence([False, False, False])
+        url = self._occurrence_url(occurrence)
+        self.client.get(url)  # warm up auth and pool state
+        _, without_vectors = self._get(url)
+
+        Classification.objects.filter(detection__occurrence=occurrence).update(features_2048=self.vector)
+        with cachalot_disabled(), self.assertNumQueries(len(without_vectors)) as ctx:
+            response = self.client.get(url)
+        self.assertEqual(
+            [c["has_features"] for d in response.data["detections"] for c in d["classifications"]],
+            [True, True, True],
+        )
+        self.assertFalse(self._reads_the_vector(ctx.captured_queries))
+
+    def test_grouping_summary_counts_the_frames_with_a_vector(self):
+        occurrence = self._make_occurrence([True, True, False])
+        response, _ = self._get(self._occurrence_url(occurrence))
+        self.assertEqual(response.data["grouping_summary"]["frames"], 3)
+        self.assertEqual(response.data["grouping_summary"]["frames_with_vectors"], 2)
+
+    def test_grouping_summary_refuses_an_occurrence_without_the_count(self):
+        """The count comes from the detail queryset; it is never guessed as zero."""
+        from ami.main.models_future.occurrence import prefetch_detections_for_detail
+        from ami.main.models_future.track_stats import grouping_summary_from_prefetch
+
+        occurrence = self._make_occurrence([True])
+        loaded = Occurrence.objects.filter(pk=occurrence.pk).prefetch_related(prefetch_detections_for_detail()).get()
+        with self.assertRaises(RuntimeError):
+            grouping_summary_from_prefetch(loaded, None)
+
+    def test_detection_detail_says_whether_its_classifications_stored_a_vector(self):
+        occurrence = self._make_occurrence([True])
+        detection = occurrence.detections.get()
+        response, queries = self._get(f"/api/v2/detections/{detection.pk}/?project_id={self.project.pk}")
+        self.assertEqual([c["has_features"] for c in response.data["classifications"]], [True])
+        self.assertFalse(self._reads_the_vector(queries))
+
+    def test_capture_detail_counts_the_detections_with_a_vector(self):
+        """A detection counts once however many of its classifications stored a vector,
+        and a null marker never counts."""
+        capture = self.captures[0]
+        occurrence = Occurrence.objects.create(event=self.event, deployment=self.deployment, project=self.project)
+
+        def make_detection(vectors: list[bool], bbox: list[int] | None = [10, 10, 40, 40]) -> None:
+            detection = Detection.objects.create(
+                source_image=capture, timestamp=capture.timestamp, bbox=bbox, occurrence=occurrence
+            )
+            for with_vector in vectors:
+                detection.classifications.create(
+                    taxon=self.taxon,
+                    score=0.9,
+                    timestamp=capture.timestamp,
+                    features_2048=self.vector if with_vector else None,
+                )
+
+        make_detection([True])
+        make_detection([True, True])
+        make_detection([False])
+        make_detection([])
+        make_detection([True], bbox=None)
+        occurrence.save()
+
+        response, queries = self._get(f"/api/v2/captures/{capture.pk}/?project_id={self.project.pk}")
+        self.assertEqual(response.data["detections_with_features"], 2)
+        self.assertFalse(self._reads_the_vector(queries))
+
+        listed, _ = self._get(f"/api/v2/captures/?project_id={self.project.pk}")
+        self.assertNotIn("detections_with_features", listed.data["results"][0], "Counted on the detail only")

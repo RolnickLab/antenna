@@ -14,6 +14,7 @@ export interface ServerGroupingSummary {
   distinct_taxa: number
   duration_seconds: number | null
   frames: number
+  frames_with_vectors?: number
   id_agreement: number | null
   linked_detections: number
   motion: number
@@ -27,6 +28,8 @@ export interface ServerGroupingSummary {
 export interface GroupingSummary extends TrackStats {
   algorithm?: { id: string; key: string; name: string }
   durationSeconds: number | null
+  /** Frames with a classification that stored a feature embedding. */
+  framesWithVectors?: number
   linkedDetections: number
   scoreMax: number
   scoreMean: number
@@ -58,6 +61,8 @@ export interface HumanIdentification extends Identification {
 
 export interface MachinePrediction extends Identification {
   algorithm: Algorithm
+  /** Whether a feature embedding was stored; null when the API did not say. */
+  hasFeatures?: boolean | null
   score: number
   taxon: Taxon
   terminal: boolean
@@ -152,6 +157,7 @@ export class OccurrenceDetails extends Occurrence {
           applied,
           overridden,
           taxon,
+          hasFeatures: p.has_features,
           score: p.score,
           terminal: p.terminal,
           algorithm: p.algorithm,
@@ -221,6 +227,7 @@ export class OccurrenceDetails extends Occurrence {
       distinctTaxa: summary.distinct_taxa,
       durationSeconds: summary.duration_seconds,
       frames: summary.frames,
+      framesWithVectors: summary.frames_with_vectors,
       idAgreement: summary.id_agreement,
       linkedDetections: summary.linked_detections,
       motion: summary.motion,

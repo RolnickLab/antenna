@@ -36,7 +36,12 @@ from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.merge_candidates import DEFAULT_WINDOW_MINUTES, MAX_WINDOW_MINUTES, rank_merge_candidates
-from ami.main.models_future.occurrence import model_agreement_for_project, occurrence_path, top_identifiers_for_project
+from ami.main.models_future.occurrence import (
+    model_agreement_for_project,
+    occurrence_path,
+    prefetch_nested_classifications,
+    top_identifiers_for_project,
+)
 from ami.main.models_future.tracks import (
     TrackEditError,
     add_detections,
@@ -703,6 +708,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             queryset = queryset.prefetch_related("jobs", "collections")
             queryset = self.add_adjacent_captures(queryset)
             queryset = self.annotate_last_processed(queryset)
+            queryset = queryset.with_detections_with_features()  # type: ignore
             with_detections_default = True
 
         with_detections = self.request.query_params.get("with_detections", with_detections_default)
@@ -1226,6 +1232,10 @@ class DetectionViewSet(DefaultViewSet, ProjectMixin):
         project = self.get_active_project()
         if project:
             qs = qs.filter(source_image__project=project)
+        if self.action == "retrieve":
+            # The detail serializer nests classifications; the prefetch the occurrence
+            # detail uses joins their relations and annotates has_features.
+            qs = qs.prefetch_related(prefetch_nested_classifications())
         return qs
 
     @extend_schema(parameters=[project_id_doc_param])

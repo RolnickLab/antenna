@@ -2128,6 +2128,23 @@ class SourceImageQuerySet(BaseQuerySet):
         processed_exists = models.Exists(Detection.objects.filter(source_image_id=models.OuterRef("pk")))
         return self.annotate(was_processed=processed_exists)
 
+    def with_detections_with_features(self):
+        """Annotate ``detections_with_features``: valid detections on the capture with at
+        least one classification that stored a feature embedding. Counted in SQL so the
+        vectors themselves are never loaded.
+        """
+        subquery = (
+            Detection.objects.valid()
+            .filter(source_image_id=models.OuterRef("pk"), classifications__features_2048__isnull=False)
+            .order_by()
+            .values("source_image_id")
+            .annotate(count=models.Count("id", distinct=True))
+            .values("count")
+        )
+        return self.annotate(
+            detections_with_features=Coalesce(models.Subquery(subquery, output_field=models.IntegerField()), 0)
+        )
+
     def with_thumbnails(self):
         """Prefetch ``thumbnails`` so :meth:`SourceImage.thumbnail_urls` decides
         warm/cold in memory instead of firing a SELECT per row.
@@ -2944,6 +2961,17 @@ class ClassificationResult(BaseModel):
 
 
 class ClassificationQuerySet(BaseQuerySet):
+    def with_has_features(self):
+        """Annotate ``has_features`` and defer the embedding itself.
+
+        Read paths only need to know whether a feature vector was stored; deferring the
+        2048-float column keeps it out of the row's SELECT. A select_related self-join
+        (``applied_to``) needs its own ``defer("applied_to__features_2048")``.
+        """
+        return self.defer("features_2048").annotate(
+            has_features=models.ExpressionWrapper(Q(features_2048__isnull=False), output_field=models.BooleanField())
+        )
+
     def find_duplicates(self, project_id: int | None = None) -> models.QuerySet:
         # Find the oldest classification for each unique combination
         if project_id:
@@ -3376,6 +3404,22 @@ class OccurrenceQuerySet(BaseQuerySet):
     def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
 
+    def with_frames_with_vectors(self):
+        """Annotate ``frames_with_vectors``: detections in the occurrence with at least one
+        classification that stored a feature embedding. Counted in SQL so the vectors
+        themselves are never loaded.
+        """
+        subquery = (
+            Detection.objects.filter(occurrence_id=OuterRef("pk"), classifications__features_2048__isnull=False)
+            .order_by()
+            .values("occurrence_id")
+            .annotate(count=models.Count("id", distinct=True))
+            .values("count")
+        )
+        return self.annotate(
+            frames_with_vectors=Coalesce(models.Subquery(subquery, output_field=models.IntegerField()), 0)
+        )
+
     def _processed_by_algorithm_q(self, algorithm_ids) -> Exists:
         """Subquery matching occurrences with any result from the given algorithms —
         a detection made by one (detectors) or a classification from one (classifiers
@@ -3431,10 +3475,15 @@ class OccurrenceQuerySet(BaseQuerySet):
         return self.prefetch_related(prefetch_detections_for_list())
 
     def with_detail_prefetches(self):
-        """Add prefetches the detail serializer needs (detections + source_image + classifications)."""
+        """Add what the detail serializer needs: detections + source_image + classifications
+        prefetched, and the ``frames_with_vectors`` count the grouping summary reports."""
         from ami.main.models_future.occurrence import prefetch_detections_for_detail
 
-        return self.select_related("grouping_verified_by").prefetch_related(prefetch_detections_for_detail())
+        return (
+            self.select_related("grouping_verified_by")
+            .prefetch_related(prefetch_detections_for_detail())
+            .with_frames_with_vectors()
+        )
 
     def with_best_detection(self):
         """
@@ -3809,6 +3858,7 @@ class Occurrence(BaseModel):
         classifications = (
             Classification.objects.filter(detection__occurrence=self)
             .select_related("taxon", "algorithm")
+            .with_has_features()
             .filter(
                 score__in=models.Subquery(
                     Classification.objects.filter(detection__occurrence=self)

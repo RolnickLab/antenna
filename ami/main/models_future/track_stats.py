@@ -334,12 +334,19 @@ def grouping_summary_from_prefetch(occurrence: Occurrence, algorithm: dict | Non
     """Read-time description of how this occurrence's detections hang together.
 
     ``derived`` is a fixed marker: these numbers are computed from the current
-    detections on every read, never stored and never exported. Requires the detail
-    prefetch (detections with classifications and source_image).
+    detections on every read, never stored and never exported. Requires
+    ``OccurrenceQuerySet.with_detail_prefetches()``: the detections with their
+    classifications and source_image, plus the ``frames_with_vectors`` annotation.
     """
     from ami.main.models_future.occurrence import _require_prefetch
 
     _require_prefetch(occurrence, "detections")
+    frames_with_vectors = getattr(occurrence, "frames_with_vectors", None)
+    if frames_with_vectors is None:
+        raise RuntimeError(
+            f"Occurrence {occurrence.pk} is missing the frames_with_vectors annotation. "
+            "Apply OccurrenceQuerySet.with_detail_prefetches() in the viewset's get_queryset()."
+        )
     detections = list(occurrence.detections.all())
     stats = track_stats_from_detections(detections, occurrence.determination_id)
 
@@ -352,6 +359,7 @@ def grouping_summary_from_prefetch(occurrence: Occurrence, algorithm: dict | Non
         "derived": True,
         "algorithm": algorithm,
         "frames": stats["frames"],
+        "frames_with_vectors": frames_with_vectors,
         "linked_detections": sum(1 for d in detections if d.next_detection_id is not None),
         "duration_seconds": duration,
         "motion": stats["motion"],

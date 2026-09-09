@@ -52,18 +52,29 @@ def lca_rank_between(a: TaxonTuple, b: TaxonTuple) -> TaxonRank | None:
     return deepest
 
 
-def _detections_prefetch(*, ordering: tuple[str, ...], with_source_image: bool) -> Prefetch:
-    from ami.main.models import Classification, Detection
+def prefetch_nested_classifications() -> Prefetch:
+    """Classifications as the nested serializers render them.
 
-    qs = Detection.objects.prefetch_related(
-        Prefetch(
-            "classifications",
-            # applied_to__algorithm: post-processed classifications (class masking,
-            # rank rollup) serialize their provenance parent; pull it here so the
-            # nested applied_to render doesn't issue a query per classification.
-            queryset=Classification.objects.select_related("taxon", "algorithm", "applied_to__algorithm"),
-        )
-    ).order_by(*ordering)
+    Joins the taxon, algorithm and provenance parent so no query fires per row, and
+    annotates ``has_features`` in place of the embedding, which is never loaded.
+    """
+    from ami.main.models import Classification
+
+    # Post-processed classifications (class masking, rank rollup) render their
+    # provenance parent, so join it rather than query per row. The parent is a
+    # self-join, so its embedding has to be deferred by name as well.
+    queryset = (
+        Classification.objects.select_related("taxon", "algorithm", "applied_to__algorithm")
+        .defer("applied_to__features_2048")
+        .with_has_features()
+    )
+    return Prefetch("classifications", queryset=queryset)
+
+
+def _detections_prefetch(*, ordering: tuple[str, ...], with_source_image: bool) -> Prefetch:
+    from ami.main.models import Detection
+
+    qs = Detection.objects.prefetch_related(prefetch_nested_classifications()).order_by(*ordering)
     if with_source_image:
         qs = qs.select_related("source_image")
     return Prefetch("detections", queryset=qs)

@@ -1117,6 +1117,14 @@ class ClassificationListSerializer(DefaultSerializer):
 
 
 class ClassificationNestedSerializer(ClassificationSerializer):
+    # Annotated by ClassificationQuerySet.with_has_features(); null when the queryset
+    # did not annotate it. The embedding itself is never serialized.
+    has_features = serializers.BooleanField(
+        read_only=True,
+        allow_null=True,
+        help_text="Whether a feature embedding was stored for this classification.",
+    )
+
     def get_permissions(self, instance, instance_data):
         instance_data["user_permissions"] = []
         return instance_data
@@ -1129,6 +1137,7 @@ class ClassificationNestedSerializer(ClassificationSerializer):
             "taxon",
             "score",
             "terminal",
+            "has_features",
             "algorithm",
             "applied_to",
             "created_at",
@@ -1282,6 +1291,12 @@ class SourceImageSerializer(SourceImageListSerializer):
     uploaded_by = serializers.PrimaryKeyRelatedField(read_only=True)
     jobs = JobStatusSerializer(many=True, read_only=True)
     collections = SourceImageCollectionNestedSerializer(many=True, read_only=True)
+    # Annotated by SourceImageQuerySet.with_detections_with_features() on the detail
+    # queryset only; the key is omitted wherever it is not annotated.
+    detections_with_features = serializers.IntegerField(
+        read_only=True,
+        help_text="Valid detections with at least one classification that stored a feature embedding.",
+    )
     # file = serializers.ImageField(allow_empty_file=False, use_url=True)
 
     class Meta:
@@ -1291,6 +1306,7 @@ class SourceImageSerializer(SourceImageListSerializer):
             "test_image",
             "jobs",
             "collections",
+            "detections_with_features",
             "event_next_capture_id",
             "event_prev_capture_id",
             "event_current_capture_index",
@@ -1480,6 +1496,7 @@ class GroupingSummarySerializer(TrackStatsSerializer):
 
     derived = serializers.BooleanField()
     algorithm = TrackingAlgorithmSerializer(allow_null=True)
+    frames_with_vectors = serializers.IntegerField()
     linked_detections = serializers.IntegerField()
     duration_seconds = serializers.FloatField(allow_null=True)
     score_min = serializers.FloatField(allow_null=True)
