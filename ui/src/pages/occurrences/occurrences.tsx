@@ -66,16 +66,11 @@ export const Occurrences = () => {
   })
   const { pagination, setPage } = usePagination()
   const { activeFilters, filters } = useFilters()
-  const trackStatsColumnVisible =
-    !!columnSettings.motion ||
-    !!columnSettings['size-change'] ||
-    !!columnSettings['id-agreement']
   const { occurrences, total, isLoading, isFetching, error } = useOccurrences({
     projectId,
     pagination,
     sort,
     filters,
-    withTrackStats: trackStatsColumnVisible, // Only fetch track stats when a column shows them
   })
   const [_selectedItems, setSelectedItems] = useState<string[]>([])
   const selectedItems = _selectedItems.filter((id) =>

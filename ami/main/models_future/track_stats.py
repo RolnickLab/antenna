@@ -1,10 +1,12 @@
 """Per-occurrence track statistics: how far a tracked insect moved, how much its box
 changed, and how consistently it was labelled.
 
-Two readers share one set of definitions. The list endpoint computes them in SQL over
-the ids of a single page, because a project-wide annotation aggregates every row before
-LIMIT applies. The detail endpoint computes the same numbers in Python from the
-detections it has already prefetched.
+One set of definitions, two homes. Four of the numbers are stored on the occurrence row
+(``Occurrence.track_*``) so the list endpoint can sort by them; ``refresh_track_stats``
+recomputes them in SQL whenever tracking or a track edit changes which detections an
+occurrence holds, and ``backfill_track_stats`` fills in rows from before the fields
+existed. The detail endpoint computes the same numbers live, in Python, from the
+detections it has already prefetched, so its card always describes the current row.
 
 Definitions:
 - ``frames``: detections in the occurrence.
@@ -35,6 +37,14 @@ if TYPE_CHECKING:
     from ami.main.models import Detection, Occurrence
 
 TRACK_STATS_KEYS = ("frames", "motion", "size_ratio", "distinct_taxa", "id_agreement")
+
+# The stored subset, in the order the Occurrence fields are declared. ``frames`` is not
+# stored: the list already annotates ``detections_count``.
+TRACK_STAT_FIELDS = ("track_motion", "track_size_ratio", "track_distinct_taxa", "track_id_agreement")
+
+# Ids per statement when refreshing many rows; keeps the ``ANY(%s)`` arrays and the
+# CASE expression ``bulk_update`` builds to a size Postgres plans quickly.
+REFRESH_BATCH_SIZE = 500
 
 _MIN_AREA = 1.0
 _ROUND_TO = 4
@@ -212,8 +222,9 @@ GROUP BY d.occurrence_id
 def track_stats_for_occurrences(occurrence_ids: list[int]) -> dict[int, dict]:
     """Stats keyed by occurrence id, in two statements scoped to the ids given.
 
-    Occurrences with no detections are absent from the result. Pass one page of ids;
-    the cost is proportional to the detections behind them, not to the project.
+    Occurrences with no detections are absent from the result. The cost is proportional
+    to the detections behind the ids, not to the project, so keep a call to a page or a
+    refresh batch of ids.
     """
     from ami.main.models import Classification, Detection, Occurrence, SourceImage
 
@@ -251,6 +262,64 @@ def track_stats_for_occurrences(occurrence_ids: list[int]) -> dict[int, dict]:
                 stats[pk]["id_agreement"] = id_agreement(agreeing, terminal_count)
 
     return stats
+
+
+def stored_track_stats(occurrence: Occurrence, frames: int) -> dict | None:
+    """The list payload, read from the stored fields; None until they have been computed.
+
+    ``track_motion`` is never null once stored (a single frame scores 0.0), so it stands
+    in for all four. ``frames`` comes from the caller's ``detections_count`` annotation.
+    """
+    if occurrence.track_motion is None:
+        return None
+    return {
+        "frames": frames,
+        "motion": occurrence.track_motion,
+        "size_ratio": occurrence.track_size_ratio,
+        "distinct_taxa": occurrence.track_distinct_taxa,
+        "id_agreement": occurrence.track_id_agreement,
+    }
+
+
+def _apply_stats(occurrence: Occurrence, stats: dict | None) -> None:
+    occurrence.track_motion = stats["motion"] if stats else None
+    occurrence.track_size_ratio = stats["size_ratio"] if stats else None
+    occurrence.track_distinct_taxa = stats["distinct_taxa"] if stats else None
+    occurrence.track_id_agreement = stats["id_agreement"] if stats else None
+
+
+def refresh_track_stats(*occurrences: Occurrence) -> None:
+    """Recompute the stored stats for these occurrences from their current detections.
+
+    Three queries however many occurrences are given: the two statements of
+    ``track_stats_for_occurrences`` and one ``bulk_update``. The instances are updated in
+    place as well as the rows. An occurrence with no detections is set back to null.
+    Call after the determination is settled, since ``id_agreement`` is measured against
+    it, and without going through ``Occurrence.save()``, which would recompute it.
+    """
+    from ami.main.models import Occurrence
+
+    targets = [occurrence for occurrence in occurrences if occurrence.pk is not None]
+    if not targets:
+        return
+    stats = track_stats_for_occurrences([occurrence.pk for occurrence in targets])
+    for occurrence in targets:
+        _apply_stats(occurrence, stats.get(occurrence.pk))
+    Occurrence.objects.bulk_update(targets, TRACK_STAT_FIELDS)
+
+
+def refresh_track_stats_for_ids(occurrence_ids: Iterable[int]) -> int:
+    """Refresh stored stats by id, in batches of ``REFRESH_BATCH_SIZE``; returns the count.
+
+    Writes through ``bulk_update`` so ``updated_at`` is left alone: the list sorts by it
+    by default, and a backfill must not reorder every occurrence in a project.
+    """
+    from ami.main.models import Occurrence
+
+    ids = list(occurrence_ids)
+    for start in range(0, len(ids), REFRESH_BATCH_SIZE):
+        refresh_track_stats(*(Occurrence(pk=pk) for pk in ids[start : start + REFRESH_BATCH_SIZE]))
+    return len(ids)
 
 
 def tracking_algorithm_summary() -> dict | None:

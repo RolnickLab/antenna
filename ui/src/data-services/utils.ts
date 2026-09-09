@@ -35,9 +35,6 @@ export const getFetchUrl = ({
   if (params?.withCounts) {
     queryParams.with_counts = String(true)
   }
-  if (params?.withTrackStats) {
-    queryParams.with_track_stats = String(true)
-  }
 
   const baseUrl = `${API_URL}/${collection}`
   const queryString = new URLSearchParams(queryParams).toString()

@@ -14,12 +14,15 @@ what the occurrence view shows, and repair the chain links to match. That means
 they behave sensibly on occurrences that were never tracked and so carry no
 links at all.
 
-Two invariants hold after every operation here:
+Three invariants hold after every operation here:
 
 - A chain link never crosses an occurrence boundary. Otherwise a later tracking
   pass would walk the chain, decide both occurrences are one, and undo the edit.
 - An edit that changes which detections an occurrence holds clears its grouping
   verification. A person confirmed the set they were shown, not a later one.
+- The stored track statistics of every surviving occurrence the edit touched are
+  recomputed, so the list sorts on current numbers. This costs three queries per
+  edit however many occurrences it touched (see ``track_stats.refresh_track_stats``).
 """
 
 from __future__ import annotations
@@ -30,6 +33,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from ami.main.models import Detection, Identification, Occurrence, User
+from ami.main.models_future.track_stats import refresh_track_stats
 
 
 class TrackEditError(ValueError):
@@ -86,6 +90,7 @@ def split_track(occurrence: Occurrence, detection: Detection) -> Occurrence:
     _clear_verification(occurrence, new_occurrence)
     occurrence.save()
     new_occurrence.save()
+    refresh_track_stats(occurrence, new_occurrence)
     return new_occurrence
 
 
@@ -130,6 +135,7 @@ def detach_detection(occurrence: Occurrence, detection: Detection) -> Occurrence
     _clear_verification(occurrence, new_occurrence)
     occurrence.save()
     new_occurrence.save()
+    refresh_track_stats(occurrence, new_occurrence)
     return new_occurrence
 
 
@@ -205,6 +211,7 @@ def merge_occurrences(target: Occurrence, sources: Iterable[Occurrence]) -> Occu
     _cut_links_leaving(target)
     _clear_verification(target)
     target.save()
+    refresh_track_stats(target)
     return target
 
 
@@ -244,6 +251,7 @@ def add_detections(target: Occurrence, detections: Iterable[Detection]) -> Occur
 
     _clear_verification(target, *remaining)
     target.save()
+    refresh_track_stats(target, *remaining)
     return target
 
 

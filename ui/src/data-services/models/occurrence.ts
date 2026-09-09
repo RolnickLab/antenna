@@ -183,7 +183,7 @@ export class Occurrence {
     })
   }
 
-  /** Present only when the list was requested with track stats. */
+  /** Undefined until tracking, a track edit or a backfill has stored them. */
   get trackStats(): TrackStats | undefined {
     return this._trackStats
   }

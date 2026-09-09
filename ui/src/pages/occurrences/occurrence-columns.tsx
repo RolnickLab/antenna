@@ -165,6 +165,7 @@ export const columns = ({
   {
     id: 'motion',
     name: translate(STRING.FIELD_LABEL_MOTION),
+    sortField: 'track_motion',
     renderCell: (item: Occurrence) => (
       <BasicTableCell
         value={item.motionLabel ?? translate(STRING.VALUE_NOT_AVAILABLE)}
@@ -174,6 +175,7 @@ export const columns = ({
   {
     id: 'size-change',
     name: translate(STRING.FIELD_LABEL_SIZE_CHANGE),
+    sortField: 'track_size_ratio',
     renderCell: (item: Occurrence) => (
       <BasicTableCell
         value={item.sizeChangeLabel ?? translate(STRING.VALUE_NOT_AVAILABLE)}
@@ -183,6 +185,7 @@ export const columns = ({
   {
     id: 'id-agreement',
     name: translate(STRING.FIELD_LABEL_ID_AGREEMENT),
+    sortField: 'track_id_agreement',
     renderCell: (item: Occurrence) => (
       <BasicTableCell
         value={item.idAgreementLabel ?? translate(STRING.VALUE_NOT_AVAILABLE)}

@@ -18,6 +18,7 @@ from ami.main.models import (
     SourceImage,
     SourceImageCollection,
 )
+from ami.main.models_future.track_stats import refresh_track_stats_for_ids
 from ami.ml.models import Algorithm
 from ami.ml.post_processing.base import BasePostProcessingTask
 
@@ -226,6 +227,8 @@ def assign_occurrences_from_detection_chains(
     - If no detection in the chain has an occurrence yet, create one.
     - With ``record_as`` set, a merge that changes the keeper's determination leaves a
       classification attributed to that algorithm (see ``record_tracking_determination``).
+    - Store the track statistics of every occurrence the chains settle on, so the list
+      can sort by them (see ``track_stats.refresh_track_stats_for_ids``).
 
     Designed for fresh-event input (1:1 detection/occurrence). v2 incremental tracking
     can reuse this primitive for prepend/append: keeper survives, new detections fold in.
@@ -233,6 +236,7 @@ def assign_occurrences_from_detection_chains(
     Returns counters for the caller's stage metrics.
     """
     visited: set[int] = set()
+    settled: set[int] = set()
     created = 0
     merged = 0
     identifications_moved = 0
@@ -260,8 +264,11 @@ def assign_occurrences_from_detection_chains(
             old_occ_ids = {d.occurrence_id for d in chain if d.occurrence_id}
             all_assigned = all(d.occurrence_id is not None for d in chain)
 
-            # Coherent: every detection assigned and all share one occurrence. Nothing to do.
+            # Coherent: every detection assigned and all share one occurrence. Nothing to
+            # change, but it still gets its stats stored below, so a re-run fills in
+            # occurrences that were tracked before the stored fields existed.
             if len(old_occ_ids) == 1 and all_assigned:
+                settled.update(old_occ_ids)
                 continue
 
             # Pick keeper: first existing occurrence in chain order.
@@ -307,6 +314,11 @@ def assign_occurrences_from_detection_chains(
             if record_as is not None and keeper.determination_id != previous_determination_id:
                 if record_tracking_determination(keeper, record_as) is not None:
                     determinations_recorded += 1
+            settled.add(keeper.pk)
+
+    # Stored once every determination is settled, since id_agreement is measured against
+    # it, and in batches for the whole event rather than three queries per chain.
+    stats_stored = refresh_track_stats_for_ids(settled)
 
     new_count = Occurrence.objects.filter(detections__source_image__in=source_images).distinct().count()
     removed = existing - new_count
@@ -318,7 +330,8 @@ def assign_occurrences_from_detection_chains(
         logger.info(f"Recorded {determinations_recorded} determination change(s) as tracking classifications.")
     logger.info(
         f"Materialized {created} new occurrences across {len(source_images)} images. "
-        f"Occurrences before: {existing}, after: {new_count}. Detections processed: {len(visited)}."
+        f"Occurrences before: {existing}, after: {new_count}. Detections processed: {len(visited)}. "
+        f"Track statistics stored for {stats_stored} occurrences."
     )
     return {
         "occurrences_before": existing,

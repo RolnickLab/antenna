@@ -3662,6 +3662,30 @@ class Occurrence(BaseModel):
         related_name="verified_occurrence_groupings",
     )
 
+    # Track statistics stored so the occurrence list can sort by them. Written by
+    # ``models_future.track_stats.refresh_track_stats`` whenever tracking or a track edit
+    # changes which detections an occurrence holds; null until then, or when it has none.
+    track_motion = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Path length between frames as a fraction of the frame diagonal. See models_future/track_stats.py.",
+    )
+    track_size_ratio = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Largest box area over the smallest. See models_future/track_stats.py.",
+    )
+    track_distinct_taxa = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Distinct taxa among terminal classifications. See models_future/track_stats.py.",
+    )
+    track_id_agreement = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Share of terminal classifications naming the determination. See models_future/track_stats.py.",
+    )
+
     detections: models.QuerySet[Detection]
     identifications: models.QuerySet[Identification]
 

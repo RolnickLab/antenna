@@ -8535,10 +8535,11 @@ class OccurrenceGroupingTestCase(TrackEditTestCase):
 class TrackStatsTestCase(APITestCase):
     """Track statistics the review interface sorts and filters by.
 
-    They are derived on read so they always describe the current detections. What
-    these pin is that the numbers follow the documented definitions, that a page
-    costs a fixed number of extra queries however many rows it holds, and that the
-    option cannot widen who sees an occurrence.
+    Four of them are stored on the occurrence row so the list can sort by them; the
+    detail recomputes all of them on read. What these pin is that the stored numbers
+    follow the documented definitions, that tracking and every track edit store them
+    for the occurrences they touch, that the list sorts by them at no extra cost per
+    page, and that the detail always describes the current detections.
     """
 
     FRAME_WIDTH = 300
@@ -8563,20 +8564,33 @@ class TrackStatsTestCase(APITestCase):
         self.client.force_authenticate(user=self.reader)
 
         # Centres (5,5) -> (35,45) -> (65,85): two steps of 50 px over a 500 px diagonal.
-        # Areas 100, 100, 400. Terminal labels A, A, B plus a non-terminal C to ignore.
+        # Areas 100, 100, 400. Terminal labels A, A, B plus a non-terminal C to ignore. C
+        # scores below every terminal label so it never becomes the determination when an
+        # edit saves the occurrence: predictions() keeps only each algorithm's top score.
         self.track = self._make_occurrence(
             [
                 ([0, 0, 10, 10], [(self.taxon_a, 0.9, True)]),
                 ([30, 40, 40, 50], [(self.taxon_a, 0.85, True)]),
-                ([55, 75, 75, 95], [(self.taxon_b, 0.8, True), (self.taxon_c, 0.95, False)]),
+                ([55, 75, 75, 95], [(self.taxon_b, 0.8, True), (self.taxon_c, 0.5, False)]),
             ],
             link=True,
         )
         self.singleton = self._make_occurrence([([10, 10, 20, 20], [(self.taxon_a, 0.7, True)])])
-        self.other_singleton = self._make_occurrence([([100, 100, 130, 120], [(self.taxon_b, 0.6, True)])])
+        # Centres (115,110) -> (145,150): one step of 50 px, so its motion of 0.1 sits
+        # between the track's 0.2 and the singleton's 0.0 for the ordering tests.
+        self.other_track = self._make_occurrence(
+            [
+                ([100, 100, 130, 120], [(self.taxon_b, 0.6, True)]),
+                ([130, 140, 160, 160], [(self.taxon_b, 0.6, True)]),
+            ]
+        )
         return super().setUp()
 
-    def _make_occurrence(self, frames: list[tuple[list[int], list[tuple[Taxon, float, bool]]]], link=False):
+    def _make_occurrence(
+        self, frames: list[tuple[list[int], list[tuple[Taxon, float, bool]]]], link=False, store=True
+    ) -> Occurrence:
+        from ami.main.models_future.track_stats import refresh_track_stats
+
         occurrence = Occurrence.objects.create(event=self.event, deployment=self.deployment, project=self.project)
         detections = []
         for capture, (bbox, labels) in zip(self.captures, frames):
@@ -8596,7 +8610,15 @@ class TrackStatsTestCase(APITestCase):
         # Pin the determination the agreement is measured against, independent of how
         # save() picks one.
         Occurrence.objects.filter(pk=occurrence.pk).update(determination=self.taxon_a, determination_score=0.9)
+        if store:
+            refresh_track_stats(occurrence)
         return occurrence
+
+    def _stored(self, occurrence: Occurrence) -> dict:
+        """The four stored fields as the database holds them now."""
+        from ami.main.models_future.track_stats import TRACK_STAT_FIELDS
+
+        return Occurrence.objects.filter(pk=occurrence.pk).values(*TRACK_STAT_FIELDS).get()
 
     def _list_url(self, **params) -> str:
         query = "".join(f"&{key}={value}" for key, value in params.items())
@@ -8607,17 +8629,13 @@ class TrackStatsTestCase(APITestCase):
         self.assertEqual(response.status_code, 200, response.data)
         return {row["id"]: row for row in response.data["results"]}
 
-    def _list_query_count(self, **params) -> int:
-        # Inside a test transaction cachalot answers repeat queries from a per-transaction
-        # layer that clearing the cache backend does not reach, so measure with it off.
-        from cachalot.api import cachalot_disabled
+    def _list_order(self, ordering: str) -> list[int]:
+        response = self.client.get(self._list_url(ordering=ordering))
+        self.assertEqual(response.status_code, 200, response.data)
+        return [row["id"] for row in response.data["results"]]
 
-        with cachalot_disabled(), CaptureQueriesContext(connection) as ctx:
-            self._list_rows(**params)
-        return len(ctx.captured_queries)
-
-    def test_stats_follow_the_documented_definitions(self):
-        rows = self._list_rows(with_track_stats="true")
+    def test_stored_stats_follow_the_documented_definitions(self):
+        rows = self._list_rows()
 
         stats = rows[self.track.pk]["track_stats"]
         self.assertEqual(set(stats), {"frames", "motion", "size_ratio", "distinct_taxa", "id_agreement"})
@@ -8632,39 +8650,155 @@ class TrackStatsTestCase(APITestCase):
             {"frames": 1, "motion": 0.0, "size_ratio": 1.0, "distinct_taxa": 1, "id_agreement": 1.0},
         )
 
-    def test_stats_are_absent_unless_asked_for(self):
-        rows = self._list_rows()
-        self.assertGreaterEqual(len(rows), 3, "A one-row page cannot show a per-row cost")
-        self.assertTrue(all(row["track_stats"] is None for row in rows.values()))
+    def test_stats_are_null_until_something_stores_them(self):
+        unstored = self._make_occurrence([([50, 50, 60, 60], [(self.taxon_a, 0.5, True)])], store=False)
+        self.assertEqual(set(self._stored(unstored).values()), {None})
+        self.assertIsNone(self._list_rows()[unstored.pk]["track_stats"])
 
-    def test_stats_cost_a_fixed_number_of_queries_per_page(self):
-        """Two statements per page, whatever the page holds.
-
-        Measured against the same multi-row page without the option, so a per-row
-        query would show up as more than two.
-        """
+    def _list_query_count(self, stats_stored: bool) -> int:
+        # Inside a test transaction cachalot answers repeat queries from a per-transaction
+        # layer that clearing the cache backend does not reach, so measure with it off.
         from cachalot.api import cachalot_disabled
 
-        self.assertGreaterEqual(Occurrence.objects.filter(project=self.project).count(), 3)
-        without = self._list_query_count()
-        with_stats = self._list_query_count(with_track_stats="true")
-        print(f"\n[AUDIT] Occurrence list: without track stats -> {without}q, with -> {with_stats}q")
-        self.assertEqual(with_stats, without + 2)
+        with cachalot_disabled(), CaptureQueriesContext(connection) as ctx:
+            rows = self._list_rows()
+        self.assertEqual(len(rows), 3, "A one-row page cannot show a per-row cost")
+        self.assertTrue(all((row["track_stats"] is not None) is stats_stored for row in rows.values()))
+        return len(ctx.captured_queries)
 
-        with cachalot_disabled(), self.assertNumQueries(without + 2):
-            response = self.client.get(self._list_url(with_track_stats="true"))
-        self.assertEqual(response.status_code, 200, response.data)
-        self.assertEqual(len(response.data["results"]), 3)
+    def test_stored_stats_add_no_query_to_a_page(self):
+        """The stats are columns on the rows a page already reads, so the page costs the
+        same whether they are stored or still null. Measured against the same page with
+        the stats cleared, so the list's own per-row cost does not decide the outcome.
+        """
+        from ami.main.models_future.track_stats import TRACK_STAT_FIELDS
 
-    def test_junk_is_rejected(self):
-        response = self.client.get(self._list_url(with_track_stats="abc"))
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("with_track_stats", response.data)
+        self._list_rows()  # warm process-level caches so both measurements start equal
+        with_stats = self._list_query_count(stats_stored=True)
+        Occurrence.objects.filter(project=self.project).update(**{field: None for field in TRACK_STAT_FIELDS})
+        without = self._list_query_count(stats_stored=False)
+        self.assertEqual(with_stats, without)
+
+    def test_the_list_sorts_by_the_stored_stats_with_unstored_rows_last(self):
+        unstored = self._make_occurrence([([50, 50, 60, 60], [(self.taxon_a, 0.5, True)])], store=False)
+
+        self.assertEqual(
+            self._list_order("-track_motion"),
+            [self.track.pk, self.other_track.pk, self.singleton.pk, unstored.pk],
+        )
+        self.assertEqual(
+            self._list_order("track_motion"),
+            [self.singleton.pk, self.other_track.pk, self.track.pk, unstored.pk],
+        )
+        # The other three are accepted too: an unknown ordering field is silently ignored
+        # by the filter backend, which would leave the default order in place.
+        self.assertEqual(
+            self._list_order("-track_id_agreement"),
+            [self.singleton.pk, self.track.pk, self.other_track.pk, unstored.pk],
+        )
+        for field in ("-track_size_ratio", "-track_distinct_taxa"):
+            order = self._list_order(field)
+            self.assertEqual(order[0], self.track.pk, field)
+            self.assertEqual(order[-1], unstored.pk, field)
+
+    def test_splitting_stores_stats_for_both_halves(self):
+        from ami.main.models_future.tracks import split_track
+
+        frames = list(self.track.detections.order_by("timestamp", "pk"))
+        tail = split_track(self.track, frames[1])
+
+        self.assertEqual(
+            self._stored(self.track),
+            {"track_motion": 0.0, "track_size_ratio": 1.0, "track_distinct_taxa": 1, "track_id_agreement": 1.0},
+        )
+        # The tail's determination is its best terminal prediction, A at 0.85, so one of
+        # its two terminal labels agrees.
+        self.assertEqual(
+            self._stored(tail),
+            {"track_motion": 0.1, "track_size_ratio": 4.0, "track_distinct_taxa": 2, "track_id_agreement": 0.5},
+        )
+        self.assertEqual(tail.track_motion, 0.1, "The instance the edit returns carries the stored numbers")
+
+    def test_detaching_a_frame_stores_stats_for_both_occurrences(self):
+        from ami.main.models_future.tracks import detach_detection
+
+        frames = list(self.track.detections.order_by("timestamp", "pk"))
+        detached = detach_detection(self.track, frames[1])
+
+        # (5,5) -> (65,85) is one step of 100 px; areas 100 and 400; labels A and B.
+        self.assertEqual(
+            self._stored(self.track),
+            {"track_motion": 0.2, "track_size_ratio": 4.0, "track_distinct_taxa": 2, "track_id_agreement": 0.5},
+        )
+        self.assertEqual(
+            self._stored(detached),
+            {"track_motion": 0.0, "track_size_ratio": 1.0, "track_distinct_taxa": 1, "track_id_agreement": 1.0},
+        )
+
+    def test_merging_stores_stats_for_the_survivor(self):
+        import math
+
+        from ami.main.models_future.tracks import merge_occurrences
+
+        merge_occurrences(self.track, [self.singleton])
+
+        # The singleton's frame shares the first capture and sorts after the track's own
+        # by id: (5,5) -> (15,15) -> (35,45) -> (65,85). Labels A, A, A, B.
+        stored = self._stored(self.track)
+        self.assertAlmostEqual(stored["track_motion"], (math.hypot(10, 10) + math.hypot(20, 30) + 50) / 500, places=4)
+        self.assertEqual(stored["track_size_ratio"], 4.0)
+        self.assertEqual(stored["track_distinct_taxa"], 2)
+        self.assertEqual(stored["track_id_agreement"], 0.75)
+
+    def test_adding_a_detection_stores_stats_for_donor_and_recipient(self):
+        import math
+
+        from ami.main.models_future.tracks import add_detections
+
+        moved = self.other_track.detections.order_by("timestamp", "pk").last()
+        add_detections(self.singleton, [moved])
+
+        # Recipient: (15,15) -> (145,150), areas 100 and 600, labels A and B with A kept.
+        stored = self._stored(self.singleton)
+        self.assertAlmostEqual(stored["track_motion"], math.hypot(130, 135) / 500, places=4)
+        self.assertEqual(stored["track_size_ratio"], 6.0)
+        self.assertEqual(stored["track_distinct_taxa"], 2)
+        self.assertEqual(stored["track_id_agreement"], 0.5)
+        # Donor: one frame left, and its determination settles on that frame's label.
+        self.assertEqual(
+            self._stored(self.other_track),
+            {"track_motion": 0.0, "track_size_ratio": 1.0, "track_distinct_taxa": 1, "track_id_agreement": 1.0},
+        )
+
+    def test_the_backfill_command_stores_stats_for_multi_frame_occurrences(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        from ami.main.models_future.track_stats import TRACK_STAT_FIELDS
+
+        Occurrence.objects.filter(project=self.project).update(**{field: None for field in TRACK_STAT_FIELDS})
+
+        out = StringIO()
+        call_command("backfill_track_stats", project=self.project.pk, stdout=out)
+        self.assertIn("2 multi-frame occurrences", out.getvalue())
+        self.assertEqual(self._stored(self.track)["track_motion"], 0.2)
+        self.assertEqual(self._stored(self.other_track)["track_motion"], 0.1)
+        self.assertIsNone(self._stored(self.singleton)["track_motion"], "Single frames are skipped by default")
+
+        call_command("backfill_track_stats", project=self.project.pk, only_multi_frame=False, stdout=out)
+        self.assertEqual(self._stored(self.singleton)["track_motion"], 0.0)
+
+    def test_the_backfill_command_refuses_an_unknown_project(self):
+        from django.core.management import CommandError, call_command
+
+        with self.assertRaises(CommandError):
+            call_command("backfill_track_stats", project=0)
 
     def test_detail_summarises_the_grouping_from_the_current_detections(self):
         response = self.client.get(f"/api/v2/occurrences/{self.track.pk}/")
         self.assertEqual(response.status_code, 200, response.data)
-        self.assertNotIn("track_stats", response.data, "The page-scoped stats belong to the list")
+        self.assertNotIn("track_stats", response.data, "The stored stats belong to the list")
 
         summary = response.data["grouping_summary"]
         self.assertIs(summary["derived"], True)
@@ -8703,16 +8837,3 @@ class TrackStatsTestCase(APITestCase):
         with cachalot_disabled(), self.assertNumQueries(0):
             summary = grouping_summary_from_prefetch(occurrence, algorithm)
         self.assertEqual(summary["frames"], 3)
-
-    def test_the_option_cannot_widen_who_sees_an_occurrence(self):
-        """Anonymous readers of a draft project get exactly what they got before."""
-        self.project.draft = True
-        self.project.save()
-        self.client.force_authenticate(user=None)
-
-        before = self.client.get(self._list_url())
-        after = self.client.get(self._list_url(with_track_stats="true"))
-        self.assertEqual(after.status_code, before.status_code)
-        self.assertNotIn(b'"frames"', after.content, "Stats must not leak for occurrences the reader cannot see")
-        if after.status_code == 200:
-            self.assertEqual(after.data["results"], [])
