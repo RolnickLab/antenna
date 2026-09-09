@@ -134,6 +134,23 @@ class TestTracking(TestCase):
         self.assertEqual(keeper.detections.count(), 2)
         self.assertFalse(Classification.objects.filter(algorithm=tracking_algorithm).exists())
 
+    def test_null_marker_sentinels_are_ignored(self):
+        """A capture marked "processed, nothing found" carries a bbox-less sentinel detection;
+        tracking must neither score it nor give it an occurrence."""
+        first, second = self.source_images[:2]
+        sentinel = Detection.objects.create(source_image=first, bbox=None, timestamp=first.timestamp)
+        Detection.objects.create(source_image=second, bbox=None, timestamp=second.timestamp)
+        occurrences_before = Occurrence.objects.filter(event=self.event).count()
+
+        task = TrackingTask(logger=logger, event_ids=[self.event.pk], require_features=False, cost_threshold=0.5)
+        task.run()
+
+        sentinel.refresh_from_db()
+        self.assertIsNone(sentinel.occurrence_id)
+        self.assertIsNone(sentinel.next_detection_id)
+        self.assertFalse(Detection.objects.filter(next_detection=sentinel).exists())
+        self.assertLessEqual(Occurrence.objects.filter(event=self.event).count(), occurrences_before)
+
     def test_tracking_reproduces_occurrence_groups(self):
         # v1 fresh-data scenario: pipeline already created 1:1 detection/occurrence.
         # Wipe only chain links so tracking has to rebuild them; occurrences stay so

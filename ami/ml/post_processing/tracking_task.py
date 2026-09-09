@@ -240,7 +240,8 @@ def assign_occurrences_from_detection_chains(
     existing = Occurrence.objects.filter(detections__source_image__in=source_images).distinct().count()
 
     for image in source_images:
-        for det in image.detections.all():
+        # Null-marker sentinels (bbox IS NULL) mark a capture as processed; they are not insects.
+        for det in image.detections.valid():
             if det.pk in visited:
                 continue
             try:
@@ -434,8 +435,8 @@ def assign_occurrences_by_tracking_images(
                 continue
 
             links += pair_detections(
-                list(cur.detections.all()),
-                list(nxt.detections.all()),
+                list(cur.detections.valid()),
+                list(nxt.detections.valid()),
                 image_width=cur.width,
                 image_height=cur.height,
                 cost_threshold=config.cost_threshold,
