@@ -8530,3 +8530,189 @@ class OccurrenceGroupingTestCase(TrackEditTestCase):
         self.assertIsNotNone(after.data["grouping_verified_at"])
         self.assertEqual(after.data["grouping_verified_by"]["id"], self.curator.pk)
         self.assertNotIn("email", after.data["grouping_verified_by"])
+
+
+class TrackStatsTestCase(APITestCase):
+    """Track statistics the review interface sorts and filters by.
+
+    They are derived on read so they always describe the current detections. What
+    these pin is that the numbers follow the documented definitions, that a page
+    costs a fixed number of extra queries however many rows it holds, and that the
+    option cannot widen who sees an occurrence.
+    """
+
+    FRAME_WIDTH = 300
+    FRAME_HEIGHT = 400  # a 300x400 frame has a diagonal of exactly 500
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(project=self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=3, interval_minutes=1)
+        SourceImage.objects.filter(deployment=self.deployment).update(width=self.FRAME_WIDTH, height=self.FRAME_HEIGHT)
+        self.captures = list(SourceImage.objects.filter(deployment=self.deployment).order_by("timestamp"))
+        self.event = self.captures[0].event
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        taxa = list(Taxon.objects.filter(projects=self.project).order_by("pk")[:3])
+        assert len(taxa) == 3, "Fixture must provide three taxa to disagree with"
+        self.taxon_a, self.taxon_b, self.taxon_c = taxa
+
+        self.reader = User.objects.create_user(email="track-stats-reader@insectai.org")  # type: ignore[attr-defined]
+        BasicMember.assign_user(self.reader, self.project)
+        self.client.force_authenticate(user=self.reader)
+
+        # Centres (5,5) -> (35,45) -> (65,85): two steps of 50 px over a 500 px diagonal.
+        # Areas 100, 100, 400. Terminal labels A, A, B plus a non-terminal C to ignore.
+        self.track = self._make_occurrence(
+            [
+                ([0, 0, 10, 10], [(self.taxon_a, 0.9, True)]),
+                ([30, 40, 40, 50], [(self.taxon_a, 0.85, True)]),
+                ([55, 75, 75, 95], [(self.taxon_b, 0.8, True), (self.taxon_c, 0.95, False)]),
+            ],
+            link=True,
+        )
+        self.singleton = self._make_occurrence([([10, 10, 20, 20], [(self.taxon_a, 0.7, True)])])
+        self.other_singleton = self._make_occurrence([([100, 100, 130, 120], [(self.taxon_b, 0.6, True)])])
+        return super().setUp()
+
+    def _make_occurrence(self, frames: list[tuple[list[int], list[tuple[Taxon, float, bool]]]], link=False):
+        occurrence = Occurrence.objects.create(event=self.event, deployment=self.deployment, project=self.project)
+        detections = []
+        for capture, (bbox, labels) in zip(self.captures, frames):
+            detection = Detection.objects.create(
+                source_image=capture, timestamp=capture.timestamp, bbox=bbox, occurrence=occurrence
+            )
+            for taxon, score, terminal in labels:
+                detection.classifications.create(
+                    taxon=taxon, score=score, timestamp=capture.timestamp, terminal=terminal
+                )
+            detections.append(detection)
+        if link:
+            for earlier, later in zip(detections, detections[1:]):
+                earlier.next_detection = later
+                earlier.save(update_fields=["next_detection"])
+        occurrence.save()
+        # Pin the determination the agreement is measured against, independent of how
+        # save() picks one.
+        Occurrence.objects.filter(pk=occurrence.pk).update(determination=self.taxon_a, determination_score=0.9)
+        return occurrence
+
+    def _list_url(self, **params) -> str:
+        query = "".join(f"&{key}={value}" for key, value in params.items())
+        return f"/api/v2/occurrences/?project_id={self.project.pk}&limit=20{query}"
+
+    def _list_rows(self, **params) -> dict[int, dict]:
+        response = self.client.get(self._list_url(**params))
+        self.assertEqual(response.status_code, 200, response.data)
+        return {row["id"]: row for row in response.data["results"]}
+
+    def _list_query_count(self, **params) -> int:
+        # Inside a test transaction cachalot answers repeat queries from a per-transaction
+        # layer that clearing the cache backend does not reach, so measure with it off.
+        from cachalot.api import cachalot_disabled
+
+        with cachalot_disabled(), CaptureQueriesContext(connection) as ctx:
+            self._list_rows(**params)
+        return len(ctx.captured_queries)
+
+    def test_stats_follow_the_documented_definitions(self):
+        rows = self._list_rows(with_track_stats="true")
+
+        stats = rows[self.track.pk]["track_stats"]
+        self.assertEqual(set(stats), {"frames", "motion", "size_ratio", "distinct_taxa", "id_agreement"})
+        self.assertEqual(stats["frames"], 3)
+        self.assertAlmostEqual(stats["motion"], 100 / 500, places=4)
+        self.assertAlmostEqual(stats["size_ratio"], 4.0, places=4)
+        self.assertEqual(stats["distinct_taxa"], 2, "A non-terminal classification must not count as a taxon")
+        self.assertAlmostEqual(stats["id_agreement"], 2 / 3, places=4)
+
+        self.assertEqual(
+            rows[self.singleton.pk]["track_stats"],
+            {"frames": 1, "motion": 0.0, "size_ratio": 1.0, "distinct_taxa": 1, "id_agreement": 1.0},
+        )
+
+    def test_stats_are_absent_unless_asked_for(self):
+        rows = self._list_rows()
+        self.assertGreaterEqual(len(rows), 3, "A one-row page cannot show a per-row cost")
+        self.assertTrue(all(row["track_stats"] is None for row in rows.values()))
+
+    def test_stats_cost_a_fixed_number_of_queries_per_page(self):
+        """Two statements per page, whatever the page holds.
+
+        Measured against the same multi-row page without the option, so a per-row
+        query would show up as more than two.
+        """
+        from cachalot.api import cachalot_disabled
+
+        self.assertGreaterEqual(Occurrence.objects.filter(project=self.project).count(), 3)
+        without = self._list_query_count()
+        with_stats = self._list_query_count(with_track_stats="true")
+        print(f"\n[AUDIT] Occurrence list: without track stats -> {without}q, with -> {with_stats}q")
+        self.assertEqual(with_stats, without + 2)
+
+        with cachalot_disabled(), self.assertNumQueries(without + 2):
+            response = self.client.get(self._list_url(with_track_stats="true"))
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data["results"]), 3)
+
+    def test_junk_is_rejected(self):
+        response = self.client.get(self._list_url(with_track_stats="abc"))
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("with_track_stats", response.data)
+
+    def test_detail_summarises_the_grouping_from_the_current_detections(self):
+        response = self.client.get(f"/api/v2/occurrences/{self.track.pk}/")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertNotIn("track_stats", response.data, "The page-scoped stats belong to the list")
+
+        summary = response.data["grouping_summary"]
+        self.assertIs(summary["derived"], True)
+        self.assertIsNone(summary["algorithm"], "No tracking run has registered an algorithm here")
+        self.assertEqual(summary["frames"], 3)
+        self.assertEqual(summary["linked_detections"], 2)
+        self.assertAlmostEqual(summary["duration_seconds"], 120.0)
+        self.assertAlmostEqual(summary["motion"], 100 / 500, places=4)
+        self.assertAlmostEqual(summary["size_ratio"], 4.0, places=4)
+        self.assertEqual(summary["distinct_taxa"], 2)
+        self.assertAlmostEqual(summary["id_agreement"], 2 / 3, places=4)
+        self.assertAlmostEqual(summary["score_min"], 0.8, places=4)
+        self.assertAlmostEqual(summary["score_mean"], 0.85, places=4)
+        self.assertAlmostEqual(summary["score_max"], 0.9, places=4)
+
+    def test_detail_names_the_tracking_algorithm_once_it_exists(self):
+        from ami.ml.models.algorithm import Algorithm
+        from ami.ml.post_processing.tracking_task import TrackingTask
+
+        algorithm = Algorithm.objects.create(key=TrackingTask.key, name=TrackingTask.name)
+        response = self.client.get(f"/api/v2/occurrences/{self.track.pk}/")
+        self.assertEqual(
+            response.data["grouping_summary"]["algorithm"],
+            {"id": algorithm.pk, "name": TrackingTask.name, "key": TrackingTask.key},
+        )
+
+    def test_detail_summary_reads_only_what_is_already_prefetched(self):
+        """The summary adds no query per frame or per classification: one lookup for the algorithm, then none."""
+        from cachalot.api import cachalot_disabled
+
+        from ami.main.models_future.track_stats import grouping_summary_from_prefetch, tracking_algorithm_summary
+
+        occurrence = Occurrence.objects.filter(pk=self.track.pk).with_detail_prefetches().get()
+        with cachalot_disabled(), self.assertNumQueries(1):
+            algorithm = tracking_algorithm_summary()
+        with cachalot_disabled(), self.assertNumQueries(0):
+            summary = grouping_summary_from_prefetch(occurrence, algorithm)
+        self.assertEqual(summary["frames"], 3)
+
+    def test_the_option_cannot_widen_who_sees_an_occurrence(self):
+        """Anonymous readers of a draft project get exactly what they got before."""
+        self.project.draft = True
+        self.project.save()
+        self.client.force_authenticate(user=None)
+
+        before = self.client.get(self._list_url())
+        after = self.client.get(self._list_url(with_track_stats="true"))
+        self.assertEqual(after.status_code, before.status_code)
+        self.assertNotIn(b'"frames"', after.content, "Stats must not leak for occurrences the reader cannot see")
+        if after.status_code == 200:
+            self.assertEqual(after.data["results"], [])

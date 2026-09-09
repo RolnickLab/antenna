@@ -2,6 +2,7 @@ import collections
 import datetime
 
 from django.db.models import QuerySet
+from drf_spectacular.utils import extend_schema_field
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -1457,6 +1458,34 @@ class OccurrenceIdentificationSerializer(DefaultSerializer):
         ]
 
 
+class TrackStatsSerializer(serializers.Serializer):
+    """Per-occurrence track statistics; the definitions live in ``models_future/track_stats.py``."""
+
+    frames = serializers.IntegerField()
+    motion = serializers.FloatField()
+    size_ratio = serializers.FloatField()
+    distinct_taxa = serializers.IntegerField()
+    id_agreement = serializers.FloatField(allow_null=True)
+
+
+class TrackingAlgorithmSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    key = serializers.CharField()
+
+
+class GroupingSummarySerializer(TrackStatsSerializer):
+    """How an occurrence's detections hang together, computed on read from the current detections."""
+
+    derived = serializers.BooleanField()
+    algorithm = TrackingAlgorithmSerializer(allow_null=True)
+    linked_detections = serializers.IntegerField()
+    duration_seconds = serializers.FloatField(allow_null=True)
+    score_min = serializers.FloatField(allow_null=True)
+    score_mean = serializers.FloatField(allow_null=True)
+    score_max = serializers.FloatField(allow_null=True)
+
+
 class OccurrenceListSerializer(DefaultSerializer):
     # List cards render one cover image; detail subclass raises this to 100.
     detection_images_limit: int | None = 1
@@ -1469,6 +1498,7 @@ class OccurrenceListSerializer(DefaultSerializer):
     determination_details = serializers.SerializerMethodField()
     best_machine_prediction = serializers.SerializerMethodField()
     identifications = OccurrenceIdentificationSerializer(many=True, read_only=True)
+    track_stats = serializers.SerializerMethodField()
 
     def get_permissions(self, instance, instance_data):
         request: Request = self.context["request"]
@@ -1514,6 +1544,7 @@ class OccurrenceListSerializer(DefaultSerializer):
             "determination_details",
             "best_machine_prediction",
             "identifications",
+            "track_stats",
             "created_at",
             "updated_at",
         ]
@@ -1522,6 +1553,11 @@ class OccurrenceListSerializer(DefaultSerializer):
         from ami.main.models_future.occurrence import detection_image_urls_from_prefetch
 
         return detection_image_urls_from_prefetch(obj, limit=self.detection_images_limit)
+
+    @extend_schema_field(TrackStatsSerializer(allow_null=True))
+    def get_track_stats(self, obj: Occurrence) -> dict | None:
+        # Attached by the viewset for the page when ``?with_track_stats=true``; null otherwise.
+        return getattr(obj, "track_stats", None)
 
     def get_determination_details(self, obj: Occurrence):
         from ami.main.models_future.occurrence import best_identification_from_prefetch, best_prediction_from_prefetch
@@ -1591,11 +1627,14 @@ class OccurrenceSerializer(OccurrenceListSerializer):
     deployment = DeploymentNestedSerializer(read_only=True)
     event = EventNestedSerializer(read_only=True)
     grouping_verified_by = UserNestedSerializer(read_only=True)
+    grouping_summary = serializers.SerializerMethodField()
     # first_appearance = TaxonSourceImageNestedSerializer(read_only=True)
 
     class Meta:
         model = Occurrence
-        fields = OccurrenceListSerializer.Meta.fields + [
+        # The page-scoped track_stats belong to the list; the detail carries the fuller
+        # grouping_summary instead.
+        fields = [name for name in OccurrenceListSerializer.Meta.fields if name != "track_stats"] + [
             "determination_id",
             "detections",
             "predictions",
@@ -1604,10 +1643,21 @@ class OccurrenceSerializer(OccurrenceListSerializer):
             "grouping_verified",
             "grouping_verified_at",
             "grouping_verified_by",
+            "grouping_summary",
         ]
         read_only_fields = [
             "determination_score",
         ]
+
+    @extend_schema_field(GroupingSummarySerializer())
+    def get_grouping_summary(self, obj: Occurrence) -> dict:
+        from ami.main.models_future.track_stats import grouping_summary_from_prefetch, tracking_algorithm_summary
+
+        context = self.context
+        if "tracking_algorithm" not in context:
+            # One lookup per request; the row is absent where the tracking task never ran.
+            context["tracking_algorithm"] = tracking_algorithm_summary()
+        return grouping_summary_from_prefetch(obj, context["tracking_algorithm"])
 
 
 class EventCaptureNestedSerializer(SourceImageThumbnailSerializer):

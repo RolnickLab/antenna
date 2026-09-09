@@ -36,6 +36,7 @@ from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.occurrence import model_agreement_for_project, occurrence_path, top_identifiers_for_project
+from ami.main.models_future.track_stats import track_stats_for_occurrences
 from ami.main.models_future.tracks import (
     TrackEditError,
     add_detections,
@@ -1526,6 +1527,28 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         else:
             return OccurrenceSerializer
 
+    def _with_track_stats(self) -> bool:
+        """Read ``?with_track_stats``: absent is false, bare presence is true, junk is a 400."""
+        raw = self.request.query_params.get("with_track_stats")
+        if raw is None:
+            return False
+        if raw == "":
+            return True
+        return SingleParamSerializer[bool].clean(
+            "with_track_stats", serializers.BooleanField(), data={"with_track_stats": raw}
+        )
+
+    def paginate_queryset(self, queryset):
+        # Track stats are computed once for the page's ids rather than annotated on the
+        # queryset, which would aggregate every occurrence in the project before LIMIT.
+        with_track_stats = self.action == "list" and self._with_track_stats()
+        page = super().paginate_queryset(queryset)
+        if page and with_track_stats:
+            stats = track_stats_for_occurrences([occurrence.pk for occurrence in page])
+            for occurrence in page:
+                occurrence.track_stats = stats.get(occurrence.pk)
+        return page
+
     def get_queryset(self) -> QuerySet["Occurrence"]:
         project = self.get_active_project()
         qs = super().get_queryset().valid()  # type: ignore
@@ -1570,6 +1593,13 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
                 description="Filter occurrences by the capture set their detections' captures belong to.",
                 required=False,
                 type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="with_track_stats",
+                description="Attach track statistics (frames, motion, size_ratio, distinct_taxa, id_agreement) "
+                "to each occurrence on the page. Off by default because they cost two extra queries per page.",
+                required=False,
+                type=OpenApiTypes.BOOL,
             ),
         ]
     )
