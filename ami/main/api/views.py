@@ -35,6 +35,7 @@ from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
+from ami.main.models_future.merge_candidates import DEFAULT_WINDOW_MINUTES, MAX_WINDOW_MINUTES, rank_merge_candidates
 from ami.main.models_future.occurrence import model_agreement_for_project, occurrence_path, top_identifiers_for_project
 from ami.main.models_future.tracks import (
     TrackEditError,
@@ -88,6 +89,7 @@ from .serializers import (
     EventSerializer,
     EventTimelineSerializer,
     IdentificationSerializer,
+    MergeCandidatesResponseSerializer,
     ModelAgreementSerializer,
     OccurrenceAddDetectionsSerializer,
     OccurrenceGroupingSerializer,
@@ -1546,10 +1548,11 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         qs = qs.apply_default_filters(project, self.request)  # type: ignore
         if self.action == "list":
             qs = qs.with_list_prefetches()  # type: ignore
-        elif self.action != "path":
-            # `path` builds its own values() query and never serializes the occurrence,
-            # so the detail prefetch would only be waste: measured at 249ms/4 queries
-            # against 6ms/2 for the same object without it, on a 37-detection occurrence.
+        elif self.action not in ("path", "merge_candidates"):
+            # `path` and `merge_candidates` build their own values() queries and never
+            # serialize the occurrence, so the detail prefetch would only be waste:
+            # measured at 249ms/4 queries against 6ms/2 for the same object without
+            # it, on a 37-detection occurrence.
             qs = qs.with_detail_prefetches()  # type: ignore
 
         return qs
@@ -1609,6 +1612,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             "split_track",
             "remove_detection",
             "merge",
+            "merge_candidates",
             "add_detections",
             "verify_grouping",
             "unverify_grouping",
@@ -1717,6 +1721,39 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         except TrackEditError as e:
             raise api_exceptions.ValidationError({"occurrence_ids": str(e)})
         return self._grouping_response(occurrence)
+
+    @extend_schema(
+        parameters=[
+            project_id_doc_param,
+            OpenApiParameter(
+                name="minutes",
+                description=f"How far from this occurrence's first and last frame to look, 1 to "
+                f"{MAX_WINDOW_MINUTES}. Default {DEFAULT_WINDOW_MINUTES}.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+        ],
+        responses=MergeCandidatesResponseSerializer,
+    )
+    @action(detail=True, methods=["get"], name="merge-candidates", url_path="merge-candidates")
+    def merge_candidates(self, request: Request, pk=None) -> Response:
+        """Occurrences of this session that this one could be merged with, best fit first.
+
+        Ranked by the tracking method's matching cost between the two frames nearest
+        in time, so the occurrence tracking most nearly linked comes first. Drawn from
+        the same queryset the merge action resolves its sources from, so everything
+        offered here can be merged.
+        """
+        occurrence = self.get_object()
+        minutes = SingleParamSerializer[int].clean(
+            param_name="minutes",
+            field=serializers.IntegerField(
+                required=False, min_value=1, max_value=MAX_WINDOW_MINUTES, default=DEFAULT_WINDOW_MINUTES
+            ),
+            data=request.query_params,
+        )
+        candidates = rank_merge_candidates(occurrence, self.get_queryset().prefetch_related(None), minutes=minutes)
+        return Response(MergeCandidatesResponseSerializer({"candidates": candidates}).data)
 
     @extend_schema(request=OccurrenceAddDetectionsSerializer, responses=OccurrenceGroupingSerializer)
     @action(detail=True, methods=["post"], name="add-detections", url_path="add-detections")

@@ -237,7 +237,6 @@ export const Capture = ({
               boxStyles={boxStyles}
               defaultFilters={defaultFilters}
               detections={detections}
-              captureId={captureId}
               isLoadingPath={isLoadingPath}
               onHidePath={() => setPathOccurrenceId(undefined)}
               onShowPath={(occurrenceId) =>
@@ -317,7 +316,6 @@ const CaptureOverlay = ({
 
 const CaptureDetections = ({
   boxStyles,
-  captureId,
   defaultFilters,
   detections,
   isLoadingPath,
@@ -330,7 +328,6 @@ const CaptureDetections = ({
   shownFrames,
 }: {
   boxStyles: { [key: number]: BoxStyle }
-  captureId?: string
   defaultFilters: boolean
   detections: CaptureDetection[]
   isLoadingPath?: boolean
@@ -513,7 +510,6 @@ const CaptureDetections = ({
           />
         ) : null}
         <SessionTrackEdits
-          captureId={captureId}
           edit={trackEdit}
           onClose={() => setTrackEdit(undefined)}
         />

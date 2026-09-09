@@ -41,9 +41,11 @@ from ami.main.models import (
     TaxonRank,
     group_images_into_events,
 )
+from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.pipeline import Pipeline
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
+from ami.ml.post_processing.tracking_task import image_diagonal, total_cost
 from ami.tests.fixtures.main import (
     create_captures,
     create_captures_from_files,
@@ -8530,6 +8532,185 @@ class OccurrenceGroupingTestCase(TrackEditTestCase):
         self.assertIsNotNone(after.data["grouping_verified_at"])
         self.assertEqual(after.data["grouping_verified_by"]["id"], self.curator.pk)
         self.assertNotIn("email", after.data["grouping_verified_by"])
+
+
+class MergeCandidatesTestCase(TrackEditTestCase):
+    """Offering the right occurrence to merge with.
+
+    A session holds thousands of occurrences and two individuals of the same species
+    look alike as crops, so the picker has to be ranked the way tracking would have
+    ranked them, and has to say where each candidate sits in time. What these pin is
+    that the ranking follows the tracking cost, that the time relation is signed the
+    right way, and that a candidate without a vector is still offered.
+    """
+
+    FRAME_SIZE = 1000
+
+    def setUp(self) -> None:
+        super().setUp()
+        for capture in self.captures:
+            capture.width = capture.height = self.FRAME_SIZE
+            capture.save(update_fields=["width", "height"])
+        self.before_capture = self._make_capture(self.captures[0].timestamp - datetime.timedelta(minutes=2))
+        self.after_capture = self._make_capture(self.captures[-1].timestamp + datetime.timedelta(minutes=2))
+
+    def _make_capture(self, timestamp: datetime.datetime) -> SourceImage:
+        return SourceImage.objects.create(
+            deployment=self.deployment,
+            event=self.event,
+            timestamp=timestamp,
+            path=f"test/{timestamp:%H%M%S}.jpg",
+            width=self.FRAME_SIZE,
+            height=self.FRAME_SIZE,
+        )
+
+    def _make_occurrence(
+        self,
+        captures: list[SourceImage],
+        bbox: list[int],
+        vector: list[float] | None = None,
+        algorithm: Algorithm | None = None,
+    ) -> Occurrence:
+        occurrence = Occurrence.objects.create(event=self.event, deployment=self.deployment, project=self.project)
+        for capture in captures:
+            detection = Detection.objects.create(
+                source_image=capture,
+                timestamp=capture.timestamp,
+                bbox=bbox,
+                occurrence=occurrence,
+                path=f"crops/{capture.pk}-{bbox[0]}.jpg",
+            )
+            detection.classifications.create(
+                taxon=self.taxon,
+                score=0.9,
+                timestamp=capture.timestamp,
+                algorithm=algorithm,
+                features_2048=vector,
+            )
+        occurrence.save()
+        return occurrence
+
+    def _give_target_vectors(self, vector: list[float], algorithm: Algorithm) -> None:
+        for detection in self.detections:
+            detection.classifications.create(
+                taxon=self.taxon,
+                score=0.9,
+                timestamp=detection.timestamp,
+                algorithm=algorithm,
+                features_2048=vector,
+            )
+
+    def get_candidates(self, query: str = "", user: User | None = None):
+        self.client.force_authenticate(user=user or self.curator)
+        return self.client.get(
+            f"/api/v2/occurrences/{self.occurrence.pk}/merge-candidates/?project_id={self.project.pk}{query}"
+        )
+
+    def test_the_closest_box_ranks_first(self):
+        """Two candidates in the frame after the track ends, one on top of the last box and one
+        across the frame. Distance is the centre gap over the diagonal of a 1000x1000 frame."""
+        near = self._make_occurrence([self.after_capture], bbox=[12, 12, 42, 42])
+        far = self._make_occurrence([self.after_capture], bbox=[500, 500, 530, 530])
+
+        response = self.get_candidates()
+        self.assertEqual(response.status_code, 200, response.data)
+
+        rows = response.data["candidates"]
+        self.assertEqual([row["id"] for row in rows], [near.pk, far.pk])
+        self.assertLess(rows[0]["cost"], rows[1]["cost"])
+        self.assertAlmostEqual(rows[0]["distance"], 0.002, delta=0.001)
+        self.assertAlmostEqual(rows[1]["distance"], 0.49, delta=0.001)
+        self.assertEqual(rows[0]["determination"]["name"], self.taxon.name)
+        self.assertEqual(rows[0]["detections_count"], 1)
+        self.assertTrue(rows[0]["image"], "A candidate must come with a crop to recognise it by")
+
+    def test_the_time_relation_is_signed_from_the_track_being_edited(self):
+        before = self._make_occurrence([self.before_capture], bbox=[10, 10, 40, 40])
+        after = self._make_occurrence([self.after_capture], bbox=[10, 10, 40, 40])
+        overlapping = self._make_occurrence([self.captures[1]], bbox=[10, 10, 40, 40])
+
+        response = self.get_candidates()
+        by_id = {row["id"]: row for row in response.data["candidates"]}
+
+        self.assertEqual(by_id[before.pk]["relation"], "before")
+        self.assertEqual(by_id[before.pk]["time_offset_seconds"], -120.0)
+        self.assertEqual(by_id[after.pk]["relation"], "after")
+        self.assertEqual(by_id[after.pk]["time_offset_seconds"], 120.0)
+        self.assertEqual(by_id[overlapping.pk]["relation"], "overlapping")
+        self.assertEqual(by_id[overlapping.pk]["time_offset_seconds"], 0.0)
+
+    def test_a_candidate_without_a_vector_is_scored_on_geometry_alone(self):
+        """Similarity needs a vector on both frames from the same algorithm. Without one the
+        candidate is still offered, with the cost tracking would have used in that case."""
+        extractor = Algorithm.objects.create(name="Feature extractor", key="feature-extractor")
+        other_extractor = Algorithm.objects.create(name="Other extractor", key="other-extractor")
+        vector = [1.0] + [0.0] * 2047
+        self._give_target_vectors(vector, extractor)
+
+        matching = self._make_occurrence(
+            [self.after_capture], bbox=[12, 12, 42, 42], vector=vector, algorithm=extractor
+        )
+        unembedded = self._make_occurrence([self.after_capture], bbox=[12, 12, 42, 42])
+        foreign = self._make_occurrence(
+            [self.after_capture], bbox=[12, 12, 42, 42], vector=vector, algorithm=other_extractor
+        )
+
+        response = self.get_candidates()
+        by_id = {row["id"]: row for row in response.data["candidates"]}
+
+        self.assertEqual(by_id[matching.pk]["similarity"], 1.0)
+        self.assertIsNone(by_id[unembedded.pk]["similarity"])
+        self.assertIsNone(by_id[foreign.pk]["similarity"], "A vector from another algorithm is not comparable")
+
+        geometry_only = total_cost(
+            None, None, [10, 10, 40, 40], [12, 12, 42, 42], image_diagonal(self.FRAME_SIZE, self.FRAME_SIZE)
+        )
+        self.assertAlmostEqual(by_id[unembedded.pk]["cost"], geometry_only, places=4)
+        self.assertAlmostEqual(by_id[matching.pk]["cost"], geometry_only, places=4)
+
+    def test_the_window_bounds_what_is_offered(self):
+        later = self._make_capture(self.captures[-1].timestamp + datetime.timedelta(minutes=10))
+        distant = self._make_occurrence([later], bbox=[10, 10, 40, 40])
+        nearby = self._make_occurrence([self.after_capture], bbox=[10, 10, 40, 40])
+
+        default_ids = [row["id"] for row in self.get_candidates().data["candidates"]]
+        self.assertEqual(default_ids, [nearby.pk])
+
+        widened_ids = [row["id"] for row in self.get_candidates("&minutes=15").data["candidates"]]
+        self.assertEqual(sorted(widened_ids), sorted([nearby.pk, distant.pk]))
+
+    def test_minutes_must_be_a_whole_number_within_range(self):
+        for junk in ("abc", "0", "31", "-5"):
+            self.assertEqual(self.get_candidates(f"&minutes={junk}").status_code, 400, junk)
+        self.assertEqual(self.get_candidates("&minutes=30").status_code, 200)
+
+    def test_candidates_are_gated_like_the_merge_itself(self):
+        self._make_occurrence([self.after_capture], bbox=[10, 10, 40, 40])
+
+        self.assertEqual(self.get_candidates(user=self.reader).status_code, 403)
+
+        self.client.force_authenticate(user=None)
+        anonymous = self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/merge-candidates/")
+        self.assertIn(anonymous.status_code, (401, 403))
+
+        self.assertEqual(self.get_candidates(user=self.curator).status_code, 200)
+
+    def test_the_candidate_count_does_not_change_the_query_count(self):
+        extractor = Algorithm.objects.create(name="Feature extractor", key="feature-extractor")
+        vector = [1.0] + [0.0] * 2047
+        self._give_target_vectors(vector, extractor)
+        for offset in range(3):
+            self._make_occurrence(
+                [self.after_capture], bbox=[10 + offset, 10, 40 + offset, 40], vector=vector, algorithm=extractor
+            )
+
+        # The savepoint pair, the object lookup with its permission checks, then the
+        # five ranking queries: two for frames, one for candidates, two for vectors.
+        with self.assertNumQueries(11):
+            response = self.get_candidates()
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(len(response.data["candidates"]), 3)
 
 
 class TrackStatsTestCase(APITestCase):

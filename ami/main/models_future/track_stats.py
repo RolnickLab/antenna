@@ -73,7 +73,7 @@ def id_agreement(agreeing: int, terminal_count: int) -> float | None:
     return round(agreeing / terminal_count, _ROUND_TO)
 
 
-def _bbox_corners(bbox) -> tuple[float, float, float, float] | None:
+def bbox_corners(bbox) -> tuple[float, float, float, float] | None:
     if not bbox or len(bbox) < 4:
         return None
     try:
@@ -100,7 +100,7 @@ def _geometry_from_detections(detections: list[Detection]) -> tuple[float, float
     max_y2: float | None = None
 
     for detection in detections:
-        corners = _bbox_corners(detection.bbox)
+        corners = bbox_corners(detection.bbox)
         if corners is None:
             prev_centre = None
             continue

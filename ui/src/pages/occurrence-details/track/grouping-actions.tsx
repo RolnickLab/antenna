@@ -1,6 +1,7 @@
 import { FormError } from 'components/form/layout/layout'
 import { useMergeOccurrences } from 'data-services/hooks/occurrences/track/useMergeOccurrences'
 import { useSetGroupingVerified } from 'data-services/hooks/occurrences/track/useSetGroupingVerified'
+import { useMergeCandidates } from 'data-services/hooks/occurrences/useMergeCandidates'
 import { OccurrenceDetails } from 'data-services/models/occurrence-details'
 import { GitMergeIcon, Loader2Icon } from 'lucide-react'
 import { Badge, Button } from 'nova-ui-kit'
@@ -11,7 +12,6 @@ import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
 import { OccurrencePicker } from 'components/track/occurrence-picker'
 import { TrackEditDialog } from 'components/track/track-edit-dialog'
-import { useTrackCandidates } from 'components/track/useTrackCandidates'
 
 export const GroupingActions = ({
   canRestructure,
@@ -33,12 +33,13 @@ export const GroupingActions = ({
     isLoading: verifyLoading,
   } = useSetGroupingVerified(occurrence.id)
 
-  const frames = occurrence.frames
-  const { candidates, isLoading: candidatesLoading } = useTrackCandidates({
-    captureIds: mergeOpen
-      ? [frames[frames.length - 1]?.captureId, frames[0]?.captureId]
-      : [],
-    excludeIds: [occurrence.id],
+  const {
+    candidates,
+    isLoading: candidatesLoading,
+    minutes,
+  } = useMergeCandidates({
+    enabled: mergeOpen,
+    occurrenceId: occurrence.id,
     projectId: projectId as string,
   })
 
@@ -110,6 +111,7 @@ export const GroupingActions = ({
         description={translate(STRING.TRACK_MERGE_DESCRIPTION)}
         error={merge.error}
         isLoading={merge.isLoading}
+        isWide
         onConfirm={() => merge.mergeOccurrences([sourceId as string])}
         onOpenChange={(open) => (open ? undefined : closeMerge())}
         open={mergeOpen}
@@ -125,9 +127,16 @@ export const GroupingActions = ({
         {merge.result ? null : (
           <OccurrencePicker
             candidates={candidates}
+            description={translate(STRING.TRACK_MERGE_CANDIDATES_SCOPE, {
+              minutes,
+            })}
+            emptyMessage={translate(STRING.TRACK_NO_MERGE_CANDIDATES, {
+              minutes,
+            })}
             isLoading={candidatesLoading}
             onSelect={setSourceId}
             selectedId={sourceId}
+            title={translate(STRING.TRACK_MERGE_CANDIDATES, { minutes })}
           />
         )}
       </TrackEditDialog>

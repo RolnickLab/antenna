@@ -1,3 +1,4 @@
+import classNames from 'classnames'
 import { FormError, FormMessage } from 'components/form/layout/layout'
 import { ChevronRightIcon, Loader2Icon } from 'lucide-react'
 import { Button, buttonVariants, Dialog } from 'nova-ui-kit'
@@ -17,6 +18,7 @@ export const TrackEditDialog = ({
   description,
   error,
   isLoading,
+  isWide,
   onConfirm,
   onOpenChange,
   open,
@@ -30,6 +32,8 @@ export const TrackEditDialog = ({
   description: string
   error?: unknown
   isLoading?: boolean
+  /** For content that needs more than the compact dialog's width, such as a table. */
+  isWide?: boolean
   onConfirm: () => void
   onOpenChange: (open: boolean) => void
   open: boolean
@@ -42,9 +46,16 @@ export const TrackEditDialog = ({
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Content ariaCloselabel={translate(STRING.CLOSE)} isCompact>
+      <Dialog.Content
+        ariaCloselabel={translate(STRING.CLOSE)}
+        isCompact={!isWide}
+      >
         <Dialog.Header title={title} />
-        <div className="flex flex-col gap-4 p-6">
+        <div
+          className={classNames('flex flex-col gap-4 p-6', {
+            'w-[680px] max-w-full': isWide,
+          })}
+        >
           <span className="body-small text-muted-foreground">
             {description}
           </span>

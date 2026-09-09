@@ -13,6 +13,7 @@ from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer
 from ami.base.views import get_active_project
 from ami.jobs.models import Job
 from ami.main.models import Tag
+from ami.main.models_future.merge_candidates import RELATIONS as MERGE_CANDIDATE_RELATIONS
 from ami.ml.models import Algorithm, Pipeline
 from ami.ml.serializers import AlgorithmSerializer, PipelineNestedSerializer
 from ami.users.models import User
@@ -2159,3 +2160,51 @@ class OccurrencePathFrameSerializer(serializers.Serializer):
     detection_id = serializers.IntegerField()
     bbox = serializers.ListField(child=serializers.FloatField(), allow_null=True)
     capture = OccurrencePathCaptureSerializer()
+
+
+class MergeCandidateDeterminationSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+
+
+class MergeCandidateSerializer(serializers.Serializer):
+    """One occurrence the requested occurrence could be merged with, and how well it fits.
+
+    The fit is judged from the two frames nearest in time: the requested
+    occurrence's first or last frame and the candidate's frame closest to it.
+    """
+
+    id = serializers.IntegerField()
+    determination = MergeCandidateDeterminationSerializer(allow_null=True)
+    detections_count = serializers.IntegerField()
+    first_appearance_timestamp = serializers.DateTimeField(allow_null=True)
+    last_appearance_timestamp = serializers.DateTimeField(allow_null=True)
+    relation = serializers.ChoiceField(
+        choices=MERGE_CANDIDATE_RELATIONS,
+        help_text="Where the candidate sits in time: before, after or overlapping the requested occurrence.",
+    )
+    time_offset_seconds = serializers.FloatField(
+        help_text="Gap between the two spans: negative when the candidate ends first, positive when it starts "
+        "after the requested occurrence ends, zero when they overlap.",
+    )
+    distance = serializers.FloatField(
+        allow_null=True,
+        help_text="Centre-to-centre distance between the nearest pair of boxes as a fraction of the frame diagonal.",
+    )
+    similarity = serializers.FloatField(
+        allow_null=True,
+        help_text="Cosine similarity of the nearest pair's feature vectors, from the algorithm that produced the "
+        "requested occurrence's vector. Null when either frame has none.",
+    )
+    cost = serializers.FloatField(
+        allow_null=True,
+        help_text="The tracking method's matching cost for the nearest pair; lower fits better. Uses the geometry "
+        "terms only when similarity is null.",
+    )
+    image = serializers.CharField(allow_null=True, help_text="A crop of the candidate, nearest frame first.")
+
+
+class MergeCandidatesResponseSerializer(serializers.Serializer):
+    """Candidates ordered by cost, lowest first."""
+
+    candidates = MergeCandidateSerializer(many=True)
