@@ -3833,7 +3833,9 @@ class Occurrence(BaseModel):
         # occurrence's determination changed, so it is gated on the permission that
         # already governs restructuring occurrence records rather than on
         # identification rights.
-        if action in ("split_track", "remove_detection", "merge", "add_detections"):
+        # Listing merge candidates is gated the same way, so the picker only opens
+        # for someone who could complete the merge.
+        if action in ("split_track", "remove_detection", "merge", "merge_candidates", "add_detections"):
             return user.has_perm(Project.Permissions.DELETE_OCCURRENCES, self.get_project())
         # Confirming a grouping is an expert judgement rather than a restructuring, so
         # identifying rights are enough — but the roles that restructure occurrences do

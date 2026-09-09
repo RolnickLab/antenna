@@ -1,9 +1,9 @@
 import { OccurrencePicker } from 'components/track/occurrence-picker'
 import { TrackEditDialog } from 'components/track/track-edit-dialog'
-import { useTrackCandidates } from 'components/track/useTrackCandidates'
 import { useMergeOccurrences } from 'data-services/hooks/occurrences/track/useMergeOccurrences'
 import { useSetGroupingVerified } from 'data-services/hooks/occurrences/track/useSetGroupingVerified'
 import { useSplitTrack } from 'data-services/hooks/occurrences/track/useSplitTrack'
+import { useMergeCandidates } from 'data-services/hooks/occurrences/useMergeCandidates'
 import { AlertCircleIcon, Loader2Icon, RouteIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
@@ -82,11 +82,9 @@ export interface SessionTrackEdit {
  * description arrives already worded, rather than being derived from the live path.
  */
 export const SessionTrackEdits = ({
-  captureId,
   edit,
   onClose,
 }: {
-  captureId?: string
   edit?: SessionTrackEdit
   onClose: () => void
 }) => {
@@ -103,9 +101,13 @@ export const SessionTrackEdits = ({
   } = useSetGroupingVerified(occurrenceId)
   const [verifyDone, setVerifyDone] = useState(false)
 
-  const { candidates, isLoading: candidatesLoading } = useTrackCandidates({
-    captureIds: edit?.action === 'merge' ? [captureId, captureId] : [],
-    excludeIds: [occurrenceId],
+  const {
+    candidates,
+    isLoading: candidatesLoading,
+    minutes,
+  } = useMergeCandidates({
+    enabled: edit?.action === 'merge',
+    occurrenceId,
     projectId: projectId as string,
   })
 
@@ -163,6 +165,7 @@ export const SessionTrackEdits = ({
         description={translate(STRING.TRACK_MERGE_DESCRIPTION)}
         error={merge.error}
         isLoading={merge.isLoading}
+        isWide
         onConfirm={() => merge.mergeOccurrences([sourceId as string])}
         onOpenChange={(open) => (open ? undefined : close())}
         open={edit.action === 'merge'}
@@ -178,9 +181,16 @@ export const SessionTrackEdits = ({
         {merge.result ? null : (
           <OccurrencePicker
             candidates={candidates}
+            description={translate(STRING.TRACK_MERGE_CANDIDATES_SCOPE, {
+              minutes,
+            })}
+            emptyMessage={translate(STRING.TRACK_NO_MERGE_CANDIDATES, {
+              minutes,
+            })}
             isLoading={candidatesLoading}
             onSelect={setSourceId}
             selectedId={sourceId}
+            title={translate(STRING.TRACK_MERGE_CANDIDATES, { minutes })}
           />
         )}
       </TrackEditDialog>
