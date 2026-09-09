@@ -3437,41 +3437,19 @@ class OccurrenceQuerySet(BaseQuerySet):
         ordering), so callers that need both an id and the image can rely on them referring
         to one detection rather than re-deriving the pick with a second, drift-prone subquery.
         """
-        # Subquery to get the id of the best detection
-        # Use id as secondary sort to ensure deterministic results
-        best_detection_id_subquery = (
-            Detection.objects.filter(occurrence=OuterRef("pk"))
-            .order_by("-classifications__score", "id")
-            .values("id")[:1]
+        # One ordering for every field so they all describe the same detection. nulls_last:
+        # a detection with no classification would otherwise sort first under DESC and be
+        # picked as "best"; .valid() keeps null-marker rows out.
+        best_detections = (
+            Detection.objects.valid()  # type: ignore[union-attr]
+            .filter(occurrence=OuterRef("pk"))
+            .order_by(models.F("classifications__score").desc(nulls_last=True), "id")
         )
-
-        # Subquery to get the path of the best detection
-        # Use id as secondary sort to ensure deterministic results
-        best_detection_path_subquery = (
-            Detection.objects.filter(occurrence=OuterRef("pk"))
-            .order_by("-classifications__score", "id")
-            .values("path")[:1]
-        )
-
-        # Subquery to get the bbox of the best detection
-        # Use id as secondary sort to ensure deterministic results
-        best_detection_bbox_subquery = (
-            Detection.objects.filter(occurrence=OuterRef("pk"))
-            .order_by("-classifications__score", "id")
-            .values("bbox")[:1]
-        )
-
-        # Subquery to get the source capture path and public_base_url for the best detection
-        best_detection_capture_path_subquery = (
-            Detection.objects.filter(occurrence=OuterRef("pk"))
-            .order_by("-classifications__score", "id")
-            .values("source_image__path")[:1]
-        )
-        best_detection_capture_public_base_url_subquery = (
-            Detection.objects.filter(occurrence=OuterRef("pk"))
-            .order_by("-classifications__score", "id")
-            .values("source_image__public_base_url")[:1]
-        )
+        best_detection_id_subquery = best_detections.values("id")[:1]
+        best_detection_path_subquery = best_detections.values("path")[:1]
+        best_detection_bbox_subquery = best_detections.values("bbox")[:1]
+        best_detection_capture_path_subquery = best_detections.values("source_image__path")[:1]
+        best_detection_capture_public_base_url_subquery = best_detections.values("source_image__public_base_url")[:1]
 
         return self.annotate(
             best_detection_id=models.Subquery(best_detection_id_subquery),

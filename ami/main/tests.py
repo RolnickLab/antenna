@@ -6639,6 +6639,24 @@ class TestTaxaExampleOccurrence(APITestCase):
         self.assertEqual(row["best_scoring_occurrence_id"], self.itea_high_early.id)
         self.assertEqual(row["example_occurrence"]["id"], self.itea_high_early.id)
 
+    def test_unclassified_detection_is_never_the_best_detection(self):
+        """A detection with no classification sorts after classified ones (Postgres puts its
+        NULL score first under DESC), so the example's detection id and image stay the
+        highest-scoring detection."""
+        occurrence = self.itea_high_early
+        scored = occurrence.detections.get()
+        unclassified = Detection.objects.create(
+            source_image=scored.source_image,
+            timestamp=scored.timestamp,
+            bbox=[0.3, 0.3, 0.4, 0.4],
+            path="detections/ex_unclassified.jpg",
+            occurrence=occurrence,
+        )
+        self.assertGreater(unclassified.pk, scored.pk)
+        row = self._rows(self.base_url + "&with_example_occurrences=true")["Vanessa itea"]
+        self.assertEqual(row["example_occurrence"]["detection_id"], scored.pk)
+        self.assertNotIn("ex_unclassified", row["example_occurrence"]["image_url"])
+
     def test_verified_row_returns_latest(self):
         # Verified row -> the latest occurrence (is it still showing up?), NOT the
         # best-scoring-unverified one that an unverified row would surface.
