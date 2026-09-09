@@ -21,7 +21,7 @@ export const useAuthorizedQuery = <T>({
   url: string
 }) => {
   const { user } = useUser()
-  const { data, isLoading, isFetching, isSuccess, error } = useQuery({
+  const { data, isLoading, isFetching, isSuccess, error, refetch } = useQuery({
     enabled,
     onError,
     queryKey,
@@ -36,5 +36,5 @@ export const useAuthorizedQuery = <T>({
     staleTime,
   })
 
-  return { data, isLoading, isFetching, isSuccess, error }
+  return { data, isLoading, isFetching, isSuccess, error, refetch }
 }

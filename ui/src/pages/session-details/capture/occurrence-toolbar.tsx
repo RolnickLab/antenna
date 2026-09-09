@@ -34,6 +34,7 @@ export const OccurrenceToolbar = ({
   onSplit,
   onVerify,
   path,
+  pathError,
   shownFrames,
 }: {
   isLoadingPath?: boolean
@@ -45,6 +46,8 @@ export const OccurrenceToolbar = ({
   onSplit: () => void
   onVerify: () => void
   path?: PathFrame[]
+  /** The last request for this occurrence's path failed; the show button retries. */
+  pathError?: boolean
   /** Ghost boxes actually drawn, which the trail caps below the path's length. */
   shownFrames?: number
 }) => {
@@ -111,6 +114,12 @@ export const OccurrenceToolbar = ({
             shown: shownFrames,
             total: path.length,
           })}
+        </span>
+      ) : null}
+
+      {pathError && !pathShown && !isLoadingPath ? (
+        <span className="body-small text-destructive" role="alert">
+          {translate(STRING.TRACK_PATH_ERROR)}
         </span>
       ) : null}
 

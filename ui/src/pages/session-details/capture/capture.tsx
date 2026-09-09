@@ -23,7 +23,11 @@ import { BoxStyle, bboxToPercentStyle } from './bbox'
 import { buildTrail, CaptureGhostTrail } from './capture-ghost-trail'
 import { TierSources } from './capture-tiers'
 import { OccurrenceToolbar } from './occurrence-toolbar'
-import { SessionTrackEdit, SessionTrackEdits } from './session-track-edits'
+import {
+  SessionPathStatus,
+  SessionTrackEdit,
+  SessionTrackEdits,
+} from './session-track-edits'
 import styles from './capture.module.scss'
 import { useCaptureTiers } from './useCaptureTiers'
 
@@ -63,10 +67,14 @@ export const Capture = ({
     pathOccurrenceId && activeOccurrences.includes(pathOccurrenceId)
       ? pathOccurrenceId
       : undefined
-  const { path, isLoading: isLoadingPath } = useOccurrencePath(
-    shownPathId,
-    !!shownPathId
-  )
+  const {
+    path,
+    isLoading: pathLoading,
+    isFetching: pathFetching,
+    error: pathError,
+    refetch: refetchPath,
+  } = useOccurrencePath(shownPathId, !!shownPathId)
+  const isLoadingPath = pathLoading || pathFetching
   const trail = useMemo(
     () => (path?.length ? buildTrail(path, captureId) : undefined),
     [path, captureId]
@@ -232,8 +240,13 @@ export const Capture = ({
               captureId={captureId}
               isLoadingPath={isLoadingPath}
               onHidePath={() => setPathOccurrenceId(undefined)}
-              onShowPath={setPathOccurrenceId}
+              onShowPath={(occurrenceId) =>
+                occurrenceId === shownPathId
+                  ? refetchPath()
+                  : setPathOccurrenceId(occurrenceId)
+              }
               path={path}
+              pathError={!!pathError}
               pathOccurrenceId={shownPathId}
               shownFrames={trail?.shownCount}
               showDetections={showDetections}
@@ -241,6 +254,13 @@ export const Capture = ({
           </div>
         </TransformComponent>
       </TransformWrapper>
+      {shownPathId ? (
+        <SessionPathStatus
+          error={!!pathError}
+          isLoading={isLoadingPath}
+          occurrenceId={shownPathId}
+        />
+      ) : null}
       {zoomPercent !== null ? (
         <span className="absolute bottom-2 left-2 px-2.5 py-1 rounded-full bg-neutral-900/70 text-generic-white text-xs tabular-nums pointer-events-none select-none">
           {zoomPercent}%
@@ -304,6 +324,7 @@ const CaptureDetections = ({
   onHidePath,
   onShowPath,
   path,
+  pathError,
   pathOccurrenceId,
   showDetections,
   shownFrames,
@@ -316,6 +337,7 @@ const CaptureDetections = ({
   onHidePath: () => void
   onShowPath: (occurrenceId: string) => void
   path?: PathFrame[]
+  pathError?: boolean
   pathOccurrenceId?: string
   showDetections?: boolean
   shownFrames?: number
@@ -353,6 +375,15 @@ const CaptureDetections = ({
     } else {
       setActiveOccurrences([...activeOccurrences, occurrenceId])
     }
+  }
+
+  // A path is only fetched for a selected occurrence, so asking for one from a
+  // hovered box selects it first.
+  const showPath = (occurrenceId: string) => {
+    if (!activeOccurrences.includes(occurrenceId)) {
+      setActiveOccurrences([...activeOccurrences, occurrenceId])
+    }
+    onShowPath(occurrenceId)
   }
 
   return (
@@ -426,7 +457,7 @@ const CaptureDetections = ({
                         setActiveOccurrence(detection.occurrenceId)
                       }
                       onShowPath={() =>
-                        onShowPath(detection.occurrenceId as string)
+                        showPath(detection.occurrenceId as string)
                       }
                       onSplit={() =>
                         setTrackEdit({
@@ -448,6 +479,9 @@ const CaptureDetections = ({
                         pathOccurrenceId === detection.occurrenceId
                           ? path
                           : undefined
+                      }
+                      pathError={
+                        pathError && pathOccurrenceId === detection.occurrenceId
                       }
                       shownFrames={
                         pathOccurrenceId === detection.occurrenceId

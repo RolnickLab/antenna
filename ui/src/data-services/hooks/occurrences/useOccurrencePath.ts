@@ -20,9 +20,12 @@ export const useOccurrencePath = (
 ): {
   path?: PathFrame[]
   isLoading: boolean
+  /** Also true while a track edit refreshes an already shown path. */
+  isFetching: boolean
   error?: unknown
+  refetch: () => void
 } => {
-  const { data, isLoading, error } = useAuthorizedQuery<
+  const { data, isLoading, isFetching, error, refetch } = useAuthorizedQuery<
     ServerOccurrencePathFrame[]
   >({
     enabled: !!occurrenceId && !!enabled,
@@ -36,6 +39,8 @@ export const useOccurrencePath = (
   return {
     path,
     isLoading: !!occurrenceId && !!enabled && isLoading,
+    isFetching,
     error,
+    refetch,
   }
 }
