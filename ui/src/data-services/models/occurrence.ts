@@ -3,6 +3,13 @@ import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getForma
 import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
 import { Taxon } from './taxa'
+import {
+  convertTrackStats,
+  getIdAgreementLabel,
+  getMotionLabel,
+  getSizeChangeLabel,
+  TrackStats,
+} from './track-stats'
 
 export type ServerOccurrence = any // TODO: Update this type
 
@@ -10,6 +17,7 @@ export class Occurrence {
   protected readonly _occurrence: ServerOccurrence
   private readonly _determinationTaxon: Taxon
   private readonly _images: { src: string }[] = []
+  private readonly _trackStats?: TrackStats
 
   public constructor(occurrence: ServerOccurrence) {
     this._occurrence = occurrence
@@ -19,6 +27,8 @@ export class Occurrence {
     this._images = occurrence.detection_images
       .filter((src: string) => !!src.length)
       .map((src: string) => ({ src }))
+
+    this._trackStats = convertTrackStats(occurrence.track_stats)
   }
 
   get createdAt(): Date {
@@ -130,8 +140,16 @@ export class Occurrence {
     return `${this._occurrence.id}`
   }
 
+  get idAgreementLabel(): string | undefined {
+    return getIdAgreementLabel(this._trackStats)
+  }
+
   get images(): { src: string }[] {
     return this._images
+  }
+
+  get motionLabel(): string | undefined {
+    return getMotionLabel(this._trackStats)
   }
 
   get numDetections(): number {
@@ -154,11 +172,20 @@ export class Occurrence {
     return this._occurrence.event.name
   }
 
+  get sizeChangeLabel(): string | undefined {
+    return getSizeChangeLabel(this._trackStats)
+  }
+
   get timeLabel(): string {
     return getFormatedTimeString({
       date: new Date(this.firstAppearanceTimestamp),
       options: { second: true },
     })
+  }
+
+  /** Present only when the list was requested with track stats. */
+  get trackStats(): TrackStats | undefined {
+    return this._trackStats
   }
 
   get userPermissions(): UserPermission[] {
@@ -171,7 +198,7 @@ export class Occurrence {
         return false
       }
 
-      if (identification.withdrawn) {
+      if (identification.withdrawn || !identification.taxon) {
         return false
       }
 
