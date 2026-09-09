@@ -55,9 +55,9 @@ export const GroupingActions = ({
   }
 
   return (
-    <div className="flex flex-col gap-2 mb-6">
+    <div className="flex flex-col items-center text-center gap-2 px-6 mb-6">
       {occurrence.groupingVerified ? (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col items-center gap-2">
           <Badge label={translate(STRING.TRACK_GROUPING_CONFIRMED)} />
           <span className="body-small text-muted-foreground">
             {translate(STRING.TRACK_GROUPING_CONFIRMED_BY, {
@@ -73,7 +73,7 @@ export const GroupingActions = ({
           {translate(STRING.TRACK_GROUPING_NOT_CONFIRMED)}
         </span>
       )}
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className="flex flex-col items-center gap-2">
         {canRestructure && (
           <Button
             onClick={() => setMergeOpen(true)}

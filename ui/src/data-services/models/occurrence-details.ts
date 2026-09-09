@@ -4,14 +4,41 @@ import { UserPermission } from 'utils/user/types'
 import { Algorithm } from './algorithm'
 import { Occurrence, ServerOccurrence } from './occurrence'
 import { Taxon } from './taxa'
+import { TrackStats } from './track-stats'
 
 export type ServerOccurrenceDetails = ServerOccurrence & any // TODO: Update this type
+
+export interface ServerGroupingSummary {
+  algorithm: { id: number; key: string; name: string } | null
+  derived: boolean
+  distinct_taxa: number
+  duration_seconds: number | null
+  frames: number
+  id_agreement: number | null
+  linked_detections: number
+  motion: number
+  score_max: number
+  score_mean: number
+  score_min: number
+  size_ratio: number
+}
+
+/** Track stats recomputed for the detail view, never stored server-side. */
+export interface GroupingSummary extends TrackStats {
+  algorithm?: { id: string; key: string; name: string }
+  durationSeconds: number | null
+  linkedDetections: number
+  scoreMax: number
+  scoreMean: number
+  scoreMin: number
+}
 
 export interface Identification {
   applied?: boolean
   id: string
   overridden?: boolean
-  taxon: Taxon
+  /** Absent on a comment-only identification. */
+  taxon?: Taxon
   comment?: string
   algorithm?: Algorithm
   score?: number
@@ -32,6 +59,7 @@ export interface HumanIdentification extends Identification {
 export interface MachinePrediction extends Identification {
   algorithm: Algorithm
   score: number
+  taxon: Taxon
   terminal: boolean
 }
 
@@ -86,9 +114,9 @@ export class OccurrenceDetails extends Occurrence {
     this._humanIdentifications = this._occurrence.identifications
       .sort(sortByDate)
       .map((i: any) => {
-        const taxon = new Taxon(i.taxon)
+        const taxon = i.taxon ? new Taxon(i.taxon) : undefined
         const overridden = i.withdrawn
-        const applied = taxon.id === this.determinationTaxon.id
+        const applied = taxon?.id === this.determinationTaxon.id
 
         const identification: HumanIdentification = {
           id: `${i.id}`,
@@ -158,7 +186,9 @@ export class OccurrenceDetails extends Occurrence {
       : undefined
   }
 
-  get groupingVerifiedBy(): { id: string; name: string } | undefined {
+  get groupingVerifiedBy():
+    | { id: string; image?: string; name: string }
+    | undefined {
     const user = this._occurrence.grouping_verified_by
 
     if (!user) {
@@ -167,7 +197,37 @@ export class OccurrenceDetails extends Occurrence {
 
     return {
       id: `${user.id}`,
+      image: user.image ?? undefined,
       name: user.name?.length ? user.name : translate(STRING.ANONYMOUS_USER),
+    }
+  }
+
+  get groupingSummary(): GroupingSummary | undefined {
+    const summary: ServerGroupingSummary | null | undefined =
+      this._occurrence.grouping_summary
+
+    if (!summary) {
+      return undefined
+    }
+
+    return {
+      algorithm: summary.algorithm
+        ? {
+            id: `${summary.algorithm.id}`,
+            key: summary.algorithm.key,
+            name: summary.algorithm.name,
+          }
+        : undefined,
+      distinctTaxa: summary.distinct_taxa,
+      durationSeconds: summary.duration_seconds,
+      frames: summary.frames,
+      idAgreement: summary.id_agreement,
+      linkedDetections: summary.linked_detections,
+      motion: summary.motion,
+      scoreMax: summary.score_max,
+      scoreMean: summary.score_mean,
+      scoreMin: summary.score_min,
+      sizeRatio: summary.size_ratio,
     }
   }
 

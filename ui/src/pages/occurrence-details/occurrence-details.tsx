@@ -26,6 +26,8 @@ import { useUser } from 'utils/user/userContext'
 import { useUserInfo } from 'utils/user/userInfoContext'
 import { Agree } from './agree/agree'
 import { IdQuickActions } from './id-quick-actions/id-quick-actions'
+import { GroupingConfirmation } from './identification-card/grouping-confirmation'
+import { GroupingSummary } from './identification-card/grouping-summary'
 import { HumanIdentification } from './identification-card/human-identification'
 import { MachinePrediction } from './identification-card/machine-prediction'
 import styles from './occurrence-details.module.scss'
@@ -267,6 +269,14 @@ export const OccurrenceDetails = ({
                         />
                       </Box>
                     )}
+
+                    {occurrence.groupingVerifiedAt ? (
+                      <GroupingConfirmation occurrence={occurrence} />
+                    ) : null}
+
+                    {occurrence.groupingSummary ? (
+                      <GroupingSummary summary={occurrence.groupingSummary} />
+                    ) : null}
 
                     {occurrence.humanIdentifications.map((i) => (
                       <HumanIdentification
