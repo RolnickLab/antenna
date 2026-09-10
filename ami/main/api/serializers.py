@@ -1,7 +1,9 @@
 import collections
 import datetime
+import json
 
 from django.db.models import QuerySet
+from django_pydantic_field.rest_framework import SchemaField
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -20,6 +22,7 @@ from ami.users.roles import ProjectManager
 from ..models import (
     Classification,
     Deployment,
+    DeploymentStatus,
     Detection,
     Device,
     Event,
@@ -33,6 +36,7 @@ from ..models import (
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
+    StationStatusPayload,
     TaxaList,
     Taxon,
 )
@@ -178,6 +182,41 @@ class JobStatusSerializer(DefaultSerializer):
         ]
 
 
+class DeploymentStatusSerializer(serializers.ModelSerializer):
+    """
+    One heartbeat from a station, as stored.
+
+    Plain ``ModelSerializer`` rather than the hyperlinked default: a status report has
+    no detail route of its own, it is only ever read through its station.
+    """
+
+    status = SchemaField(schema=StationStatusPayload)
+
+    class Meta:
+        model = DeploymentStatus
+        fields = [
+            "id",
+            "recorded_at",
+            "status",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_at"]
+
+
+class DeploymentStatusRequestSerializer(serializers.Serializer):
+    """
+    What a station sends when it reports in.
+
+    ``recorded_at`` defaults to the moment the report arrives, so a device with no
+    reliable clock can still check in. Everything the device has to say travels inside
+    ``status``: three identity fields it must answer, and then whatever it can measure
+    (see ``StationStatusPayload``).
+    """
+
+    recorded_at = serializers.DateTimeField(required=False)
+    status = SchemaField(schema=StationStatusPayload)
+
+
 class DeploymentListSerializer(DefaultSerializer):
     events = serializers.SerializerMethodField()
     occurrences = serializers.SerializerMethodField()
@@ -186,6 +225,9 @@ class DeploymentListSerializer(DefaultSerializer):
     research_site = SiteNestedSerializer(read_only=True)
     jobs = JobStatusSerializer(many=True, read_only=True)
     data_source_connected = serializers.SerializerMethodField()
+    last_status = serializers.SerializerMethodField()
+    last_status_at = serializers.SerializerMethodField()
+    last_status_live = serializers.SerializerMethodField()
 
     class Meta:
         model = Deployment
@@ -211,6 +253,9 @@ class DeploymentListSerializer(DefaultSerializer):
             "research_site",
             "jobs",
             "data_source_connected",
+            "last_status_at",
+            "last_status",
+            "last_status_live",
         ]
 
     def get_data_source_connected(self, obj: Deployment) -> bool:
@@ -244,6 +289,55 @@ class DeploymentListSerializer(DefaultSerializer):
             request=self.context.get("request"),
             params={"deployment": obj.pk},
         )
+
+    def viewer_is_project_member(self, project) -> bool:
+        """
+        Whether the person reading may see operational detail about a station.
+
+        What a device reports — which unit is on site, what it runs, how much battery it
+        has left — is for the people running the project, not for everyone who can see
+        that the project exists. Asked once per project and remembered for the rest of
+        the response, so a list of stations costs one membership query rather than one
+        per station.
+        """
+        if project is None:
+            return False
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user is None:
+            return False
+
+        seen = self.context.setdefault("project_membership", {})
+        if project.pk not in seen:
+            seen[project.pk] = project.is_member(user)
+
+        return seen[project.pk]
+
+    def get_last_status(self, obj) -> dict | None:
+        """The device's most recent report, or nothing at all for a non-member."""
+        if not self.viewer_is_project_member(obj.project) or obj.last_status is None:
+            return None
+
+        return json.loads(obj.last_status.json())
+
+    def get_last_status_at(self, obj) -> datetime.datetime | None:
+        """When the station was last heard from, for members of its project."""
+        return obj.last_status_at if self.viewer_is_project_member(obj.project) else None
+
+    def get_last_status_live(self, obj) -> bool:
+        """
+        Whether the station is reporting right now, for members of its project.
+
+        False covers two different situations that look the same from outside: a
+        station that has gone quiet, and the majority of stations, which have no
+        connected device and never report. Read it alongside ``last_status_at``, which
+        is empty only in the second case.
+        """
+        if not self.viewer_is_project_member(obj.project):
+            return False
+
+        return obj.status_is_live
 
 
 class DeploymentEventNestedSerializer(DefaultSerializer):

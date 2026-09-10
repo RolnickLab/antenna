@@ -330,6 +330,22 @@ class Project(ProjectSettingsMixin, BaseModel):
 
     objects = ProjectManager()
 
+    def is_member(self, user) -> bool:
+        """
+        Whether a user belongs to this project.
+
+        Membership, not a specific permission, is the line for seeing operational detail
+        about a station: what device is on site, what it is running, how much battery it
+        has left. Owners are always members (see ``ensure_owner_membership``), and
+        superusers count everywhere.
+        """
+        if not user or not user.is_authenticated:
+            return False
+        if user.is_superuser:
+            return True
+
+        return self.members.filter(pk=user.pk).exists()
+
     def ensure_owner_membership(self):
         """Add owner to members if they are not already a member"""
         if self.owner and not self.members.filter(id=self.owner.pk).exists():
@@ -759,7 +775,68 @@ def _compare_totals_for_sync(deployment: "Deployment", total_files_found: int):
         )
 
 
+# How recently a report must have arrived for a station to count as online. A
+# connected device is expected to check in about once a minute, so this leaves room
+# for a few missed reports before an operator is told the station is quiet. It matches
+# the cutoff the platform already uses for processing services
+# (``ami.jobs.tasks.WORKER_AVAILABILITY_ONLINE_CUTOFF``), so "online" means the same
+# span of time everywhere in the interface.
+STATION_ONLINE_MAX_AGE = datetime.timedelta(minutes=5)
+
+
 @final
+class StationStatusPayload(pydantic.BaseModel):
+    """
+    What a connected device reports about itself between uploads.
+
+    Most stations never report at all: they are configured here and synced on demand
+    from an SD card or object storage. This describes the minority that have a device
+    on the network, and it asks that device for as little as possible.
+
+    Two fields are required — which unit is reporting, and what software it is running.
+    Neither is recorded anywhere else: a station's ``device`` says what kind of hardware
+    was configured, not which physical box is on site or what it is running.
+
+    Everything else is whatever that device can gather, kept exactly as published
+    (``extra = "allow"``). Devices differ: a phone knows its battery percentage, a
+    mains-powered box knows only that it is powered, a box with no fuel gauge knows
+    nothing about power at all. Naming those readings here would turn the platform's
+    guesses into a contract and leave every station showing blank rows for readings its
+    hardware cannot take.
+
+    Conventional key names, so devices reporting the same thing agree on spelling. None
+    is required and none is validated:
+
+    - ``status`` — what the device is doing, e.g. "surveying", "idle", "uploading"
+    - ``session_id``, ``captures_count``, ``pending_upload_count``, ``last_capture_at``
+    - ``battery_percent`` (0-100), ``battery_state``, ``storage_free_bytes``
+    - ``survey_config`` — the configuration the device is capturing under, verbatim
+
+    A reading that turns out to be common across devices, and that the platform wants to
+    filter or chart on, is the one to promote into a named field later.
+    """
+
+    device_id: str
+    software_version: str
+
+    class Config:
+        extra = "allow"
+
+    @property
+    def identity(self) -> dict[str, str]:
+        """The declared identity fields, separated from whatever else was reported."""
+        return {"device_id": self.device_id, "software_version": self.software_version}
+
+    def reported(self) -> dict[str, typing.Any]:
+        """
+        Everything the device published beyond its identity, in the order it sent it.
+
+        This is what a station detail lists: the capabilities of this particular device,
+        rather than a fixed set of rows that are blank for everything else.
+        """
+        return {key: value for key, value in self.dict().items() if key not in self.identity}
+
+
 class Deployment(BaseModel):
     """
     Class that describes a deployment of a device (camera & hardware) at a research site.
@@ -799,6 +876,18 @@ class Deployment(BaseModel):
     taxa_count = models.IntegerField(blank=True, null=True)
     first_capture_timestamp = models.DateTimeField(blank=True, null=True)
     last_capture_timestamp = models.DateTimeField(blank=True, null=True)
+
+    # The most recent heartbeat the station sent about itself, copied from its
+    # DeploymentStatus record so a list of stations can be sorted and filtered on
+    # "last seen" without an aggregate query over the whole time series.
+    last_status_at = models.DateTimeField(blank=True, null=True)
+    last_status = SchemaField(StationStatusPayload | None, null=True, blank=True, default=None)
+
+    # When a report last arrived, by this platform's clock. Kept separately from
+    # last_status_at, which is the station's own clock and can be hours behind after a
+    # night offline: whether a station is reachable right now is a fact about the
+    # connection, and only the receiving end can measure it.
+    last_status_received_at = models.DateTimeField(blank=True, null=True)
 
     research_site = models.ForeignKey(
         Site,
@@ -1131,6 +1220,69 @@ class Deployment(BaseModel):
         if save:
             self.save(update_calculated_fields=False)
 
+    def record_status(
+        self,
+        payload: "StationStatusPayload",
+        recorded_at: datetime.datetime,
+    ) -> "DeploymentStatus":
+        """
+        Store one heartbeat from the station and remember it as the latest.
+
+        The denormalized copy is written with a queryset update rather than
+        ``self.save()``: saving a Deployment recounts its captures, occurrences and
+        taxa and can queue a regrouping job, which is far too much work to do on
+        every heartbeat.
+        """
+        report = DeploymentStatus.objects.create(
+            deployment=self,
+            recorded_at=recorded_at,
+            status=payload,
+        )
+
+        # Arrival always moves forward, even for a backlogged report: a station sending
+        # last night's readings is on the network now, which is what "online" asks.
+        updates: dict[str, typing.Any] = {"last_status_received_at": report.created_at}
+
+        # The reading itself only moves forward, so a station catching up does not
+        # appear to go backwards while it uploads its queue oldest first.
+        latest = self.status_reports.order_by("-recorded_at").first()
+        if latest and latest.pk == report.pk:
+            updates["last_status_at"] = report.recorded_at
+            updates["last_status"] = report.status
+
+        Deployment.objects.filter(pk=self.pk).update(**updates)
+        for field, value in updates.items():
+            setattr(self, field, value)
+
+        return report
+
+    @property
+    def status_is_live(self) -> bool:
+        """
+        Whether the station has reported recently enough to be treated as online.
+
+        Measured against when the last report arrived, not the timestamp inside it. A
+        device carries its own clock, and one set to the wrong timezone would otherwise
+        report itself hours stale or hours in the future the moment it came online.
+
+        A station that has never reported is not online and is not late either: most
+        stations have no device on the network at all, and are synced from an SD card
+        or object storage on demand.
+        """
+        if self.last_status_received_at is None:
+            return False
+
+        return datetime.datetime.now() - self.last_status_received_at < STATION_ONLINE_MAX_AGE
+
+    def check_custom_permission(self, user, action: str) -> bool:
+        """
+        Reporting a station's status is trusted at the same level as syncing its
+        captures, so it reuses that permission instead of introducing one of its own.
+        """
+        if action == "status":
+            return user.has_perm(Project.Permissions.SYNC_DEPLOYMENT, self.project)
+        return super().check_custom_permission(user, action)
+
     def save(self, update_calculated_fields=True, regroup_async=True, *args, **kwargs):
         super().save(*args, **kwargs)
         if self.pk and update_calculated_fields:
@@ -1145,6 +1297,38 @@ class Deployment(BaseModel):
                 self.update_children()
                 # @TODO this isn't working as a background task
                 # ami.tasks.model_task.delay("Project", self.project.pk, "update_children_project")
+
+
+@final
+class DeploymentStatus(BaseModel):
+    """
+    One heartbeat from a station: what it reported about itself, and when.
+
+    Stations in the field are offline for most of a night, so a report may arrive long
+    after the moment it describes. ``recorded_at`` is the station's own clock and orders
+    the series; ``created_at`` is when the platform received it, and the gap between them
+    is how late the station is running.
+    """
+
+    deployment = models.ForeignKey(
+        Deployment,
+        on_delete=models.CASCADE,
+        related_name="status_reports",
+    )
+    recorded_at = models.DateTimeField(help_text="When the station recorded this status, by its own clock.")
+    status = SchemaField(StationStatusPayload, null=False)
+
+    project_accessor = "deployment__project"
+
+    class Meta:
+        ordering = ["-recorded_at"]
+        verbose_name_plural = "Deployment statuses"
+        indexes = [
+            models.Index(fields=["deployment", "-recorded_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.deployment} at {self.recorded_at}"
 
 
 class EventQuerySet(BaseQuerySet):

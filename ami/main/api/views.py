@@ -72,6 +72,8 @@ from .serializers import (
     ClassificationWithTaxaSerializer,
     DeploymentListSerializer,
     DeploymentSerializer,
+    DeploymentStatusRequestSerializer,
+    DeploymentStatusSerializer,
     DetectionListSerializer,
     DetectionSerializer,
     DeviceSerializer,
@@ -303,6 +305,7 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
         "taxa_count",
         "first_capture_timestamp",
         "last_capture_timestamp",
+        "last_status_at",
         "name",
     ]
 
@@ -358,6 +361,57 @@ class DeploymentViewSet(DefaultViewSet, ProjectMixin):
             return Response({"job_id": job.pk, "project_id": deployment.project_id})
         else:
             raise api_exceptions.ValidationError(detail="Deployment must have a data source to sync captures from")
+
+    @action(detail=True, methods=["get", "post"], name="status")
+    def status(self, request, pk=None) -> Response:
+        """
+        Report or read a station's own status.
+
+        A device says which box it is, what it is running, and then whatever it is
+        able to measure — battery on a phone, nothing at all on a box with no fuel
+        gauge. A report is stored as history and copied onto the station as its
+        latest, so an operator can see that a station needs attention before it goes
+        quiet.
+
+        Only the three identity fields are required. Everything else is kept exactly
+        as published, so devices with different sensors share one endpoint and no
+        reading waits on a release here.
+
+        ``GET`` returns the reports most recently recorded, newest first, and is for
+        members of the station's project only: what a device reports about itself —
+        which unit is on site, what it runs, how much battery it has left — is
+        operational detail for the people running the project rather than for everyone
+        who can see that the project exists. Posting a report stays at the same trust
+        level as syncing the station's captures.
+        """
+        if request.method == "GET":
+            # Read the object directly rather than through get_object(), whose object
+            # permission check is the write-level one this action declares.
+            deployment = get_object_or_404(self.get_queryset(), pk=pk)
+            if not request.user or not request.user.is_authenticated:
+                # Answer an anonymous reader the way the rest of the endpoint does:
+                # "sign in", not "you are not allowed".
+                raise api_exceptions.NotAuthenticated()
+            if not (deployment.project and deployment.project.is_member(request.user)):
+                raise api_exceptions.PermissionDenied(
+                    detail="Only members of this project may read a station's reported status."
+                )
+
+            reports = deployment.status_reports.all()
+            page = self.paginate_queryset(reports)
+            if page is not None:
+                return self.get_paginated_response(DeploymentStatusSerializer(page, many=True).data)
+            return Response(DeploymentStatusSerializer(reports, many=True).data)
+
+        deployment: Deployment = self.get_object()
+        request_serializer = DeploymentStatusRequestSerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+        payload = request_serializer.validated_data["status"]
+        recorded_at = request_serializer.validated_data.get("recorded_at") or timezone.now()
+
+        report = deployment.record_status(payload=payload, recorded_at=recorded_at)
+        logger.info(f"Station {deployment.pk} reported status recorded at {recorded_at}")
+        return Response(DeploymentStatusSerializer(report).data, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["post"], name="sync-all", url_path="sync-all")
     def sync_all(self, request) -> Response:

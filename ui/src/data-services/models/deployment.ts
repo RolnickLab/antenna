@@ -6,6 +6,21 @@ import { Job } from './job'
 
 export type ServerDeployment = any // TODO: Update this type
 
+/**
+ * What a connected device last reported about itself.
+ *
+ * The two identity fields are the only ones every device answers. Everything past them
+ * depends on what that particular device can measure, so the type stays open and the UI
+ * lists whatever arrived rather than a fixed set of rows.
+ */
+export interface StationStatus {
+  device_id: string
+  software_version: string
+  [key: string]: unknown
+}
+
+export const STATION_STATUS_IDENTITY_KEYS = ['device_id', 'software_version']
+
 export class Deployment extends Entity {
   private readonly _jobs: Job[] = []
 
@@ -109,6 +124,54 @@ export class Deployment extends Entity {
     return this.numImages
       ? getFormatedDateString({ date: new Date(this._deployment.last_date) })
       : undefined
+  }
+
+  /** The station's own most recent report, if it has ever checked in. */
+  get lastStatus(): StationStatus | undefined {
+    return this._deployment.last_status ?? undefined
+  }
+
+  get lastStatusAt(): Date | undefined {
+    return this._deployment.last_status_at
+      ? new Date(this._deployment.last_status_at)
+      : undefined
+  }
+
+  /**
+   * Whether the station is reporting right now, as the server judged it.
+   *
+   * The cutoff lives on the server so that one clock decides it; a browser set to the
+   * wrong time would otherwise show a whole project as offline.
+   */
+  get isOnline(): boolean {
+    return this._deployment.last_status_live ?? false
+  }
+
+  get lastSeenLabel(): string | undefined {
+    const lastStatusAt = this.lastStatusAt
+
+    return lastStatusAt
+      ? getFormatedDateTimeString({ date: lastStatusAt })
+      : undefined
+  }
+
+  /**
+   * Everything the device published beyond its identity, in the order it sent it.
+   *
+   * Devices differ in what they can measure, so this is a list to render rather than a
+   * set of known fields to read: a phone reports its battery, a mains-powered box
+   * reports that it is on mains, and neither is shown rows it never answered.
+   */
+  get reportedStatusEntries(): [string, unknown][] {
+    const status = this.lastStatus
+
+    if (!status) {
+      return []
+    }
+
+    return Object.entries(status).filter(
+      ([key]) => !STATION_STATUS_IDENTITY_KEYS.includes(key)
+    )
   }
 
   get dataSourceDetails(): {

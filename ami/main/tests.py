@@ -22,8 +22,10 @@ from ami.exports.models import DataExport
 from ami.jobs.models import VALID_JOB_TYPES, Job
 from ami.main.api.serializers import MAX_BULK_IDENTIFICATIONS
 from ami.main.models import (
+    STATION_ONLINE_MAX_AGE,
     Classification,
     Deployment,
+    DeploymentStatus,
     Detection,
     Device,
     Event,
@@ -35,6 +37,7 @@ from ami.main.models import (
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
+    StationStatusPayload,
     Tag,
     TaxaList,
     Taxon,
@@ -7850,6 +7853,390 @@ class TestBulkIdentificationQueryCount(BulkIdentificationTestCase):
             f"({queries_small} queries for {small} items, {queries_large} for {large}). "
             f"A jump here usually means something started querying per item.",
         )
+
+
+class TestDeploymentStatus(APITestCase):
+    """
+    A connected device reports on itself through ``POST /deployments/{id}/status/``.
+
+    The endpoint has to serve devices that measure different things, work for a device
+    that is offline most of the night, and never be expensive to call: these pin each
+    of those.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.project = Project.objects.create(name="Station Status Project")
+        create_roles_for_project(self.project)
+
+        self.superuser = User.objects.create_superuser(email="super-status@insectai.org", password="pw")
+        self.pm_user = User.objects.create_user(email="pm-status@insectai.org", password="pw")
+        self.ml_user = User.objects.create_user(email="ml-status@insectai.org", password="pw")
+        self.basic_user = User.objects.create_user(email="basic-status@insectai.org", password="pw")
+        self.outsider = User.objects.create_user(email="outsider-status@insectai.org", password="pw")
+        ProjectManager.assign_user(self.pm_user, self.project)
+        MLDataManager.assign_user(self.ml_user, self.project)
+        BasicMember.assign_user(self.basic_user, self.project)
+
+        self.deployment = Deployment.objects.create(name="Shed station", project=self.project)
+        self.url = f"/api/v2/deployments/{self.deployment.pk}/status/"
+
+    def _identity(self, **extra):
+        """The two fields every device answers, plus whatever this device measured."""
+        payload = {"device_id": "AW-0001", "software_version": "1.4.0"}
+        payload.update(extra)
+        return {"status": payload}
+
+    def test_permission_matrix(self):
+        """Reporting is trusted at the same level as syncing a station's captures."""
+        for user in [self.superuser, self.pm_user, self.ml_user]:
+            self.client.force_authenticate(user=user)
+            response = self.client.post(self.url, self._identity(), format="json")
+            self.assertEqual(response.status_code, 201, f"{user} should be able to report")
+
+        for user in [self.basic_user, self.outsider]:
+            self.client.force_authenticate(user=user)
+            response = self.client.post(self.url, self._identity(), format="json")
+            self.assertEqual(response.status_code, 403, f"{user} should not be able to report")
+
+        self.client.force_authenticate(user=None)
+        self.assertEqual(self.client.post(self.url, self._identity(), format="json").status_code, 401)
+
+    def test_identity_is_required(self):
+        """
+        A report has to say which unit sent it and what it is running. Everything past
+        those two fields is that device's own business.
+
+        The station's configured ``device`` says what kind of hardware it is, so a
+        device reporting its own type would only duplicate a field that already exists
+        and can disagree with it.
+        """
+        self.client.force_authenticate(user=self.pm_user)
+
+        response = self.client.post(self.url, {"status": {"battery_percent": 80}}, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(DeploymentStatus.objects.filter(deployment=self.deployment).exists())
+
+    def test_report_is_stored_and_becomes_the_latest(self):
+        """A report is kept as history and copied onto the station as its latest."""
+        self.client.force_authenticate(user=self.pm_user)
+        recorded_at = datetime.datetime(2026, 9, 4, 3, 30)
+
+        response = self.client.post(
+            self.url,
+            {"recorded_at": recorded_at.isoformat(), **self._identity(status="surveying")},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        report = DeploymentStatus.objects.get(deployment=self.deployment)
+        self.assertEqual(report.recorded_at, recorded_at)
+        self.assertEqual(report.status.device_id, "AW-0001")
+
+        self.deployment.refresh_from_db()
+        self.assertEqual(self.deployment.last_status_at, recorded_at)
+        assert self.deployment.last_status is not None
+        self.assertEqual(self.deployment.last_status.software_version, "1.4.0")
+
+    def test_devices_report_what_they_can_measure(self):
+        """
+        Two devices with different sensors use the same endpoint: a phone that knows its
+        battery percentage, and a mains-powered box that knows only that it is powered.
+        Neither is asked for a reading it cannot take, and neither loses the one it can.
+        """
+        self.client.force_authenticate(user=self.pm_user)
+        mains_station = Deployment.objects.create(name="Mains station", project=self.project)
+
+        self.client.post(
+            self.url,
+            self._identity(battery_percent=82.5, battery_state="charging"),
+            format="json",
+        )
+        self.client.post(
+            f"/api/v2/deployments/{mains_station.pk}/status/",
+            {
+                "status": {
+                    "device_id": "TRAP-77",
+                    "software_version": "0.9.1",
+                    "power_source": "mains",
+                    "lamp_hours": 3.25,
+                }
+            },
+            format="json",
+        )
+
+        phone = DeploymentStatus.objects.get(deployment=self.deployment).status
+        trap = DeploymentStatus.objects.get(deployment=mains_station).status
+
+        self.assertEqual(phone.reported(), {"battery_percent": 82.5, "battery_state": "charging"})
+        self.assertEqual(trap.reported(), {"power_source": "mains", "lamp_hours": 3.25})
+
+    def test_a_device_may_report_identity_alone(self):
+        """A box with no sensors still proves it is alive by checking in."""
+        self.client.force_authenticate(user=self.pm_user)
+
+        response = self.client.post(self.url, self._identity(), format="json")
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(DeploymentStatus.objects.get(deployment=self.deployment).status.reported(), {})
+
+    def test_nested_readings_round_trip(self):
+        """
+        A device publishing a structure — the configuration it is capturing under, a
+        group of sensor readings — gets it back unchanged, so nothing is lost while the
+        platform has no field for it.
+        """
+        self.client.force_authenticate(user=self.pm_user)
+        survey_config = {
+            "interval_seconds": 60,
+            "schedule": {"mode": "sun", "start_offset_minutes": -30},
+            "camera": {"lens": "1x", "resolution": "12MP"},
+        }
+
+        response = self.client.post(self.url, self._identity(survey_config=survey_config), format="json")
+
+        self.assertEqual(response.json()["status"]["survey_config"], survey_config)
+        report = DeploymentStatus.objects.get(deployment=self.deployment)
+        self.assertEqual(report.status.reported()["survey_config"], survey_config)
+
+    def test_late_report_does_not_overwrite_a_newer_one(self):
+        """
+        A device offline all night uploads its backlog out of order. The station's
+        latest must stay the most recently recorded reading, not the last received.
+        """
+        self.client.force_authenticate(user=self.pm_user)
+        newest = datetime.datetime(2026, 9, 4, 6, 0)
+        older = datetime.datetime(2026, 9, 4, 1, 0)
+
+        self.client.post(self.url, {"recorded_at": newest.isoformat(), **self._identity(status="idle")}, format="json")
+        self.client.post(
+            self.url, {"recorded_at": older.isoformat(), **self._identity(status="surveying")}, format="json"
+        )
+
+        self.deployment.refresh_from_db()
+        self.assertEqual(self.deployment.last_status_at, newest)
+        assert self.deployment.last_status is not None
+        self.assertEqual(self.deployment.last_status.reported()["status"], "idle")
+        self.assertEqual(DeploymentStatus.objects.filter(deployment=self.deployment).count(), 2)
+
+    def test_recorded_at_defaults_to_arrival(self):
+        """A device with no reliable clock can still check in."""
+        self.client.force_authenticate(user=self.pm_user)
+
+        response = self.client.post(self.url, self._identity(), format="json")
+
+        self.assertEqual(response.status_code, 201)
+        self.deployment.refresh_from_db()
+        self.assertIsNotNone(self.deployment.last_status_at)
+
+    def test_history_is_newest_first(self):
+        self.client.force_authenticate(user=self.pm_user)
+        for hour in (1, 5, 3):
+            self.client.post(
+                self.url,
+                {
+                    "recorded_at": datetime.datetime(2026, 9, 4, hour).isoformat(),
+                    **self._identity(status=f"hour-{hour}"),
+                },
+                format="json",
+            )
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        results = response.json()["results"]
+        self.assertEqual([entry["status"]["status"] for entry in results], ["hour-5", "hour-3", "hour-1"])
+
+    def test_reporting_status_does_not_recount_the_station(self):
+        """
+        Devices report every few minutes. Saving a Deployment recounts its captures,
+        occurrences and taxa and can queue a regrouping job, so a report must not go
+        through Deployment.save().
+        """
+        self.client.force_authenticate(user=self.pm_user)
+
+        with mock.patch.object(Deployment, "save", autospec=True) as deployment_save:
+            response = self.client.post(self.url, self._identity(), format="json")
+
+        self.assertEqual(response.status_code, 201)
+        deployment_save.assert_not_called()
+        self.deployment.refresh_from_db()
+        self.assertIsNotNone(self.deployment.last_status_at)
+
+    def test_station_list_reports_when_each_was_last_seen(self):
+        """The station list carries "last seen" so the UI does not query per station."""
+        self.client.force_authenticate(user=self.pm_user)
+        recorded_at = datetime.datetime(2026, 9, 4, 2, 0)
+        self.deployment.record_status(
+            payload=StationStatusPayload(
+                device_id="AW-0001",
+                software_version="1.4.0",
+                battery_percent=61.0,
+            ),
+            recorded_at=recorded_at,
+        )
+
+        response = self.client.get(f"/api/v2/deployments/?project_id={self.project.pk}")
+
+        self.assertEqual(response.status_code, 200)
+        entry = next(item for item in response.json()["results"] if item["id"] == self.deployment.pk)
+        self.assertEqual(entry["last_status"]["device_id"], "AW-0001")
+        self.assertEqual(entry["last_status"]["battery_percent"], 61.0)
+        self.assertIsNotNone(entry["last_status_at"])
+
+    def test_only_project_members_see_what_a_device_reported(self):
+        """
+        Which unit is on site, what it runs and how much battery it has left is
+        operational detail for the people running the project. Anyone else — including
+        an anonymous reader, who can list stations in a project that is not a draft —
+        sees a station with nothing reported.
+        """
+        self.client.force_authenticate(user=self.pm_user)
+        self.client.post(self.url, self._identity(battery_percent=61.0), format="json")
+        list_url = f"/api/v2/deployments/?project_id={self.project.pk}"
+
+        for user in [self.pm_user, self.basic_user]:
+            self.client.force_authenticate(user=user)
+            entry = next(
+                item for item in self.client.get(list_url).json()["results"] if item["id"] == self.deployment.pk
+            )
+            self.assertEqual(entry["last_status"]["device_id"], "AW-0001", f"{user} is a member and should see it")
+            self.assertIsNotNone(entry["last_status_at"])
+
+        for user in [self.outsider, None]:
+            self.client.force_authenticate(user=user)
+            entry = next(
+                item for item in self.client.get(list_url).json()["results"] if item["id"] == self.deployment.pk
+            )
+            self.assertIsNone(entry["last_status"], f"{user} is not a member and should see nothing")
+            self.assertIsNone(entry["last_status_at"])
+
+    def test_reading_the_history_needs_membership_and_writing_needs_more(self):
+        """
+        Reading what a station reported is open to any member of its project; sending a
+        report stays at the same trust level as syncing that station's captures. A basic
+        member can therefore read the history and not add to it.
+        """
+        self.client.force_authenticate(user=self.pm_user)
+        self.client.post(self.url, self._identity(), format="json")
+
+        self.client.force_authenticate(user=self.basic_user)
+        self.assertEqual(self.client.get(self.url).status_code, 200)
+        self.assertEqual(self.client.post(self.url, self._identity(), format="json").status_code, 403)
+
+        self.client.force_authenticate(user=self.outsider)
+        self.assertEqual(self.client.get(self.url).status_code, 403)
+
+        self.client.force_authenticate(user=None)
+        self.assertEqual(self.client.get(self.url).status_code, 401)
+
+    def test_a_station_that_never_reported_says_so(self):
+        """A station with no report answers null rather than an empty reading."""
+        self.client.force_authenticate(user=self.pm_user)
+        silent = Deployment.objects.create(name="Never reported", project=self.project)
+
+        response = self.client.get(f"/api/v2/deployments/?project_id={self.project.pk}")
+
+        entry = next(item for item in response.json()["results"] if item["id"] == silent.pk)
+        self.assertIsNone(entry["last_status"])
+        self.assertIsNone(entry["last_status_at"])
+        self.assertFalse(entry["last_status_live"])
+
+    def _online_flags(self) -> dict[int, dict]:
+        """The station list as a member of the project sees it, keyed by station id."""
+        response = self.client.get(f"/api/v2/deployments/?project_id={self.project.pk}")
+
+        return {item["id"]: item for item in response.json()["results"]}
+
+    def test_a_station_is_online_only_while_it_is_still_reporting(self):
+        """
+        The station list marks a station online when a report arrived inside
+        ``STATION_ONLINE_MAX_AGE``. Three states have to stay distinguishable: reporting
+        now, reported earlier and gone quiet, and never reported at all — the last of
+        which is the normal case for a station synced from an SD card.
+        """
+        self.client.force_authenticate(user=self.pm_user)
+        quiet = Deployment.objects.create(name="Gone quiet", project=self.project)
+        silent = Deployment.objects.create(name="Never reported", project=self.project)
+
+        now = datetime.datetime.now()
+        self.deployment.record_status(StationStatusPayload(**self._identity()["status"]), now)
+        quiet.record_status(StationStatusPayload(**self._identity()["status"]), now)
+        # Age the arrival rather than the reading: created_at is set on insert, so a
+        # station that has stopped reporting can only be simulated by moving it back.
+        Deployment.objects.filter(pk=quiet.pk).update(
+            last_status_received_at=now - STATION_ONLINE_MAX_AGE - datetime.timedelta(seconds=1)
+        )
+
+        entries = self._online_flags()
+
+        self.assertTrue(entries[self.deployment.pk]["last_status_live"])
+        self.assertFalse(entries[quiet.pk]["last_status_live"])
+        self.assertIsNotNone(entries[quiet.pk]["last_status_at"], "a quiet station still has a last-seen time")
+        self.assertFalse(entries[silent.pk]["last_status_live"])
+        self.assertIsNone(entries[silent.pk]["last_status_at"], "a station that never reported has no time at all")
+
+    def test_a_station_with_a_wrong_clock_is_still_seen_as_online(self):
+        """
+        Whether a station is reachable is measured on arrival, not on the timestamp
+        inside the report. A device set to the wrong timezone reports a reading hours
+        stale or hours ahead; neither should make a station that is talking to the
+        platform right now look absent, or a station that stopped look present.
+        """
+        self.client.force_authenticate(user=self.pm_user)
+        far_behind = datetime.datetime.now() - datetime.timedelta(hours=7)
+        far_ahead = datetime.datetime.now() + datetime.timedelta(hours=7)
+
+        for recorded_at in [far_behind, far_ahead]:
+            self.deployment.record_status(StationStatusPayload(**self._identity()["status"]), recorded_at)
+            self.assertTrue(
+                self._online_flags()[self.deployment.pk]["last_status_live"],
+                f"a report that arrived now should read as online even when it is stamped {recorded_at}",
+            )
+
+    def test_a_backlog_arriving_now_means_the_station_is_back(self):
+        """
+        A station offline all night uploads its queue oldest first. The readings stay in
+        the order the station took them, and the station counts as online because those
+        readings are arriving: it is on the network again, whatever their timestamps say.
+        """
+        self.client.force_authenticate(user=self.pm_user)
+        night = datetime.datetime.now() - datetime.timedelta(hours=8)
+
+        for minutes in [0, 60, 120]:
+            self.deployment.record_status(
+                StationStatusPayload(**self._identity()["status"]),
+                night + datetime.timedelta(minutes=minutes),
+            )
+
+        entry = self._online_flags()[self.deployment.pk]
+        self.assertTrue(entry["last_status_live"], "the backlog is arriving now, so the station is reachable")
+        self.assertEqual(
+            entry["last_status_at"],
+            (night + datetime.timedelta(minutes=120)).isoformat(),
+            "last seen stays the newest reading the station took, not the moment it uploaded",
+        )
+
+    def test_a_non_member_is_never_told_a_station_is_online(self):
+        """
+        Whether a device is on site and reporting right now is operational detail, so it
+        is gated with the rest of what the device reports rather than leaking through
+        the online marker.
+        """
+        self.client.force_authenticate(user=self.pm_user)
+        self.client.post(self.url, self._identity(), format="json")
+        list_url = f"/api/v2/deployments/?project_id={self.project.pk}"
+
+        entry = next(item for item in self.client.get(list_url).json()["results"] if item["id"] == self.deployment.pk)
+        self.assertTrue(entry["last_status_live"], "a member sees the station reporting")
+
+        for user in [self.outsider, None]:
+            self.client.force_authenticate(user=user)
+            entry = next(
+                item for item in self.client.get(list_url).json()["results"] if item["id"] == self.deployment.pk
+            )
+            self.assertFalse(entry["last_status_live"], f"{user} is not a member and should be told nothing")
 
 
 class TestHugeTableFilterParams(APITestCase):
