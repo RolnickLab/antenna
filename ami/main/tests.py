@@ -22,6 +22,7 @@ from ami.exports.models import DataExport
 from ami.jobs.models import VALID_JOB_TYPES, Job
 from ami.main.api.serializers import MAX_BULK_IDENTIFICATIONS
 from ami.main.models import (
+    STATION_ONLINE_MAX_AGE,
     Classification,
     Deployment,
     DeploymentStatus,
@@ -36,7 +37,6 @@ from ami.main.models import (
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
-    STATION_ONLINE_MAX_AGE,
     StationStatusPayload,
     Tag,
     TaxaList,
