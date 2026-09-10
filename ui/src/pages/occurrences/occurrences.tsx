@@ -113,9 +113,16 @@ export const Occurrences = () => {
             <DefaultFiltersControl field="apply_defaults" />
           </FilterSection>
           <FilterSection
-            title="More filters"
+            title={translate(STRING.MORE_FILTERS)}
             defaultOpen={someActive(
-              ['collection', 'deployment', 'algorithm', 'not_algorithm'],
+              [
+                'collection',
+                'deployment',
+                'deployment__device',
+                'deployment__research_site',
+                'algorithm',
+                'not_algorithm',
+              ],
               activeFilters
             )}
           >
@@ -123,6 +130,8 @@ export const Occurrences = () => {
             <FilterControl field="date_end" />
             <FilterControl field="collection" />
             <FilterControl field="deployment" />
+            <FilterControl field="deployment__device" />
+            <FilterControl field="deployment__research_site" />
             <FilterControl field="algorithm" />
             <FilterControl field="not_algorithm" />
           </FilterSection>

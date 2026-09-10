@@ -1,6 +1,7 @@
 import { DefaultFiltersControl } from 'components/filtering/default-filter-control'
 import { FilterControl } from 'components/filtering/filter-control'
 import { FilterSection } from 'components/filtering/filter-section'
+import { someActive } from 'components/filtering/utils'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { useSpecies } from 'data-services/hooks/species/useSpecies'
 import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
@@ -25,7 +26,8 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'
-import { useFilters } from 'utils/useFilters'
+import { useCarryOverFilters, useFilters } from 'utils/useFilters'
+import { FILTERS_TO_OCCURRENCES } from 'pages/occurrences/occurrence-filters'
 import { usePagination } from 'utils/usePagination'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
@@ -48,7 +50,7 @@ export const Species = () => {
   })
   const { sort, setSort } = useSort({ field: 'name', order: 'asc' })
   const { pagination, setPage } = usePagination()
-  const { filters } = useFilters()
+  const { activeFilters, filters } = useFilters()
   const { species, total, isLoading, isFetching, error } = useSpecies({
     projectId,
     sort,
@@ -58,6 +60,7 @@ export const Species = () => {
   const { selectedView, setSelectedView } = useSelectedView('table')
   const { taxaLists = [] } = useTaxaLists({ projectId: projectId as string })
   const { tags = [] } = useTags({ projectId: projectId as string })
+  const carryFilters = useCarryOverFilters(FILTERS_TO_OCCURRENCES)
   const pageTitle = useMemo(() => {
     const taxaListFilter = filters.find(
       (filter) => filter.field === 'taxa_list_id'
@@ -74,26 +77,44 @@ export const Species = () => {
   return (
     <>
       <div className="flex flex-col gap-6 md:flex-row">
-        <FilterSection defaultOpen>
-          <FilterControl field="event" readonly />
-          <FilterControl field="deployment" />
-          <FilterControl field="taxon" />
-          {taxaLists.length > 0 && (
-            <>
-              <FilterControl data={taxaLists} field="taxa_list_id" />
-              <FilterControl data={taxaLists} field="not_taxa_list_id" />
-            </>
-          )}
-          <FilterControl field="include_unobserved" />
-          <FilterControl field="verified" />
-          {project?.featureFlags.tags ? (
-            <>
-              <FilterControl data={tags} field="tag_id" />
-              <FilterControl data={tags} field="not_tag_id" />
-            </>
-          ) : null}
-          <DefaultFiltersControl field="apply_defaults" />
-        </FilterSection>
+        <div className="space-y-6">
+          <FilterSection defaultOpen>
+            <FilterControl field="event" readonly />
+            <FilterControl field="taxon" />
+            {taxaLists.length > 0 && (
+              <>
+                <FilterControl data={taxaLists} field="taxa_list_id" />
+                <FilterControl data={taxaLists} field="not_taxa_list_id" />
+              </>
+            )}
+            <FilterControl field="verified" />
+            <FilterControl field="include_unobserved" />
+            <DefaultFiltersControl field="apply_defaults" />
+          </FilterSection>
+          <FilterSection
+            title={translate(STRING.MORE_FILTERS)}
+            defaultOpen={someActive(
+              [
+                'deployment',
+                'deployment__device',
+                'deployment__research_site',
+                'tag_id',
+                'not_tag_id',
+              ],
+              activeFilters
+            )}
+          >
+            <FilterControl field="deployment" />
+            <FilterControl field="deployment__device" />
+            <FilterControl field="deployment__research_site" />
+            {project?.featureFlags.tags ? (
+              <>
+                <FilterControl data={tags} field="tag_id" />
+                <FilterControl data={tags} field="not_tag_id" />
+              </>
+            ) : null}
+          </FilterSection>
+        </div>
         <div className="w-full overflow-hidden">
           <PageHeader
             isFetching={isFetching}
@@ -135,6 +156,7 @@ export const Species = () => {
               columns={columns({
                 projectId: projectId as string,
                 featureFlags: project?.featureFlags,
+                carryFilters,
               }).filter((column) => !!columnSettings[column.id])}
               error={error}
               isLoading={!id && isLoading}
