@@ -9,6 +9,8 @@ export const useSyncSectionStatus = (
   const { isDirty, isValid } = useFormState({ control })
   const { setFormSectionStatus } = useContext(FormContext)
 
+  // Do not add setFormSectionStatus to the deps. It is memoised on the form state
+  // that it replaces, so depending on its identity makes this effect loop forever.
   useEffect(() => {
     setFormSectionStatus(section, { isDirty, isValid })
   }, [isDirty, isValid])
