@@ -137,6 +137,16 @@ export class Deployment extends Entity {
       : undefined
   }
 
+  /**
+   * Whether the station is reporting right now, as the server judged it.
+   *
+   * The cutoff lives on the server so that one clock decides it; a browser set to the
+   * wrong time would otherwise show a whole project as offline.
+   */
+  get isOnline(): boolean {
+    return this._deployment.last_status_live ?? false
+  }
+
   get lastSeenLabel(): string | undefined {
     const lastStatusAt = this.lastStatusAt
 

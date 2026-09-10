@@ -36,6 +36,7 @@ from ami.main.models import (
     SourceImage,
     SourceImageCollection,
     SourceImageUpload,
+    STATION_ONLINE_MAX_AGE,
     StationStatusPayload,
     Tag,
     TaxaList,
@@ -8140,6 +8141,57 @@ class TestDeploymentStatus(APITestCase):
         entry = next(item for item in response.json()["results"] if item["id"] == silent.pk)
         self.assertIsNone(entry["last_status"])
         self.assertIsNone(entry["last_status_at"])
+        self.assertFalse(entry["last_status_live"])
+
+    def test_a_station_is_online_only_while_it_is_still_reporting(self):
+        """
+        The station list marks a station online when its most recent report is inside
+        ``STATION_ONLINE_MAX_AGE``. Three states have to stay distinguishable: reporting
+        now, reported earlier and gone quiet, and never reported at all — the last of
+        which is the normal case for a station synced from an SD card.
+        """
+        self.client.force_authenticate(user=self.pm_user)
+        quiet = Deployment.objects.create(name="Gone quiet", project=self.project)
+        silent = Deployment.objects.create(name="Never reported", project=self.project)
+
+        now = datetime.datetime.now()
+        self.deployment.record_status(StationStatusPayload(**self._identity()["status"]), now)
+        quiet.record_status(
+            StationStatusPayload(**self._identity()["status"]),
+            now - STATION_ONLINE_MAX_AGE - datetime.timedelta(seconds=1),
+        )
+
+        entries = {
+            item["id"]: item
+            for item in self.client.get(f"/api/v2/deployments/?project_id={self.project.pk}").json()["results"]
+        }
+
+        self.assertTrue(entries[self.deployment.pk]["last_status_live"])
+        self.assertFalse(entries[quiet.pk]["last_status_live"])
+        self.assertIsNotNone(entries[quiet.pk]["last_status_at"], "a quiet station still has a last-seen time")
+        self.assertFalse(entries[silent.pk]["last_status_live"])
+        self.assertIsNone(entries[silent.pk]["last_status_at"], "a station that never reported has no time at all")
+
+    def test_a_non_member_is_never_told_a_station_is_online(self):
+        """
+        Whether a device is on site and reporting right now is operational detail, so it
+        is gated with the rest of what the device reports rather than leaking through
+        the online marker.
+        """
+        self.client.force_authenticate(user=self.pm_user)
+        self.client.post(self.url, self._identity(), format="json")
+        list_url = f"/api/v2/deployments/?project_id={self.project.pk}"
+
+        entry = next(item for item in self.client.get(list_url).json()["results"] if item["id"] == self.deployment.pk)
+        self.assertTrue(entry["last_status_live"], "a member sees the station reporting")
+
+        for user in [self.outsider, None]:
+            self.client.force_authenticate(user=user)
+            entry = next(
+                item for item in self.client.get(list_url).json()["results"] if item["id"] == self.deployment.pk
+            )
+            self.assertFalse(entry["last_status_live"], f"{user} is not a member and should be told nothing")
+
 
 class TestHugeTableFilterParams(APITestCase):
     """Pin the query-parameter contract for ``RelatedIdFilter`` params on huge related tables.

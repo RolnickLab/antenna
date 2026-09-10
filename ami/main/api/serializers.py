@@ -227,6 +227,7 @@ class DeploymentListSerializer(DefaultSerializer):
     data_source_connected = serializers.SerializerMethodField()
     last_status = serializers.SerializerMethodField()
     last_status_at = serializers.SerializerMethodField()
+    last_status_live = serializers.SerializerMethodField()
 
     class Meta:
         model = Deployment
@@ -254,6 +255,7 @@ class DeploymentListSerializer(DefaultSerializer):
             "data_source_connected",
             "last_status_at",
             "last_status",
+            "last_status_live",
         ]
 
     def get_data_source_connected(self, obj: Deployment) -> bool:
@@ -322,6 +324,20 @@ class DeploymentListSerializer(DefaultSerializer):
     def get_last_status_at(self, obj) -> datetime.datetime | None:
         """When the station was last heard from, for members of its project."""
         return obj.last_status_at if self.viewer_is_project_member(obj.project) else None
+
+    def get_last_status_live(self, obj) -> bool:
+        """
+        Whether the station is reporting right now, for members of its project.
+
+        False covers two different situations that look the same from outside: a
+        station that has gone quiet, and the majority of stations, which have no
+        connected device and never report. Read it alongside ``last_status_at``, which
+        is empty only in the second case.
+        """
+        if not self.viewer_is_project_member(obj.project):
+            return False
+
+        return obj.status_is_live
 
 
 class DeploymentEventNestedSerializer(DefaultSerializer):

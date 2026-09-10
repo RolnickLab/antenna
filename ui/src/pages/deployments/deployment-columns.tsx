@@ -3,6 +3,7 @@ import { Deployment } from 'data-services/models/deployment'
 import {
   BasicTableCell,
   CellTheme,
+  CONSTANTS,
   DateTableCell,
   ImageCellTheme,
   ImageTableCell,
@@ -83,9 +84,25 @@ export const columns = ({
     id: 'last-seen',
     name: translate(STRING.FIELD_LABEL_LAST_SEEN),
     sortField: 'last_status_at',
-    renderCell: (item: Deployment) => (
-      <BasicTableCell value={item.lastSeenLabel} />
-    ),
+    renderCell: (item: Deployment) =>
+      item.lastSeenLabel ? (
+        <StatusTableCell
+          color={
+            item.isOnline
+              ? CONSTANTS.COLORS.success[500]
+              : CONSTANTS.COLORS.neutral[500]
+          }
+          details={translate(
+            item.isOnline ? STRING.STATION_ONLINE : STRING.STATION_NOT_REPORTING
+          )}
+          label={item.lastSeenLabel}
+        />
+      ) : (
+        // Most stations have no device on the network and are synced from an SD card
+        // or object storage on demand. A blank cell is the answer for them, not a
+        // marker saying they are down.
+        <BasicTableCell />
+      ),
   },
   {
     id: 'status',

@@ -775,6 +775,15 @@ def _compare_totals_for_sync(deployment: "Deployment", total_files_found: int):
         )
 
 
+# How recently a station must have reported to count as online. A connected device
+# is expected to check in about once a minute, so this leaves room for a few missed
+# reports before an operator is told the station is quiet. It matches the cutoff the
+# platform already uses for processing services
+# (``ami.jobs.tasks.WORKER_AVAILABILITY_ONLINE_CUTOFF``), so "online" means the same
+# span of time everywhere in the interface.
+STATION_ONLINE_MAX_AGE = datetime.timedelta(minutes=5)
+
+
 @final
 class StationStatusPayload(pydantic.BaseModel):
     """
@@ -1232,6 +1241,22 @@ class Deployment(BaseModel):
             self.last_status_at = report.recorded_at
             self.last_status = report.status
         return report
+
+    @property
+    def status_is_live(self) -> bool:
+        """
+        Whether the station has reported recently enough to be treated as online.
+
+        A station that has never reported is not online and is not late either: most
+        stations have no device on the network at all, and are synced from an SD card
+        or object storage on demand. The answer is computed here rather than in the
+        browser so that one clock decides it, and a viewer whose machine is set wrong
+        does not see a whole project go dark.
+        """
+        if self.last_status_at is None:
+            return False
+
+        return datetime.datetime.now() - self.last_status_at < STATION_ONLINE_MAX_AGE
 
     def check_custom_permission(self, user, action: str) -> bool:
         """
