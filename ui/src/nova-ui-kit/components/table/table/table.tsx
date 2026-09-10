@@ -29,6 +29,8 @@ interface TableProps<T> {
   items?: T[]
   onSelectedItemsChange?: (selectedItems: string[]) => void
   onSortSettingsChange?: (sortSettings?: TableSortSettings) => void
+  // Optional per-row class hook, e.g. to de-emphasize already-processed rows.
+  rowClassName?: (item: T) => string | undefined
   selectable?: boolean
   selectedItems?: string[]
   sortable?: boolean
@@ -43,6 +45,7 @@ export const Table = <T extends { id: string }>({
   items = [],
   onSelectedItemsChange,
   onSortSettingsChange,
+  rowClassName,
   selectable,
   selectedItems = [],
   sortable,
@@ -125,7 +128,7 @@ export const Table = <T extends { id: string }>({
         </thead>
         <tbody>
           {items.map((item, rowIndex) => (
-            <tr key={item.id}>
+            <tr key={item.id} className={rowClassName?.(item)}>
               {selectable && (
                 <td>
                   <BasicTableCell>
