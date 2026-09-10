@@ -25,6 +25,11 @@ class Migration(migrations.Migration):
             name="last_status_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
+        migrations.AddField(
+            model_name="deployment",
+            name="last_status_received_at",
+            field=models.DateTimeField(blank=True, null=True),
+        ),
         migrations.CreateModel(
             name="DeploymentStatus",
             fields=[

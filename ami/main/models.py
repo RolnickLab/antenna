@@ -775,10 +775,10 @@ def _compare_totals_for_sync(deployment: "Deployment", total_files_found: int):
         )
 
 
-# How recently a station must have reported to count as online. A connected device
-# is expected to check in about once a minute, so this leaves room for a few missed
-# reports before an operator is told the station is quiet. It matches the cutoff the
-# platform already uses for processing services
+# How recently a report must have arrived for a station to count as online. A
+# connected device is expected to check in about once a minute, so this leaves room
+# for a few missed reports before an operator is told the station is quiet. It matches
+# the cutoff the platform already uses for processing services
 # (``ami.jobs.tasks.WORKER_AVAILABILITY_ONLINE_CUTOFF``), so "online" means the same
 # span of time everywhere in the interface.
 STATION_ONLINE_MAX_AGE = datetime.timedelta(minutes=5)
@@ -882,6 +882,12 @@ class Deployment(BaseModel):
     # "last seen" without an aggregate query over the whole time series.
     last_status_at = models.DateTimeField(blank=True, null=True)
     last_status = SchemaField(StationStatusPayload | None, null=True, blank=True, default=None)
+
+    # When a report last arrived, by this platform's clock. Kept separately from
+    # last_status_at, which is the station's own clock and can be hours behind after a
+    # night offline: whether a station is reachable right now is a fact about the
+    # connection, and only the receiving end can measure it.
+    last_status_received_at = models.DateTimeField(blank=True, null=True)
 
     research_site = models.ForeignKey(
         Site,
@@ -1232,14 +1238,22 @@ class Deployment(BaseModel):
             recorded_at=recorded_at,
             status=payload,
         )
+
+        # Arrival always moves forward, even for a backlogged report: a station sending
+        # last night's readings is on the network now, which is what "online" asks.
+        updates: dict[str, typing.Any] = {"last_status_received_at": report.created_at}
+
+        # The reading itself only moves forward, so a station catching up does not
+        # appear to go backwards while it uploads its queue oldest first.
         latest = self.status_reports.order_by("-recorded_at").first()
         if latest and latest.pk == report.pk:
-            Deployment.objects.filter(pk=self.pk).update(
-                last_status_at=report.recorded_at,
-                last_status=report.status,
-            )
-            self.last_status_at = report.recorded_at
-            self.last_status = report.status
+            updates["last_status_at"] = report.recorded_at
+            updates["last_status"] = report.status
+
+        Deployment.objects.filter(pk=self.pk).update(**updates)
+        for field, value in updates.items():
+            setattr(self, field, value)
+
         return report
 
     @property
@@ -1247,16 +1261,18 @@ class Deployment(BaseModel):
         """
         Whether the station has reported recently enough to be treated as online.
 
+        Measured against when the last report arrived, not the timestamp inside it. A
+        device carries its own clock, and one set to the wrong timezone would otherwise
+        report itself hours stale or hours in the future the moment it came online.
+
         A station that has never reported is not online and is not late either: most
         stations have no device on the network at all, and are synced from an SD card
-        or object storage on demand. The answer is computed here rather than in the
-        browser so that one clock decides it, and a viewer whose machine is set wrong
-        does not see a whole project go dark.
+        or object storage on demand.
         """
-        if self.last_status_at is None:
+        if self.last_status_received_at is None:
             return False
 
-        return datetime.datetime.now() - self.last_status_at < STATION_ONLINE_MAX_AGE
+        return datetime.datetime.now() - self.last_status_received_at < STATION_ONLINE_MAX_AGE
 
     def check_custom_permission(self, user, action: str) -> bool:
         """

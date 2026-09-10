@@ -8143,9 +8143,15 @@ class TestDeploymentStatus(APITestCase):
         self.assertIsNone(entry["last_status_at"])
         self.assertFalse(entry["last_status_live"])
 
+    def _online_flags(self) -> dict[int, dict]:
+        """The station list as a member of the project sees it, keyed by station id."""
+        response = self.client.get(f"/api/v2/deployments/?project_id={self.project.pk}")
+
+        return {item["id"]: item for item in response.json()["results"]}
+
     def test_a_station_is_online_only_while_it_is_still_reporting(self):
         """
-        The station list marks a station online when its most recent report is inside
+        The station list marks a station online when a report arrived inside
         ``STATION_ONLINE_MAX_AGE``. Three states have to stay distinguishable: reporting
         now, reported earlier and gone quiet, and never reported at all — the last of
         which is the normal case for a station synced from an SD card.
@@ -8156,21 +8162,61 @@ class TestDeploymentStatus(APITestCase):
 
         now = datetime.datetime.now()
         self.deployment.record_status(StationStatusPayload(**self._identity()["status"]), now)
-        quiet.record_status(
-            StationStatusPayload(**self._identity()["status"]),
-            now - STATION_ONLINE_MAX_AGE - datetime.timedelta(seconds=1),
+        quiet.record_status(StationStatusPayload(**self._identity()["status"]), now)
+        # Age the arrival rather than the reading: created_at is set on insert, so a
+        # station that has stopped reporting can only be simulated by moving it back.
+        Deployment.objects.filter(pk=quiet.pk).update(
+            last_status_received_at=now - STATION_ONLINE_MAX_AGE - datetime.timedelta(seconds=1)
         )
 
-        entries = {
-            item["id"]: item
-            for item in self.client.get(f"/api/v2/deployments/?project_id={self.project.pk}").json()["results"]
-        }
+        entries = self._online_flags()
 
         self.assertTrue(entries[self.deployment.pk]["last_status_live"])
         self.assertFalse(entries[quiet.pk]["last_status_live"])
         self.assertIsNotNone(entries[quiet.pk]["last_status_at"], "a quiet station still has a last-seen time")
         self.assertFalse(entries[silent.pk]["last_status_live"])
         self.assertIsNone(entries[silent.pk]["last_status_at"], "a station that never reported has no time at all")
+
+    def test_a_station_with_a_wrong_clock_is_still_seen_as_online(self):
+        """
+        Whether a station is reachable is measured on arrival, not on the timestamp
+        inside the report. A device set to the wrong timezone reports a reading hours
+        stale or hours ahead; neither should make a station that is talking to the
+        platform right now look absent, or a station that stopped look present.
+        """
+        self.client.force_authenticate(user=self.pm_user)
+        far_behind = datetime.datetime.now() - datetime.timedelta(hours=7)
+        far_ahead = datetime.datetime.now() + datetime.timedelta(hours=7)
+
+        for recorded_at in [far_behind, far_ahead]:
+            self.deployment.record_status(StationStatusPayload(**self._identity()["status"]), recorded_at)
+            self.assertTrue(
+                self._online_flags()[self.deployment.pk]["last_status_live"],
+                f"a report that arrived now should read as online even when it is stamped {recorded_at}",
+            )
+
+    def test_a_backlog_arriving_now_means_the_station_is_back(self):
+        """
+        A station offline all night uploads its queue oldest first. The readings stay in
+        the order the station took them, and the station counts as online because those
+        readings are arriving: it is on the network again, whatever their timestamps say.
+        """
+        self.client.force_authenticate(user=self.pm_user)
+        night = datetime.datetime.now() - datetime.timedelta(hours=8)
+
+        for minutes in [0, 60, 120]:
+            self.deployment.record_status(
+                StationStatusPayload(**self._identity()["status"]),
+                night + datetime.timedelta(minutes=minutes),
+            )
+
+        entry = self._online_flags()[self.deployment.pk]
+        self.assertTrue(entry["last_status_live"], "the backlog is arriving now, so the station is reachable")
+        self.assertEqual(
+            entry["last_status_at"],
+            (night + datetime.timedelta(minutes=120)).isoformat(),
+            "last seen stays the newest reading the station took, not the moment it uploaded",
+        )
 
     def test_a_non_member_is_never_told_a_station_is_online(self):
         """
