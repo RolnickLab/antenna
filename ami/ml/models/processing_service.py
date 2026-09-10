@@ -90,6 +90,18 @@ class ProcessingService(BaseModel):
         verbose_name = "Processing Service"
         verbose_name_plural = "Processing Services"
 
+    def add_project(self, project: "Project", enable_only: list[str] | None = None) -> None:
+        """
+        Connect a project to this service and configure the pipelines the service already has.
+
+        No request is made to the service. Use this when the pipelines are registered
+        already and only the project needs connecting, which is the case for pull-mode
+        workers that register themselves.
+        """
+        self.projects.add(project)
+        for pipeline in self.pipelines.all():
+            configure_pipeline_for_project(project, pipeline, enable_only)
+
     def create_pipelines(
         self,
         enable_only: list[str] | None = None,
@@ -122,22 +134,7 @@ class ProcessingService(BaseModel):
                 created = True
 
             for project in projects:
-                if enable_only is not None and pipeline.slug not in enable_only:
-                    enabled = False
-                else:
-                    enabled = True
-                project_pipeline_config, created = ProjectPipelineConfig.objects.get_or_create(
-                    pipeline=pipeline,
-                    project=project,
-                    defaults={"enabled": enabled, "config": {}},
-                )
-                if created:
-                    logger.debug(
-                        f"Created project pipeline config for {project.name} and {pipeline.name} (enabled: {enabled})."
-                    )
-                    project_pipeline_config.save()
-                else:
-                    logger.debug(f"Using existing project pipeline config for {project.name} and {pipeline.name}.")
+                configure_pipeline_for_project(project, pipeline, enable_only)
 
             self.pipelines.add(pipeline)
 
@@ -301,15 +298,62 @@ class ProcessingService(BaseModel):
         return info_data.pipelines
 
 
+def configure_pipeline_for_project(
+    project: "Project",
+    pipeline: "Pipeline",
+    enable_only: list[str] | None = None,
+) -> "ProjectPipelineConfig":
+    """
+    Give a project its configuration row for a pipeline, so the pipeline can be selected.
+
+    ``enable_only`` of None starts every pipeline enabled. A list of slugs starts only those
+    enabled, which keeps a new project from offering every pipeline the platform has.
+    """
+    enabled = True if enable_only is None else pipeline.slug in enable_only
+    config, created = ProjectPipelineConfig.objects.get_or_create(
+        pipeline=pipeline,
+        project=project,
+        defaults={"enabled": enabled, "config": {}},
+    )
+    if created:
+        logger.debug(f"Created project pipeline config for {project.name} and {pipeline.name} (enabled: {enabled}).")
+    else:
+        logger.debug(f"Using existing project pipeline config for {project.name} and {pipeline.name}.")
+    return config
+
+
+def attach_async_processing_services(project: "Project") -> list["ProcessingService"]:
+    """
+    Connect a project to every pull-mode processing service registered on the platform.
+
+    Pull-mode workers poll for tasks instead of exposing an endpoint, and an async job only
+    reaches a worker through this project-to-service link. A project with none attached has
+    no way to run a job in the dispatch mode that new projects use by default, so a new
+    project is connected to the pull-mode fleet the same way existing projects are.
+
+    Nothing is requested over the network: these services register their own pipelines when
+    they check in.
+    """
+    services = list(ProcessingService.objects.async_services())
+    for service in services:
+        service.add_project(project, enable_only=settings.DEFAULT_PIPELINES_ENABLED)
+    if services:
+        logger.info(f"Connected project {project} to {len(services)} pull-mode processing services")
+    else:
+        logger.info(f"No pull-mode processing services are registered; project {project} was connected to none")
+    return services
+
+
 def get_or_create_default_processing_service(
     project: "Project",
     register_pipelines: bool = True,
 ) -> "ProcessingService | None":
     """
-    Create a default processing service for a project.
+    Create the push-mode default processing service for a project, if one is configured.
 
-    If configured, will use the global default processing service
-    for the current environment. Otherwise, it return None.
+    This covers deployments that talk to a single processing service over HTTP, such as a
+    local development stack. Returns None when no endpoint is configured, which is the
+    normal case for a deployment served by pull-mode workers.
 
     Set the "DEFAULT_PROCESSING_SERVICE_ENDPOINT" and "DEFAULT_PROCESSING_SERVICE_NAME"
     environment variables to configure & enable the default processing service.
@@ -318,9 +362,9 @@ def get_or_create_default_processing_service(
     name = settings.DEFAULT_PROCESSING_SERVICE_NAME or "Default Processing Service"
     endpoint_url = settings.DEFAULT_PROCESSING_SERVICE_ENDPOINT
     if not endpoint_url:
-        logger.warning(
-            "Default processing service is not configured. "
-            "Set the 'DEFAULT_PROCESSING_SERVICE_ENDPOINT' environment variable."
+        logger.info(
+            "No push-mode default processing service is configured. "
+            "Set the 'DEFAULT_PROCESSING_SERVICE_ENDPOINT' environment variable to add one."
         )
         return None
 
@@ -331,8 +375,18 @@ def get_or_create_default_processing_service(
     service.projects.add(project)
     logger.info(f"Created default processing service for project {project}")
     if register_pipelines:
-        service.create_pipelines(
-            enable_only=settings.DEFAULT_PIPELINES_ENABLED,
-            projects=Project.objects.filter(pk=project.pk),
-        )
+        # Registering pipelines fetches the service's /info endpoint. Creating a project is
+        # otherwise a local operation, so an unreachable or misconfigured service must not
+        # take it down with it: the project is created without those pipelines and the
+        # service can be registered again later from the admin.
+        try:
+            service.create_pipelines(
+                enable_only=settings.DEFAULT_PIPELINES_ENABLED,
+                projects=Project.objects.filter(pk=project.pk),
+            )
+        except Exception:
+            logger.exception(
+                f"Could not register pipelines from the default processing service '{name}'. "
+                f"Project {project} was created without them."
+            )
     return service

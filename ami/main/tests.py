@@ -5,6 +5,7 @@ import typing
 from io import BytesIO
 from unittest import mock
 
+import requests
 from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -134,6 +135,88 @@ class TestProjectSetup(TestCase):
         self.assertIsNone(
             service, "Default processing service should not be created if environment variables are not set."
         )
+
+    def _create_pull_mode_service(self, name="Pull-mode Worker", pipeline_slugs=("pipeline_a", "pipeline_b")):
+        """Register a worker that polls for tasks, with the pipelines it reports it can run."""
+        service = ProcessingService.objects.create(name=name, endpoint_url=None)
+        for slug in pipeline_slugs:
+            pipeline = Pipeline.objects.create(slug=slug, name=slug, version=1)
+            service.pipelines.add(pipeline)
+        return service
+
+    @override_settings(
+        DEFAULT_PROCESSING_SERVICE_NAME=None,
+        DEFAULT_PROCESSING_SERVICE_ENDPOINT=None,
+        DEFAULT_PIPELINES_ENABLED=["pipeline_a"],
+    )
+    def test_new_project_is_connected_to_pull_mode_services(self):
+        """
+        A new project can run a job on the platform's pull-mode workers.
+
+        An asynchronous job looks up workers through the project-to-service relation, and
+        asynchronous is the dispatch mode new projects use, so a project created without that
+        relation has no way to process anything.
+        """
+        service = self._create_pull_mode_service()
+
+        project = Project.objects.create(name="Project on pull-mode workers", create_defaults=True)
+
+        self.assertIn(service, project.processing_services.all())
+        configs = ProjectPipelineConfig.objects.filter(project=project)
+        self.assertEqual({config.pipeline.slug for config in configs}, {"pipeline_a", "pipeline_b"})
+        self.assertEqual(
+            {config.pipeline.slug for config in configs if config.enabled},
+            {"pipeline_a"},
+            "Only the pipelines named in DEFAULT_PIPELINES_ENABLED should start enabled.",
+        )
+
+    @override_settings(
+        DEFAULT_PROCESSING_SERVICE_NAME="Default Processing Service",
+        DEFAULT_PROCESSING_SERVICE_ENDPOINT="http://ml_backend:2000/",
+        DEFAULT_PIPELINES_ENABLED=None,
+    )
+    def test_push_mode_service_is_not_attached_unless_it_is_the_configured_default(self):
+        """
+        Only the configured default push-mode service is attached, not every push-mode service.
+
+        Push-mode services are called at a specific endpoint, so attaching a project to one
+        that was registered for somebody else would send that project's work to it.
+        """
+        # The manager health-checks a new service on creation; this one is never meant to be
+        # reached, and letting the check run costs the suite a DNS timeout.
+        with mock.patch.object(ProcessingService, "get_status"):
+            other = ProcessingService.objects.create(
+                name="Someone else's service", endpoint_url="http://elsewhere:2000/"
+            )
+
+        project = Project.objects.create(name="Project with an unrelated service", create_defaults=True)
+
+        self.assertNotIn(other, project.processing_services.all())
+
+    @override_settings(
+        DEFAULT_PROCESSING_SERVICE_NAME="Unreachable Service",
+        DEFAULT_PROCESSING_SERVICE_ENDPOINT="http://unreachable.invalid:2000/",
+        DEFAULT_PIPELINES_ENABLED=None,
+    )
+    def test_project_is_still_created_when_the_default_service_cannot_be_reached(self):
+        """
+        Creating a project survives a default processing service that cannot be reached.
+
+        Registering pipelines fetches the service over the network. That request failing used
+        to propagate out of the create call, so the request that created the project returned
+        a server error and the caller could not tell that the project had been written.
+        """
+        with mock.patch.object(
+            ProcessingService,
+            "create_pipelines",
+            side_effect=requests.exceptions.SSLError("certificate verify failed"),
+        ):
+            project = Project.objects.create(name="Project with an unreachable service", create_defaults=True)
+
+        self.assertGreaterEqual(project.deployments.count(), 1)
+        self.assertGreaterEqual(project.sourceimage_collections.count(), 1)
+        self.assertGreaterEqual(project.processing_services.count(), 1)
+        self.assertEqual(ProjectPipelineConfig.objects.filter(project=project).count(), 0)
 
     @override_settings(
         DEFAULT_PROCESSING_SERVICE_NAME="Default Processing Service",

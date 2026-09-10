@@ -263,8 +263,15 @@ class ProjectManager(models.Manager.from_queryset(ProjectQuerySet)):
         if not project.sourceimage_collections.exists():
             get_or_create_default_collection(project=project)
         if not project.processing_services.exists():
-            from ami.ml.models.processing_service import get_or_create_default_processing_service
+            from ami.ml.models.processing_service import (
+                attach_async_processing_services,
+                get_or_create_default_processing_service,
+            )
 
+            # Pull-mode workers run the platform's jobs and are how a new project processes
+            # anything, since new jobs dispatch asynchronously by default. A push-mode
+            # service is added on top only where one is configured, such as local development.
+            attach_async_processing_services(project)
             get_or_create_default_processing_service(project=project)
 
 
