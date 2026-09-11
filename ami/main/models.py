@@ -11,6 +11,7 @@ import uuid
 from io import BytesIO
 from typing import Final, final  # noqa: F401
 
+import pgvector.django
 import PIL.Image
 import pydantic
 from django.apps import apps
@@ -2127,6 +2128,23 @@ class SourceImageQuerySet(BaseQuerySet):
         processed_exists = models.Exists(Detection.objects.filter(source_image_id=models.OuterRef("pk")))
         return self.annotate(was_processed=processed_exists)
 
+    def with_detections_with_features(self):
+        """Annotate ``detections_with_features``: valid detections on the capture with at
+        least one classification that stored a feature embedding. Counted in SQL so the
+        vectors themselves are never loaded.
+        """
+        subquery = (
+            Detection.objects.valid()
+            .filter(source_image_id=models.OuterRef("pk"), classifications__features_2048__isnull=False)
+            .order_by()
+            .values("source_image_id")
+            .annotate(count=models.Count("id", distinct=True))
+            .values("count")
+        )
+        return self.annotate(
+            detections_with_features=Coalesce(models.Subquery(subquery, output_field=models.IntegerField()), 0)
+        )
+
     def with_thumbnails(self):
         """Prefetch ``thumbnails`` so :meth:`SourceImage.thumbnail_urls` decides
         warm/cold in memory instead of firing a SELECT per row.
@@ -2943,6 +2961,17 @@ class ClassificationResult(BaseModel):
 
 
 class ClassificationQuerySet(BaseQuerySet):
+    def with_has_features(self):
+        """Annotate ``has_features`` and defer the embedding itself.
+
+        Read paths only need to know whether a feature vector was stored; deferring the
+        2048-float column keeps it out of the row's SELECT. A select_related self-join
+        (``applied_to``) needs its own ``defer("applied_to__features_2048")``.
+        """
+        return self.defer("features_2048").annotate(
+            has_features=models.ExpressionWrapper(Q(features_2048__isnull=False), output_field=models.BooleanField())
+        )
+
     def find_duplicates(self, project_id: int | None = None) -> models.QuerySet:
         # Find the oldest classification for each unique combination
         if project_id:
@@ -2986,6 +3015,11 @@ class Classification(BaseModel):
         models.FloatField(),
         null=True,
         help_text="The probabilities the model, calibrated by the model maker, likely the softmax output",
+    )
+    features_2048 = pgvector.django.VectorField(
+        dimensions=2048,
+        null=True,
+        help_text="Feature embedding from the model backbone",
     )
     category_map = models.ForeignKey("ml.AlgorithmCategoryMap", on_delete=models.PROTECT, null=True)
 
@@ -3197,6 +3231,15 @@ class Detection(BaseModel):
 
     similarity_vector = models.JSONField(null=True, blank=True)
 
+    next_detection = models.OneToOneField(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="previous_detection",
+        help_text="The detection that follows this one in the tracking sequence.",
+    )
+
     # For type hints
     classifications: models.QuerySet["Classification"]
     source_image_id: int
@@ -3361,6 +3404,22 @@ class OccurrenceQuerySet(BaseQuerySet):
     def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
 
+    def with_frames_with_vectors(self):
+        """Annotate ``frames_with_vectors``: detections in the occurrence with at least one
+        classification that stored a feature embedding. Counted in SQL so the vectors
+        themselves are never loaded.
+        """
+        subquery = (
+            Detection.objects.filter(occurrence_id=OuterRef("pk"), classifications__features_2048__isnull=False)
+            .order_by()
+            .values("occurrence_id")
+            .annotate(count=models.Count("id", distinct=True))
+            .values("count")
+        )
+        return self.annotate(
+            frames_with_vectors=Coalesce(models.Subquery(subquery, output_field=models.IntegerField()), 0)
+        )
+
     def _processed_by_algorithm_q(self, algorithm_ids) -> Exists:
         """Subquery matching occurrences with any result from the given algorithms —
         a detection made by one (detectors) or a classification from one (classifiers
@@ -3416,10 +3475,15 @@ class OccurrenceQuerySet(BaseQuerySet):
         return self.prefetch_related(prefetch_detections_for_list())
 
     def with_detail_prefetches(self):
-        """Add prefetches the detail serializer needs (detections + source_image + classifications)."""
+        """Add what the detail serializer needs: detections + source_image + classifications
+        prefetched, and the ``frames_with_vectors`` count the grouping summary reports."""
         from ami.main.models_future.occurrence import prefetch_detections_for_detail
 
-        return self.prefetch_related(prefetch_detections_for_detail())
+        return (
+            self.select_related("grouping_verified_by")
+            .prefetch_related(prefetch_detections_for_detail())
+            .with_frames_with_vectors()
+        )
 
     def with_best_detection(self):
         """
@@ -3625,10 +3689,52 @@ class Occurrence(BaseModel):
     deployment = models.ForeignKey(Deployment, on_delete=models.SET_NULL, null=True, related_name="occurrences")
     project = models.ForeignKey("Project", on_delete=models.SET_NULL, null=True, related_name="occurrences")
 
+    # Whether a person has confirmed that this occurrence's set of detections is right —
+    # that they are all the same individual and none are missing. Separate from taxon
+    # verification, which is what an Identification records. Confirmed occurrences are the
+    # ground truth the tracking methods are evaluated against, so anything that changes the
+    # detection set must clear this. See #1272.
+    grouping_verified_at = models.DateTimeField(null=True, blank=True)
+    grouping_verified_by = models.ForeignKey(
+        "users.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="verified_occurrence_groupings",
+    )
+
+    # Track statistics stored so the occurrence list can sort by them. Written by
+    # ``models_future.track_stats.refresh_track_stats`` whenever tracking or a track edit
+    # changes which detections an occurrence holds; null until then, or when it has none.
+    track_motion = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Path length between frames as a fraction of the frame diagonal. See models_future/track_stats.py.",
+    )
+    track_size_ratio = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Largest box area over the smallest. See models_future/track_stats.py.",
+    )
+    track_distinct_taxa = models.IntegerField(
+        null=True,
+        blank=True,
+        help_text="Distinct taxa among terminal classifications. See models_future/track_stats.py.",
+    )
+    track_id_agreement = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Share of terminal classifications naming the determination. See models_future/track_stats.py.",
+    )
+
     detections: models.QuerySet[Detection]
     identifications: models.QuerySet[Identification]
 
     objects = OccurrenceManager()
+
+    @property
+    def grouping_verified(self) -> bool:
+        return self.grouping_verified_at is not None
 
     def __str__(self) -> str:
         name = f"Occurrence #{self.pk}"
@@ -3744,6 +3850,7 @@ class Occurrence(BaseModel):
         classifications = (
             Classification.objects.filter(detection__occurrence=self)
             .select_related("taxon", "algorithm")
+            .with_has_features()
             .filter(
                 score__in=models.Subquery(
                     Classification.objects.filter(detection__occurrence=self)
@@ -3786,6 +3893,25 @@ class Occurrence(BaseModel):
                 logger.warning(f"Could not determine score for {self}")
             else:
                 self.save(update_determination=False)
+
+    def check_custom_permission(self, user, action: str) -> bool:
+        # Editing a track moves detections between occurrences and can leave an
+        # occurrence's determination changed, so it is gated on the permission that
+        # already governs restructuring occurrence records rather than on
+        # identification rights.
+        # Listing merge candidates is gated the same way, so the picker only opens
+        # for someone who could complete the merge.
+        if action in ("split_track", "remove_detection", "merge", "merge_candidates", "add_detections"):
+            return user.has_perm(Project.Permissions.DELETE_OCCURRENCES, self.get_project())
+        # Confirming a grouping is an expert judgement rather than a restructuring, so
+        # identifying rights are enough — but the roles that restructure occurrences do
+        # not inherit those, and they need to confirm their own corrections.
+        if action in ("verify_grouping", "unverify_grouping"):
+            project = self.get_project()
+            return user.has_perm(Project.Permissions.CREATE_IDENTIFICATION, project) or user.has_perm(
+                Project.Permissions.DELETE_OCCURRENCES, project
+            )
+        return super().check_custom_permission(user, action)
 
     class Meta:
         ordering = ["-determination_score"]
@@ -3856,9 +3982,17 @@ def update_occurrence_determination(
         new_score = top_identification.score
     elif not top_identification:
         top_prediction = occurrence.best_prediction
-        if top_prediction and top_prediction.taxon and top_prediction.taxon != current_determination:
-            new_determination = top_prediction.taxon
-            new_score = top_prediction.score
+        if top_prediction and top_prediction.taxon:
+            if top_prediction.taxon != current_determination:
+                new_determination = top_prediction.taxon
+                new_score = top_prediction.score
+            elif top_prediction.score != occurrence.determination_score:
+                # Taxon unchanged but a higher-scoring classification has appeared
+                # for the same taxon (e.g. tracking merged a new detection into the
+                # chain whose top species classification scored higher than the
+                # keeper's). Refresh the score so determination_score reflects the
+                # best evidence available across the occurrence's detections.
+                new_score = top_prediction.score
 
     if new_determination and new_determination != current_determination:
         logger.debug(f"Changing det. of {occurrence} from {current_determination} to {new_determination}")

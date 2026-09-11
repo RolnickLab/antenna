@@ -52,18 +52,29 @@ def lca_rank_between(a: TaxonTuple, b: TaxonTuple) -> TaxonRank | None:
     return deepest
 
 
-def _detections_prefetch(*, ordering: tuple[str, ...], with_source_image: bool) -> Prefetch:
-    from ami.main.models import Classification, Detection
+def prefetch_nested_classifications() -> Prefetch:
+    """Classifications as the nested serializers render them.
 
-    qs = Detection.objects.prefetch_related(
-        Prefetch(
-            "classifications",
-            # applied_to__algorithm: post-processed classifications (class masking,
-            # rank rollup) serialize their provenance parent; pull it here so the
-            # nested applied_to render doesn't issue a query per classification.
-            queryset=Classification.objects.select_related("taxon", "algorithm", "applied_to__algorithm"),
-        )
-    ).order_by(*ordering)
+    Joins the taxon, algorithm and provenance parent so no query fires per row, and
+    annotates ``has_features`` in place of the embedding, which is never loaded.
+    """
+    from ami.main.models import Classification
+
+    # Post-processed classifications (class masking, rank rollup) render their
+    # provenance parent, so join it rather than query per row. The parent is a
+    # self-join, so its embedding has to be deferred by name as well.
+    queryset = (
+        Classification.objects.select_related("taxon", "algorithm", "applied_to__algorithm")
+        .defer("applied_to__features_2048")
+        .with_has_features()
+    )
+    return Prefetch("classifications", queryset=queryset)
+
+
+def _detections_prefetch(*, ordering: tuple[str, ...], with_source_image: bool) -> Prefetch:
+    from ami.main.models import Detection
+
+    qs = Detection.objects.prefetch_related(prefetch_nested_classifications()).order_by(*ordering)
     if with_source_image:
         qs = qs.select_related("source_image")
     return Prefetch("detections", queryset=qs)
@@ -166,6 +177,42 @@ def detection_image_urls_from_prefetch(occurrence: Occurrence, limit: int | None
     if limit is not None:
         detections = detections[:limit]
     return [get_media_url(det.path) for det in detections]
+
+
+def occurrence_path(occurrence: Occurrence) -> list[dict]:
+    """Where this occurrence was in every frame it appears in, earliest first.
+
+    A drawing payload: enough to place each frame's box on any other frame of the
+    same session, and nothing else. The capture's dimensions are the part no other
+    payload carries, and a box cannot be placed without them because it is measured
+    in the pixel space of its own capture, which need not match the one on screen.
+
+    Ordered by the capture's timestamp rather than ``Detection.timestamp``, which is
+    copied from it but is nullable. The two agree wherever the copy has been made,
+    so this is the same order ``split_track`` acts on.
+    """
+    rows = occurrence.detections.order_by("source_image__timestamp", "pk").values(
+        "pk",
+        "bbox",
+        "source_image_id",
+        "source_image__timestamp",
+        "source_image__width",
+        "source_image__height",
+    )
+
+    return [
+        {
+            "detection_id": row["pk"],
+            "bbox": row["bbox"],
+            "capture": {
+                "id": row["source_image_id"],
+                "timestamp": row["source_image__timestamp"],
+                "width": row["source_image__width"],
+                "height": row["source_image__height"],
+            },
+        }
+        for row in rows
+    ]
 
 
 def model_agreement_for_project(

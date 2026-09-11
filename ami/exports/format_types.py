@@ -20,6 +20,11 @@ def get_export_serializer():
     class OccurrenceExportSerializer(OccurrenceSerializer):
         detection_images = serializers.SerializerMethodField()
 
+        class Meta(OccurrenceSerializer.Meta):
+            # The grouping summary describes the detections as they stand at read
+            # time; it is not part of the occurrence record and is never exported.
+            fields = [name for name in OccurrenceSerializer.Meta.fields if name != "grouping_summary"]
+
         def get_detection_images(self, obj: Occurrence):
             """Convert the generator field to a list before serialization"""
             if hasattr(obj, "detection_images") and callable(obj.detection_images):

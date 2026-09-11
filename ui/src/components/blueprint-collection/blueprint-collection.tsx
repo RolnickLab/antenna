@@ -34,8 +34,10 @@ export const BlueprintCollection = ({
 )
 
 export const BlueprintItem = ({
+  actions,
   item,
 }: {
+  actions?: ReactNode
   item: {
     id: string
     image: { src: string; width: number; height: number }
@@ -52,10 +54,13 @@ export const BlueprintItem = ({
 
   return (
     <div className={classNames(styles.blueprintItem, 'group')}>
-      <div className={styles.blueprintInfo} style={{ width: size.width }}>
-        <span className="grow text-muted-foreground text-right">
-          {item.timeLabel}
-        </span>
+      <div className="flex items-center gap-1">
+        <div className={styles.blueprintInfo} style={{ width: size.width }}>
+          <span className="grow text-muted-foreground text-right">
+            {item.timeLabel}
+          </span>
+        </div>
+        {actions}
       </div>
       <div className="flex flex-col items-center gap-2">
         <img

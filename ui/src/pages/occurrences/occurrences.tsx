@@ -40,13 +40,15 @@ export const Occurrences = () => {
   const { columnSettings, setColumnSettings } = useColumnSettings(
     'occurrences',
     {
-      batch: true,
       snapshots: true,
       id: true,
       date: true,
       deployment: true,
       duration: false,
       detections: true,
+      motion: false,
+      ['size-change']: false,
+      ['id-agreement']: false,
       score: true,
       ['updated-at']: true,
     }
