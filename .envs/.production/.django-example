@@ -142,8 +142,8 @@ WEB_CONCURRENCY=4
 
 # Default processing service
 # Only needed when a single processing service is reached over HTTP at a fixed address.
-# Workers that poll for tasks register themselves and need no endpoint here; new projects
-# are connected to those automatically. Leave this unset unless you run a push-mode service,
+# Workers that poll for tasks register themselves and need no endpoint here; new projects are
+# connected to the ones marked "public" in the admin. Leave this unset unless you run a push-mode service,
 # and point it somewhere reachable if you do — an address that no longer answers means new
 # projects are created without its pipelines.
 # DEFAULT_PROCESSING_SERVICE_NAME="AMI Data Companion"

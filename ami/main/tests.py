@@ -136,11 +136,11 @@ class TestProjectSetup(TestCase):
             service, "Default processing service should not be created if environment variables are not set."
         )
 
-    def _create_pull_mode_service(self, name="Pull-mode Worker", pipeline_slugs=("pipeline_a", "pipeline_b")):
+    def _create_pull_mode_service(self, name, pipeline_slugs=("pipeline_a", "pipeline_b"), is_public=False):
         """Register a worker that polls for tasks, with the pipelines it reports it can run."""
-        service = ProcessingService.objects.create(name=name, endpoint_url=None)
+        service = ProcessingService.objects.create(name=name, endpoint_url=None, is_public=is_public)
         for slug in pipeline_slugs:
-            pipeline = Pipeline.objects.create(slug=slug, name=slug, version=1)
+            pipeline, _ = Pipeline.objects.get_or_create(slug=slug, defaults={"name": slug, "version": 1})
             service.pipelines.add(pipeline)
         return service
 
@@ -149,19 +149,21 @@ class TestProjectSetup(TestCase):
         DEFAULT_PROCESSING_SERVICE_ENDPOINT=None,
         DEFAULT_PIPELINES_ENABLED=["pipeline_a"],
     )
-    def test_new_project_is_connected_to_pull_mode_services(self):
+    def test_new_project_is_connected_to_public_processing_services_only(self):
         """
-        A new project can run a job on the platform's pull-mode workers.
+        A new project is connected to the workers marked public, and to no other worker.
 
-        An asynchronous job looks up workers through the project-to-service relation, and
-        asynchronous is the dispatch mode new projects use, so a project created without that
-        relation has no way to process anything.
+        A job only reaches a worker through the project-to-service relation, so without the
+        public workers a new project cannot process anything. A worker that a project owner
+        registered for their own project must not be attached, or it would receive other
+        projects' images.
         """
-        service = self._create_pull_mode_service()
+        fleet = {self._create_pull_mode_service(f"Platform worker {i}", is_public=True) for i in (1, 2)}
+        self._create_pull_mode_service("A lab's own worker", pipeline_slugs=("pipeline_c",))
 
-        project = Project.objects.create(name="Project on pull-mode workers", create_defaults=True)
+        project = Project.objects.create(name="Project on the platform workers", create_defaults=True)
 
-        self.assertIn(service, project.processing_services.all())
+        self.assertEqual(set(project.processing_services.all()), fleet)
         configs = ProjectPipelineConfig.objects.filter(project=project)
         self.assertEqual({config.pipeline.slug for config in configs}, {"pipeline_a", "pipeline_b"})
         self.assertEqual(
@@ -198,25 +200,39 @@ class TestProjectSetup(TestCase):
         DEFAULT_PROCESSING_SERVICE_ENDPOINT="http://unreachable.invalid:2000/",
         DEFAULT_PIPELINES_ENABLED=None,
     )
-    def test_project_is_still_created_when_the_default_service_cannot_be_reached(self):
+    def test_project_is_still_created_when_the_default_service_cannot_be_registered(self):
         """
-        Creating a project survives a default processing service that cannot be reached.
+        A default processing service that fails to register does not stop a project being created.
 
-        Registering pipelines fetches the service over the network. That request failing used
-        to propagate out of the create call, so the request that created the project returned
-        a server error and the caller could not tell that the project had been written.
+        Registration fetches the service over the network, and a failed request must not turn
+        project creation into a server error. A database error during registration must be
+        contained too, or it aborts the transaction the project is written in. Creation also
+        must not wait on a health check of the service, which retries for minutes when the
+        host does not answer.
         """
-        with mock.patch.object(
-            ProcessingService,
-            "create_pipelines",
-            side_effect=requests.exceptions.SSLError("certificate verify failed"),
-        ):
-            project = Project.objects.create(name="Project with an unreachable service", create_defaults=True)
 
-        self.assertGreaterEqual(project.deployments.count(), 1)
-        self.assertGreaterEqual(project.sourceimage_collections.count(), 1)
-        self.assertGreaterEqual(project.processing_services.count(), 1)
-        self.assertEqual(ProjectPipelineConfig.objects.filter(project=project).count(), 0)
+        def fail_in_the_database(*args, **kwargs):
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1/0")
+
+        failures = {
+            "network": requests.exceptions.SSLError("certificate verify failed"),
+            "database": fail_in_the_database,
+        }
+        for label, failure in failures.items():
+            with (
+                self.subTest(failure=label),
+                mock.patch.object(ProcessingService, "create_pipelines", side_effect=failure),
+                mock.patch.object(ProcessingService, "get_status") as get_status,
+            ):
+                project = Project.objects.create(name=f"Unregistered service ({label})", create_defaults=True)
+
+                get_status.assert_not_called()
+                self.assertTrue(Project.objects.filter(pk=project.pk).exists())
+                self.assertGreaterEqual(project.deployments.count(), 1)
+                self.assertGreaterEqual(project.sourceimage_collections.count(), 1)
+                self.assertGreaterEqual(project.processing_services.count(), 1)
+                self.assertEqual(ProjectPipelineConfig.objects.filter(project=project).count(), 0)
 
     @override_settings(
         DEFAULT_PROCESSING_SERVICE_NAME="Default Processing Service",
