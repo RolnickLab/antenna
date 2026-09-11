@@ -263,8 +263,15 @@ class ProjectManager(models.Manager.from_queryset(ProjectQuerySet)):
         if not project.sourceimage_collections.exists():
             get_or_create_default_collection(project=project)
         if not project.processing_services.exists():
-            from ami.ml.models.processing_service import get_or_create_default_processing_service
+            from ami.ml.models.processing_service import (
+                attach_public_processing_services,
+                get_or_create_default_processing_service,
+            )
 
+            # The platform's own workers, marked public by an admin, are how a new project
+            # processes anything. A push-mode service is added on top only where one is
+            # configured, such as local development.
+            attach_public_processing_services(project)
             get_or_create_default_processing_service(project=project)
 
 

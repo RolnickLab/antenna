@@ -5,6 +5,7 @@ import typing
 from io import BytesIO
 from unittest import mock
 
+import requests
 from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -134,6 +135,104 @@ class TestProjectSetup(TestCase):
         self.assertIsNone(
             service, "Default processing service should not be created if environment variables are not set."
         )
+
+    def _create_pull_mode_service(self, name, pipeline_slugs=("pipeline_a", "pipeline_b"), is_public=False):
+        """Register a worker that polls for tasks, with the pipelines it reports it can run."""
+        service = ProcessingService.objects.create(name=name, endpoint_url=None, is_public=is_public)
+        for slug in pipeline_slugs:
+            pipeline, _ = Pipeline.objects.get_or_create(slug=slug, defaults={"name": slug, "version": 1})
+            service.pipelines.add(pipeline)
+        return service
+
+    @override_settings(
+        DEFAULT_PROCESSING_SERVICE_NAME=None,
+        DEFAULT_PROCESSING_SERVICE_ENDPOINT=None,
+        DEFAULT_PIPELINES_ENABLED=["pipeline_a"],
+    )
+    def test_new_project_is_connected_to_public_processing_services_only(self):
+        """
+        A new project is connected to the workers marked public, and to no other worker.
+
+        A job only reaches a worker through the project-to-service relation, so without the
+        public workers a new project cannot process anything. A worker that a project owner
+        registered for their own project must not be attached, or it would receive other
+        projects' images.
+        """
+        fleet = {self._create_pull_mode_service(f"Platform worker {i}", is_public=True) for i in (1, 2)}
+        self._create_pull_mode_service("A lab's own worker", pipeline_slugs=("pipeline_c",))
+
+        project = Project.objects.create(name="Project on the platform workers", create_defaults=True)
+
+        self.assertEqual(set(project.processing_services.all()), fleet)
+        configs = ProjectPipelineConfig.objects.filter(project=project)
+        self.assertEqual({config.pipeline.slug for config in configs}, {"pipeline_a", "pipeline_b"})
+        self.assertEqual(
+            {config.pipeline.slug for config in configs if config.enabled},
+            {"pipeline_a"},
+            "Only the pipelines named in DEFAULT_PIPELINES_ENABLED should start enabled.",
+        )
+
+    @override_settings(
+        DEFAULT_PROCESSING_SERVICE_NAME="Default Processing Service",
+        DEFAULT_PROCESSING_SERVICE_ENDPOINT="http://ml_backend:2000/",
+        DEFAULT_PIPELINES_ENABLED=None,
+    )
+    def test_push_mode_service_is_not_attached_unless_it_is_the_configured_default(self):
+        """
+        Only the configured default push-mode service is attached, not every push-mode service.
+
+        Push-mode services are called at a specific endpoint, so attaching a project to one
+        that was registered for somebody else would send that project's work to it.
+        """
+        # The manager health-checks a new service on creation; this one is never meant to be
+        # reached, and letting the check run costs the suite a DNS timeout.
+        with mock.patch.object(ProcessingService, "get_status"):
+            other = ProcessingService.objects.create(
+                name="Someone else's service", endpoint_url="http://elsewhere:2000/"
+            )
+
+        project = Project.objects.create(name="Project with an unrelated service", create_defaults=True)
+
+        self.assertNotIn(other, project.processing_services.all())
+
+    @override_settings(
+        DEFAULT_PROCESSING_SERVICE_NAME="Unreachable Service",
+        DEFAULT_PROCESSING_SERVICE_ENDPOINT="http://unreachable.invalid:2000/",
+        DEFAULT_PIPELINES_ENABLED=None,
+    )
+    def test_project_is_still_created_when_the_default_service_cannot_be_registered(self):
+        """
+        A default processing service that fails to register does not stop a project being created.
+
+        Registration fetches the service over the network, and a failed request must not turn
+        project creation into a server error. A database error during registration must be
+        contained too, or it aborts the transaction the project is written in. Creation also
+        must not wait on a health check of the service, which retries for minutes when the
+        host does not answer.
+        """
+
+        def fail_in_the_database(*args, **kwargs):
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1/0")
+
+        failures = {
+            "network": requests.exceptions.SSLError("certificate verify failed"),
+            "database": fail_in_the_database,
+        }
+        for label, failure in failures.items():
+            with (
+                self.subTest(failure=label),
+                mock.patch.object(ProcessingService, "create_pipelines", side_effect=failure),
+                mock.patch.object(ProcessingService, "get_status") as get_status,
+            ):
+                project = Project.objects.create(name=f"Unregistered service ({label})", create_defaults=True)
+
+                get_status.assert_not_called()
+                self.assertTrue(Project.objects.filter(pk=project.pk).exists())
+                self.assertGreaterEqual(project.deployments.count(), 1)
+                self.assertGreaterEqual(project.sourceimage_collections.count(), 1)
+                self.assertGreaterEqual(project.processing_services.count(), 1)
+                self.assertEqual(ProjectPipelineConfig.objects.filter(project=project).count(), 0)
 
     @override_settings(
         DEFAULT_PROCESSING_SERVICE_NAME="Default Processing Service",
