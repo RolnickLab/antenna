@@ -92,6 +92,69 @@ class AlgorithmCategoryMapResponse(pydantic.BaseModel):
     )
 
 
+class AlgorithmTrainingConfig(pydantic.BaseModel):
+    """
+    How to retrain an algorithm. Declared by the processing service, editable afterwards.
+
+    Split across two sides on purpose: Antenna reads the dataset settings when it builds
+    the training set, and passes the rest to the service, which owns the fitting.
+    """
+
+    # Dataset settings, used by Antenna.
+    min_per_species: int = pydantic.Field(
+        default=2,
+        description="Drop species with fewer verified crops than this. One example cannot be evaluated.",
+    )
+    test_fraction: float = pydantic.Field(default=0.2, description="Share of occurrences held out for evaluation.")
+    split_salt: str = pydantic.Field(
+        default="antenna-head-v1",
+        description="Changing this reshuffles the held-out set, which makes old and new heads incomparable.",
+    )
+
+    # Fitting settings, used by the processing service.
+    head_type: str = pydantic.Field(
+        default="linear",
+        description="Shape of the head to fit, e.g. 'linear' or 'mlp1'.",
+        examples=["linear", "mlp1"],
+    )
+    epochs: int = 300
+    learning_rate: float = 0.01
+    weight_decay: float = 1e-4
+    min_improvement: float = pydantic.Field(
+        default=0.0,
+        description="A new head must beat the current one by more than this to be worth swapping in.",
+    )
+
+    class Config:
+        extra = "allow"
+
+
+class AlgorithmTrainingInfo(pydantic.BaseModel):
+    """
+    What actually happened when this version was trained. Written by the service, read-only.
+
+    Every retrain produces a new algorithm version, so this is the record of where a
+    particular set of weights came from.
+    """
+
+    trained_at: datetime.datetime | None = None
+    dataset_url: str | None = pydantic.Field(default=None, description="The exact training set this was fitted on.")
+    dataset_rows: int | None = None
+    dataset_classes: int | None = None
+    metrics: dict = pydantic.Field(default_factory=dict, description="Scores on the held-out split.")
+    previous_metrics: dict = pydantic.Field(
+        default_factory=dict, description="What the version it was compared against scored on the same rows."
+    )
+    parent_algorithm_key: str | None = pydantic.Field(
+        default=None, description="The version this one was trained to beat."
+    )
+    job_id: int | None = None
+    warnings: list[str] = pydantic.Field(default_factory=list)
+
+    class Config:
+        extra = "allow"
+
+
 class AlgorithmConfigResponse(pydantic.BaseModel):
     name: str
     key: str = pydantic.Field(
@@ -115,6 +178,22 @@ class AlgorithmConfigResponse(pydantic.BaseModel):
         default=None,
         description="A URI to the weight or model details, could be a public web URL or object store path.",
     )
+    trainable: bool = pydantic.Field(
+        default=False,
+        description=(
+            "Whether this algorithm can be retrained from labelled data. A service usually hosts "
+            "several algorithms and only some of them, typically a classifier head over a frozen "
+            "backbone, are cheap enough to retrain."
+        ),
+    )
+    training_config: AlgorithmTrainingConfig | None = pydantic.Field(
+        default=None,
+        description="The service's default retraining settings. Antenna seeds its own copy from this.",
+    )
+    training_info: AlgorithmTrainingInfo | None = pydantic.Field(
+        default=None,
+        description="Where this version's weights came from. Only set on a version that was retrained.",
+    )
     category_map: AlgorithmCategoryMapResponse | None = None
 
     class Config:
@@ -133,6 +212,14 @@ class ClassificationResponse(pydantic.BaseModel):
     )
     scores: list[float] = []
     logits: list[float] | None = None
+    features: list[float] | None = pydantic.Field(
+        default=None,
+        description=(
+            "The embedding the model's backbone produced for this crop, taken before the "
+            "classification head. Optional, and only useful if every value comes from the "
+            "same backbone."
+        ),
+    )
     inference_time: float | None = None
     algorithm: AlgorithmReference
     terminal: bool = True

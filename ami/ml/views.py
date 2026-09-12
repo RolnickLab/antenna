@@ -8,17 +8,21 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import exceptions as api_exceptions
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from ami.base.pagination import TrainingDataPagination
 from ami.base.permissions import ProjectPipelineConfigPermission
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
 from ami.main.models import Project, SourceImage
+from ami.ml import training_data
 from ami.ml.schemas import PipelineRegistrationResponse
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
+from .models.embedding import EMBEDDING_DIMENSIONS, DetectionEmbedding
 from .models.pipeline import Pipeline
 from .models.processing_service import ProcessingService
 from .models.project_pipeline_config import ProjectPipelineConfig
@@ -28,6 +32,7 @@ from .serializers import (
     PipelineRegistrationSerializer,
     PipelineSerializer,
     ProcessingServiceSerializer,
+    TrainingDataRowSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -298,3 +303,115 @@ class ProjectPipelineViewSet(ProjectMixin, mixins.ListModelMixin, mixins.CreateM
         processing_service.mark_seen(live=True)
 
         return Response(response.dict(), status=status.HTTP_201_CREATED)
+
+
+class TrainingDataViewSet(ProjectMixin, mixins.ListModelMixin, viewsets.GenericViewSet):
+    """
+    Verified detections and their embeddings, for retraining a classifier head.
+
+    A head is trained on embeddings, not pixels, and the backbone that produced them is
+    frozen. So a trainer can pull this and fit a new head without touching the images.
+
+    Requires `project_id` and `algorithm` (an algorithm key). Constraining to one
+    algorithm is not optional: vectors from different backbones are in different spaces.
+
+    GET /api/v2/ml/training-data/?project_id=3&algorithm=<key>
+    GET /api/v2/ml/training-data/summary/?project_id=3&algorithm=<key>
+    """
+
+    queryset = DetectionEmbedding.objects.none()
+    serializer_class = TrainingDataRowSerializer
+    require_project = True
+    permission_classes = [IsAuthenticated]
+    filter_backends: list = []
+    pagination_class = TrainingDataPagination
+
+    def _get_algorithm(self) -> Algorithm:
+        key = self.request.query_params.get("algorithm")
+        if not key:
+            raise api_exceptions.ValidationError(
+                {"algorithm": "Required. The algorithm key whose embeddings to train on."}
+            )
+        algorithm = Algorithm.objects.filter(key=key).first()
+        if not algorithm:
+            raise api_exceptions.NotFound(f"No algorithm with key '{key}'.")
+        return algorithm
+
+    def _get_split_settings(self) -> tuple[str, float]:
+        params = self.request.query_params
+        salt = params.get("split_salt", training_data.DEFAULT_SPLIT_SALT)
+        raw = params.get("test_fraction", training_data.DEFAULT_TEST_FRACTION)
+        try:
+            fraction = float(raw)
+        except (TypeError, ValueError):
+            raise api_exceptions.ValidationError({"test_fraction": "Must be a number between 0 and 1."})
+        if not 0 <= fraction < 1:
+            raise api_exceptions.ValidationError({"test_fraction": "Must be between 0 and 1."})
+        return salt, fraction
+
+    def get_queryset(self) -> QuerySet[DetectionEmbedding]:
+        project = self.get_active_project()
+        assert project  # require_project=True
+        self.check_object_permissions(self.request, project)
+        qs = training_data.verified_training_rows(project, self._get_algorithm())
+
+        split = self.request.query_params.get("split")
+        if split and split not in ("train", "test"):
+            raise api_exceptions.ValidationError({"split": "Must be 'train' or 'test'."})
+        self._split_filter = split
+        return qs
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        salt, fraction = self._get_split_settings()
+        context["split_salt"] = salt
+        context["test_fraction"] = fraction
+        context["include_features"] = self.request.query_params.get("include_features", "true").lower() != "false"
+        return context
+
+    @extend_schema(parameters=[project_id_doc_param])
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        split = getattr(self, "_split_filter", None)
+        if split:
+            # Filtering by split in Python rather than SQL: the assignment is a hash of the
+            # occurrence id, which Postgres cannot compute. Callers that need whole splits
+            # should page through everything and group client-side.
+            results = [row for row in response.data["results"] if row["split"] == split]
+            response.data["results"] = results
+        return response
+
+    @extend_schema(parameters=[project_id_doc_param])
+    @action(detail=False, methods=["get"])
+    def summary(self, request, *args, **kwargs):
+        """Counts only. Cheap enough to poll before deciding whether a retrain is worth it."""
+        project = self.get_active_project()
+        assert project
+        self.check_object_permissions(request, project)
+        algorithm = self._get_algorithm()
+        salt, fraction = self._get_split_settings()
+
+        counts = training_data.label_counts(project, algorithm)
+        rows = training_data.verified_training_rows(project, algorithm)
+        splits = {"train": 0, "test": 0}
+        for occurrence_id in rows.values_list("detection__occurrence_id", flat=True):
+            splits[training_data.split_for(occurrence_id, salt, fraction)] += 1
+
+        return Response(
+            {
+                "project": {"id": project.pk, "name": project.name},
+                "algorithm": {"key": algorithm.key, "name": algorithm.name, "version": algorithm.version},
+                "dimensions": EMBEDDING_DIMENSIONS,
+                "rows": sum(counts.values()),
+                "classes": len(counts),
+                "counts": dict(sorted(counts.items(), key=lambda kv: -kv[1])),
+                "train": splits["train"],
+                "test": splits["test"],
+                "verified_detections_without_embedding": training_data.count_missing_embeddings(project, algorithm),
+                "settings": {
+                    "split_salt": salt,
+                    "test_fraction": fraction,
+                    "split_grouped_by": "occurrence",
+                },
+            }
+        )

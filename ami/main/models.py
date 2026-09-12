@@ -279,6 +279,10 @@ class ProjectFeatureFlags(pydantic.BaseModel):
     # Feature flag for jobs to reprocess all images in the project, even if already processed
     reprocess_all_images: bool = False
     async_pipeline_workers: bool = True  # Whether to use async pipeline workers that pull tasks from a queue
+    # Whether to save the feature vectors returned with classifications, for retraining
+    # classifier heads from verified labels. Off by default: a stored vector costs about
+    # 5 KB once the vector index is counted, so this is opt-in per project.
+    store_classification_embeddings: bool = False
 
 
 def get_default_feature_flags() -> ProjectFeatureFlags:
