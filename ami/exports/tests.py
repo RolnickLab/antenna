@@ -1,4 +1,5 @@
 import csv
+import datetime
 import json
 import logging
 
@@ -8,6 +9,7 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 
 from ami.exports.models import DataExport
+from ami.exports.registry import ExportRegistry
 from ami.main.models import Detection, Identification, Occurrence, SourceImageCollection, Taxon
 from ami.ml.models import Algorithm
 from ami.tests.fixtures.main import (
@@ -209,6 +211,212 @@ class DataExportTest(TestCase):
 
         # Clean up the exported file after the test
         default_storage.delete(file_path)
+
+
+class TaxaListExportTest(TestCase):
+    """Tests for the `taxa_list_csv` export format."""
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        self.user = self.project.owner
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+        # Two nights so we can test cross-midnight time-of-night aggregations.
+        create_captures(deployment=self.deployment, num_nights=2, images_per_night=4, interval_minutes=30)
+        group_images_into_events(self.deployment)
+        create_taxa(self.project)
+        # Ensure the project does not score-filter our test occurrences.
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+        # All other tests in this suite share these defaults; reset M2M filters.
+        self.project.default_filters_include_taxa.clear()
+        self.project.default_filters_exclude_taxa.clear()
+
+        # Build hierarchy ancestors first; reuse if create_taxa already made them.
+        kingdom, _ = Taxon.objects.get_or_create(name="Animalia", defaults={"rank": "KINGDOM"})
+        family, _ = Taxon.objects.get_or_create(
+            name="Nymphalidae",
+            defaults={"rank": "FAMILY", "parent": kingdom},
+        )
+        if family.parent_id != kingdom.pk:
+            family.parent = kingdom
+            family.save()
+
+        # Three distinct taxa with different external-ID populations. Names
+        # chosen to not collide with the create_taxa() fixture set.
+        self.taxon_with_ids = Taxon.objects.create(
+            name="Aglais io",
+            rank="SPECIES",
+            parent=family,
+            gbif_taxon_key=1898286,
+            inat_taxon_id=48662,
+            bold_taxon_bin="BOLD:AAA0001",
+            fieldguide_id="vanessa-cardui",
+            cover_image_url="https://example.com/vc.jpg",
+        )
+        self.taxon_with_ids.projects.add(self.project)
+
+        self.taxon_no_ids = Taxon.objects.create(name="Polygonia c-album", rank="SPECIES")
+        self.taxon_no_ids.projects.add(self.project)
+
+        self.taxon_genus_only = Taxon.objects.create(name="Aglais", rank="GENUS")
+        self.taxon_genus_only.projects.add(self.project)
+
+        # parents_json is populated via the manager helper.
+        Taxon.objects.update_all_parents()
+        self.taxon_with_ids.refresh_from_db()
+
+        self.collection = self._create_collection()
+
+    def _create_collection(self):
+        images = list(self.project.captures.all())
+        # Half the images go in the collection.
+        half = len(images) // 2
+        collection_images = images[:half]
+        collection = SourceImageCollection.objects.create(
+            name="taxa-list-test-collection",
+            project=self.project,
+            method="manual",
+            kwargs={"image_ids": [img.pk for img in collection_images]},
+        )
+        collection.save()
+        collection.populate_sample()
+        return collection
+
+    def _make_occurrence(self, taxon, source_image, score, timestamp=None):
+        """Create one Occurrence with one Detection at a known timestamp+score."""
+        ts = timestamp or source_image.timestamp
+        detection = Detection.objects.create(
+            source_image=source_image,
+            timestamp=ts,
+            bbox=[0.1, 0.1, 0.2, 0.2],
+            path=f"detections/test_{taxon.pk}_{source_image.pk}.jpg",
+        )
+        detection.classifications.create(taxon=taxon, score=score, timestamp=ts)
+        occurrence = detection.associate_new_occurrence()
+        return occurrence, detection
+
+    def _run_export(self, extra_filters=None):
+        filters = {"collection_id": self.collection.pk}
+        if extra_filters:
+            filters.update(extra_filters)
+        data_export = DataExport.objects.create(
+            user=self.user,
+            project=self.project,
+            format="taxa_list_csv",
+            filters=filters,
+            job=None,
+        )
+        file_url = data_export.run_export()
+        self.assertIsNotNone(file_url)
+        file_path = file_url.replace("/media/", "")
+        with default_storage.open(file_path, "r") as f:
+            rows = list(csv.DictReader(f))
+        default_storage.delete(file_path)
+        return rows, data_export
+
+    def test_smoke_collection_filter_and_filename_label(self):
+        """End-to-end smoke: format is registered, the export writes a file
+        scoped to the selected collection, and the filename carries the
+        `taxa_list` label so it's distinguishable from occurrence exports."""
+        self.assertIn("taxa_list_csv", ExportRegistry.get_supported_formats())
+
+        in_capture = self.collection.images.first()
+        self._make_occurrence(self.taxon_with_ids, in_capture, score=0.9)
+        # Occurrence outside the collection — must not appear in output.
+        all_images = list(self.project.captures.all())
+        out_image = next(img for img in all_images if img.pk not in {c.pk for c in self.collection.images.all()})
+        self._make_occurrence(self.taxon_no_ids, out_image, score=0.9)
+
+        rows, data_export = self._run_export()
+        names = {row["name"] for row in rows}
+        self.assertEqual(names, {self.taxon_with_ids.name})
+        self.assertEqual(rows[0]["direct_occurrences_count"], "1")
+        self.assertIn("taxa_list", data_export.file_url or "")
+
+    def test_score_aggregations_and_default_threshold(self):
+        """min/max/avg score across occurrences, and project default
+        score-threshold filter wires through (low-score occurrences excluded)."""
+        self.project.default_filters_score_threshold = 0.5
+        self.project.save()
+
+        captures = list(self.collection.images.all()[:4])
+        self.assertGreaterEqual(len(captures), 4)
+        # Three high-score occurrences for the same taxon — these survive.
+        for cap, score in zip(captures[:3], [0.6, 0.8, 1.0]):
+            self._make_occurrence(self.taxon_with_ids, cap, score=score)
+        # One low-score occurrence for a different taxon — filtered out.
+        self._make_occurrence(self.taxon_no_ids, captures[3], score=0.1)
+
+        rows, _ = self._run_export()
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual(row["name"], self.taxon_with_ids.name)
+        self.assertEqual(row["direct_occurrences_count"], "3")
+        self.assertAlmostEqual(float(row["min_score"]), 0.6, places=4)
+        self.assertAlmostEqual(float(row["max_score"]), 1.0, places=4)
+        self.assertAlmostEqual(float(row["avg_score"]), 0.8, places=4)
+
+    def test_external_links_and_hierarchy_columns(self):
+        """One row with full external IDs + hierarchy populated; one row with
+        none, to confirm both shapes render correctly."""
+        cap1, cap2 = list(self.collection.images.all())[:2]
+        self._make_occurrence(self.taxon_with_ids, cap1, score=0.9)
+        self._make_occurrence(self.taxon_no_ids, cap2, score=0.9)
+
+        rows, _ = self._run_export()
+        by_name = {row["name"]: row for row in rows}
+        with_ids = by_name[self.taxon_with_ids.name]
+        no_ids = by_name[self.taxon_no_ids.name]
+
+        # External links populated.
+        self.assertEqual(with_ids["gbif_url"], "https://www.gbif.org/species/1898286")
+        self.assertEqual(with_ids["inat_url"], "https://www.inaturalist.org/taxa/48662")
+        self.assertIn("BOLD:AAA0001", with_ids["bold_url"])
+        self.assertEqual(with_ids["fieldguide_url"], "https://fieldguide.app/taxa/vanessa-cardui")
+        self.assertEqual(with_ids["cover_image_url"], "https://example.com/vc.jpg")
+        # Hierarchy columns populated from parents_json + own rank.
+        self.assertEqual(with_ids["kingdom"], "Animalia")
+        self.assertEqual(with_ids["family"], "Nymphalidae")
+        self.assertEqual(with_ids["species"], "Aglais io")
+
+        # No-ID taxon has blank link columns and no hierarchy ancestors.
+        self.assertEqual(no_ids["gbif_url"], "")
+        self.assertEqual(no_ids["inat_url"], "")
+        self.assertEqual(no_ids["bold_url"], "")
+        self.assertEqual(no_ids["fieldguide_url"], "")
+        self.assertEqual(no_ids["kingdom"], "")
+        self.assertEqual(no_ids["family"], "")
+
+    def test_time_of_night_wraparound(self):
+        """Avg of 22:00 and 02:00 should be ~00:00 (midnight), not 12:00 (noon).
+
+        This is the only nontrivial aggregation in the format and the reason
+        we shift to a noon-anchored axis before averaging.
+        """
+        captures = list(self.collection.images.all())
+        self.assertGreaterEqual(len(captures), 2)
+
+        base_date = datetime.date(2026, 5, 1)
+        ts_evening = datetime.datetime.combine(base_date, datetime.time(22, 0, 0))
+        ts_early_morning = datetime.datetime.combine(base_date + datetime.timedelta(days=1), datetime.time(2, 0, 0))
+
+        self._make_occurrence(self.taxon_with_ids, captures[0], score=0.9, timestamp=ts_evening)
+        self._make_occurrence(self.taxon_with_ids, captures[1], score=0.9, timestamp=ts_early_morning)
+
+        rows, _ = self._run_export()
+        row = next(r for r in rows if r["name"] == self.taxon_with_ids.name)
+        # In noon-anchored space, 22:00 is the start of the night (10h after
+        # noon) and 02:00 is the end (14h after noon).
+        self.assertEqual(row["session_time_min"], "22:00:00")
+        self.assertEqual(row["session_time_max"], "02:00:00")
+        h, m, s = row["session_time_median"].split(":")
+        median_seconds = int(h) * 3600 + int(m) * 60 + int(s)
+        # Median of two values lands at the midnight midpoint; accept ±60s.
+        self.assertTrue(
+            median_seconds <= 60 or median_seconds >= 86340,
+            f"session_time_median {row['session_time_median']} should be near 00:00",
+        )
 
 
 class DataExportPermissionTest(TestCase):
