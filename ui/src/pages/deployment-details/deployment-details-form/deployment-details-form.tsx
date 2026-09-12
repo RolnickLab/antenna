@@ -6,6 +6,7 @@ import {
 import { Loader2Icon } from 'lucide-react'
 import { FormStepper as _FormStepper, Button, Dialog } from 'nova-ui-kit'
 import { useCallback, useContext, useMemo } from 'react'
+import { formatMetadata } from 'utils/fieldProcessors'
 import { FormContext, FormContextProvider } from 'utils/formContext/formContext'
 import { STRING, translate } from 'utils/language'
 import { useFormError } from 'utils/useFormError'
@@ -41,6 +42,7 @@ export const DeploymentDetailsForm = ({
           description: deployment.description,
           deviceId: deployment.device?.id,
           siteId: deployment.site?.id,
+          metadata: formatMetadata(deployment.metadata),
         },
         isValid: startValid,
       },

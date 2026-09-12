@@ -632,6 +632,54 @@ class UserProjectMembership(BaseModel):
         unique_together = ("user", "project")
 
 
+# JSON type names used when telling an API client what shape it sent instead of an object.
+_JSON_TYPE_NAMES: Final = {
+    bool: "a boolean",
+    dict: "an object",
+    float: "a number",
+    int: "a number",
+    list: "an array",
+    str: "a string",
+    type(None): "null",
+}
+
+
+def validate_metadata_object(value: typing.Any) -> None:
+    """
+    Require metadata to be a JSON object, so its keys stay queryable and mappable.
+
+    The contents are deliberately unconstrained, because the attributes worth
+    recording differ from one project to the next. The shape is not: a bare array,
+    string or number carries no field names, which leaves a Postgres key lookup
+    nothing to match and a published term nothing to map onto.
+    """
+    if not isinstance(value, dict):
+        raise ValidationError(
+            "Metadata must be a JSON object of key/value pairs, not %(json_type)s.",
+            code="invalid_metadata",
+            params={"json_type": _JSON_TYPE_NAMES.get(type(value), "a value of an unsupported type")},
+        )
+
+
+def metadata_field() -> models.JSONField:
+    """
+    Build the free-form metadata column that a model exposes to its owners.
+
+    Defined in one place so that the columns on different models cannot drift apart
+    in their default, their validation or the help text an API client reads.
+    """
+    return models.JSONField(
+        default=dict,
+        blank=True,
+        validators=[validate_metadata_object],
+        help_text=(
+            "Free-form JSON object holding attributes specific to this configuration, "
+            "beyond the fields modelled natively. Camera height or habitat description, "
+            "for example."
+        ),
+    )
+
+
 @final
 class Device(BaseModel):
     """
@@ -643,6 +691,7 @@ class Device(BaseModel):
     name = models.CharField(max_length=_POST_TITLE_MAX_LENGTH)
     description = models.TextField(blank=True)
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="devices")
+    metadata = metadata_field()
 
     deployments: models.QuerySet["Deployment"]
 
@@ -770,6 +819,7 @@ class Deployment(BaseModel):
     latitude = models.FloatField(null=True, blank=True)
     longitude = models.FloatField(null=True, blank=True)
     image = models.ImageField(upload_to="deployments", blank=True, null=True)
+    metadata = metadata_field()
 
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, related_name="deployments")
 
