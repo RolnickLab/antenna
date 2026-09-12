@@ -191,6 +191,73 @@ class TestS3PrefixUtils(TestCase):
         expected = "/test_bucket/test_prefix/subdir/file.txt"
         self.assertEqual(result, expected)
 
+    def test_derive_upload_key_no_subdir(self):
+        result = s3.derive_upload_key(self.config, "20240101T120000_0001.jpg")
+        self.assertEqual(result, "test_prefix/20240101T120000_0001.jpg")
+
+    def test_derive_upload_key_with_subdir(self):
+        result = s3.derive_upload_key(self.config, "20240101T120000_0001.jpg", ["station-1"])
+        self.assertEqual(result, "test_prefix/station-1/20240101T120000_0001.jpg")
+
+    def test_derive_upload_key_combines_deployment_and_client_subdirs(self):
+        result = s3.derive_upload_key(self.config, "20240101T120000_0001.jpg", ["station-1", "2024-01-01"])
+        self.assertEqual(result, "test_prefix/station-1/2024-01-01/20240101T120000_0001.jpg")
+
+    def test_derive_upload_key_ignores_none_and_slash_only_subdirs(self):
+        # data_source_subdir is frequently None or "/" — those must not add empty
+        # path segments (which would break the key / diverge from what sync lists).
+        result = s3.derive_upload_key(self.config, "20240101T120000_0001.jpg", [None, "/", "client"])
+        self.assertEqual(result, "test_prefix/client/20240101T120000_0001.jpg")
+
+    def test_derive_upload_key_does_not_mangle_filename_matching_subdir(self):
+        # Regression guard vs key_with_prefix's split() dedup heuristic: a filename
+        # whose digits contain the subdir string must survive intact. See #1379.
+        result = s3.derive_upload_key(self.config, "20240101T120000_0001.jpg", ["2024"])
+        self.assertEqual(result, "test_prefix/2024/20240101T120000_0001.jpg")
+
+    def test_derive_upload_key_is_deterministic(self):
+        a = s3.derive_upload_key(self.config, "20240101T120000_0001.jpg", ["station-1"])
+        b = s3.derive_upload_key(self.config, "20240101T120000_0001.jpg", ["station-1"])
+        self.assertEqual(a, b)
+
+
+class TestPresignedPutUrl(TestCase):
+    def test_put_url_headers_and_checksum_gating(self):
+        # Real-AWS style config (endpoint_url is None): flexible checksum header
+        # is emitted. generate_presigned_url is a local signing operation, so this
+        # needs no network / MinIO.
+        aws_config = s3.S3Config(
+            endpoint_url=None,
+            access_key_id="AKIA_TEST",
+            secret_access_key="secret",
+            bucket_name="test-bucket",
+            prefix="uploads",
+            region="us-east-1",
+        )
+        url, headers = s3.get_presigned_put_url(
+            aws_config, "uploads/20240101T120000_0001.jpg", content_type="image/jpeg", checksum_sha256_b64="abc123=="
+        )
+        self.assertIn("X-Amz-Signature", url)
+        self.assertEqual(headers["Content-Type"], "image/jpeg")
+        self.assertEqual(headers["x-amz-checksum-sha256"], "abc123==")
+
+    def test_put_url_checksum_suppressed_for_custom_endpoint(self):
+        # MinIO/Swift style config (endpoint_url set): checksum header suppressed
+        # because Swift's s3api rejects x-amz-checksum-sha256. See #1379.
+        minio_config = s3.S3Config(
+            endpoint_url="http://minio:9000",
+            access_key_id="minioadmin",
+            secret_access_key="minioadmin",
+            bucket_name="test-bucket",
+            prefix="uploads",
+        )
+        url, headers = s3.get_presigned_put_url(
+            minio_config, "uploads/20240101T120000_0001.jpg", content_type="image/jpeg", checksum_sha256_b64="abc123=="
+        )
+        self.assertIn("X-Amz-Signature", url)
+        self.assertEqual(headers["Content-Type"], "image/jpeg")
+        self.assertNotIn("x-amz-checksum-sha256", headers)
+
 
 class TestStorageSource(TestCase):
     def setUp(self):
