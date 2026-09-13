@@ -4,6 +4,7 @@ import io
 import json
 import pathlib
 import unittest
+import unittest.mock
 import uuid
 
 import numpy as np
@@ -22,6 +23,7 @@ from ami.main.models import (
     Project,
     SourceImage,
     SourceImageCollection,
+    TaxaList,
     Taxon,
     TaxonRank,
     group_images_into_events,
@@ -2431,7 +2433,7 @@ class TestExportVerifiedTrainingData(TestCase):
         self.user = User.objects.create_user(email="verifier@example.com", password="testpass123")
         self.images = [
             SourceImage.objects.create(path=f"export{i}-2024010100{i:02d}00.jpg", project=self.project)
-            for i in range(6)
+            for i in range(20)
         ]
         self.pipeline = Pipeline.objects.create(name="Export Test Pipeline")
         self.algorithms = {
@@ -2498,6 +2500,7 @@ class TestExportVerifiedTrainingData(TestCase):
                 project=self.project.pk,
                 algorithm=self.classifier.key,
                 output=str(out),
+                test_fraction=0.5,
                 stdout=io.StringIO(),
                 **kwargs,
             )
@@ -2521,7 +2524,7 @@ class TestExportVerifiedTrainingData(TestCase):
         self._verify_all()
         result = self._run_export(min_per_species=1)
 
-        self.assertEqual(result["npz"]["embeddings"].shape, (len(self.images), EMBEDDING_DIMENSIONS))
+        self.assertEqual(result["npz"]["features"].shape, (len(self.images), EMBEDDING_DIMENSIONS))
         self.assertEqual(sorted(result["meta"]["classes"]), ["Testus duo", "Testus unus"])
         self.assertEqual(result["meta"]["rows"], len(self.images))
         self.assertEqual(result["meta"]["algorithm"]["key"], self.classifier.key)
@@ -2724,6 +2727,9 @@ class TestTrainingDatasetAndJob(TestCase):
         }
         self.classifier = self.algorithms["random-species-classifier"]
         self.classifier.trainable = True
+        # Half in, half out. The held-out split is a hash of the occurrence id, so the
+        # default 0.2 can leave no rows on one side and make the build refuse.
+        self.classifier.training_config.test_fraction = 0.5
         self.classifier.save()
         self.pipeline.algorithms.set([self.algorithms["random-detector"], self.classifier])
 
@@ -3111,3 +3117,415 @@ class TestAlgorithmTrainingConfig(TestCase):
         algorithm = get_or_create_algorithm_and_category_map(ALGORITHM_CHOICES["random-detector"])
         self.assertEqual(algorithm.training_config.min_per_species, 2)
         self.assertEqual(algorithm.training_info.trained_at, None)
+
+
+class TestTrainingSetMembership(TestCase):
+    """
+    Which occurrences a training run consumed, so an evaluation set can avoid them.
+    """
+
+    def setUp(self):
+        from ami.jobs.models import Job, TrainClassifierJob
+
+        self.project = Project.objects.create(name="Training Set Membership Project")
+        self.user = User.objects.create_user(email="membership@example.com", password="testpass123")
+        self.taxon = Taxon.objects.create(name="Memberus testus", rank=TaxonRank.SPECIES.name)
+        self.images = [
+            SourceImage.objects.create(path=f"tsm{i}-2024010100{i:02d}00.jpg", project=self.project) for i in range(4)
+        ]
+        self.occurrences = []
+        for image in self.images:
+            detection = Detection.objects.create(source_image=image, bbox=[0, 0, 10, 10])
+            occurrence = detection.associate_new_occurrence()
+            Identification.objects.create(occurrence=occurrence, taxon=self.taxon, user=self.user)
+            self.occurrences.append(occurrence)
+
+        self.job = Job.objects.create(project=self.project, name="Retrain", job_type_key=TrainClassifierJob.key)
+
+    def test_recording_writes_one_row_per_occurrence(self):
+        from ami.ml.models.training_set import TrainingSetMembership, record_training_set
+
+        record_training_set([o.pk for o in self.occurrences], job=self.job)
+        self.assertEqual(TrainingSetMembership.objects.filter(job=self.job).count(), len(self.occurrences))
+
+    def test_recording_twice_does_not_duplicate(self):
+        """A retried job must not double-count what it consumed."""
+        from ami.ml.models.training_set import TrainingSetMembership, record_training_set
+
+        ids = [o.pk for o in self.occurrences]
+        record_training_set(ids, job=self.job)
+        record_training_set(ids, job=self.job)
+        self.assertEqual(TrainingSetMembership.objects.filter(job=self.job).count(), len(ids))
+
+    def test_the_version_is_attached_after_training(self):
+        """The version does not exist while the set is built, so it is linked afterwards."""
+        from ami.ml.models.training_set import TrainingSetMembership, attach_algorithm, record_training_set
+
+        algorithm = get_or_create_algorithm_and_category_map(ALGORITHM_CHOICES["random-species-classifier"])
+        record_training_set([o.pk for o in self.occurrences], job=self.job)
+        self.assertEqual(TrainingSetMembership.objects.filter(algorithm__isnull=True).count(), len(self.occurrences))
+
+        linked = attach_algorithm(job=self.job, algorithm=algorithm)
+        self.assertEqual(linked, len(self.occurrences))
+        self.assertEqual(TrainingSetMembership.objects.filter(algorithm=algorithm).count(), len(self.occurrences))
+
+    def test_used_occurrences_are_excluded_from_the_evaluation_pool(self):
+        """Scoring a model on what it learned from reports a number that means nothing."""
+        from ami.ml.models.training_set import occurrences_safe_to_evaluate_on, record_training_set
+
+        pool = occurrences_safe_to_evaluate_on(self.project)
+        self.assertEqual(pool.count(), len(self.occurrences))
+
+        record_training_set([self.occurrences[0].pk, self.occurrences[1].pk], job=self.job)
+        pool = occurrences_safe_to_evaluate_on(self.project)
+        self.assertEqual(pool.count(), len(self.occurrences) - 2)
+        self.assertNotIn(self.occurrences[0], pool)
+
+    def test_an_unverified_occurrence_is_not_in_the_pool(self):
+        from ami.ml.models.training_set import occurrences_safe_to_evaluate_on
+
+        image = SourceImage.objects.create(path="tsm-extra-20240101010000.jpg", project=self.project)
+        detection = Detection.objects.create(source_image=image, bbox=[0, 0, 10, 10])
+        unverified = detection.associate_new_occurrence()
+
+        self.assertNotIn(unverified, occurrences_safe_to_evaluate_on(self.project))
+
+
+class TestTaxaListDecidesTheClassList(TestCase):
+    """
+    A project's taxa list sets which species a retrained head can predict. The verified
+    crops only decide how well it predicts each one.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Taxa List Training Project")
+        self.project.feature_flags.store_classification_embeddings = True
+        self.project.save()
+        self.user = User.objects.create_user(email="taxalist@example.com", password="testpass123")
+
+        self.algorithms = {
+            key: get_or_create_algorithm_and_category_map(val) for key, val in ALGORITHM_CHOICES.items()
+        }
+        self.classifier = self.algorithms["random-species-classifier"]
+        self.classifier.trainable = True
+        self.classifier.save()
+        self.pipeline = Pipeline.objects.create(name="Taxa List Pipeline")
+        self.pipeline.algorithms.set([self.algorithms["random-detector"], self.classifier])
+
+        self.verified_taxa = [
+            Taxon.objects.create(name=f"Verifiedus {n}", rank=TaxonRank.SPECIES.name) for n in ("alpha", "beta")
+        ]
+        self.unverified_taxa = [
+            Taxon.objects.create(name=f"Unverifiedus {n}", rank=TaxonRank.SPECIES.name) for n in ("gamma", "delta")
+        ]
+
+        # Twenty crops, split between the two verified species, each with an embedding.
+        # The held-out split is a hash of the occurrence id, so a small set can land
+        # entirely on one side and make the build refuse. Twenty makes that vanishingly rare.
+        self.images = [
+            SourceImage.objects.create(path=f"tl{i}-2024010100{i:02d}00.jpg", project=self.project) for i in range(20)
+        ]
+        for i, image in enumerate(self.images):
+            detection = Detection.objects.create(source_image=image, bbox=[0, 0, 10, 10])
+            occurrence = detection.associate_new_occurrence()
+            Identification.objects.create(occurrence=occurrence, taxon=self.verified_taxa[i % 2], user=self.user)
+            DetectionEmbedding.objects.create(
+                detection=detection, algorithm=self.classifier, vector=[float(i)] * EMBEDDING_DIMENSIONS
+            )
+
+    def _taxa_list(self, taxa):
+        taxa_list, _ = TaxaList.objects.get_or_create_for_project(name="Region list", project=self.project)
+        taxa_list.taxa.set(taxa)
+        return taxa_list
+
+    def _build(self, **kwargs):
+        from ami.ml.training_dataset import build_training_dataset
+
+        return build_training_dataset(project=self.project, algorithm=self.classifier, test_fraction=0.5, **kwargs)
+
+    def test_without_a_taxa_list_the_classes_come_from_what_was_verified(self):
+        result = self._build(min_per_species=1)
+        self.assertEqual(sorted(result["metadata"]["classes"]), sorted(t.name for t in self.verified_taxa))
+        self.assertIsNone(result["metadata"]["taxa_list"])
+        default_storage.delete(result["path"])
+
+    def test_the_taxa_list_sets_the_classes(self):
+        """This is what stops a head shrinking to whatever someone happened to verify."""
+        taxa_list = self._taxa_list(self.verified_taxa + self.unverified_taxa)
+        result = self._build(taxa_list=taxa_list, min_per_species=1)
+
+        meta = result["metadata"]
+        self.assertEqual(len(meta["classes"]), 4)
+        self.assertEqual(meta["taxa_list"]["name"], taxa_list.name)
+        default_storage.delete(result["path"])
+
+    def test_species_in_the_list_with_no_crops_are_kept_and_reported(self):
+        taxa_list = self._taxa_list(self.verified_taxa + self.unverified_taxa)
+        result = self._build(taxa_list=taxa_list, min_per_species=1)
+
+        meta = result["metadata"]
+        self.assertEqual(sorted(meta["classes_without_verified_data"]), sorted(t.name for t in self.unverified_taxa))
+        for taxon in self.unverified_taxa:
+            self.assertEqual(meta["counts"][taxon.name], 0)
+        default_storage.delete(result["path"])
+
+    def test_verified_species_outside_the_list_are_dropped_and_reported(self):
+        taxa_list = self._taxa_list([self.verified_taxa[0]] + self.unverified_taxa)
+        result = self._build(taxa_list=taxa_list, min_per_species=1)
+
+        meta = result["metadata"]
+        self.assertIn(self.verified_taxa[1].name, meta["dropped_species"])
+        self.assertNotIn(self.verified_taxa[1].name, meta["classes"])
+        default_storage.delete(result["path"])
+
+    def test_the_project_default_is_used_when_none_is_passed(self):
+        taxa_list = self._taxa_list(self.verified_taxa + self.unverified_taxa)
+        self.project.default_taxa_list = taxa_list
+        self.project.save()
+
+        result = self._build(min_per_species=1)
+        self.assertEqual(len(result["metadata"]["classes"]), 4)
+        default_storage.delete(result["path"])
+
+    def test_an_empty_taxa_list_is_refused(self):
+        from ami.ml.training_dataset import NotEnoughVerifiedData
+
+        with self.assertRaises(NotEnoughVerifiedData):
+            self._build(taxa_list=self._taxa_list([]), min_per_species=1)
+
+    def test_the_job_prefers_its_own_taxa_list_over_the_project_default(self):
+        from ami.jobs.models import Job, TrainClassifierJob
+
+        project_default = self._taxa_list(self.verified_taxa)
+        self.project.default_taxa_list = project_default
+        self.project.save()
+
+        chosen, _ = TaxaList.objects.get_or_create_for_project(name="Chosen list", project=self.project)
+        chosen.taxa.set(self.unverified_taxa)
+
+        job = Job.objects.create(
+            project=self.project,
+            name="Retrain",
+            job_type_key=TrainClassifierJob.key,
+            params={"algorithm_key": self.classifier.key, "taxa_list_id": chosen.pk},
+        )
+        self.assertEqual(TrainClassifierJob.target_taxa_list(job), chosen)
+
+    def test_an_unknown_taxa_list_id_is_refused(self):
+        from ami.jobs.models import Job, TrainClassifierJob
+
+        job = Job.objects.create(
+            project=self.project,
+            name="Retrain",
+            job_type_key=TrainClassifierJob.key,
+            params={"algorithm_key": self.classifier.key, "taxa_list_id": 999999},
+        )
+        with self.assertRaises(ValueError):
+            TrainClassifierJob.target_taxa_list(job)
+
+
+class TestTrainingCallback(APITestCase):
+    """
+    Training can outlast the request that started it, so the service reports back to a
+    callback instead of holding the connection open.
+    """
+
+    def setUp(self):
+        from ami.jobs.models import Job, TrainClassifierJob
+
+        self.project = Project.objects.create(name="Callback Project")
+        self.algorithm = get_or_create_algorithm_and_category_map(ALGORITHM_CHOICES["random-species-classifier"])
+        self.algorithm.trainable = True
+        self.algorithm.save()
+        self.job = Job.objects.create(
+            project=self.project,
+            name="Retrain",
+            job_type_key=TrainClassifierJob.key,
+            params={"algorithm_key": self.algorithm.key, "media_base_url": "http://antenna:8000"},
+        )
+        self.url = f"/api/v2/jobs/{self.job.pk}/training-result/"
+        self.payload = {
+            "result": {
+                "labels": ["Alpha one", "Beta two"],
+                "rows": {"total": 10, "kept": 10, "train": 8, "test": 2},
+                "candidate_metrics": {"top1": 0.9, "n": 2},
+                "incumbent_metrics": {"top1": 0.5, "n": 2},
+                "trained_at": "2026-09-13T15:00:00",
+                "warnings": [],
+                "promote": True,
+            },
+            "dataset": {"rows": 10},
+            "dataset_url": "/media/training/x.npz",
+        }
+
+    def _token(self):
+        from ami.ml.training_dispatch import make_callback_token
+
+        return make_callback_token(self.job)
+
+    def _post(self, token=None):
+        headers = {"HTTP_AUTHORIZATION": f"Token {token}"} if token else {}
+        return self.client.post(self.url, self.payload, format="json", **headers)
+
+    def test_a_valid_token_records_the_result(self):
+        from ami.jobs.models import JobState
+
+        response = self._post(self._token())
+        self.assertEqual(response.status_code, 200)
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.status, JobState.SUCCESS.name)
+        self.assertEqual(self.job.result["result"]["candidate_metrics"]["top1"], 0.9)
+
+    def test_no_token_is_refused(self):
+        """The service has no Antenna account, so the token is the only thing authorising it."""
+        self.assertEqual(self._post().status_code, 403)
+
+    def test_a_forged_token_is_refused(self):
+        self.assertEqual(self._post("not-a-real-token").status_code, 403)
+
+    def test_another_jobs_token_is_refused(self):
+        from ami.jobs.models import Job, TrainClassifierJob
+        from ami.ml.training_dispatch import make_callback_token
+
+        other = Job.objects.create(project=self.project, name="Other", job_type_key=TrainClassifierJob.key)
+        self.assertEqual(self._post(make_callback_token(other)).status_code, 403)
+
+    def test_a_second_result_does_not_overwrite_the_first(self):
+        """A retry or a late answer must not undo what already landed."""
+        self._post(self._token())
+        self.payload["result"]["candidate_metrics"]["top1"] = 0.1
+        response = self._post(self._token())
+
+        self.assertEqual(response.status_code, 200)
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.result["result"]["candidate_metrics"]["top1"], 0.9)
+
+    def test_a_result_for_a_non_training_job_is_refused(self):
+        from ami.jobs.models import Job, MLJob
+        from ami.ml.training_dispatch import make_callback_token
+
+        other = Job.objects.create(project=self.project, name="ML", job_type_key=MLJob.key)
+        response = self.client.post(
+            f"/api/v2/jobs/{other.pk}/training-result/",
+            self.payload,
+            format="json",
+            HTTP_AUTHORIZATION=f"Token {make_callback_token(other)}",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_the_callback_url_points_at_this_job(self):
+        from ami.ml.training_dispatch import callback_url_for
+
+        self.assertEqual(callback_url_for(self.job), f"http://antenna:8000/api/v2/jobs/{self.job.pk}/training-result/")
+
+
+class TestTrainingDataPermissions(APITestCase):
+    """
+    Verified labels are project data, so reading them needs membership of that project,
+    not merely an account.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Permissions Project")
+        self.member = User.objects.create_user(email="member@example.com", password="testpass123")
+        self.outsider = User.objects.create_user(email="outsider@example.com", password="testpass123")
+        self.superuser = User.objects.create_superuser(email="super@example.com", password="testpass123")
+        self.project.members.add(self.member)
+
+        self.algorithm = get_or_create_algorithm_and_category_map(ALGORITHM_CHOICES["random-species-classifier"])
+        self.url = reverse_with_params("api:training-data-list")
+        self.params = {"project_id": self.project.pk, "algorithm": self.algorithm.key}
+
+    def _status_for(self, user):
+        self.client.force_authenticate(user=user)
+        return self.client.get(self.url, self.params).status_code
+
+    def test_a_member_can_read_the_training_data(self):
+        self.assertEqual(self._status_for(self.member), 200)
+
+    def test_a_superuser_can_read_the_training_data(self):
+        self.assertEqual(self._status_for(self.superuser), 200)
+
+    def test_anonymous_cannot(self):
+        self.client.force_authenticate(user=None)
+        self.assertIn(self.client.get(self.url, self.params).status_code, (401, 403))
+
+    def test_an_outsider_can_read_a_public_project(self):
+        """Antenna publishes non-draft projects, and these labels are that project's data."""
+        self.assertEqual(self._status_for(self.outsider), 200)
+
+    def test_an_outsider_cannot_read_a_draft_project(self):
+        """A draft project is private, so its verified labels are too."""
+        self.project.draft = True
+        self.project.save()
+        self.assertEqual(self._status_for(self.outsider), 403)
+
+    def test_a_member_can_still_read_their_draft_project(self):
+        self.project.draft = True
+        self.project.save()
+        self.assertEqual(self._status_for(self.member), 200)
+
+
+class TestTrainingConfigIsUsed(TestCase):
+    """
+    Settings published by the service and stored on the algorithm actually drive a run.
+    """
+
+    def setUp(self):
+        from ami.jobs.models import Job, TrainClassifierJob
+        from ami.ml.schemas import AlgorithmTrainingConfig
+
+        self.project = Project.objects.create(name="Config Project")
+        self.algorithm = get_or_create_algorithm_and_category_map(ALGORITHM_CHOICES["random-species-classifier"])
+        self.algorithm.trainable = True
+        self.algorithm.training_config = AlgorithmTrainingConfig(
+            min_per_species=7, test_fraction=0.4, split_salt="from-config", head_type="mlp1", epochs=42
+        )
+        self.algorithm.save()
+        self.job = Job.objects.create(
+            project=self.project,
+            name="Retrain",
+            job_type_key=TrainClassifierJob.key,
+            params={"algorithm_key": self.algorithm.key},
+        )
+
+    def _payload(self):
+        from ami.ml.training_dispatch import send_training_request
+
+        captured = {}
+
+        class FakeResponse:
+            ok = True
+
+            def json(self):
+                return {"labels": []}
+
+        def fake_post(url, json=None, timeout=None):
+            captured.update(json)
+            return FakeResponse()
+
+        with unittest.mock.patch("ami.ml.training_dispatch.create_session") as session:
+            session.return_value.post = fake_post
+            send_training_request(
+                job=self.job,
+                service=unittest.mock.Mock(endpoint_url="http://service:2000", name="svc"),
+                algorithm=self.algorithm,
+                dataset={"url": "/media/training/x.npz"},
+            )
+        return captured
+
+    def test_the_fitting_settings_reach_the_service(self):
+        payload = self._payload()
+        self.assertEqual(payload["head_type"], "mlp1")
+        self.assertEqual(payload["epochs"], 42)
+        self.assertEqual(payload["min_per_species"], 7)
+
+    def test_a_job_can_override_the_config_for_one_run(self):
+        self.job.params = {**self.job.params, "epochs": 5, "head_type": "linear"}
+        self.job.save()
+
+        payload = self._payload()
+        self.assertEqual(payload["epochs"], 5)
+        self.assertEqual(payload["head_type"], "linear")
+        # Not overridden, so it still comes from the config.
+        self.assertEqual(payload["min_per_species"], 7)

@@ -1,31 +1,23 @@
 """
-Export human-verified detections as a training set for a classifier head.
+Write a classifier-head training set to a local file, for inspection.
 
-The backbone is frozen, so retraining a head means fitting a small matrix over stored
-embeddings. This command gathers the labels people have confirmed in the UI, pairs them
-with the embeddings saved by the pipeline, and writes them out.
+The same set a training job would send to a processing service, saved somewhere you can
+open it. It builds the set through ami.ml.training_dataset so the two cannot drift apart:
+a file exported here holds exactly what a retrain would have used.
 
 Usage:
     python manage.py export_verified_training_data --project 3 --algorithm bioclip-2-5-nf-749
-
-Writes two files next to each other:
-    <output>.npz   embeddings, label indices, detection ids, split assignment
-    <output>.json  label map, counts, and the settings used to produce it
-
-The split is deterministic and grouped by occurrence. See training_data.split_for() for why that
-matters.
 """
 
 import json
 import pathlib
 
-import numpy as np
+from django.core.files.storage import default_storage
 from django.core.management.base import BaseCommand, CommandError
 
-from ami.main.models import Project
-from ami.ml import training_data
+from ami.main.models import Project, TaxaList
+from ami.ml import training_data, training_dataset
 from ami.ml.models import Algorithm
-from ami.ml.models.embedding import EMBEDDING_DIMENSIONS
 
 
 class Command(BaseCommand):
@@ -44,6 +36,12 @@ class Command(BaseCommand):
         )
         parser.add_argument("--output", type=str, default="verified_training_data", help="Output path, without suffix")
         parser.add_argument(
+            "--taxa-list",
+            type=int,
+            default=None,
+            help="Taxa list to use as the species list. Defaults to the project's own default.",
+        )
+        parser.add_argument(
             "--test-fraction",
             type=float,
             default=training_data.DEFAULT_TEST_FRACTION,
@@ -59,7 +57,7 @@ class Command(BaseCommand):
             "--min-per-species",
             type=int,
             default=2,
-            help="Drop species with fewer verified crops than this. A class with one example cannot be evaluated.",
+            help="Drop species with fewer verified crops than this. Ignored when a taxa list sets the species.",
         )
 
     def handle(self, *args, **options):
@@ -72,97 +70,51 @@ class Command(BaseCommand):
             known = list(Algorithm.objects.values_list("key", flat=True)[:20])
             raise CommandError(f"No algorithm with key '{options['algorithm']}'. Known keys: {known}")
 
-        occurrence_ids = list(training_data.verified_occurrence_ids(project))
-        self.stdout.write(f"Occurrences with a standing identification: {len(occurrence_ids)}")
-        if not occurrence_ids:
-            raise CommandError("Nothing has been verified in this project yet, so there is nothing to export.")
+        taxa_list = None
+        if options["taxa_list"]:
+            taxa_list = TaxaList.objects.filter(pk=options["taxa_list"]).first()
+            if not taxa_list:
+                raise CommandError(f"No taxa list with id {options['taxa_list']}")
 
-        rows = list(
-            training_data.verified_training_rows(project, algorithm).values_list(
-                "detection_id",
-                "detection__occurrence_id",
-                "detection__occurrence__determination__name",
-                "vector",
+        try:
+            result = training_dataset.build_training_dataset(
+                project=project,
+                algorithm=algorithm,
+                min_per_species=options["min_per_species"],
+                split_salt=options["split_salt"],
+                test_fraction=options["test_fraction"],
+                taxa_list=taxa_list,
             )
-        )
-        self.stdout.write(f"Verified detections with an embedding from {algorithm.key}: {len(rows)}")
+        except training_dataset.NotEnoughVerifiedData as e:
+            raise CommandError(str(e))
 
-        missing = training_data.count_missing_embeddings(project, algorithm)
-        if missing:
+        meta = result["metadata"]
+        out = pathlib.Path(options["output"])
+        with default_storage.open(result["path"], "rb") as stored:
+            out.with_suffix(".npz").write_bytes(stored.read())
+        out.with_suffix(".json").write_text(json.dumps(meta, indent=2))
+
+        if meta["taxa_list"]:
+            self.stdout.write(f"Species list from taxa list '{meta['taxa_list']['name']}'")
+        if meta["classes_without_verified_data"]:
+            self.stdout.write(
+                f"{len(meta['classes_without_verified_data'])} species in the list have no verified crops yet"
+            )
+        if meta["dropped_species"]:
+            self.stdout.write(
+                self.style.WARNING(f"{len(meta['dropped_species'])} verified species were left out of the set")
+            )
+        if meta["verified_detections_without_embedding"]:
             self.stdout.write(
                 self.style.WARNING(
-                    f"{missing} verified detection(s) have no embedding from this algorithm and were skipped. "
-                    "Re-run the pipeline over them with the store_classification_embeddings flag on."
+                    f"{meta['verified_detections_without_embedding']} verified detection(s) have no embedding "
+                    "from this algorithm. Run a generate_embeddings job to include them."
                 )
             )
-        if not rows:
-            raise CommandError("No verified detection has an embedding yet, so there is nothing to train on.")
-
-        # Drop species too rare to both train and evaluate on.
-        counts: dict[str, int] = {}
-        for _, _, name, _ in rows:
-            counts[name] = counts.get(name, 0) + 1
-        min_per_species = options["min_per_species"]
-        keep = training_data.species_with_enough_examples(counts, min_per_species)
-        dropped = sorted(set(counts) - keep)
-        if dropped:
-            self.stdout.write(
-                f"Dropped {len(dropped)} species with fewer than {min_per_species} verified crops: "
-                f"{', '.join(dropped[:8])}{' ...' if len(dropped) > 8 else ''}"
-            )
-        rows = [r for r in rows if r[2] in keep]
-
-        labels = sorted(keep)
-        label_to_index = {name: i for i, name in enumerate(labels)}
-
-        embeddings = np.zeros((len(rows), EMBEDDING_DIMENSIONS), dtype=np.float32)
-        y = np.zeros(len(rows), dtype=np.int64)
-        detection_ids = np.zeros(len(rows), dtype=np.int64)
-        splits = []
-        for i, (detection_id, occurrence_id, name, vector) in enumerate(rows):
-            embeddings[i] = np.asarray(vector.to_list(), dtype=np.float32)
-            y[i] = label_to_index[name]
-            detection_ids[i] = detection_id
-            splits.append(training_data.split_for(occurrence_id, options["split_salt"], options["test_fraction"]))
-        split_array = np.array(splits)
-
-        out = pathlib.Path(options["output"])
-        np.savez_compressed(
-            out.with_suffix(".npz"),
-            embeddings=embeddings,
-            labels=y,
-            detection_ids=detection_ids,
-            split=split_array,
-        )
-
-        n_train = int((split_array == "train").sum())
-        n_test = int((split_array == "test").sum())
-        meta = {
-            "project": {"id": project.pk, "name": project.name},
-            "algorithm": {"key": algorithm.key, "name": algorithm.name, "version": algorithm.version},
-            "dimensions": EMBEDDING_DIMENSIONS,
-            "classes": labels,
-            "counts": {name: counts[name] for name in labels},
-            "rows": len(rows),
-            "train": n_train,
-            "test": n_test,
-            "occurrences": len(occurrence_ids),
-            "verified_detections_without_embedding": missing,
-            "settings": {
-                "test_fraction": options["test_fraction"],
-                "split_salt": options["split_salt"],
-                "min_per_species": options["min_per_species"],
-                "split_grouped_by": "occurrence",
-            },
-        }
-        out.with_suffix(".json").write_text(json.dumps(meta, indent=2))
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"Wrote {len(rows)} rows over {len(labels)} species "
-                f"(train {n_train} / test {n_test}) to {out.with_suffix('.npz')}"
+                f"Wrote {meta['rows']} rows over {len(meta['classes'])} species "
+                f"(train {meta['train']} / test {meta['test']}) to {out.with_suffix('.npz')}"
             )
         )
-        # Guard against a silently useless export.
-        if n_test == 0:
-            self.stdout.write(self.style.WARNING("The test split is empty. Verify more occurrences before training."))

@@ -3,6 +3,7 @@ from ami.ml.models.embedding import DetectionEmbedding
 from ami.ml.models.pipeline import Pipeline
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
+from ami.ml.models.training_set import TrainingSetMembership
 
 __all__ = [
     "Algorithm",
@@ -11,4 +12,5 @@ __all__ = [
     "Pipeline",
     "ProcessingService",
     "ProjectPipelineConfig",
+    "TrainingSetMembership",
 ]
