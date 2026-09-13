@@ -313,6 +313,18 @@ class Project(ProjectSettingsMixin, BaseModel):
         null=False,
         blank=True,
     )
+    default_taxa_list = models.ForeignKey(
+        "TaxaList",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="default_for_projects",
+        help_text=(
+            "The species this project expects to see. Used as the class list when retraining "
+            "a classifier head, so the head covers the region rather than only the species "
+            "someone happened to verify."
+        ),
+    )
 
     active = models.BooleanField(default=True)
     priority = models.IntegerField(default=1)

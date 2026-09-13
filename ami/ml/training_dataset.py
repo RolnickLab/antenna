@@ -22,6 +22,7 @@ from ami.main.models import Project
 from ami.ml import training_data
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.embedding import EMBEDDING_DIMENSIONS
+from ami.ml.models.training_set import record_training_set
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,8 @@ def build_training_dataset(
     min_per_species: int = 2,
     split_salt: str = training_data.DEFAULT_SPLIT_SALT,
     test_fraction: float = training_data.DEFAULT_TEST_FRACTION,
-    job_id: int | None = None,
+    taxa_list=None,
+    job=None,
 ) -> dict[str, typing.Any]:
     """
     Collect verified labels and their embeddings, and save them as one npz file.
@@ -57,15 +59,28 @@ def build_training_dataset(
     trained on.
     """
     counts = training_data.label_counts(project, algorithm)
-    keep = training_data.species_with_enough_examples(counts, min_per_species)
-    if not keep:
-        raise NotEnoughVerifiedData(
-            f"No species in '{project.name}' has at least {min_per_species} verified crops with an "
-            f"embedding from {algorithm.key}. Verify more occurrences, or re-run the pipeline so the "
-            "verified detections get embeddings."
-        )
+    taxa_list = taxa_list or project.default_taxa_list
 
-    classes = sorted(keep)
+    if taxa_list:
+        # The taxa list decides what the head can predict; the verified crops only decide
+        # how well it predicts each one. Without this the head shrinks to whatever happened
+        # to be verified, which silently narrows the pipeline.
+        classes = sorted(taxa_list.taxa.exclude(name="").values_list("name", flat=True))
+        if not classes:
+            raise NotEnoughVerifiedData(f"Taxa list '{taxa_list}' is empty, so there is nothing to train.")
+        keep = set(classes)
+        outside = sorted(name for name in counts if name and name not in keep)
+    else:
+        keep = training_data.species_with_enough_examples(counts, min_per_species)
+        if not keep:
+            raise NotEnoughVerifiedData(
+                f"No species in '{project.name}' has at least {min_per_species} verified crops with an "
+                f"embedding from {algorithm.key}. Verify more occurrences, or re-run the pipeline so the "
+                "verified detections get embeddings."
+            )
+        classes = sorted(keep)
+        outside = sorted(set(counts) - keep)
+
     class_index = {name: i for i, name in enumerate(classes)}
 
     rows = training_data.verified_training_rows(project, algorithm)
@@ -115,8 +130,11 @@ def build_training_dataset(
         "dimensions": EMBEDDING_DIMENSIONS,
         "dtype": np.dtype(DATASET_DTYPE).name,
         "classes": classes,
-        "counts": {name: counts[name] for name in classes},
-        "dropped_species": sorted(set(counts) - keep),
+        # .get(): with a taxa list, a class can legitimately have no verified crops yet.
+        "counts": {name: counts.get(name, 0) for name in classes},
+        "taxa_list": {"id": taxa_list.pk, "name": taxa_list.name} if taxa_list else None,
+        "classes_without_verified_data": sorted(name for name in classes if not counts.get(name)),
+        "dropped_species": outside,
         "rows": kept,
         "train": n_train,
         "test": n_test,
@@ -132,7 +150,7 @@ def build_training_dataset(
     file_path = _save(
         project=project,
         algorithm=algorithm,
-        job_id=job_id,
+        job_id=job.pk if job else None,
         arrays={
             "features": features,
             "labels": labels,
@@ -143,6 +161,11 @@ def build_training_dataset(
         },
         metadata=metadata,
     )
+
+    if job:
+        # Written here rather than after training, because this is the moment the set is
+        # decided. A run that fails later still consumed these occurrences.
+        record_training_set(occurrence_ids=[int(pk) for pk in occurrence_ids[:kept]], job=job)
 
     file_url = f"{settings.MEDIA_URL}{file_path}"
     logger.info(f"Wrote training dataset with {kept} rows over {len(classes)} species to {file_path}")

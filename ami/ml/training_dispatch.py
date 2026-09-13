@@ -9,6 +9,8 @@ import typing
 from urllib.parse import urljoin
 
 from django.conf import settings
+from django.core import signing
+from django.urls import reverse
 
 from ami.utils.requests import create_session, extract_error_message_from_response
 
@@ -18,6 +20,42 @@ logger = logging.getLogger(__name__)
 # training takes: a service that answers within this window returns its result inline,
 # and one that does not is expected to report back through the job's result endpoint.
 DISPATCH_TIMEOUT_SECONDS = 600
+
+
+# A processing service has no Antenna account, so the callback is authorised by a signed
+# token instead. Nothing is stored: the signature carries the job id and Django's secret
+# key proves Antenna issued it.
+CALLBACK_SALT = "ami.ml.training.callback"
+CALLBACK_MAX_AGE_SECONDS = 60 * 60 * 24
+
+
+def make_callback_token(job) -> str:
+    """A token only Antenna could have produced, tied to this one job."""
+    return signing.dumps({"job_id": job.pk}, salt=CALLBACK_SALT)
+
+
+def verify_callback_token(token: str, job) -> bool:
+    """True when the token is Antenna's, unexpired, and for this job."""
+    if not token:
+        return False
+    try:
+        payload = signing.loads(token, salt=CALLBACK_SALT, max_age=CALLBACK_MAX_AGE_SECONDS)
+    except signing.BadSignature:
+        return False
+    return payload.get("job_id") == job.pk
+
+
+def callback_url_for(job) -> str:
+    """Where the service should post its result when training finishes."""
+    base = (job.params or {}).get("media_base_url") or getattr(settings, "EXTERNAL_BASE_URL", "")
+    if not base:
+        raise ValueError(
+            "No base URL is configured, so the processing service has no way to report back. "
+            "Set EXTERNAL_BASE_URL, or pass media_base_url in the job params."
+        )
+    # reverse(), so the path follows the router rather than a copy of it here.
+    path = reverse("api:job-training-result", args=[job.pk])
+    return urljoin(base.rstrip("/") + "/", path.lstrip("/"))
 
 
 def absolute_media_url(url: str, base_url: str | None = None) -> str:
@@ -48,18 +86,27 @@ def send_training_request(job, service, algorithm, dataset: dict) -> dict | None
     will report back later. Raises if the service refused the request.
     """
     endpoint = urljoin(service.endpoint_url.rstrip("/") + "/", "train")
+    params = job.params or {}
+    config = algorithm.training_config
     payload: dict[str, typing.Any] = {
-        "dataset_url": absolute_media_url(dataset["url"], (job.params or {}).get("media_base_url")),
+        "dataset_url": absolute_media_url(dataset["url"], params.get("media_base_url")),
         "algorithm_key": algorithm.key,
         "job_id": job.pk,
         "name": f"{algorithm.key}-job-{job.pk}",
-        "min_per_species": (job.params or {}).get("min_per_species", 2),
+        "min_per_species": params.get("min_per_species", config.min_per_species),
+        # The fitting settings the service published, so an admin can tune them in Antenna
+        # without redeploying the service.
+        "min_improvement": params.get("min_improvement", config.min_improvement),
+        "head_type": params.get("head_type", config.head_type),
+        "epochs": params.get("epochs", config.epochs),
+        "learning_rate": params.get("learning_rate", config.learning_rate),
+        "weight_decay": params.get("weight_decay", config.weight_decay),
     }
 
-    callback = (job.params or {}).get("callback_url")
-    if callback:
-        payload["callback_url"] = callback
-        payload["callback_token"] = (job.params or {}).get("callback_token")
+    # Always sent: a service that finishes after the request times out reports back here
+    # instead, which is the only way a real training set can work.
+    payload["callback_url"] = (job.params or {}).get("callback_url") or callback_url_for(job)
+    payload["callback_token"] = make_callback_token(job)
 
     job.logger.info(f"Sending training request to {endpoint} for {algorithm.key}")
     session = create_session()
