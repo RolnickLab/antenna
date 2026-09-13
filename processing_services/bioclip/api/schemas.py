@@ -262,14 +262,10 @@ class AlgorithmConfigResponse(pydantic.BaseModel):
         extra = "ignore"
 
 
-PipelineChoice = typing.Literal[
-    "bioclip-2-5-logreg-pipeline",
-    "bioclip-2-5-panama-pipeline",
-    "zero-shot-hf-classifier-pipeline",
-    "zero-shot-object-detector-pipeline",
-    "zero-shot-object-detector-with-constant-classifier-pipeline",
-    "zero-shot-object-detector-with-random-species-classifier-pipeline",
-]
+# Deliberately a plain string, not a fixed list of slugs. Heads retrained after the service
+# started get their own pipeline, and a Literal would reject them with an unhelpful 422.
+# api.process() validates against the live registry and says which slugs exist.
+PipelineChoice = str
 
 
 class PipelineRequestConfigParameters(pydantic.BaseModel):
