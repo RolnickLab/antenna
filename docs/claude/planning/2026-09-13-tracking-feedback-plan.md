@@ -13,11 +13,11 @@ project filters never appear as merge candidates, and building a track by hand n
 
 | Pkg | Title (issue title, effect first) | Items | Effort | Depends on | Files |
 |---|---|---|---|---|---|
-| A | Offer every frame of the session as a merge candidate, and merge several at once | 4, 1, 2, 5 | S–M | – | `models_future/merge_candidates.py`, `OccurrenceViewSet.merge_candidates`/`merge`, merge dialog FE |
+| A | Offer every frame of the session as a merge candidate, and merge several at once | 4, 1, 2, 5, 22, 23 | S–M | – | `models_future/merge_candidates.py`, `OccurrenceViewSet.merge_candidates`/`merge`, merge dialog FE, `useTrackCandidates.ts` (move dialog uses an unranked hook) |
 | B | Make reviewing a track faster: close on confirm, crop grid, names per frame, edited vs verified state | 11, 8, 3, 6 | S–M | – | occurrence detail FE, `track_stats.grouping_summary`, model field `grouping_edited_at/by` + migration |
 | C | Extend a track by clicking detections in the session view | 7, 13 | M | A (comparison crop component) | session detail FE (`extend=` URL param), `POST /occurrences/{id}/add-detections/` (exists) |
 | D | Preview a tracking run without writing (dry run) | 14 | S | – | `tracking_task.py` (per-event atomic block already exists), job params |
-| E | Bridge one-frame gaps and use label agreement when linking | 9, 10, 12 | M | D (measure before/after) | `tracking_task.pair_detections`, store per-link cost/similarity on `Detection` |
+| E | Bridge one-frame gaps, weight the cost terms, and use label agreement when linking | 9, 10, 12, 22 | M | D (measure before/after) | `tracking_task.pair_detections`, store per-link cost/similarity on `Detection` |
 | F | Tracking playground: tune parameters live on a dozen captures | 21 | BE S–M, FE M | E (shared cost function) | new endpoint returning per-pair cost components; new page |
 | G | Feature vectors for every detection, not only moths | 4b, 18 | ADC S (reuse species classifier) / M (dedicated embedding model + `DetectionEmbedding` table) | – | ami-data-companion pipeline, `ami/ml/schemas.py`, new model |
 | H | Restrict a project's species to a regional list | 19 | S (deploy) | class masking PR #999 | deploy + TaxaList CSV import |
@@ -25,6 +25,19 @@ project filters never appear as merge candidates, and building a track by hand n
 | J | Max M per species per session (max in one frame vs individuals per night) | 15 | S–M | – | session stats annotation + export column |
 
 Parked: movement prior per species (16), detector issues (17) belong to the processing service.
+
+## Findings from the screenshots (added 2026-09-13, after reading all 33 images)
+
+- The candidate picker shows the API order (tracker cost ascending). In one review case a 14-frame track of the same
+  species, 3 % of the diagonal away and 99 % similar, ranked last of six: a small displacement zeroes the IoU term,
+  which alone outweighs the appearance term. Package E should weight the terms; package A can default-sort by
+  similarity when it is present.
+- The "Move to another occurrence" dialog lists species and frame count only. It reads nearby occurrences through an
+  unranked hook rather than the ranked endpoint, so it needs a `detection=` variant of that endpoint.
+- Every frame the reviewer could not attach carried the moth/non-moth filter's "not a moth" label and no embedding
+  (similarity shown as n/a). Package A removes the filter block; package G gives those frames a vector.
+- The occurrence list shows no capture id or time, so a reviewer cannot tell from the list whether five single-frame
+  occurrences of a distinctive species are consecutive captures (package C, list part).
 
 ## Order for the first dev session
 
