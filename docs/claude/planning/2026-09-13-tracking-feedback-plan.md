@@ -13,16 +13,20 @@ project filters never appear as merge candidates, and building a track by hand n
 
 | Pkg | Title (issue title, effect first) | Items | Effort | Depends on | Files |
 |---|---|---|---|---|---|
-| A | Rank merge candidates by time adjacency, show the frames next to a track first, and merge several at once | 4, 1, 2, 5, 22, 23 | S–M | – | `models_future/merge_candidates.py`, `OccurrenceViewSet.merge_candidates`/`merge`, merge dialog FE, `useTrackCandidates.ts` (move dialog uses an unranked hook) |
-| B | Make reviewing a track faster: close on confirm, crop grid, names per frame, edited vs verified state | 11, 8, 3, 6 | S–M | – | occurrence detail FE, `track_stats.grouping_summary`, model field `grouping_edited_at/by` + migration |
-| C | Extend a track by clicking detections in the session view | 7, 13 | M | A (comparison crop component) | session detail FE (`extend=` URL param), `POST /occurrences/{id}/add-detections/` (exists) |
-| D | Preview a tracking run without writing (dry run) | 14 | S | – | `tracking_task.py` (per-event atomic block already exists), job params |
+| A | Rank merge candidates by time adjacency, show the frames next to a track first, and merge several at once (#1414) | 4, 1, 2, 5, 22, 23 | S–M | – | `models_future/merge_candidates.py`, `OccurrenceViewSet.merge_candidates`/`merge`, merge dialog FE, `useTrackCandidates.ts` (move dialog uses an unranked hook) |
+| B | Make reviewing a track faster: close on confirm, crop grid, names per frame, edited vs verified state (#1415) | 11, 8, 3, 6 | S–M | – | occurrence detail FE, `track_stats.grouping_summary`, model field `grouping_edited_at/by` + migration |
+| C | Extend a track by clicking detections in the session view (#1418) | 7, 13 | M | A (comparison crop component) | session detail FE (`extend=` URL param), `POST /occurrences/{id}/add-detections/` (exists) |
+| D | Preview a tracking run without writing (dry run) (#1416) | 14 | S | – | `tracking_task.py` (per-event atomic block already exists), job params |
 | E | Bridge one-frame gaps, weight the cost terms, and use label agreement when linking | 9, 10, 12, 22 | M | D (measure before/after) | `tracking_task.pair_detections`, store per-link cost/similarity on `Detection` |
 | F | Tracking playground: tune parameters live on a dozen captures | 21 | BE S–M, FE M | E (shared cost function) | new endpoint returning per-pair cost components; new page |
-| G | Feature vectors for every detection, not only moths | 4b, 18 | M (embedding output in the service schema + `DetectionEmbedding` table; the cheap "reuse the species classifier" path is ruled out, see measurements) | – | ami-data-companion pipeline, `ami/ml/schemas.py`, new model |
+| G | Feature vectors for every detection, not only moths (#1417 + RolnickLab/ami-data-companion#170) | 4b, 18 | M (embedding output in the service schema + `DetectionEmbedding` table; the cheap "reuse the species classifier" path is ruled out, see measurements) | – | ami-data-companion pipeline, `ami/ml/schemas.py`, new model |
 | H | Restrict a project's species to a regional list | 19 | S (deploy) | class masking PR #999 | deploy + TaxaList CSV import |
 | I | Re-tracking a session after hand edits | fresh-guard finding | M | – | `event_is_fresh`, chain walk must respect `grouping_verified_at` |
 | J | Max M per species per session (max in one frame vs individuals per night) | 15 | S–M | – | session stats annotation + export column |
+
+Ticketed on 2026-09-13 as sub-issues of #1412 (A, B, C, D, G, and the processing-service counterpart of G). The data
+checklist (keep the reviewed project unchanged, copy and reprocess with vectors for every detection, ask for regional
+species checklists) is a comment on #1412. E, F, H, I and J stay in this plan until the annotation set exists.
 
 Parked: movement prior per species (16), detector issues (17) belong to the processing service.
 
