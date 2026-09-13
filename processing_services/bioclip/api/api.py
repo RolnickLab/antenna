@@ -31,7 +31,7 @@ from .schemas import (
     ProcessingServiceInfoResponse,
     SourceImage,
 )
-from . import algorithms, training
+from . import algorithms, trained_heads, training
 from .utils import is_base64, is_url
 
 # Configure root logger
@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 # Where retrained heads are written. Kept off the model cache so a training run
 # cannot overwrite the head the service is currently serving.
-TRAINED_HEADS_DIR = os.environ.get("BIOCLIP_TRAINED_HEADS_DIR", "/data/bioclip-service/trained_heads")
+TRAINED_HEADS_DIR = trained_heads.TRAINED_HEADS_DIR
 
 app = fastapi.FastAPI()
 
@@ -62,6 +62,9 @@ algorithm_choices: dict[str, AlgorithmConfigResponse] = {
     algorithm.key: algorithm for pipeline in pipelines for algorithm in pipeline.config.algorithms
 }
 
+# Heads this service has already retrained are offered alongside the ones it shipped with.
+trained_heads.register(pipeline_choices, algorithm_choices)
+
 # -----------
 # API endpoints
 # -----------
@@ -77,7 +80,9 @@ async def info() -> ProcessingServiceInfoResponse:
     info = ProcessingServiceInfoResponse(
         name="BioCLIP ML Backend",
         description=("BioCLIP 2.5 with a logistic-regression classification head."),
-        pipelines=[pipeline.config for pipeline in pipelines],
+        # Built from the live registry, not the static list, so heads retrained after the
+        # service started are advertised too.
+        pipelines=[pipeline.config for pipeline in pipeline_choices.values()],
         # algorithms=list(algorithm_choices.values()),
     )
     return info
@@ -123,7 +128,10 @@ async def process(data: PipelineRequest) -> PipelineResultsResponse:
     try:
         Pipeline = pipeline_choices[pipeline_slug]
     except KeyError:
-        raise fastapi.HTTPException(status_code=422, detail=f"Invalid pipeline choice: {pipeline_slug}")
+        raise fastapi.HTTPException(
+            status_code=422,
+            detail=f"Invalid pipeline choice: {pipeline_slug}. Available: {sorted(pipeline_choices)}",
+        )
 
     pipeline_request_config = PipelineRequestConfigParameters(**dict(request_config)) if request_config else {}
     try:
@@ -265,8 +273,14 @@ class TrainRequest(pydantic.BaseModel):
         description="Token for the callback, so Antenna can tell a real result from a forged one.",
     )
     name: str | None = pydantic.Field(default=None, description="Name for the produced head.")
+    # Defaults match this service's own training_config. Antenna sends whatever an admin
+    # has set there, so these are overridden in practice.
     min_per_species: int = 2
     min_improvement: float = 0.0
+    head_type: str = "linear"
+    epochs: int = 300
+    learning_rate: float = 0.01
+    weight_decay: float = 1e-4
     save: bool = pydantic.Field(
         default=True,
         description="Write the head to disk. It is never loaded into the running service automatically.",
@@ -278,6 +292,7 @@ class TrainResponse(pydantic.BaseModel):
     reason: str
     warnings: list[str]
     rows: dict
+    classes_restored_from_current_head: int = 0
     counts: dict
     dropped_species: list[str]
     candidate_metrics: dict
@@ -316,20 +331,31 @@ async def train(data: TrainRequest) -> TrainResponse:
             incumbent=incumbent,
             min_per_species=data.min_per_species,
             min_improvement=data.min_improvement,
+            epochs=data.epochs,
+            learning_rate=data.learning_rate,
+            weight_decay=data.weight_decay,
+            head_type=data.head_type,
+            # Antenna ships the species list inside the dataset; it usually comes from a
+            # project's taxa list and must win over whatever happens to be in the rows.
+            declared_classes=dataset_metadata.get("classes"),
         )
-    except training.NotEnoughData as e:
+    except (training.NotEnoughData, training.UnsupportedHeadType) as e:
         raise fastapi.HTTPException(status_code=422, detail=str(e))
 
     saved = None
     if data.save:
         name = data.name or f"head-{datetime.datetime.now().strftime('%Y%m%d-%H%M%S')}"
         saved = training.save_head(result, pathlib.Path(TRAINED_HEADS_DIR), name)
+        # Offer it straight away. The head it was trained from stays where it is; this
+        # adds a choice rather than replacing one.
+        trained_heads.register(pipeline_choices, algorithm_choices)
 
     response = TrainResponse(
         promote=result["promote"],
         reason=result["reason"],
         warnings=result["warnings"],
         rows=result["rows"],
+        classes_restored_from_current_head=result.get("classes_restored_from_current_head", 0),
         counts=result["counts"],
         dropped_species=result["dropped_species"],
         candidate_metrics=result["candidate_metrics"],
