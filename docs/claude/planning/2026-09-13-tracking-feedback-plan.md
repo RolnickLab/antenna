@@ -13,13 +13,13 @@ project filters never appear as merge candidates, and building a track by hand n
 
 | Pkg | Title (issue title, effect first) | Items | Effort | Depends on | Files |
 |---|---|---|---|---|---|
-| A | Offer every frame of the session as a merge candidate, and merge several at once | 4, 1, 2, 5, 22, 23 | S–M | – | `models_future/merge_candidates.py`, `OccurrenceViewSet.merge_candidates`/`merge`, merge dialog FE, `useTrackCandidates.ts` (move dialog uses an unranked hook) |
+| A | Rank merge candidates by time adjacency, show the frames next to a track first, and merge several at once | 4, 1, 2, 5, 22, 23 | S–M | – | `models_future/merge_candidates.py`, `OccurrenceViewSet.merge_candidates`/`merge`, merge dialog FE, `useTrackCandidates.ts` (move dialog uses an unranked hook) |
 | B | Make reviewing a track faster: close on confirm, crop grid, names per frame, edited vs verified state | 11, 8, 3, 6 | S–M | – | occurrence detail FE, `track_stats.grouping_summary`, model field `grouping_edited_at/by` + migration |
 | C | Extend a track by clicking detections in the session view | 7, 13 | M | A (comparison crop component) | session detail FE (`extend=` URL param), `POST /occurrences/{id}/add-detections/` (exists) |
 | D | Preview a tracking run without writing (dry run) | 14 | S | – | `tracking_task.py` (per-event atomic block already exists), job params |
 | E | Bridge one-frame gaps, weight the cost terms, and use label agreement when linking | 9, 10, 12, 22 | M | D (measure before/after) | `tracking_task.pair_detections`, store per-link cost/similarity on `Detection` |
 | F | Tracking playground: tune parameters live on a dozen captures | 21 | BE S–M, FE M | E (shared cost function) | new endpoint returning per-pair cost components; new page |
-| G | Feature vectors for every detection, not only moths | 4b, 18 | ADC S (reuse species classifier) / M (dedicated embedding model + `DetectionEmbedding` table) | – | ami-data-companion pipeline, `ami/ml/schemas.py`, new model |
+| G | Feature vectors for every detection, not only moths | 4b, 18 | M (embedding output in the service schema + `DetectionEmbedding` table; the cheap "reuse the species classifier" path is ruled out, see measurements) | – | ami-data-companion pipeline, `ami/ml/schemas.py`, new model |
 | H | Restrict a project's species to a regional list | 19 | S (deploy) | class masking PR #999 | deploy + TaxaList CSV import |
 | I | Re-tracking a session after hand edits | fresh-guard finding | M | – | `event_is_fresh`, chain walk must respect `grouping_verified_at` |
 | J | Max M per species per session (max in one frame vs individuals per night) | 15 | S–M | – | session stats annotation + export column |
@@ -39,11 +39,31 @@ Parked: movement prior per species (16), detector issues (17) belong to the proc
 - The occurrence list shows no capture id or time, so a reviewer cannot tell from the list whether five single-frame
   occurrences of a distinctive species are consecutive captures (package C, list part).
 
+## Measurements on the dev deployment (2026-09-13)
+
+- **Why reviewers saw one or two usable candidates.** With the default ±5 minute window, a track in the dense
+  session has 1,600–1,800 candidate occurrences and the endpoint returns the 50 lowest-cost. Those are almost all
+  *overlapping* occurrences (other moths present at the same time, nearest-frame cost ≈1.1). The frame that actually
+  continues the track ranked 4th, 35th, or not at all in the three dense tracks probed; in the quiet session (22–46
+  candidates) everything fits and the true neighbour ranks first or second. Vector-less frames are not excluded:
+  12–16 of ~500 made the top 50 in the dense session, all of them in the quiet one. Project default filters played
+  no part: the dev project has threshold 0 and no taxa filters.
+- **Vector-less detections are all the moth/non-moth filter's rejects:** 2,314 of 8,259 (dense), 264 of 782
+  (quiet), 627 of 3,127 (mixed). The quiet session's occurrences are 131 of 154 "not a moth" singletons, the mixed
+  one 485 of 1,855, so a fully annotated set has to bulk-handle those.
+- **The dev project is now an annotation set** (127 identifications and 17 verified groupings by the partner since
+  the demo) and must be frozen: no re-tracking in place; algorithm changes run on a copy or as a dry run (package D).
+- **The cheap path to vectors is ruled out.** Running the species classifier on the rejected crops would add species
+  classifications and change those occurrences' determinations inside the annotated set, and the binary gate has no
+  backbone hook in the processing service. Package G therefore needs an embedding output in the service schema and a
+  `DetectionEmbedding` table that never touches determinations.
+
 ## Order for the first dev session
 
-1. **A** first: the candidate queryset must bypass project default filters (root cause confirmed at
-   `OccurrenceViewSet.merge_candidates` → `self.get_queryset()` → `apply_default_filters`), flag hidden rows, add a
-   nearest-frames mode, multi-select merge, comparison hover, Name/Frames sort. Unblocks three of the seven tests.
+1. **A** first: rank before/after candidates ahead of overlapping ones (or hide overlapping behind a toggle), default
+   to the adjacent captures and let the window grow, apply the cap after that split, multi-select merge, comparison
+   hover, Name/Frames sort. Unblocks three of the seven tests. (Default project filters were the first suspect; the
+   dev project has none, see measurements.)
 2. **B** quick parts: close-on-confirm + next (11), crop grid (8), per-taxon breakdown and detection id/score on the
    card (3). Edited-vs-verified state (6) needs a migration; do it if time allows.
 3. **D** dry run: cheapest way to answer "what would threshold X do" on a whole session.
