@@ -3,10 +3,11 @@ import logging
 from django.db import transaction
 from django.db.models import Prefetch
 from django.db.models.query import QuerySet
+from django.http import Http404
 from django.utils.text import slugify
 from drf_spectacular.utils import extend_schema
 from rest_framework import exceptions as api_exceptions
-from rest_framework import mixins, status, viewsets
+from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -14,6 +15,7 @@ from rest_framework.response import Response
 
 from ami.base.pagination import TrainingDataPagination
 from ami.base.permissions import ProjectPipelineConfigPermission
+from ami.base.serializers import SingleParamSerializer
 from ami.base.views import ProjectMixin
 from ami.main.api.schemas import project_id_doc_param
 from ami.main.api.views import DefaultViewSet
@@ -322,43 +324,70 @@ class TrainingDataViewSet(ProjectMixin, mixins.ListModelMixin, viewsets.GenericV
     queryset = DetectionEmbedding.objects.none()
     serializer_class = TrainingDataRowSerializer
     require_project = True
+    # Membership is enforced in get_queryset() via Project.objects.visible_for_user():
+    # ObjectPermission maps a "list" action on a Project to check_custom_permission, which
+    # denies members, and IsAuthenticated alone would let any account read any project's
+    # verified labels.
     permission_classes = [IsAuthenticated]
     filter_backends: list = []
     pagination_class = TrainingDataPagination
 
+    def _get_visible_project(self) -> Project:
+        """
+        The requested project, if this user is allowed to see it.
+
+        Verified labels are project data, so an account that cannot see the project must
+        not be able to read them.
+        """
+        project = self.get_active_project()
+        if not project:
+            raise Http404("Project not found.")
+        visible = Project.objects.visible_for_user(self.request.user).filter(pk=project.pk).exists()
+        if not visible:
+            raise api_exceptions.PermissionDenied("You do not have access to this project.")
+        return project
+
     def _get_algorithm(self) -> Algorithm:
-        key = self.request.query_params.get("algorithm")
-        if not key:
-            raise api_exceptions.ValidationError(
-                {"algorithm": "Required. The algorithm key whose embeddings to train on."}
-            )
+        key = SingleParamSerializer[str].clean(
+            "algorithm",
+            serializers.CharField(
+                required=True,
+                help_text="Key of the algorithm whose embeddings to train on.",
+            ),
+            self.request.query_params,
+        )
         algorithm = Algorithm.objects.filter(key=key).first()
         if not algorithm:
             raise api_exceptions.NotFound(f"No algorithm with key '{key}'.")
         return algorithm
 
     def _get_split_settings(self) -> tuple[str, float]:
-        params = self.request.query_params
-        salt = params.get("split_salt", training_data.DEFAULT_SPLIT_SALT)
-        raw = params.get("test_fraction", training_data.DEFAULT_TEST_FRACTION)
-        try:
-            fraction = float(raw)
-        except (TypeError, ValueError):
-            raise api_exceptions.ValidationError({"test_fraction": "Must be a number between 0 and 1."})
-        if not 0 <= fraction < 1:
-            raise api_exceptions.ValidationError({"test_fraction": "Must be between 0 and 1."})
+        salt = SingleParamSerializer[str].clean(
+            "split_salt",
+            serializers.CharField(required=False, default=training_data.DEFAULT_SPLIT_SALT),
+            self.request.query_params,
+        )
+        fraction = SingleParamSerializer[float].clean(
+            "test_fraction",
+            serializers.FloatField(
+                required=False,
+                default=training_data.DEFAULT_TEST_FRACTION,
+                min_value=0,
+                max_value=0.99,
+            ),
+            self.request.query_params,
+        )
         return salt, fraction
 
     def get_queryset(self) -> QuerySet[DetectionEmbedding]:
-        project = self.get_active_project()
-        assert project  # require_project=True
-        self.check_object_permissions(self.request, project)
+        project = self._get_visible_project()
         qs = training_data.verified_training_rows(project, self._get_algorithm())
 
-        split = self.request.query_params.get("split")
-        if split and split not in ("train", "test"):
-            raise api_exceptions.ValidationError({"split": "Must be 'train' or 'test'."})
-        self._split_filter = split
+        self._split_filter = SingleParamSerializer[str].clean(
+            "split",
+            serializers.ChoiceField(choices=list(training_data.SPLITS), required=False, allow_null=True, default=None),
+            self.request.query_params,
+        )
         return qs
 
     def get_serializer_context(self):
@@ -366,7 +395,13 @@ class TrainingDataViewSet(ProjectMixin, mixins.ListModelMixin, viewsets.GenericV
         salt, fraction = self._get_split_settings()
         context["split_salt"] = salt
         context["test_fraction"] = fraction
-        context["include_features"] = self.request.query_params.get("include_features", "true").lower() != "false"
+        # Not url_boolean_param: it returns `value or default`, so a default of True can
+        # never be turned off.
+        context["include_features"] = SingleParamSerializer[bool].clean(
+            "include_features",
+            serializers.BooleanField(required=False, default=True),
+            self.request.query_params,
+        )
         return context
 
     @extend_schema(parameters=[project_id_doc_param])
@@ -385,15 +420,13 @@ class TrainingDataViewSet(ProjectMixin, mixins.ListModelMixin, viewsets.GenericV
     @action(detail=False, methods=["get"])
     def summary(self, request, *args, **kwargs):
         """Counts only. Cheap enough to poll before deciding whether a retrain is worth it."""
-        project = self.get_active_project()
-        assert project
-        self.check_object_permissions(request, project)
+        project = self._get_visible_project()
         algorithm = self._get_algorithm()
         salt, fraction = self._get_split_settings()
 
         counts = training_data.label_counts(project, algorithm)
         rows = training_data.verified_training_rows(project, algorithm)
-        splits = {"train": 0, "test": 0}
+        splits = {name: 0 for name in training_data.SPLITS}
         for occurrence_id in rows.values_list("detection__occurrence_id", flat=True):
             splits[training_data.split_for(occurrence_id, salt, fraction)] += 1
 
@@ -405,8 +438,8 @@ class TrainingDataViewSet(ProjectMixin, mixins.ListModelMixin, viewsets.GenericV
                 "rows": sum(counts.values()),
                 "classes": len(counts),
                 "counts": dict(sorted(counts.items(), key=lambda kv: -kv[1])),
-                "train": splits["train"],
-                "test": splits["test"],
+                "train": splits[training_data.SPLIT_TRAIN],
+                "test": splits[training_data.SPLIT_TEST],
                 "verified_detections_without_embedding": training_data.count_missing_embeddings(project, algorithm),
                 "settings": {
                     "split_salt": salt,

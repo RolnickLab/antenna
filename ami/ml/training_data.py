@@ -17,6 +17,12 @@ from ami.ml.models.embedding import DetectionEmbedding
 DEFAULT_SPLIT_SALT = "antenna-head-v1"
 DEFAULT_TEST_FRACTION = 0.2
 
+# The two sides of the split. Named so the API, the dataset builder and the export
+# cannot drift apart on spelling.
+SPLIT_TRAIN = "train"
+SPLIT_TEST = "test"
+SPLITS = (SPLIT_TRAIN, SPLIT_TEST)
+
 
 def split_for(
     occurrence_id: int,
@@ -32,7 +38,7 @@ def split_for(
     data arrives — an eval set that drifts cannot compare two heads.
     """
     digest = hashlib.sha256(f"{salt}:{occurrence_id}".encode()).hexdigest()
-    return "test" if (int(digest[:8], 16) / 0xFFFFFFFF) < test_fraction else "train"
+    return SPLIT_TEST if (int(digest[:8], 16) / 0xFFFFFFFF) < test_fraction else SPLIT_TRAIN
 
 
 def verified_occurrence_ids(project: Project) -> QuerySet:

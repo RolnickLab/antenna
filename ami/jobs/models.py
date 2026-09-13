@@ -1089,12 +1089,19 @@ class TrainClassifierJob(JobType):
         job.progress.update_stage(cls.STAGE_PREPARE, status=JobState.STARTED, progress=0)
         job.save()
 
+        taxa_list = cls.target_taxa_list(job)
+        # The algorithm's training_config holds the defaults the service published; a job
+        # may override any of them for one run.
+        config = algorithm.training_config
         try:
             dataset = build_training_dataset(
                 project=job.project,
                 algorithm=algorithm,
-                min_per_species=params.get("min_per_species", 2),
-                job_id=job.pk,
+                min_per_species=params.get("min_per_species", config.min_per_species),
+                test_fraction=params.get("test_fraction", config.test_fraction),
+                split_salt=params.get("split_salt", config.split_salt),
+                taxa_list=taxa_list,
+                job=job,
             )
         except NotEnoughVerifiedData as e:
             # A data problem, not a crash. Say so plainly rather than failing with a traceback.
@@ -1110,6 +1117,22 @@ class TrainClassifierJob(JobType):
             f"Training set: {meta['rows']} verified crops over {len(meta['classes'])} species "
             f"({meta['train']} train / {meta['test']} held out)"
         )
+        if meta.get("taxa_list"):
+            job.logger.info(
+                f"Species list comes from taxa list '{meta['taxa_list']['name']}' " f"({len(meta['classes'])} species)"
+            )
+            without_data = meta.get("classes_without_verified_data") or []
+            if without_data:
+                job.logger.info(
+                    f"{len(without_data)} species in the list have no verified crops yet. They keep "
+                    "whatever the current head already knows."
+                )
+        if meta.get("dropped_species"):
+            job.logger.warning(
+                f"{len(meta['dropped_species'])} verified species are not in the taxa list and were "
+                f"left out: {', '.join(meta['dropped_species'][:5])}"
+                f"{' ...' if len(meta['dropped_species']) > 5 else ''}"
+            )
         if meta["verified_detections_without_embedding"]:
             job.logger.warning(
                 f"{meta['verified_detections_without_embedding']} verified detection(s) have no embedding "
@@ -1145,6 +1168,24 @@ class TrainClassifierJob(JobType):
         cls.dispatch(job=job, service=service, algorithm=algorithm, dataset=dataset)
 
     @classmethod
+    def target_taxa_list(cls, job: "Job"):
+        """
+        Which taxa list sets the head's species.
+
+        A job may name one; otherwise the project's default is used. Without either, the
+        class list falls back to whatever has been verified.
+        """
+        from ami.main.models import TaxaList
+
+        taxa_list_id = (job.params or {}).get("taxa_list_id")
+        if taxa_list_id:
+            taxa_list = TaxaList.objects.filter(pk=taxa_list_id).first()
+            if not taxa_list:
+                raise ValueError(f"No taxa list with id {taxa_list_id}.")
+            return taxa_list
+        return job.project.default_taxa_list
+
+    @classmethod
     def dispatch(cls, job: "Job", service, algorithm, dataset: dict) -> None:
         """Hand the service the dataset URL and leave the job running until it reports back."""
         from ami.ml.training_dispatch import send_training_request
@@ -1155,9 +1196,16 @@ class TrainClassifierJob(JobType):
         job.logger.info(f"Training request accepted by {service.name}. Waiting for it to report back.")
         job.save()
 
+        if response is None:
+            # The service accepted the work and will post to the job's training-result
+            # endpoint when it finishes. Leaving the job STARTED is the point: a real
+            # training set outlasts the request that started it.
+            job.logger.info("Waiting for the service to report back.")
+            return
+
         if response is not None:
-            # The service answered synchronously, which small datasets do. Record it now
-            # rather than leaving the job waiting for a callback that already happened.
+            # Answered inline, which small datasets do. Record it now rather than waiting
+            # for a callback that has already been overtaken.
             cls.record_result(
                 job=job,
                 payload={
@@ -1175,6 +1223,11 @@ class TrainClassifierJob(JobType):
         result = payload.get("result") or {}
         job.result = payload
 
+        # A result can arrive through the callback on a job whose stages were never set up,
+        # for instance after a restart. Make sure the stage exists before reporting into it.
+        if not any(stage.key == cls.STAGE_TRAIN for stage in job.progress.stages):
+            job.progress.add_stage("Training", cls.STAGE_TRAIN)
+
         for warning in result.get("warnings", []):
             job.logger.warning(warning)
 
@@ -1187,8 +1240,14 @@ class TrainClassifierJob(JobType):
 
         new_version = cls.register_new_version(job=job, payload=payload)
         if new_version:
+            from ami.ml.models.training_set import attach_algorithm
+
             job.progress.add_stage_param(cls.STAGE_TRAIN, "New version", new_version.key)
             job.logger.info(f"Registered {new_version} as version {new_version.version}")
+            # The occurrences were recorded when the set was built, before this version
+            # existed. Point them at it now.
+            linked = attach_algorithm(job=job, algorithm=new_version)
+            job.logger.info(f"Linked {linked} occurrence(s) to {new_version.key}")
 
         job.progress.update_stage(cls.STAGE_TRAIN, status=JobState.SUCCESS, progress=1)
         job.finished_at = datetime.datetime.now()
