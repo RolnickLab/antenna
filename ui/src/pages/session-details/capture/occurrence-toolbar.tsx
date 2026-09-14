@@ -25,8 +25,10 @@ export interface ToolbarOccurrence {
  * available throughout: a stray single frame joins a chain that way.
  */
 export const OccurrenceToolbar = ({
+  isExtended,
   isLoadingPath,
   occurrence,
+  onExtend,
   onHidePath,
   onMerge,
   onOpenOccurrence,
@@ -37,8 +39,11 @@ export const OccurrenceToolbar = ({
   pathError,
   shownFrames,
 }: {
+  /** This occurrence is the one extend mode is already adding frames to. */
+  isExtended?: boolean
   isLoadingPath?: boolean
   occurrence: ToolbarOccurrence
+  onExtend: () => void
   onHidePath: () => void
   onMerge: () => void
   onOpenOccurrence: () => void
@@ -160,6 +165,12 @@ export const OccurrenceToolbar = ({
         <Button onClick={onMerge} size="small" variant="ghost">
           <span>{translate(STRING.TRACK_MERGE)}</span>
         </Button>
+
+        {!isExtended ? (
+          <Button onClick={onExtend} size="small" variant="ghost">
+            <span>{translate(STRING.TRACK_EXTEND_HERE)}</span>
+          </Button>
+        ) : null}
 
         {pathShown ? (
           <Button onClick={onVerify} size="small" variant="ghost">

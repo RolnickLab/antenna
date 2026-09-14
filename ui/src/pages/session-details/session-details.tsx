@@ -103,6 +103,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
     projectId: projectId as string,
   })
   const { timeline = [] } = useSessionTimeline(session.id)
+  const nextCaptureId = activeCapture?.nextCaptureId
 
   useEffect(() => {
     // If the active capture has a job in progress, we want to poll the endpoint so we can show job updates
@@ -169,6 +170,11 @@ const Content = ({ session }: { session: SessionDetails }) => {
               defaultFilters={settings.defaultFilters}
               detections={activeCapture?.detections ?? []}
               height={activeCapture?.height ?? session.firstCapture.height}
+              onNextCapture={
+                nextCaptureId
+                  ? () => setActiveCaptureId(nextCaptureId)
+                  : undefined
+              }
               showDetections={settings.showDetections}
               sources={
                 activeCapture

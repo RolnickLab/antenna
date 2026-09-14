@@ -8,6 +8,7 @@ type FilterType =
   | 'deployment__research_site'
   | 'detections__source_image'
   | 'event'
+  | 'extend'
   | 'include_unobserved'
   | 'occurrence'
   | 'source_image_collection'

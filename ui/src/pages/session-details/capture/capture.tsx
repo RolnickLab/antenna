@@ -22,6 +22,12 @@ import { useActiveOccurrences } from '../hooks/useActiveOccurrences'
 import { BoxStyle, bboxToPercentStyle } from './bbox'
 import { buildTrail, CaptureGhostTrail } from './capture-ghost-trail'
 import { TierSources } from './capture-tiers'
+import {
+  ExtendTrackBanner,
+  ExtendTrackDialog,
+  ExtendTrackState,
+  useExtendTrack,
+} from './extend-track'
 import { OccurrenceToolbar } from './occurrence-toolbar'
 import {
   SessionPathStatus,
@@ -43,6 +49,8 @@ interface CaptureProps {
   defaultFilters: boolean
   detections: CaptureDetection[]
   height: number | null
+  /** Steps to the capture after this one; absent on the last capture of a session. */
+  onNextCapture?: () => void
   showDetections?: boolean
   sources?: TierSources
   transformRef: React.RefObject<ReactZoomPanPinchRef>
@@ -54,12 +62,14 @@ export const Capture = ({
   defaultFilters,
   detections,
   height,
+  onNextCapture,
   showDetections,
   sources,
   transformRef,
   width,
 }: CaptureProps) => {
-  const { activeOccurrences } = useActiveOccurrences()
+  const { activeOccurrences, setActiveOccurrences } = useActiveOccurrences()
+  const extend = useExtendTrack({ captureId, onNextCapture })
   // Which occurrence the operator asked to see the path of. Kept while that
   // occurrence stays selected, so stepping between captures redraws the same path.
   const [pathOccurrenceId, setPathOccurrenceId] = useState<string>()
@@ -75,6 +85,21 @@ export const Capture = ({
     refetch: refetchPath,
   } = useOccurrencePath(shownPathId, !!shownPathId)
   const isLoadingPath = pathLoading || pathFetching
+
+  useEffect(() => {
+    // The occurrence being extended stays selected with its path drawn, so every
+    // capture stepped through shows where the track has reached.
+    if (!extend.occurrenceId) {
+      return
+    }
+
+    setPathOccurrenceId(extend.occurrenceId)
+
+    if (!activeOccurrences.includes(extend.occurrenceId)) {
+      setActiveOccurrences([...activeOccurrences, extend.occurrenceId])
+    }
+  }, [extend.occurrenceId, activeOccurrences, setActiveOccurrences])
+
   const trail = useMemo(
     () => (path?.length ? buildTrail(path, captureId) : undefined),
     [path, captureId]
@@ -237,6 +262,7 @@ export const Capture = ({
               boxStyles={boxStyles}
               defaultFilters={defaultFilters}
               detections={detections}
+              extend={extend}
               isLoadingPath={isLoadingPath}
               onHidePath={() => setPathOccurrenceId(undefined)}
               onShowPath={(occurrenceId) =>
@@ -253,12 +279,28 @@ export const Capture = ({
           </div>
         </TransformComponent>
       </TransformWrapper>
-      {shownPathId ? (
+      {shownPathId && !extend.occurrenceId ? (
         <SessionPathStatus
           error={!!pathError}
           isLoading={isLoadingPath}
           occurrenceId={shownPathId}
         />
+      ) : null}
+      {extend.occurrenceId ? (
+        <>
+          <ExtendTrackBanner
+            extend={extend}
+            occurrenceId={extend.occurrenceId}
+            onNextCapture={onNextCapture}
+          />
+          {extend.choice ? (
+            <ExtendTrackDialog
+              choice={extend.choice}
+              extend={extend}
+              occurrenceId={extend.occurrenceId}
+            />
+          ) : null}
+        </>
       ) : null}
       {zoomPercent !== null ? (
         <span className="absolute bottom-2 left-2 px-2.5 py-1 rounded-full bg-neutral-900/70 text-generic-white text-xs tabular-nums pointer-events-none select-none">
@@ -318,6 +360,7 @@ const CaptureDetections = ({
   boxStyles,
   defaultFilters,
   detections,
+  extend,
   isLoadingPath,
   onHidePath,
   onShowPath,
@@ -330,6 +373,7 @@ const CaptureDetections = ({
   boxStyles: { [key: number]: BoxStyle }
   defaultFilters: boolean
   detections: CaptureDetection[]
+  extend: ExtendTrackState
   isLoadingPath?: boolean
   onHidePath: () => void
   onShowPath: (occurrenceId: string) => void
@@ -389,9 +433,14 @@ const CaptureDetections = ({
         {Object.entries(boxStyles).map(([id, style]) => {
           const detection = detections.find((d) => d.id === id)
 
-          const isActive = detection?.occurrenceId
-            ? activeOccurrences.includes(detection.occurrenceId)
-            : false
+          const isExtended =
+            !!detection?.occurrenceId &&
+            detection.occurrenceId === extend.occurrenceId
+          const isActive =
+            isExtended ||
+            (detection?.occurrenceId
+              ? activeOccurrences.includes(detection.occurrenceId)
+              : false)
 
           if (!detection || (!showDetections && !isActive)) {
             return null
@@ -411,11 +460,14 @@ const CaptureDetections = ({
                       [styles.alert]: detection.score < SCORE_THRESHOLDS.ALERT,
                       [styles.warning]:
                         detection.score < SCORE_THRESHOLDS.WARNING,
-                      [styles.clickable]: !!detection.occurrenceId,
+                      [styles.clickable]:
+                        !!detection.occurrenceId || !!extend.occurrenceId,
                     })}
                     onClick={() => {
-                      if (detection.occurrenceId) {
-                        toggleActiveState(detection?.occurrenceId)
+                      if (extend.occurrenceId) {
+                        extend.clickBox(detection)
+                      } else if (detection.occurrenceId) {
+                        toggleActiveState(detection.occurrenceId)
                       }
                     }}
                   />
@@ -428,6 +480,7 @@ const CaptureDetections = ({
                 >
                   {detection.occurrenceId ? (
                     <OccurrenceToolbar
+                      isExtended={isExtended}
                       isLoadingPath={
                         isLoadingPath &&
                         pathOccurrenceId === detection.occurrenceId
@@ -442,6 +495,9 @@ const CaptureDetections = ({
                         score: detection.score,
                         scoreLabel: detection.scoreLabel,
                       }}
+                      onExtend={() =>
+                        extend.start(detection.occurrenceId as string)
+                      }
                       onHidePath={onHidePath}
                       onMerge={() =>
                         setTrackEdit({
