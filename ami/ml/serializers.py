@@ -35,6 +35,7 @@ class AlgorithmSerializer(DefaultSerializer):
     # A bare name in Meta.fields raises ImproperlyConfigured at import time.
     training_config = SchemaField(schema=AlgorithmTrainingConfig, required=False)
     training_info = SchemaField(schema=AlgorithmTrainingInfo, read_only=True)
+    evaluations = serializers.SerializerMethodField()
 
     class Meta:
         model = Algorithm
@@ -51,11 +52,18 @@ class AlgorithmSerializer(DefaultSerializer):
             "trainable",
             "training_config",
             "training_info",
+            "evaluations",
             "category_map",
             "category_count",
             "created_at",
             "updated_at",
         ]
+
+    def get_evaluations(self, obj):
+        """How this algorithm has scored on each evaluation set. Empty until one is scored."""
+        from ami.ml import reporting
+
+        return reporting.latest_evaluations(obj)
 
 
 class AlgorithmNestedSerializer(DefaultSerializer):

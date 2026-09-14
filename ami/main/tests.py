@@ -6349,6 +6349,52 @@ class TestTaxaVerification(APITestCase):
         self.assertEqual(rows["Vanessa atalanta"]["verified_count"], 1)
         self.assertEqual(rows["Vanessa itea"]["verified_count"], 0)
 
+    # --- training_crops_ready (verified crops, no rollup) ---
+
+    def test_training_crops_ready_counts_crops_not_occurrences(self):
+        """A second frame of the same insect is a second crop a head can be fit on."""
+        first_detection = self.occ_pred.detections.first()
+        assert first_detection is not None
+        Detection.objects.create(
+            source_image=first_detection.source_image,
+            occurrence=self.occ_pred,
+            timestamp=first_detection.timestamp,
+            bbox=[0.3, 0.3, 0.4, 0.4],
+            path="detections/second_frame.jpg",
+        )
+
+        detail = self._detail(self.cardui)
+        self.assertEqual(detail["verified_count"], 2)
+        self.assertEqual(detail["training_crops_ready"], 3)
+
+    def test_training_crops_ready_does_not_roll_up_to_ancestors(self):
+        """A head is fit on the label itself, so species crops are not genus training data."""
+        for ancestor in (self.genus, self.family, self.order):
+            self.assertEqual(self._detail(ancestor)["training_crops_ready"], 0, ancestor.name)
+
+    def test_training_crops_ready_in_list(self):
+        rows = self._list_by_name()
+        self.assertEqual(rows["Vanessa cardui"]["training_crops_ready"], 2)
+        self.assertEqual(rows["Vanessa atalanta"]["training_crops_ready"], 1)
+        self.assertEqual(rows["Vanessa itea"]["training_crops_ready"], 0)
+
+    def test_training_crops_ready_does_not_scale_with_page_size(self):
+        """One aggregate for the page, not one query per row."""
+
+        from django.core.cache import caches
+
+        def query_count(limit: int) -> int:
+            # Cold cache on both runs, or a warm one hides the scaling.
+            caches["default"].clear()
+            with CaptureQueriesContext(connection) as ctx:
+                res = self.client.get(f"/api/v2/taxa/?project_id={self.project.pk}&limit={limit}")
+            self.assertEqual(res.status_code, status.HTTP_200_OK)
+            return len(ctx.captured_queries)
+
+        small = query_count(limit=1)
+        large = query_count(limit=1000)
+        self.assertLessEqual(large, small, f"Query count grew with page size: {small} -> {large}")
+
     # --- verified=true|false filter ---
 
     def test_verified_filter_true_false_complement(self):

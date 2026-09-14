@@ -25,6 +25,7 @@ from ami.ml.schemas import PipelineRegistrationResponse
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.embedding import EMBEDDING_DIMENSIONS, DetectionEmbedding
+from .models.evaluation import AlgorithmEvaluation
 from .models.pipeline import Pipeline
 from .models.processing_service import ProcessingService
 from .models.project_pipeline_config import ProjectPipelineConfig
@@ -63,6 +64,9 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
     def get_queryset(self) -> QuerySet["Algorithm"]:
         qs: QuerySet["Algorithm"] = super().get_queryset()
         qs = qs.with_category_count()  # type: ignore[union-attr] # Custom queryset method
+        qs = qs.prefetch_related(
+            Prefetch("evaluations", queryset=AlgorithmEvaluation.objects.select_related("occurrence_set"))
+        )
         # Only scope the list by project. Detail stays unscoped so links from historical
         # classifications whose pipeline is no longer enabled still resolve.
         if getattr(self, "action", None) == "list":
