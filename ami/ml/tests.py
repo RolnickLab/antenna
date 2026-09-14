@@ -37,6 +37,7 @@ from ami.ml.models import (
     OccurrenceSet,
     Pipeline,
     ProcessingService,
+    TaxonEvaluation,
 )
 from ami.ml.models.embedding import EMBEDDING_DIMENSIONS
 from ami.ml.models.pipeline import collect_images, get_or_create_algorithm_and_category_map, save_results
@@ -3732,3 +3733,137 @@ class TestAlgorithmEvaluation(TestCase):
         self.assertTrue(shared.is_global)
         self.assertFalse(self.occurrence_set.is_global)
         self.assertIn(shared, OccurrenceSet.objects.for_project(self.project))
+
+
+class TestPerformanceReporting(TestCase):
+    """
+    The numbers the model-performance screens read: the best model for a taxa list, and how
+    each algorithm has done on one species.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Reporting Project")
+        self.user = User.objects.create_user(email="reporter@example.com", password="testpass123")
+        self.common = Taxon.objects.create(name="Reportus communis", rank=TaxonRank.SPECIES.name)
+        self.rare = Taxon.objects.create(name="Reportus rarus", rank=TaxonRank.SPECIES.name)
+        self.taxa_list = TaxaList.objects.create(name="Reporting list")
+        self.taxa_list.taxa.set([self.common, self.rare])
+        self.taxa_list.projects.add(self.project)
+        self.occurrence_set = OccurrenceSet.objects.create(name="Reporting set")
+
+    def _algorithm(self, key: str) -> Algorithm:
+        return Algorithm.objects.create(name=key, key=key)
+
+    def _evaluation(self, algorithm: Algorithm, micro: float, macro: float, per_taxon: dict) -> AlgorithmEvaluation:
+        evaluation = AlgorithmEvaluation.objects.create(
+            algorithm=algorithm,
+            occurrence_set=self.occurrence_set,
+            micro_accuracy=micro,
+            macro_accuracy=macro,
+            occurrences_scored=sum(scored for _, scored in per_taxon.values()),
+            species_scored=len(per_taxon),
+        )
+        for taxon, (correct, scored) in per_taxon.items():
+            TaxonEvaluation.objects.create(
+                evaluation=evaluation,
+                taxon=taxon,
+                accuracy=correct / scored,
+                occurrences_scored=scored,
+                correct=correct,
+            )
+        return evaluation
+
+    def test_the_best_model_is_the_one_that_handles_the_rare_species(self):
+        """Ranked on the per-species average, or a model that only knows the common one wins."""
+        from ami.ml import reporting
+
+        self._evaluation(self._algorithm("common-only"), micro=0.9, macro=0.5, per_taxon={self.common: (9, 10)})
+        even = self._evaluation(
+            self._algorithm("handles-both"),
+            micro=0.8,
+            macro=0.8,
+            per_taxon={self.common: (8, 10), self.rare: (8, 10)},
+        )
+
+        self.assertEqual(reporting.best_evaluation_for_taxa_list(self.taxa_list), even)
+
+    def test_a_list_nothing_has_been_scored_on_has_no_best_model(self):
+        from ami.ml import reporting
+
+        self.assertIsNone(reporting.best_evaluation_for_taxa_list(self.taxa_list))
+
+    def test_a_species_lists_every_algorithm_scored_on_it(self):
+        from ami.ml import reporting
+
+        self._evaluation(self._algorithm("first"), micro=1.0, macro=1.0, per_taxon={self.rare: (2, 2)})
+        self._evaluation(self._algorithm("second"), micro=0.5, macro=0.5, per_taxon={self.rare: (1, 2)})
+
+        rows = reporting.performance_for_taxon(self.rare)
+        self.assertEqual([row["algorithm"]["key"] for row in rows], ["first", "second"])
+        self.assertEqual([row["accuracy"] for row in rows], [1.0, 0.5])
+        self.assertEqual(rows[0]["occurrence_set"]["name"], self.occurrence_set.name)
+
+    def test_a_species_nothing_has_been_scored_on_lists_nothing(self):
+        from ami.ml import reporting
+
+        self.assertEqual(reporting.performance_for_taxon(self.common), [])
+
+    def test_an_algorithm_lists_its_own_scores(self):
+        from ami.ml import reporting
+
+        algorithm = self._algorithm("scored-twice")
+        self._evaluation(algorithm, micro=1.0, macro=1.0, per_taxon={self.common: (2, 2)})
+        other_set = OccurrenceSet.objects.create(name="Second set")
+        AlgorithmEvaluation.objects.create(
+            algorithm=algorithm,
+            occurrence_set=other_set,
+            micro_accuracy=0.5,
+            macro_accuracy=0.5,
+            occurrences_scored=2,
+            species_scored=1,
+        )
+
+        rows = reporting.latest_evaluations(algorithm)
+        self.assertEqual({row["occurrence_set"]["name"] for row in rows}, {"Reporting set", "Second set"})
+        self.assertEqual(len(reporting.latest_evaluations(algorithm, limit=1)), 1)
+
+    def test_the_algorithms_list_does_not_query_per_row(self):
+        """Evaluations are prefetched: adding scored algorithms must not add queries."""
+        from django.core.cache import caches
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from ami.ml.models import Pipeline, ProcessingService, ProjectPipelineConfig
+
+        service = ProcessingService.objects.create(name="Reporting service", endpoint_url="http://example.com")
+        service.projects.add(self.project)
+        pipeline = Pipeline.objects.create(name="Reporting pipeline", slug="reporting-pipeline")
+        pipeline.projects.add(self.project)
+        ProjectPipelineConfig.objects.update_or_create(
+            project=self.project, pipeline=pipeline, defaults={"enabled": True}
+        )
+
+        self.client.force_login(self.user)
+        url = f"/api/v2/ml/algorithms/?project_id={self.project.pk}"
+
+        def query_count() -> int:
+            # Cold cache on both runs, or a warm one hides the scaling.
+            caches["default"].clear()
+            with CaptureQueriesContext(connection) as ctx:
+                res = self.client.get(url)
+            self.assertEqual(res.status_code, 200)
+            return len(ctx.captured_queries)
+
+        for index in range(2):
+            algorithm = self._algorithm(f"listed-{index}")
+            pipeline.algorithms.add(algorithm)
+            self._evaluation(algorithm, micro=1.0, macro=1.0, per_taxon={self.common: (1, 1)})
+        two_algorithms = query_count()
+
+        for index in range(2, 6):
+            algorithm = self._algorithm(f"listed-{index}")
+            pipeline.algorithms.add(algorithm)
+            self._evaluation(algorithm, micro=1.0, macro=1.0, per_taxon={self.common: (1, 1)})
+        six_algorithms = query_count()
+
+        self.assertLessEqual(six_algorithms, two_algorithms)

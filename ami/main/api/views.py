@@ -1949,7 +1949,8 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
 
         The sparse verification rollup (``verified_count`` / ``agreed_*``) is the same on
         either path — a Python pass over the verified subset applied as ``CASE``
-        annotations, see :meth:`TaxonQuerySet.with_verification_counts`.
+        annotations, see :meth:`TaxonQuerySet.with_verification_counts`. ``training_crops_count``
+        is annotated the same way, see :meth:`TaxonQuerySet.with_training_crop_counts`.
         """
         request = self.request
         use_aggregation = "collection" in request.query_params
@@ -1986,13 +1987,21 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         if self.action == "list" and "verified" in request.query_params:
             verified_param = BooleanField(required=False).clean(request.query_params.get("verified"))
 
-        return qs.with_verification_counts(
+        qs = qs.with_verification_counts(
             project,
             request,
             occurrence_filters=direct_filters,
             apply_default_score_filter=apply_default_score_filter,
             apply_default_taxa_filter=apply_default_taxa_filter,
             verified=verified_param,
+        )
+
+        return qs.with_training_crop_counts(
+            project,
+            request,
+            occurrence_filters=direct_filters,
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=apply_default_taxa_filter,
         )
 
     def attach_tags_by_project(self, qs: QuerySet, project: Project) -> QuerySet:

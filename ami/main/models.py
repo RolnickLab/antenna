@@ -4117,6 +4117,46 @@ class TaxonQuerySet(BaseQuerySet):
 
         return qs
 
+    def with_training_crop_counts(
+        self,
+        project: Project,
+        request: Request | None,
+        *,
+        occurrence_filters: models.Q,
+        apply_default_score_filter: bool = True,
+        apply_default_taxa_filter: bool = True,
+    ):
+        """Annotate ``training_crops_count``: verified crops a classifier head can be fit on.
+
+        Counted against the exact determination, without the hierarchical rollup
+        :meth:`with_verification_counts` does — a head is fit on the label itself, so a crop
+        verified as a species is not training data for its genus. Crops still need an
+        embedding from the chosen feature extractor before a job can use them; this is the
+        upper bound, not the row count of the next training set.
+        """
+        default_q = build_occurrence_default_filters_q(
+            project,
+            request,
+            occurrence_accessor="",
+            apply_default_score_filter=apply_default_score_filter,
+            apply_default_taxa_filter=apply_default_taxa_filter,
+        )
+        verified_occurrences = (
+            Occurrence.objects.filter(occurrence_filters)
+            .filter(default_q)
+            .filter(determination_id__isnull=False)
+            .filter(Exists(Identification.objects.filter(occurrence=OuterRef("pk"), withdrawn=False)))
+        )
+        crop_counts = {
+            row["occurrence__determination_id"]: row["crops"]
+            for row in (
+                Detection.objects.filter(occurrence__in=verified_occurrences)
+                .values("occurrence__determination_id")
+                .annotate(crops=models.Count("pk"))
+            )
+        }
+        return self.annotate(training_crops_count=_case_from_map(crop_counts, 0, models.IntegerField()))
+
     def filter_by_project_default_taxa(self, project: Project | None = None, request: Request | None = None):
         """
         Filter taxa according to a project's default include and exclude settings,
