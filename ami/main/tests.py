@@ -8128,12 +8128,13 @@ class TrackEditTestCase(APITestCase):
         self.occurrence, self.detections = self._make_track(len(self.captures))
         return super().setUp()
 
-    def _make_track(self, length: int) -> tuple[Occurrence, list[Detection]]:
+    def _make_track(self, length: int, score: float | None = 0.9) -> tuple[Occurrence, list[Detection]]:
         """One occurrence holding `length` detections, chained in capture order.
 
-        Each detection carries a classification: an occurrence with no determination
-        is filtered out of the API's queryset entirely, so a track without them
-        would 404 rather than exercise the endpoints.
+        Each detection carries a classification at `score`, which settles the
+        occurrence's determination. A `score` of None leaves them unclassified, so the
+        occurrence has no determination: the shape every occurrence has on a project
+        where only a detector ran.
         """
         occurrence = Occurrence.objects.create(event=self.event, deployment=self.deployment, project=self.project)
         detections = []
@@ -8144,7 +8145,8 @@ class TrackEditTestCase(APITestCase):
                 bbox=[10, 10, 40, 40],
                 occurrence=occurrence,
             )
-            detection.classifications.create(taxon=self.taxon, score=0.9, timestamp=capture.timestamp)
+            if score is not None:
+                detection.classifications.create(taxon=self.taxon, score=score, timestamp=capture.timestamp)
             detections.append(detection)
         for earlier, later in zip(detections, detections[1:]):
             earlier.next_detection = later
@@ -8348,6 +8350,66 @@ class TrackEditTestCase(APITestCase):
         self.assertIsNotNone(occurrence["grouping_verified_at"])
         self.assertEqual(occurrence["grouping_verified_by"], "Test Curator")
 
+    def test_every_track_action_works_on_an_occurrence_the_list_would_hide(self):
+        """Restructuring and confirming a track never waits on the taxon being known.
+
+        The set of boxes that are one animal is a different question from which
+        taxon they are and how confident the model was, so neither the missing
+        determination of a detector-only project nor the project's score threshold
+        may gate these actions. They are how a human-annotated set gets built.
+        """
+        self.project.default_filters_score_threshold = 0.9
+        self.project.save()
+        undetermined, detections = self._make_track(3, score=None)
+        self.assertIsNone(undetermined.determination_id, "The fixture must have no determination")
+
+        self.client.force_authenticate(user=self.curator)
+        split = self.client.post(
+            f"/api/v2/occurrences/{undetermined.pk}/split-track/",
+            {"detection_id": detections[2].pk},
+            format="json",
+        )
+        self.assertEqual(split.status_code, 200, split.data)
+
+        removed = self.client.post(
+            f"/api/v2/occurrences/{undetermined.pk}/remove-detection/",
+            {"detection_id": detections[0].pk},
+            format="json",
+        )
+        self.assertEqual(removed.status_code, 200, removed.data)
+
+        verified = self.client.post(f"/api/v2/occurrences/{undetermined.pk}/verify-grouping/", format="json")
+        self.assertEqual(verified.status_code, 200, verified.data)
+        unverified = self.client.post(f"/api/v2/occurrences/{undetermined.pk}/unverify-grouping/", format="json")
+        self.assertEqual(unverified.status_code, 200, unverified.data)
+
+        below_threshold, _ = self._make_track(2, score=0.1)
+        confirmed = self.client.post(f"/api/v2/occurrences/{below_threshold.pk}/verify-grouping/", format="json")
+        self.assertEqual(confirmed.status_code, 200, confirmed.data)
+
+    def test_an_occurrence_with_no_determination_can_still_be_opened(self):
+        """The detail page opens before anyone has identified the animal.
+
+        A reviewer follows a box from a capture to the occurrence behind it, and on a
+        project where only a detector ran nothing is identified yet. The payload says
+        the determination is simply missing. The list is a separate judgement and goes
+        on showing determined occurrences only.
+        """
+        undetermined, _ = self._make_track(2, score=None)
+
+        self.client.force_authenticate(user=self.curator)
+        detail = self.client.get(f"/api/v2/occurrences/{undetermined.pk}/?project_id={self.project.pk}")
+        self.assertEqual(detail.status_code, 200, detail.data)
+        self.assertIsNone(detail.data["determination"])
+        self.assertIsNone(detail.data["determination_score"])
+        self.assertEqual(detail.data["detections_count"], 2)
+
+        path = self.client.get(f"/api/v2/occurrences/{undetermined.pk}/path/?project_id={self.project.pk}")
+        self.assertEqual(path.status_code, 200, "The frames a reviewer judges the grouping by open too")
+
+        listed = self.client.get(f"/api/v2/occurrences/?project_id={self.project.pk}")
+        self.assertNotIn(undetermined.pk, [row["id"] for row in listed.data["results"]])
+
     def test_split_reports_the_counts_the_edit_left_behind(self):
         """Both counts come from the database, not from the prefetched detections.
 
@@ -8433,6 +8495,34 @@ class OccurrenceGroupingTestCase(TrackEditTestCase):
         self.assertFalse(Occurrence.objects.filter(pk=stray.pk).exists())
         identification.refresh_from_db()
         self.assertEqual(identification.occurrence_id, self.occurrence.pk)
+
+    def test_a_detection_without_an_occurrence_can_be_added(self):
+        """A box that tracking never grouped is still part of the session and can join a track.
+
+        A project where only a detector ran leaves most of its boxes with no
+        occurrence at all, and a hand-built track is assembled out of exactly those.
+        They carry no occurrence to read a project from, so the endpoint has to scope
+        them through the capture they were found in.
+        """
+        capture = self.captures[-1]
+        bare = Detection.objects.create(
+            source_image=capture,
+            timestamp=capture.timestamp,
+            bbox=[60, 60, 90, 90],
+            occurrence=None,
+        )
+
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.post(
+            f"/api/v2/occurrences/{self.occurrence.pk}/add-detections/",
+            {"detection_ids": [bare.pk]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["detections_count"], len(self.detections) + 1)
+
+        bare.refresh_from_db()
+        self.assertEqual(bare.occurrence_id, self.occurrence.pk)
 
     def test_a_chain_link_never_crosses_an_occurrence_boundary(self):
         # Take the middle detection out of its track; the link that pointed into it
@@ -8575,7 +8665,14 @@ class MergeCandidatesTestCase(TrackEditTestCase):
         bbox: list[int],
         vector: list[float] | None = None,
         algorithm: Algorithm | None = None,
+        score: float | None = 0.9,
     ) -> Occurrence:
+        """One occurrence with a box in each of ``captures``.
+
+        A ``score`` of None leaves the detections unclassified, so the occurrence has
+        no determination: the shape every occurrence has on a project where only a
+        detector ran.
+        """
         occurrence = Occurrence.objects.create(event=self.event, deployment=self.deployment, project=self.project)
         for capture in captures:
             detection = Detection.objects.create(
@@ -8585,13 +8682,14 @@ class MergeCandidatesTestCase(TrackEditTestCase):
                 occurrence=occurrence,
                 path=f"crops/{capture.pk}-{bbox[0]}.jpg",
             )
-            detection.classifications.create(
-                taxon=self.taxon,
-                score=0.9,
-                timestamp=capture.timestamp,
-                algorithm=algorithm,
-                features_2048=vector,
-            )
+            if score is not None:
+                detection.classifications.create(
+                    taxon=self.taxon,
+                    score=score,
+                    timestamp=capture.timestamp,
+                    algorithm=algorithm,
+                    features_2048=vector,
+                )
         occurrence.save()
         return occurrence
 
@@ -8778,6 +8876,40 @@ class MergeCandidatesTestCase(TrackEditTestCase):
         self.assertIn(anonymous.status_code, (401, 403))
 
         self.assertEqual(self.get_candidates(user=self.curator).status_code, 200)
+
+    def test_track_edits_ignore_the_project_default_filters(self):
+        """Repairing a track reaches the occurrences that viewing hides.
+
+        The project's score threshold and excluded taxa say what is worth looking at,
+        which is a different question from which boxes are one animal, and an
+        occurrence a detector left undetermined belongs to a track like any other.
+        Viewing goes on hiding both.
+        """
+        self.project.default_filters_score_threshold = 0.9
+        self.project.save()
+        self.project.default_filters_exclude_taxa.set([self.taxon])
+
+        low_score = self._make_occurrence([self.after_capture], bbox=[12, 12, 42, 42], score=0.1)
+        undetermined = self._make_occurrence([self.after_capture], bbox=[14, 14, 44, 44], score=None)
+
+        offered = {row["id"]: row for row in self.get_candidates().data["candidates"]}
+        self.assertEqual(sorted(offered), sorted([low_score.pk, undetermined.pk]))
+        self.assertIsNone(offered[undetermined.pk]["determination"], "A candidate with no determination is offered")
+
+        listed = self.client.get(f"/api/v2/occurrences/?project_id={self.project.pk}")
+        self.assertEqual(listed.status_code, 200, listed.data)
+        visible = [row["id"] for row in listed.data["results"]]
+        self.assertNotIn(low_score.pk, visible, "A low-score occurrence stays hidden from the list")
+        self.assertNotIn(undetermined.pk, visible, "An undetermined occurrence stays hidden from the list")
+
+        merged = self.client.post(
+            f"/api/v2/occurrences/{self.occurrence.pk}/merge/",
+            {"occurrence_ids": [low_score.pk, undetermined.pk]},
+            format="json",
+        )
+        self.assertEqual(merged.status_code, 200, merged.data)
+        self.assertEqual(merged.data["detections_count"], len(self.detections) + 2)
+        self.assertFalse(Occurrence.objects.filter(pk__in=[low_score.pk, undetermined.pk]).exists())
 
     def test_the_candidate_count_does_not_change_the_query_count(self):
         extractor = Algorithm.objects.create(name="Feature extractor", key="feature-extractor")

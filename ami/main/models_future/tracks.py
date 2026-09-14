@@ -215,13 +215,30 @@ def merge_occurrences(target: Occurrence, sources: Iterable[Occurrence]) -> Occu
     return target
 
 
+def _fill_timestamps_from_captures(detections: Iterable[Detection]) -> None:
+    """Give every detection the timestamp of its capture, as ``Detection.save`` does.
+
+    A detection that was never grouped can reach a track without one, and an undated
+    detection sorts outside its own track and is skipped by the track statistics.
+    Written in a single query so the cost does not follow how many moved.
+    """
+    undated = [d for d in detections if d.timestamp is None]
+    if not undated:
+        return
+    for detection in undated:
+        detection.timestamp = detection.source_image.timestamp
+    Detection.objects.bulk_update(undated, ["timestamp"])
+
+
 @transaction.atomic
 def add_detections(target: Occurrence, detections: Iterable[Detection]) -> Occurrence:
     """Move individual detections into ``target``.
 
-    Use when a frame belongs to this animal but landed on its own or on the wrong
-    occurrence. Any occurrence left with no detections is absorbed rather than
-    deleted outright, so identifications on it survive.
+    Use when a frame belongs to this animal but landed on its own, on the wrong
+    occurrence, or on no occurrence at all, which is how a detector-only project
+    leaves most of its boxes. A detection with no occurrence simply moves in; there
+    is no donor to absorb. Any occurrence left with no detections is absorbed rather
+    than deleted outright, so identifications on it survive.
     """
     detections = [d for d in detections if d.occurrence_id != target.pk]
     if not detections:
@@ -239,6 +256,7 @@ def add_detections(target: Occurrence, detections: Iterable[Detection]) -> Occur
 
     donors = list(Occurrence.objects.filter(pk__in=donor_pks))
     Detection.objects.filter(pk__in=[d.pk for d in detections]).update(occurrence=target)
+    _fill_timestamps_from_captures(detections)
 
     emptied = [o for o in donors if not o.detections.exists()]
     _absorb(target, emptied)

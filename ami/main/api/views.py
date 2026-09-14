@@ -1550,9 +1550,36 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         else:
             return OccurrenceSerializer
 
+    # Actions that repair how detections are grouped, rather than show occurrences.
+    # They reach past both viewing filters; see get_queryset.
+    TRACK_EDIT_ACTIONS = (
+        "merge_candidates",
+        "merge",
+        "add_detections",
+        "split_track",
+        "remove_detection",
+        "verify_grouping",
+        "unverify_grouping",
+    )
+    # Actions that open one occurrence. They keep the project's default filters but
+    # not the determination requirement; see get_queryset.
+    SINGLE_OCCURRENCE_ACTIONS = ("retrieve", "path")
+
     def get_queryset(self) -> QuerySet["Occurrence"]:
+        """Occurrences this request may see, which is wider outside the list.
+
+        The list shows determined occurrences that pass the project's default filters.
+        Opening one occurrence keeps those filters but not the determination, and
+        repairing a track keeps neither. On a project where only a detector ran every
+        occurrence is undetermined until a person identifies it, and a low-score or
+        excluded-taxon occurrence is still part of the animal's track. See
+        OccurrenceQuerySet.with_real_detections.
+        """
         project = self.get_active_project()
-        qs = super().get_queryset().valid()  # type: ignore
+        track_edit = self.action in self.TRACK_EDIT_ACTIONS
+        allow_undetermined = track_edit or self.action in self.SINGLE_OCCURRENCE_ACTIONS
+        qs = super().get_queryset()
+        qs = qs.with_real_detections() if allow_undetermined else qs.valid()  # type: ignore
         if project:
             qs = qs.filter(project=project)
         qs = qs.select_related(
@@ -1562,7 +1589,10 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         )
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
-        qs = qs.apply_default_filters(project, self.request)  # type: ignore
+        if not track_edit:
+            qs = qs.apply_default_filters(  # type: ignore
+                project, self.request, include_undetermined=allow_undetermined
+            )
         if self.action == "list":
             qs = qs.with_list_prefetches()  # type: ignore
         elif self.action not in ("path", "merge_candidates"):
@@ -1812,18 +1842,21 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     def add_detections(self, request: Request, pk=None) -> Response:
         """Move individual detections into this occurrence.
 
-        Use when a frame belongs to this animal but was left on its own or attached
-        to the wrong occurrence. An occurrence emptied by the move is absorbed, so
-        identifications on it are kept.
+        Use when a frame belongs to this animal but was left on its own, attached to
+        the wrong occurrence, or never grouped into one at all. An occurrence emptied
+        by the move is absorbed, so identifications on it are kept.
         """
         occurrence = self.get_object()
         body = OccurrenceAddDetectionsSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         requested = body.validated_data["detection_ids"]
+        # Scoped through the capture rather than the occurrence: a detection that was
+        # never grouped has no occurrence to read a project from, and those are the
+        # ones a hand-built track is assembled from.
         detections = list(
-            Detection.objects.filter(pk__in=requested, occurrence__project=occurrence.project).select_related(
-                "source_image"
-            )
+            Detection.objects.valid()
+            .filter(pk__in=requested, source_image__project=occurrence.project)
+            .select_related("source_image")
         )
         missing = sorted(set(requested) - {d.pk for d in detections})
         if missing:
