@@ -1191,10 +1191,19 @@ class TrainClassifierJob(JobType):
         from ami.ml.training_dispatch import send_training_request
 
         response = send_training_request(job=job, service=service, algorithm=algorithm, dataset=dataset)
+
+        # The service posts its callback before returning from /train, so a fast run is
+        # already finished by the time this line is reached. Writing this copy's progress
+        # would put the training stage back to "started" on a job that is done.
+        job.refresh_from_db()
+        if job.status in JobState.final_states():
+            job.logger.info(f"{service.name} already reported its result.")
+            return
+
         job.progress.update_stage(cls.STAGE_DISPATCH, status=JobState.SUCCESS, progress=1)
         job.progress.update_stage(cls.STAGE_TRAIN, status=JobState.STARTED, progress=0)
         job.logger.info(f"Training request accepted by {service.name}. Waiting for it to report back.")
-        job.save()
+        job.save(update_fields=["progress", "updated_at"])
 
         if response is None:
             # The service accepted the work and will post to the job's training-result
@@ -1220,6 +1229,15 @@ class TrainClassifierJob(JobType):
     @classmethod
     def record_result(cls, job: "Job", payload: dict) -> None:
         """Store what the service reported, register the new version, and finish the job."""
+        # A service posts its callback before returning from /train, so a fast run reports
+        # twice: once through the callback and once inline. Without this guard each retrain
+        # registered two algorithm versions. Re-read first, because the inline caller holds
+        # a copy from before the callback landed.
+        job.refresh_from_db(fields=["status", "result"])
+        if job.status in JobState.final_states():
+            job.logger.info("A training result is already recorded for this job; ignoring a duplicate.")
+            return
+
         result = payload.get("result") or {}
         job.result = payload
 
@@ -1227,6 +1245,10 @@ class TrainClassifierJob(JobType):
         # for instance after a restart. Make sure the stage exists before reporting into it.
         if not any(stage.key == cls.STAGE_TRAIN for stage in job.progress.stages):
             job.progress.add_stage("Training", cls.STAGE_TRAIN)
+        # A service that is reporting back plainly received the request, and the callback
+        # can arrive before the dispatching code closes that stage.
+        if any(stage.key == cls.STAGE_DISPATCH for stage in job.progress.stages):
+            job.progress.update_stage(cls.STAGE_DISPATCH, status=JobState.SUCCESS, progress=1)
 
         for warning in result.get("warnings", []):
             job.logger.warning(warning)
