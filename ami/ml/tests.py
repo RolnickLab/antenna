@@ -3529,3 +3529,67 @@ class TestTrainingConfigIsUsed(TestCase):
         self.assertEqual(payload["head_type"], "linear")
         # Not overridden, so it still comes from the config.
         self.assertEqual(payload["min_per_species"], 7)
+
+
+class TestTrainingResultIsRecordedOnce(TestCase):
+    """
+    A service posts its callback before returning from /train, so a fast run reports twice.
+    Only the first report may count, or each retrain registers two algorithm versions.
+    """
+
+    def setUp(self):
+        from ami.jobs.models import Job, TrainClassifierJob
+
+        self.project = Project.objects.create(name="Duplicate Result Project")
+        self.parent = get_or_create_algorithm_and_category_map(ALGORITHM_CHOICES["random-species-classifier"])
+        self.parent.trainable = True
+        self.parent.save()
+        self.job = Job.objects.create(
+            project=self.project,
+            name="Retrain",
+            job_type_key=TrainClassifierJob.key,
+            params={"algorithm_key": self.parent.key},
+        )
+        self.payload = {
+            "result": {
+                "labels": ["Alpha one", "Beta two"],
+                "rows": {"total": 10, "kept": 10, "train": 8, "test": 2},
+                "candidate_metrics": {"top1": 0.9, "n": 2},
+                "incumbent_metrics": {"top1": 0.5, "n": 2},
+                "trained_at": "2026-09-13T19:00:00",
+                "warnings": [],
+                "promote": True,
+            },
+            "dataset": {"rows": 10},
+            "dataset_url": "/media/training/x.npz",
+        }
+
+    def test_reporting_twice_registers_one_version(self):
+        from ami.jobs.models import TrainClassifierJob
+
+        before = Algorithm.objects.filter(name=self.parent.name).count()
+        TrainClassifierJob.record_result(job=self.job, payload=self.payload)
+        TrainClassifierJob.record_result(job=self.job, payload=self.payload)
+
+        self.assertEqual(Algorithm.objects.filter(name=self.parent.name).count(), before + 1)
+
+    def test_a_stale_copy_of_the_job_cannot_report_again(self):
+        """The inline caller holds a copy from before the callback landed."""
+        from ami.jobs.models import Job, TrainClassifierJob
+
+        stale = Job.objects.get(pk=self.job.pk)
+        TrainClassifierJob.record_result(job=self.job, payload=self.payload)
+
+        before = Algorithm.objects.filter(name=self.parent.name).count()
+        TrainClassifierJob.record_result(job=stale, payload=self.payload)
+        self.assertEqual(Algorithm.objects.filter(name=self.parent.name).count(), before)
+
+    def test_the_first_result_is_the_one_kept(self):
+        from ami.jobs.models import TrainClassifierJob
+
+        TrainClassifierJob.record_result(job=self.job, payload=self.payload)
+        second = {**self.payload, "result": {**self.payload["result"], "candidate_metrics": {"top1": 0.1}}}
+        TrainClassifierJob.record_result(job=self.job, payload=second)
+
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.result["result"]["candidate_metrics"]["top1"], 0.9)
