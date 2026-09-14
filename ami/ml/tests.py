@@ -29,7 +29,15 @@ from ami.main.models import (
     group_images_into_events,
 )
 from ami.ml import training_data
-from ami.ml.models import Algorithm, DetectionEmbedding, Pipeline, ProcessingService
+from ami.ml.models import (
+    Algorithm,
+    AlgorithmCategoryMap,
+    AlgorithmEvaluation,
+    DetectionEmbedding,
+    OccurrenceSet,
+    Pipeline,
+    ProcessingService,
+)
 from ami.ml.models.embedding import EMBEDDING_DIMENSIONS
 from ami.ml.models.pipeline import collect_images, get_or_create_algorithm_and_category_map, save_results
 from ami.ml.post_processing.small_size_filter import SmallSizeFilterTask
@@ -3593,3 +3601,134 @@ class TestTrainingResultIsRecordedOnce(TestCase):
 
         self.job.refresh_from_db()
         self.assertEqual(self.job.result["result"]["candidate_metrics"]["top1"], 0.9)
+
+
+class TestAlgorithmEvaluation(TestCase):
+    """
+    Scoring an algorithm against a fixed set of verified occurrences, so two models can be
+    compared on identical data.
+    """
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Evaluation Project")
+        self.user = User.objects.create_user(email="evaluator@example.com", password="testpass123")
+        self.taxa = [Taxon.objects.create(name=f"Evaluus {n}", rank=TaxonRank.SPECIES.name) for n in ("alpha", "beta")]
+        self.outsider_taxon = Taxon.objects.create(name="Outsideus ignotus", rank=TaxonRank.SPECIES.name)
+
+        self.algorithm = get_or_create_algorithm_and_category_map(ALGORITHM_CHOICES["random-species-classifier"])
+        self.category_map = AlgorithmCategoryMap.objects.create(
+            labels=[t.name for t in self.taxa],
+            data=[{"index": i, "label": t.name} for i, t in enumerate(self.taxa)],
+            version="eval-test",
+        )
+        self.algorithm.category_map = self.category_map
+        self.algorithm.save()
+
+        self.occurrence_set = OccurrenceSet.objects.create(name="Blind set")
+        self.occurrence_set.projects.add(self.project)
+
+    def _occurrence(self, truth, predicted=None, index=0):
+        """One verified occurrence, optionally with a prediction from the algorithm."""
+        image = SourceImage.objects.create(
+            path=f"ev{index}-{truth.pk}-2024010100{index:02d}00.jpg", project=self.project
+        )
+        detection = Detection.objects.create(source_image=image, bbox=[0, 0, 10, 10])
+        occurrence = detection.associate_new_occurrence()
+        Identification.objects.create(occurrence=occurrence, taxon=truth, user=self.user)
+        if predicted:
+            Classification.objects.create(
+                detection=detection,
+                taxon=predicted,
+                algorithm=self.algorithm,
+                score=0.9,
+                timestamp=datetime.datetime.now(),
+                category_map=self.category_map,
+            )
+        self.occurrence_set.occurrences.add(occurrence)
+        return occurrence
+
+    def test_a_perfect_run_scores_one(self):
+        from ami.ml import evaluation
+
+        for i, taxon in enumerate(self.taxa):
+            self._occurrence(truth=taxon, predicted=taxon, index=i)
+
+        result = evaluation.score(self.occurrence_set, self.algorithm)
+        self.assertEqual(result["micro_accuracy"], 1.0)
+        self.assertEqual(result["occurrences_scored"], 2)
+
+    def test_a_wrong_prediction_lowers_the_score(self):
+        from ami.ml import evaluation
+
+        self._occurrence(truth=self.taxa[0], predicted=self.taxa[0], index=0)
+        self._occurrence(truth=self.taxa[1], predicted=self.taxa[0], index=1)
+
+        result = evaluation.score(self.occurrence_set, self.algorithm)
+        self.assertEqual(result["micro_accuracy"], 0.5)
+
+    def test_species_the_algorithm_cannot_predict_are_left_out(self):
+        """Counting those wrong would punish a regional head for a question nobody asked it."""
+        from ami.ml import evaluation
+
+        self._occurrence(truth=self.taxa[0], predicted=self.taxa[0], index=0)
+        self._occurrence(truth=self.outsider_taxon, predicted=self.taxa[0], index=1)
+
+        result = evaluation.score(self.occurrence_set, self.algorithm)
+        self.assertEqual(result["occurrences_scored"], 1)
+        self.assertEqual(result["occurrences_skipped"], 1)
+        self.assertEqual(result["micro_accuracy"], 1.0)
+
+    def test_the_per_species_average_differs_from_the_plain_share(self):
+        """Long-tailed data: one common species must not hide failure on a rare one."""
+        from ami.ml import evaluation
+
+        for i in range(4):
+            self._occurrence(truth=self.taxa[0], predicted=self.taxa[0], index=i)
+        self._occurrence(truth=self.taxa[1], predicted=self.taxa[0], index=9)
+
+        result = evaluation.score(self.occurrence_set, self.algorithm)
+        self.assertEqual(result["micro_accuracy"], 0.8)
+        self.assertEqual(result["macro_accuracy"], 0.5)
+
+    def test_an_algorithm_that_never_ran_says_so(self):
+        """A missing step should read as a missing step, not an accuracy of zero."""
+        from ami.ml import evaluation
+
+        self._occurrence(truth=self.taxa[0], predicted=None, index=0)
+        with self.assertRaises(evaluation.NothingToScore):
+            evaluation.score(self.occurrence_set, self.algorithm)
+
+    def test_results_are_stored_per_species(self):
+        from ami.ml import evaluation
+
+        self._occurrence(truth=self.taxa[0], predicted=self.taxa[0], index=0)
+        self._occurrence(truth=self.taxa[1], predicted=self.taxa[0], index=1)
+
+        result = evaluation.score(self.occurrence_set, self.algorithm)
+        stored = evaluation.save_evaluation(self.occurrence_set, self.algorithm, result)
+
+        self.assertEqual(stored.micro_accuracy, 0.5)
+        self.assertEqual(stored.taxa.count(), 2)
+        self.assertEqual(stored.taxa.get(taxon=self.taxa[0]).accuracy, 1.0)
+        self.assertEqual(stored.taxa.get(taxon=self.taxa[1]).accuracy, 0.0)
+
+    def test_scoring_again_replaces_the_earlier_result(self):
+        """A second run over the same set is a correction, not a new fact."""
+        from ami.ml import evaluation
+
+        self._occurrence(truth=self.taxa[0], predicted=self.taxa[0], index=0)
+        result = evaluation.score(self.occurrence_set, self.algorithm)
+        evaluation.save_evaluation(self.occurrence_set, self.algorithm, result)
+        evaluation.save_evaluation(self.occurrence_set, self.algorithm, result)
+
+        self.assertEqual(
+            AlgorithmEvaluation.objects.filter(algorithm=self.algorithm, occurrence_set=self.occurrence_set).count(),
+            1,
+        )
+
+    def test_a_set_with_no_project_is_global(self):
+        """One set can compare models across projects."""
+        shared = OccurrenceSet.objects.create(name="Shared across projects")
+        self.assertTrue(shared.is_global)
+        self.assertFalse(self.occurrence_set.is_global)
+        self.assertIn(shared, OccurrenceSet.objects.for_project(self.project))
