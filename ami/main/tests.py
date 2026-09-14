@@ -1,5 +1,6 @@
 import copy
 import datetime
+import itertools
 import logging
 import re
 import typing
@@ -40,6 +41,7 @@ from ami.main.models import (
     TaxaList,
     Taxon,
     TaxonRank,
+    get_media_url,
     group_images_into_events,
 )
 from ami.ml.models.algorithm import Algorithm
@@ -8542,7 +8544,9 @@ class MergeCandidatesTestCase(TrackEditTestCase):
     look alike as crops, so the picker has to be ranked the way tracking would have
     ranked them, and has to say where each candidate sits in time. What these pin is
     that the ranking follows the tracking cost, that the time relation is signed the
-    right way, and that a candidate without a vector is still offered.
+    right way, that a candidate without a vector is still offered, that the search
+    covers the adjacent captures by default, and that the occurrences present at the
+    same time never crowd out the ones that could continue the track.
     """
 
     FRAME_SIZE = 1000
@@ -8630,7 +8634,7 @@ class MergeCandidatesTestCase(TrackEditTestCase):
         after = self._make_occurrence([self.after_capture], bbox=[10, 10, 40, 40])
         overlapping = self._make_occurrence([self.captures[1]], bbox=[10, 10, 40, 40])
 
-        response = self.get_candidates()
+        response = self.get_candidates("&overlapping=true")
         by_id = {row["id"]: row for row in response.data["candidates"]}
 
         self.assertEqual(by_id[before.pk]["relation"], "before")
@@ -8669,21 +8673,100 @@ class MergeCandidatesTestCase(TrackEditTestCase):
         self.assertAlmostEqual(by_id[unembedded.pk]["cost"], geometry_only, places=4)
         self.assertAlmostEqual(by_id[matching.pk]["cost"], geometry_only, places=4)
 
-    def test_the_window_bounds_what_is_offered(self):
-        later = self._make_capture(self.captures[-1].timestamp + datetime.timedelta(minutes=10))
-        distant = self._make_occurrence([later], bbox=[10, 10, 40, 40])
-        nearby = self._make_occurrence([self.after_capture], bbox=[10, 10, 40, 40])
+    def test_adjacent_captures_are_searched_by_default(self):
+        """The default search is the one capture on either side of the track, since that is
+        where the frame continuing it sits; `captures` widens it by count and `minutes` by time."""
+        next_capture = self._make_capture(self.after_capture.timestamp + datetime.timedelta(minutes=1))
+        adjacent = self._make_occurrence([self.after_capture], bbox=[10, 10, 40, 40])
+        one_further = self._make_occurrence([next_capture], bbox=[10, 10, 40, 40])
 
         default_ids = [row["id"] for row in self.get_candidates().data["candidates"]]
-        self.assertEqual(default_ids, [nearby.pk])
+        self.assertEqual(default_ids, [adjacent.pk])
 
-        widened_ids = [row["id"] for row in self.get_candidates("&minutes=15").data["candidates"]]
-        self.assertEqual(sorted(widened_ids), sorted([nearby.pk, distant.pk]))
+        two_capture_ids = [row["id"] for row in self.get_candidates("&captures=2").data["candidates"]]
+        self.assertEqual(sorted(two_capture_ids), sorted([adjacent.pk, one_further.pk]))
+
+        window_ids = [row["id"] for row in self.get_candidates("&minutes=15").data["candidates"]]
+        self.assertEqual(sorted(window_ids), sorted([adjacent.pk, one_further.pk]))
+
+    def _make_overlapping_occurrences(self, count: int, bbox: list[int]) -> list[Occurrence]:
+        """`count` single-frame occurrences spread over the track's own captures, each with
+        its box at `bbox`, written in bulk so a dense session is cheap to set up."""
+        occurrences = Occurrence.objects.bulk_create(
+            Occurrence(
+                event=self.event,
+                deployment=self.deployment,
+                project=self.project,
+                determination=self.taxon,
+                determination_score=0.9,
+            )
+            for _ in range(count)
+        )
+        Detection.objects.bulk_create(
+            Detection(
+                source_image=capture,
+                timestamp=capture.timestamp,
+                bbox=bbox,
+                occurrence=occurrence,
+                path=f"crops/{capture.pk}-{occurrence.pk}.jpg",
+            )
+            for occurrence, capture in zip(occurrences, itertools.cycle(self.captures))
+        )
+        return occurrences
+
+    def test_overlapping_candidates_are_hidden_unless_asked(self):
+        """In a dense session the occurrences present at the same time as the track outnumber
+        the ones that could continue it, and sit closer to its box, so they are left out by
+        default and, when asked for, follow every before or after candidate with their own cap."""
+        self._make_overlapping_occurrences(60, bbox=[10, 10, 40, 40])
+        neighbour = self._make_occurrence([self.after_capture], bbox=[14, 14, 44, 44])
+
+        response = self.get_candidates()
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual([row["id"] for row in response.data["candidates"]], [neighbour.pk])
+        self.assertEqual(response.data["overlapping_count"], 60)
+
+        response = self.get_candidates("&overlapping=true")
+        rows = response.data["candidates"]
+        self.assertEqual(rows[0]["id"], neighbour.pk, "The true neighbour leads despite its higher cost")
+        self.assertEqual([row["relation"] for row in rows[1:]], ["overlapping"] * 50)
+        self.assertEqual(response.data["overlapping_count"], 60)
+
+    def test_the_pair_frames_are_returned_for_comparison(self):
+        """Each row names both frames of the scored pair so the two crops can be shown side by
+        side: the track's first frame against a candidate before it, its last against one after."""
+        for detection in self.detections:
+            detection.path = f"crops/track-{detection.pk}.jpg"
+            detection.save(update_fields=["path"])
+        before = self._make_occurrence([self.before_capture], bbox=[10, 10, 40, 40])
+        after = self._make_occurrence([self.after_capture], bbox=[10, 10, 40, 40])
+
+        by_id = {row["id"]: row for row in self.get_candidates().data["candidates"]}
+
+        first, last = self.detections[0], self.detections[-1]
+        self.assertEqual(by_id[before.pk]["edge_image"], get_media_url(first.path))
+        self.assertEqual(by_id[before.pk]["edge_timestamp"], first.timestamp.isoformat())
+        self.assertEqual(by_id[before.pk]["capture_id"], self.before_capture.pk)
+        self.assertEqual(by_id[before.pk]["image_timestamp"], self.before_capture.timestamp.isoformat())
+        self.assertEqual(by_id[after.pk]["edge_image"], get_media_url(last.path))
+        self.assertEqual(by_id[after.pk]["edge_timestamp"], last.timestamp.isoformat())
+        self.assertEqual(by_id[after.pk]["capture_id"], self.after_capture.pk)
+        self.assertEqual(by_id[after.pk]["image_timestamp"], self.after_capture.timestamp.isoformat())
 
     def test_minutes_must_be_a_whole_number_within_range(self):
         for junk in ("abc", "0", "31", "-5"):
             self.assertEqual(self.get_candidates(f"&minutes={junk}").status_code, 400, junk)
         self.assertEqual(self.get_candidates("&minutes=30").status_code, 200)
+
+    def test_captures_and_minutes_are_validated(self):
+        """`captures` is a count within range, and it cannot be combined with `minutes`, since
+        each names a different search and the request would be ambiguous."""
+        for junk in ("abc", "0", "11"):
+            self.assertEqual(self.get_candidates(f"&captures={junk}").status_code, 400, junk)
+        response = self.get_candidates("&captures=1&minutes=5")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("minutes", response.data)
+        self.assertEqual(self.get_candidates("&captures=10").status_code, 200)
 
     def test_candidates_are_gated_like_the_merge_itself(self):
         self._make_occurrence([self.after_capture], bbox=[10, 10, 40, 40])
@@ -8706,8 +8789,9 @@ class MergeCandidatesTestCase(TrackEditTestCase):
             )
 
         # The savepoint pair, the object lookup with its permission checks, then the
-        # five ranking queries: two for frames, one for candidates, two for vectors.
-        with self.assertNumQueries(11):
+        # seven ranking queries: the track's frames, the capture ids before and after
+        # it, the frames in those captures, the candidates, and the two vector sides.
+        with self.assertNumQueries(13):
             response = self.get_candidates()
 
         self.assertEqual(response.status_code, 200, response.data)

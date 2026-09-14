@@ -2219,9 +2219,25 @@ class MergeCandidateSerializer(serializers.Serializer):
         "terms only when similarity is null.",
     )
     image = serializers.CharField(allow_null=True, help_text="A crop of the candidate, nearest frame first.")
+    capture_id = serializers.IntegerField(
+        allow_null=True,
+        help_text="The capture holding the candidate's frame in the scored pair, the one `image` is cropped from.",
+    )
+    image_timestamp = serializers.DateTimeField(allow_null=True, help_text="When that frame was captured.")
+    edge_image = serializers.CharField(
+        allow_null=True,
+        help_text="A crop of the requested occurrence's own frame in the scored pair: its first frame for a "
+        "candidate before it, its last for one after, whichever is nearest for an overlapping one.",
+    )
+    edge_timestamp = serializers.DateTimeField(allow_null=True, help_text="When that edge frame was captured.")
 
 
 class MergeCandidatesResponseSerializer(serializers.Serializer):
-    """Candidates ordered by cost, lowest first."""
+    """Candidates before or after the requested occurrence first, then any overlapping ones asked
+    for, each group ordered by cost, lowest first, and capped on its own."""
 
     candidates = MergeCandidateSerializer(many=True)
+    overlapping_count = serializers.IntegerField(
+        help_text="How many candidates were present at the same time as the requested occurrence, whether or "
+        "not they were returned.",
+    )

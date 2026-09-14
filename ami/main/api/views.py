@@ -35,7 +35,13 @@ from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
-from ami.main.models_future.merge_candidates import DEFAULT_WINDOW_MINUTES, MAX_WINDOW_MINUTES, rank_merge_candidates
+from ami.main.models_future.merge_candidates import (
+    DEFAULT_ADJACENT_CAPTURES,
+    MAX_ADJACENT_CAPTURES,
+    MAX_CANDIDATES,
+    MAX_WINDOW_MINUTES,
+    rank_merge_candidates,
+)
 from ami.main.models_future.occurrence import (
     model_agreement_for_project,
     occurrence_path,
@@ -53,6 +59,7 @@ from ami.main.models_future.tracks import (
 )
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
+from ami.utils.fields import url_boolean_param
 from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
@@ -1736,11 +1743,27 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         parameters=[
             project_id_doc_param,
             OpenApiParameter(
-                name="minutes",
-                description=f"How far from this occurrence's first and last frame to look, 1 to "
-                f"{MAX_WINDOW_MINUTES}. Default {DEFAULT_WINDOW_MINUTES}.",
+                name="captures",
+                description=f"How many captures before this occurrence's first frame and after its last frame "
+                f"to search, 1 to {MAX_ADJACENT_CAPTURES}. Default {DEFAULT_ADJACENT_CAPTURES}. Cannot be "
+                "combined with `minutes`.",
                 required=False,
                 type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="minutes",
+                description=f"Search a time window of this many minutes around this occurrence's first and last "
+                f"frame instead of the adjacent captures, 1 to {MAX_WINDOW_MINUTES}. Cannot be combined with "
+                "`captures`.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="overlapping",
+                description="Also return the candidates present at the same time as this occurrence, after all "
+                f"the before and after ones. Each group holds at most {MAX_CANDIDATES} rows. Default false.",
+                required=False,
+                type=OpenApiTypes.BOOL,
             ),
         ],
         responses=MergeCandidatesResponseSerializer,
@@ -1749,21 +1772,40 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     def merge_candidates(self, request: Request, pk=None) -> Response:
         """Occurrences of this session that this one could be merged with, best fit first.
 
-        Ranked by the tracking method's matching cost between the two frames nearest
-        in time, so the occurrence tracking most nearly linked comes first. Drawn from
+        Searches the captures adjacent to this occurrence, or a time window around it,
+        and ranks what it finds by the tracking method's matching cost between the two
+        frames nearest in time, so the occurrence tracking most nearly linked comes
+        first. Candidates before or after this occurrence come ahead of those present
+        at the same time, which are left out unless `overlapping` is set. Drawn from
         the same queryset the merge action resolves its sources from, so everything
         offered here can be merged.
         """
         occurrence = self.get_object()
-        minutes = SingleParamSerializer[int].clean(
-            param_name="minutes",
+        if "captures" in request.query_params and "minutes" in request.query_params:
+            raise api_exceptions.ValidationError(
+                {"minutes": "Pass either `captures` or `minutes` to choose where to search, not both."}
+            )
+        captures = SingleParamSerializer[int].clean(
+            param_name="captures",
             field=serializers.IntegerField(
-                required=False, min_value=1, max_value=MAX_WINDOW_MINUTES, default=DEFAULT_WINDOW_MINUTES
+                required=False, min_value=1, max_value=MAX_ADJACENT_CAPTURES, default=DEFAULT_ADJACENT_CAPTURES
             ),
             data=request.query_params,
         )
-        candidates = rank_merge_candidates(occurrence, self.get_queryset().prefetch_related(None), minutes=minutes)
-        return Response(MergeCandidatesResponseSerializer({"candidates": candidates}).data)
+        minutes = SingleParamSerializer[int].clean(
+            param_name="minutes",
+            field=serializers.IntegerField(required=False, min_value=1, max_value=MAX_WINDOW_MINUTES),
+            data=request.query_params,
+        )
+        overlapping = url_boolean_param(request, "overlapping", default=False)
+        ranked = rank_merge_candidates(
+            occurrence,
+            self.get_queryset().prefetch_related(None),
+            minutes=minutes,
+            captures=captures,
+            include_overlapping=overlapping,
+        )
+        return Response(MergeCandidatesResponseSerializer(ranked).data)
 
     @extend_schema(request=OccurrenceAddDetectionsSerializer, responses=OccurrenceGroupingSerializer)
     @action(detail=True, methods=["post"], name="add-detections", url_path="add-detections")
