@@ -1,7 +1,11 @@
 import { FormError } from 'components/form/layout/layout'
 import { useMergeOccurrences } from 'data-services/hooks/occurrences/track/useMergeOccurrences'
 import { useSetGroupingVerified } from 'data-services/hooks/occurrences/track/useSetGroupingVerified'
-import { useMergeCandidates } from 'data-services/hooks/occurrences/useMergeCandidates'
+import {
+  MERGE_SCOPES,
+  MergeScopeKey,
+  useMergeCandidates,
+} from 'data-services/hooks/occurrences/useMergeCandidates'
 import { OccurrenceDetails } from 'data-services/models/occurrence-details'
 import { GitMergeIcon, Loader2Icon } from 'lucide-react'
 import { Badge, Button } from 'nova-ui-kit'
@@ -12,6 +16,8 @@ import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
 import { OccurrencePicker } from 'components/track/occurrence-picker'
 import { TrackEditDialog } from 'components/track/track-edit-dialog'
+
+const DEFAULT_SCOPE: MergeScopeKey = 'next'
 
 export const GroupingActions = ({
   canRestructure,
@@ -24,7 +30,9 @@ export const GroupingActions = ({
 }) => {
   const { projectId } = useParams()
   const [mergeOpen, setMergeOpen] = useState(false)
-  const [sourceId, setSourceId] = useState<string>()
+  const [sourceIds, setSourceIds] = useState<string[]>([])
+  const [scope, setScope] = useState<MergeScopeKey>(DEFAULT_SCOPE)
+  const [showOverlapping, setShowOverlapping] = useState(false)
 
   const merge = useMergeOccurrences(occurrence.id)
   const {
@@ -33,13 +41,19 @@ export const GroupingActions = ({
     isLoading: verifyLoading,
   } = useSetGroupingVerified(occurrence.id)
 
+  const mergeScope =
+    MERGE_SCOPES.find((option) => option.key === scope) ?? MERGE_SCOPES[0]
+
   const {
     candidates,
     isLoading: candidatesLoading,
-    minutes,
+    overlappingCount,
   } = useMergeCandidates({
+    captures: mergeScope.captures,
     enabled: mergeOpen,
+    minutes: mergeScope.minutes,
     occurrenceId: occurrence.id,
+    overlapping: showOverlapping,
     projectId: projectId as string,
   })
 
@@ -49,9 +63,31 @@ export const GroupingActions = ({
     ? parseServerError(verifyError).message
     : undefined
 
+  const toggleSource = (id: string) =>
+    setSourceIds((ids) =>
+      ids.includes(id) ? ids.filter((other) => other !== id) : [...ids, id]
+    )
+
+  const changeScope = (key: MergeScopeKey) => {
+    setScope(key)
+    setSourceIds([])
+  }
+
+  // A ticked row that disappears from the list must not be merged unseen.
+  const changeShowOverlapping = (value: boolean) => {
+    setShowOverlapping(value)
+
+    if (!value) {
+      const hidden = candidates
+        .filter((candidate) => candidate.relation === 'overlapping')
+        .map((candidate) => candidate.id)
+      setSourceIds((ids) => ids.filter((id) => !hidden.includes(id)))
+    }
+  }
+
   const closeMerge = () => {
     setMergeOpen(false)
-    setSourceId(undefined)
+    setSourceIds([])
     merge.reset()
   }
 
@@ -106,13 +142,17 @@ export const GroupingActions = ({
       {verifyErrorMessage ? <FormError message={verifyErrorMessage} /> : null}
 
       <TrackEditDialog
-        confirmDisabled={!sourceId}
-        confirmLabel={translate(STRING.TRACK_MERGE)}
-        description={translate(STRING.TRACK_MERGE_DESCRIPTION)}
+        confirmDisabled={!sourceIds.length}
+        confirmLabel={
+          sourceIds.length === 1
+            ? translate(STRING.TRACK_MERGE_ONE)
+            : translate(STRING.TRACK_MERGE_COUNT, { count: sourceIds.length })
+        }
+        description={translate(STRING.TRACK_MERGE_MANY_DESCRIPTION)}
         error={merge.error}
         isLoading={merge.isLoading}
         isWide
-        onConfirm={() => merge.mergeOccurrences([sourceId as string])}
+        onConfirm={() => merge.mergeOccurrences(sourceIds)}
         onOpenChange={(open) => (open ? undefined : closeMerge())}
         open={mergeOpen}
         result={
@@ -127,16 +167,19 @@ export const GroupingActions = ({
         {merge.result ? null : (
           <OccurrencePicker
             candidates={candidates}
-            description={translate(STRING.TRACK_MERGE_CANDIDATES_SCOPE, {
-              minutes,
+            description={translate(STRING.TRACK_MERGE_SCOPE_DESCRIPTION, {
+              scope: translate(mergeScope.label).toLowerCase(),
             })}
-            emptyMessage={translate(STRING.TRACK_NO_MERGE_CANDIDATES, {
-              minutes,
-            })}
+            emptyMessage={translate(STRING.TRACK_NO_MERGE_CANDIDATES_SCOPE)}
             isLoading={candidatesLoading}
-            onSelect={setSourceId}
-            selectedId={sourceId}
-            title={translate(STRING.TRACK_MERGE_CANDIDATES, { minutes })}
+            onScopeChange={changeScope}
+            onShowOverlappingChange={changeShowOverlapping}
+            onToggle={toggleSource}
+            overlappingCount={overlappingCount}
+            scope={scope}
+            selectedIds={sourceIds}
+            showOverlapping={showOverlapping}
+            title={translate(STRING.TRACK_MERGE_CANDIDATES_TITLE)}
           />
         )}
       </TrackEditDialog>

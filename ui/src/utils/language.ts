@@ -383,10 +383,17 @@ export enum STRING {
   TRACK_FRAME_MENU,
   TRACK_HIDE_PATH,
   TRACK_LOADING_PATH,
+  TRACK_GAP_AFTER,
+  TRACK_GAP_BEFORE,
   TRACK_GROUPING_CONFIRMED_BY,
   TRACK_GROUPING_CONFIRMED,
   TRACK_GROUPING_NOT_CONFIRMED,
   TRACK_MERGE_CANDIDATES_SCOPE,
+  TRACK_MERGE_CANDIDATES_TITLE,
+  TRACK_MERGE_COUNT,
+  TRACK_MERGE_MANY_DESCRIPTION,
+  TRACK_MERGE_ONE,
+  TRACK_MERGE_SCOPE_DESCRIPTION,
   TRACK_MERGE_CANDIDATES,
   TRACK_MERGE_DESCRIPTION,
   TRACK_MERGE_RESULT,
@@ -395,6 +402,7 @@ export enum STRING {
   TRACK_MOVE_FRAME,
   TRACK_MOVE_RESULT,
   TRACK_NO_MERGE_CANDIDATES,
+  TRACK_NO_MERGE_CANDIDATES_SCOPE,
   TRACK_OFFSET_HOURS,
   TRACK_OFFSET_MINUTES,
   TRACK_OFFSET_SECONDS,
@@ -411,6 +419,14 @@ export enum STRING {
   TRACK_REMOVE_DESCRIPTION,
   TRACK_REMOVE_FRAME,
   TRACK_REMOVE_RESULT,
+  TRACK_SCOPE_LABEL,
+  TRACK_SCOPE_MINUTES_30,
+  TRACK_SCOPE_MINUTES_5,
+  TRACK_SCOPE_NEAR,
+  TRACK_SCOPE_NEXT,
+  TRACK_SELECT_ALL,
+  TRACK_SELECT_ROW,
+  TRACK_SHOW_OVERLAPPING,
   TRACK_SPLIT_DESCRIPTION,
   TRACK_SHOWING_PART_OF_PATH,
   TRACK_SHOW_PATH,
@@ -886,6 +902,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_FRAME_MENU]: 'Frame actions',
   [STRING.TRACK_HIDE_PATH]: 'Hide path',
   [STRING.TRACK_LOADING_PATH]: 'Loading path',
+  [STRING.TRACK_GAP_AFTER]: '+{{time}}',
+  [STRING.TRACK_GAP_BEFORE]: '−{{time}}',
   [STRING.TRACK_GROUPING_CONFIRMED_BY]: 'by {{name}} on {{date}}',
   [STRING.TRACK_GROUPING_CONFIRMED]: 'Grouping confirmed',
   [STRING.TRACK_GROUPING_NOT_CONFIRMED]:
@@ -893,6 +911,13 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_MERGE_CANDIDATES_SCOPE]:
     'Occurrences from this session with a frame within {{minutes}} minutes of this one, best match by the tracking method first. Distance and similarity compare the two frames nearest in time.',
   [STRING.TRACK_MERGE_CANDIDATES]: 'Candidates within {{minutes}} minutes',
+  [STRING.TRACK_MERGE_CANDIDATES_TITLE]: 'Candidates to merge',
+  [STRING.TRACK_MERGE_COUNT]: 'Merge {{count}} occurrences',
+  [STRING.TRACK_MERGE_MANY_DESCRIPTION]:
+    'The detections and identifications of the occurrences you tick move here, and those occurrences are deleted. Only occurrences from this session can be merged.',
+  [STRING.TRACK_MERGE_ONE]: 'Merge 1 occurrence',
+  [STRING.TRACK_MERGE_SCOPE_DESCRIPTION]:
+    'Searching {{scope}}. Occurrences seen just before or after this one come first, best match by the tracking method at the top. Distance and similarity compare the two frames nearest in time.',
   [STRING.TRACK_MERGE_DESCRIPTION]:
     'The detections and identifications of the occurrence you pick move here, and that occurrence is deleted. Only occurrences from this session can be merged.',
   [STRING.TRACK_MERGE_RESULT]:
@@ -905,6 +930,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'Moved. Occurrence #{{id}} now holds {{count}} frames.',
   [STRING.TRACK_NO_MERGE_CANDIDATES]:
     'No other occurrence of this session has a frame within {{minutes}} minutes of this one.',
+  [STRING.TRACK_NO_MERGE_CANDIDATES_SCOPE]:
+    'No other occurrence of this session was found in this scope. Widen the scope, or show the overlapping ones.',
   [STRING.TRACK_OFFSET_HOURS]: '{{hours}} h {{minutes}} min',
   [STRING.TRACK_OFFSET_MINUTES]: '{{count}} min',
   [STRING.TRACK_OFFSET_SECONDS]: '{{count}} s',
@@ -926,6 +953,14 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_REMOVE_FRAME]: 'Remove this frame',
   [STRING.TRACK_REMOVE_RESULT]:
     'Removed. The frame is now occurrence #{{id}} on its own.',
+  [STRING.TRACK_SCOPE_LABEL]: 'Search scope',
+  [STRING.TRACK_SCOPE_MINUTES_30]: '±30 minutes',
+  [STRING.TRACK_SCOPE_MINUTES_5]: '±5 minutes',
+  [STRING.TRACK_SCOPE_NEAR]: '3 captures either side',
+  [STRING.TRACK_SCOPE_NEXT]: 'Adjacent captures',
+  [STRING.TRACK_SELECT_ALL]: 'Select all shown',
+  [STRING.TRACK_SELECT_ROW]: 'Select {{name}}',
+  [STRING.TRACK_SHOW_OVERLAPPING]: 'Show {{count}} overlapping',
   [STRING.TRACK_SPLIT_DESCRIPTION]:
     'Everything from {{time}} onwards — {{moved}} of {{total}} frames — becomes a new occurrence. The earlier frames stay here.',
   [STRING.TRACK_SHOWING_PART_OF_PATH]: 'Showing {{shown}} of {{total}} frames',

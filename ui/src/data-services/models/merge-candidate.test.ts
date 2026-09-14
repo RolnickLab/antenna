@@ -1,5 +1,6 @@
 import {
   convertMergeCandidate,
+  getComparisonSides,
   getDistanceLabel,
   getSimilarityLabel,
   getWhenLabel,
@@ -22,6 +23,10 @@ const serverCandidate = (
   similarity: 0.987,
   cost: 0.5,
   image: 'https://example.com/crop.jpg',
+  capture_id: 11,
+  image_timestamp: '2026-09-09T02:03:00',
+  edge_image: 'https://example.com/edge.jpg',
+  edge_timestamp: '2026-09-09T02:01:00',
   ...overrides,
 })
 
@@ -42,6 +47,49 @@ describe('merge candidate conversion', () => {
 
     expect(candidate.displayName).toBe('#7')
     expect(candidate.images).toEqual([])
+  })
+})
+
+describe('comparison sides', () => {
+  const candidateCrop = 'https://example.com/crop.jpg'
+  const edgeCrop = 'https://example.com/edge.jpg'
+  const srcs = (server: Partial<ServerMergeCandidate>) => {
+    const sides = getComparisonSides(
+      convertMergeCandidate(serverCandidate(server))
+    )
+    return [sides.left.src, sides.right.src, sides.gapLabel]
+  }
+
+  test('a "before" candidate sits on the left with a negative gap', () => {
+    expect(srcs({ relation: 'before', time_offset_seconds: -40 })).toEqual([
+      candidateCrop,
+      edgeCrop,
+      '−40 s',
+    ])
+  })
+
+  test('an "after" candidate sits on the right with a positive gap', () => {
+    expect(srcs({ relation: 'after', time_offset_seconds: 120 })).toEqual([
+      edgeCrop,
+      candidateCrop,
+      '+2 min',
+    ])
+  })
+
+  test('an overlapping candidate sits on the left and reads as overlapping', () => {
+    expect(srcs({ relation: 'overlapping', time_offset_seconds: 0 })).toEqual([
+      candidateCrop,
+      edgeCrop,
+      'Overlaps',
+    ])
+  })
+
+  test('a missing edge crop leaves that side empty rather than failing', () => {
+    expect(srcs({ relation: 'after', edge_image: null })).toEqual([
+      null,
+      candidateCrop,
+      '+2 min',
+    ])
   })
 })
 
