@@ -76,6 +76,27 @@ export const columns = ({
     sortField: 'updated_at',
     renderCell: (item: TaxaList) => <DateTableCell date={item.updatedAt} />,
   },
+  {
+    id: 'best-model',
+    name: translate(STRING.FIELD_LABEL_BEST_MODEL),
+    renderCell: (item: TaxaList) =>
+      item.bestModel ? (
+        <Link
+          to={APP_ROUTES.ALGORITHM_DETAILS({
+            projectId,
+            algorithmId: item.bestModel.id,
+          })}
+        >
+          <BasicTableCell
+            style={{ width: '240px', whiteSpace: 'normal' }}
+            theme={CellTheme.Primary}
+            value={item.bestModel.name}
+          />
+        </Link>
+      ) : (
+        <BasicTableCell value={translate(STRING.VALUE_NOT_AVAILABLE)} />
+      ),
+  },
 
   {
     id: 'actions',

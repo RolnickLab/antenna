@@ -1,6 +1,20 @@
 import { Entity, ServerEntity } from 'data-services/models/entity'
 
+export type ServerTaxaListBestModel = {
+  id: number
+  name: string
+  accuracy: number | null
+  accuracy_by_species: number | null
+  occurrence_set: string
+}
+
+export interface TaxaListBestModel {
+  id: string
+  name: string
+}
+
 export type ServerTaxaList = ServerEntity & {
+  best_model: ServerTaxaListBestModel | null // Highest scoring algorithm on these taxa
   projects: number[] // Array of project IDs
   taxa: string // URL to taxa API endpoint (filtered by this taxa list)
   taxa_count: number // Number of taxa in list
@@ -13,6 +27,12 @@ export class TaxaList extends Entity {
     super(taxaList)
 
     this._taxaList = taxaList
+  }
+
+  get bestModel(): TaxaListBestModel | undefined {
+    const model = this._taxaList.best_model
+
+    return model ? { id: `${model.id}`, name: model.name } : undefined
   }
 
   get taxaCount() {

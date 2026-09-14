@@ -114,6 +114,16 @@ export const columns: (project: {
     ),
   },
   {
+    id: 'training-images-ready',
+    name: translate(STRING.FIELD_LABEL_TRAINING_IMAGES_READY),
+    styles: {
+      textAlign: TextAlign.Right,
+    },
+    renderCell: (item: Species) => (
+      <BasicTableCell value={item.numTrainingCrops} />
+    ),
+  },
+  {
     id: 'best-determination-score',
     name: translate(STRING.FIELD_LABEL_BEST_SCORE),
     sortField: 'best_determination_score',

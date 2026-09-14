@@ -80,6 +80,10 @@ export class Species extends Taxon {
     return this._species.occurrences_count ?? 0
   }
 
+  get numTrainingCrops(): number {
+    return this._species.training_crops_ready ?? 0
+  }
+
   get numVerified(): number {
     return this._species.verified_count ?? 0
   }

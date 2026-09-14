@@ -42,6 +42,7 @@ export const Species = () => {
     'last-seen': true,
     occurrences: true,
     verified: true,
+    'training-images-ready': true,
     'best-determination-score': true,
     'created-at': false,
     'updated-at': false,
