@@ -87,3 +87,15 @@ tests + `tsc` + lint per the repo checklists.
   track prompt to merge the whole track.
 - D: job with `dry_run=true` logs links/tracks/histogram and leaves the database unchanged (assert counts in a test).
 - E: on the benchmark windows, gap-bridging does not add a single cross-species link in the hand-checked set.
+
+## Decisions from hands-on testing (2026-09-15)
+
+- **A detection on a capture the track already covers is a second individual.** One animal cannot appear twice in
+  one capture, so the merge picker never offers such candidates and extend mode refuses the click. They are not shown
+  greyed out: in review they were a distraction.
+- **Candidates that fall in a gap of the track are offered by default**, labelled "In a gap". Their time span overlaps
+  the track's, but they share no capture with it: typically the tracker lost the animal for a few captures and the
+  detector's later boxes became a separate short occurrence.
+- **Later feature: a list of similar or confusing detections.** The co-occurring individuals dropped from the picker
+  are still useful as a separate view, for example "other insects in the same captures" or "look-alikes nearby", to
+  help a reviewer tell two individuals apart. Not scheduled.
