@@ -6,11 +6,14 @@ import { MouseEvent, useMemo } from 'react'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { STRING, translate } from 'utils/language'
 import { dateToValue } from '../utils'
-import { buildOccurrenceTimeline } from './occurrence-timeline'
+import {
+  buildOccurrenceTimeline,
+  getDurationLabel,
+} from './occurrence-timeline'
 
-// Green first: the plot's detection spikes are blue, so a blue lane would blend in.
+// Nova's Emerald first: the plot's detection spikes are blue, so a blue lane would blend in.
 const LANE_COLORS = [
-  CONSTANTS.COLORS.success[700],
+  CONSTANTS.COLORS.success[500],
   CONSTANTS.COLORS.warning[600],
   CONSTANTS.COLORS.alert[700],
   CONSTANTS.COLORS.primary[500],
@@ -107,9 +110,10 @@ const OccurrenceLane = ({
               })
             : translate(STRING.TIMELINE_OCCURRENCE_SPAN, {
                 count: String(span.frames.length),
-                end: formatTime(last.timestamp),
+                duration: getDurationLabel(
+                  last.timestamp.getTime() - first.timestamp.getTime()
+                ),
                 id: occurrenceId,
-                start: formatTime(first.timestamp),
               }),
         left: toPercent(span.start),
         right: toPercent(span.end),

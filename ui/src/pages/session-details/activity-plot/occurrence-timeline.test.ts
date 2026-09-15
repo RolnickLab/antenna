@@ -1,5 +1,9 @@
 import { TimelineTick } from 'data-services/models/timeline-tick'
-import { buildOccurrenceTimeline, TimelineSpan } from './occurrence-timeline'
+import {
+  buildOccurrenceTimeline,
+  TimelineSpan,
+  getDurationLabel,
+} from './occurrence-timeline'
 
 const at = (minute: number, second = 0) =>
   new Date(2026, 8, 1, 22, minute, second)
@@ -87,5 +91,13 @@ describe('buildOccurrenceTimeline', () => {
 
     expect(bounds(spans)).toEqual([{ start: at(0), end: at(2) }])
     expect(spans[0].frames.map((f) => f.captureId)).toEqual(['c0', 'c2'])
+  })
+})
+
+describe('getDurationLabel', () => {
+  test('rounds to seconds, minutes, or hours and minutes', () => {
+    expect(getDurationLabel(2_000)).toBe('2 s')
+    expect(getDurationLabel((8 * 60 + 22) * 1000)).toBe('8 min')
+    expect(getDurationLabel(72 * 60 * 1000)).toBe('1 h 12 min')
   })
 })

@@ -374,6 +374,9 @@ export enum STRING {
   TERMINAL_CLASSIFICATION,
   TIMELINE_OCCURRENCE_FRAME,
   TIMELINE_OCCURRENCE_SPAN,
+  TIMELINE_DURATION_SECONDS,
+  TIMELINE_DURATION_MINUTES,
+  TIMELINE_DURATION_HOURS,
   TIP,
   TRACK_CANDIDATE_IN_GAP,
   TRACK_CLEARS_CONFIRMATION,
@@ -930,9 +933,13 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SUMMARY]: 'Summary',
   [STRING.TABLE_COLUMNS]: 'Table columns',
   [STRING.TERMINAL_CLASSIFICATION]: 'Terminal classification',
-  [STRING.TIMELINE_OCCURRENCE_FRAME]: 'Occurrence #{{id}} at {{time}}',
+  [STRING.TIMELINE_OCCURRENCE_FRAME]:
+    'Occurrence #{{id}}: 1 capture at {{time}}',
   [STRING.TIMELINE_OCCURRENCE_SPAN]:
-    'Occurrence #{{id}}: {{count}} frames, {{start}} to {{end}}',
+    'Occurrence #{{id}}: {{count}} captures over {{duration}}',
+  [STRING.TIMELINE_DURATION_SECONDS]: '{{seconds}} s',
+  [STRING.TIMELINE_DURATION_MINUTES]: '{{minutes}} min',
+  [STRING.TIMELINE_DURATION_HOURS]: '{{hours}} h {{minutes}} min',
   [STRING.TIP]: 'Tip',
   [STRING.TRACK_CANDIDATE_IN_GAP]:
     "Falls inside this track's time span, in a gap between its frames. The time is measured from the nearest track frame.",
