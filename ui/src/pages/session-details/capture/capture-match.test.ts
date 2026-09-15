@@ -10,12 +10,12 @@ import {
 
 type MatchFields = Pick<
   CaptureMatch,
-  'likelihood' | 'relation' | 'skippedReason' | 'wouldLink'
+  'likelihood' | 'referenceCaptureOffset' | 'skippedReason' | 'wouldLink'
 >
 
 const match = (fields: Partial<MatchFields> = {}): MatchFields => ({
   likelihood: null,
-  relation: 'after',
+  referenceCaptureOffset: 1,
   skippedReason: null,
   wouldLink: false,
   ...fields,
@@ -105,10 +105,28 @@ describe('getMatchNotes', () => {
     )
   })
 
-  test('a box on a capture inside a gap of the track is marked as a preview', () => {
-    expect(getMatchNotes(match({ likelihood: 0.7, relation: 'gap' }))).toEqual([
-      { isEmphasis: false, string: STRING.TRACK_MATCH_GAP_NOTE },
+  test('a track frame more than one capture away is named, with how many', () => {
+    expect(getMatchNotes(match({ referenceCaptureOffset: 3 }))).toEqual([
+      {
+        isEmphasis: false,
+        string: STRING.TRACK_MATCH_REFERENCE_EARLIER,
+        values: { count: 3 },
+      },
     ])
+    expect(getMatchNotes(match({ referenceCaptureOffset: -4 }))).toEqual([
+      {
+        isEmphasis: false,
+        string: STRING.TRACK_MATCH_REFERENCE_LATER,
+        values: { count: 4 },
+      },
+    ])
+  })
+
+  test('the adjacent capture, or an unknown distance, adds no note', () => {
+    expect(getMatchNotes(match({ referenceCaptureOffset: 1 }))).toEqual([])
+    expect(getMatchNotes(match({ referenceCaptureOffset: -1 }))).toEqual([])
+    expect(getMatchNotes(match({ referenceCaptureOffset: null }))).toEqual([])
+    expect(getMatchNotes(undefined)).toEqual([])
   })
 
   test('a box without a feature vector says tracking would skip it', () => {
@@ -117,11 +135,6 @@ describe('getMatchNotes', () => {
     ).toEqual([
       { isEmphasis: false, string: STRING.TRACK_MATCH_SKIPPED_NO_VECTOR },
     ])
-  })
-
-  test('an ordinary candidate beside the track has no notes', () => {
-    expect(getMatchNotes(match({ likelihood: 0.7 }))).toEqual([])
-    expect(getMatchNotes(undefined)).toEqual([])
   })
 })
 

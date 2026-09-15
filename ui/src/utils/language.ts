@@ -430,10 +430,11 @@ export enum STRING {
   TRACK_MATCH_CLICK_CHOOSE,
   TRACK_MATCH_CLICK_REMOVE,
   TRACK_MATCH_CLICK_REPLACE,
-  TRACK_MATCH_GAP_NOTE,
   TRACK_MATCH_LABEL,
   TRACK_MATCH_LIKELY,
   TRACK_MATCH_POSSIBLE,
+  TRACK_MATCH_REFERENCE_EARLIER,
+  TRACK_MATCH_REFERENCE_LATER,
   TRACK_MATCH_SAME_SPECIES,
   TRACK_MATCH_SCORE,
   TRACK_MATCH_SKIPPED_NO_VECTOR,
@@ -1018,11 +1019,13 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_MATCH_CLICK_REMOVE]: 'Click to remove from the track',
   [STRING.TRACK_MATCH_CLICK_REPLACE]:
     "Click to replace the track's frame on this capture",
-  [STRING.TRACK_MATCH_GAP_NOTE]:
-    'The track skips this capture, so this only previews the pairing rule',
   [STRING.TRACK_MATCH_LABEL]: 'Match',
   [STRING.TRACK_MATCH_LIKELY]: 'Likely',
   [STRING.TRACK_MATCH_POSSIBLE]: 'Possible',
+  [STRING.TRACK_MATCH_REFERENCE_EARLIER]:
+    "Compared with the track's frame {{count}} captures earlier",
+  [STRING.TRACK_MATCH_REFERENCE_LATER]:
+    "Compared with the track's frame {{count}} captures later",
   [STRING.TRACK_MATCH_SAME_SPECIES]:
     '{{count}} more of this species on this capture',
   [STRING.TRACK_MATCH_SCORE]: '{{level}} ({{percent}}%)',

@@ -22,7 +22,7 @@ type Rgb = [number, number, number]
 
 type MatchFields = Pick<
   CaptureMatch,
-  'likelihood' | 'relation' | 'skippedReason' | 'wouldLink'
+  'likelihood' | 'referenceCaptureOffset' | 'skippedReason' | 'wouldLink'
 >
 
 const hexToRgb = (hex: string): Rgb => [
@@ -47,7 +47,7 @@ const toCss = ([r, g, b]: Rgb, alpha?: number) =>
  * glow, and a box it would skip is dotted gray. No score counts as 0.
  */
 export const getMatchBoxStyle = (
-  match?: Omit<MatchFields, 'relation'>
+  match?: Omit<MatchFields, 'referenceCaptureOffset'>
 ): { outlineColor: string; outlineStyle?: 'dotted'; boxShadow: string } => {
   const gray = hexToRgb(UNLIKELY_MATCH_COLOR)
   const green = hexToRgb(BEST_MATCH_COLOR)
@@ -95,17 +95,30 @@ export const getMatchLevel = (likelihood: number): STRING =>
 /** Lines under a candidate's scores: what the tracker itself would do, and when the preview is only indicative. */
 export const getMatchNotes = (
   match?: MatchFields
-): { isEmphasis: boolean; string: STRING }[] => [
-  ...(match?.wouldLink
-    ? [{ isEmphasis: true, string: STRING.TRACK_MATCH_WOULD_LINK }]
-    : []),
-  ...(match?.relation === 'gap'
-    ? [{ isEmphasis: false, string: STRING.TRACK_MATCH_GAP_NOTE }]
-    : []),
-  ...(match?.skippedReason === 'no_vector'
-    ? [{ isEmphasis: false, string: STRING.TRACK_MATCH_SKIPPED_NO_VECTOR }]
-    : []),
-]
+): { isEmphasis: boolean; string: STRING; values?: { count: number } }[] => {
+  const offset = match?.referenceCaptureOffset ?? null
+
+  return [
+    ...(match?.wouldLink
+      ? [{ isEmphasis: true, string: STRING.TRACK_MATCH_WOULD_LINK }]
+      : []),
+    ...(offset !== null && Math.abs(offset) > 1
+      ? [
+          {
+            isEmphasis: false,
+            string:
+              offset > 0
+                ? STRING.TRACK_MATCH_REFERENCE_EARLIER
+                : STRING.TRACK_MATCH_REFERENCE_LATER,
+            values: { count: Math.abs(offset) },
+          },
+        ]
+      : []),
+    ...(match?.skippedReason === 'no_vector'
+      ? [{ isEmphasis: false, string: STRING.TRACK_MATCH_SKIPPED_NO_VECTOR }]
+      : []),
+  ]
+}
 
 type SpeciesFields = Pick<
   CaptureDetection,

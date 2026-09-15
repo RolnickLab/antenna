@@ -26,6 +26,8 @@ export interface ServerCaptureMatches {
     capture_id: number
     timestamp: string
     relation: CaptureMatchRelation
+    capture_offset?: number | null
+    skipped_reason: 'no_vector' | null
   } | null
   detections: ServerCaptureMatch[]
 }
@@ -41,12 +43,12 @@ export interface CaptureMatch {
   /** Null when either box has no feature vector. */
   similarity: number | null
   timeOffsetSeconds: number | null
-  /** Null when the track has no frame on another capture to compare against. */
-  relation: CaptureMatchRelation | null
   /** The one box the tracker's own matcher would link the reference frame to. */
   wouldLink: boolean
   /** Why the tracker would leave the box out, even though it is scored. */
   skippedReason: 'no_vector' | null
+  /** Captures from the reference frame to this one, signed like the time offset; 1 is adjacent. */
+  referenceCaptureOffset: number | null
 }
 
 export const convertCaptureMatches = (
@@ -60,9 +62,9 @@ export const convertCaptureMatches = (
       distance: row.distance,
       similarity: row.similarity,
       timeOffsetSeconds: row.time_offset_seconds,
-      relation: data.reference?.relation ?? null,
       wouldLink: !!row.would_link,
       skippedReason: row.skipped_reason ?? null,
+      referenceCaptureOffset: data.reference?.capture_offset ?? null,
     }
 
     return result

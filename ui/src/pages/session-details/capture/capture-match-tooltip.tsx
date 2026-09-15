@@ -126,7 +126,7 @@ export const CaptureMatchTooltip = ({
           }
           key={note.string}
         >
-          {translate(note.string)}
+          {translate(note.string, note.values)}
         </span>
       ))}
       {sameSpecies > 0 ? (
