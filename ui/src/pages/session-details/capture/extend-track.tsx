@@ -317,8 +317,9 @@ export const ExtendTrackBanner = ({
     filters: { apply_defaults: 'false' },
   })
 
+  // A one-frame track still gets buttons back to its frame from another capture.
   const targetOf = (frame?: TrackFrame) =>
-    total > 1 && frame?.captureId !== captureId ? frame?.captureId : undefined
+    frame?.captureId !== captureId ? frame?.captureId : undefined
 
   let timeSpan: string | undefined
   if (first && last) {
