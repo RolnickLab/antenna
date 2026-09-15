@@ -6,6 +6,7 @@ import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurre
 import { useOccurrences } from 'data-services/hooks/occurrences/useOccurrences'
 import { useTaxaLists } from 'data-services/hooks/taxa-lists/useTaxaLists'
 import { Occurrence } from 'data-services/models/occurrence'
+import _ from 'lodash'
 import { DownloadIcon, Grid2X2Icon, TableIcon } from 'lucide-react'
 import {
   BulkActionBar,
@@ -253,6 +254,9 @@ const OccurrenceDetailsDialog = ({
   const { projectId } = useParams()
   const { setDetailBreadcrumb } = useContext(BreadcrumbContext)
   const { occurrence, isLoading, error } = useOccurrenceDetails(id)
+  const detailsLabel = translate(STRING.ENTITY_DETAILS, {
+    type: _.capitalize(translate(STRING.ENTITY_TYPE_OCCURRENCE)),
+  })
 
   useEffect(() => {
     // If a default tab is set from router state, set this as active
@@ -292,6 +296,11 @@ const OccurrenceDetailsDialog = ({
         error={error}
         isLoading={isLoading}
       >
+        <div className="sr-only">
+          <Dialog.Header title={occurrence?.displayName ?? detailsLabel}>
+            <Dialog.Description>{detailsLabel}</Dialog.Description>
+          </Dialog.Header>
+        </div>
         {occurrence ? (
           <OccurrenceDetails
             occurrence={occurrence}
