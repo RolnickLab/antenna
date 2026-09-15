@@ -41,8 +41,8 @@ Candidates of every relation are sorted together by cost and capped once.
 Vectors are loaded only for the frames in the scored pairs: one per candidate and the
 occurrence's frames those are paired with.
 
-``match_capture_detections`` scores the boxes of one capture against a track with the
-same cost, so a person extending the track capture by capture sees which box fits.
+``match_capture_detections`` previews what tracking would link on one capture, with the
+tracker's own matcher, for a person extending the track capture by capture.
 """
 
 from __future__ import annotations
@@ -310,30 +310,32 @@ def rank_merge_candidates(
 
 
 _MATCH_SCORE_FIELDS = ("likelihood", "cost", "distance", "iou", "size_ratio", "similarity", "time_offset_seconds")
+SKIPPED_NO_VECTOR = "no_vector"
+SKIPPED_REASONS = (SKIPPED_NO_VECTOR,)
 
 
 def _likelihood(cost: float, similarity: float | None) -> float:
-    # Every term of the cost lies between 0 and 1, so 1 minus the mean term reads the same on
-    # any capture, with or without the appearance term. Tracking links a pair only below a
-    # total cost of 0.2, which is a likelihood of 0.93 to 0.95.
+    # One minus the mean cost term. Every term lies in [0, 1], so a value reads the same on any
+    # capture, and the tracker's 0.2 cut-off sits near 0.95. It stays continuous so near misses
+    # still read as likely; ``would_link`` carries the tracker's own decision.
     terms = 3 if similarity is None else 4
     return round(min(max(1 - cost / terms, 0.0), 1.0), _ROUND_TO)
 
 
-def _match_scores(track_frame: dict, frame: dict, track_vector, frame_vector) -> dict[str, float | None]:
-    """The tracking cost of one pair, its terms, and the likelihood read from it."""
-    from ami.ml.post_processing.tracking_task import box_ratio, iou
+def _pair_scores(reference, box, reference_vector, box_vector, diag: float) -> dict:
+    """The tracking cost between the reference frame and one box, its terms, and its likelihood."""
+    from ami.ml.post_processing.tracking_task import box_ratio, cosine_similarity, distance_ratio, iou, total_cost
 
-    distance, similarity, cost = _score_pair(track_frame, frame, track_vector, frame_vector)
-    if cost is None:
-        return {}
-    corners_a, corners_b = bbox_corners(track_frame["bbox"]), bbox_corners(frame["bbox"])
+    cost = total_cost(reference_vector, box_vector, reference.bbox, box.bbox, diag)
+    similarity = None
+    if reference_vector is not None and box_vector is not None:
+        similarity = round(cosine_similarity(reference_vector, box_vector), _ROUND_TO)
     return {
         "likelihood": _likelihood(cost, similarity),
-        "cost": cost,
-        "distance": distance,
-        "iou": round(iou(corners_a, corners_b), _ROUND_TO),
-        "size_ratio": round(box_ratio(corners_a, corners_b), _ROUND_TO),
+        "cost": round(cost, _ROUND_TO),
+        "distance": round(distance_ratio(reference.bbox, box.bbox, diag), _ROUND_TO),
+        "iou": round(iou(reference.bbox, box.bbox), _ROUND_TO),
+        "size_ratio": round(box_ratio(reference.bbox, box.bbox), _ROUND_TO),
         "similarity": similarity,
     }
 
@@ -359,69 +361,135 @@ def _reference_frame(occurrence_id: int, capture: SourceImage) -> tuple[dict | N
 
 
 def match_capture_detections(occurrence: Occurrence, capture: SourceImage) -> dict[str, Any]:
-    """Every real box on ``capture`` scored against ``occurrence``'s track, best match first.
+    """Every real box on ``capture`` scored against ``occurrence``'s track the way tracking scores it.
 
-    Each box is scored against one track frame, the nearest in time on another capture,
-    with the tracking cost. The track's own box on the capture is returned unscored, and
-    so is every box when the track has no frame on another capture.
+    The reference is the track frame nearest in time on another capture. The tracker's own
+    matcher runs between every box on the reference frame's capture and every box on
+    ``capture``, with the tracker's default settings, feature algorithm and image diagonal,
+    and ``would_link`` marks the box it links the reference frame to. Tracking only pairs
+    adjacent captures, so across a longer gap this previews its pairing rule, not a run.
 
-    At most four queries, whatever the track's length or the number of boxes: the
-    capture's boxes, the nearest track frame on each side of it, the reference frame's
-    latest vector, and the boxes' vectors from that same algorithm.
+    The track's own box is returned unscored. So is every box when the track has no other
+    frame, or when the earlier of the two captures has no dimensions, since tracking skips
+    such a pair of captures. The query count is fixed, whatever the track's length or the
+    number of boxes.
     """
-    from ami.main.models import Classification, Detection
-
-    boxes = list(
-        Detection.objects.valid()
-        .filter(source_image_id=capture.pk)
-        .order_by("pk")
-        .values("pk", "occurrence_id", "bbox")
+    from ami.main.models import Classification, Detection, SourceImage
+    from ami.ml.models import Algorithm
+    from ami.ml.post_processing.tracking_task import (
+        TrackingConfig,
+        image_diagonal,
+        latest_feature_vectors,
+        resolve_feature_algorithm,
+        select_links,
     )
+
+    config = TrackingConfig(event_ids=[occurrence.event_id])
     reference, relation = _reference_frame(occurrence.pk, capture) if capture.timestamp else (None, None)
-    if reference is not None and any(box["occurrence_id"] == occurrence.pk for box in boxes):
+    reference_capture_id = reference["source_image_id"] if reference is not None else None
+    detections = list(
+        Detection.objects.valid()
+        .filter(source_image_id__in=[capture.pk] + ([reference_capture_id] if reference_capture_id else []))
+        .only("pk", "bbox", "occurrence_id", "source_image_id")
+        .order_by("pk")
+    )
+    boxes = [detection for detection in detections if detection.source_image_id == capture.pk]
+    if reference is not None and any(box.occurrence_id == occurrence.pk for box in boxes):
         relation = RELATION_SAME
 
-    candidates = [box for box in boxes if box["occurrence_id"] != occurrence.pk]
-    algorithm_id, reference_vector, vectors = None, None, {}
-    if reference is not None and candidates:
-        latest = (
-            Classification.objects.filter(
-                detection_id=reference["pk"], algorithm_id__isnull=False, features_2048__isnull=False
-            )
-            .order_by("-timestamp", "-pk")
-            .values_list("algorithm_id", "features_2048")
-            .first()
+    # Tracking takes the one extractor with embeddings anywhere in the session, which scans
+    # every classification (about 40 ms). The two captures being paired give the same answer
+    # unless a session mixes extractors.
+    detection_ids = [detection.pk for detection in detections]
+    extractor_ids = set(
+        Classification.objects.filter(
+            detection_id__in=detection_ids, features_2048__isnull=False, algorithm_id__isnull=False
         )
-        if latest is not None:
-            algorithm_id, reference_vector = latest
-            vectors = _latest_vectors(
-                Classification.objects.filter(
-                    detection_id__in=[box["pk"] for box in candidates],
-                    algorithm_id=algorithm_id,
-                    features_2048__isnull=False,
-                )
-            )
+        .order_by()
+        .values_list("algorithm_id", flat=True)
+        .distinct()
+    )
+    extractors = list(Algorithm.objects.filter(pk__in=extractor_ids))
+    algorithm, _, _ = resolve_feature_algorithm(occurrence.event, config, candidates=extractors)
+    vectors = latest_feature_vectors(detection_ids, algorithm.pk) if algorithm is not None else {}
+
+    def skipped(detection_id: int) -> str | None:
+        return SKIPPED_NO_VECTOR if config.require_features and detection_id not in vectors else None
+
+    diag, linked, reference_detection = None, set(), None
+    if reference is not None:
+        reference_detection = next(d for d in detections if d.pk == reference["pk"])
+        reference_boxes = [d for d in detections if d.source_image_id == reference_capture_id]
+        capture_first = (capture.timestamp, capture.pk) < (reference["timestamp"], reference_capture_id)
+        width, height = (
+            (capture.width, capture.height)
+            if capture_first
+            else (reference["source_image__width"], reference["source_image__height"])
+        )
+        if width and height:
+            diag = image_diagonal(width, height)
+            current, following = (boxes, reference_boxes) if capture_first else (reference_boxes, boxes)
+            links = select_links(current, following, vectors, diag, config.cost_threshold, config.require_features)
+            linked = {frozenset((det.pk, nxt.pk)) for det, nxt, _ in links}
+
+    # Captures from the reference frame's to this one, signed: 1 is the adjacent capture the
+    # tracker would pair, so a larger count means the preview spans captures it never compares.
+    capture_offset = None
+    if reference is not None:
+        (low_ts, low_pk), (high_ts, high_pk) = sorted(
+            [(reference["timestamp"], reference_capture_id), (capture.timestamp, capture.pk)]
+        )
+        # The occurrence's session, not the capture's: the view loads the capture with
+        # ``only()`` and reading ``capture.event_id`` would cost a query.
+        between = (
+            SourceImage.objects.filter(event_id=occurrence.event_id, timestamp__gte=low_ts, timestamp__lte=high_ts)
+            .exclude(timestamp=low_ts, pk__lte=low_pk)
+            .exclude(timestamp=high_ts, pk__gt=high_pk)
+            .count()
+        )
+        capture_offset = (
+            between if (capture.timestamp, capture.pk) > (reference["timestamp"], reference_capture_id) else -between
+        )
 
     rows: list[dict[str, Any]] = []
     for box in boxes:
-        in_track = box["occurrence_id"] == occurrence.pk
-        row = {"detection_id": box["pk"], "occurrence_id": box["occurrence_id"], "in_track": in_track}
+        in_track = box.occurrence_id == occurrence.pk
+        row = {
+            "detection_id": box.pk,
+            "occurrence_id": box.occurrence_id,
+            "in_track": in_track,
+            "would_link": reference is not None and frozenset((reference["pk"], box.pk)) in linked,
+            "skipped_reason": skipped(box.pk),
+        }
         row.update(dict.fromkeys(_MATCH_SCORE_FIELDS))
         if reference is not None and not in_track:
-            frame = {"bbox": box["bbox"], "source_image__width": capture.width, "source_image__height": capture.height}
             row["time_offset_seconds"] = (capture.timestamp - reference["timestamp"]).total_seconds()
-            row.update(_match_scores(reference, frame, reference_vector, vectors.get((box["pk"], algorithm_id))))
+            if diag is not None:
+                row.update(
+                    _pair_scores(
+                        reference_detection,
+                        box,
+                        vectors.get(reference["pk"]),
+                        vectors.get(box.pk),
+                        diag,
+                    )
+                )
         rows.append(row)
     rows.sort(key=lambda row: (row["likelihood"] is None, -(row["likelihood"] or 0.0), row["detection_id"]))
 
     return {
         "capture_id": capture.pk,
+        "cost_threshold": config.cost_threshold,
+        "feature_algorithm_id": algorithm.pk if algorithm is not None else None,
+        "requires_features": config.require_features,
         "reference": (
             {
                 "detection_id": reference["pk"],
-                "capture_id": reference["source_image_id"],
+                "capture_id": reference_capture_id,
                 "timestamp": reference["timestamp"],
                 "relation": relation,
+                "capture_offset": capture_offset,
+                "skipped_reason": skipped(reference["pk"]),
             }
             if reference is not None
             else None

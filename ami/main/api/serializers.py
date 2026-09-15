@@ -16,6 +16,7 @@ from ami.main.models import Tag
 from ami.main.models_future.merge_candidates import CAPTURE_MATCH_RELATIONS
 from ami.main.models_future.merge_candidates import MAX_CANDIDATES as MAX_MERGE_CANDIDATES
 from ami.main.models_future.merge_candidates import RELATIONS as MERGE_CANDIDATE_RELATIONS
+from ami.main.models_future.merge_candidates import SKIPPED_REASONS as CAPTURE_MATCH_SKIPPED_REASONS
 from ami.ml.models import Algorithm, Pipeline
 from ami.ml.serializers import AlgorithmSerializer, PipelineNestedSerializer
 from ami.users.models import User
@@ -2258,6 +2259,16 @@ class CaptureMatchReferenceSerializer(serializers.Serializer):
         help_text="Where the capture sits against the track: before its first frame, after its last, in a gap "
         "of it, or on a capture that already holds one of its frames (same).",
     )
+    capture_offset = serializers.IntegerField(
+        allow_null=True,
+        help_text="Captures from the reference frame's capture to this one, signed: 1 is the adjacent capture "
+        "tracking pairs, -1 the one before.",
+    )
+    skipped_reason = serializers.ChoiceField(
+        choices=CAPTURE_MATCH_SKIPPED_REASONS,
+        allow_null=True,
+        help_text="no_vector when tracking would skip this frame for lacking an embedding while it requires them.",
+    )
 
 
 class CaptureMatchSerializer(serializers.Serializer):
@@ -2266,9 +2277,20 @@ class CaptureMatchSerializer(serializers.Serializer):
     detection_id = serializers.IntegerField()
     occurrence_id = serializers.IntegerField(allow_null=True, help_text="Null for a box that was never grouped.")
     in_track = serializers.BooleanField(help_text="The requested occurrence's own box on this capture; unscored.")
+    would_link = serializers.BooleanField(
+        help_text="Whether tracking's matcher, run between this capture and the reference frame's capture, links "
+        "the reference frame to this box."
+    )
+    skipped_reason = serializers.ChoiceField(
+        choices=CAPTURE_MATCH_SKIPPED_REASONS,
+        allow_null=True,
+        help_text="no_vector when tracking would skip this box for lacking an embedding while it requires them. "
+        "Its cost is then geometry alone.",
+    )
     likelihood = serializers.FloatField(
         allow_null=True,
-        help_text="1 minus the mean term of the cost, from 0 to 1, higher fits better. Comparable across captures.",
+        help_text="1 minus the mean term of the tracking cost, from 0 to 1, higher fits better. Comparable across "
+        "captures; the tracker's own decision is would_link.",
     )
     cost = serializers.FloatField(
         allow_null=True,
@@ -2297,6 +2319,15 @@ class CaptureMatchesResponseSerializer(serializers.Serializer):
     """Every box on one capture scored against the requested occurrence's track, best match first."""
 
     capture_id = serializers.IntegerField()
+    cost_threshold = serializers.FloatField(help_text="Tracking links a pair only below this cost.")
+    feature_algorithm_id = serializers.IntegerField(
+        allow_null=True,
+        help_text="The feature extractor tracking would compare embeddings from, read from the two captures being "
+        "paired. Null when they carry none or more than one.",
+    )
+    requires_features = serializers.BooleanField(
+        help_text="Whether tracking skips detections without an embedding rather than matching them on geometry."
+    )
     reference = CaptureMatchReferenceSerializer(
         allow_null=True,
         help_text="The track frame nearest in time on another capture. Null when the track has no other frame, "
