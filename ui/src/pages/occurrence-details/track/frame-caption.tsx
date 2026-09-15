@@ -39,10 +39,15 @@ export const FrameCaption = ({
       #{detectionId} · {timeLabel}
     </span>
     <span>
-      <FrameTaxonName taxon={label.taxon} />{' '}
-      <span className="text-foreground tabular-nums whitespace-nowrap">
-        ({label.score?.toFixed(2) ?? translate(STRING.VALUE_NOT_AVAILABLE)})
-      </span>
+      <FrameTaxonName taxon={label.taxon} />
+      {label.taxon || label.score !== undefined ? (
+        <>
+          {' '}
+          <span className="text-foreground tabular-nums whitespace-nowrap">
+            ({label.score?.toFixed(2) ?? translate(STRING.VALUE_NOT_AVAILABLE)})
+          </span>
+        </>
+      ) : null}
     </span>
   </div>
 )
