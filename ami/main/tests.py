@@ -8425,6 +8425,51 @@ class TrackEditTestCase(APITestCase):
         listed = self.client.get(f"/api/v2/occurrences/?project_id={self.project.pk}")
         self.assertNotIn(undetermined.pk, [row["id"] for row in listed.data["results"]])
 
+    def test_path_draws_an_occurrence_the_default_filters_hide(self):
+        """The session view selects occurrences with the default filters off, so their paths load.
+
+        The detail is the control: the same filters still hide the occurrence there.
+        """
+        self.project.default_filters_score_threshold = 0.9
+        self.project.save()
+        below_threshold, detections = self._make_track(3, score=0.1)
+
+        self.client.force_authenticate(user=self.reader)
+        detail = self.client.get(f"/api/v2/occurrences/{below_threshold.pk}/?project_id={self.project.pk}")
+        self.assertEqual(detail.status_code, 404, "The fixture must be hidden by the default filters")
+
+        path = self.client.get(f"/api/v2/occurrences/{below_threshold.pk}/path/?project_id={self.project.pk}")
+        self.assertEqual(path.status_code, 200, path.data)
+        self.assertEqual([frame["detection_id"] for frame in path.data], [d.pk for d in detections])
+
+    def test_path_of_a_draft_project_stays_private(self):
+        """Skipping the default filters must not skip the draft-project rule with them."""
+        self.project.draft = True
+        self.project.save()
+        outsider = User.objects.create_user(email="outsider@insectai.org")  # type: ignore[attr-defined]
+        url = f"/api/v2/occurrences/{self.occurrence.pk}/path/"
+
+        self.client.force_authenticate(user=self.reader)
+        self.assertEqual(self.client.get(url).status_code, 200)
+
+        self.client.force_authenticate(user=outsider)
+        self.assertEqual(self.client.get(url).status_code, 404)
+        self.assertEqual(self.client.get(f"{url}?project_id={self.project.pk}").status_code, 404)
+
+    def test_path_of_an_occurrence_with_no_real_box_is_not_found(self):
+        """An occurrence backed only by a null-marker detection has no box to draw.
+
+        The session list never offers one, and skipping the default filters must not
+        surface it either.
+        """
+        capture = self.captures[0]
+        phantom = Occurrence.objects.create(event=self.event, deployment=self.deployment, project=self.project)
+        Detection.objects.create(source_image=capture, timestamp=capture.timestamp, bbox=None, occurrence=phantom)
+
+        self.client.force_authenticate(user=self.curator)
+        path = self.client.get(f"/api/v2/occurrences/{phantom.pk}/path/?project_id={self.project.pk}")
+        self.assertEqual(path.status_code, 404)
+
     def test_split_reports_the_counts_the_edit_left_behind(self):
         """Both counts come from the database, not from the prefetched detections.
 
