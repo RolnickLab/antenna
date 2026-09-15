@@ -27,13 +27,14 @@ Three invariants hold after every operation here:
 
 from __future__ import annotations
 
+import datetime
 from collections import Counter
 from collections.abc import Iterable
 
 from django.db import transaction
 from django.utils import timezone
 
-from ami.main.models import Detection, Identification, Occurrence, User
+from ami.main.models import Detection, Identification, Occurrence, SourceImage, User
 from ami.main.models_future.track_stats import refresh_track_stats
 
 
@@ -204,12 +205,25 @@ def _refuse_two_boxes_on_one_capture(target: Occurrence, incoming_capture_ids: I
         .filter(occurrence_id=target.pk, source_image_id__in=list(counts))
         .values_list("source_image_id", flat=True)
     )
-    clashes = sorted(covered | {capture_id for capture_id, n in counts.items() if n > 1})
+    clashes = covered | {capture_id for capture_id, n in counts.items() if n > 1}
     if clashes:
+        # Reviewers read this in the merge and extend dialogs, so name capture times, not ids.
+        timestamps = (
+            SourceImage.objects.filter(pk__in=clashes).order_by("timestamp", "pk").values_list("timestamp", flat=True)
+        )
+        times = ", ".join(_time_of_day(timestamp) for timestamp in timestamps)
+        captures = "the capture" if len(clashes) == 1 else "the captures"
         raise TrackEditError(
-            f"Capture(s) {clashes} would hold two detections in occurrence {target.pk}. "
+            f"This would put two detections from {captures} at {times} into one track. "
             "One animal appears once per capture, so these are different individuals."
         )
+
+
+def _time_of_day(timestamp: datetime.datetime | None) -> str:
+    """A capture time as a reviewer reads it on the session page, e.g. 10:48:23 PM."""
+    if timestamp is None:
+        return "an unknown time"
+    return timestamp.strftime("%I:%M:%S %p").lstrip("0")
 
 
 @transaction.atomic

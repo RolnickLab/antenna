@@ -2364,6 +2364,24 @@ class SourceImage(BaseModel):
         """
         return None
 
+    def event_next_capture_with_detections_id(self) -> int | None:
+        """
+        Return the nearest later capture in the event that holds a real detection.
+
+        Populated by the query in the ViewSet (see add_adjacent_captures); ties on
+        timestamp are broken by id.
+        """
+        return None
+
+    def event_prev_capture_with_detections_id(self) -> int | None:
+        """
+        Return the nearest earlier capture in the event that holds a real detection.
+
+        Populated by the query in the ViewSet (see add_adjacent_captures); ties on
+        timestamp are broken by id.
+        """
+        return None
+
     def event_current_capture_index(self) -> int | None:
         """
         Return the index of the current capture in the event.

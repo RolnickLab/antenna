@@ -1348,6 +1348,8 @@ class SourceImageSerializer(SourceImageListSerializer):
             "detections_with_features",
             "event_next_capture_id",
             "event_prev_capture_id",
+            "event_next_capture_with_detections_id",
+            "event_prev_capture_with_detections_id",
             "event_current_capture_index",
             "event_total_captures",
         ]

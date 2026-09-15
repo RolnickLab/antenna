@@ -904,9 +904,34 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             .values("total")
         )
 
+        # Nearest capture on each side with a real box, by (timestamp, id), so a burst seconds apart
+        # is walked frame by frame. The gte + exclude tie-break lets the (event, timestamp) index walk
+        # stop at the first hit, where an OR of the two cases reads every capture on that side.
+        boxed_in_event = SourceImage.objects.filter(event=models.OuterRef("event")).filter(
+            models.Exists(Detection.objects.valid().filter(source_image_id=models.OuterRef("pk")))
+        )
+        next_with_detections = (
+            boxed_in_event.filter(timestamp__gte=models.OuterRef("timestamp"))
+            .exclude(timestamp=models.OuterRef("timestamp"), pk__lte=models.OuterRef("pk"))
+            .order_by("timestamp", "pk")
+            .values("id")[:1]
+        )
+        prev_with_detections = (
+            boxed_in_event.filter(timestamp__lte=models.OuterRef("timestamp"))
+            .exclude(timestamp=models.OuterRef("timestamp"), pk__gte=models.OuterRef("pk"))
+            .order_by("-timestamp", "-pk")
+            .values("id")[:1]
+        )
+
         return queryset.annotate(
             event_next_capture_id=models.Subquery(next_image, output_field=models.IntegerField()),
             event_prev_capture_id=models.Subquery(previous_image, output_field=models.IntegerField()),
+            event_next_capture_with_detections_id=models.Subquery(
+                next_with_detections, output_field=models.IntegerField()
+            ),
+            event_prev_capture_with_detections_id=models.Subquery(
+                prev_with_detections, output_field=models.IntegerField()
+            ),
             event_current_capture_index=models.Subquery(index_subquery, output_field=models.IntegerField()),
             event_total_captures=models.Subquery(total_subquery, output_field=models.IntegerField()),
         )
@@ -1573,18 +1598,21 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         "verify_grouping",
         "unverify_grouping",
     )
-    # Actions that open one occurrence. They keep the project's default filters but
-    # not the determination requirement; see get_queryset.
+    # Actions that open one occurrence. They drop the determination requirement; see
+    # get_queryset.
     SINGLE_OCCURRENCE_ACTIONS = ("retrieve", "path")
+    # Actions the project's default filters never hide an occurrence from. The session
+    # view selects occurrences with those filters off and draws their paths.
+    UNFILTERED_ACTIONS = (*TRACK_EDIT_ACTIONS, "path")
 
     def get_queryset(self) -> QuerySet["Occurrence"]:
         """Occurrences this request may see, which is wider outside the list.
 
         The list shows determined occurrences that pass the project's default filters.
         Opening one occurrence keeps those filters but not the determination, and
-        repairing a track keeps neither. On a project where only a detector ran every
-        occurrence is undetermined until a person identifies it, and a low-score or
-        excluded-taxon occurrence is still part of the animal's track. See
+        reading or repairing a track keeps neither. On a project where only a detector
+        ran every occurrence is undetermined until a person identifies it, and a
+        low-score or excluded-taxon occurrence is still part of the animal's track. See
         OccurrenceQuerySet.with_real_detections.
         """
         project = self.get_active_project()
@@ -1601,7 +1629,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         )
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
-        if not track_edit:
+        if self.action not in self.UNFILTERED_ACTIONS:
             qs = qs.apply_default_filters(  # type: ignore
                 project, self.request, include_undetermined=allow_undetermined
             )

@@ -819,6 +819,86 @@ class TestThumbnailDraftProjectVisibility(APITestCase):
         )
 
 
+class TestCaptureNeighboursWithDetections(APITestCase):
+    """The capture detail names the nearest capture on each side that holds a real box.
+
+    Motion-triggered stations shoot bursts seconds apart, so stepping minute by minute
+    skips frames of the same animal. The walk must go one capture at a time.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=1)
+        first = SourceImage.objects.get(deployment=self.deployment)
+        self.event = first.event
+        self.burst_start = first.timestamp + datetime.timedelta(minutes=1)
+        self.client.force_authenticate(User.objects.create_superuser(email="neighbours@insectai.org"))
+
+    def _capture(self, seconds: int, bbox: list[int] | None = None, detected: bool = True) -> SourceImage:
+        """A capture `seconds` into the burst, with one detection unless `detected` is False.
+
+        A `bbox` of None makes that detection a null marker: the detector ran and found nothing.
+        """
+        timestamp = self.burst_start + datetime.timedelta(seconds=seconds)
+        path = f"test/burst-{SourceImage.objects.filter(event=self.event).count()}.jpg"
+        capture = SourceImage.objects.create(
+            deployment=self.deployment, event=self.event, timestamp=timestamp, path=path
+        )
+        if detected:
+            Detection.objects.create(source_image=capture, timestamp=timestamp, bbox=bbox)
+        return capture
+
+    def _get(self, capture: SourceImage) -> dict:
+        response = self.client.get(f"/api/v2/captures/{capture.pk}/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, 200)
+        return response.json()
+
+    def test_neighbours_step_through_a_burst_one_capture_at_a_time(self):
+        box = [10, 10, 40, 40]
+        first = self._capture(0, box)
+        empty = self._capture(2, detected=False)
+        null_only = self._capture(4, bbox=None)
+        # Two captures sharing a timestamp are still visited in turn, lower id first.
+        tied_low = self._capture(6, box)
+        tied_high = self._capture(6, box)
+        trailing = self._capture(8, detected=False)
+
+        expected = {
+            first: (tied_low, None),
+            empty: (tied_low, first),
+            null_only: (tied_low, first),
+            tied_low: (tied_high, first),
+            tied_high: (None, tied_low),
+            trailing: (None, tied_high),
+        }
+        for capture, (next_capture, prev_capture) in expected.items():
+            with self.subTest(capture=capture.path):
+                data = self._get(capture)
+                self.assertEqual(
+                    data["event_next_capture_with_detections_id"], next_capture.pk if next_capture else None
+                )
+                self.assertEqual(
+                    data["event_prev_capture_with_detections_id"], prev_capture.pk if prev_capture else None
+                )
+
+    def test_detail_query_count_does_not_follow_the_session_size(self):
+        """The neighbours come from subqueries in the detail query, not from a query per capture."""
+        from cachalot.api import cachalot_disabled
+
+        capture = self._capture(0, [10, 10, 40, 40])
+
+        def count_queries() -> int:
+            with cachalot_disabled(), CaptureQueriesContext(connection) as context:
+                self._get(capture)
+            return len(context.captured_queries)
+
+        baseline = count_queries()
+        for seconds in range(2, 22, 2):
+            self._capture(seconds, [10, 10, 40, 40])
+        self.assertEqual(count_queries(), baseline)
+
+
 class TestImageGrouping(TestCase):
     def setUp(self) -> None:
         print(f"Currently active database: {connection.settings_dict}")
@@ -8685,6 +8765,51 @@ class TrackEditTestCase(APITestCase):
         listed = self.client.get(f"/api/v2/occurrences/?project_id={self.project.pk}")
         self.assertNotIn(undetermined.pk, [row["id"] for row in listed.data["results"]])
 
+    def test_path_draws_an_occurrence_the_default_filters_hide(self):
+        """The session view selects occurrences with the default filters off, so their paths load.
+
+        The detail is the control: the same filters still hide the occurrence there.
+        """
+        self.project.default_filters_score_threshold = 0.9
+        self.project.save()
+        below_threshold, detections = self._make_track(3, score=0.1)
+
+        self.client.force_authenticate(user=self.reader)
+        detail = self.client.get(f"/api/v2/occurrences/{below_threshold.pk}/?project_id={self.project.pk}")
+        self.assertEqual(detail.status_code, 404, "The fixture must be hidden by the default filters")
+
+        path = self.client.get(f"/api/v2/occurrences/{below_threshold.pk}/path/?project_id={self.project.pk}")
+        self.assertEqual(path.status_code, 200, path.data)
+        self.assertEqual([frame["detection_id"] for frame in path.data], [d.pk for d in detections])
+
+    def test_path_of_a_draft_project_stays_private(self):
+        """Skipping the default filters must not skip the draft-project rule with them."""
+        self.project.draft = True
+        self.project.save()
+        outsider = User.objects.create_user(email="outsider@insectai.org")  # type: ignore[attr-defined]
+        url = f"/api/v2/occurrences/{self.occurrence.pk}/path/"
+
+        self.client.force_authenticate(user=self.reader)
+        self.assertEqual(self.client.get(url).status_code, 200)
+
+        self.client.force_authenticate(user=outsider)
+        self.assertEqual(self.client.get(url).status_code, 404)
+        self.assertEqual(self.client.get(f"{url}?project_id={self.project.pk}").status_code, 404)
+
+    def test_path_of_an_occurrence_with_no_real_box_is_not_found(self):
+        """An occurrence backed only by a null-marker detection has no box to draw.
+
+        The session list never offers one, and skipping the default filters must not
+        surface it either.
+        """
+        capture = self.captures[0]
+        phantom = Occurrence.objects.create(event=self.event, deployment=self.deployment, project=self.project)
+        Detection.objects.create(source_image=capture, timestamp=capture.timestamp, bbox=None, occurrence=phantom)
+
+        self.client.force_authenticate(user=self.curator)
+        path = self.client.get(f"/api/v2/occurrences/{phantom.pk}/path/?project_id={self.project.pk}")
+        self.assertEqual(path.status_code, 404)
+
     def test_split_reports_the_counts_the_edit_left_behind(self):
         """Both counts come from the database, not from the prefetched detections.
 
@@ -8766,6 +8891,24 @@ class OccurrenceGroupingTestCase(TrackEditTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertTrue(Occurrence.objects.filter(pk=other.pk).exists())
         self.assertEqual(self.occurrence.detections.count(), len(self.detections))
+
+    def test_refusal_names_the_capture_times(self):
+        """The refusal is shown verbatim in the merge and extend dialogs, so it names the
+        capture times a reviewer sees on the session page rather than database ids."""
+        SourceImage.objects.filter(pk=self.captures[0].pk).update(timestamp=datetime.datetime(2026, 9, 1, 22, 48, 23))
+        SourceImage.objects.filter(pk=self.captures[1].pk).update(timestamp=datetime.datetime(2026, 9, 2, 0, 5, 7))
+        other, _ = self._make_track(2)
+
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.post(
+            f"/api/v2/occurrences/{self.occurrence.pk}/merge/", {"occurrence_ids": [other.pk]}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()["occurrence_ids"],
+            "This would put two detections from the captures at 10:48:23 PM, 12:05:07 AM into one track. "
+            "One animal appears once per capture, so these are different individuals.",
+        )
 
     def test_merge_refuses_two_sources_on_the_same_capture(self):
         """Two sources that each have a box on the same capture are two individuals, even when

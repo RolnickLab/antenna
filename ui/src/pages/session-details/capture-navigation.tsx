@@ -10,8 +10,8 @@ import { BasicTooltip, Button } from 'nova-ui-kit'
 import { ReactNode, useEffect, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import {
-  findNextCaptureWithDetections,
-  findPrevCaptureWithDetections,
+  getNextCaptureWithDetectionsId,
+  getPrevCaptureWithDetectionsId,
 } from './utils'
 
 const NavigationButton = ({
@@ -73,7 +73,7 @@ export const CaptureNavigation = ({
     }
 
     const prevCaptureId =
-      findPrevCaptureWithDetections({ date: activeCapture.date, timeline }) ??
+      getPrevCaptureWithDetectionsId({ capture: activeCapture, timeline }) ??
       activeCapture.prevCaptureId
 
     if (prevCaptureId) {
@@ -95,7 +95,7 @@ export const CaptureNavigation = ({
     }
 
     const nextCaptureId =
-      findNextCaptureWithDetections({ date: activeCapture.date, timeline }) ??
+      getNextCaptureWithDetectionsId({ capture: activeCapture, timeline }) ??
       activeCapture.nextCaptureId
 
     if (nextCaptureId) {

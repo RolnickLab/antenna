@@ -24,6 +24,8 @@
   align-items: center;
   gap: 40px;
   overflow-x: auto;
+  // The scroll box clips at its edge, so leave room for the last tile's focus ring.
+  padding-bottom: 4px;
 }
 
 .blueprintItem {
