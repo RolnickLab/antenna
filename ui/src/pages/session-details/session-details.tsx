@@ -21,6 +21,7 @@ import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { STRING, translate } from 'utils/language'
 import { useUser } from 'utils/user/userContext'
 import { ActivityPlot } from './activity-plot/lazy-activity-plot'
+import { OccurrenceTimelineMarkers } from './activity-plot/occurrence-timeline-markers'
 import { CaptureInfo } from './capture-info'
 import { CaptureNavigation } from './capture-navigation'
 import { Capture } from './capture/capture'
@@ -96,6 +97,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
   // Data
   const { projectId } = useParams()
   const { user } = useUser()
+  const { activeOccurrences } = useActiveOccurrences()
   const { activeCaptureId, setActiveCaptureId } = useActiveCaptureId(
     session.firstCapture?.id
   )
@@ -112,6 +114,10 @@ const Content = ({ session }: { session: SessionDetails }) => {
       : undefined,
     onSelectCapture: setActiveCaptureId,
   })
+  const timelineOccurrenceIds =
+    extend.occurrenceId && !activeOccurrences.includes(extend.occurrenceId)
+      ? [...activeOccurrences, extend.occurrenceId]
+      : activeOccurrences
 
   useEffect(() => {
     // If the active capture has a job in progress, we want to poll the endpoint so we can show job updates
@@ -255,7 +261,16 @@ const Content = ({ session }: { session: SessionDetails }) => {
             session={session}
             setActiveCaptureId={setActiveCaptureId}
             timeline={timeline}
-          />
+          >
+            {timelineOccurrenceIds.length ? (
+              <OccurrenceTimelineMarkers
+                occurrenceIds={timelineOccurrenceIds}
+                session={session}
+                setActiveCaptureId={setActiveCaptureId}
+                timeline={timeline}
+              />
+            ) : null}
+          </ActivityPlot>
           <TimelineSlider
             activeCapture={activeCapture}
             session={session}

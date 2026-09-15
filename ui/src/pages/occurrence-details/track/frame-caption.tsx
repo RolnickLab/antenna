@@ -10,7 +10,7 @@ export const FrameTaxonName = ({ taxon }: { taxon?: Taxon }) => {
   return (
     <span
       className={cn(
-        'truncate',
+        'break-words',
         taxon ? 'text-foreground' : 'text-muted-foreground',
         { italic: !!taxon && isGenusOrBelow(taxon) }
       )}
@@ -21,23 +21,28 @@ export const FrameTaxonName = ({ taxon }: { taxon?: Taxon }) => {
   )
 }
 
+/** Under a frame's crop: which detection and when, then the classifier's name for it, never cut off. */
 export const FrameCaption = ({
   detectionId,
   label,
+  timeLabel,
 }: {
   detectionId: string
   label: FrameLabel
+  timeLabel: string
 }) => (
-  <div className="flex items-center justify-end gap-1.5 min-w-0 body-small">
-    <FrameTaxonName taxon={label.taxon} />
-    <span className="shrink-0 text-foreground tabular-nums">
-      {label.score?.toFixed(2) ?? translate(STRING.VALUE_NOT_AVAILABLE)}
-    </span>
+  <div className="flex flex-col items-center gap-0.5 text-center body-small">
     <span
-      className="shrink-0 text-muted-foreground"
+      className="text-muted-foreground tabular-nums"
       title={translate(STRING.TRACK_FRAME_DETECTION, { id: detectionId })}
     >
-      #{detectionId}
+      #{detectionId} · {timeLabel}
+    </span>
+    <span>
+      <FrameTaxonName taxon={label.taxon} />{' '}
+      <span className="text-foreground tabular-nums whitespace-nowrap">
+        ({label.score?.toFixed(2) ?? translate(STRING.VALUE_NOT_AVAILABLE)})
+      </span>
     </span>
   </div>
 )

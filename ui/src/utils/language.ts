@@ -374,6 +374,7 @@ export enum STRING {
   SUMMARY,
   TABLE_COLUMNS,
   TERMINAL_CLASSIFICATION,
+  TIMELINE_OCCURRENCE_FRAME,
   TIP,
   TRACK_CANDIDATE_IN_GAP,
   TRACK_CLEARS_CONFIRMATION,
@@ -929,6 +930,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.SUMMARY]: 'Summary',
   [STRING.TABLE_COLUMNS]: 'Table columns',
   [STRING.TERMINAL_CLASSIFICATION]: 'Terminal classification',
+  [STRING.TIMELINE_OCCURRENCE_FRAME]: 'Occurrence #{{id}} at {{time}}',
   [STRING.TIP]: 'Tip',
   [STRING.TRACK_CANDIDATE_IN_GAP]:
     "Falls inside this track's time span, in a gap between its frames. The time is measured from the nearest track frame.",

@@ -56,21 +56,16 @@ export const BlueprintItem = ({
 
   return (
     <div className={classNames(styles.blueprintItem, 'group')}>
-      <div className="flex items-center gap-1">
-        <div className={styles.blueprintInfo} style={{ width: size.width }}>
-          {caption ? (
-            <div className="grow min-w-0 flex flex-col gap-1 text-right">
-              <span className="text-muted-foreground">{item.timeLabel}</span>
-              {caption}
-            </div>
-          ) : (
+      {caption ? null : (
+        <div className="flex items-center gap-1">
+          <div className={styles.blueprintInfo} style={{ width: size.width }}>
             <span className="grow text-muted-foreground text-right">
               {item.timeLabel}
             </span>
-          )}
+          </div>
+          {actions}
         </div>
-        {actions}
-      </div>
+      )}
       <div className="flex flex-col items-center gap-2">
         <img
           src={item.image.src}
@@ -84,15 +79,20 @@ export const BlueprintItem = ({
             })
           }}
         />
-        {item.to ? (
-          <Link
-            className={buttonVariants({ size: 'small', variant: 'ghost' })}
-            to={item.to}
-          >
-            <span>{translate(STRING.VIEW_IN_SESSION)}</span>
-            <ChevronRightIcon className="w-4 h-4" />
-          </Link>
-        ) : null}
+        {caption ? <div style={{ width: size.width }}>{caption}</div> : null}
+        {/* With a caption, the actions sit beside the link so nothing floats above the crop. */}
+        <div className="flex items-center gap-1">
+          {item.to ? (
+            <Link
+              className={buttonVariants({ size: 'small', variant: 'ghost' })}
+              to={item.to}
+            >
+              <span>{translate(STRING.VIEW_IN_SESSION)}</span>
+              <ChevronRightIcon className="w-4 h-4" />
+            </Link>
+          ) : null}
+          {caption ? actions : null}
+        </div>
       </div>
     </div>
   )
