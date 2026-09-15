@@ -73,23 +73,48 @@ const cellClassName = 'px-2 py-1'
 const numberClassName = 'text-right tabular-nums whitespace-nowrap'
 const checkboxClassName = 'w-4 h-4 accent-primary-500 cursor-pointer'
 
-/** Beside the table when the viewport has room, otherwise clamped into view over it. */
+/**
+ * Beside the table when the viewport has room. Otherwise over the table's far side,
+ * below or above the row, so it never hides the first column's checkboxes.
+ */
 const getPanelStyle = (
   table: DOMRect | undefined,
-  row: DOMRect
-): CSSProperties => {
+  row: HTMLElement
+): CSSProperties | undefined => {
+  const rowRect = row.getBoundingClientRect()
   const maxLeft = window.innerWidth - COMPARISON_PANEL_WIDTH - PANEL_GAP
   const maxTop = window.innerHeight - COMPARISON_PANEL_HEIGHT - PANEL_GAP
-  let left = table ? table.right + PANEL_GAP : maxLeft
+  const besideTop = Math.max(PANEL_GAP, Math.min(rowRect.top, maxTop))
 
-  if (left > maxLeft && table) {
-    left = table.left - PANEL_GAP - COMPARISON_PANEL_WIDTH
+  if (!table) {
+    return { left: maxLeft, top: besideTop }
+  }
+  if (table.right + PANEL_GAP <= maxLeft) {
+    return { left: table.right + PANEL_GAP, top: besideTop }
+  }
+  if (table.left - PANEL_GAP - COMPARISON_PANEL_WIDTH >= PANEL_GAP) {
+    return {
+      left: table.left - PANEL_GAP - COMPARISON_PANEL_WIDTH,
+      top: besideTop,
+    }
   }
 
-  return {
-    left: Math.max(PANEL_GAP, Math.min(left, maxLeft)),
-    top: Math.max(PANEL_GAP, Math.min(row.top, maxTop)),
+  const clearOf =
+    (row.firstElementChild ?? row).getBoundingClientRect().right + PANEL_GAP
+  const left = Math.min(
+    Math.max(table.right - COMPARISON_PANEL_WIDTH, clearOf),
+    maxLeft
+  )
+  if (left < clearOf) {
+    // Too narrow to show it without covering the first column.
+    return undefined
   }
+
+  const below = rowRect.bottom + PANEL_GAP
+  const above = rowRect.top - PANEL_GAP - COMPARISON_PANEL_HEIGHT
+  const top = below <= maxTop ? below : above >= PANEL_GAP ? above : besideTop
+
+  return { left, top }
 }
 
 export const OccurrencePicker = ({
@@ -160,13 +185,10 @@ export const OccurrencePicker = ({
       return
     }
 
-    setHovered({
-      candidate: candidate as MergeCandidate,
-      style: getPanelStyle(
-        tableRef.current?.getBoundingClientRect(),
-        row.getBoundingClientRect()
-      ),
-    })
+    const style = getPanelStyle(tableRef.current?.getBoundingClientRect(), row)
+    setHovered(
+      style ? { candidate: candidate as MergeCandidate, style } : undefined
+    )
   }
 
   const hideComparison = () => setHovered(undefined)
