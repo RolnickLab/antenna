@@ -46,6 +46,35 @@ export const findClosestCaptureId = ({
   return closestCaptureId
 }
 
+// Both return undefined when no capture on that side has detections.
+export const findNextCaptureWithDetections = ({
+  date,
+  timeline,
+}: {
+  date: Date
+  timeline: TimelineTick[]
+}) =>
+  findClosestCaptureId({
+    minDate: date,
+    snapToDetections: true,
+    targetDate: date,
+    timeline,
+  })
+
+export const findPrevCaptureWithDetections = ({
+  date,
+  timeline,
+}: {
+  date: Date
+  timeline: TimelineTick[]
+}) =>
+  findClosestCaptureId({
+    maxDate: date,
+    snapToDetections: true,
+    targetDate: date,
+    timeline,
+  })
+
 export const dateToValue = ({
   date,
   startDate,

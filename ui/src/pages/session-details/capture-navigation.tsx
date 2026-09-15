@@ -9,7 +9,10 @@ import {
 import { BasicTooltip, Button } from 'nova-ui-kit'
 import { useEffect, useState } from 'react'
 import { STRING, translate } from 'utils/language'
-import { findClosestCaptureId } from './utils'
+import {
+  findNextCaptureWithDetections,
+  findPrevCaptureWithDetections,
+} from './utils'
 
 export const CaptureNavigation = ({
   activeCapture,
@@ -46,12 +49,8 @@ export const CaptureNavigation = ({
     }
 
     const prevCaptureId =
-      findClosestCaptureId({
-        maxDate: activeCapture.date,
-        snapToDetections: true,
-        targetDate: activeCapture.date,
-        timeline,
-      }) ?? activeCapture.prevCaptureId
+      findPrevCaptureWithDetections({ date: activeCapture.date, timeline }) ??
+      activeCapture.prevCaptureId
 
     if (prevCaptureId) {
       setActiveCaptureId(prevCaptureId)
@@ -72,12 +71,8 @@ export const CaptureNavigation = ({
     }
 
     const nextCaptureId =
-      findClosestCaptureId({
-        minDate: activeCapture.date,
-        snapToDetections: true,
-        targetDate: activeCapture.date,
-        timeline,
-      }) ?? activeCapture.nextCaptureId
+      findNextCaptureWithDetections({ date: activeCapture.date, timeline }) ??
+      activeCapture.nextCaptureId
 
     if (nextCaptureId) {
       setActiveCaptureId(nextCaptureId)

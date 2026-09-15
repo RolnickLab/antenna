@@ -22,12 +22,7 @@ import { useActiveOccurrences } from '../hooks/useActiveOccurrences'
 import { BoxStyle, bboxToPercentStyle } from './bbox'
 import { buildTrail, CaptureGhostTrail } from './capture-ghost-trail'
 import { TierSources } from './capture-tiers'
-import {
-  ExtendTrackBanner,
-  ExtendTrackDialog,
-  ExtendTrackState,
-  useExtendTrack,
-} from './extend-track'
+import { ExtendTrackDialog, ExtendTrackState } from './extend-track'
 import { OccurrenceToolbar } from './occurrence-toolbar'
 import {
   SessionPathStatus,
@@ -48,9 +43,8 @@ interface CaptureProps {
   captureId?: string
   defaultFilters: boolean
   detections: CaptureDetection[]
+  extend: ExtendTrackState
   height: number | null
-  /** Steps to the capture after this one; absent on the last capture of a session. */
-  onNextCapture?: () => void
   showDetections?: boolean
   sources?: TierSources
   transformRef: React.RefObject<ReactZoomPanPinchRef>
@@ -61,15 +55,14 @@ export const Capture = ({
   captureId,
   defaultFilters,
   detections,
+  extend,
   height,
-  onNextCapture,
   showDetections,
   sources,
   transformRef,
   width,
 }: CaptureProps) => {
   const { activeOccurrences, setActiveOccurrences } = useActiveOccurrences()
-  const extend = useExtendTrack({ captureId, onNextCapture })
   // Which occurrence the operator asked to see the path of. Kept while that
   // occurrence stays selected, so stepping between captures redraws the same path.
   const [pathOccurrenceId, setPathOccurrenceId] = useState<string>()
@@ -286,21 +279,12 @@ export const Capture = ({
           occurrenceId={shownPathId}
         />
       ) : null}
-      {extend.occurrenceId ? (
-        <>
-          <ExtendTrackBanner
-            extend={extend}
-            occurrenceId={extend.occurrenceId}
-            onNextCapture={onNextCapture}
-          />
-          {extend.choice ? (
-            <ExtendTrackDialog
-              choice={extend.choice}
-              extend={extend}
-              occurrenceId={extend.occurrenceId}
-            />
-          ) : null}
-        </>
+      {extend.occurrenceId && extend.choice ? (
+        <ExtendTrackDialog
+          choice={extend.choice}
+          extend={extend}
+          occurrenceId={extend.occurrenceId}
+        />
       ) : null}
       {zoomPercent !== null ? (
         <span className="absolute bottom-2 left-2 px-2.5 py-1 rounded-full bg-neutral-900/70 text-generic-white text-xs tabular-nums pointer-events-none select-none">

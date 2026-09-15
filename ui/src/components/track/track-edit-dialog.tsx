@@ -1,11 +1,27 @@
 import classNames from 'classnames'
 import { FormError, FormMessage } from 'components/form/layout/layout'
 import { ChevronRightIcon, Loader2Icon } from 'lucide-react'
-import { Button, buttonVariants, Dialog } from 'nova-ui-kit'
+import { BasicTooltip, Button, buttonVariants, Dialog } from 'nova-ui-kit'
 import { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
+
+/** Says why a button is disabled; a disabled button takes no pointer events itself. */
+export const DisabledReason = ({
+  children,
+  reason,
+}: {
+  children: ReactNode
+  reason?: string
+}) =>
+  reason ? (
+    <BasicTooltip asChild content={reason}>
+      <span tabIndex={0}>{children}</span>
+    </BasicTooltip>
+  ) : (
+    <>{children}</>
+  )
 
 /**
  * Confirmation step shared by the track edits. Passing `result` replaces the
@@ -14,6 +30,7 @@ import { parseServerError } from 'utils/parseServerError/parseServerError'
 export const TrackEditDialog = ({
   children,
   confirmDisabled,
+  confirmDisabledReason,
   confirmLabel,
   description,
   error,
@@ -28,6 +45,8 @@ export const TrackEditDialog = ({
 }: {
   children?: ReactNode
   confirmDisabled?: boolean
+  /** Shown on the confirm button while it is disabled. */
+  confirmDisabledReason?: string
   confirmLabel: string
   description: string
   error?: unknown
@@ -88,16 +107,20 @@ export const TrackEditDialog = ({
               </span>
             </Button>
             {!result && (
-              <Button
-                disabled={confirmDisabled || isLoading}
-                onClick={onConfirm}
-                size="small"
+              <DisabledReason
+                reason={confirmDisabled ? confirmDisabledReason : undefined}
               >
-                <span>{confirmLabel}</span>
-                {isLoading ? (
-                  <Loader2Icon className="w-4 h-4 animate-spin" />
-                ) : null}
-              </Button>
+                <Button
+                  disabled={confirmDisabled || isLoading}
+                  onClick={onConfirm}
+                  size="small"
+                >
+                  <span>{confirmLabel}</span>
+                  {isLoading ? (
+                    <Loader2Icon className="w-4 h-4 animate-spin" />
+                  ) : null}
+                </Button>
+              </DisabledReason>
             )}
           </div>
         </div>

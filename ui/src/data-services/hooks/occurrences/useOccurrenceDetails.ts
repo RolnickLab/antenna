@@ -30,6 +30,7 @@ export const useOccurrenceDetails = (
 
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<ServerOccurrenceDetails>({
+      enabled: !!id,
       queryKey: [API_ROUTES.OCCURRENCES, id, applyDefaults],
       url,
     })
