@@ -1,5 +1,6 @@
 import { PathFrame } from 'data-services/models/occurrence-path'
 import { TimelineTick } from 'data-services/models/timeline-tick'
+import { STRING, translate } from 'utils/language'
 
 export interface TimelineFrame {
   captureId: string
@@ -92,4 +93,28 @@ export const buildOccurrenceTimeline = (
   })
 
   return spans
+}
+
+/** A short, rounded length of time, such as "42 s", "8 min" or "1 h 12 min". */
+export const getDurationLabel = (milliseconds: number) => {
+  const seconds = Math.round(milliseconds / 1000)
+
+  if (seconds < 60) {
+    return translate(STRING.TIMELINE_DURATION_SECONDS, {
+      seconds: String(seconds),
+    })
+  }
+
+  const minutes = Math.round(seconds / 60)
+
+  if (minutes < 60) {
+    return translate(STRING.TIMELINE_DURATION_MINUTES, {
+      minutes: String(minutes),
+    })
+  }
+
+  return translate(STRING.TIMELINE_DURATION_HOURS, {
+    hours: String(Math.floor(minutes / 60)),
+    minutes: String(minutes % 60),
+  })
 }
