@@ -643,6 +643,7 @@ const OccurrenceDetailsDialog = ({
         {occurrence ? (
           <OccurrenceDetails
             occurrence={occurrence}
+            onNavigate={onClose}
             selectedTab={selectedView}
             setSelectedTab={setSelectedView}
           />

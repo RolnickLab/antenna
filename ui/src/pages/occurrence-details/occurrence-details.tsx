@@ -50,10 +50,13 @@ export const TABS = {
 
 export const OccurrenceDetails = ({
   occurrence,
+  onNavigate,
   selectedTab,
   setSelectedTab,
 }: {
   occurrence: Occurrence
+  /** Called when a frame's link is followed, so a dialog around these details can close. */
+  onNavigate?: () => void
   selectedTab?: string
   setSelectedTab: (selectedTab?: string) => void
 }) => {
@@ -92,22 +95,18 @@ export const OccurrenceDetails = ({
             )
             .map((item) => ({
               ...item,
-              to:
-                !occurrence.sessionId ||
-                pathname.includes(
-                  APP_ROUTES.SESSIONS({ projectId: projectId as string })
-                )
-                  ? undefined
-                  : getAppRoute({
-                      to: APP_ROUTES.SESSION_DETAILS({
-                        projectId: projectId as string,
-                        sessionId: occurrence.sessionId,
-                      }),
-                      filters: {
-                        occurrence: occurrence.id,
-                        capture: item.captureId,
-                      },
+              to: !occurrence.sessionId
+                ? undefined
+                : getAppRoute({
+                    to: APP_ROUTES.SESSION_DETAILS({
+                      projectId: projectId as string,
+                      sessionId: occurrence.sessionId,
                     }),
+                    filters: {
+                      occurrence: occurrence.id,
+                      capture: item.captureId,
+                    },
+                  }),
             }))
         : [],
     [occurrence]
@@ -369,6 +368,7 @@ export const OccurrenceDetails = ({
                   }
                   key={item.id}
                   item={item}
+                  onLinkClick={onNavigate}
                 />
               ))}
             </BlueprintCollection>
