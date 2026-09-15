@@ -8128,7 +8128,22 @@ class TrackEditTestCase(APITestCase):
         self.occurrence, self.detections = self._make_track(len(self.captures))
         return super().setUp()
 
-    def _make_track(self, length: int, score: float | None = 0.9) -> tuple[Occurrence, list[Detection]]:
+    def _make_captures_after(self, count: int) -> list[SourceImage]:
+        """Captures later in the same session, for a second track that shares no capture with the first."""
+        last = self.captures[-1]
+        return [
+            SourceImage.objects.create(
+                deployment=self.deployment,
+                event=self.event,
+                timestamp=last.timestamp + datetime.timedelta(minutes=i + 1),
+                path=f"test/after-{last.pk}-{i}.jpg",
+            )
+            for i in range(count)
+        ]
+
+    def _make_track(
+        self, length: int, score: float | None = 0.9, captures: list[SourceImage] | None = None
+    ) -> tuple[Occurrence, list[Detection]]:
         """One occurrence holding `length` detections, chained in capture order.
 
         Each detection carries a classification at `score`, which settles the
@@ -8138,7 +8153,7 @@ class TrackEditTestCase(APITestCase):
         """
         occurrence = Occurrence.objects.create(event=self.event, deployment=self.deployment, project=self.project)
         detections = []
-        for capture in self.captures[:length]:
+        for capture in (captures or self.captures)[:length]:
             detection = Detection.objects.create(
                 source_image=capture,
                 timestamp=capture.timestamp,
@@ -8441,7 +8456,7 @@ class OccurrenceGroupingTestCase(TrackEditTestCase):
         return Identification.objects.create(occurrence=occurrence, taxon=self.taxon, user=self.curator)
 
     def test_merge_moves_detections_and_identifications_to_the_survivor(self):
-        other, other_detections = self._make_track(2)
+        other, other_detections = self._make_track(2, captures=self._make_captures_after(2))
         identification = self._make_identification(other)
 
         self.client.force_authenticate(user=self.curator)
@@ -8479,8 +8494,51 @@ class OccurrenceGroupingTestCase(TrackEditTestCase):
         foreign.refresh_from_db()
         self.assertEqual(foreign.project_id, other_project.pk)
 
-    def test_adding_a_stray_detection_absorbs_the_occurrence_it_emptied(self):
+    def test_merge_refuses_a_source_on_a_capture_the_track_covers(self):
+        """One animal appears once per capture, so a source with a box on one of the track's
+        captures is a second individual and the whole merge is refused."""
+        other, _ = self._make_track(1)
+
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.post(
+            f"/api/v2/occurrences/{self.occurrence.pk}/merge/", {"occurrence_ids": [other.pk]}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(Occurrence.objects.filter(pk=other.pk).exists())
+        self.assertEqual(self.occurrence.detections.count(), len(self.detections))
+
+    def test_merge_refuses_two_sources_on_the_same_capture(self):
+        """Two sources that each have a box on the same capture are two individuals, even when
+        the track itself does not cover that capture, as when every candidate is ticked at once."""
+        capture = self._make_captures_after(1)
+        first, _ = self._make_track(1, captures=capture)
+        second, _ = self._make_track(1, captures=capture)
+
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.post(
+            f"/api/v2/occurrences/{self.occurrence.pk}/merge/",
+            {"occurrence_ids": [first.pk, second.pk]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(Occurrence.objects.filter(pk__in=[first.pk, second.pk]).count(), 2)
+
+    def test_adding_a_detection_on_a_covered_capture_is_refused(self):
+        """Adding a box on a capture the track already covers would give it two boxes there."""
         stray, stray_detections = self._make_track(1)
+
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.post(
+            f"/api/v2/occurrences/{self.occurrence.pk}/add-detections/",
+            {"detection_ids": [stray_detections[0].pk]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        stray_detections[0].refresh_from_db()
+        self.assertEqual(stray_detections[0].occurrence_id, stray.pk)
+
+    def test_adding_a_stray_detection_absorbs_the_occurrence_it_emptied(self):
+        stray, stray_detections = self._make_track(1, captures=self._make_captures_after(1))
         identification = self._make_identification(stray)
 
         self.client.force_authenticate(user=self.curator)
@@ -8504,7 +8562,7 @@ class OccurrenceGroupingTestCase(TrackEditTestCase):
         They carry no occurrence to read a project from, so the endpoint has to scope
         them through the capture they were found in.
         """
-        capture = self.captures[-1]
+        capture = self._make_captures_after(1)[0]
         bare = Detection.objects.create(
             source_image=capture,
             timestamp=capture.timestamp,
@@ -8536,7 +8594,7 @@ class OccurrenceGroupingTestCase(TrackEditTestCase):
         # It is already in this occurrence, so this is a no-op the API rejects.
         self.assertEqual(response.status_code, 400)
 
-        other, other_detections = self._make_track(3)
+        other, other_detections = self._make_track(3, captures=self._make_captures_after(3))
         self.client.post(
             f"/api/v2/occurrences/{self.occurrence.pk}/add-detections/",
             {"detection_ids": [other_detections[1].pk]},
@@ -8937,7 +8995,7 @@ class MergeCandidatesTestCase(TrackEditTestCase):
         self.project.default_filters_exclude_taxa.set([self.taxon])
 
         low_score = self._make_occurrence([self.after_capture], bbox=[12, 12, 42, 42], score=0.1)
-        undetermined = self._make_occurrence([self.after_capture], bbox=[14, 14, 44, 44], score=None)
+        undetermined = self._make_occurrence([self.before_capture], bbox=[14, 14, 44, 44], score=None)
 
         offered = {row["id"]: row for row in self.get_candidates().data["candidates"]}
         self.assertEqual(sorted(offered), sorted([low_score.pk, undetermined.pk]))

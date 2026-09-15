@@ -27,6 +27,7 @@ Three invariants hold after every operation here:
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Iterable
 
 from django.db import transaction
@@ -188,6 +189,29 @@ def _absorb(target: Occurrence, sources: list[Occurrence]) -> None:
     Occurrence.objects.filter(pk__in=source_pks).delete()
 
 
+def _refuse_two_boxes_on_one_capture(target: Occurrence, incoming_capture_ids: Iterable[int]) -> None:
+    """Refuse an edit that would put two boxes from one capture into ``target``.
+
+    One animal appears at most once per capture, so a second box on a capture is a
+    second individual. Only captures the edit brings in are checked, so a track that
+    already holds such a pair can still be edited.
+    """
+    counts = Counter(incoming_capture_ids)
+    if not counts:
+        return
+    covered = set(
+        Detection.objects.valid()
+        .filter(occurrence_id=target.pk, source_image_id__in=list(counts))
+        .values_list("source_image_id", flat=True)
+    )
+    clashes = sorted(covered | {capture_id for capture_id, n in counts.items() if n > 1})
+    if clashes:
+        raise TrackEditError(
+            f"Capture(s) {clashes} would hold two detections in occurrence {target.pk}. "
+            "One animal appears once per capture, so these are different individuals."
+        )
+
+
 @transaction.atomic
 def merge_occurrences(target: Occurrence, sources: Iterable[Occurrence]) -> Occurrence:
     """Fold ``sources`` into ``target``: one animal that tracking recorded as several.
@@ -206,6 +230,12 @@ def merge_occurrences(target: Occurrence, sources: Iterable[Occurrence]) -> Occu
             f"Occurrence(s) {cross_session} belong to a different session than {target.pk}. "
             "An occurrence cannot span sessions."
         )
+    _refuse_two_boxes_on_one_capture(
+        target,
+        Detection.objects.valid()
+        .filter(occurrence_id__in=[o.pk for o in sources])
+        .values_list("source_image_id", flat=True),
+    )
 
     _absorb(target, sources)
     _cut_links_leaving(target)
@@ -253,6 +283,7 @@ def add_detections(target: Occurrence, detections: Iterable[Detection]) -> Occur
             f"Detection(s) {cross_session} were captured in a different session than occurrence "
             f"{target.pk}. An occurrence cannot span sessions."
         )
+    _refuse_two_boxes_on_one_capture(target, [d.source_image_id for d in detections])
 
     donors = list(Occurrence.objects.filter(pk__in=donor_pks))
     Detection.objects.filter(pk__in=[d.pk for d in detections]).update(occurrence=target)
