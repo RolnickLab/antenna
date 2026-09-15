@@ -299,8 +299,6 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         """
         If the ``start_now`` parameter is passed, enqueue the job immediately.
         """
-        # All jobs created from the Jobs UI are ML jobs.
-        # @TODO Remove this when the UI is updated pass a job type
         # Get an instance for the model without saving
         obj = serializer.Meta.model(**serializer.validated_data)
         # Check permissions before saving

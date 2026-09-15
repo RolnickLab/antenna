@@ -1,6 +1,6 @@
 import logging
 
-from django.db import transaction
+from django.db import models, transaction
 from django.db.models import Prefetch
 from django.db.models.query import QuerySet
 from django.http import Http404
@@ -25,13 +25,14 @@ from ami.ml.schemas import PipelineRegistrationResponse
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.embedding import EMBEDDING_DIMENSIONS, DetectionEmbedding
-from .models.evaluation import AlgorithmEvaluation
+from .models.evaluation import AlgorithmEvaluation, OccurrenceSet
 from .models.pipeline import Pipeline
 from .models.processing_service import ProcessingService
 from .models.project_pipeline_config import ProjectPipelineConfig
 from .serializers import (
     AlgorithmCategoryMapSerializer,
     AlgorithmSerializer,
+    OccurrenceSetSerializer,
     PipelineRegistrationSerializer,
     PipelineSerializer,
     ProcessingServiceSerializer,
@@ -48,7 +49,9 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
 
     queryset = Algorithm.objects.all()
     serializer_class = AlgorithmSerializer
-    filterset_fields = ["name", "version"]
+    # ``trainable`` is filterable so a form that starts a retrain can offer only the heads
+    # a service will actually accept.
+    filterset_fields = ["name", "version", "trainable"]
     ordering_fields = [
         "id",
         "created_at",
@@ -101,6 +104,29 @@ class AlgorithmCategoryMapViewSet(DefaultViewSet):
         "updated_at",
         "version",
     ]
+
+
+class OccurrenceSetViewSet(DefaultViewSet, ProjectMixin):
+    """
+    API endpoint listing the fixed occurrence sets a model can be scored against.
+
+    Read-only: membership is built deliberately, not edited in passing, because two models
+    can only be compared if they were scored on exactly the same occurrences.
+    """
+
+    queryset = OccurrenceSet.objects.all()
+    serializer_class = OccurrenceSetSerializer
+    http_method_names = ["get", "head", "options"]
+    ordering_fields = ["name", "created_at", "updated_at"]
+    search_fields = ["name"]
+
+    def get_queryset(self) -> QuerySet["OccurrenceSet"]:
+        qs = super().get_queryset().annotate(annotated_occurrences_count=models.Count("occurrences"))
+        project = self.get_active_project()
+        if project:
+            # A set with no project is global, so it is offered everywhere.
+            return qs.for_project(project)
+        return qs
 
 
 class PipelineViewSet(DefaultViewSet, ProjectMixin):
