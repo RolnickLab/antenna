@@ -2228,10 +2228,10 @@ class MergeCandidateSerializer(serializers.Serializer):
     image_timestamp = serializers.DateTimeField(allow_null=True, help_text="When that frame was captured.")
     edge_image = serializers.CharField(
         allow_null=True,
-        help_text="A crop of the requested occurrence's own frame in the scored pair: its first frame for a "
-        "candidate before it, its last for one after, whichever is nearest for one in a gap.",
+        help_text="A crop of the track frame in the scored pair: its first frame for a before candidate, its last "
+        "for an after one, the nearest one in time for a gap candidate.",
     )
-    edge_timestamp = serializers.DateTimeField(allow_null=True, help_text="When that edge frame was captured.")
+    edge_timestamp = serializers.DateTimeField(allow_null=True, help_text="When that track frame was captured.")
 
 
 class MergeCandidatesResponseSerializer(serializers.Serializer):

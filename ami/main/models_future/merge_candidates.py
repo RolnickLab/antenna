@@ -2,8 +2,8 @@
 
 Tracking leaves one animal as two occurrences rather than risk merging two animals,
 so the repair is a merge a person chooses. This ranks the choices the way tracking
-would have: by the matching cost between the two frames that are nearest in time,
-the occurrence's edge frame and the candidate's frame closest to it.
+would have: by the matching cost between the two frames, one from each, that are
+nearest in time.
 
 Candidates are occurrences of the same session with a frame among the searched
 captures. By default those are the captures adjacent to the occurrence: a number of
@@ -32,13 +32,14 @@ Each candidate is described by:
   outrank one with a poor vector match. Null when either box is malformed.
 - ``capture_id`` and ``image_timestamp``: the candidate's frame in the scored pair,
   the one its ``image`` is a crop of.
-- ``edge_image`` and ``edge_timestamp``: the occurrence's own frame in the scored
-  pair, so the two crops can be shown side by side.
+- ``edge_image`` and ``edge_timestamp``: the track frame in the scored pair: its first
+  frame for a ``before`` candidate, its last for an ``after`` one, the nearest one in
+  time for a ``gap`` candidate. The two crops can then be shown side by side.
 
 Candidates of every relation are sorted together by cost and capped once.
 
-Vectors are loaded only for the pairs scored: the occurrence's two edge frames and one
-frame per candidate.
+Vectors are loaded only for the frames in the scored pairs: one per candidate and the
+occurrence's frames those are paired with.
 """
 
 from __future__ import annotations
@@ -99,10 +100,10 @@ def _adjacent_capture_ids(
     return list(before[:captures]) + list(after[:captures])
 
 
-def _nearest_pair(edges: list[dict], frames: list[dict]) -> tuple[dict, dict]:
-    """The occurrence edge and candidate frame closest to each other in time."""
+def _nearest_pair(track_frames: list[dict], frames: list[dict]) -> tuple[dict, dict]:
+    """The track frame and candidate frame closest to each other in time."""
     return min(
-        ((edge, frame) for edge in edges for frame in frames),
+        ((track_frame, frame) for track_frame in track_frames for frame in frames),
         key=lambda pair: (abs(pair[1]["timestamp"] - pair[0]["timestamp"]), pair[0]["pk"], pair[1]["pk"]),
     )
 
@@ -120,13 +121,13 @@ def _relation(
     return RELATION_GAP, 0.0
 
 
-def _pair_diagonal(edge: dict, frame: dict, corners_a, corners_b) -> float:
+def _pair_diagonal(track_frame: dict, frame: dict, corners_a, corners_b) -> float:
     """The tracking method's integer diagonal when the captures carry dimensions, else
     the same fallback the track stats use."""
     from ami.ml.post_processing.tracking_task import image_diagonal
 
-    width = max(edge["source_image__width"] or 0, frame["source_image__width"] or 0)
-    height = max(edge["source_image__height"] or 0, frame["source_image__height"] or 0)
+    width = max(track_frame["source_image__width"] or 0, frame["source_image__width"] or 0)
+    height = max(track_frame["source_image__height"] or 0, frame["source_image__height"] or 0)
     if width and height:
         return float(image_diagonal(width, height))
     return frame_diagonal(None, None, max(corners_a[2], corners_b[2]), max(corners_a[3], corners_b[3]))
@@ -141,23 +142,25 @@ def _latest_vectors(classifications) -> dict[tuple[int, int], Any]:
     return vectors
 
 
-def _score_pair(edge: dict, frame: dict, edge_vector, frame_vector) -> tuple[float | None, float | None, float | None]:
+def _score_pair(
+    track_frame: dict, frame: dict, track_vector, frame_vector
+) -> tuple[float | None, float | None, float | None]:
     """(distance, similarity, cost) for one pair, or Nones for a box that cannot be read."""
     from ami.ml.post_processing.tracking_task import cosine_similarity, distance_ratio, total_cost
 
-    corners_a = bbox_corners(edge["bbox"])
+    corners_a = bbox_corners(track_frame["bbox"])
     corners_b = bbox_corners(frame["bbox"])
     if corners_a is None or corners_b is None:
         return None, None, None
 
-    diagonal = _pair_diagonal(edge, frame, corners_a, corners_b)
+    diagonal = _pair_diagonal(track_frame, frame, corners_a, corners_b)
     distance = round(distance_ratio(corners_a, corners_b, diagonal), _ROUND_TO)
     similarity = (
-        round(cosine_similarity(edge_vector, frame_vector), _ROUND_TO)
-        if edge_vector is not None and frame_vector is not None
+        round(cosine_similarity(track_vector, frame_vector), _ROUND_TO)
+        if track_vector is not None and frame_vector is not None
         else None
     )
-    cost = round(total_cost(edge_vector, frame_vector, corners_a, corners_b, diagonal), _ROUND_TO)
+    cost = round(total_cost(track_vector, frame_vector, corners_a, corners_b, diagonal), _ROUND_TO)
     return distance, similarity, cost
 
 
@@ -201,7 +204,6 @@ def rank_merge_candidates(
     if not target_frames:
         return []
     first, last = target_frames[0], target_frames[-1]
-    edges = [first] if first["pk"] == last["pk"] else [first, last]
     target_captures = {frame["source_image_id"] for frame in target_frames}
 
     if minutes is not None:
@@ -239,34 +241,39 @@ def rank_merge_candidates(
     if not scored:
         return []
 
-    pairs = {candidate.pk: _nearest_pair(edges, frames_by_occurrence[candidate.pk]) for candidate, _, _ in scored}
+    # A gap candidate lies inside the track's span, so any track frame can be nearest it.
+    track_side = {RELATION_BEFORE: [first], RELATION_AFTER: [last], RELATION_GAP: target_frames}
+    pairs = {
+        candidate.pk: _nearest_pair(track_side[relation], frames_by_occurrence[candidate.pk])
+        for candidate, relation, _ in scored
+    }
 
-    edge_vectors = _latest_vectors(
+    track_vectors = _latest_vectors(
         Classification.objects.filter(
-            detection_id__in=[edge["pk"] for edge in edges],
+            detection_id__in={track_frame["pk"] for track_frame, _ in pairs.values()},
             algorithm_id__isnull=False,
             features_2048__isnull=False,
         )
     )
     frame_vectors: dict[tuple[int, int], Any] = {}
-    if edge_vectors:
+    if track_vectors:
         frame_vectors = _latest_vectors(
             Classification.objects.filter(
                 detection_id__in=[frame["pk"] for _, frame in pairs.values()],
-                algorithm_id__in={algorithm_id for _, algorithm_id in edge_vectors},
+                algorithm_id__in={algorithm_id for _, algorithm_id in track_vectors},
                 features_2048__isnull=False,
             )
         )
-    vector_by_edge = {
-        detection_id: (algorithm_id, vector) for (detection_id, algorithm_id), vector in edge_vectors.items()
+    vector_by_track_frame = {
+        detection_id: (algorithm_id, vector) for (detection_id, algorithm_id), vector in track_vectors.items()
     }
 
     rows: list[dict[str, Any]] = []
     for candidate, relation, offset in scored:
-        edge, frame = pairs[candidate.pk]
-        algorithm_id, edge_vector = vector_by_edge.get(edge["pk"], (None, None))
+        track_frame, frame = pairs[candidate.pk]
+        algorithm_id, track_vector = vector_by_track_frame.get(track_frame["pk"], (None, None))
         frame_vector = frame_vectors.get((frame["pk"], algorithm_id)) if algorithm_id is not None else None
-        distance, similarity, cost = _score_pair(edge, frame, edge_vector, frame_vector)
+        distance, similarity, cost = _score_pair(track_frame, frame, track_vector, frame_vector)
         crop = frame["path"] or next((f["path"] for f in frames_by_occurrence[candidate.pk] if f["path"]), None)
         rows.append(
             {
@@ -287,8 +294,8 @@ def rank_merge_candidates(
                 "image": get_media_url(crop) if crop else None,
                 "capture_id": frame["source_image_id"],
                 "image_timestamp": frame["timestamp"],
-                "edge_image": get_media_url(edge["path"]) if edge["path"] else None,
-                "edge_timestamp": edge["timestamp"],
+                "edge_image": get_media_url(track_frame["path"]) if track_frame["path"] else None,
+                "edge_timestamp": track_frame["timestamp"],
             }
         )
 

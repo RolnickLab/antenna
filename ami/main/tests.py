@@ -8636,7 +8636,8 @@ class MergeCandidatesTestCase(TrackEditTestCase):
     that the ranking follows the tracking cost, that the time relation is signed the
     right way, that a candidate without a vector is still offered, that the search
     covers the adjacent captures by default, that a candidate sharing a capture with
-    the track is never offered, and that one filling a gap in the track is.
+    the track is never offered, and that one filling a gap in the track is, scored
+    against the track frame nearest it.
     """
 
     FRAME_SIZE = 1000
@@ -8876,6 +8877,26 @@ class MergeCandidatesTestCase(TrackEditTestCase):
         self.assertEqual(by_id[after.pk]["edge_timestamp"], last.timestamp.isoformat())
         self.assertEqual(by_id[after.pk]["capture_id"], self.after_capture.pk)
         self.assertEqual(by_id[after.pk]["image_timestamp"], self.after_capture.timestamp.isoformat())
+
+    def test_a_gap_candidate_is_scored_against_the_track_frame_nearest_it(self):
+        """A candidate in a gap is paired with the track frame nearest it in time, not with the
+        first or last frame a minute or more away. The interior box sits across the frame from
+        the edge boxes, so a pairing with either edge would report a distance near 0.5."""
+        interior = self.detections[1]
+        interior.bbox = [500, 500, 530, 530]
+        interior.save(update_fields=["bbox"])
+        in_gap = self._make_occurrence(
+            [self._make_capture(interior.timestamp + datetime.timedelta(seconds=2))], bbox=[502, 502, 532, 532]
+        )
+
+        row = {row["id"]: row for row in self.get_candidates().data["candidates"]}[in_gap.pk]
+
+        self.assertEqual(row["edge_timestamp"], interior.timestamp.isoformat())
+        self.assertAlmostEqual(row["distance"], 0.002, delta=0.001)
+        geometry_only = total_cost(
+            None, None, [500, 500, 530, 530], [502, 502, 532, 532], image_diagonal(self.FRAME_SIZE, self.FRAME_SIZE)
+        )
+        self.assertAlmostEqual(row["cost"], geometry_only, places=4)
 
     def test_minutes_must_be_a_whole_number_within_range(self):
         for junk in ("abc", "0", "31", "-5"):
