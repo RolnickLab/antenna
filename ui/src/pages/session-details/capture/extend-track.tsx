@@ -18,7 +18,7 @@ import {
   Loader2Icon,
   RouteIcon,
 } from 'lucide-react'
-import { BasicTooltip, Button } from 'nova-ui-kit'
+import { BasicTooltip, Button, LoadingSpinner } from 'nova-ui-kit'
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -543,14 +543,16 @@ export const ExtendTrackDialog = ({
   extend: ExtendTrackState
   occurrenceId: string
 }) => {
-  const clicked = useOccurrenceDetails(
-    choice.occurrenceId,
-    EXTEND_FETCH_OPTIONS
-  ).occurrence
-  const extended = useOccurrenceDetails(
-    occurrenceId,
-    EXTEND_FETCH_OPTIONS
-  ).occurrence
+  const {
+    occurrence: clicked,
+    isLoading: clickedLoading,
+    error: clickedError,
+  } = useOccurrenceDetails(choice.occurrenceId, EXTEND_FETCH_OPTIONS)
+  const {
+    occurrence: extended,
+    isLoading: extendedLoading,
+    error: extendedError,
+  } = useOccurrenceDetails(occurrenceId, EXTEND_FETCH_OPTIONS)
 
   // One animal cannot appear twice in a capture, so nothing may land on a capture
   // the extended track already covers.
@@ -586,7 +588,7 @@ export const ExtendTrackDialog = ({
         count: choice.frameCount,
         name: choice.label,
       })}
-      error={extend.error}
+      error={extend.error ?? clickedError ?? extendedError}
       isLoading={extend.isLoading}
       isWide
       onConfirm={extend.mergeChoice}
@@ -594,36 +596,44 @@ export const ExtendTrackDialog = ({
       open
       title={translate(STRING.TRACK_EXTEND_TITLE)}
     >
-      <div className="flex flex-wrap items-start justify-center gap-6">
-        <ExtendCrop
-          label={translate(STRING.TRACK_EXTEND_CLICKED_FRAME)}
-          src={clickedCrop?.image.src}
-          timeLabel={clickedCrop?.timeLabel}
-        />
-        <ExtendCrop
-          label={translate(STRING.TRACK_EXTEND_LATEST_FRAME)}
-          src={latestCrop?.image.src}
-          timeLabel={latestCrop?.timeLabel}
-        />
-      </div>
-      <div className="flex justify-center">
-        <DisabledReason
-          reason={
-            moveBlocked
-              ? translate(STRING.TRACK_EXTEND_CAPTURE_COVERED)
-              : undefined
-          }
-        >
-          <Button
-            disabled={extend.isLoading || moveBlocked}
-            onClick={extend.moveChoice}
-            size="small"
-            variant="outline"
-          >
-            <span>{translate(STRING.TRACK_EXTEND_MOVE_FRAME)}</span>
-          </Button>
-        </DisabledReason>
-      </div>
+      {clickedLoading || extendedLoading ? (
+        <div className="flex justify-center py-6">
+          <LoadingSpinner size={24} />
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-start justify-center gap-6">
+            <ExtendCrop
+              label={translate(STRING.TRACK_EXTEND_CLICKED_FRAME)}
+              src={clickedCrop?.image.src}
+              timeLabel={clickedCrop?.timeLabel}
+            />
+            <ExtendCrop
+              label={translate(STRING.TRACK_EXTEND_LATEST_FRAME)}
+              src={latestCrop?.image.src}
+              timeLabel={latestCrop?.timeLabel}
+            />
+          </div>
+          <div className="flex justify-center">
+            <DisabledReason
+              reason={
+                moveBlocked
+                  ? translate(STRING.TRACK_EXTEND_CAPTURE_COVERED)
+                  : undefined
+              }
+            >
+              <Button
+                disabled={extend.isLoading || moveBlocked}
+                onClick={extend.moveChoice}
+                size="small"
+                variant="outline"
+              >
+                <span>{translate(STRING.TRACK_EXTEND_MOVE_FRAME)}</span>
+              </Button>
+            </DisabledReason>
+          </div>
+        </>
+      )}
     </TrackEditDialog>
   )
 }
