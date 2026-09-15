@@ -12,8 +12,6 @@ services:
     build:
       context: .
       dockerfile: ./compose/local/django/Dockerfile
-    volumes:
-      - .:/app:z
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -26,10 +24,12 @@ services:
         condition: service_completed_successfully
       ml_backend:
         condition: service_started
-      rabbitmq:
-        condition: service_started
       nats:
         condition: service_started
+      rabbitmq:
+        condition: service_started
+    volumes:
+      - .:/app:z
     env_file:
       - ./.envs/.ci/.django
       - ./.envs/.ci/.postgres
@@ -46,6 +46,7 @@ services:
 
   redis:
     image: redis:6
+    container_name: ami_ci_redis
 
   nats:
     image: nats:2.10-alpine
@@ -60,9 +61,9 @@ services:
 
   celeryworker:
     <<: *django
+    command: /start-celeryworker
     depends_on:
       - rabbitmq
-    command: /start-celeryworker
 
   rabbitmq:
     image: rabbitmq:3-management
