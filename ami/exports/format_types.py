@@ -270,11 +270,14 @@ class DetectionsTabularSerializer(serializers.ModelSerializer):
 
     source_image_id = serializers.IntegerField(source="source_image.id", allow_null=True)
     source_image_path = serializers.CharField(source="source_image.path", allow_null=True)
+    source_image_timestamp = serializers.DateTimeField(source="source_image.timestamp", allow_null=True)
 
     detection_bbox = serializers.CharField(source="bbox", allow_null=True)
     detection_crop_url = serializers.SerializerMethodField()
     detection_score = serializers.FloatField(allow_null=True)
-
+    detection_algorithm_id = serializers.IntegerField(source="detection_algorithm.id", allow_null=True)
+    detection_algorithm_key = serializers.CharField(source="detection_algorithm.key", allow_null=True)
+    detection_algorithm_name = serializers.CharField(source="detection_algorithm.name", allow_null=True)
     determination_id = serializers.IntegerField(source="occurrence.determination.id", allow_null=True)
     determination_name = serializers.CharField(source="occurrence.determination.name", allow_null=True)
     determination_score = serializers.FloatField(source="occurrence.determination_score", allow_null=True)
@@ -291,9 +294,13 @@ class DetectionsTabularSerializer(serializers.ModelSerializer):
             "project_name",
             "source_image_id",
             "source_image_path",
+            "source_image_timestamp",
             "detection_bbox",
             "detection_crop_url",
             "detection_score",
+            "detection_algorithm_id",
+            "detection_algorithm_key",
+            "detection_algorithm_name",
             "determination_id",
             "determination_name",
             "determination_score",
@@ -330,5 +337,6 @@ class DetectionsCSVExporter(BaseCSVExporter):
                 "source_image__project",
                 "source_image__deployment",
                 "source_image__event",
+                "detection_algorithm",
             )
         )
