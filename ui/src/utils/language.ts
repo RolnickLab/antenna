@@ -84,6 +84,7 @@ export enum STRING {
   FIELD_LABEL_ACCURACY,
   FIELD_LABEL_ADDED_AT,
   FIELD_LABEL_ALGORITHM_URI,
+  FIELD_LABEL_ALGORITHM,
   FIELD_LABEL_AVG_TEMP,
   FIELD_LABEL_BEST_MODEL,
   FIELD_LABEL_BEST_SCORE,
@@ -283,6 +284,7 @@ export enum STRING {
   TOOLTIP_CAPTURE,
   TOOLTIP_DEPLOYMENT,
   TOOLTIP_DEVICE,
+  TOOLTIP_EVALUATION_SET,
   TOOLTIP_JOB,
   TOOLTIP_LATEST_JOB_STATUS,
   TOOLTIP_OCCURRENCE,
@@ -440,6 +442,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.FIELD_LABEL_ACCURACY]: 'Accuracy',
   [STRING.FIELD_LABEL_ADDED_AT]: 'Added at',
   [STRING.FIELD_LABEL_ALGORITHM_URI]: 'Algorithm source',
+  [STRING.FIELD_LABEL_ALGORITHM]: 'Algorithm',
   [STRING.FIELD_LABEL_AVG_TEMP]: 'Avg temp',
   [STRING.FIELD_LABEL_BEST_MODEL]: 'Best model',
   [STRING.FIELD_LABEL_BEST_SCORE]: 'Best score',
@@ -695,6 +698,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'A monitoring station is a location where a device is deployed to collect captures of insects in the wild.',
   [STRING.TOOLTIP_DEVICE]:
     'A device type is the type of equipment or camera used for collecting captures. One or many deployments can be connected to a device type. Device type refers to the model version, category or description of a kind of hardware, not the serial number of an individual device.',
+  [STRING.TOOLTIP_EVALUATION_SET]:
+    'An evaluation set is a fixed list of verified occurrences. Two models can only be compared if they were scored on the same set.',
   [STRING.TOOLTIP_JOB]:
     'A job is a task that requires time to complete and runs in the background. Examples include processing captures, syncing captures, and generating exports.',
   [STRING.TOOLTIP_LATEST_JOB_STATUS]:

@@ -444,6 +444,17 @@ class JobType:
     name: str
     key: str
 
+    # What a job of this type cannot run without. The API refuses to create one that is
+    # missing any of these, so a gap is a 400 when the job is made rather than a failure
+    # minutes later when it runs. ``required_params`` are keys inside ``Job.params``;
+    # ``required_fields`` are fields on the job itself.
+    required_fields: tuple[str, ...] = ()
+    required_params: tuple[str, ...] = ()
+
+    # Whether a person can start one from the UI. The rest are created by the platform:
+    # a data sync, an export, a regroup. Nothing should offer those as a choice.
+    user_creatable: bool = False
+
     # @TODO Consider adding custom vocabulary for job types to be used in the UI
     # verb: str = "Sync"
     # present_participle: str = "syncing"
@@ -460,6 +471,8 @@ class JobType:
 class MLJob(JobType):
     name = "ML pipeline"
     key = "ml"
+    required_fields = ("pipeline",)
+    user_creatable = True
 
     @classmethod
     def run(cls, job: "Job"):
@@ -941,6 +954,8 @@ class GenerateEmbeddingsJob(JobType):
 
     name = "Generate embeddings"
     key = "generate_embeddings"
+    required_fields = ("pipeline",)
+    user_creatable = True
 
     @classmethod
     def run(cls, job: "Job"):
@@ -1050,6 +1065,8 @@ class EvaluateAlgorithmJob(JobType):
 
     name = "Evaluate algorithm"
     key = "evaluate_algorithm"
+    required_params = ("algorithm_key", "occurrence_set_id")
+    user_creatable = True
 
     STAGE_SCORE = "score"
 
@@ -1128,6 +1145,8 @@ class TrainClassifierJob(JobType):
 
     name = "Train classifier"
     key = "train_classifier"
+    required_params = ("algorithm_key",)
+    user_creatable = True
 
     STAGE_PREPARE = "prepare"
     STAGE_DISPATCH = "dispatch"
