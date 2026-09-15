@@ -1019,7 +1019,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_MATCH_CLICK_REPLACE]:
     "Click to replace the track's frame on this capture",
   [STRING.TRACK_MATCH_GAP_NOTE]:
-    'The track skips this capture, so this is a preview of the pairing rule against its nearest frame, not an actual run',
+    'The track skips this capture, so this only previews the pairing rule',
   [STRING.TRACK_MATCH_LABEL]: 'Match',
   [STRING.TRACK_MATCH_LIKELY]: 'Likely',
   [STRING.TRACK_MATCH_POSSIBLE]: 'Possible',
