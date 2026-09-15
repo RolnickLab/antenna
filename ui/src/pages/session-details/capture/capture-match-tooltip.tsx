@@ -103,7 +103,7 @@ export const CaptureMatchTooltip = ({
               value={getSimilarityLabel(match.similarity)}
             />
           ) : null}
-          {offset !== null && match?.relation !== 'same' ? (
+          {offset !== null ? (
             <Row
               label={translate(STRING.TRACK_COLUMN_WHEN)}
               value={getWhenLabel(offset)}

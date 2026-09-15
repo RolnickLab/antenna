@@ -36,7 +36,6 @@ export interface CaptureMatch {
   /** Null when either box has no feature vector. */
   similarity: number | null
   timeOffsetSeconds: number | null
-  relation?: CaptureMatchRelation
 }
 
 export const convertCaptureMatches = (
@@ -50,7 +49,6 @@ export const convertCaptureMatches = (
       distance: row.distance,
       similarity: row.similarity,
       timeOffsetSeconds: row.time_offset_seconds,
-      relation: data.reference?.relation,
     }
 
     return result
