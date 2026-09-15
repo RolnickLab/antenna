@@ -1,8 +1,10 @@
 import classNames from 'classnames'
 import { DeterminationScore } from 'components/determination-score'
+import { useCaptureMatches } from 'data-services/hooks/occurrences/useCaptureMatches'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { useOccurrencePath } from 'data-services/hooks/occurrences/useOccurrencePath'
 import { CaptureDetection } from 'data-services/models/capture'
+import { CaptureMatch } from 'data-services/models/capture-match'
 import { PathFrame } from 'data-services/models/occurrence-path'
 import _ from 'lodash'
 import { Dialog, LoadingSpinner, Tooltip } from 'nova-ui-kit'
@@ -24,6 +26,8 @@ import { getNearestPathFrame } from './track-navigation'
 import { useActiveCaptureId } from '../hooks/useActiveCapture'
 import { BoxStyle, bboxToPercentStyle } from './bbox'
 import { buildTrail, CaptureGhostTrail } from './capture-ghost-trail'
+import { getMatchBoxStyle } from './capture-match'
+import { CaptureMatchTooltip } from './capture-match-tooltip'
 import { TierSources } from './capture-tiers'
 import { ExtendTrackDialog, ExtendTrackState } from './extend-track'
 import { OccurrenceToolbar } from './occurrence-toolbar'
@@ -84,6 +88,11 @@ export const Capture = ({
     refetch: refetchPath,
   } = useOccurrencePath(shownPathId, !!shownPathId)
   const isLoadingPath = pathLoading || pathFetching
+  const { matches } = useCaptureMatches({
+    captureId,
+    enabled: !!extend.occurrenceId,
+    occurrenceId: extend.occurrenceId,
+  })
 
   useEffect(() => {
     // The occurrence being extended stays selected with its path drawn, so every
@@ -268,6 +277,7 @@ export const Capture = ({
               detections={detections}
               extend={extend}
               isLoadingPath={isLoadingPath}
+              matches={matches}
               onHidePath={() => setPathOccurrenceId(undefined)}
               onShowPath={(occurrenceId) =>
                 occurrenceId === shownPathId
@@ -363,6 +373,7 @@ const CaptureDetections = ({
   detections,
   extend,
   isLoadingPath,
+  matches,
   onHidePath,
   onShowPath,
   path,
@@ -376,6 +387,7 @@ const CaptureDetections = ({
   detections: CaptureDetection[]
   extend: ExtendTrackState
   isLoadingPath?: boolean
+  matches?: Record<string, CaptureMatch>
   onHidePath: () => void
   onShowPath: (occurrenceId: string) => void
   path?: PathFrame[]
@@ -393,7 +405,8 @@ const CaptureDetections = ({
   const [dismissedToolbars, setDismissedToolbars] = useState<string[]>([])
   const [hoveredBox, setHoveredBox] = useState<string>()
   const { activeOccurrences, setActiveOccurrences } = useActiveOccurrences()
-  const detailsHidden = !!extend.occurrenceId && !extend.showDetails
+  const isExtending = !!extend.occurrenceId
+  const detailsHidden = isExtending && !extend.showDetails
 
   useEffect(() => {
     setDismissedToolbars([])
@@ -471,13 +484,17 @@ const CaptureDetections = ({
             dismissedToolbars.includes(detection.occurrenceId)
           // Hover is recorded only while it decides: Radix reports no close for a
           // popover already held shut, so a hover recorded then would go stale.
-          const opensOnHover = !detailsHidden && !isActive
+          const opensOnHover = detailsHidden || !isActive
           const popoverOpen = opensOnHover
             ? hoveredBox === detection.id
             : !detailsHidden && !isDismissed
 
           return (
-            <Tooltip.Provider key={detection.id} delayDuration={0}>
+            <Tooltip.Provider
+              key={detection.id}
+              delayDuration={0}
+              disableHoverableContent={detailsHidden}
+            >
               <Tooltip.Root
                 open={popoverOpen}
                 onOpenChange={(open) => {
@@ -492,14 +509,28 @@ const CaptureDetections = ({
               >
                 <Tooltip.Trigger asChild>
                   <div
-                    style={style}
+                    style={
+                      isExtending && !isExtended
+                        ? {
+                            ...style,
+                            ...getMatchBoxStyle(
+                              matches?.[detection.id]?.likelihood ?? null
+                            ),
+                          }
+                        : style
+                    }
                     className={classNames(styles.detection, {
-                      [styles.active]: isActive,
-                      [styles.filtered]: defaultFilters
-                        ? !detection.occurrenceMeetsCriteria
-                        : false,
-                      [styles.alert]: detection.score < SCORE_THRESHOLDS.ALERT,
+                      [styles.active]: isExtending ? isExtended : isActive,
+                      [styles.extended]: isExtended,
+                      [styles.filtered]:
+                        !isExtending &&
+                        defaultFilters &&
+                        !detection.occurrenceMeetsCriteria,
+                      [styles.alert]:
+                        !isExtending &&
+                        detection.score < SCORE_THRESHOLDS.ALERT,
                       [styles.warning]:
+                        !isExtending &&
                         detection.score < SCORE_THRESHOLDS.WARNING,
                       [styles.clickable]:
                         !!detection.occurrenceId || !!extend.occurrenceId,
@@ -516,7 +547,11 @@ const CaptureDetections = ({
                   />
                 </Tooltip.Trigger>
                 <Tooltip.Content
-                  className="p-3 z-[1]"
+                  className={
+                    detailsHidden
+                      ? 'px-3 py-2 z-[1] pointer-events-none'
+                      : 'p-3 z-[1]'
+                  }
                   collisionBoundary={container}
                   collisionPadding={8}
                   onEscapeKeyDown={() => {
@@ -526,7 +561,15 @@ const CaptureDetections = ({
                   }}
                   side="bottom"
                 >
-                  {detection.occurrenceId ? (
+                  {detailsHidden ? (
+                    <CaptureMatchTooltip
+                      click={extend.previewClick(detection)}
+                      detection={detection}
+                      detections={detections}
+                      isTrackFrame={isExtended}
+                      match={matches?.[detection.id]}
+                    />
+                  ) : detection.occurrenceId ? (
                     <OccurrenceToolbar
                       isExtended={isExtended}
                       isLoadingPath={

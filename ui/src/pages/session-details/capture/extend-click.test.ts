@@ -1,4 +1,5 @@
-import { getExtendClick } from './extend-click'
+import { STRING } from 'utils/language'
+import { getExtendClick, getExtendClickHint } from './extend-click'
 
 const TRACK_ID = 't1'
 
@@ -90,5 +91,48 @@ describe('getExtendClick', () => {
         occurrenceId: TRACK_ID,
       })
     ).toEqual({ kind: 'only-frame' })
+  })
+})
+
+describe('getExtendClickHint', () => {
+  const hintFor = (
+    captureId: string,
+    detection: ReturnType<typeof box>,
+    frames = FRAMES
+  ) =>
+    getExtendClickHint(
+      getExtendClick({ captureId, detection, frames, occurrenceId: TRACK_ID })
+    )
+
+  test('a box that would join the track is marked with a plus', () => {
+    expect(hintFor('c3', box('d3', 'o3'))).toEqual({
+      indicator: 'add',
+      string: STRING.TRACK_MATCH_CLICK_ADD,
+    })
+    expect(hintFor('c3', box('d3', 'o3', 4))).toEqual({
+      indicator: 'add',
+      string: STRING.TRACK_MATCH_CLICK_CHOOSE,
+    })
+  })
+
+  test("the track's own box is marked with a minus", () => {
+    expect(hintFor('c2', box('d2', TRACK_ID, 2))).toEqual({
+      indicator: 'remove',
+      string: STRING.TRACK_MATCH_CLICK_REMOVE,
+    })
+  })
+
+  test('another box on a covered capture offers to replace the frame', () => {
+    expect(hintFor('c2', box('d9', 'o9'))).toEqual({
+      indicator: 'replace',
+      string: STRING.TRACK_MATCH_CLICK_REPLACE,
+    })
+  })
+
+  test("the track's only frame is marked as blocked", () => {
+    expect(hintFor('c1', box('d1', TRACK_ID), [FRAMES[0]])).toEqual({
+      indicator: 'blocked',
+      string: STRING.TRACK_EXTEND_ONLY_FRAME,
+    })
   })
 })
