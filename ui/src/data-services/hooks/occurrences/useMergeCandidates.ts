@@ -37,7 +37,6 @@ export const useMergeCandidates = ({
   enabled,
   minutes = DEFAULT_WINDOW_MINUTES,
   occurrenceId,
-  overlapping = false,
   projectId,
 }: {
   /** Captures either side of the occurrence to search. Given, it replaces the `minutes` window. */
@@ -45,8 +44,6 @@ export const useMergeCandidates = ({
   enabled?: boolean
   minutes?: number
   occurrenceId: string
-  /** Also list occurrences seen at the same time; they are never the continuation of a track. */
-  overlapping?: boolean
   projectId: string
 }): {
   candidates: MergeCandidate[]
@@ -55,9 +52,6 @@ export const useMergeCandidates = ({
   captures?: number
   /** The window searched when no `captures` scope is given. */
   minutes: number
-  overlapping: boolean
-  /** Overlapping occurrences found, listed or not; undefined until the response arrives. */
-  overlappingCount?: number
 } => {
   const params = new URLSearchParams({ project_id: projectId })
 
@@ -67,20 +61,15 @@ export const useMergeCandidates = ({
     params.set('minutes', `${minutes}`)
   }
 
-  if (overlapping) {
-    params.set('overlapping', 'true')
-  }
-
   const { data, isLoading, error } = useAuthorizedQuery<{
     candidates: ServerMergeCandidate[]
-    overlapping_count: number
   }>({
     enabled: !!occurrenceId && !!enabled,
     queryKey: [
       API_ROUTES.OCCURRENCES,
       occurrenceId,
       'merge-candidates',
-      { captures, minutes, overlapping, projectId },
+      { captures, minutes, projectId },
     ],
     url: `${API_URL}/${API_ROUTES.OCCURRENCES}/${occurrenceId}/merge-candidates/?${params}`,
   })
@@ -97,7 +86,5 @@ export const useMergeCandidates = ({
     error,
     captures,
     minutes,
-    overlapping,
-    overlappingCount: data?.overlapping_count,
   }
 }

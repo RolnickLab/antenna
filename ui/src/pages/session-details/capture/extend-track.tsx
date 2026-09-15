@@ -4,6 +4,7 @@ import {
 } from 'components/track/track-edit-dialog'
 import { useAddDetections } from 'data-services/hooks/occurrences/track/useAddDetections'
 import { useMergeOccurrences } from 'data-services/hooks/occurrences/track/useMergeOccurrences'
+import { useRemoveDetection } from 'data-services/hooks/occurrences/track/useRemoveDetection'
 import { useSetGroupingVerified } from 'data-services/hooks/occurrences/track/useSetGroupingVerified'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
 import { CaptureDetection } from 'data-services/models/capture'
@@ -13,6 +14,7 @@ import {
   ChevronRightIcon,
   ChevronsLeftIcon,
   ChevronsRightIcon,
+  InfoIcon,
   Loader2Icon,
   RouteIcon,
 } from 'lucide-react'
@@ -25,44 +27,40 @@ import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
 import { UserPermission } from 'utils/user/types'
 import { useExtendOccurrenceId } from '../hooks/useExtendOccurrenceId'
+import { ExtendChoice, ExtendPending, getExtendClick } from './extend-click'
 import { getTrackNavigation, TrackPosition } from './track-navigation'
 
-/** A clicked frame whose own occurrence spans several frames, so the reviewer picks what to move. */
-export interface ExtendChoice {
-  detectionId: string
-  frameCount: number
-  /** How the clicked occurrence is named in the dialog: its determination and its id. */
-  label: string
-  occurrenceId: string
-}
-
 /** Why the last box click changed nothing, or why a successful edit did not move on. */
-export type ExtendNote =
-  | 'already-in-track'
-  | 'capture-covered'
-  | 'no-later-capture'
+export type ExtendNote = 'no-later-capture' | 'only-frame'
 
 // A track under construction often scores below the project's default threshold.
 const EXTEND_FETCH_OPTIONS = { skipDefaultFilters: true }
 
-const NOTE_STRINGS: Record<ExtendNote, STRING> = {
-  'already-in-track': STRING.TRACK_EXTEND_ALREADY_ADDED,
-  'capture-covered': STRING.TRACK_EXTEND_CAPTURE_COVERED,
-  'no-later-capture': STRING.TRACK_EXTEND_NO_LATER_CAPTURE,
+const NOTES: Record<ExtendNote, { isError?: boolean; string: STRING }> = {
+  'no-later-capture': { string: STRING.TRACK_EXTEND_NO_LATER_CAPTURE },
+  'only-frame': { isError: true, string: STRING.TRACK_EXTEND_ONLY_FRAME },
 }
 
 export interface ExtendTrackState {
   cancelChoice: () => void
+  cancelPending: () => void
   choice?: ExtendChoice
   clickBox: (detection: CaptureDetection) => void
+  confirmPending: () => void
   error?: unknown
   isLoading: boolean
   mergeChoice: () => void
   moveChoice: () => void
   note?: ExtendNote
   occurrenceId?: string
+  /** Where a replaced frame went when moving the clicked frame in then failed. */
+  orphanOccurrenceId?: string
+  pending?: ExtendPending
+  /** Whether the box popovers show; off by default so they never cover the boxes. */
+  showDetails: boolean
   start: (occurrenceId: string) => void
   stop: () => void
+  toggleDetails: () => void
 }
 
 /**
@@ -87,24 +85,37 @@ export const useExtendTrack = ({
   )
   const [choice, setChoice] = useState<ExtendChoice>()
   const [note, setNote] = useState<ExtendNote>()
+  const [pending, setPending] = useState<ExtendPending>()
+  const [orphanOccurrenceId, setOrphanOccurrenceId] = useState<string>()
+  const [showDetails, setShowDetails] = useState(false)
   const add = useAddDetections(extendOccurrenceId ?? '')
   const merge = useMergeOccurrences(extendOccurrenceId ?? '')
-  const isLoading = add.isLoading || merge.isLoading
+  const remove = useRemoveDetection(extendOccurrenceId ?? '')
+  const isLoading = add.isLoading || merge.isLoading || remove.isLoading
   // An edit can land after the reviewer has stepped to another capture.
   const latest = useRef({ captureId, nextCaptureId })
   latest.current = { captureId, nextCaptureId }
 
-  useEffect(() => {
-    // Each capture is its own decision, so a note or a failure from the one before it
-    // never carries over into the banner.
+  const clearFeedback = () => {
     setNote(undefined)
+    setOrphanOccurrenceId(undefined)
+    setPending(undefined)
     add.reset()
     merge.reset()
+    remove.reset()
+  }
+
+  useEffect(() => {
+    // Each capture is its own decision, so a note, a failure or an unconfirmed
+    // correction from the one before it never carries over into the banner.
+    clearFeedback()
   }, [captureId])
 
   useEffect(() => {
     setChoice(undefined)
     setNote(undefined)
+    setPending(undefined)
+    setShowDetails(false)
   }, [extendOccurrenceId])
 
   const finish = (editedCaptureId?: string) => {
@@ -129,43 +140,68 @@ export const useExtendTrack = ({
       .catch(() => undefined)
 
   const clickBox = (detection: CaptureDetection) => {
-    if (!extendOccurrenceId || isLoading) {
+    // Every branch reads the track's frames, so a click waits for them to load.
+    if (!extendOccurrenceId || !track || isLoading) {
       return
     }
 
-    setNote(undefined)
-    add.reset()
-    merge.reset()
+    clearFeedback()
 
-    if (detection.occurrenceId === extendOccurrenceId) {
-      setNote('already-in-track')
+    const click = getExtendClick({
+      captureId,
+      detection,
+      frames: track.frames,
+      occurrenceId: extendOccurrenceId,
+    })
+
+    switch (click.kind) {
+      case 'add':
+        addFrame(click.detectionId)
+        break
+      case 'choose':
+        setChoice(click.choice)
+        break
+      case 'only-frame':
+        setNote('only-frame')
+        break
+      case 'remove':
+      case 'replace':
+        setPending(click)
+        break
+    }
+  }
+
+  // Corrections stay on this capture, so the reviewer can click the right box next.
+  const confirmPending = () => {
+    if (!pending || isLoading) {
       return
     }
 
-    // One animal cannot appear twice in the same capture.
-    if (track?.frames.some((frame) => frame.captureId === captureId)) {
-      setNote('capture-covered')
-      return
-    }
+    const request =
+      pending.kind === 'remove'
+        ? remove.removeDetection(pending.detectionId)
+        : remove.removeDetection(pending.removeDetectionId).then(({ data }) =>
+            add.addDetections([pending.addDetectionId]).catch((error) => {
+              setOrphanOccurrenceId(`${data.new_occurrence_id}`)
+              throw error
+            })
+          )
 
-    if (detection.occurrenceId && detection.frameCount > 1) {
-      setChoice({
-        detectionId: detection.id,
-        frameCount: detection.frameCount,
-        label: `${detection.label} #${detection.occurrenceId}`,
-        occurrenceId: detection.occurrenceId,
-      })
-      return
-    }
-
-    addFrame(detection.id)
+    request
+      // The rejection is reported through the mutation's error state.
+      .catch(() => undefined)
+      .then(() =>
+        setPending((current) => (current === pending ? undefined : current))
+      )
   }
 
   return {
     cancelChoice: () => setChoice(undefined),
+    cancelPending: () => setPending(undefined),
     choice,
     clickBox,
-    error: add.error ?? merge.error,
+    confirmPending,
+    error: add.error ?? merge.error ?? remove.error,
     isLoading,
     mergeChoice: () => {
       if (choice) {
@@ -182,8 +218,12 @@ export const useExtendTrack = ({
     },
     note,
     occurrenceId: extendOccurrenceId,
+    orphanOccurrenceId,
+    pending,
+    showDetails,
     start: setExtendOccurrenceId,
     stop: () => setExtendOccurrenceId(undefined),
+    toggleDetails: () => setShowDetails((shown) => !shown),
   }
 }
 
@@ -268,6 +308,7 @@ export const ExtendTrackBanner = ({
     !!occurrence?.userPermissions.includes(UserPermission.Delete)
   const error = extend.error ?? verify.error
   const errorMessage = error ? parseServerError(error).message : undefined
+  const noteInfo = extend.note ? NOTES[extend.note] : undefined
   const occurrenceRoute = getAppRoute({
     to: APP_ROUTES.OCCURRENCE_DETAILS({
       projectId: projectId as string,
@@ -306,7 +347,9 @@ export const ExtendTrackBanner = ({
         {occurrence ? (
           <>
             <span className="body-small text-muted-foreground">
-              {translate(STRING.TRACK_FRAMES_COUNT, { count: total })}
+              {total === 1
+                ? translate(STRING.TRACK_FRAMES_ONE)
+                : translate(STRING.TRACK_FRAMES_COUNT, { count: total })}
             </span>
             {timeSpan ? (
               <span className="body-small text-muted-foreground tabular-nums">
@@ -328,17 +371,61 @@ export const ExtendTrackBanner = ({
         {extend.isLoading ? (
           <Loader2Icon className="w-4 h-4 animate-spin text-muted-foreground" />
         ) : null}
-        {extend.note ? (
-          <span className="body-small text-muted-foreground" role="status">
-            {translate(NOTE_STRINGS[extend.note])}
+        {noteInfo ? (
+          <span
+            className={
+              noteInfo.isError
+                ? 'body-small text-destructive'
+                : 'body-small text-muted-foreground'
+            }
+            role={noteInfo.isError ? 'alert' : 'status'}
+          >
+            {translate(noteInfo.string)}
           </span>
         ) : null}
         {errorMessage ? (
           <span className="body-small text-destructive" role="alert">
             {errorMessage}
+            {extend.orphanOccurrenceId
+              ? ` ${translate(STRING.TRACK_EXTEND_REPLACE_ORPHAN, {
+                  id: extend.orphanOccurrenceId,
+                })}`
+              : null}
           </span>
         ) : null}
       </div>
+      {extend.pending ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="body-small font-medium">
+            {extend.pending.kind === 'remove'
+              ? translate(STRING.TRACK_EXTEND_REMOVE_PROMPT)
+              : translate(STRING.TRACK_EXTEND_REPLACE_PROMPT)}
+          </span>
+          <Button
+            disabled={extend.isLoading}
+            onClick={extend.confirmPending}
+            size="small"
+            variant="destructive"
+          >
+            <span>
+              {extend.pending.kind === 'remove'
+                ? translate(STRING.TRACK_EXTEND_REMOVE)
+                : translate(STRING.TRACK_EXTEND_REPLACE)}
+            </span>
+            {extend.isLoading ? (
+              <Loader2Icon className="w-4 h-4 animate-spin" />
+            ) : null}
+          </Button>
+          <Button
+            disabled={extend.isLoading}
+            onClick={extend.cancelPending}
+            size="small"
+            variant="outline"
+          >
+            <span>{translate(STRING.CANCEL)}</span>
+          </Button>
+        </div>
+      ) : null}
       <div className="ml-auto flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1">
           <TrackNavButton
@@ -392,9 +479,29 @@ export const ExtendTrackBanner = ({
             ) : null}
           </Button>
         ) : null}
-        <Button onClick={extend.stop} size="small" variant="ghost">
-          <span>{translate(STRING.TRACK_EXTEND_DONE)}</span>
-        </Button>
+        <BasicTooltip
+          asChild
+          content={
+            extend.showDetails
+              ? translate(STRING.TRACK_EXTEND_HIDE_DETAILS)
+              : translate(STRING.TRACK_EXTEND_SHOW_DETAILS)
+          }
+        >
+          <Button
+            aria-pressed={extend.showDetails}
+            onClick={extend.toggleDetails}
+            size="small"
+            variant={extend.showDetails ? 'secondary' : 'ghost'}
+          >
+            <InfoIcon className="w-4 h-4" />
+            <span>{translate(STRING.TRACK_EXTEND_DETAILS)}</span>
+          </Button>
+        </BasicTooltip>
+        <BasicTooltip asChild content={translate(STRING.TRACK_EXTEND_STOP)}>
+          <Button onClick={extend.stop} size="small" variant="ghost">
+            <span>{translate(STRING.CLOSE)}</span>
+          </Button>
+        </BasicTooltip>
       </div>
     </div>
   )

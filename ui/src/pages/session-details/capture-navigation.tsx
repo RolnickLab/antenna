@@ -7,12 +7,36 @@ import {
   ChevronsRightIcon,
 } from 'lucide-react'
 import { BasicTooltip, Button } from 'nova-ui-kit'
-import { useEffect, useState } from 'react'
+import { ReactNode, useEffect, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import {
   findNextCaptureWithDetections,
   findPrevCaptureWithDetections,
 } from './utils'
+
+const NavigationButton = ({
+  children,
+  disabled,
+  label,
+  onClick,
+}: {
+  children: ReactNode
+  disabled: boolean
+  label: string
+  onClick: () => void
+}) => (
+  <BasicTooltip asChild content={label}>
+    <Button
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      size="icon"
+      variant="outline"
+    >
+      {children}
+    </Button>
+  </BasicTooltip>
+)
 
 export const CaptureNavigation = ({
   activeCapture,
@@ -98,49 +122,37 @@ export const CaptureNavigation = ({
 
   return (
     <div className="flex items-center justify-center gap-1">
-      <BasicTooltip asChild content={translate(STRING.SNAP_TO_DETECTIONS)}>
-        <Button
-          aria-label={translate(STRING.SNAP_TO_DETECTIONS)}
-          disabled={!activeCapture?.prevCaptureId}
-          onClick={goToPrevWithDetections}
-          size="icon"
-          variant="outline"
-        >
-          <ChevronsLeftIcon className="w-4 h-4" />
-        </Button>
-      </BasicTooltip>
-      <Button
-        aria-label={translate(STRING.PREVIOUS)}
+      <NavigationButton
         disabled={!activeCapture?.prevCaptureId}
+        label={translate(STRING.PREVIOUS_CAPTURE_WITH_DETECTIONS)}
+        onClick={goToPrevWithDetections}
+      >
+        <ChevronsLeftIcon className="w-4 h-4" />
+      </NavigationButton>
+      <NavigationButton
+        disabled={!activeCapture?.prevCaptureId}
+        label={translate(STRING.PREVIOUS_CAPTURE)}
         onClick={goToPrev}
-        size="icon"
-        variant="outline"
       >
         <ChevronLeftIcon className="w-4 h-4" />
-      </Button>
+      </NavigationButton>
       <span className="pt-0.5 px-3">
         {currentIndex?.toLocaleString()} / {totalCaptures?.toLocaleString()}
       </span>
-      <Button
-        aria-label={translate(STRING.NEXT)}
+      <NavigationButton
         disabled={!activeCapture?.nextCaptureId}
+        label={translate(STRING.NEXT_CAPTURE)}
         onClick={goToNext}
-        size="icon"
-        variant="outline"
       >
         <ChevronRightIcon className="w-4 h-4" />
-      </Button>
-      <BasicTooltip asChild content={translate(STRING.SNAP_TO_DETECTIONS)}>
-        <Button
-          aria-label={translate(STRING.SNAP_TO_DETECTIONS)}
-          disabled={!activeCapture?.nextCaptureId}
-          onClick={goToNextWithDetections}
-          size="icon"
-          variant="outline"
-        >
-          <ChevronsRightIcon className="w-4 h-4" />
-        </Button>
-      </BasicTooltip>
+      </NavigationButton>
+      <NavigationButton
+        disabled={!activeCapture?.nextCaptureId}
+        label={translate(STRING.NEXT_CAPTURE_WITH_DETECTIONS)}
+        onClick={goToNextWithDetections}
+      >
+        <ChevronsRightIcon className="w-4 h-4" />
+      </NavigationButton>
     </div>
   )
 }

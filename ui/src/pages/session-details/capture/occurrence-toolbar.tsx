@@ -17,6 +17,11 @@ export interface ToolbarOccurrence {
   scoreLabel?: string
 }
 
+const describeFrames = (count: number) =>
+  count === 1
+    ? translate(STRING.TRACK_FRAMES_ONE)
+    : translate(STRING.TRACK_FRAMES_COUNT, { count })
+
 /**
  * The control anchored under a selected occurrence's box.
  *
@@ -63,7 +68,7 @@ export const OccurrenceToolbar = ({
     if (!pathShown) {
       return singleFrame
         ? translate(STRING.TRACK_SINGLE_FRAME_NO_PATH)
-        : translate(STRING.TRACK_FRAMES_COUNT, { count: occurrence.frameCount })
+        : describeFrames(occurrence.frameCount)
     }
 
     const times = path
@@ -71,12 +76,12 @@ export const OccurrenceToolbar = ({
       .filter((timestamp): timestamp is Date => !!timestamp)
 
     if (!times.length) {
-      return translate(STRING.TRACK_FRAMES_COUNT, { count: path.length })
+      return describeFrames(path.length)
     }
 
     return translate(STRING.TRACK_PATH_RANGE, {
-      count: path.length,
       end: getFormatedTimeString({ date: times[times.length - 1] }),
+      frames: describeFrames(path.length),
       start: getFormatedTimeString({ date: times[0] }),
     })
   }

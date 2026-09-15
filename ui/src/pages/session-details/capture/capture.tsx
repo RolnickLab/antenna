@@ -372,7 +372,14 @@ const CaptureDetections = ({
   const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const [activeOccurrence, setActiveOccurrence] = useState<string>()
   const [trackEdit, setTrackEdit] = useState<SessionTrackEdit>()
+  // Selected occurrences whose popover was closed with Escape; they stay selected.
+  const [dismissedToolbars, setDismissedToolbars] = useState<string[]>([])
   const { activeOccurrences, setActiveOccurrences } = useActiveOccurrences()
+  const detailsHidden = !!extend.occurrenceId && !extend.showDetails
+
+  useEffect(() => {
+    setDismissedToolbars([])
+  }, [extend.showDetails])
 
   // Worded while the path is still the one on screen: the split moves the boundary
   // frame off this occurrence, so the refreshed path can no longer describe it.
@@ -390,8 +397,15 @@ const CaptureDetections = ({
     }
   }
 
+  const setDismissed = (occurrenceId: string, dismissed: boolean) =>
+    setDismissedToolbars((ids) => [
+      ...ids.filter((id) => id !== occurrenceId),
+      ...(dismissed ? [occurrenceId] : []),
+    ])
+
   const toggleActiveState = (occurrenceId: string) => {
     const isActive = activeOccurrences.includes(occurrenceId)
+    setDismissed(occurrenceId, false)
 
     if (isActive) {
       setActiveOccurrences(
@@ -430,9 +444,20 @@ const CaptureDetections = ({
             return null
           }
 
+          const isDismissed =
+            !!detection.occurrenceId &&
+            dismissedToolbars.includes(detection.occurrenceId)
+          // Undefined leaves the popover to open on hover.
+          let popoverOpen: boolean | undefined
+          if (detailsHidden) {
+            popoverOpen = false
+          } else if (isActive) {
+            popoverOpen = !isDismissed
+          }
+
           return (
             <Tooltip.Provider key={detection.id} delayDuration={0}>
-              <Tooltip.Root open={isActive ? isActive : undefined}>
+              <Tooltip.Root open={popoverOpen}>
                 <Tooltip.Trigger asChild>
                   <div
                     style={style}
@@ -450,6 +475,8 @@ const CaptureDetections = ({
                     onClick={() => {
                       if (extend.occurrenceId) {
                         extend.clickBox(detection)
+                      } else if (isActive && isDismissed) {
+                        setDismissed(detection.occurrenceId as string, false)
                       } else if (detection.occurrenceId) {
                         toggleActiveState(detection.occurrenceId)
                       }
@@ -460,6 +487,11 @@ const CaptureDetections = ({
                   className="p-3 z-[1]"
                   collisionBoundary={container}
                   collisionPadding={8}
+                  onEscapeKeyDown={() => {
+                    if (isActive && detection.occurrenceId) {
+                      setDismissed(detection.occurrenceId, true)
+                    }
+                  }}
                   side="bottom"
                 >
                   {detection.occurrenceId ? (

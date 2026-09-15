@@ -4,7 +4,6 @@ import {
   getDistanceLabel,
   getSimilarityLabel,
   getWhenLabel,
-  isMergeable,
   MergeCandidate,
   ServerMergeCandidate,
   sortMergeCandidates,
@@ -28,7 +27,6 @@ const serverCandidate = (
   image_timestamp: '2026-09-09T02:03:00',
   edge_image: 'https://example.com/edge.jpg',
   edge_timestamp: '2026-09-09T02:01:00',
-  shared_captures: 0,
   ...overrides,
 })
 
@@ -49,15 +47,6 @@ describe('merge candidate conversion', () => {
 
     expect(candidate.displayName).toBe('#7')
     expect(candidate.images).toEqual([])
-  })
-
-  test('a candidate sharing a capture with the track cannot be merged', () => {
-    const merge = (shared_captures: number) =>
-      isMergeable(convertMergeCandidate(serverCandidate({ shared_captures })))
-
-    expect(merge(1)).toBe(false)
-    expect(merge(0)).toBe(true)
-    expect(isMergeable({})).toBe(true)
   })
 })
 
@@ -87,11 +76,22 @@ describe('comparison sides', () => {
     ])
   })
 
-  test('an overlapping candidate sits on the left and reads as overlapping', () => {
-    expect(srcs({ relation: 'overlapping', time_offset_seconds: 0 })).toEqual([
+  test('a gap candidate sits on the side its frame falls, with the time between the frames', () => {
+    const gap: Partial<ServerMergeCandidate> = {
+      relation: 'gap',
+      time_offset_seconds: 0,
+      edge_timestamp: '2026-09-09T02:01:00',
+    }
+
+    expect(srcs({ ...gap, image_timestamp: '2026-09-09T02:00:30' })).toEqual([
       candidateCrop,
       edgeCrop,
-      'Overlaps',
+      '−30 s',
+    ])
+    expect(srcs({ ...gap, image_timestamp: '2026-09-09T02:01:40' })).toEqual([
+      edgeCrop,
+      candidateCrop,
+      '+40 s',
     ])
   })
 
@@ -109,7 +109,7 @@ describe('merge candidate labels', () => {
     expect(getWhenLabel('before', -240)).toBe('4 min earlier')
     expect(getWhenLabel('after', 20)).toBe('20 s later')
     expect(getWhenLabel('after', 3900)).toBe('1 h 5 min later')
-    expect(getWhenLabel('overlapping', 0)).toBe('Overlaps')
+    expect(getWhenLabel('gap', 0)).toBe('In a gap')
   })
 
   test('distance and similarity are percentages, or n/a without a value', () => {
@@ -132,7 +132,7 @@ describe('merge candidate sorting', () => {
     }),
     serverCandidate({
       id: 3,
-      relation: 'overlapping',
+      relation: 'gap',
       time_offset_seconds: 0,
       distance: null,
       similarity: 0.9,

@@ -6,7 +6,6 @@ import {
   MergeScopeKey,
   useMergeCandidates,
 } from 'data-services/hooks/occurrences/useMergeCandidates'
-import { isMergeable } from 'data-services/models/merge-candidate'
 import { OccurrenceDetails } from 'data-services/models/occurrence-details'
 import { GitMergeIcon, Loader2Icon, PlusIcon } from 'lucide-react'
 import { Badge, Button, buttonVariants } from 'nova-ui-kit'
@@ -35,7 +34,6 @@ export const GroupingActions = ({
   const [mergeOpen, setMergeOpen] = useState(false)
   const [sourceIds, setSourceIds] = useState<string[]>([])
   const [scope, setScope] = useState<MergeScopeKey>(DEFAULT_SCOPE)
-  const [showOverlapping, setShowOverlapping] = useState(false)
 
   const merge = useMergeOccurrences(occurrence.id)
   const {
@@ -47,16 +45,11 @@ export const GroupingActions = ({
   const mergeScope =
     MERGE_SCOPES.find((option) => option.key === scope) ?? MERGE_SCOPES[0]
 
-  const {
-    candidates,
-    isLoading: candidatesLoading,
-    overlappingCount,
-  } = useMergeCandidates({
+  const { candidates, isLoading: candidatesLoading } = useMergeCandidates({
     captures: mergeScope.captures,
     enabled: mergeOpen,
     minutes: mergeScope.minutes,
     occurrenceId: occurrence.id,
-    overlapping: showOverlapping,
     projectId: projectId as string,
   })
 
@@ -80,12 +73,6 @@ export const GroupingActions = ({
     ? parseServerError(verifyError).message
     : undefined
 
-  // A ticked row that turns out to share a capture with the track is never sent.
-  const blockedIds = candidates
-    .filter((candidate) => !isMergeable(candidate))
-    .map((candidate) => candidate.id)
-  const mergeIds = sourceIds.filter((id) => !blockedIds.includes(id))
-
   const toggleSource = (id: string) =>
     setSourceIds((ids) =>
       ids.includes(id) ? ids.filter((other) => other !== id) : [...ids, id]
@@ -94,18 +81,6 @@ export const GroupingActions = ({
   const changeScope = (key: MergeScopeKey) => {
     setScope(key)
     setSourceIds([])
-  }
-
-  // A ticked row that disappears from the list must not be merged unseen.
-  const changeShowOverlapping = (value: boolean) => {
-    setShowOverlapping(value)
-
-    if (!value) {
-      const hidden = candidates
-        .filter((candidate) => candidate.relation === 'overlapping')
-        .map((candidate) => candidate.id)
-      setSourceIds((ids) => ids.filter((id) => !hidden.includes(id)))
-    }
   }
 
   const closeMerge = () => {
@@ -174,17 +149,17 @@ export const GroupingActions = ({
       {verifyErrorMessage ? <FormError message={verifyErrorMessage} /> : null}
 
       <TrackEditDialog
-        confirmDisabled={!mergeIds.length}
+        confirmDisabled={!sourceIds.length}
         confirmLabel={
-          mergeIds.length === 1
+          sourceIds.length === 1
             ? translate(STRING.TRACK_MERGE_ONE)
-            : translate(STRING.TRACK_MERGE_COUNT, { count: mergeIds.length })
+            : translate(STRING.TRACK_MERGE_COUNT, { count: sourceIds.length })
         }
         description={translate(STRING.TRACK_MERGE_MANY_DESCRIPTION)}
         error={merge.error}
         isLoading={merge.isLoading}
         isWide
-        onConfirm={() => merge.mergeOccurrences(mergeIds)}
+        onConfirm={() => merge.mergeOccurrences(sourceIds)}
         onOpenChange={(open) => (open ? undefined : closeMerge())}
         open={mergeOpen}
         result={
@@ -205,12 +180,9 @@ export const GroupingActions = ({
             emptyMessage={translate(STRING.TRACK_NO_MERGE_CANDIDATES_SCOPE)}
             isLoading={candidatesLoading}
             onScopeChange={changeScope}
-            onShowOverlappingChange={changeShowOverlapping}
             onToggle={toggleSource}
-            overlappingCount={overlappingCount}
             scope={scope}
             selectedIds={sourceIds}
-            showOverlapping={showOverlapping}
             title={translate(STRING.TRACK_MERGE_CANDIDATES_TITLE)}
           />
         )}
