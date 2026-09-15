@@ -1,15 +1,17 @@
 import { PathFrame } from 'data-services/models/occurrence-path'
 import { TimelineTick } from 'data-services/models/timeline-tick'
 
-export interface TimelineDot {
+export interface TimelineFrame {
   captureId: string
   /** Start of the tick holding the capture, which is where the plot draws its spike. */
   date: Date
   timestamp: Date
 }
 
-export interface TimelineBar {
+/** A run of frames drawn as one block, from the first frame's spike to the last one's. */
+export interface TimelineSpan {
   end: Date
+  frames: TimelineFrame[]
   start: Date
 }
 
@@ -44,72 +46,50 @@ const findTickIndex = (timeline: TimelineTick[], date: Date) => {
 }
 
 /**
- * Where an occurrence's frames fall on the session timeline: a dot per capture, and a
- * bar over each run of frames with no other capture of the session between them.
+ * Where an occurrence's frames fall on the session timeline, grouped into runs. A run
+ * continues across ticks with no captures and breaks at a tick that holds captures but
+ * none of the occurrence's frames.
  */
 export const buildOccurrenceTimeline = (
   frames: Pick<PathFrame, 'captureId' | 'timestamp'>[],
   timeline: TimelineTick[]
-): { bars: TimelineBar[]; dots: TimelineDot[] } => {
-  const byCapture = new Map<
-    string,
-    { captureId: string; tick: number; timestamp: Date }
-  >()
+): TimelineSpan[] => {
+  const byCapture = new Map<string, { frame: TimelineFrame; tick: number }>()
 
   frames.forEach(({ captureId, timestamp }) => {
     const tick = timestamp ? findTickIndex(timeline, timestamp) : -1
 
     if (timestamp && tick !== -1 && !byCapture.has(captureId)) {
-      byCapture.set(captureId, { captureId, tick, timestamp })
+      byCapture.set(captureId, {
+        frame: { captureId, date: timeline[tick].startDate, timestamp },
+        tick,
+      })
     }
   })
 
   const placed = [...byCapture.values()].sort(
-    (a, b) => a.timestamp.getTime() - b.timestamp.getTime()
-  )
-  const framesPerTick = new Map<number, number>()
-  placed.forEach(({ tick }) =>
-    framesPerTick.set(tick, (framesPerTick.get(tick) ?? 0) + 1)
+    (a, b) => a.frame.timestamp.getTime() - b.frame.timestamp.getTime()
   )
 
-  // A tick can hold several captures without saying in what order, so any capture
-  // outside the occurrence in the ticks spanned breaks the run.
-  const isJoined = (fromTick: number, toTick: number) => {
-    for (let index = fromTick; index <= toTick; index++) {
-      if (timeline[index].numCaptures > (framesPerTick.get(index) ?? 0)) {
-        return false
-      }
+  // Ticks only count their captures, so a tick that also holds a frame never breaks a run.
+  const hasCaptureBetween = (fromTick: number, toTick: number) =>
+    timeline.slice(fromTick + 1, toTick).some((tick) => tick.numCaptures > 0)
+
+  const spans: TimelineSpan[] = []
+  let previousTick = -1
+
+  placed.forEach(({ frame, tick }) => {
+    const current = spans[spans.length - 1]
+
+    if (current && !hasCaptureBetween(previousTick, tick)) {
+      current.frames.push(frame)
+      current.end = frame.date
+    } else {
+      spans.push({ end: frame.date, frames: [frame], start: frame.date })
     }
 
-    return true
-  }
-
-  const bars: TimelineBar[] = []
-  let runStart = placed[0]
-
-  placed.forEach((frame, index) => {
-    const next = placed[index + 1]
-
-    if (next && isJoined(frame.tick, next.tick)) {
-      return
-    }
-
-    if (runStart && runStart !== frame) {
-      bars.push({
-        start: timeline[runStart.tick].startDate,
-        end: timeline[frame.tick].startDate,
-      })
-    }
-
-    runStart = next
+    previousTick = tick
   })
 
-  return {
-    bars,
-    dots: placed.map(({ captureId, tick, timestamp }) => ({
-      captureId,
-      date: timeline[tick].startDate,
-      timestamp,
-    })),
-  }
+  return spans
 }

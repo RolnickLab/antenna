@@ -2,21 +2,22 @@ import { useOccurrencePath } from 'data-services/hooks/occurrences/useOccurrence
 import { SessionDetails } from 'data-services/models/session-details'
 import { TimelineTick } from 'data-services/models/timeline-tick'
 import { BasicTooltip, CONSTANTS } from 'nova-ui-kit'
-import { useMemo } from 'react'
+import { MouseEvent, useMemo } from 'react'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { STRING, translate } from 'utils/language'
 import { dateToValue } from '../utils'
 import { buildOccurrenceTimeline } from './occurrence-timeline'
 
-// Selected boxes share one highlight on the capture, so each lane takes its own colour,
-// blue first to match that highlight.
+// Green first: the plot's detection spikes are blue, so a blue lane would blend in.
 const LANE_COLORS = [
-  CONSTANTS.COLORS.secondary[700],
-  CONSTANTS.COLORS.alert[700],
   CONSTANTS.COLORS.success[700],
-  CONSTANTS.COLORS.warning[700],
+  CONSTANTS.COLORS.warning[600],
+  CONSTANTS.COLORS.alert[700],
   CONSTANTS.COLORS.primary[500],
 ]
+
+// Each block reaches this far past its outer spikes, so a lone frame stays visible.
+const BLOCK_PADDING_PX = 3
 
 interface OccurrenceTimelineMarkersProps {
   occurrenceIds: string[]
@@ -42,6 +43,26 @@ export const OccurrenceTimelineMarkers = ({
   </div>
 )
 
+// A click goes to the frame nearest the pointer; a key press goes to the first frame.
+const getClickedCaptureId = (
+  frames: { captureId: string; left: number }[],
+  event: MouseEvent<HTMLButtonElement>
+) => {
+  const lane = event.currentTarget.parentElement?.getBoundingClientRect()
+
+  if (!lane || event.detail === 0) {
+    return frames[0].captureId
+  }
+
+  const pointer = ((event.clientX - lane.left) / lane.width) * 100
+
+  return frames.reduce((nearest, frame) =>
+    Math.abs(frame.left - pointer) < Math.abs(nearest.left - pointer)
+      ? frame
+      : nearest
+  ).captureId
+}
+
 const OccurrenceLane = ({
   color,
   occurrenceId,
@@ -54,63 +75,69 @@ const OccurrenceLane = ({
 }) => {
   const { path } = useOccurrencePath(occurrenceId, true)
 
-  const marks = useMemo(() => {
+  const blocks = useMemo(() => {
     if (!path) {
       return undefined
     }
 
-    const { bars, dots } = buildOccurrenceTimeline(path, timeline)
     const toPercent = (date: Date) =>
       dateToValue({
         date,
         startDate: session.startDate,
         endDate: session.endDate,
       })
+    const formatTime = (date: Date) =>
+      getFormatedTimeString({ date, options: { second: true } })
 
-    return {
-      bars: bars.map((bar) => ({
-        key: bar.start.getTime(),
-        left: toPercent(bar.start),
-        width: toPercent(bar.end) - toPercent(bar.start),
-      })),
-      dots: dots.map((dot) => ({
-        captureId: dot.captureId,
-        label: translate(STRING.TIMELINE_OCCURRENCE_FRAME, {
-          id: occurrenceId,
-          time: getFormatedTimeString({
-            date: dot.timestamp,
-            options: { second: true },
-          }),
-        }),
-        left: toPercent(dot.date),
-      })),
-    }
+    return buildOccurrenceTimeline(path, timeline).map((span) => {
+      const first = span.frames[0]
+      const last = span.frames[span.frames.length - 1]
+
+      return {
+        frames: span.frames.map((frame) => ({
+          captureId: frame.captureId,
+          left: toPercent(frame.date),
+        })),
+        key: first.captureId,
+        label:
+          span.frames.length === 1
+            ? translate(STRING.TIMELINE_OCCURRENCE_FRAME, {
+                id: occurrenceId,
+                time: formatTime(first.timestamp),
+              })
+            : translate(STRING.TIMELINE_OCCURRENCE_SPAN, {
+                count: String(span.frames.length),
+                end: formatTime(last.timestamp),
+                id: occurrenceId,
+                start: formatTime(first.timestamp),
+              }),
+        left: toPercent(span.start),
+        right: toPercent(span.end),
+      }
+    })
   }, [path, timeline, session, occurrenceId])
 
-  if (!marks?.dots.length) {
+  if (!blocks?.length) {
     return null
   }
 
   return (
     <div className="relative h-2.5">
-      {marks.bars.map((bar) => (
-        <div
-          key={bar.key}
-          className="absolute top-1/2 h-1 -translate-y-1/2 rounded-full"
-          style={{
-            backgroundColor: color,
-            left: `${bar.left}%`,
-            width: `${bar.width}%`,
-          }}
-        />
-      ))}
-      {marks.dots.map((dot) => (
-        <BasicTooltip key={dot.captureId} asChild content={dot.label}>
+      {blocks.map((block) => (
+        <BasicTooltip key={block.key} asChild content={block.label}>
           <button
-            aria-label={dot.label}
-            className="absolute top-0 w-2.5 h-2.5 -translate-x-1/2 rounded-full ring-2 ring-background pointer-events-auto transition-transform hover:scale-125 focus-visible:outline-none focus-visible:ring-foreground"
-            onClick={() => setActiveCaptureId(dot.captureId)}
-            style={{ backgroundColor: color, left: `${dot.left}%` }}
+            aria-label={block.label}
+            className="absolute inset-y-0 rounded-sm pointer-events-auto transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground"
+            onClick={(event) =>
+              setActiveCaptureId(getClickedCaptureId(block.frames, event))
+            }
+            style={{
+              backgroundColor: color,
+              left: `calc(${block.left}% - ${BLOCK_PADDING_PX}px)`,
+              width: `calc(${block.right - block.left}% + ${
+                2 * BLOCK_PADDING_PX
+              }px)`,
+            }}
             type="button"
           />
         </BasicTooltip>
