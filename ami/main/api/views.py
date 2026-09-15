@@ -39,6 +39,7 @@ from ami.main.models_future.merge_candidates import (
     DEFAULT_ADJACENT_CAPTURES,
     MAX_ADJACENT_CAPTURES,
     MAX_WINDOW_MINUTES,
+    match_capture_detections,
     rank_merge_candidates,
 )
 from ami.main.models_future.occurrence import (
@@ -87,6 +88,7 @@ from ..models import (
 from .serializers import (
     BulkIdentificationRequestSerializer,
     BulkIdentificationResponseSerializer,
+    CaptureMatchesResponseSerializer,
     ClassificationListSerializer,
     ClassificationSerializer,
     ClassificationWithTaxaSerializer,
@@ -1577,6 +1579,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     # They reach past both viewing filters; see get_queryset.
     TRACK_EDIT_ACTIONS = (
         "merge_candidates",
+        "capture_matches",
         "merge",
         "add_detections",
         "split_track",
@@ -1621,8 +1624,8 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             )
         if self.action == "list":
             qs = qs.with_list_prefetches()  # type: ignore
-        elif self.action not in ("path", "merge_candidates"):
-            # `path` and `merge_candidates` build their own values() queries and never
+        elif self.action not in ("path", "merge_candidates", "capture_matches"):
+            # `path` and the track-edit pickers build their own values() queries and never
             # serialize the occurrence, so the detail prefetch would only be waste:
             # measured at 249ms/4 queries against 6ms/2 for the same object without
             # it, on a 37-detection occurrence.
@@ -1686,6 +1689,7 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             "remove_detection",
             "merge",
             "merge_candidates",
+            "capture_matches",
             "add_detections",
             "verify_grouping",
             "unverify_grouping",
@@ -1854,6 +1858,45 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             captures=captures,
         )
         return Response(MergeCandidatesResponseSerializer({"candidates": candidates}).data)
+
+    @extend_schema(
+        parameters=[
+            project_id_doc_param,
+            OpenApiParameter(
+                name="capture_id",
+                description="The capture whose boxes to score. Must belong to this occurrence's session.",
+                required=True,
+                type=OpenApiTypes.INT,
+            ),
+        ],
+        responses=CaptureMatchesResponseSerializer,
+    )
+    @action(detail=True, methods=["get"], name="capture-matches", url_path="capture-matches")
+    def capture_matches(self, request: Request, pk=None) -> Response:
+        """How likely each box on one capture of the session is to be this occurrence's animal.
+
+        For extending a track capture by capture: every real box on the capture, grouped
+        or not, is scored with the tracking method's matching cost against the track
+        frame nearest in time on another capture, and the cost is read as a likelihood
+        that is comparable from one capture to the next. The query count is fixed, so it
+        can run on every step.
+        """
+        occurrence = self.get_object()
+        capture_id = SingleParamSerializer[int].clean(
+            param_name="capture_id",
+            field=serializers.IntegerField(required=True, min_value=1),
+            data=request.query_params,
+        )
+        # Ungrouped captures are excluded first, since event_id=None would match all of them.
+        try:
+            capture = (
+                SourceImage.objects.exclude(event=None)
+                .only("pk", "timestamp", "width", "height")
+                .get(pk=capture_id, event_id=occurrence.event_id)
+            )
+        except SourceImage.DoesNotExist:
+            raise api_exceptions.ValidationError({"capture_id": "Not a capture of this occurrence's session."})
+        return Response(CaptureMatchesResponseSerializer(match_capture_detections(occurrence, capture)).data)
 
     @extend_schema(request=OccurrenceAddDetectionsSerializer, responses=OccurrenceGroupingSerializer)
     @action(detail=True, methods=["post"], name="add-detections", url_path="add-detections")

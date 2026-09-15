@@ -40,6 +40,9 @@ Candidates of every relation are sorted together by cost and capped once.
 
 Vectors are loaded only for the frames in the scored pairs: one per candidate and the
 occurrence's frames those are paired with.
+
+``match_capture_detections`` scores the boxes of one capture against a track with the
+same cost, so a person extending the track capture by capture sees which box fits.
 """
 
 from __future__ import annotations
@@ -52,7 +55,7 @@ from django.db.models import Q, QuerySet
 from ami.main.models_future.track_stats import bbox_corners, frame_diagonal
 
 if TYPE_CHECKING:
-    from ami.main.models import Occurrence
+    from ami.main.models import Occurrence, SourceImage
 
 DEFAULT_WINDOW_MINUTES = 5
 MAX_WINDOW_MINUTES = 30
@@ -64,6 +67,9 @@ RELATION_BEFORE = "before"
 RELATION_AFTER = "after"
 RELATION_GAP = "gap"
 RELATIONS = (RELATION_BEFORE, RELATION_AFTER, RELATION_GAP)
+# A capture that already holds one of the track's frames, scored against another frame.
+RELATION_SAME = "same"
+CAPTURE_MATCH_RELATIONS = (*RELATIONS, RELATION_SAME)
 
 _ROUND_TO = 4
 
@@ -301,3 +307,124 @@ def rank_merge_candidates(
 
     rows.sort(key=_rank_key)
     return rows[:limit]
+
+
+_MATCH_SCORE_FIELDS = ("likelihood", "cost", "distance", "iou", "size_ratio", "similarity", "time_offset_seconds")
+
+
+def _likelihood(cost: float, similarity: float | None) -> float:
+    # Every term of the cost lies between 0 and 1, so 1 minus the mean term reads the same on
+    # any capture, with or without the appearance term. Tracking links a pair only below a
+    # total cost of 0.2, which is a likelihood of 0.93 to 0.95.
+    terms = 3 if similarity is None else 4
+    return round(min(max(1 - cost / terms, 0.0), 1.0), _ROUND_TO)
+
+
+def _match_scores(track_frame: dict, frame: dict, track_vector, frame_vector) -> dict[str, float | None]:
+    """The tracking cost of one pair, its terms, and the likelihood read from it."""
+    from ami.ml.post_processing.tracking_task import box_ratio, iou
+
+    distance, similarity, cost = _score_pair(track_frame, frame, track_vector, frame_vector)
+    if cost is None:
+        return {}
+    corners_a, corners_b = bbox_corners(track_frame["bbox"]), bbox_corners(frame["bbox"])
+    return {
+        "likelihood": _likelihood(cost, similarity),
+        "cost": cost,
+        "distance": distance,
+        "iou": round(iou(corners_a, corners_b), _ROUND_TO),
+        "size_ratio": round(box_ratio(corners_a, corners_b), _ROUND_TO),
+        "similarity": similarity,
+    }
+
+
+def _reference_frame(occurrence_id: int, capture: SourceImage) -> tuple[dict | None, str | None]:
+    """The track frame nearest in time to ``capture`` on another capture, and which side of
+    the track the capture lies on, read from the nearest frame on each side of it."""
+    from ami.main.models import Detection
+
+    track = (
+        Detection.objects.valid()
+        .filter(occurrence_id=occurrence_id, timestamp__isnull=False)
+        .exclude(source_image_id=capture.pk)
+    )
+    earlier = track.filter(timestamp__lte=capture.timestamp).order_by("-timestamp", "-pk").values(*_FRAME_FIELDS)
+    later = track.filter(timestamp__gte=capture.timestamp).order_by("timestamp", "pk").values(*_FRAME_FIELDS)
+    frames = sorted(earlier[:1].union(later[:1], all=True), key=lambda frame: (frame["timestamp"], frame["pk"]))
+    if not frames:
+        return None, None
+    reference, _ = _nearest_pair(frames, [{"pk": capture.pk, "timestamp": capture.timestamp}])
+    relation, _ = _relation(frames[0]["timestamp"], frames[-1]["timestamp"], capture.timestamp, capture.timestamp)
+    return reference, relation
+
+
+def match_capture_detections(occurrence: Occurrence, capture: SourceImage) -> dict[str, Any]:
+    """Every real box on ``capture`` scored against ``occurrence``'s track, best match first.
+
+    Each box is scored against one track frame, the nearest in time on another capture,
+    with the tracking cost. The track's own box on the capture is returned unscored, and
+    so is every box when the track has no frame on another capture.
+
+    At most four queries, whatever the track's length or the number of boxes: the
+    capture's boxes, the nearest track frame on each side of it, the reference frame's
+    latest vector, and the boxes' vectors from that same algorithm.
+    """
+    from ami.main.models import Classification, Detection
+
+    boxes = list(
+        Detection.objects.valid()
+        .filter(source_image_id=capture.pk)
+        .order_by("pk")
+        .values("pk", "occurrence_id", "bbox")
+    )
+    reference, relation = _reference_frame(occurrence.pk, capture) if capture.timestamp else (None, None)
+    if reference is not None and any(box["occurrence_id"] == occurrence.pk for box in boxes):
+        relation = RELATION_SAME
+
+    candidates = [box for box in boxes if box["occurrence_id"] != occurrence.pk]
+    algorithm_id, reference_vector, vectors = None, None, {}
+    if reference is not None and candidates:
+        latest = (
+            Classification.objects.filter(
+                detection_id=reference["pk"], algorithm_id__isnull=False, features_2048__isnull=False
+            )
+            .order_by("-timestamp", "-pk")
+            .values_list("algorithm_id", "features_2048")
+            .first()
+        )
+        if latest is not None:
+            algorithm_id, reference_vector = latest
+            vectors = _latest_vectors(
+                Classification.objects.filter(
+                    detection_id__in=[box["pk"] for box in candidates],
+                    algorithm_id=algorithm_id,
+                    features_2048__isnull=False,
+                )
+            )
+
+    rows: list[dict[str, Any]] = []
+    for box in boxes:
+        in_track = box["occurrence_id"] == occurrence.pk
+        row = {"detection_id": box["pk"], "occurrence_id": box["occurrence_id"], "in_track": in_track}
+        row.update(dict.fromkeys(_MATCH_SCORE_FIELDS))
+        if reference is not None and not in_track:
+            frame = {"bbox": box["bbox"], "source_image__width": capture.width, "source_image__height": capture.height}
+            row["time_offset_seconds"] = (capture.timestamp - reference["timestamp"]).total_seconds()
+            row.update(_match_scores(reference, frame, reference_vector, vectors.get((box["pk"], algorithm_id))))
+        rows.append(row)
+    rows.sort(key=lambda row: (row["likelihood"] is None, -(row["likelihood"] or 0.0), row["detection_id"]))
+
+    return {
+        "capture_id": capture.pk,
+        "reference": (
+            {
+                "detection_id": reference["pk"],
+                "capture_id": reference["source_image_id"],
+                "timestamp": reference["timestamp"],
+                "relation": relation,
+            }
+            if reference is not None
+            else None
+        ),
+        "detections": rows,
+    }

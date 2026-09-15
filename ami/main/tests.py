@@ -48,7 +48,7 @@ from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.pipeline import Pipeline
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
-from ami.ml.post_processing.tracking_task import image_diagonal, total_cost
+from ami.ml.post_processing.tracking_task import image_diagonal, iou, total_cost
 from ami.tests.fixtures.main import (
     create_captures,
     create_captures_from_files,
@@ -9176,6 +9176,222 @@ class MergeCandidatesTestCase(TrackEditTestCase):
 
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(len(response.data["candidates"]), 3)
+
+
+class CaptureMatchesTestCase(APITestCase):
+    """Scoring every box on one capture against a track, for extending it capture by capture.
+
+    What these pin is that each box is scored against the track frame nearest in time on
+    another capture, with the tracking cost and a likelihood read from it; that the
+    track's own box, and every box when the track has no other frame, stay unscored; and
+    that the query count does not grow with the track or with the capture.
+    """
+
+    FRAME_SIZE = 1000
+    VECTOR = [1.0] + [0.0] * 2047
+    TRACK_BOX = [10, 10, 40, 40]
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=6, interval_minutes=1)
+        SourceImage.objects.filter(deployment=self.deployment).update(width=self.FRAME_SIZE, height=self.FRAME_SIZE)
+        self.captures = list(SourceImage.objects.filter(deployment=self.deployment).order_by("timestamp"))
+        assert len(self.captures) >= 6, "Fixture must provide six consecutive captures"
+        self.event = self.captures[0].event
+        self.curator = User.objects.create_user(email="curator@insectai.org")  # type: ignore[attr-defined]
+        MLDataManager.assign_user(self.curator, self.project)
+        self.extractor = Algorithm.objects.create(name="Feature extractor", key="feature-extractor")
+        self.diagonal = image_diagonal(self.FRAME_SIZE, self.FRAME_SIZE)
+
+    def _box(
+        self,
+        capture: SourceImage,
+        bbox: list[int],
+        occurrence: Occurrence | None = None,
+        vector: list[float] | None = None,
+        algorithm: Algorithm | None = None,
+    ) -> Detection:
+        detection = Detection.objects.create(
+            source_image=capture, timestamp=capture.timestamp, bbox=bbox, occurrence=occurrence
+        )
+        if vector is not None:
+            detection.classifications.create(
+                score=0.9, timestamp=capture.timestamp, algorithm=algorithm or self.extractor, features_2048=vector
+            )
+        return detection
+
+    def _track(self, captures: list[SourceImage], bbox: list[int] | None = None, vector=None) -> Occurrence:
+        occurrence = Occurrence.objects.create(event=self.event, deployment=self.deployment, project=self.project)
+        for capture in captures:
+            self._box(capture, bbox or self.TRACK_BOX, occurrence=occurrence, vector=vector)
+        return occurrence
+
+    def _captures_after(self, count: int) -> list[SourceImage]:
+        last = self.captures[-1]
+        return [
+            SourceImage.objects.create(
+                deployment=self.deployment,
+                event=self.event,
+                timestamp=last.timestamp + datetime.timedelta(seconds=i + 1),
+                path=f"test/matches-{last.pk}-{i}.jpg",
+                width=self.FRAME_SIZE,
+                height=self.FRAME_SIZE,
+            )
+            for i in range(count)
+        ]
+
+    def get_matches(self, occurrence: Occurrence, capture_id, user: User | None = None):
+        self.client.force_authenticate(user=user or self.curator)
+        return self.client.get(
+            f"/api/v2/occurrences/{occurrence.pk}/capture-matches/"
+            f"?project_id={self.project.pk}&capture_id={capture_id}"
+        )
+
+    def test_every_box_on_the_capture_is_scored_against_the_nearest_track_frame(self):
+        """The capture holds the track's own box, another occurrence's box beside it and an
+        ungrouped box across the frame. The other two are scored against the track frame one
+        capture earlier, the nearest one on another capture, best match first."""
+        track = self._track(self.captures[1:4], vector=self.VECTOR)
+        capture = self.captures[3]
+        neighbour = self._track([capture], bbox=[12, 12, 42, 42], vector=self.VECTOR)
+        loose = self._box(capture, [500, 500, 530, 530], vector=self.VECTOR)
+
+        response = self.get_matches(track, capture.pk)
+        self.assertEqual(response.status_code, 200, response.data)
+
+        reference = response.data["reference"]
+        self.assertEqual(response.data["capture_id"], capture.pk)
+        self.assertEqual(reference["detection_id"], track.detections.get(source_image=self.captures[2]).pk)
+        self.assertEqual(reference["capture_id"], self.captures[2].pk)
+        self.assertEqual(reference["relation"], "same")
+
+        near, far, own = response.data["detections"]
+        self.assertEqual(
+            [near["occurrence_id"], far["occurrence_id"], own["occurrence_id"]], [neighbour.pk, None, track.pk]
+        )
+        self.assertEqual(far["detection_id"], loose.pk)
+        self.assertTrue(own["in_track"])
+        self.assertIsNone(own["likelihood"], "The track's own box is not a candidate")
+        self.assertIsNone(own["time_offset_seconds"])
+
+        expected_cost = total_cost(self.VECTOR, self.VECTOR, self.TRACK_BOX, [12, 12, 42, 42], self.diagonal)
+        self.assertFalse(near["in_track"])
+        self.assertEqual(near["similarity"], 1.0)
+        self.assertAlmostEqual(near["cost"], expected_cost, places=4)
+        self.assertAlmostEqual(near["likelihood"], 1 - expected_cost / 4, places=4)
+        self.assertAlmostEqual(near["distance"], 0.002, delta=0.001)
+        self.assertAlmostEqual(near["iou"], iou(self.TRACK_BOX, [12, 12, 42, 42]), places=4)
+        self.assertEqual(near["size_ratio"], 1.0)
+        self.assertEqual(near["time_offset_seconds"], 60.0)
+        self.assertEqual(far["iou"], 0.0)
+        self.assertLess(far["likelihood"], near["likelihood"])
+
+    def test_the_reference_is_the_nearest_track_frame_on_another_capture(self):
+        """A track on the second and fifth of six captures a minute apart. Each capture is
+        scored against the nearer of the two, and the relation says where the capture lies;
+        on a capture holding a track frame the other frame is used."""
+        track = self._track([self.captures[1], self.captures[4]])
+        first, last = (track.detections.get(source_image=self.captures[i]).pk for i in (1, 4))
+        expected = {
+            0: ("before", first, -60.0),
+            2: ("gap", first, 60.0),
+            3: ("gap", last, -60.0),
+            5: ("after", last, 60.0),
+            1: ("same", last, -180.0),
+        }
+        for index, (relation, reference, offset) in expected.items():
+            self._box(self.captures[index], [500, 500, 530, 530])
+            data = self.get_matches(track, self.captures[index].pk).data
+            self.assertEqual((data["reference"]["relation"], data["reference"]["detection_id"]), (relation, reference))
+            candidate = next(row for row in data["detections"] if not row["in_track"])
+            self.assertEqual(candidate["time_offset_seconds"], offset, index)
+
+    def test_a_box_without_a_comparable_vector_is_scored_on_geometry_alone(self):
+        """Without a vector from the reference frame's algorithm the appearance term is dropped,
+        and the likelihood is the mean over the three geometry terms, so a box does not rate
+        higher merely for lacking a vector."""
+        track = self._track(self.captures[1:3], vector=self.VECTOR)
+        capture = self.captures[3]
+        other_extractor = Algorithm.objects.create(name="Other extractor", key="other-extractor")
+        unembedded = self._box(capture, [12, 12, 42, 42])
+        foreign = self._box(capture, [12, 12, 42, 42], vector=self.VECTOR, algorithm=other_extractor)
+
+        rows = {row["detection_id"]: row for row in self.get_matches(track, capture.pk).data["detections"]}
+
+        geometry = total_cost(None, None, self.TRACK_BOX, [12, 12, 42, 42], self.diagonal)
+        for detection in (unembedded, foreign):
+            row = rows[detection.pk]
+            self.assertIsNone(row["similarity"], "A vector from another algorithm is not comparable")
+            self.assertAlmostEqual(row["cost"], geometry, places=4)
+            self.assertAlmostEqual(row["likelihood"], 1 - geometry / 3, places=4)
+
+    def test_a_track_with_no_frame_on_another_capture_is_not_scored(self):
+        track = self._track([self.captures[0]])
+        other = self._box(self.captures[0], [500, 500, 530, 530])
+
+        data = self.get_matches(track, self.captures[0].pk).data
+
+        self.assertIsNone(data["reference"])
+        self.assertEqual({row["detection_id"] for row in data["detections"]}, {track.detections.get().pk, other.pk})
+        for row in data["detections"]:
+            self.assertIsNone(row["likelihood"])
+            self.assertIsNone(row["cost"])
+
+    def test_capture_id_must_name_a_capture_of_the_session(self):
+        track = self._track(self.captures[1:3])
+        for junk in ("abc", "", "0"):
+            self.assertEqual(self.get_matches(track, junk).status_code, 400, junk)
+        missing = self.client.get(f"/api/v2/occurrences/{track.pk}/capture-matches/?project_id={self.project.pk}")
+        self.assertEqual(missing.status_code, 400)
+
+        _, other_deployment = setup_test_project(reuse=False)
+        create_captures(deployment=other_deployment, num_nights=1, images_per_night=1)
+        other_project_capture = SourceImage.objects.filter(deployment=other_deployment).first()
+        ungrouped = SourceImage.objects.create(
+            deployment=self.deployment,
+            timestamp=self.captures[-1].timestamp + datetime.timedelta(days=2),
+            path="test/ungrouped.jpg",
+        )
+        for capture in (other_project_capture, ungrouped):
+            response = self.get_matches(track, capture.pk)
+            self.assertEqual(response.status_code, 400, response.data)
+            self.assertIn("capture_id", response.data)
+
+    def test_matches_are_gated_like_the_track_edits_they_lead_to(self):
+        """A member who cannot edit tracks is refused, and an outsider cannot learn that an
+        occurrence of a draft project exists."""
+        track = self._track(self.captures[1:3])
+        reader = User.objects.create_user(email="reader@insectai.org")  # type: ignore[attr-defined]
+        BasicMember.assign_user(reader, self.project)
+        self.assertEqual(self.get_matches(track, self.captures[3].pk, user=reader).status_code, 403)
+
+        self.project.draft = True
+        self.project.save()
+        outsider = User.objects.create_user(email="outsider@insectai.org")  # type: ignore[attr-defined]
+        self.assertEqual(self.get_matches(track, self.captures[3].pk, user=outsider).status_code, 404)
+        self.assertEqual(self.get_matches(track, self.captures[3].pk).status_code, 200)
+
+    def test_the_query_count_does_not_grow_with_the_track_or_the_capture(self):
+        """Two boxes against a two-frame track, then twelve boxes against a thirty-frame one."""
+        short = self._track(self.captures[1:3], vector=self.VECTOR)
+        for offset in range(2):
+            self._box(self.captures[3], [10 + offset, 10, 40 + offset, 40], vector=self.VECTOR)
+        *long_frames, dense = self._captures_after(31)
+        long = self._track(long_frames, vector=self.VECTOR)
+        for offset in range(12):
+            self._box(dense, [10 + offset, 10, 40 + offset, 40], vector=self.VECTOR)
+
+        from cachalot.api import cachalot_disabled
+
+        # The savepoint pair, the project, the object lookup with its identifications and
+        # permission checks, the capture, and the four scoring queries. The query cache is
+        # off, or the second request would reuse the first one's project and permissions.
+        for occurrence, capture, boxes in ((short, self.captures[3], 2), (long, dense, 12)):
+            with cachalot_disabled(), self.assertNumQueries(12):
+                response = self.get_matches(occurrence, capture.pk)
+            self.assertEqual(response.status_code, 200, response.data)
+            self.assertEqual(len(response.data["detections"]), boxes)
+            self.assertTrue(all(row["similarity"] == 1.0 for row in response.data["detections"]))
 
 
 class TrackStatsTestCase(APITestCase):
