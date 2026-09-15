@@ -3,7 +3,10 @@ import {
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
 import { TaxonDetails } from 'components/taxon-details/taxon-details'
-import { OccurrenceDetails as Occurrence } from 'data-services/models/occurrence-details'
+import {
+  FrameLabel,
+  OccurrenceDetails as Occurrence,
+} from 'data-services/models/occurrence-details'
 import { SearchIcon } from 'lucide-react'
 import {
   BasicTooltip,
@@ -34,6 +37,7 @@ import styles from './occurrence-details.module.scss'
 import { StatusLabel } from './status-label/status-label'
 import { SuggestId } from './suggest-id/suggest-id'
 import { FrameActionDialogs } from './track/frame-action-dialogs'
+import { FrameCaption } from './track/frame-caption'
 import { FrameMenu } from './track/frame-menu'
 import { GroupingActions } from './track/grouping-actions'
 import { PendingFrameAction } from './track/types'
@@ -79,7 +83,12 @@ export const OccurrenceDetails = ({
         ? occurrence.detections
             .map((id) => occurrence.getDetectionInfo(id))
             .filter(
-              (item): item is BlueprintItem & { captureId: string } => !!item
+              (
+                item
+              ): item is BlueprintItem & {
+                captureId: string
+                frameLabel: FrameLabel
+              } => !!item
             )
             .map((item) => ({
               ...item,
@@ -281,7 +290,10 @@ export const OccurrenceDetails = ({
                     ) : null}
 
                     {occurrence.groupingSummary ? (
-                      <GroupingSummary summary={occurrence.groupingSummary} />
+                      <GroupingSummary
+                        frameNames={occurrence.frameNames}
+                        summary={occurrence.groupingSummary}
+                      />
                     ) : null}
 
                     {occurrence.humanIdentifications.map((i) => (
@@ -347,6 +359,12 @@ export const OccurrenceDetails = ({
                         }
                       />
                     ) : undefined
+                  }
+                  caption={
+                    <FrameCaption
+                      detectionId={item.id}
+                      label={item.frameLabel}
+                    />
                   }
                   key={item.id}
                   item={item}

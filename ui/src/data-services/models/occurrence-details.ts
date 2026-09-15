@@ -3,7 +3,7 @@ import { STRING, translate } from 'utils/language'
 import { UserPermission } from 'utils/user/types'
 import { Algorithm } from './algorithm'
 import { Occurrence, ServerOccurrence } from './occurrence'
-import { Taxon } from './taxa'
+import { ServerTaxon, Taxon } from './taxa'
 import { TrackStats } from './track-stats'
 
 export type ServerOccurrenceDetails = ServerOccurrence & any // TODO: Update this type
@@ -79,7 +79,76 @@ export interface TrackFrame {
   timeLabel: string
 }
 
+export interface ServerFrameClassification {
+  created_at?: string
+  score?: number | null
+  taxon?: ServerTaxon | null
+  terminal?: boolean | null
+}
+
+/** The machine's own label for one frame; it stays with the detection through a merge. */
+export interface FrameLabel {
+  score?: number
+  taxon?: Taxon
+}
+
+/** One distinct frame label in a track. No taxon means the frames have no classification. */
+export interface FrameName {
+  frames: number
+  scoreMax?: number
+  taxon?: Taxon
+}
+
+const createdAtTime = (classification: ServerFrameClassification) =>
+  classification.created_at ? new Date(classification.created_at).getTime() : 0
+
+/** Terminal classifications outrank intermediate ones such as a moth filter; then score, then recency. */
+export const getFrameClassification = <T extends ServerFrameClassification>(
+  classifications: T[] | null | undefined
+): T | undefined => {
+  const named = (classifications ?? []).filter((c) => !!c.taxon)
+  const terminal = named.filter((c) => c.terminal === true)
+
+  return (terminal.length ? terminal : named).reduce<T | undefined>(
+    (best, c) => {
+      if (!best) {
+        return c
+      }
+      const score = c.score ?? -1
+      const bestScore = best.score ?? -1
+      if (score !== bestScore) {
+        return score > bestScore ? c : best
+      }
+      return createdAtTime(c) > createdAtTime(best) ? c : best
+    },
+    undefined
+  )
+}
+
+export const getFrameNames = (labels: FrameLabel[]): FrameName[] => {
+  const names = new Map<string, FrameName>()
+
+  labels.forEach(({ score, taxon }) => {
+    const key = taxon?.id ?? ''
+    const name = names.get(key) ?? { frames: 0, taxon }
+    name.frames += 1
+    if (
+      score !== undefined &&
+      (name.scoreMax === undefined || score > name.scoreMax)
+    ) {
+      name.scoreMax = score
+    }
+    names.set(key, name)
+  })
+
+  return Array.from(names.values()).sort(
+    (n1, n2) =>
+      n2.frames - n1.frames || (n2.scoreMax ?? -1) - (n1.scoreMax ?? -1)
+  )
+}
+
 export class OccurrenceDetails extends Occurrence {
+  private readonly _frameLabels: Map<string, FrameLabel>
   private readonly _frames: TrackFrame[] = []
   private readonly _humanIdentifications: HumanIdentification[]
   private readonly _machinePredictions: MachinePrediction[]
@@ -108,6 +177,23 @@ export class OccurrenceDetails extends Occurrence {
         (f1: TrackFrame, f2: TrackFrame) =>
           f2.timestamp.getTime() - f1.timestamp.getTime()
       )
+
+    this._frameLabels = new Map(
+      this._occurrence.detections.map((d: any): [string, FrameLabel] => {
+        const classification =
+          getFrameClassification<ServerFrameClassification>(d.classifications)
+
+        return [
+          `${d.id}`,
+          classification?.taxon
+            ? {
+                score: classification.score ?? undefined,
+                taxon: new Taxon(classification.taxon),
+              }
+            : {},
+        ]
+      })
+    )
 
     const sortByDate = (i1: any, i2: any) => {
       const date1 = new Date(i1.created_at)
@@ -180,6 +266,11 @@ export class OccurrenceDetails extends Occurrence {
   /** Detections of this occurrence, newest first — the order the strip renders them in. */
   get frames(): TrackFrame[] {
     return this._frames
+  }
+
+  /** Distinct labels across the frames, most frames first. */
+  get frameNames(): FrameName[] {
+    return getFrameNames(Array.from(this._frameLabels.values()))
   }
 
   get groupingVerified(): boolean {
@@ -255,14 +346,12 @@ export class OccurrenceDetails extends Occurrence {
       (d: any) => `${d.id}` === id
     )
 
-    const classification = detection?.classifications?.[0]
-    let label = 'No classification'
-
-    if (classification) {
-      label = `${classification.taxon.name} (${classification.score.toFixed(
-        2
-      )})`
-    }
+    const frameLabel = this._frameLabels.get(id) ?? {}
+    const label = frameLabel.taxon
+      ? `${frameLabel.taxon.name} (${
+          frameLabel.score?.toFixed(2) ?? translate(STRING.VALUE_NOT_AVAILABLE)
+        })`
+      : translate(STRING.TRACK_FRAME_NO_CLASSIFICATION)
 
     return {
       id,
@@ -275,7 +364,8 @@ export class OccurrenceDetails extends Occurrence {
         width: detection.width,
         height: detection.height,
       },
-      label: label,
+      frameLabel,
+      label,
       timeLabel: getFormatedTimeString({
         date: new Date(detection.timestamp),
         options: { second: true },
