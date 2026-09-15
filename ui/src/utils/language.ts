@@ -974,7 +974,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_FRAMES_COUNT]: '{{count}} frames',
   [STRING.TRACK_FRAMES_ONE]: '1 frame',
   [STRING.TRACK_FRAME_DETECTION]: 'Detection #{{id}}',
-  [STRING.TRACK_FRAME_MENU]: 'Frame actions',
+  [STRING.TRACK_FRAME_MENU]: 'Edit this frame',
   [STRING.TRACK_FRAME_NO_CLASSIFICATION]: 'No classification',
   [STRING.TRACK_HIDE_PATH]: 'Hide path',
   [STRING.TRACK_LAST_FRAME]: 'Last track frame',

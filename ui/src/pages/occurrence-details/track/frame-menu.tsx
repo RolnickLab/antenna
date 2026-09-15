@@ -1,4 +1,4 @@
-import { EllipsisVerticalIcon } from 'lucide-react'
+import { PencilIcon } from 'lucide-react'
 import { Button, Popover } from 'nova-ui-kit'
 import { useState } from 'react'
 import { STRING, translate } from 'utils/language'
@@ -40,10 +40,11 @@ export const FrameMenu = ({
       <Popover.Trigger asChild>
         <Button
           aria-label={translate(STRING.TRACK_FRAME_MENU)}
+          title={translate(STRING.TRACK_FRAME_MENU)}
           size="icon"
           variant="ghost"
         >
-          <EllipsisVerticalIcon className="w-4 h-4" />
+          <PencilIcon className="w-4 h-4" />
         </Button>
       </Popover.Trigger>
       <Popover.Content align="start" className="w-auto p-1" side="right">
