@@ -890,9 +890,34 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             .values("total")
         )
 
+        # Nearest capture on each side with a real box, by (timestamp, id), so a burst seconds apart
+        # is walked frame by frame. The gte + exclude tie-break lets the (event, timestamp) index walk
+        # stop at the first hit, where an OR of the two cases reads every capture on that side.
+        boxed_in_event = SourceImage.objects.filter(event=models.OuterRef("event")).filter(
+            models.Exists(Detection.objects.valid().filter(source_image_id=models.OuterRef("pk")))
+        )
+        next_with_detections = (
+            boxed_in_event.filter(timestamp__gte=models.OuterRef("timestamp"))
+            .exclude(timestamp=models.OuterRef("timestamp"), pk__lte=models.OuterRef("pk"))
+            .order_by("timestamp", "pk")
+            .values("id")[:1]
+        )
+        prev_with_detections = (
+            boxed_in_event.filter(timestamp__lte=models.OuterRef("timestamp"))
+            .exclude(timestamp=models.OuterRef("timestamp"), pk__gte=models.OuterRef("pk"))
+            .order_by("-timestamp", "-pk")
+            .values("id")[:1]
+        )
+
         return queryset.annotate(
             event_next_capture_id=models.Subquery(next_image, output_field=models.IntegerField()),
             event_prev_capture_id=models.Subquery(previous_image, output_field=models.IntegerField()),
+            event_next_capture_with_detections_id=models.Subquery(
+                next_with_detections, output_field=models.IntegerField()
+            ),
+            event_prev_capture_with_detections_id=models.Subquery(
+                prev_with_detections, output_field=models.IntegerField()
+            ),
             event_current_capture_index=models.Subquery(index_subquery, output_field=models.IntegerField()),
             event_total_captures=models.Subquery(total_subquery, output_field=models.IntegerField()),
         )

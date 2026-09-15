@@ -33,7 +33,7 @@ import { SessionInfo } from './session-info'
 import { SessionPlots } from './session-plots'
 import { StarButton } from './star-button'
 import { TimelineSlider } from './timeline-slider/timeline-slider'
-import { findNextCaptureWithDetections } from './utils'
+import { getNextCaptureWithDetectionsId } from './utils'
 import { ViewSettings } from './view-settings'
 import { ZoomSettings } from './zoom-settings'
 
@@ -110,7 +110,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
   const extend = useExtendTrack({
     captureId: activeCaptureId,
     nextCaptureId: activeCapture
-      ? findNextCaptureWithDetections({ date: activeCapture.date, timeline })
+      ? getNextCaptureWithDetectionsId({ capture: activeCapture, timeline })
       : undefined,
     onSelectCapture: setActiveCaptureId,
   })

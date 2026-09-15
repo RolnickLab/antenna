@@ -4,6 +4,9 @@ import { Job } from './job'
 
 export type ServerCaptureDetails = ServerCapture & any // TODO: Update this type
 
+const toOptionalId = (id?: number | null) =>
+  id === undefined || id === null ? id : `${id}`
+
 export class CaptureDetails extends Capture {
   private readonly _jobs: Job[] = []
 
@@ -63,11 +66,21 @@ export class CaptureDetails extends Capture {
       : undefined
   }
 
+  /** Null when no later capture in the session has a detection; undefined if not sent. */
+  get nextCaptureWithDetectionsId(): string | null | undefined {
+    return toOptionalId(this._capture.event_next_capture_with_detections_id)
+  }
+
   get prevCaptureId(): string | undefined {
     return this._capture.event_prev_capture_id !== null &&
       this._capture.event_prev_capture_id !== undefined
       ? `${this._capture.event_prev_capture_id}`
       : undefined
+  }
+
+  /** Null when no earlier capture in the session has a detection; undefined if not sent. */
+  get prevCaptureWithDetectionsId(): string | null | undefined {
+    return toOptionalId(this._capture.event_prev_capture_with_detections_id)
   }
 
   get sizeLabel(): string {
