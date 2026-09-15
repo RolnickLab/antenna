@@ -1,5 +1,6 @@
 import { CaptureDetection } from 'data-services/models/capture'
 import { TrackFrame } from 'data-services/models/occurrence-details'
+import { STRING } from 'utils/language'
 
 /** A clicked frame whose own occurrence spans several frames, so the reviewer picks what to move. */
 export interface ExtendChoice {
@@ -77,3 +78,23 @@ export const getExtendClick = ({
 
   return { kind: 'add', detectionId: detection.id }
 }
+
+export type ExtendClickIndicator = 'add' | 'blocked' | 'remove' | 'replace'
+
+const CLICK_HINTS: Record<
+  ExtendClick['kind'],
+  { indicator: ExtendClickIndicator; string: STRING }
+> = {
+  add: { indicator: 'add', string: STRING.TRACK_MATCH_CLICK_ADD },
+  choose: { indicator: 'add', string: STRING.TRACK_MATCH_CLICK_CHOOSE },
+  'only-frame': {
+    indicator: 'blocked',
+    string: STRING.TRACK_EXTEND_ONLY_FRAME,
+  },
+  remove: { indicator: 'remove', string: STRING.TRACK_MATCH_CLICK_REMOVE },
+  replace: { indicator: 'replace', string: STRING.TRACK_MATCH_CLICK_REPLACE },
+}
+
+/** What a box's tooltip says a click will do, read from the decision the click acts on. */
+export const getExtendClickHint = (click: ExtendClick) =>
+  CLICK_HINTS[click.kind]

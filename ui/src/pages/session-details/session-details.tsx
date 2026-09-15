@@ -114,10 +114,10 @@ const Content = ({ session }: { session: SessionDetails }) => {
       : undefined,
     onSelectCapture: setActiveCaptureId,
   })
-  const timelineOccurrenceIds =
-    extend.occurrenceId && !activeOccurrences.includes(extend.occurrenceId)
-      ? [...activeOccurrences, extend.occurrenceId]
-      : activeOccurrences
+  // While extending, the track being built is the only selection.
+  const timelineOccurrenceIds = extend.occurrenceId
+    ? [extend.occurrenceId]
+    : activeOccurrences
 
   useEffect(() => {
     // If the active capture has a job in progress, we want to poll the endpoint so we can show job updates

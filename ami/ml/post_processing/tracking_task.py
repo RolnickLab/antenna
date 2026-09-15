@@ -1,7 +1,7 @@
 import logging
 import math
 import typing
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 
 import numpy as np
 import pydantic
@@ -146,6 +146,47 @@ def get_unique_feature_algorithm_for_event(event: Event) -> tuple[Algorithm | No
     return None, candidates
 
 
+def resolve_feature_algorithm(
+    event: Event, config: TrackingConfig, candidates: list[Algorithm] | None = None
+) -> tuple[Algorithm | None, bool, str]:
+    """The feature extractor a tracking run compares embeddings from, and whether it tracks the event.
+
+    Returns ``(algorithm, should_track, note)``. ``algorithm`` is None when the run falls
+    back to geometry alone, and ``note`` says why a run falls back or skips; it is empty
+    when one extractor was configured or found. ``candidates`` are the extractors that
+    produced embeddings: every one in the event unless the caller passes a narrower set.
+    """
+    if config.feature_extraction_algorithm_id is not None:
+        algorithm = Algorithm.objects.filter(pk=config.feature_extraction_algorithm_id).first()
+        if algorithm is None:
+            return (
+                None,
+                False,
+                f"Configured feature_extraction_algorithm_id="
+                f"{config.feature_extraction_algorithm_id} not found; skipping event {event.pk}.",
+            )
+        return algorithm, True, ""
+
+    if candidates is None:
+        _, candidates = get_unique_feature_algorithm_for_event(event)
+    if len(candidates) == 1:
+        return candidates[0], True, ""
+
+    if candidates:
+        candidate_names = [f"#{a.pk} {a.name}" for a in candidates]
+        message = (
+            f"Event {event.pk}: detections classified by {len(candidates)} different "
+            f"feature-extraction algorithms ({candidate_names}). Pass "
+            "feature_extraction_algorithm_id in the job config to disambiguate."
+        )
+    else:
+        message = f"Event {event.pk}: no detections carry feature embeddings."
+
+    if config.require_features:
+        return None, False, f"{message} Skipping."
+    return None, True, f"{message} Matching on bounding-box geometry alone."
+
+
 def event_is_fresh(event: Event) -> tuple[bool, str]:
     """Has this event's detections already been grouped into chains?
 
@@ -180,15 +221,6 @@ def event_fully_processed(event: Event, logger: logging.Logger, algorithm: Algor
         logger.info(f"Event {event.pk} not fully processed: {processed}/{total} captures")
         return False
     return True
-
-
-def get_feature_vector(detection: Detection, algorithm: Algorithm):
-    return (
-        detection.classifications.filter(features_2048__isnull=False, algorithm=algorithm)
-        .order_by("-timestamp")
-        .values_list("features_2048", flat=True)
-        .first()
-    )
 
 
 def record_tracking_determination(occurrence: Occurrence, algorithm: Algorithm) -> Classification | None:
@@ -344,6 +376,67 @@ def assign_occurrences_from_detection_chains(
     }
 
 
+def latest_feature_vectors(detection_ids: Iterable[int], algorithm_id: int) -> dict[int, typing.Any]:
+    """The most recent embedding from one algorithm for each detection given, by detection id.
+
+    Detections without one are left out. One query for the whole batch.
+    """
+    vectors: dict[int, typing.Any] = {}
+    rows = (
+        Classification.objects.filter(
+            detection_id__in=list(detection_ids), algorithm_id=algorithm_id, features_2048__isnull=False
+        )
+        .order_by("-timestamp", "-pk")
+        .values_list("detection_id", "features_2048")
+    )
+    for detection_id, vector in rows:
+        vectors.setdefault(detection_id, vector)
+    return vectors
+
+
+def select_links(
+    current_detections: Sequence[Detection],
+    next_detections: Sequence[Detection],
+    vectors: dict[int, typing.Any],
+    diag: float,
+    cost_threshold: float,
+    require_features: bool = True,
+) -> list[tuple[Detection, Detection, float]]:
+    """The links tracking makes between two adjacent captures, lowest cost first, saving nothing.
+
+    A pair is a candidate when its matching cost is below ``cost_threshold``; with
+    ``require_features``, a detection with no embedding in ``vectors`` never is. Candidates
+    are taken lowest cost first, and each detection is linked at most once on either side.
+    Tracking runs and the session view's link preview both call this, so they cannot differ.
+    """
+    candidates: list[tuple[Detection, Detection, float]] = []
+    for det in current_detections:
+        det_vec = vectors.get(det.pk)
+        if det_vec is None and require_features:
+            continue
+        for nxt in next_detections:
+            nxt_vec = vectors.get(nxt.pk)
+            if nxt_vec is None and require_features:
+                continue
+            cost = total_cost(det_vec, nxt_vec, det.bbox, nxt.bbox, diag)
+            if cost < cost_threshold:
+                candidates.append((det, nxt, cost))
+
+    # Secondary keys (det.pk, nxt.pk) keep tied costs deterministic across runs.
+    candidates.sort(key=lambda x: (x[2], x[0].pk, x[1].pk))
+
+    claimed_current: set[int] = set()
+    claimed_next: set[int] = set()
+    links: list[tuple[Detection, Detection, float]] = []
+    for det, nxt, cost in candidates:
+        if det.pk in claimed_current or nxt.pk in claimed_next:
+            continue
+        claimed_current.add(det.pk)
+        claimed_next.add(nxt.pk)
+        links.append((det, nxt, cost))
+    return links
+
+
 def pair_detections(
     current_detections: list[Detection],
     next_detections: list[Detection],
@@ -357,44 +450,25 @@ def pair_detections(
     """
     Greedy lowest-cost matching between two adjacent images. Sets `next_detection`
     on each detection in `current_detections` for the best partner in `next_detections`,
-    if that partner's cost is below `cost_threshold` and not already claimed.
+    if that partner's cost is below `cost_threshold` and not already claimed. The links
+    are chosen by `select_links`; this saves them.
 
     With ``require_features=False``, detections that carry no embedding are still
     matched, on geometry alone. Returns the number of links created.
     """
-    diag = image_diagonal(image_width, image_height)
-    candidates: list[tuple[Detection, Detection, float]] = []
+    vectors: dict[int, typing.Any] = {}
+    if algorithm is not None:
+        vectors = latest_feature_vectors([det.pk for det in [*current_detections, *next_detections]], algorithm.pk)
+    links = select_links(
+        current_detections,
+        next_detections,
+        vectors,
+        image_diagonal(image_width, image_height),
+        cost_threshold,
+        require_features,
+    )
 
-    # Cache feature lookups: one query per detection instead of O(m*n).
-    if algorithm is None:
-        current_vectors: dict[int, typing.Any] = {}
-        next_vectors: dict[int, typing.Any] = {}
-    else:
-        current_vectors = {det.pk: get_feature_vector(det, algorithm) for det in current_detections}
-        next_vectors = {nxt.pk: get_feature_vector(nxt, algorithm) for nxt in next_detections}
-
-    for det in current_detections:
-        det_vec = current_vectors.get(det.pk)
-        if det_vec is None and require_features:
-            continue
-        for nxt in next_detections:
-            nxt_vec = next_vectors.get(nxt.pk)
-            if nxt_vec is None and require_features:
-                continue
-            cost = total_cost(det_vec, nxt_vec, det.bbox, nxt.bbox, diag)
-            if cost < cost_threshold:
-                candidates.append((det, nxt, cost))
-
-    # Secondary keys (det.pk, nxt.pk) keep tied costs deterministic across runs.
-    candidates.sort(key=lambda x: (x[2], x[0].pk, x[1].pk))
-
-    claimed_current: set[int] = set()
-    claimed_next: set[int] = set()
-    links = 0
-
-    for det, nxt, cost in candidates:
-        if det.id in claimed_current or nxt.id in claimed_next:
-            continue
+    for det, nxt, cost in links:
         # Detach any existing inbound link to `nxt` before reassigning.
         try:
             prior: Detection | None = nxt.previous_detection
@@ -406,12 +480,9 @@ def pair_detections(
 
         det.next_detection = nxt
         det.save()
-        claimed_current.add(det.id)
-        claimed_next.add(nxt.id)
-        links += 1
         logger.debug(f"Linked detection {det.id} -> {nxt.id} (cost {cost:.4f})")
 
-    return links
+    return len(links)
 
 
 def assign_occurrences_by_tracking_images(
@@ -521,41 +592,17 @@ class TrackingTask(BasePostProcessingTask):
         return events
 
     def _resolve_algorithm(self, event: Event) -> tuple[Algorithm | None, bool]:
-        """Return ``(algorithm, should_track)`` for one event.
+        """Return ``(algorithm, should_track)`` for one event, logging why a run falls back or skips.
 
         ``algorithm`` is the feature extractor whose embeddings to compare, or None
         when the run falls back to geometry alone.
         """
-        if self.config.feature_extraction_algorithm_id is not None:
-            algorithm = Algorithm.objects.filter(pk=self.config.feature_extraction_algorithm_id).first()
-            if algorithm is None:
-                self.logger.warning(
-                    f"Configured feature_extraction_algorithm_id="
-                    f"{self.config.feature_extraction_algorithm_id} not found; skipping event {event.pk}."
-                )
-                return None, False
-            return algorithm, True
-
-        algorithm, candidates = get_unique_feature_algorithm_for_event(event)
-        if algorithm is not None:
-            return algorithm, True
-
-        if candidates:
-            candidate_names = [f"#{a.pk} {a.name}" for a in candidates]
-            message = (
-                f"Event {event.pk}: detections classified by {len(candidates)} different "
-                f"feature-extraction algorithms ({candidate_names}). Pass "
-                "feature_extraction_algorithm_id in the job config to disambiguate."
-            )
-        else:
-            message = f"Event {event.pk}: no detections carry feature embeddings."
-
-        if self.config.require_features:
-            self.logger.warning(f"{message} Skipping.")
-            return None, False
-
-        self.logger.info(f"{message} Matching on bounding-box geometry alone.")
-        return None, True
+        algorithm, should_track, note = resolve_feature_algorithm(event, self.config)
+        if note and should_track:
+            self.logger.info(note)
+        elif note:
+            self.logger.warning(note)
+        return algorithm, should_track
 
     def run(self) -> None:
         self.logger.info(f"Tracking starting with config: {self.config.dict()}")

@@ -4,6 +4,7 @@ import itertools
 import logging
 import re
 import typing
+from contextlib import contextmanager
 from io import BytesIO
 from unittest import mock
 
@@ -48,7 +49,7 @@ from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.pipeline import Pipeline
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
-from ami.ml.post_processing.tracking_task import image_diagonal, total_cost
+from ami.ml.post_processing.tracking_task import TrackingConfig, image_diagonal, iou, pair_detections, total_cost
 from ami.tests.fixtures.main import (
     create_captures,
     create_captures_from_files,
@@ -69,6 +70,24 @@ from ami.users.roles import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def cachalot_disabled():
+    """Measure queries with cachalot off, and turn it back on even when the block raises.
+
+    ``cachalot.api.cachalot_disabled`` restores its thread-local flag only on a clean exit,
+    so one failing query-count assertion would leave every later test in the process
+    uncached and failing on its own count.
+    """
+    from cachalot.api import cachalot_disabled as upstream
+
+    upstream_block = upstream()
+    upstream_block.__enter__()
+    try:
+        yield
+    finally:
+        upstream_block.__exit__(None, None, None)
 
 
 class TestProjectSetup(TestCase):
@@ -884,8 +903,6 @@ class TestCaptureNeighboursWithDetections(APITestCase):
 
     def test_detail_query_count_does_not_follow_the_session_size(self):
         """The neighbours come from subqueries in the detail query, not from a query per capture."""
-        from cachalot.api import cachalot_disabled
-
         capture = self._capture(0, [10, 10, 40, 40])
 
         def count_queries() -> int:
@@ -9438,6 +9455,326 @@ class MergeCandidatesTestCase(TrackEditTestCase):
         self.assertEqual(len(response.data["candidates"]), 3)
 
 
+class CaptureMatchesTestCase(APITestCase):
+    """Previewing, box by box, what tracking would link on one capture of a track.
+
+    What these pin is that the preview comes from tracking's own matcher, run between every
+    box on the reference frame's capture and every box on the capture, so a box claimed by a
+    better match is not marked as linked; that a box without an embedding is marked skipped
+    while tracking requires them; that the reference is the track frame nearest in time on
+    another capture; and that the query count does not grow with the track or the capture.
+    """
+
+    FRAME_SIZE = 1000
+    VECTOR = [1.0] + [0.0] * 2047
+    TRACK_BOX = [10, 10, 40, 40]
+    # With equal vectors these cost about 0.12 and 0.22 from TRACK_BOX, either side of the
+    # tracker's default threshold of 0.2.
+    NEAR_BOX = [11, 11, 41, 41]
+    OFFSET_BOX = [12, 12, 42, 42]
+    FAR_BOX = [500, 500, 530, 530]
+
+    def setUp(self) -> None:
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=6, interval_minutes=1)
+        SourceImage.objects.filter(deployment=self.deployment).update(width=self.FRAME_SIZE, height=self.FRAME_SIZE)
+        self.captures = list(SourceImage.objects.filter(deployment=self.deployment).order_by("timestamp"))
+        assert len(self.captures) >= 6, "Fixture must provide six consecutive captures"
+        self.event = self.captures[0].event
+        self.curator = User.objects.create_user(email="curator@insectai.org")  # type: ignore[attr-defined]
+        MLDataManager.assign_user(self.curator, self.project)
+        self.extractor = Algorithm.objects.create(name="Feature extractor", key="feature-extractor")
+        self.diagonal = image_diagonal(self.FRAME_SIZE, self.FRAME_SIZE)
+        self.threshold = TrackingConfig(event_ids=[self.event.pk]).cost_threshold
+
+    def _box(
+        self,
+        capture: SourceImage,
+        bbox: list[int],
+        occurrence: Occurrence | None = None,
+        vector: list[float] | None = None,
+        algorithm: Algorithm | None = None,
+    ) -> Detection:
+        detection = Detection.objects.create(
+            source_image=capture, timestamp=capture.timestamp, bbox=bbox, occurrence=occurrence
+        )
+        if vector is not None:
+            detection.classifications.create(
+                score=0.9, timestamp=capture.timestamp, algorithm=algorithm or self.extractor, features_2048=vector
+            )
+        return detection
+
+    def _track(self, captures: list[SourceImage], bbox: list[int] | None = None, vector=None) -> Occurrence:
+        occurrence = Occurrence.objects.create(event=self.event, deployment=self.deployment, project=self.project)
+        for capture in captures:
+            self._box(capture, bbox or self.TRACK_BOX, occurrence=occurrence, vector=vector)
+        return occurrence
+
+    def _captures_after(self, count: int) -> list[SourceImage]:
+        last = self.captures[-1]
+        return [
+            SourceImage.objects.create(
+                deployment=self.deployment,
+                event=self.event,
+                timestamp=last.timestamp + datetime.timedelta(seconds=i + 1),
+                path=f"test/matches-{last.pk}-{i}.jpg",
+                width=self.FRAME_SIZE,
+                height=self.FRAME_SIZE,
+            )
+            for i in range(count)
+        ]
+
+    def get_matches(self, occurrence: Occurrence, capture_id, user: User | None = None):
+        self.client.force_authenticate(user=user or self.curator)
+        return self.client.get(
+            f"/api/v2/occurrences/{occurrence.pk}/capture-matches/"
+            f"?project_id={self.project.pk}&capture_id={capture_id}"
+        )
+
+    def test_the_box_tracking_would_link_is_marked(self):
+        """After the track's last frame, the box close enough to fall under the tracker's threshold
+        is the one it would link. One a little further off is scored but not linked, and its
+        likelihood, one minus the mean cost term, reads lower."""
+        track = self._track(self.captures[1:3], vector=self.VECTOR)
+        capture = self.captures[3]
+        neighbour = self._track([capture], bbox=self.NEAR_BOX, vector=self.VECTOR).detections.get()
+        offset = self._box(capture, self.OFFSET_BOX, vector=self.VECTOR)
+        loose = self._box(capture, self.FAR_BOX, vector=self.VECTOR)
+
+        response = self.get_matches(track, capture.pk)
+        self.assertEqual(response.status_code, 200, response.data)
+
+        data = response.data
+        self.assertEqual(data["cost_threshold"], self.threshold)
+        self.assertEqual(data["feature_algorithm_id"], self.extractor.pk)
+        self.assertTrue(data["requires_features"])
+        reference = track.detections.get(source_image=self.captures[2])
+        self.assertEqual(
+            (data["reference"]["detection_id"], data["reference"]["relation"], data["reference"]["skipped_reason"]),
+            (reference.pk, "after", None),
+        )
+        self.assertEqual([row["detection_id"] for row in data["detections"]], [neighbour.pk, offset.pk, loose.pk])
+
+        rows = {row["detection_id"]: row for row in data["detections"]}
+        self.assertEqual([rows[box.pk]["would_link"] for box in (neighbour, offset, loose)], [True, False, False])
+        self.assertIsNone(rows[loose.pk]["occurrence_id"])
+        for box in (neighbour, offset):
+            row = rows[box.pk]
+            cost = total_cost(self.VECTOR, self.VECTOR, self.TRACK_BOX, box.bbox, self.diagonal)
+            self.assertAlmostEqual(row["cost"], cost, places=4)
+            self.assertAlmostEqual(row["likelihood"], 1 - cost / 4, places=4)
+            self.assertAlmostEqual(row["iou"], iou(self.TRACK_BOX, box.bbox), places=4)
+            self.assertEqual((row["similarity"], row["size_ratio"], row["skipped_reason"]), (1.0, 1.0, None))
+            self.assertEqual(row["time_offset_seconds"], 60.0)
+        self.assertLess(rows[neighbour.pk]["cost"], self.threshold)
+        self.assertGreater(rows[offset.pk]["cost"], self.threshold)
+        self.assertGreater(rows[neighbour.pk]["likelihood"], rows[offset.pk]["likelihood"])
+        self.assertEqual(data["reference"]["capture_offset"], 1)
+
+    def test_on_a_capture_the_track_covers_its_own_box_keeps_the_link(self):
+        """The capture already holds the track's box, so the reference is the track frame one
+        capture earlier. Tracking would link that frame to the track's own box, which claims it
+        ahead of a neighbour that would otherwise have been linked."""
+        track = self._track(self.captures[1:4], vector=self.VECTOR)
+        capture = self.captures[3]
+        neighbour = self._box(capture, self.NEAR_BOX, vector=self.VECTOR)
+
+        data = self.get_matches(track, capture.pk).data
+
+        self.assertEqual(
+            (data["reference"]["relation"], data["reference"]["capture_id"]), ("same", self.captures[2].pk)
+        )
+        rows = {row["detection_id"]: row for row in data["detections"]}
+        own = rows[track.detections.get(source_image=capture).pk]
+        self.assertTrue(own["in_track"])
+        self.assertTrue(own["would_link"], "Tracking would keep the track's own link")
+        self.assertIsNone(own["likelihood"], "The track's own box is not a candidate")
+        self.assertFalse(rows[neighbour.pk]["would_link"])
+        self.assertGreater(rows[neighbour.pk]["likelihood"], 0.5)
+
+    def test_a_box_matched_better_by_another_box_is_not_linked(self):
+        """Tracking pairs every box on the two captures, so a box under the threshold from the
+        reference frame is still not linked to it when a box beside the reference matches it
+        better."""
+        track = self._track(self.captures[1:3], vector=self.VECTOR)
+        self._box(self.captures[2], self.NEAR_BOX, vector=self.VECTOR)
+        self._box(self.captures[3], self.NEAR_BOX, vector=self.VECTOR)
+
+        row = self.get_matches(track, self.captures[3].pk).data["detections"][0]
+
+        self.assertFalse(row["would_link"])
+        self.assertGreater(row["likelihood"], 0.5)
+
+    def test_the_preview_links_what_a_tracking_pass_saves(self):
+        """The preview and a tracking pass share one matcher, so on the same two captures the box
+        marked as linked is the one pair_detections links the reference frame to."""
+        track = self._track(self.captures[1:3], vector=self.VECTOR)
+        reference = track.detections.get(source_image=self.captures[2])
+        capture = self.captures[3]
+        self._box(self.captures[2], [14, 14, 44, 44], vector=self.VECTOR)
+        for bbox in (self.NEAR_BOX, [13, 13, 43, 43], self.FAR_BOX):
+            self._box(capture, bbox, vector=self.VECTOR)
+
+        rows = self.get_matches(track, capture.pk).data["detections"]
+        previewed = [row["detection_id"] for row in rows if row["would_link"]]
+
+        pair_detections(
+            list(self.captures[2].detections.valid()),
+            list(capture.detections.valid()),
+            image_width=self.FRAME_SIZE,
+            image_height=self.FRAME_SIZE,
+            cost_threshold=self.threshold,
+            algorithm=self.extractor,
+            logger=logging.getLogger(__name__),
+        )
+        reference.refresh_from_db()
+        self.assertIsNotNone(reference.next_detection_id, "The fixture must leave the reference frame a link")
+        self.assertEqual(previewed, [reference.next_detection_id])
+
+    def test_a_box_without_an_embedding_is_skipped_while_features_are_required(self):
+        """Tracking skips a box with no embedding when it requires them, so the box is marked and
+        not linked even though its geometry alone is under the threshold. Its cost is that
+        geometry alone."""
+        track = self._track(self.captures[1:3], vector=self.VECTOR)
+        self._box(self.captures[3], self.NEAR_BOX)
+
+        row = self.get_matches(track, self.captures[3].pk).data["detections"][0]
+
+        geometry = total_cost(None, None, self.TRACK_BOX, self.NEAR_BOX, self.diagonal)
+        self.assertLess(geometry, self.threshold)
+        self.assertEqual((row["skipped_reason"], row["would_link"], row["similarity"]), ("no_vector", False, None))
+        self.assertAlmostEqual(row["cost"], geometry, places=4)
+        self.assertAlmostEqual(row["likelihood"], 1 - geometry / 3, places=4)
+
+    def test_a_detector_only_session_links_nothing(self):
+        """With no embeddings at all, tracking has no extractor to compare and skips the captures
+        while it requires features, so every box and the reference frame are marked skipped."""
+        track = self._track(self.captures[1:3])
+        self._box(self.captures[3], self.NEAR_BOX)
+
+        data = self.get_matches(track, self.captures[3].pk).data
+
+        self.assertIsNone(data["feature_algorithm_id"])
+        self.assertEqual(data["reference"]["skipped_reason"], "no_vector")
+        row = data["detections"][0]
+        self.assertEqual((row["skipped_reason"], row["would_link"]), ("no_vector", False))
+        self.assertIsNotNone(row["cost"], "The geometry is still scored")
+
+    def test_two_feature_extractors_link_nothing(self):
+        """Embeddings from two extractors leave tracking no single one to compare, so it skips the
+        captures while it requires features, as it does a session with none."""
+        other_extractor = Algorithm.objects.create(name="Other extractor", key="other-extractor")
+        track = self._track(self.captures[1:3], vector=self.VECTOR)
+        self._box(self.captures[3], self.NEAR_BOX, vector=self.VECTOR, algorithm=other_extractor)
+
+        data = self.get_matches(track, self.captures[3].pk).data
+
+        self.assertIsNone(data["feature_algorithm_id"])
+        self.assertEqual(
+            (data["detections"][0]["skipped_reason"], data["detections"][0]["would_link"]), ("no_vector", False)
+        )
+
+    def test_the_reference_is_the_nearest_track_frame_on_another_capture(self):
+        """A track on the second and fifth of six captures a minute apart. Each capture is
+        scored against the nearer of the two, and the relation says where the capture lies;
+        on a capture holding a track frame the other frame is used."""
+        track = self._track([self.captures[1], self.captures[4]])
+        first, last = (track.detections.get(source_image=self.captures[i]).pk for i in (1, 4))
+        expected = {
+            0: ("before", first, -60.0),
+            2: ("gap", first, 60.0),
+            3: ("gap", last, -60.0),
+            5: ("after", last, 60.0),
+            1: ("same", last, -180.0),
+        }
+        for index, (relation, reference, offset) in expected.items():
+            self._box(self.captures[index], self.FAR_BOX)
+            data = self.get_matches(track, self.captures[index].pk).data
+            self.assertEqual((data["reference"]["relation"], data["reference"]["detection_id"]), (relation, reference))
+            candidate = next(row for row in data["detections"] if not row["in_track"])
+            self.assertEqual(candidate["time_offset_seconds"], offset, index)
+
+    def test_a_track_with_no_frame_on_another_capture_is_not_scored(self):
+        track = self._track([self.captures[0]])
+        other = self._box(self.captures[0], self.FAR_BOX)
+
+        data = self.get_matches(track, self.captures[0].pk).data
+
+        self.assertIsNone(data["reference"])
+        self.assertEqual({row["detection_id"] for row in data["detections"]}, {track.detections.get().pk, other.pk})
+        for row in data["detections"]:
+            self.assertIsNone(row["likelihood"])
+            self.assertFalse(row["would_link"])
+
+    def test_capture_id_must_name_a_capture_of_the_session(self):
+        track = self._track(self.captures[1:3])
+        for junk in ("abc", "", "0"):
+            self.assertEqual(self.get_matches(track, junk).status_code, 400, junk)
+        missing = self.client.get(f"/api/v2/occurrences/{track.pk}/capture-matches/?project_id={self.project.pk}")
+        self.assertEqual(missing.status_code, 400)
+
+        _, other_deployment = setup_test_project(reuse=False)
+        create_captures(deployment=other_deployment, num_nights=1, images_per_night=1)
+        other_project_capture = SourceImage.objects.filter(deployment=other_deployment).first()
+        ungrouped = SourceImage.objects.create(
+            deployment=self.deployment,
+            timestamp=self.captures[-1].timestamp + datetime.timedelta(days=2),
+            path="test/ungrouped.jpg",
+        )
+        for capture in (other_project_capture, ungrouped):
+            response = self.get_matches(track, capture.pk)
+            self.assertEqual(response.status_code, 400, response.data)
+            self.assertIn("capture_id", response.data)
+
+    def test_matches_are_gated_like_the_track_edits_they_lead_to(self):
+        """A member who cannot edit tracks is refused, and an outsider cannot learn that an
+        occurrence of a draft project exists."""
+        track = self._track(self.captures[1:3])
+        reader = User.objects.create_user(email="reader@insectai.org")  # type: ignore[attr-defined]
+        BasicMember.assign_user(reader, self.project)
+        self.assertEqual(self.get_matches(track, self.captures[3].pk, user=reader).status_code, 403)
+
+        self.project.draft = True
+        self.project.save()
+        outsider = User.objects.create_user(email="outsider@insectai.org")  # type: ignore[attr-defined]
+        self.assertEqual(self.get_matches(track, self.captures[3].pk, user=outsider).status_code, 404)
+        self.assertEqual(self.get_matches(track, self.captures[3].pk).status_code, 200)
+
+    def test_the_reference_says_how_many_captures_away_it_is(self):
+        """The offset counts captures from the reference frame's capture, signed, so a comparison
+        with a frame two captures later reads -2 rather than passing for the adjacent pairing."""
+        track = self._track(self.captures[3:5], vector=self.VECTOR)
+        self._box(self.captures[1], self.NEAR_BOX, vector=self.VECTOR)
+
+        reference = self.get_matches(track, self.captures[1].pk).data["reference"]
+
+        self.assertEqual(
+            (reference["capture_id"], reference["relation"], reference["capture_offset"]),
+            (self.captures[3].pk, "before", -2),
+        )
+
+    def test_the_query_count_does_not_grow_with_the_track_or_the_capture(self):
+        """Two boxes against a two-frame track, then twelve boxes against a thirty-frame one."""
+        short = self._track(self.captures[1:3], vector=self.VECTOR)
+        for offset in range(2):
+            self._box(self.captures[3], [10 + offset, 10, 40 + offset, 40], vector=self.VECTOR)
+        *long_frames, dense = self._captures_after(31)
+        long = self._track(long_frames, vector=self.VECTOR)
+        for offset in range(12):
+            self._box(dense, [10 + offset, 10, 40 + offset, 40], vector=self.VECTOR)
+
+        # The savepoint pair, the project, the object lookup with its identifications and
+        # permission checks, the capture, and six scoring queries: the reference frame, the
+        # boxes on both captures, their extractors, that extractor, its vectors, and the count
+        # of captures between the reference frame's capture and this one.
+        for occurrence, capture, boxes in ((short, self.captures[3], 2), (long, dense, 12)):
+            with cachalot_disabled(), self.assertNumQueries(14):
+                response = self.get_matches(occurrence, capture.pk)
+            self.assertEqual(response.status_code, 200, response.data)
+            self.assertEqual(len(response.data["detections"]), boxes)
+            self.assertTrue(all(row["similarity"] == 1.0 for row in response.data["detections"]))
+
+
 class TrackStatsTestCase(APITestCase):
     """Track statistics the review interface sorts and filters by.
 
@@ -9564,8 +9901,6 @@ class TrackStatsTestCase(APITestCase):
     def _list_query_count(self, stats_stored: bool) -> int:
         # Inside a test transaction cachalot answers repeat queries from a per-transaction
         # layer that clearing the cache backend does not reach, so measure with it off.
-        from cachalot.api import cachalot_disabled
-
         with cachalot_disabled(), CaptureQueriesContext(connection) as ctx:
             rows = self._list_rows()
         self.assertEqual(len(rows), 3, "A one-row page cannot show a per-row cost")
@@ -9748,8 +10083,6 @@ class TrackStatsTestCase(APITestCase):
 
     def test_detail_summary_reads_only_what_is_already_prefetched(self):
         """The summary adds no query per frame or per classification: one lookup for the algorithm, then none."""
-        from cachalot.api import cachalot_disabled
-
         from ami.main.models_future.track_stats import grouping_summary_from_prefetch, tracking_algorithm_summary
 
         occurrence = Occurrence.objects.filter(pk=self.track.pk).with_detail_prefetches().get()

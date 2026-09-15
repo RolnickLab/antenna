@@ -47,6 +47,11 @@
     outline: 2px solid var(--color-secondary-400);
   }
 
+  &.extended {
+    box-shadow: 0 0 8px 2px
+      color-mix(in srgb, var(--color-secondary-400) 80%, transparent);
+  }
+
   &.clickable {
     &:hover {
       cursor: pointer;

@@ -27,7 +27,12 @@ import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
 import { UserPermission } from 'utils/user/types'
 import { useExtendOccurrenceId } from '../hooks/useExtendOccurrenceId'
-import { ExtendChoice, ExtendPending, getExtendClick } from './extend-click'
+import {
+  ExtendChoice,
+  ExtendClick,
+  ExtendPending,
+  getExtendClick,
+} from './extend-click'
 import { getTrackNavigation, TrackPosition } from './track-navigation'
 
 /** Why the last box click changed nothing, or why a successful edit did not move on. */
@@ -56,6 +61,8 @@ export interface ExtendTrackState {
   /** Where a replaced frame went when moving the clicked frame in then failed. */
   orphanOccurrenceId?: string
   pending?: ExtendPending
+  /** What a click on this box would do; undefined while a click would be ignored. */
+  previewClick: (detection: CaptureDetection) => ExtendClick | undefined
   /** Whether the box popovers show; off by default so they never cover the boxes. */
   showDetails: boolean
   start: (occurrenceId: string) => void
@@ -139,20 +146,25 @@ export const useExtendTrack = ({
       // The rejection is reported through the mutation's error state.
       .catch(() => undefined)
 
+  // Every branch reads the track's frames, so a click waits for them to load.
+  const previewClick = (detection: CaptureDetection) =>
+    extendOccurrenceId && track && !isLoading
+      ? getExtendClick({
+          captureId,
+          detection,
+          frames: track.frames,
+          occurrenceId: extendOccurrenceId,
+        })
+      : undefined
+
   const clickBox = (detection: CaptureDetection) => {
-    // Every branch reads the track's frames, so a click waits for them to load.
-    if (!extendOccurrenceId || !track || isLoading) {
+    const click = previewClick(detection)
+
+    if (!click) {
       return
     }
 
     clearFeedback()
-
-    const click = getExtendClick({
-      captureId,
-      detection,
-      frames: track.frames,
-      occurrenceId: extendOccurrenceId,
-    })
 
     switch (click.kind) {
       case 'add':
@@ -220,6 +232,7 @@ export const useExtendTrack = ({
     occurrenceId: extendOccurrenceId,
     orphanOccurrenceId,
     pending,
+    previewClick,
     showDetails,
     start: setExtendOccurrenceId,
     stop: () => setExtendOccurrenceId(undefined),

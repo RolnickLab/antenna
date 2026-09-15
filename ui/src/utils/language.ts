@@ -428,6 +428,21 @@ export enum STRING {
   TRACK_GROUPING_CONFIRMED,
   TRACK_GROUPING_NOT_CONFIRMED,
   TRACK_GROUPING_UNCONFIRMED,
+  TRACK_MATCH_CLICK_ADD,
+  TRACK_MATCH_CLICK_CHOOSE,
+  TRACK_MATCH_CLICK_REMOVE,
+  TRACK_MATCH_CLICK_REPLACE,
+  TRACK_MATCH_LABEL,
+  TRACK_MATCH_LIKELY,
+  TRACK_MATCH_POSSIBLE,
+  TRACK_MATCH_REFERENCE_EARLIER,
+  TRACK_MATCH_REFERENCE_LATER,
+  TRACK_MATCH_SAME_SPECIES,
+  TRACK_MATCH_SCORE,
+  TRACK_MATCH_SKIPPED_NO_VECTOR,
+  TRACK_MATCH_SKIPPED_SESSION,
+  TRACK_MATCH_UNLIKELY,
+  TRACK_MATCH_WOULD_LINK,
   TRACK_MERGE_CANDIDATES_TITLE,
   TRACK_MERGE_COUNT,
   TRACK_MERGE_MANY_DESCRIPTION,
@@ -1003,6 +1018,28 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_GROUPING_NOT_CONFIRMED]:
     'Grouping not yet confirmed by a person',
   [STRING.TRACK_GROUPING_UNCONFIRMED]: 'Grouping not confirmed',
+  [STRING.TRACK_MATCH_CLICK_ADD]: 'Click to add to the track',
+  [STRING.TRACK_MATCH_CLICK_CHOOSE]:
+    'Click to choose: merge its whole track, or move just this frame',
+  [STRING.TRACK_MATCH_CLICK_REMOVE]: 'Click to remove from the track',
+  [STRING.TRACK_MATCH_CLICK_REPLACE]:
+    "Click to replace the track's frame on this capture",
+  [STRING.TRACK_MATCH_LABEL]: 'Match',
+  [STRING.TRACK_MATCH_LIKELY]: 'Likely',
+  [STRING.TRACK_MATCH_POSSIBLE]: 'Possible',
+  [STRING.TRACK_MATCH_REFERENCE_EARLIER]:
+    "Compared with the track's frame {{count}} captures earlier",
+  [STRING.TRACK_MATCH_REFERENCE_LATER]:
+    "Compared with the track's frame {{count}} captures later",
+  [STRING.TRACK_MATCH_SAME_SPECIES]:
+    '{{count}} more of this species on this capture',
+  [STRING.TRACK_MATCH_SCORE]: '{{level}} ({{percent}}%)',
+  [STRING.TRACK_MATCH_SKIPPED_NO_VECTOR]:
+    'Tracking would skip this: no feature vector',
+  [STRING.TRACK_MATCH_SKIPPED_SESSION]:
+    'Automatic tracking would skip this session: no feature vectors. Colors use box geometry only.',
+  [STRING.TRACK_MATCH_UNLIKELY]: 'Unlikely',
+  [STRING.TRACK_MATCH_WOULD_LINK]: 'Automatic tracking would link this',
   [STRING.TRACK_MERGE_CANDIDATES_TITLE]: 'Candidates to merge',
   [STRING.TRACK_MERGE_COUNT]: 'Merge {{count}} occurrences',
   [STRING.TRACK_MERGE_MANY_DESCRIPTION]:
