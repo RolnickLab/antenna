@@ -65,7 +65,7 @@ export const OccurrenceDetails = ({
     user: { loggedIn },
   } = useUser()
   const { userInfo } = useUserInfo()
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
   const { projectId } = useParams()
   const navigate = useNavigate()
   const location = useLocation()
@@ -80,6 +80,13 @@ export const OccurrenceDetails = ({
   )
   const canVerifyGrouping = canUpdate || canRestructure
 
+  const sessionRoute = occurrence.sessionId
+    ? APP_ROUTES.SESSION_DETAILS({
+        projectId: projectId as string,
+        sessionId: occurrence.sessionId,
+      })
+    : undefined
+
   const blueprintItems = useMemo(
     () =>
       occurrence.detections.length
@@ -93,23 +100,36 @@ export const OccurrenceDetails = ({
                 frameLabel: FrameLabel
               } => !!item
             )
-            .map((item) => ({
-              ...item,
-              to: !occurrence.sessionId
-                ? undefined
-                : getAppRoute({
-                    to: APP_ROUTES.SESSION_DETAILS({
-                      projectId: projectId as string,
-                      sessionId: occurrence.sessionId,
-                    }),
-                    filters: {
-                      occurrence: occurrence.id,
-                      capture: item.captureId,
-                    },
-                  }),
-            }))
+            .map((item) => {
+              if (!sessionRoute) {
+                return { ...item, to: undefined }
+              }
+
+              // On the session page itself, keep the other selected occurrences and
+              // only move the capture.
+              if (pathname === sessionRoute) {
+                const params = new URLSearchParams(search)
+                if (!params.getAll('occurrence').includes(occurrence.id)) {
+                  params.append('occurrence', occurrence.id)
+                }
+                params.set('capture', item.captureId)
+
+                return { ...item, to: `${sessionRoute}?${params}` }
+              }
+
+              return {
+                ...item,
+                to: getAppRoute({
+                  to: sessionRoute,
+                  filters: {
+                    occurrence: occurrence.id,
+                    capture: item.captureId,
+                  },
+                }),
+              }
+            })
         : [],
-    [occurrence]
+    [occurrence, pathname, search, sessionRoute]
   )
 
   const fields = [
