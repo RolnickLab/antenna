@@ -27,6 +27,9 @@ instead. Each candidate is described by:
   the one its ``image`` is a crop of.
 - ``edge_image`` and ``edge_timestamp``: the occurrence's own frame in the scored
   pair, so the two crops can be shown side by side.
+- ``shared_captures``: how many captures hold a frame of both the candidate and the
+  occurrence, among the searched captures. One animal cannot appear twice in one
+  capture, so a candidate with any is a different animal and cannot be merged.
 
 Overlapping candidates are another animal in the same frames far more often than a
 piece of the same track, and in a dense session they outnumber the true neighbours
@@ -206,6 +209,7 @@ def rank_merge_candidates(
         return result
     first, last = target_frames[0], target_frames[-1]
     edges = [first] if first["pk"] == last["pk"] else [first, last]
+    target_captures = {frame["source_image_id"] for frame in target_frames}
 
     if minutes is not None:
         delta = datetime.timedelta(minutes=minutes)
@@ -272,7 +276,8 @@ def rank_merge_candidates(
         algorithm_id, edge_vector = vector_by_edge.get(edge["pk"], (None, None))
         frame_vector = frame_vectors.get((frame["pk"], algorithm_id)) if algorithm_id is not None else None
         distance, similarity, cost = _score_pair(edge, frame, edge_vector, frame_vector)
-        crop = frame["path"] or next((f["path"] for f in frames_by_occurrence[candidate.pk] if f["path"]), None)
+        candidate_frames = frames_by_occurrence[candidate.pk]
+        crop = frame["path"] or next((f["path"] for f in candidate_frames if f["path"]), None)
         row = {
             "id": candidate.pk,
             "determination": (
@@ -293,6 +298,7 @@ def rank_merge_candidates(
             "image_timestamp": frame["timestamp"],
             "edge_image": get_media_url(edge["path"]) if edge["path"] else None,
             "edge_timestamp": edge["timestamp"],
+            "shared_captures": len(target_captures & {f["source_image_id"] for f in candidate_frames}),
         }
         (overlapping_rows if relation == RELATION_OVERLAPPING else adjacent_rows).append(row)
 

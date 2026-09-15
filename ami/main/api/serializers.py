@@ -2230,6 +2230,11 @@ class MergeCandidateSerializer(serializers.Serializer):
         "candidate before it, its last for one after, whichever is nearest for an overlapping one.",
     )
     edge_timestamp = serializers.DateTimeField(allow_null=True, help_text="When that edge frame was captured.")
+    shared_captures = serializers.IntegerField(
+        help_text="How many captures hold a frame of both the candidate and the requested occurrence, counting "
+        "only the captures searched. One animal cannot appear twice in one capture, so a candidate with any is a "
+        "different animal and cannot be merged correctly.",
+    )
 
 
 class MergeCandidatesResponseSerializer(serializers.Serializer):

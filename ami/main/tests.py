@@ -8635,8 +8635,9 @@ class MergeCandidatesTestCase(TrackEditTestCase):
     ranked them, and has to say where each candidate sits in time. What these pin is
     that the ranking follows the tracking cost, that the time relation is signed the
     right way, that a candidate without a vector is still offered, that the search
-    covers the adjacent captures by default, and that the occurrences present at the
-    same time never crowd out the ones that could continue the track.
+    covers the adjacent captures by default, that the occurrences present at the
+    same time never crowd out the ones that could continue the track, and that a
+    candidate sharing a capture with the track is reported as a different animal.
     """
 
     FRAME_SIZE = 1000
@@ -8850,6 +8851,21 @@ class MergeCandidatesTestCase(TrackEditTestCase):
         self.assertEqual(by_id[after.pk]["edge_timestamp"], last.timestamp.isoformat())
         self.assertEqual(by_id[after.pk]["capture_id"], self.after_capture.pk)
         self.assertEqual(by_id[after.pk]["image_timestamp"], self.after_capture.timestamp.isoformat())
+
+    def test_a_candidate_on_one_of_the_tracks_captures_is_flagged(self):
+        """One animal cannot appear twice in one capture, so an overlapping candidate with a frame
+        on one of the track's captures shares it and cannot be merged, while one in a gap of the
+        track, on a capture inside its span that the track does not cover, shares none."""
+        gap_capture = self._make_capture(self.captures[1].timestamp + datetime.timedelta(seconds=30))
+        same_capture = self._make_occurrence([self.captures[1]], bbox=[10, 10, 40, 40])
+        in_gap = self._make_occurrence([gap_capture], bbox=[10, 10, 40, 40])
+
+        by_id = {row["id"]: row for row in self.get_candidates("&overlapping=true").data["candidates"]}
+
+        self.assertEqual(by_id[same_capture.pk]["relation"], "overlapping")
+        self.assertEqual(by_id[same_capture.pk]["shared_captures"], 1)
+        self.assertEqual(by_id[in_gap.pk]["relation"], "overlapping")
+        self.assertEqual(by_id[in_gap.pk]["shared_captures"], 0)
 
     def test_minutes_must_be_a_whole_number_within_range(self):
         for junk in ("abc", "0", "31", "-5"):
