@@ -6,6 +6,9 @@ const BEST_MATCH_COLOR = CONSTANTS.COLORS.success[500]
 const UNLIKELY_MATCH_COLOR = CONSTANTS.COLORS.neutral[400]
 const GLOW_BLUR_PX = 6
 const MAX_GLOW_ALPHA = 0.8
+const RIM_COLOR = CONSTANTS.COLORS.neutral[900]
+const RIM_SPREAD_PX = 3
+const MAX_RIM_ALPHA = 0.5
 // Best guess from local data: unrelated boxes scored up to about 0.5, continuations above 0.9.
 const GRAY_UNTIL = 0.5
 const LIKELY_FROM = 0.8
@@ -31,17 +34,13 @@ const toCss = ([r, g, b]: Rgb, alpha?: number) =>
 
 /**
  * Box outline for a candidate in extend mode: gray up to `GRAY_UNTIL`, then through to
- * emerald for the best match, with a glow that grows with it.
+ * emerald for the best match, with a glow that grows with it. No score counts as 0.
  */
 export const getMatchBoxStyle = (
   likelihood: number | null
-): { outlineColor: string; boxShadow?: string } => {
-  if (likelihood === null) {
-    return { outlineColor: toCss(hexToRgb(UNLIKELY_MATCH_COLOR)) }
-  }
-
+): { outlineColor: string; boxShadow: string } => {
   const amount = Math.min(
-    Math.max((likelihood - GRAY_UNTIL) / (1 - GRAY_UNTIL), 0),
+    Math.max(((likelihood ?? 0) - GRAY_UNTIL) / (1 - GRAY_UNTIL), 0),
     1
   )
   const color = mixRgb(
@@ -49,10 +48,13 @@ export const getMatchBoxStyle = (
     hexToRgb(BEST_MATCH_COLOR),
     amount
   )
+  const rim = toCss(hexToRgb(RIM_COLOR), (1 - amount) * MAX_RIM_ALPHA)
+  const glow = toCss(color, amount * MAX_GLOW_ALPHA)
 
   return {
     outlineColor: toCss(color),
-    boxShadow: `0 0 ${GLOW_BLUR_PX}px ${toCss(color, amount * MAX_GLOW_ALPHA)}`,
+    // The rim sits just beyond the 2px outline so a gray box still shows on a light sheet.
+    boxShadow: `0 0 0 ${RIM_SPREAD_PX}px ${rim}, 0 0 ${GLOW_BLUR_PX}px ${glow}`,
   }
 }
 

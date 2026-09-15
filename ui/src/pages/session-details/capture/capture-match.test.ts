@@ -13,18 +13,22 @@ const rgbOf = (hex: string) =>
   )} ${parseInt(hex.slice(5, 7), 16)})`
 
 describe('getMatchBoxStyle', () => {
-  test('the best match is the palette emerald with the strongest glow', () => {
+  test('the best match is the palette emerald with the strongest glow and no rim', () => {
     const style = getMatchBoxStyle(1)
 
     expect(style.outlineColor).toBe(rgbOf(CONSTANTS.COLORS.success[500]))
-    expect(style.boxShadow).toBe('0 0 6px rgb(0 174 135 / 0.80)')
+    expect(style.boxShadow).toBe(
+      '0 0 0 3px rgb(23 24 32 / 0.00), 0 0 6px rgb(0 174 135 / 0.80)'
+    )
   })
 
-  test('an unlikely match is the palette gray with no visible glow', () => {
+  test('an unlikely match is the palette gray with a dark rim and no glow', () => {
     const style = getMatchBoxStyle(0)
 
     expect(style.outlineColor).toBe(rgbOf(CONSTANTS.COLORS.neutral[400]))
-    expect(style.boxShadow).toBe('0 0 6px rgb(159 162 171 / 0.00)')
+    expect(style.boxShadow).toBe(
+      '0 0 0 3px rgb(23 24 32 / 0.50), 0 0 6px rgb(159 162 171 / 0.00)'
+    )
   })
 
   test('a likelihood halfway from the gray floor to 1 sits halfway between the two palette shades', () => {
@@ -37,10 +41,8 @@ describe('getMatchBoxStyle', () => {
     expect(getMatchBoxStyle(0.3)).toEqual(getMatchBoxStyle(0))
   })
 
-  test('a box without a score is gray and does not glow', () => {
-    expect(getMatchBoxStyle(null)).toEqual({
-      outlineColor: rgbOf(CONSTANTS.COLORS.neutral[400]),
-    })
+  test('a box without a score looks like an unlikely match', () => {
+    expect(getMatchBoxStyle(null)).toEqual(getMatchBoxStyle(0))
   })
 
   test('a likelihood outside 0 to 1 is clamped to the ends of the scale', () => {
