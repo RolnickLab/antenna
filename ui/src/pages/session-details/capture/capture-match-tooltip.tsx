@@ -14,7 +14,12 @@ import {
   PlusIcon,
 } from 'lucide-react'
 import { STRING, translate } from 'utils/language'
-import { countSameSpecies, getMatchLevel, isIdentified } from './capture-match'
+import {
+  countSameSpecies,
+  getMatchLevel,
+  getMatchNotes,
+  isIdentified,
+} from './capture-match'
 import {
   ExtendClick,
   ExtendClickIndicator,
@@ -63,8 +68,7 @@ export const CaptureMatchTooltip = ({
   const indicator = hint ? INDICATORS[hint.indicator] : undefined
   const likelihood = match?.likelihood ?? null
   const offset = match?.timeOffsetSeconds ?? null
-  const captureOffset = match?.referenceCaptureOffset ?? null
-  const isFarReference = captureOffset !== null && Math.abs(captureOffset) > 1
+  const notes = isTrackFrame ? [] : getMatchNotes(match)
 
   return (
     <div className="flex flex-col gap-1.5 max-w-64">
@@ -80,11 +84,6 @@ export const CaptureMatchTooltip = ({
           {translate(STRING.TRACK_FRAME_NO_CLASSIFICATION)}
         </span>
       )}
-      {match?.wouldLink ? (
-        <span className="font-medium text-success-800">
-          {translate(STRING.TRACK_MATCH_WOULD_LINK)}
-        </span>
-      ) : null}
       {!isTrackFrame ? (
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
           <Row
@@ -118,21 +117,18 @@ export const CaptureMatchTooltip = ({
           ) : null}
         </dl>
       ) : null}
-      {isFarReference ? (
-        <span className="text-muted-foreground">
-          {translate(
-            captureOffset > 0
-              ? STRING.TRACK_MATCH_REFERENCE_EARLIER
-              : STRING.TRACK_MATCH_REFERENCE_LATER,
-            { count: Math.abs(captureOffset) }
-          )}
+      {notes.map((note) => (
+        <span
+          className={
+            note.isEmphasis
+              ? 'font-medium text-success-800'
+              : 'text-muted-foreground'
+          }
+          key={note.string}
+        >
+          {translate(note.string)}
         </span>
-      ) : null}
-      {match?.skippedReason === 'no_vector' ? (
-        <span className="text-muted-foreground">
-          {translate(STRING.TRACK_MATCH_SKIPPED_NO_VECTOR)}
-        </span>
-      ) : null}
+      ))}
       {sameSpecies > 0 ? (
         <span className="text-muted-foreground">
           {translate(STRING.TRACK_MATCH_SAME_SPECIES, { count: sameSpecies })}

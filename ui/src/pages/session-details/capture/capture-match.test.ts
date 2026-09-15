@@ -1,10 +1,25 @@
+import { CaptureMatch } from 'data-services/models/capture-match'
 import { CONSTANTS } from 'nova-ui-kit/constants'
 import { STRING } from 'utils/language'
 import {
   countSameSpecies,
   getMatchBoxStyle,
   getMatchLevel,
+  getMatchNotes,
 } from './capture-match'
+
+type MatchFields = Pick<
+  CaptureMatch,
+  'likelihood' | 'relation' | 'skippedReason' | 'wouldLink'
+>
+
+const match = (fields: Partial<MatchFields> = {}): MatchFields => ({
+  likelihood: null,
+  relation: 'after',
+  skippedReason: null,
+  wouldLink: false,
+  ...fields,
+})
 
 const rgbOf = (hex: string) =>
   `rgb(${parseInt(hex.slice(1, 3), 16)} ${parseInt(
@@ -12,15 +27,9 @@ const rgbOf = (hex: string) =>
     16
   )} ${parseInt(hex.slice(5, 7), 16)})`
 
-const scored = (likelihood: number | null) => ({
-  likelihood,
-  skippedReason: null,
-  wouldLink: false,
-})
-
 describe('getMatchBoxStyle', () => {
-  test('the top of the ramp is the palette emerald with the strongest glow and no rim', () => {
-    const style = getMatchBoxStyle(scored(0.6))
+  test('the best match is the palette emerald with the strongest glow and no rim', () => {
+    const style = getMatchBoxStyle(match({ likelihood: 1 }))
 
     expect(style.outlineColor).toBe(rgbOf(CONSTANTS.COLORS.success[500]))
     expect(style.boxShadow).toBe(
@@ -28,8 +37,8 @@ describe('getMatchBoxStyle', () => {
     )
   })
 
-  test('the bottom of the ramp is the palette gray with a dark rim and no glow', () => {
-    const style = getMatchBoxStyle(scored(0.2))
+  test('an unlikely match is the palette gray with a dark rim and no glow', () => {
+    const style = getMatchBoxStyle(match({ likelihood: 0.5 }))
 
     expect(style.outlineColor).toBe(rgbOf(CONSTANTS.COLORS.neutral[400]))
     expect(style.boxShadow).toBe(
@@ -37,47 +46,42 @@ describe('getMatchBoxStyle', () => {
     )
   })
 
-  test('a likelihood a quarter up the ramp is a quarter of the way from gray to emerald', () => {
+  test('a likelihood a quarter of the way from the gray floor to 1 is a quarter of the way to emerald', () => {
     // neutral-400 #9FA2AB towards success-500 #00AE87, channel by channel.
-    expect(getMatchBoxStyle(scored(0.3)).outlineColor).toBe('rgb(119 165 162)')
+    expect(getMatchBoxStyle(match({ likelihood: 0.625 })).outlineColor).toBe(
+      'rgb(119 165 162)'
+    )
   })
 
-  test('likelihoods beyond either end of the ramp keep its end colours', () => {
-    expect(getMatchBoxStyle(scored(0.05))).toEqual(
-      getMatchBoxStyle(scored(0.2))
+  test('a likelihood below the floor or above 1 keeps the end colours', () => {
+    expect(getMatchBoxStyle(match({ likelihood: 0.3 }))).toEqual(
+      getMatchBoxStyle(match({ likelihood: 0.5 }))
     )
-    expect(getMatchBoxStyle(scored(0.95))).toEqual(
-      getMatchBoxStyle(scored(0.6))
+    expect(getMatchBoxStyle(match({ likelihood: 1.4 }))).toEqual(
+      getMatchBoxStyle(match({ likelihood: 1 }))
     )
   })
 
   test('a box without a score looks like an unlikely match', () => {
-    expect(getMatchBoxStyle(scored(null))).toEqual(
-      getMatchBoxStyle(scored(0.2))
-    )
-    expect(getMatchBoxStyle(undefined)).toEqual(getMatchBoxStyle(scored(0.2)))
+    const unlikely = getMatchBoxStyle(match({ likelihood: 0.5 }))
+
+    expect(getMatchBoxStyle(match())).toEqual(unlikely)
+    expect(getMatchBoxStyle(undefined)).toEqual(unlikely)
   })
 
   test("the tracker's pick gets a second emerald ring and a stronger glow", () => {
-    const style = getMatchBoxStyle({
-      likelihood: 0.7,
-      skippedReason: null,
-      wouldLink: true,
-    })
+    const pick = getMatchBoxStyle(match({ likelihood: 0.95, wouldLink: true }))
 
-    expect(style.outlineColor).toBe(rgbOf(CONSTANTS.COLORS.success[500]))
-    expect(style.boxShadow).toBe(
+    expect(pick.outlineColor).toBe(rgbOf(CONSTANTS.COLORS.success[500]))
+    expect(pick.boxShadow).toBe(
       '0 0 0 4px rgb(23 24 32 / 0.50), 0 0 0 6px rgb(0 174 135), 0 0 12px rgb(0 174 135 / 0.80)'
     )
+    expect(pick).not.toEqual(getMatchBoxStyle(match({ likelihood: 0.95 })))
   })
 
   test('a box the tracker would skip is dotted gray, however well it scores', () => {
     expect(
-      getMatchBoxStyle({
-        likelihood: 0.9,
-        skippedReason: 'no_vector',
-        wouldLink: false,
-      })
+      getMatchBoxStyle(match({ likelihood: 0.95, skippedReason: 'no_vector' }))
     ).toEqual({
       outlineColor: rgbOf(CONSTANTS.COLORS.neutral[400]),
       outlineStyle: 'dotted',
@@ -87,10 +91,37 @@ describe('getMatchBoxStyle', () => {
 })
 
 describe('getMatchLevel', () => {
-  test('names the likelihood by the tracker threshold (0.5) and twice its cost (1/3)', () => {
-    expect(getMatchLevel(0.5)).toBe(STRING.TRACK_MATCH_LIKELY)
-    expect(getMatchLevel(0.4)).toBe(STRING.TRACK_MATCH_POSSIBLE)
-    expect(getMatchLevel(0.3)).toBe(STRING.TRACK_MATCH_UNLIKELY)
+  test('names the likelihood in three bands', () => {
+    expect(getMatchLevel(0.9)).toBe(STRING.TRACK_MATCH_LIKELY)
+    expect(getMatchLevel(0.7)).toBe(STRING.TRACK_MATCH_POSSIBLE)
+    expect(getMatchLevel(0.5)).toBe(STRING.TRACK_MATCH_UNLIKELY)
+  })
+})
+
+describe('getMatchNotes', () => {
+  test("the tracker's pick says automatic tracking would link it", () => {
+    expect(getMatchNotes(match({ likelihood: 0.95, wouldLink: true }))).toEqual(
+      [{ isEmphasis: true, string: STRING.TRACK_MATCH_WOULD_LINK }]
+    )
+  })
+
+  test('a box on a capture inside a gap of the track is marked as a preview', () => {
+    expect(getMatchNotes(match({ likelihood: 0.7, relation: 'gap' }))).toEqual([
+      { isEmphasis: false, string: STRING.TRACK_MATCH_GAP_NOTE },
+    ])
+  })
+
+  test('a box without a feature vector says tracking would skip it', () => {
+    expect(
+      getMatchNotes(match({ likelihood: 0.7, skippedReason: 'no_vector' }))
+    ).toEqual([
+      { isEmphasis: false, string: STRING.TRACK_MATCH_SKIPPED_NO_VECTOR },
+    ])
+  })
+
+  test('an ordinary candidate beside the track has no notes', () => {
+    expect(getMatchNotes(match({ likelihood: 0.7 }))).toEqual([])
+    expect(getMatchNotes(undefined)).toEqual([])
   })
 })
 

@@ -13,14 +13,17 @@ const MAX_RIM_ALPHA = 0.5
 const LINK_GAP_PX = 4
 const LINK_RING_PX = 6
 const LINK_GLOW_PX = 12
-// Likelihood is T / (T + cost) with T the tracker's cost threshold, so 0.5 is where it
-// links and 1/3 is twice the threshold. The ramp spans the costs worth a second look.
-const GRAY_UNTIL = 0.2
-const GREEN_FROM = 0.6
-const LIKELY_FROM = 0.5
-const POSSIBLE_FROM = 1 / 3
+// Best guess from local data: unrelated boxes scored up to about 0.5, continuations above 0.9.
+const GRAY_UNTIL = 0.5
+const LIKELY_FROM = 0.8
+const POSSIBLE_FROM = 0.6
 
 type Rgb = [number, number, number]
+
+type MatchFields = Pick<
+  CaptureMatch,
+  'likelihood' | 'relation' | 'skippedReason' | 'wouldLink'
+>
 
 const hexToRgb = (hex: string): Rgb => [
   parseInt(hex.slice(1, 3), 16),
@@ -38,18 +41,13 @@ const toCss = ([r, g, b]: Rgb, alpha?: number) =>
     ? `rgb(${r} ${g} ${b})`
     : `rgb(${r} ${g} ${b} / ${alpha.toFixed(2)})`
 
-type MatchStyleFields = Pick<
-  CaptureMatch,
-  'likelihood' | 'skippedReason' | 'wouldLink'
->
-
 /**
  * Box outline for a candidate in extend mode: gray up to `GRAY_UNTIL`, then through to
- * emerald at `GREEN_FROM`. The tracker's own pick gets a second ring and a stronger glow,
- * and a box it would skip is dotted gray. No score counts as 0.
+ * emerald for the best match. The tracker's own pick gets a second ring and a stronger
+ * glow, and a box it would skip is dotted gray. No score counts as 0.
  */
 export const getMatchBoxStyle = (
-  match?: MatchStyleFields
+  match?: Omit<MatchFields, 'relation'>
 ): { outlineColor: string; outlineStyle?: 'dotted'; boxShadow: string } => {
   const gray = hexToRgb(UNLIKELY_MATCH_COLOR)
   const green = hexToRgb(BEST_MATCH_COLOR)
@@ -73,10 +71,7 @@ export const getMatchBoxStyle = (
   }
 
   const amount = Math.min(
-    Math.max(
-      ((match?.likelihood ?? 0) - GRAY_UNTIL) / (GREEN_FROM - GRAY_UNTIL),
-      0
-    ),
+    Math.max(((match?.likelihood ?? 0) - GRAY_UNTIL) / (1 - GRAY_UNTIL), 0),
     1
   )
   const color = mixRgb(gray, green, amount)
@@ -96,6 +91,21 @@ export const getMatchLevel = (likelihood: number): STRING =>
     : likelihood >= POSSIBLE_FROM
     ? STRING.TRACK_MATCH_POSSIBLE
     : STRING.TRACK_MATCH_UNLIKELY
+
+/** Lines under a candidate's scores: what the tracker itself would do, and when the preview is only indicative. */
+export const getMatchNotes = (
+  match?: MatchFields
+): { isEmphasis: boolean; string: STRING }[] => [
+  ...(match?.wouldLink
+    ? [{ isEmphasis: true, string: STRING.TRACK_MATCH_WOULD_LINK }]
+    : []),
+  ...(match?.relation === 'gap'
+    ? [{ isEmphasis: false, string: STRING.TRACK_MATCH_GAP_NOTE }]
+    : []),
+  ...(match?.skippedReason === 'no_vector'
+    ? [{ isEmphasis: false, string: STRING.TRACK_MATCH_SKIPPED_NO_VECTOR }]
+    : []),
+]
 
 type SpeciesFields = Pick<
   CaptureDetection,
