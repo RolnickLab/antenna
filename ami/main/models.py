@@ -3339,6 +3339,7 @@ class Detection(BaseModel):
 
     # For type hints
     classifications: models.QuerySet["Classification"]
+    embeddings: models.QuerySet["DetectionEmbedding"]
     source_image_id: int
     detection_algorithm_id: int
 
@@ -3479,6 +3480,36 @@ class Detection(BaseModel):
 
     def __str__(self) -> str:
         return f"#{self.pk} from SourceImage #{self.source_image_id} with Algorithm #{self.detection_algorithm_id}"
+
+
+@final
+class DetectionEmbedding(BaseModel):
+    """A feature vector for one detection from one algorithm, used to compare detections by appearance.
+
+    Kept apart from classifications so every detection can have one, including those the
+    moth/non-moth filter rejected, without adding a prediction that could change a
+    determination. Vectors are only comparable within one algorithm. See #1417.
+    """
+
+    project_accessor = "detection__source_image__project"
+
+    # No separate index: the unique constraint's index leads with detection_id.
+    detection = models.ForeignKey(Detection, on_delete=models.CASCADE, related_name="embeddings", db_index=False)
+    algorithm = models.ForeignKey("ml.Algorithm", on_delete=models.CASCADE, related_name="detection_embeddings")
+    features_2048 = pgvector.django.VectorField(
+        dimensions=2048,
+        help_text="Feature embedding from the model backbone",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["detection", "algorithm"], name="unique_detection_embedding_per_algorithm"
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"#{self.pk} vector for Detection #{self.detection_id} from Algorithm #{self.algorithm_id}"
 
 
 class OccurrenceQuerySet(BaseQuerySet):
