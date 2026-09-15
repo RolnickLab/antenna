@@ -28,6 +28,7 @@ from ami.main.models import (
     Classification,
     Deployment,
     Detection,
+    DetectionEmbedding,
     Occurrence,
     Project,
     SourceImage,
@@ -680,6 +681,65 @@ def create_detections(
     return existing_detections + new_detections
 
 
+# A vector is roughly 40 KB of SQL text (estimate), so this keeps each INSERT to a few MB.
+EMBEDDING_BATCH_SIZE = 200
+
+
+def create_detection_embeddings(
+    detections: list[Detection],
+    detection_responses: list[DetectionResponse],
+    algorithms_known: dict[str, Algorithm],
+    logger: logging.Logger = logger,
+) -> list[DetectionEmbedding]:
+    """
+    Store the feature vectors sent with each detection, one row per (detection, algorithm).
+
+    A vector already stored for the pair is replaced, so saving the same results twice
+    changes nothing. Only ``DetectionEmbedding`` rows are written, never a classification,
+    so no determination can change.
+
+    Responses are matched to detections by image and box, the key ``get_or_create_detection``
+    reuses detections by, because ``create_detections`` does not return them in response order.
+    An algorithm key the pipeline has not registered raises ``PipelineNotConfigured``, as it
+    does for classifications.
+    """
+    by_box = {
+        (str(detection.source_image_id), tuple(detection.bbox)): detection
+        for detection in detections
+        if detection.bbox is not None
+    }
+    embeddings: dict[tuple[int, int], DetectionEmbedding] = {}
+    for detection_resp in detection_responses:
+        if not detection_resp.embeddings or detection_resp.bbox is None:
+            continue
+        detection = by_box.get((detection_resp.source_image_id, tuple(detection_resp.bbox.dict().values())))
+        if detection is None:
+            # Its source image was not found; create_detections has logged that.
+            continue
+        for embedding_resp in detection_resp.embeddings:
+            try:
+                algorithm = algorithms_known[embedding_resp.algorithm.key]
+            except KeyError as err:
+                raise PipelineNotConfigured(
+                    f"Embedding algorithm {embedding_resp.algorithm.key} is not a known algorithm. "
+                    "The processing service must declare it in the /info endpoint. "
+                    f"Known algorithms: {list(algorithms_known.keys())}"
+                ) from err
+            embeddings[(detection.pk, algorithm.pk)] = DetectionEmbedding(
+                detection=detection, algorithm=algorithm, features_2048=embedding_resp.features
+            )
+
+    DetectionEmbedding.objects.bulk_create(
+        list(embeddings.values()),
+        update_conflicts=True,
+        unique_fields=["detection", "algorithm"],
+        update_fields=["features_2048", "updated_at"],
+        batch_size=EMBEDDING_BATCH_SIZE,
+    )
+    logger.info(f"Stored {len(embeddings)} detection embeddings for {len(detections)} detections.")
+    return list(embeddings.values())
+
+
 def create_category_map_for_classification(
     classification_resp: ClassificationResponse,
     logger: logging.Logger = logger,
@@ -1078,6 +1138,15 @@ def save_results(
 
     detections = create_detections(
         detections=results.detections,
+        algorithms_known=algorithms_known,
+        logger=job_logger,
+    )
+
+    # Before classifications, so an unregistered embedding algorithm stops the batch at the
+    # same point an unregistered classification algorithm does.
+    create_detection_embeddings(
+        detections=detections,
+        detection_responses=results.detections,
         algorithms_known=algorithms_known,
         logger=job_logger,
     )
