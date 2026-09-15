@@ -121,7 +121,7 @@ export class OccurrenceDetails extends Occurrence {
       .map((i: any) => {
         const taxon = i.taxon ? new Taxon(i.taxon) : undefined
         const overridden = i.withdrawn
-        const applied = taxon?.id === this.determinationTaxon.id
+        const applied = !!taxon && taxon.id === this.determinationTaxon?.id
 
         const identification: HumanIdentification = {
           id: `${i.id}`,
@@ -149,8 +149,8 @@ export class OccurrenceDetails extends Occurrence {
       .sort(sortByDate)
       .map((p: any) => {
         const taxon = new Taxon(p.taxon)
-        const overridden = taxon.id !== this.determinationTaxon.id
-        const applied = taxon.id === this.determinationTaxon.id
+        const overridden = taxon.id !== this.determinationTaxon?.id
+        const applied = taxon.id === this.determinationTaxon?.id
 
         const prediction: MachinePrediction = {
           id: `${p.id}`,

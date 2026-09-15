@@ -183,16 +183,18 @@ export const OccurrenceDetails = ({
           ) : null}
           {canUpdate && (
             <>
-              <Agree
-                agreed={userInfo ? occurrence.userAgreed(userInfo.id) : false}
-                agreeWith={{
-                  identificationId: occurrence.determinationIdentificationId,
-                  predictionId: occurrence.determinationPredictionId,
-                }}
-                applied
-                occurrenceId={occurrence.id}
-                taxonId={occurrence.determinationTaxon.id}
-              />
+              {occurrence.determinationTaxon ? (
+                <Agree
+                  agreed={userInfo ? occurrence.userAgreed(userInfo.id) : false}
+                  agreeWith={{
+                    identificationId: occurrence.determinationIdentificationId,
+                    predictionId: occurrence.determinationPredictionId,
+                  }}
+                  applied
+                  occurrenceId={occurrence.id}
+                  taxonId={occurrence.determinationTaxon.id}
+                />
+              ) : null}
               <Button
                 onClick={() => {
                   setSelectedTab(TABS.IDENTIFICATION)
@@ -206,7 +208,11 @@ export const OccurrenceDetails = ({
               </Button>
               <IdQuickActions
                 occurrenceIds={[occurrence.id]}
-                occurrenceTaxa={[occurrence.determinationTaxon]}
+                occurrenceTaxa={
+                  occurrence.determinationTaxon
+                    ? [occurrence.determinationTaxon]
+                    : []
+                }
               />
             </>
           )}

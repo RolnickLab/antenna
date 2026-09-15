@@ -42,6 +42,9 @@ export type ExtendNote =
   | 'capture-covered'
   | 'no-later-capture'
 
+// A track under construction often scores below the project's default threshold.
+const EXTEND_FETCH_OPTIONS = { skipDefaultFilters: true }
+
 const NOTE_STRINGS: Record<ExtendNote, STRING> = {
   'already-in-track': STRING.TRACK_EXTEND_ALREADY_ADDED,
   'capture-covered': STRING.TRACK_EXTEND_CAPTURE_COVERED,
@@ -78,7 +81,10 @@ export const useExtendTrack = ({
   onSelectCapture: (captureId: string) => void
 }): ExtendTrackState => {
   const { extendOccurrenceId, setExtendOccurrenceId } = useExtendOccurrenceId()
-  const { occurrence: track } = useOccurrenceDetails(extendOccurrenceId ?? '')
+  const { occurrence: track } = useOccurrenceDetails(
+    extendOccurrenceId ?? '',
+    EXTEND_FETCH_OPTIONS
+  )
   const [choice, setChoice] = useState<ExtendChoice>()
   const [note, setNote] = useState<ExtendNote>()
   const add = useAddDetections(extendOccurrenceId ?? '')
@@ -246,7 +252,10 @@ export const ExtendTrackBanner = ({
   onSelectCapture: (captureId: string) => void
 }) => {
   const { projectId } = useParams()
-  const { occurrence } = useOccurrenceDetails(occurrenceId)
+  const { occurrence } = useOccurrenceDetails(
+    occurrenceId,
+    EXTEND_FETCH_OPTIONS
+  )
   const verify = useSetGroupingVerified(occurrenceId)
   const navigation = getTrackNavigation({
     captureDate,
@@ -426,8 +435,14 @@ export const ExtendTrackDialog = ({
   extend: ExtendTrackState
   occurrenceId: string
 }) => {
-  const clicked = useOccurrenceDetails(choice.occurrenceId).occurrence
-  const extended = useOccurrenceDetails(occurrenceId).occurrence
+  const clicked = useOccurrenceDetails(
+    choice.occurrenceId,
+    EXTEND_FETCH_OPTIONS
+  ).occurrence
+  const extended = useOccurrenceDetails(
+    occurrenceId,
+    EXTEND_FETCH_OPTIONS
+  ).occurrence
 
   // One animal cannot appear twice in a capture, so nothing may land on a capture
   // the extended track already covers.

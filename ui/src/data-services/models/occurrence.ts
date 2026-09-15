@@ -15,14 +15,17 @@ export type ServerOccurrence = any // TODO: Update this type
 
 export class Occurrence {
   protected readonly _occurrence: ServerOccurrence
-  private readonly _determinationTaxon: Taxon
+  private readonly _determinationTaxon?: Taxon
   private readonly _images: { src: string }[] = []
   private readonly _trackStats?: TrackStats
 
   public constructor(occurrence: ServerOccurrence) {
     this._occurrence = occurrence
 
-    this._determinationTaxon = new Taxon(occurrence.determination_details.taxon)
+    const determinationTaxon = occurrence.determination_details?.taxon
+    this._determinationTaxon = determinationTaxon
+      ? new Taxon(determinationTaxon)
+      : undefined
 
     this._images = occurrence.detection_images
       .filter((src: string) => !!src.length)
@@ -59,8 +62,10 @@ export class Occurrence {
     return this._occurrence.deployment?.name
   }
 
-  get determinationId(): string {
-    return `${this._occurrence.determination.id}`
+  get determinationId(): string | undefined {
+    return this._occurrence.determination
+      ? `${this._occurrence.determination.id}`
+      : undefined
   }
 
   get determinationIdentificationId(): string | undefined {
@@ -72,6 +77,10 @@ export class Occurrence {
       : undefined
   }
 
+  get determinationLabel(): string {
+    return this._determinationTaxon?.name ?? translate(STRING.UNIDENTIFIED)
+  }
+
   get determinationPredictionId(): string | undefined {
     const determinationPrediction =
       this._occurrence.determination_details?.prediction
@@ -80,15 +89,7 @@ export class Occurrence {
   }
 
   get determinationScore(): number | undefined {
-    const score = this._occurrence.determination_details.score
-
-    if (score || score === 0) {
-      return score
-    }
-
-    if (!score) {
-      return undefined
-    }
+    return this._occurrence.determination_details?.score ?? undefined
   }
 
   get determinationScoreLabel(): string | undefined {
@@ -99,17 +100,17 @@ export class Occurrence {
     return undefined
   }
 
-  get determinationTaxon(): Taxon {
+  get determinationTaxon(): Taxon | undefined {
     return this._determinationTaxon
   }
 
   get determinationVerified(): boolean {
-    return !!this._occurrence.determination_details.identification
+    return !!this._occurrence.determination_details?.identification
   }
 
   get determinationVerifiedBy() {
     const verifiedBy =
-      this._occurrence.determination_details.identification?.user
+      this._occurrence.determination_details?.identification?.user
 
     return verifiedBy
       ? {
@@ -128,7 +129,7 @@ export class Occurrence {
   }
 
   get displayName(): string {
-    return `${this.determinationTaxon.name} #${this.id}`
+    return `${this.determinationLabel} #${this.id}`
   }
 
   get firstAppearanceTimestamp(): string {
@@ -210,7 +211,7 @@ export class Occurrence {
       }
 
       return (
-        identificationTaxonId === this.determinationTaxon.id &&
+        identificationTaxonId === this.determinationTaxon?.id &&
         identificationUserId === userId
       )
     })

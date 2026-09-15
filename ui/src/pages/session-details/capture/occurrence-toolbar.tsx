@@ -14,7 +14,7 @@ export interface ToolbarOccurrence {
   id: string
   label: string
   score: number
-  scoreLabel: string
+  scoreLabel?: string
 }
 
 /**

@@ -9,8 +9,8 @@ export type DetectionOccurrence = {
   detections_count: number | null
   determination: {
     name: string
-  }
-  determination_score: number
+  } | null
+  determination_score: number | null
   grouping_verified: boolean
   grouping_verified_at: string | null
   grouping_verified_by: string | null
@@ -29,12 +29,17 @@ export type CaptureDetection = {
   occurrenceId?: string
   occurrenceMeetsCriteria: boolean
   score: number
-  scoreLabel: string
+  /** Undefined when the detection's occurrence has no determination. */
+  scoreLabel?: string
 }
 
 const getDetectionLabel = (detection: CaptureDetection) => {
   if (detection.occurrence?.determination) {
     return detection.occurrence.determination.name
+  }
+
+  if (detection.occurrence) {
+    return translate(STRING.UNIDENTIFIED)
   }
 
   return detection.id
@@ -53,6 +58,10 @@ const getDetectionScore = (detection: CaptureDetection) => {
 }
 
 const getDetectionScoreLabel = (detection: CaptureDetection) => {
+  if (detection.occurrence && !detection.occurrence.determination) {
+    return undefined
+  }
+
   const score = getDetectionScore(detection)
 
   if (score === 1) {
