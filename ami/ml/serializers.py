@@ -5,6 +5,7 @@ from ami.main.api.serializers import DefaultSerializer, MinimalNestedModelSerial
 from ami.ml import training_data
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
+from .models.evaluation import OccurrenceSet
 from .models.pipeline import Pipeline, PipelineStage
 from .models.processing_service import ProcessingService
 from .models.project_pipeline_config import ProjectPipelineConfig
@@ -64,6 +65,27 @@ class AlgorithmSerializer(DefaultSerializer):
         from ami.ml import reporting
 
         return reporting.latest_evaluations(obj)
+
+
+class OccurrenceSetSerializer(DefaultSerializer):
+    """The evaluation sets a project can score a model against."""
+
+    occurrences_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OccurrenceSet
+        fields = [
+            "id",
+            "details",
+            "name",
+            "description",
+            "occurrences_count",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_occurrences_count(self, obj) -> int:
+        return getattr(obj, "annotated_occurrences_count", None) or obj.occurrences.count()
 
 
 class AlgorithmNestedSerializer(DefaultSerializer):
