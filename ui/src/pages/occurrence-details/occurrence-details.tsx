@@ -364,6 +364,7 @@ export const OccurrenceDetails = ({
                     <FrameCaption
                       detectionId={item.id}
                       label={item.frameLabel}
+                      timeLabel={item.timeLabel}
                     />
                   }
                   key={item.id}

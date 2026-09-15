@@ -56,21 +56,19 @@ export const BlueprintItem = ({
 
   return (
     <div className={classNames(styles.blueprintItem, 'group')}>
-      <div className="flex items-center gap-1">
-        <div className={styles.blueprintInfo} style={{ width: size.width }}>
-          {caption ? (
-            <div className="grow min-w-0 flex flex-col gap-1 text-right">
-              <span className="text-muted-foreground">{item.timeLabel}</span>
-              {caption}
-            </div>
-          ) : (
+      {caption ? (
+        // The caption carries the time under the crop, so the top row holds only the actions.
+        <div className="flex items-center justify-end">{actions}</div>
+      ) : (
+        <div className="flex items-center gap-1">
+          <div className={styles.blueprintInfo} style={{ width: size.width }}>
             <span className="grow text-muted-foreground text-right">
               {item.timeLabel}
             </span>
-          )}
+          </div>
+          {actions}
         </div>
-        {actions}
-      </div>
+      )}
       <div className="flex flex-col items-center gap-2">
         <img
           src={item.image.src}
@@ -84,6 +82,7 @@ export const BlueprintItem = ({
             })
           }}
         />
+        {caption ? <div style={{ width: size.width }}>{caption}</div> : null}
         {item.to ? (
           <Link
             className={buttonVariants({ size: 'small', variant: 'ghost' })}
