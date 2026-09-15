@@ -1,4 +1,5 @@
 import { CaptureDetection } from 'data-services/models/capture'
+import { CaptureMatch } from 'data-services/models/capture-match'
 import { CONSTANTS } from 'nova-ui-kit/constants'
 import { STRING } from 'utils/language'
 
@@ -9,10 +10,15 @@ const MAX_GLOW_ALPHA = 0.8
 const RIM_COLOR = CONSTANTS.COLORS.neutral[900]
 const RIM_SPREAD_PX = 3
 const MAX_RIM_ALPHA = 0.5
-// Best guess from local data: unrelated boxes scored up to about 0.5, continuations above 0.9.
-const GRAY_UNTIL = 0.5
-const LIKELY_FROM = 0.8
-const POSSIBLE_FROM = 0.6
+const LINK_GAP_PX = 4
+const LINK_RING_PX = 6
+const LINK_GLOW_PX = 12
+// Likelihood is T / (T + cost) with T the tracker's cost threshold, so 0.5 is where it
+// links and 1/3 is twice the threshold. The ramp spans the costs worth a second look.
+const GRAY_UNTIL = 0.2
+const GREEN_FROM = 0.6
+const LIKELY_FROM = 0.5
+const POSSIBLE_FROM = 1 / 3
 
 type Rgb = [number, number, number]
 
@@ -32,22 +38,48 @@ const toCss = ([r, g, b]: Rgb, alpha?: number) =>
     ? `rgb(${r} ${g} ${b})`
     : `rgb(${r} ${g} ${b} / ${alpha.toFixed(2)})`
 
+type MatchStyleFields = Pick<
+  CaptureMatch,
+  'likelihood' | 'skippedReason' | 'wouldLink'
+>
+
 /**
  * Box outline for a candidate in extend mode: gray up to `GRAY_UNTIL`, then through to
- * emerald for the best match, with a glow that grows with it. No score counts as 0.
+ * emerald at `GREEN_FROM`. The tracker's own pick gets a second ring and a stronger glow,
+ * and a box it would skip is dotted gray. No score counts as 0.
  */
 export const getMatchBoxStyle = (
-  likelihood: number | null
-): { outlineColor: string; boxShadow: string } => {
+  match?: MatchStyleFields
+): { outlineColor: string; outlineStyle?: 'dotted'; boxShadow: string } => {
+  const gray = hexToRgb(UNLIKELY_MATCH_COLOR)
+  const green = hexToRgb(BEST_MATCH_COLOR)
+  const fullRim = toCss(hexToRgb(RIM_COLOR), MAX_RIM_ALPHA)
+
+  if (match?.skippedReason) {
+    return {
+      outlineColor: toCss(gray),
+      outlineStyle: 'dotted',
+      boxShadow: `0 0 0 ${RIM_SPREAD_PX}px ${fullRim}`,
+    }
+  }
+
+  if (match?.wouldLink) {
+    return {
+      outlineColor: toCss(green),
+      boxShadow: `0 0 0 ${LINK_GAP_PX}px ${fullRim}, 0 0 0 ${LINK_RING_PX}px ${toCss(
+        green
+      )}, 0 0 ${LINK_GLOW_PX}px ${toCss(green, MAX_GLOW_ALPHA)}`,
+    }
+  }
+
   const amount = Math.min(
-    Math.max(((likelihood ?? 0) - GRAY_UNTIL) / (1 - GRAY_UNTIL), 0),
+    Math.max(
+      ((match?.likelihood ?? 0) - GRAY_UNTIL) / (GREEN_FROM - GRAY_UNTIL),
+      0
+    ),
     1
   )
-  const color = mixRgb(
-    hexToRgb(UNLIKELY_MATCH_COLOR),
-    hexToRgb(BEST_MATCH_COLOR),
-    amount
-  )
+  const color = mixRgb(gray, green, amount)
   const rim = toCss(hexToRgb(RIM_COLOR), (1 - amount) * MAX_RIM_ALPHA)
   const glow = toCss(color, amount * MAX_GLOW_ALPHA)
 

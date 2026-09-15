@@ -513,9 +513,7 @@ const CaptureDetections = ({
                       isExtending && !isExtended
                         ? {
                             ...style,
-                            ...getMatchBoxStyle(
-                              matches?.[detection.id]?.likelihood ?? null
-                            ),
+                            ...getMatchBoxStyle(matches?.[detection.id]),
                           }
                         : style
                     }

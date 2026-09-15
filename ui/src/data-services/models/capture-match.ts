@@ -12,15 +12,21 @@ export interface ServerCaptureMatch {
   size_ratio: number | null
   similarity: number | null
   time_offset_seconds: number | null
+  would_link: boolean
+  skipped_reason: 'no_vector' | null
 }
 
 export interface ServerCaptureMatches {
   capture_id: number
+  cost_threshold: number
+  feature_algorithm_id: number | null
+  requires_features: boolean
   reference: {
     detection_id: number
     capture_id: number
     timestamp: string
     relation: CaptureMatchRelation
+    capture_offset?: number
   } | null
   detections: ServerCaptureMatch[]
 }
@@ -36,6 +42,12 @@ export interface CaptureMatch {
   /** Null when either box has no feature vector. */
   similarity: number | null
   timeOffsetSeconds: number | null
+  /** The one box the tracker's own matcher would link the reference frame to. */
+  wouldLink: boolean
+  /** Why the tracker would leave the box out, even though it is scored. */
+  skippedReason: 'no_vector' | null
+  /** Captures from the reference frame to this one, signed like the time offset; 1 is adjacent. */
+  referenceCaptureOffset: number | null
 }
 
 export const convertCaptureMatches = (
@@ -49,6 +61,9 @@ export const convertCaptureMatches = (
       distance: row.distance,
       similarity: row.similarity,
       timeOffsetSeconds: row.time_offset_seconds,
+      wouldLink: !!row.would_link,
+      skippedReason: row.skipped_reason ?? null,
+      referenceCaptureOffset: data.reference?.capture_offset ?? null,
     }
 
     return result

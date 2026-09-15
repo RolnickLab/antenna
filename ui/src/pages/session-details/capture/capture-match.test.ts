@@ -12,9 +12,15 @@ const rgbOf = (hex: string) =>
     16
   )} ${parseInt(hex.slice(5, 7), 16)})`
 
+const scored = (likelihood: number | null) => ({
+  likelihood,
+  skippedReason: null,
+  wouldLink: false,
+})
+
 describe('getMatchBoxStyle', () => {
-  test('the best match is the palette emerald with the strongest glow and no rim', () => {
-    const style = getMatchBoxStyle(1)
+  test('the top of the ramp is the palette emerald with the strongest glow and no rim', () => {
+    const style = getMatchBoxStyle(scored(0.6))
 
     expect(style.outlineColor).toBe(rgbOf(CONSTANTS.COLORS.success[500]))
     expect(style.boxShadow).toBe(
@@ -22,8 +28,8 @@ describe('getMatchBoxStyle', () => {
     )
   })
 
-  test('an unlikely match is the palette gray with a dark rim and no glow', () => {
-    const style = getMatchBoxStyle(0)
+  test('the bottom of the ramp is the palette gray with a dark rim and no glow', () => {
+    const style = getMatchBoxStyle(scored(0.2))
 
     expect(style.outlineColor).toBe(rgbOf(CONSTANTS.COLORS.neutral[400]))
     expect(style.boxShadow).toBe(
@@ -31,31 +37,60 @@ describe('getMatchBoxStyle', () => {
     )
   })
 
-  test('a likelihood halfway from the gray floor to 1 sits halfway between the two palette shades', () => {
-    // success-500 #00AE87 and neutral-400 #9FA2AB, channel by channel.
-    expect(getMatchBoxStyle(0.75).outlineColor).toBe('rgb(80 168 153)')
+  test('a likelihood a quarter up the ramp is a quarter of the way from gray to emerald', () => {
+    // neutral-400 #9FA2AB towards success-500 #00AE87, channel by channel.
+    expect(getMatchBoxStyle(scored(0.3)).outlineColor).toBe('rgb(119 165 162)')
   })
 
-  test('a likelihood at or below the floor stays gray, however far above 0', () => {
-    expect(getMatchBoxStyle(0.5)).toEqual(getMatchBoxStyle(0))
-    expect(getMatchBoxStyle(0.3)).toEqual(getMatchBoxStyle(0))
+  test('likelihoods beyond either end of the ramp keep its end colours', () => {
+    expect(getMatchBoxStyle(scored(0.05))).toEqual(
+      getMatchBoxStyle(scored(0.2))
+    )
+    expect(getMatchBoxStyle(scored(0.95))).toEqual(
+      getMatchBoxStyle(scored(0.6))
+    )
   })
 
   test('a box without a score looks like an unlikely match', () => {
-    expect(getMatchBoxStyle(null)).toEqual(getMatchBoxStyle(0))
+    expect(getMatchBoxStyle(scored(null))).toEqual(
+      getMatchBoxStyle(scored(0.2))
+    )
+    expect(getMatchBoxStyle(undefined)).toEqual(getMatchBoxStyle(scored(0.2)))
   })
 
-  test('a likelihood outside 0 to 1 is clamped to the ends of the scale', () => {
-    expect(getMatchBoxStyle(1.4)).toEqual(getMatchBoxStyle(1))
-    expect(getMatchBoxStyle(-0.2)).toEqual(getMatchBoxStyle(0))
+  test("the tracker's pick gets a second emerald ring and a stronger glow", () => {
+    const style = getMatchBoxStyle({
+      likelihood: 0.7,
+      skippedReason: null,
+      wouldLink: true,
+    })
+
+    expect(style.outlineColor).toBe(rgbOf(CONSTANTS.COLORS.success[500]))
+    expect(style.boxShadow).toBe(
+      '0 0 0 4px rgb(23 24 32 / 0.50), 0 0 0 6px rgb(0 174 135), 0 0 12px rgb(0 174 135 / 0.80)'
+    )
+  })
+
+  test('a box the tracker would skip is dotted gray, however well it scores', () => {
+    expect(
+      getMatchBoxStyle({
+        likelihood: 0.9,
+        skippedReason: 'no_vector',
+        wouldLink: false,
+      })
+    ).toEqual({
+      outlineColor: rgbOf(CONSTANTS.COLORS.neutral[400]),
+      outlineStyle: 'dotted',
+      boxShadow: '0 0 0 3px rgb(23 24 32 / 0.50)',
+    })
   })
 })
 
 describe('getMatchLevel', () => {
-  test('names the likelihood in three bands', () => {
-    expect(getMatchLevel(0.9)).toBe(STRING.TRACK_MATCH_LIKELY)
-    expect(getMatchLevel(0.7)).toBe(STRING.TRACK_MATCH_POSSIBLE)
-    expect(getMatchLevel(0.5)).toBe(STRING.TRACK_MATCH_UNLIKELY)
+  test('names the likelihood by the tracker threshold (0.5) and twice its cost (1/3)', () => {
+    expect(getMatchLevel(0.5)).toBe(STRING.TRACK_MATCH_LIKELY)
+    expect(getMatchLevel(0.4)).toBe(STRING.TRACK_MATCH_POSSIBLE)
+    expect(getMatchLevel(0.3)).toBe(STRING.TRACK_MATCH_UNLIKELY)
   })
 })
 

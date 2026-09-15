@@ -433,9 +433,13 @@ export enum STRING {
   TRACK_MATCH_LABEL,
   TRACK_MATCH_LIKELY,
   TRACK_MATCH_POSSIBLE,
+  TRACK_MATCH_REFERENCE_EARLIER,
+  TRACK_MATCH_REFERENCE_LATER,
   TRACK_MATCH_SAME_SPECIES,
   TRACK_MATCH_SCORE,
+  TRACK_MATCH_SKIPPED_NO_VECTOR,
   TRACK_MATCH_UNLIKELY,
+  TRACK_MATCH_WOULD_LINK,
   TRACK_MERGE_CANDIDATES_TITLE,
   TRACK_MERGE_COUNT,
   TRACK_MERGE_MANY_DESCRIPTION,
@@ -1018,10 +1022,17 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_MATCH_LABEL]: 'Match',
   [STRING.TRACK_MATCH_LIKELY]: 'Likely',
   [STRING.TRACK_MATCH_POSSIBLE]: 'Possible',
+  [STRING.TRACK_MATCH_REFERENCE_EARLIER]:
+    "Compared with the track's frame {{count}} captures earlier",
+  [STRING.TRACK_MATCH_REFERENCE_LATER]:
+    "Compared with the track's frame {{count}} captures later",
   [STRING.TRACK_MATCH_SAME_SPECIES]:
     '{{count}} more of this species on this capture',
   [STRING.TRACK_MATCH_SCORE]: '{{level}} ({{percent}}%)',
+  [STRING.TRACK_MATCH_SKIPPED_NO_VECTOR]:
+    'Tracking would skip this: no feature vector',
   [STRING.TRACK_MATCH_UNLIKELY]: 'Unlikely',
+  [STRING.TRACK_MATCH_WOULD_LINK]: 'Automatic tracking would link this',
   [STRING.TRACK_MERGE_CANDIDATES_TITLE]: 'Candidates to merge',
   [STRING.TRACK_MERGE_COUNT]: 'Merge {{count}} occurrences',
   [STRING.TRACK_MERGE_MANY_DESCRIPTION]:
