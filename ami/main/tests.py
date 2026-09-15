@@ -8552,6 +8552,24 @@ class OccurrenceGroupingTestCase(TrackEditTestCase):
         self.assertTrue(Occurrence.objects.filter(pk=other.pk).exists())
         self.assertEqual(self.occurrence.detections.count(), len(self.detections))
 
+    def test_refusal_names_the_capture_times(self):
+        """The refusal is shown verbatim in the merge and extend dialogs, so it names the
+        capture times a reviewer sees on the session page rather than database ids."""
+        SourceImage.objects.filter(pk=self.captures[0].pk).update(timestamp=datetime.datetime(2026, 9, 1, 22, 48, 23))
+        SourceImage.objects.filter(pk=self.captures[1].pk).update(timestamp=datetime.datetime(2026, 9, 2, 0, 5, 7))
+        other, _ = self._make_track(2)
+
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.post(
+            f"/api/v2/occurrences/{self.occurrence.pk}/merge/", {"occurrence_ids": [other.pk]}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.json()["occurrence_ids"],
+            "This would put two detections from the captures at 10:48:23 PM, 12:05:07 AM into one track. "
+            "One animal appears once per capture, so these are different individuals.",
+        )
+
     def test_merge_refuses_two_sources_on_the_same_capture(self):
         """Two sources that each have a box on the same capture are two individuals, even when
         the track itself does not cover that capture, as when every candidate is ticked at once."""
