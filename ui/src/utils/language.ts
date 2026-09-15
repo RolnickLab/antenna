@@ -375,6 +375,7 @@ export enum STRING {
   TABLE_COLUMNS,
   TERMINAL_CLASSIFICATION,
   TIMELINE_OCCURRENCE_FRAME,
+  TIMELINE_OCCURRENCE_SPAN,
   TIP,
   TRACK_CANDIDATE_IN_GAP,
   TRACK_CLEARS_CONFIRMATION,
@@ -447,6 +448,9 @@ export enum STRING {
   TRACK_PATH_STATUS_ERROR,
   TRACK_PATH_STATUS_LOADING,
   TRACK_PATH_STATUS_SHOWN,
+  TRACK_PATH_STATUS_SHOWN_FOR,
+  TRACK_PATH_OCCURRENCE,
+  TRACK_PATH_GO_TO_NEAREST,
   TRACK_PICK_OCCURRENCE,
   TRACK_PICK_OCCURRENCE_SCOPE,
   TRACK_POSITION_AFTER_LAST,
@@ -931,6 +935,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TABLE_COLUMNS]: 'Table columns',
   [STRING.TERMINAL_CLASSIFICATION]: 'Terminal classification',
   [STRING.TIMELINE_OCCURRENCE_FRAME]: 'Occurrence #{{id}} at {{time}}',
+  [STRING.TIMELINE_OCCURRENCE_SPAN]:
+    'Occurrence #{{id}}: {{count}} frames, {{start}} to {{end}}',
   [STRING.TIP]: 'Tip',
   [STRING.TRACK_CANDIDATE_IN_GAP]:
     "Falls inside this track's time span, in a gap between its frames. The time is measured from the nearest track frame.",
@@ -978,7 +984,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_FRAMES_COUNT]: '{{count}} frames',
   [STRING.TRACK_FRAMES_ONE]: '1 frame',
   [STRING.TRACK_FRAME_DETECTION]: 'Detection #{{id}}',
-  [STRING.TRACK_FRAME_MENU]: 'Frame actions',
+  [STRING.TRACK_FRAME_MENU]: 'Edit this frame',
   [STRING.TRACK_FRAME_NO_CLASSIFICATION]: 'No classification',
   [STRING.TRACK_HIDE_PATH]: 'Hide path',
   [STRING.TRACK_LAST_FRAME]: 'Last track frame',
@@ -1020,6 +1026,10 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'Could not load the path for occurrence #{{id}}',
   [STRING.TRACK_PATH_STATUS_LOADING]: 'Loading path for occurrence #{{id}}',
   [STRING.TRACK_PATH_STATUS_SHOWN]: 'Path shown for occurrence #{{id}}',
+  [STRING.TRACK_PATH_STATUS_SHOWN_FOR]: 'Path shown for',
+  [STRING.TRACK_PATH_OCCURRENCE]: 'occurrence #{{id}}',
+  [STRING.TRACK_PATH_GO_TO_NEAREST]:
+    'Go to the nearest capture with this occurrence',
   [STRING.TRACK_PERCENT]: '{{percent}}%',
   [STRING.TRACK_PICK_OCCURRENCE]: 'Candidates near this frame',
   [STRING.TRACK_PICK_OCCURRENCE_SCOPE]:

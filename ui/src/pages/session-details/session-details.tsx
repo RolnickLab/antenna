@@ -189,6 +189,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
           ) : null}
           <div className="grow flex items-center justify-center bg-foreground">
             <Capture
+              captureDate={activeCapture?.date}
               captureId={activeCaptureId}
               defaultFilters={settings.defaultFilters}
               detections={activeCapture?.detections ?? []}

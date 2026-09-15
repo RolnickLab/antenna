@@ -37,9 +37,11 @@ export const BlueprintItem = ({
   actions,
   caption,
   item,
+  onLinkClick,
 }: {
   actions?: ReactNode
   caption?: ReactNode
+  onLinkClick?: () => void
   item: {
     id: string
     image: { src: string; width: number; height: number }
@@ -85,6 +87,7 @@ export const BlueprintItem = ({
           {item.to ? (
             <Link
               className={buttonVariants({ size: 'small', variant: 'ghost' })}
+              onClick={onLinkClick}
               to={item.to}
             >
               <span>{translate(STRING.VIEW_IN_SESSION)}</span>

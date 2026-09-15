@@ -1,5 +1,5 @@
 import { TrackFrame } from 'data-services/models/occurrence-details'
-import { getTrackNavigation } from './track-navigation'
+import { getTrackNavigation, getNearestPathFrame } from './track-navigation'
 
 const at = (minute: number) => new Date(2026, 8, 1, 22, minute)
 
@@ -63,5 +63,36 @@ describe('getTrackNavigation', () => {
     expect(navigation.position).toEqual({ kind: 'after-last' })
     expect(navigation.previous?.id).toBe('d30')
     expect(navigation.next).toBeUndefined()
+  })
+})
+
+describe('getNearestPathFrame', () => {
+  const pathFrame = (captureId: string, timestamp: Date | null) => ({
+    bbox: [0, 0, 1, 1],
+    captureHeight: null,
+    captureId,
+    captureWidth: null,
+    detectionId: `d-${captureId}`,
+    timestamp,
+  })
+  const frames = [
+    pathFrame('early', new Date(2026, 8, 1, 22, 0)),
+    pathFrame('late', new Date(2026, 8, 1, 23, 0)),
+  ]
+
+  test('picks the frame closest in time to the capture', () => {
+    expect(
+      getNearestPathFrame(frames, new Date(2026, 8, 1, 22, 40))?.captureId
+    ).toBe('late')
+    expect(
+      getNearestPathFrame(frames, new Date(2026, 8, 1, 21, 0))?.captureId
+    ).toBe('early')
+  })
+
+  test('falls back to the first frame when there is no time to compare', () => {
+    expect(getNearestPathFrame(frames)?.captureId).toBe('early')
+    expect(
+      getNearestPathFrame([pathFrame('undated', null)], new Date())?.captureId
+    ).toBe('undated')
   })
 })
