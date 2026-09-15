@@ -13,6 +13,7 @@ from ami.base.serializers import DefaultSerializer, MinimalNestedModelSerializer
 from ami.base.views import get_active_project
 from ami.jobs.models import Job
 from ami.main.models import Tag
+from ami.main.models_future.merge_candidates import MAX_CANDIDATES as MAX_MERGE_CANDIDATES
 from ami.main.models_future.merge_candidates import RELATIONS as MERGE_CANDIDATE_RELATIONS
 from ami.ml.models import Algorithm, Pipeline
 from ami.ml.serializers import AlgorithmSerializer, PipelineNestedSerializer
@@ -2198,11 +2199,12 @@ class MergeCandidateSerializer(serializers.Serializer):
     last_appearance_timestamp = serializers.DateTimeField(allow_null=True)
     relation = serializers.ChoiceField(
         choices=MERGE_CANDIDATE_RELATIONS,
-        help_text="Where the candidate sits in time: before, after or overlapping the requested occurrence.",
+        help_text="Where the candidate sits in time: before or after the requested occurrence, or in a gap of "
+        "it, on captures inside its span that it has no frame on.",
     )
     time_offset_seconds = serializers.FloatField(
         help_text="Gap between the two spans: negative when the candidate ends first, positive when it starts "
-        "after the requested occurrence ends, zero when they overlap.",
+        "after the requested occurrence ends, zero for a candidate in a gap.",
     )
     distance = serializers.FloatField(
         allow_null=True,
@@ -2227,22 +2229,16 @@ class MergeCandidateSerializer(serializers.Serializer):
     edge_image = serializers.CharField(
         allow_null=True,
         help_text="A crop of the requested occurrence's own frame in the scored pair: its first frame for a "
-        "candidate before it, its last for one after, whichever is nearest for an overlapping one.",
+        "candidate before it, its last for one after, whichever is nearest for one in a gap.",
     )
     edge_timestamp = serializers.DateTimeField(allow_null=True, help_text="When that edge frame was captured.")
-    shared_captures = serializers.IntegerField(
-        help_text="How many captures hold a frame of both the candidate and the requested occurrence, counting "
-        "only the captures searched. One animal cannot appear twice in one capture, so a candidate with any is a "
-        "different animal and cannot be merged correctly.",
-    )
 
 
 class MergeCandidatesResponseSerializer(serializers.Serializer):
-    """Candidates before or after the requested occurrence first, then any overlapping ones asked
-    for, each group ordered by cost, lowest first, and capped on its own."""
+    """Candidates before, after or in a gap of the requested occurrence, ordered by cost, lowest first."""
 
-    candidates = MergeCandidateSerializer(many=True)
-    overlapping_count = serializers.IntegerField(
-        help_text="How many candidates were present at the same time as the requested occurrence, whether or "
-        "not they were returned.",
+    candidates = MergeCandidateSerializer(
+        many=True,
+        help_text=f"At most {MAX_MERGE_CANDIDATES}. Occurrences with a frame on one of the requested occurrence's "
+        "captures are other animals and are left out.",
     )

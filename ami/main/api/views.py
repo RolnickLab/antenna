@@ -38,7 +38,6 @@ from ami.main.models_future.identifications import create_identifications_batch,
 from ami.main.models_future.merge_candidates import (
     DEFAULT_ADJACENT_CAPTURES,
     MAX_ADJACENT_CAPTURES,
-    MAX_CANDIDATES,
     MAX_WINDOW_MINUTES,
     rank_merge_candidates,
 )
@@ -59,7 +58,6 @@ from ami.main.models_future.tracks import (
 )
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
-from ami.utils.fields import url_boolean_param
 from ami.utils.requests import get_default_classification_threshold
 from ami.utils.storages import ConnectionTestResult
 
@@ -1775,25 +1773,18 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             OpenApiParameter(
                 name="captures",
                 description=f"How many captures before this occurrence's first frame and after its last frame "
-                f"to search, 1 to {MAX_ADJACENT_CAPTURES}. Default {DEFAULT_ADJACENT_CAPTURES}. Cannot be "
-                "combined with `minutes`.",
+                f"to search, besides the captures inside its span, 1 to {MAX_ADJACENT_CAPTURES}. Default "
+                f"{DEFAULT_ADJACENT_CAPTURES}. Cannot be combined with `minutes`.",
                 required=False,
                 type=OpenApiTypes.INT,
             ),
             OpenApiParameter(
                 name="minutes",
-                description=f"Search a time window of this many minutes around this occurrence's first and last "
-                f"frame instead of the adjacent captures, 1 to {MAX_WINDOW_MINUTES}. Cannot be combined with "
-                "`captures`.",
+                description=f"Search from this many minutes before this occurrence's first frame to this many "
+                f"minutes after its last, instead of the adjacent captures, 1 to {MAX_WINDOW_MINUTES}. Cannot be "
+                "combined with `captures`.",
                 required=False,
                 type=OpenApiTypes.INT,
-            ),
-            OpenApiParameter(
-                name="overlapping",
-                description="Also return the candidates present at the same time as this occurrence, after all "
-                f"the before and after ones. Each group holds at most {MAX_CANDIDATES} rows. Default false.",
-                required=False,
-                type=OpenApiTypes.BOOL,
             ),
         ],
         responses=MergeCandidatesResponseSerializer,
@@ -1805,10 +1796,11 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         Searches the captures adjacent to this occurrence, or a time window around it,
         and ranks what it finds by the tracking method's matching cost between the two
         frames nearest in time, so the occurrence tracking most nearly linked comes
-        first. Candidates before or after this occurrence come ahead of those present
-        at the same time, which are left out unless `overlapping` is set. Drawn from
-        the same queryset the merge action resolves its sources from, so everything
-        offered here can be merged.
+        first. Candidates before or after this occurrence are ranked together with
+        those in a gap of it, on captures inside its span that it has no frame on.
+        Occurrences with a frame on one of its captures are other animals and are left
+        out. Drawn from the same queryset the merge action resolves its sources from,
+        so everything offered here can be merged.
         """
         occurrence = self.get_object()
         if "captures" in request.query_params and "minutes" in request.query_params:
@@ -1827,15 +1819,13 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             field=serializers.IntegerField(required=False, min_value=1, max_value=MAX_WINDOW_MINUTES),
             data=request.query_params,
         )
-        overlapping = url_boolean_param(request, "overlapping", default=False)
-        ranked = rank_merge_candidates(
+        candidates = rank_merge_candidates(
             occurrence,
             self.get_queryset().prefetch_related(None),
             minutes=minutes,
             captures=captures,
-            include_overlapping=overlapping,
         )
-        return Response(MergeCandidatesResponseSerializer(ranked).data)
+        return Response(MergeCandidatesResponseSerializer({"candidates": candidates}).data)
 
     @extend_schema(request=OccurrenceAddDetectionsSerializer, responses=OccurrenceGroupingSerializer)
     @action(detail=True, methods=["post"], name="add-detections", url_path="add-detections")

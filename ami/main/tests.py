@@ -8635,9 +8635,8 @@ class MergeCandidatesTestCase(TrackEditTestCase):
     ranked them, and has to say where each candidate sits in time. What these pin is
     that the ranking follows the tracking cost, that the time relation is signed the
     right way, that a candidate without a vector is still offered, that the search
-    covers the adjacent captures by default, that the occurrences present at the
-    same time never crowd out the ones that could continue the track, and that a
-    candidate sharing a capture with the track is reported as a different animal.
+    covers the adjacent captures by default, that a candidate sharing a capture with
+    the track is never offered, and that one filling a gap in the track is.
     """
 
     FRAME_SIZE = 1000
@@ -8728,20 +8727,23 @@ class MergeCandidatesTestCase(TrackEditTestCase):
         self.assertEqual(rows[0]["detections_count"], 1)
         self.assertTrue(rows[0]["image"], "A candidate must come with a crop to recognise it by")
 
+    def _make_gap_capture(self) -> SourceImage:
+        """A capture inside the track's span that the track has no frame on."""
+        return self._make_capture(self.captures[1].timestamp + datetime.timedelta(seconds=30))
+
     def test_the_time_relation_is_signed_from_the_track_being_edited(self):
         before = self._make_occurrence([self.before_capture], bbox=[10, 10, 40, 40])
         after = self._make_occurrence([self.after_capture], bbox=[10, 10, 40, 40])
-        overlapping = self._make_occurrence([self.captures[1]], bbox=[10, 10, 40, 40])
+        in_gap = self._make_occurrence([self._make_gap_capture()], bbox=[10, 10, 40, 40])
 
-        response = self.get_candidates("&overlapping=true")
-        by_id = {row["id"]: row for row in response.data["candidates"]}
+        by_id = {row["id"]: row for row in self.get_candidates().data["candidates"]}
 
         self.assertEqual(by_id[before.pk]["relation"], "before")
         self.assertEqual(by_id[before.pk]["time_offset_seconds"], -120.0)
         self.assertEqual(by_id[after.pk]["relation"], "after")
         self.assertEqual(by_id[after.pk]["time_offset_seconds"], 120.0)
-        self.assertEqual(by_id[overlapping.pk]["relation"], "overlapping")
-        self.assertEqual(by_id[overlapping.pk]["time_offset_seconds"], 0.0)
+        self.assertEqual(by_id[in_gap.pk]["relation"], "gap")
+        self.assertEqual(by_id[in_gap.pk]["time_offset_seconds"], 0.0)
 
     def test_a_candidate_without_a_vector_is_scored_on_geometry_alone(self):
         """Similarity needs a vector on both frames from the same algorithm. Without one the
@@ -8788,7 +8790,7 @@ class MergeCandidatesTestCase(TrackEditTestCase):
         window_ids = [row["id"] for row in self.get_candidates("&minutes=15").data["candidates"]]
         self.assertEqual(sorted(window_ids), sorted([adjacent.pk, one_further.pk]))
 
-    def _make_overlapping_occurrences(self, count: int, bbox: list[int]) -> list[Occurrence]:
+    def _make_same_capture_occurrences(self, count: int, bbox: list[int]) -> list[Occurrence]:
         """`count` single-frame occurrences spread over the track's own captures, each with
         its box at `bbox`, written in bulk so a dense session is cheap to set up."""
         occurrences = Occurrence.objects.bulk_create(
@@ -8813,23 +8815,46 @@ class MergeCandidatesTestCase(TrackEditTestCase):
         )
         return occurrences
 
-    def test_overlapping_candidates_are_hidden_unless_asked(self):
-        """In a dense session the occurrences present at the same time as the track outnumber
-        the ones that could continue it, and sit closer to its box, so they are left out by
-        default and, when asked for, follow every before or after candidate with their own cap."""
-        self._make_overlapping_occurrences(60, bbox=[10, 10, 40, 40])
+    def test_a_candidate_on_one_of_the_tracks_captures_is_never_offered(self):
+        """One animal cannot appear twice in one capture, so an occurrence sharing a capture with
+        the track is another animal, in either search mode. The second one shares a capture
+        halfway through the track, beyond a one-minute window of either end, and has a frame
+        just after the track that both searches reach."""
+        mid_capture = self._make_gap_capture()
+        Detection.objects.create(
+            source_image=mid_capture,
+            timestamp=mid_capture.timestamp,
+            bbox=[10, 10, 40, 40],
+            occurrence=self.occurrence,
+        )
+        just_after = self._make_capture(self.captures[-1].timestamp + datetime.timedelta(seconds=30))
+        self._make_occurrence([self.captures[1]], bbox=[12, 12, 42, 42])
+        self._make_occurrence([mid_capture, just_after], bbox=[12, 12, 42, 42])
+        neighbour = self._make_occurrence([just_after], bbox=[500, 500, 530, 530])
+
+        for query in ("", "&minutes=1"):
+            ids = [row["id"] for row in self.get_candidates(query).data["candidates"]]
+            self.assertEqual(ids, [neighbour.pk], query)
+
+    def test_a_candidate_in_a_gap_of_the_track_is_offered(self):
+        """A candidate on a capture inside the track's span that the track has no frame on is
+        where tracking lost the animal for a capture, so it is offered by default."""
+        in_gap = self._make_occurrence([self._make_gap_capture()], bbox=[10, 10, 40, 40])
+
+        rows = self.get_candidates().data["candidates"]
+
+        self.assertEqual([(row["id"], row["relation"]) for row in rows], [(in_gap.pk, "gap")])
+
+    def test_a_dense_session_offers_only_the_true_neighbour(self):
+        """In a dense session the occurrences on the track's own captures outnumber the one
+        that could continue it and sit closer to its box, and none of them is offered."""
+        self._make_same_capture_occurrences(60, bbox=[10, 10, 40, 40])
         neighbour = self._make_occurrence([self.after_capture], bbox=[14, 14, 44, 44])
 
         response = self.get_candidates()
+
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual([row["id"] for row in response.data["candidates"]], [neighbour.pk])
-        self.assertEqual(response.data["overlapping_count"], 60)
-
-        response = self.get_candidates("&overlapping=true")
-        rows = response.data["candidates"]
-        self.assertEqual(rows[0]["id"], neighbour.pk, "The true neighbour leads despite its higher cost")
-        self.assertEqual([row["relation"] for row in rows[1:]], ["overlapping"] * 50)
-        self.assertEqual(response.data["overlapping_count"], 60)
 
     def test_the_pair_frames_are_returned_for_comparison(self):
         """Each row names both frames of the scored pair so the two crops can be shown side by
@@ -8851,21 +8876,6 @@ class MergeCandidatesTestCase(TrackEditTestCase):
         self.assertEqual(by_id[after.pk]["edge_timestamp"], last.timestamp.isoformat())
         self.assertEqual(by_id[after.pk]["capture_id"], self.after_capture.pk)
         self.assertEqual(by_id[after.pk]["image_timestamp"], self.after_capture.timestamp.isoformat())
-
-    def test_a_candidate_on_one_of_the_tracks_captures_is_flagged(self):
-        """One animal cannot appear twice in one capture, so an overlapping candidate with a frame
-        on one of the track's captures shares it and cannot be merged, while one in a gap of the
-        track, on a capture inside its span that the track does not cover, shares none."""
-        gap_capture = self._make_capture(self.captures[1].timestamp + datetime.timedelta(seconds=30))
-        same_capture = self._make_occurrence([self.captures[1]], bbox=[10, 10, 40, 40])
-        in_gap = self._make_occurrence([gap_capture], bbox=[10, 10, 40, 40])
-
-        by_id = {row["id"]: row for row in self.get_candidates("&overlapping=true").data["candidates"]}
-
-        self.assertEqual(by_id[same_capture.pk]["relation"], "overlapping")
-        self.assertEqual(by_id[same_capture.pk]["shared_captures"], 1)
-        self.assertEqual(by_id[in_gap.pk]["relation"], "overlapping")
-        self.assertEqual(by_id[in_gap.pk]["shared_captures"], 0)
 
     def test_minutes_must_be_a_whole_number_within_range(self):
         for junk in ("abc", "0", "31", "-5"):

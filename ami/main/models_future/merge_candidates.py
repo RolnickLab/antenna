@@ -8,14 +8,21 @@ the occurrence's edge frame and the candidate's frame closest to it.
 Candidates are occurrences of the same session with a frame among the searched
 captures. By default those are the captures adjacent to the occurrence: a number of
 captures before its first frame and after its last one (``captures``), plus the
-captures inside its own span, so that occurrences present at the same time can be
-counted. Passing ``minutes`` searches a time window around the first and last frame
-instead. Each candidate is described by:
+captures inside its own span. Passing ``minutes`` searches from that many minutes
+before the first frame to that many minutes after the last instead.
+
+One animal cannot appear twice in one capture, so an occurrence with a frame on one
+of the occurrence's captures is another animal and is never offered. In a dense
+session those outnumber the true neighbours many times over.
+
+Each candidate is described by:
 
 - ``relation``: ``before`` when the candidate ends before the occurrence starts,
-  ``after`` when it starts after the occurrence ends, ``overlapping`` otherwise.
+  ``after`` when it starts after the occurrence ends, and ``gap`` otherwise: it lies
+  within the occurrence's span on captures the occurrence has no frame on, where
+  tracking lost the animal for a few captures.
 - ``time_offset_seconds``: the gap between the two spans, negative for ``before``,
-  positive for ``after`` and zero when they overlap.
+  positive for ``after`` and zero for ``gap``.
 - ``distance``: centre-to-centre distance of the nearest pair of boxes as a fraction
   of the frame diagonal.
 - ``similarity``: cosine similarity of the pair's feature vectors, from the same
@@ -27,19 +34,11 @@ instead. Each candidate is described by:
   the one its ``image`` is a crop of.
 - ``edge_image`` and ``edge_timestamp``: the occurrence's own frame in the scored
   pair, so the two crops can be shown side by side.
-- ``shared_captures``: how many captures hold a frame of both the candidate and the
-  occurrence, among the searched captures. One animal cannot appear twice in one
-  capture, so a candidate with any is a different animal and cannot be merged.
 
-Overlapping candidates are another animal in the same frames far more often than a
-piece of the same track, and in a dense session they outnumber the true neighbours
-many times over, so they are left out unless asked for. When included they follow
-every before and after candidate. Each group is sorted by cost and capped on its
-own, so the neighbours are never pushed out by overlapping rows. The number of
-overlapping candidates found is reported either way.
+Candidates of every relation are sorted together by cost and capped once.
 
 Vectors are loaded only for the pairs scored: the occurrence's two edge frames and one
-frame per candidate that is returned.
+frame per candidate.
 """
 
 from __future__ import annotations
@@ -62,8 +61,8 @@ MAX_CANDIDATES = 50
 
 RELATION_BEFORE = "before"
 RELATION_AFTER = "after"
-RELATION_OVERLAPPING = "overlapping"
-RELATIONS = (RELATION_BEFORE, RELATION_AFTER, RELATION_OVERLAPPING)
+RELATION_GAP = "gap"
+RELATIONS = (RELATION_BEFORE, RELATION_AFTER, RELATION_GAP)
 
 _ROUND_TO = 4
 
@@ -118,7 +117,7 @@ def _relation(
         return RELATION_BEFORE, (candidate_last - target_first).total_seconds()
     if candidate_first > target_last:
         return RELATION_AFTER, (candidate_first - target_last).total_seconds()
-    return RELATION_OVERLAPPING, 0.0
+    return RELATION_GAP, 0.0
 
 
 def _pair_diagonal(edge: dict, frame: dict, corners_a, corners_b) -> float:
@@ -173,19 +172,17 @@ def rank_merge_candidates(
     minutes: int | None = None,
     captures: int = DEFAULT_ADJACENT_CAPTURES,
     limit: int = MAX_CANDIDATES,
-    include_overlapping: bool = False,
-) -> dict[str, Any]:
-    """Candidates for merging with ``occurrence`` and how many overlapping ones there were.
-
-    Returns ``{"candidates": [...], "overlapping_count": n}``. The before and after
-    candidates come first, lowest cost first and at most ``limit`` of them; the
-    overlapping ones follow, ranked and capped the same way, only when
-    ``include_overlapping`` is set. ``overlapping_count`` counts them either way.
+) -> list[dict[str, Any]]:
+    """Candidates for merging with ``occurrence``, lowest cost first, at most ``limit``.
 
     The captures searched are the ``captures`` captures before the occurrence's first
     frame and after its last one, plus those inside its span, unless ``minutes`` is
-    given, in which case a window of that many minutes around the first and last
-    frame is searched instead.
+    given, in which case the search runs from that many minutes before the first
+    frame to that many minutes after the last.
+
+    Candidates with a frame on one of the occurrence's captures are dropped using the
+    frames already loaded. That is exact because those captures all lie inside the
+    occurrence's span, which both searches cover in full.
 
     ``occurrences`` decides which occurrences may be offered at all: pass the API's
     queryset so visibility and the project's default filters apply, and so the list
@@ -196,26 +193,20 @@ def rank_merge_candidates(
     The query count does not depend on how many candidates there are: the
     occurrence's frames, the adjacent capture ids (two queries, skipped in minutes
     mode), the searched frames, the candidate occurrences, and one vector query for
-    each side of the pairs. Every candidate row found is loaded, so the overlapping
-    count passes through the same filters as the merge action, but vectors are only
-    fetched for the candidates returned.
+    each side of the pairs.
     """
     from ami.main.models import Classification, Detection, get_media_url
 
-    result: dict[str, Any] = {"candidates": [], "overlapping_count": 0}
-
     target_frames = _timed_frames(Detection.objects.valid().filter(occurrence_id=occurrence.pk))
     if not target_frames:
-        return result
+        return []
     first, last = target_frames[0], target_frames[-1]
     edges = [first] if first["pk"] == last["pk"] else [first, last]
     target_captures = {frame["source_image_id"] for frame in target_frames}
 
     if minutes is not None:
         delta = datetime.timedelta(minutes=minutes)
-        searched = Q(timestamp__range=(first["timestamp"] - delta, first["timestamp"] + delta)) | Q(
-            timestamp__range=(last["timestamp"] - delta, last["timestamp"] + delta)
-        )
+        searched = Q(timestamp__range=(first["timestamp"] - delta, last["timestamp"] + delta))
     else:
         adjacent = _adjacent_capture_ids(occurrence.event_id, first["timestamp"], last["timestamp"], captures)
         searched = Q(source_image_id__in=adjacent) | Q(timestamp__range=(first["timestamp"], last["timestamp"]))
@@ -225,27 +216,28 @@ def rank_merge_candidates(
         .exclude(occurrence_id=occurrence.pk)
         .exclude(occurrence_id__isnull=True)
     )
+    other_animals = {frame["occurrence_id"] for frame in nearby if frame["source_image_id"] in target_captures}
     frames_by_occurrence: dict[int, list[dict]] = {}
     for frame in nearby:
-        frames_by_occurrence.setdefault(frame["occurrence_id"], []).append(frame)
+        if frame["occurrence_id"] not in other_animals:
+            frames_by_occurrence.setdefault(frame["occurrence_id"], []).append(frame)
     if not frames_by_occurrence:
-        return result
+        return []
 
-    scored: list[tuple[Occurrence, str, float]] = []
-    for candidate in occurrences.filter(pk__in=list(frames_by_occurrence)):
-        relation, offset = _relation(
-            first["timestamp"],
-            last["timestamp"],
-            candidate.first_appearance_timestamp,
-            candidate.last_appearance_timestamp,
+    scored = [
+        (
+            candidate,
+            *_relation(
+                first["timestamp"],
+                last["timestamp"],
+                candidate.first_appearance_timestamp,
+                candidate.last_appearance_timestamp,
+            ),
         )
-        if relation == RELATION_OVERLAPPING:
-            result["overlapping_count"] += 1
-            if not include_overlapping:
-                continue
-        scored.append((candidate, relation, offset))
+        for candidate in occurrences.filter(pk__in=list(frames_by_occurrence))
+    ]
     if not scored:
-        return result
+        return []
 
     pairs = {candidate.pk: _nearest_pair(edges, frames_by_occurrence[candidate.pk]) for candidate, _, _ in scored}
 
@@ -269,40 +261,36 @@ def rank_merge_candidates(
         detection_id: (algorithm_id, vector) for (detection_id, algorithm_id), vector in edge_vectors.items()
     }
 
-    adjacent_rows: list[dict[str, Any]] = []
-    overlapping_rows: list[dict[str, Any]] = []
+    rows: list[dict[str, Any]] = []
     for candidate, relation, offset in scored:
         edge, frame = pairs[candidate.pk]
         algorithm_id, edge_vector = vector_by_edge.get(edge["pk"], (None, None))
         frame_vector = frame_vectors.get((frame["pk"], algorithm_id)) if algorithm_id is not None else None
         distance, similarity, cost = _score_pair(edge, frame, edge_vector, frame_vector)
-        candidate_frames = frames_by_occurrence[candidate.pk]
-        crop = frame["path"] or next((f["path"] for f in candidate_frames if f["path"]), None)
-        row = {
-            "id": candidate.pk,
-            "determination": (
-                {"id": candidate.determination_id, "name": candidate.determination.name}
-                if candidate.determination_id
-                else None
-            ),
-            "detections_count": candidate.detections_count,
-            "first_appearance_timestamp": candidate.first_appearance_timestamp,
-            "last_appearance_timestamp": candidate.last_appearance_timestamp,
-            "relation": relation,
-            "time_offset_seconds": offset,
-            "distance": distance,
-            "similarity": similarity,
-            "cost": cost,
-            "image": get_media_url(crop) if crop else None,
-            "capture_id": frame["source_image_id"],
-            "image_timestamp": frame["timestamp"],
-            "edge_image": get_media_url(edge["path"]) if edge["path"] else None,
-            "edge_timestamp": edge["timestamp"],
-            "shared_captures": len(target_captures & {f["source_image_id"] for f in candidate_frames}),
-        }
-        (overlapping_rows if relation == RELATION_OVERLAPPING else adjacent_rows).append(row)
+        crop = frame["path"] or next((f["path"] for f in frames_by_occurrence[candidate.pk] if f["path"]), None)
+        rows.append(
+            {
+                "id": candidate.pk,
+                "determination": (
+                    {"id": candidate.determination_id, "name": candidate.determination.name}
+                    if candidate.determination_id
+                    else None
+                ),
+                "detections_count": candidate.detections_count,
+                "first_appearance_timestamp": candidate.first_appearance_timestamp,
+                "last_appearance_timestamp": candidate.last_appearance_timestamp,
+                "relation": relation,
+                "time_offset_seconds": offset,
+                "distance": distance,
+                "similarity": similarity,
+                "cost": cost,
+                "image": get_media_url(crop) if crop else None,
+                "capture_id": frame["source_image_id"],
+                "image_timestamp": frame["timestamp"],
+                "edge_image": get_media_url(edge["path"]) if edge["path"] else None,
+                "edge_timestamp": edge["timestamp"],
+            }
+        )
 
-    adjacent_rows.sort(key=_rank_key)
-    overlapping_rows.sort(key=_rank_key)
-    result["candidates"] = adjacent_rows[:limit] + overlapping_rows[:limit]
-    return result
+    rows.sort(key=_rank_key)
+    return rows[:limit]
