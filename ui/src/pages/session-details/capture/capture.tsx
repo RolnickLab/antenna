@@ -95,16 +95,20 @@ export const Capture = ({
   })
 
   useEffect(() => {
-    // The occurrence being extended stays selected with its path drawn, so every
-    // capture stepped through shows where the track has reached.
+    // The occurrence being extended is the only one selected, with its path drawn,
+    // so every capture stepped through shows where the track has reached and no
+    // other selection competes with the match colours.
     if (!extend.occurrenceId) {
       return
     }
 
     setPathOccurrenceId(extend.occurrenceId)
 
-    if (!activeOccurrences.includes(extend.occurrenceId)) {
-      setActiveOccurrences([...activeOccurrences, extend.occurrenceId])
+    if (
+      activeOccurrences.length !== 1 ||
+      activeOccurrences[0] !== extend.occurrenceId
+    ) {
+      setActiveOccurrences([extend.occurrenceId])
     }
   }, [extend.occurrenceId, activeOccurrences, setActiveOccurrences])
 

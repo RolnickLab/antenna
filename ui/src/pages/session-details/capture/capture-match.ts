@@ -6,6 +6,7 @@ import { STRING } from 'utils/language'
 const BEST_MATCH_COLOR = CONSTANTS.COLORS.success[500]
 const UNLIKELY_MATCH_COLOR = CONSTANTS.COLORS.neutral[400]
 const GLOW_BLUR_PX = 6
+const LIKELY_GLOW_BLUR_PX = 10
 const MAX_GLOW_ALPHA = 0.8
 const RIM_COLOR = CONSTANTS.COLORS.neutral[900]
 const RIM_SPREAD_PX = 3
@@ -17,8 +18,27 @@ const LINK_GLOW_PX = 12
 const GRAY_UNTIL = 0.5
 const LIKELY_FROM = 0.8
 const POSSIBLE_FROM = 0.6
+// How far from gray to emerald each band starts, so a Possible box already reads green.
+const COLOR_STOPS: [likelihood: number, amount: number][] = [
+  [GRAY_UNTIL, 0],
+  [POSSIBLE_FROM, 0.5],
+  [LIKELY_FROM, 0.85],
+  [1, 1],
+]
 
 type Rgb = [number, number, number]
+
+const greenAmount = (likelihood: number): number => {
+  const clamped = Math.min(Math.max(likelihood, GRAY_UNTIL), 1)
+  const index = COLOR_STOPS.findIndex(([stop]) => clamped <= stop)
+  if (index <= 0) return 0
+  const [fromStop, fromAmount] = COLOR_STOPS[index - 1]
+  const [toStop, toAmount] = COLOR_STOPS[index]
+  return (
+    fromAmount +
+    ((clamped - fromStop) / (toStop - fromStop)) * (toAmount - fromAmount)
+  )
+}
 
 type MatchFields = Pick<
   CaptureMatch,
@@ -47,8 +67,9 @@ const toCss = ([r, g, b]: Rgb, alpha?: number) =>
 
 /**
  * Box outline for a candidate in extend mode: gray up to `GRAY_UNTIL`, then through to
- * emerald for the best match. The tracker's own pick gets a second ring and a stronger
- * glow, and a box it would skip keeps its colour with a dotted outline. No score counts as 0.
+ * emerald for the best match, with a wider glow from the Likely band up. The tracker's own
+ * pick gets a second ring and a stronger glow, and a box it would skip keeps its colour with
+ * a dotted outline. No score counts as 0.
  */
 export const getMatchBoxStyle = (
   match?: Omit<MatchFields, 'referenceCaptureOffset'>
@@ -66,19 +87,19 @@ export const getMatchBoxStyle = (
     }
   }
 
-  const amount = Math.min(
-    Math.max(((match?.likelihood ?? 0) - GRAY_UNTIL) / (1 - GRAY_UNTIL), 0),
-    1
-  )
+  const likelihood = match?.likelihood ?? 0
+  const amount = greenAmount(likelihood)
   const color = mixRgb(gray, green, amount)
   const rim = toCss(hexToRgb(RIM_COLOR), (1 - amount) * MAX_RIM_ALPHA)
   const glow = toCss(color, amount * MAX_GLOW_ALPHA)
+  const glowBlur =
+    likelihood >= LIKELY_FROM ? LIKELY_GLOW_BLUR_PX : GLOW_BLUR_PX
 
   return {
     outlineColor: toCss(color),
     ...(match?.skippedReason ? { outlineStyle: 'dotted' as const } : {}),
     // The rim sits just beyond the 2px outline so a gray box still shows on a light sheet.
-    boxShadow: `0 0 0 ${RIM_SPREAD_PX}px ${rim}, 0 0 ${GLOW_BLUR_PX}px ${glow}`,
+    boxShadow: `0 0 0 ${RIM_SPREAD_PX}px ${rim}, 0 0 ${glowBlur}px ${glow}`,
   }
 }
 

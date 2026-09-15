@@ -33,12 +33,12 @@ const rgbOf = (hex: string) =>
   )} ${parseInt(hex.slice(5, 7), 16)})`
 
 describe('getMatchBoxStyle', () => {
-  test('the best match is the palette emerald with the strongest glow and no rim', () => {
+  test('the best match is the palette emerald with the strongest, widest glow and no rim', () => {
     const style = getMatchBoxStyle(match({ likelihood: 1 }))
 
     expect(style.outlineColor).toBe(rgbOf(CONSTANTS.COLORS.success[500]))
     expect(style.boxShadow).toBe(
-      '0 0 0 3px rgb(23 24 32 / 0.00), 0 0 6px rgb(0 174 135 / 0.80)'
+      '0 0 0 3px rgb(23 24 32 / 0.00), 0 0 10px rgb(0 174 135 / 0.80)'
     )
   })
 
@@ -51,11 +51,32 @@ describe('getMatchBoxStyle', () => {
     )
   })
 
-  test('a likelihood a quarter of the way from the gray floor to 1 is a quarter of the way to emerald', () => {
+  test('a Possible match is already half way to emerald, with the narrow glow', () => {
     // neutral-400 #9FA2AB towards success-500 #00AE87, channel by channel.
-    expect(getMatchBoxStyle(match({ likelihood: 0.625 })).outlineColor).toBe(
-      'rgb(119 165 162)'
+    const style = getMatchBoxStyle(match({ likelihood: 0.6 }))
+
+    expect(style.outlineColor).toBe('rgb(80 168 153)')
+    expect(style.boxShadow).toBe(
+      '0 0 0 3px rgb(23 24 32 / 0.25), 0 0 6px rgb(80 168 153 / 0.40)'
     )
+  })
+
+  test('a Likely match is nearly emerald, with the wide glow', () => {
+    const style = getMatchBoxStyle(match({ likelihood: 0.8 }))
+
+    expect(style.outlineColor).toBe('rgb(24 172 140)')
+    expect(style.boxShadow).toBe(
+      '0 0 0 3px rgb(23 24 32 / 0.08), 0 0 10px rgb(24 172 140 / 0.68)'
+    )
+  })
+
+  test('the colour keeps climbing inside a band', () => {
+    const possibleLow = getMatchBoxStyle(match({ likelihood: 0.6 }))
+    const possibleHigh = getMatchBoxStyle(match({ likelihood: 0.79 }))
+    const likelyLow = getMatchBoxStyle(match({ likelihood: 0.8 }))
+
+    expect(possibleHigh.outlineColor).not.toBe(possibleLow.outlineColor)
+    expect(possibleHigh.outlineColor).not.toBe(likelyLow.outlineColor)
   })
 
   test('a likelihood below the floor or above 1 keeps the end colours', () => {
