@@ -9243,12 +9243,27 @@ class TrackStatsTestCase(APITestCase):
 
         from ami.main.models_future.tracks import merge_occurrences
 
-        merge_occurrences(self.track, [self.singleton])
+        # One animal appears once per capture, so the frame merged in sits on a capture
+        # after the track's last: (5,5) -> (35,45) -> (65,85) -> (15,15). Labels A, A, B, A.
+        later = SourceImage.objects.create(
+            deployment=self.deployment,
+            event=self.event,
+            timestamp=self.captures[-1].timestamp + datetime.timedelta(minutes=1),
+            path="test/track-stats-later.jpg",
+            width=self.FRAME_WIDTH,
+            height=self.FRAME_HEIGHT,
+        )
+        later_singleton = Occurrence.objects.create(event=self.event, deployment=self.deployment, project=self.project)
+        frame = Detection.objects.create(
+            source_image=later, timestamp=later.timestamp, bbox=[10, 10, 20, 20], occurrence=later_singleton
+        )
+        frame.classifications.create(taxon=self.taxon_a, score=0.7, timestamp=later.timestamp, terminal=True)
+        later_singleton.save()
 
-        # The singleton's frame shares the first capture and sorts after the track's own
-        # by id: (5,5) -> (15,15) -> (35,45) -> (65,85). Labels A, A, A, B.
+        merge_occurrences(self.track, [later_singleton])
+
         stored = self._stored(self.track)
-        self.assertAlmostEqual(stored["track_motion"], (math.hypot(10, 10) + math.hypot(20, 30) + 50) / 500, places=4)
+        self.assertAlmostEqual(stored["track_motion"], (50 + 50 + math.hypot(50, 70)) / 500, places=4)
         self.assertEqual(stored["track_size_ratio"], 4.0)
         self.assertEqual(stored["track_distinct_taxa"], 2)
         self.assertEqual(stored["track_id_agreement"], 0.75)
