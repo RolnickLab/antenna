@@ -10,13 +10,18 @@ import {
 
 type MatchFields = Pick<
   CaptureMatch,
-  'likelihood' | 'referenceCaptureOffset' | 'skippedReason' | 'wouldLink'
+  | 'likelihood'
+  | 'referenceCaptureOffset'
+  | 'skippedReason'
+  | 'skipsSession'
+  | 'wouldLink'
 >
 
 const match = (fields: Partial<MatchFields> = {}): MatchFields => ({
   likelihood: null,
   referenceCaptureOffset: 1,
   skippedReason: null,
+  skipsSession: false,
   wouldLink: false,
   ...fields,
 })
@@ -79,14 +84,12 @@ describe('getMatchBoxStyle', () => {
     expect(pick).not.toEqual(getMatchBoxStyle(match({ likelihood: 0.95 })))
   })
 
-  test('a box the tracker would skip is dotted gray, however well it scores', () => {
+  test('a box the tracker would skip keeps its colour, with a dotted outline', () => {
+    const scored = getMatchBoxStyle(match({ likelihood: 0.95 }))
+
     expect(
       getMatchBoxStyle(match({ likelihood: 0.95, skippedReason: 'no_vector' }))
-    ).toEqual({
-      outlineColor: rgbOf(CONSTANTS.COLORS.neutral[400]),
-      outlineStyle: 'dotted',
-      boxShadow: '0 0 0 3px rgb(23 24 32 / 0.50)',
-    })
+    ).toEqual({ ...scored, outlineStyle: 'dotted' })
   })
 })
 
@@ -119,6 +122,17 @@ describe('getMatchNotes', () => {
         string: STRING.TRACK_MATCH_REFERENCE_LATER,
         values: { count: 4 },
       },
+    ])
+  })
+
+  test('a skipped box says why, naming the whole session when it has no vectors', () => {
+    expect(getMatchNotes(match({ skippedReason: 'no_vector' }))).toEqual([
+      { isEmphasis: false, string: STRING.TRACK_MATCH_SKIPPED_NO_VECTOR },
+    ])
+    expect(
+      getMatchNotes(match({ skippedReason: 'no_vector', skipsSession: true }))
+    ).toEqual([
+      { isEmphasis: false, string: STRING.TRACK_MATCH_SKIPPED_SESSION },
     ])
   })
 

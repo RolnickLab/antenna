@@ -22,7 +22,11 @@ type Rgb = [number, number, number]
 
 type MatchFields = Pick<
   CaptureMatch,
-  'likelihood' | 'referenceCaptureOffset' | 'skippedReason' | 'wouldLink'
+  | 'likelihood'
+  | 'referenceCaptureOffset'
+  | 'skippedReason'
+  | 'skipsSession'
+  | 'wouldLink'
 >
 
 const hexToRgb = (hex: string): Rgb => [
@@ -44,7 +48,7 @@ const toCss = ([r, g, b]: Rgb, alpha?: number) =>
 /**
  * Box outline for a candidate in extend mode: gray up to `GRAY_UNTIL`, then through to
  * emerald for the best match. The tracker's own pick gets a second ring and a stronger
- * glow, and a box it would skip is dotted gray. No score counts as 0.
+ * glow, and a box it would skip keeps its colour with a dotted outline. No score counts as 0.
  */
 export const getMatchBoxStyle = (
   match?: Omit<MatchFields, 'referenceCaptureOffset'>
@@ -52,14 +56,6 @@ export const getMatchBoxStyle = (
   const gray = hexToRgb(UNLIKELY_MATCH_COLOR)
   const green = hexToRgb(BEST_MATCH_COLOR)
   const fullRim = toCss(hexToRgb(RIM_COLOR), MAX_RIM_ALPHA)
-
-  if (match?.skippedReason) {
-    return {
-      outlineColor: toCss(gray),
-      outlineStyle: 'dotted',
-      boxShadow: `0 0 0 ${RIM_SPREAD_PX}px ${fullRim}`,
-    }
-  }
 
   if (match?.wouldLink) {
     return {
@@ -80,6 +76,7 @@ export const getMatchBoxStyle = (
 
   return {
     outlineColor: toCss(color),
+    ...(match?.skippedReason ? { outlineStyle: 'dotted' as const } : {}),
     // The rim sits just beyond the 2px outline so a gray box still shows on a light sheet.
     boxShadow: `0 0 0 ${RIM_SPREAD_PX}px ${rim}, 0 0 ${GLOW_BLUR_PX}px ${glow}`,
   }
@@ -115,7 +112,14 @@ export const getMatchNotes = (
         ]
       : []),
     ...(match?.skippedReason === 'no_vector'
-      ? [{ isEmphasis: false, string: STRING.TRACK_MATCH_SKIPPED_NO_VECTOR }]
+      ? [
+          {
+            isEmphasis: false,
+            string: match.skipsSession
+              ? STRING.TRACK_MATCH_SKIPPED_SESSION
+              : STRING.TRACK_MATCH_SKIPPED_NO_VECTOR,
+          },
+        ]
       : []),
   ]
 }

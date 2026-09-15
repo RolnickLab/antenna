@@ -49,6 +49,8 @@ export interface CaptureMatch {
   skippedReason: 'no_vector' | null
   /** Captures from the reference frame to this one, signed like the time offset; 1 is adjacent. */
   referenceCaptureOffset: number | null
+  /** Tracking would skip the whole session: it requires feature vectors and the session has none. */
+  skipsSession: boolean
 }
 
 export const convertCaptureMatches = (
@@ -65,6 +67,8 @@ export const convertCaptureMatches = (
       wouldLink: !!row.would_link,
       skippedReason: row.skipped_reason ?? null,
       referenceCaptureOffset: data.reference?.capture_offset ?? null,
+      skipsSession:
+        data.feature_algorithm_id === null && !!data.requires_features,
     }
 
     return result

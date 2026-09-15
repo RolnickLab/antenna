@@ -438,6 +438,7 @@ export enum STRING {
   TRACK_MATCH_SAME_SPECIES,
   TRACK_MATCH_SCORE,
   TRACK_MATCH_SKIPPED_NO_VECTOR,
+  TRACK_MATCH_SKIPPED_SESSION,
   TRACK_MATCH_UNLIKELY,
   TRACK_MATCH_WOULD_LINK,
   TRACK_MERGE_CANDIDATES_TITLE,
@@ -1031,6 +1032,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_MATCH_SCORE]: '{{level}} ({{percent}}%)',
   [STRING.TRACK_MATCH_SKIPPED_NO_VECTOR]:
     'Tracking would skip this: no feature vector',
+  [STRING.TRACK_MATCH_SKIPPED_SESSION]:
+    'Automatic tracking would skip this session: no feature vectors. Colors use box geometry only.',
   [STRING.TRACK_MATCH_UNLIKELY]: 'Unlikely',
   [STRING.TRACK_MATCH_WOULD_LINK]: 'Automatic tracking would link this',
   [STRING.TRACK_MERGE_CANDIDATES_TITLE]: 'Candidates to merge',
