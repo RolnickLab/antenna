@@ -20,6 +20,8 @@ import { SCORE_THRESHOLDS } from 'utils/constants'
 import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { STRING, translate } from 'utils/language'
 import { useActiveOccurrences } from '../hooks/useActiveOccurrences'
+import { getNearestPathFrame } from './track-navigation'
+import { useActiveCaptureId } from '../hooks/useActiveCapture'
 import { BoxStyle, bboxToPercentStyle } from './bbox'
 import { buildTrail, CaptureGhostTrail } from './capture-ghost-trail'
 import { TierSources } from './capture-tiers'
@@ -41,6 +43,7 @@ const DEFAULT_MAX_SCALE = 8
 const MAX_OVERZOOM = 2
 
 interface CaptureProps {
+  captureDate?: Date
   captureId?: string
   defaultFilters: boolean
   detections: CaptureDetection[]
@@ -53,6 +56,7 @@ interface CaptureProps {
 }
 
 export const Capture = ({
+  captureDate,
   captureId,
   defaultFilters,
   detections,
@@ -64,6 +68,7 @@ export const Capture = ({
   width,
 }: CaptureProps) => {
   const { activeOccurrences, setActiveOccurrences } = useActiveOccurrences()
+  const { setActiveCaptureId } = useActiveCaptureId()
   // Which occurrence the operator asked to see the path of. Kept while that
   // occurrence stays selected, so stepping between captures redraws the same path.
   const [pathOccurrenceId, setPathOccurrenceId] = useState<string>()
@@ -93,6 +98,11 @@ export const Capture = ({
       setActiveOccurrences([...activeOccurrences, extend.occurrenceId])
     }
   }, [extend.occurrenceId, activeOccurrences, setActiveOccurrences])
+
+  const nearestFrame = useMemo(
+    () => (path?.length ? getNearestPathFrame(path, captureDate) : undefined),
+    [path, captureDate]
+  )
 
   const trail = useMemo(
     () => (path?.length ? buildTrail(path, captureId) : undefined),
@@ -278,6 +288,12 @@ export const Capture = ({
           error={!!pathError}
           isLoading={isLoadingPath}
           occurrenceId={shownPathId}
+          onDismiss={() => setPathOccurrenceId(undefined)}
+          onShowFrame={
+            nearestFrame
+              ? () => setActiveCaptureId(nearestFrame.captureId)
+              : undefined
+          }
         />
       ) : null}
       {extend.occurrenceId && extend.choice ? (

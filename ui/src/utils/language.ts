@@ -446,6 +446,9 @@ export enum STRING {
   TRACK_PATH_STATUS_ERROR,
   TRACK_PATH_STATUS_LOADING,
   TRACK_PATH_STATUS_SHOWN,
+  TRACK_PATH_STATUS_SHOWN_FOR,
+  TRACK_PATH_OCCURRENCE,
+  TRACK_PATH_GO_TO_NEAREST,
   TRACK_PICK_OCCURRENCE,
   TRACK_PICK_OCCURRENCE_SCOPE,
   TRACK_POSITION_AFTER_LAST,
@@ -1019,6 +1022,10 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'Could not load the path for occurrence #{{id}}',
   [STRING.TRACK_PATH_STATUS_LOADING]: 'Loading path for occurrence #{{id}}',
   [STRING.TRACK_PATH_STATUS_SHOWN]: 'Path shown for occurrence #{{id}}',
+  [STRING.TRACK_PATH_STATUS_SHOWN_FOR]: 'Path shown for',
+  [STRING.TRACK_PATH_OCCURRENCE]: 'occurrence #{{id}}',
+  [STRING.TRACK_PATH_GO_TO_NEAREST]:
+    'Go to the nearest capture with this occurrence',
   [STRING.TRACK_PERCENT]: '{{percent}}%',
   [STRING.TRACK_PICK_OCCURRENCE]: 'Candidates near this frame',
   [STRING.TRACK_PICK_OCCURRENCE_SCOPE]:

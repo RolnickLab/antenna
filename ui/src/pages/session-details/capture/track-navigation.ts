@@ -1,4 +1,5 @@
 import { TrackFrame } from 'data-services/models/occurrence-details'
+import { PathFrame } from 'data-services/models/occurrence-path'
 
 export type TrackPosition =
   | { kind: 'frame'; index: number }
@@ -73,4 +74,22 @@ export const getTrackNavigation = ({
     previous: before > 0 ? ordered[before - 1] : undefined,
     total,
   }
+}
+
+/** The path frame closest in time to a capture, so the operator can jump back onto the track. */
+export const getNearestPathFrame = (frames: PathFrame[], date?: Date) => {
+  const dated = frames.filter(
+    (frame): frame is PathFrame & { timestamp: Date } => !!frame.timestamp
+  )
+
+  if (!date || !dated.length) {
+    return frames[0]
+  }
+
+  const distance = (frame: { timestamp: Date }) =>
+    Math.abs(frame.timestamp.getTime() - date.getTime())
+
+  return dated.reduce((nearest, frame) =>
+    distance(frame) < distance(nearest) ? frame : nearest
+  )
 }

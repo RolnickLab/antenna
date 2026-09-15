@@ -8,7 +8,7 @@ import {
   MergeScopeKey,
   useMergeCandidates,
 } from 'data-services/hooks/occurrences/useMergeCandidates'
-import { AlertCircleIcon, Loader2Icon, RouteIcon } from 'lucide-react'
+import { AlertCircleIcon, Loader2Icon, RouteIcon, XIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
@@ -17,16 +17,21 @@ import { STRING, translate } from 'utils/language'
 
 /**
  * Where the shown path stands, pinned to the capture's corner. The toolbar that
- * requested it closes with its box, so this is what outlives a hover.
+ * requested it closes with its box, so this is what outlives a hover. The occurrence
+ * links back to its nearest frame, for when the path is drawn over a capture it skips.
  */
 export const SessionPathStatus = ({
   error,
   isLoading,
   occurrenceId,
+  onDismiss,
+  onShowFrame,
 }: {
   error?: boolean
   isLoading?: boolean
   occurrenceId: string
+  onDismiss?: () => void
+  onShowFrame?: () => void
 }) => {
   const status = () => {
     if (isLoading) {
@@ -52,14 +57,40 @@ export const SessionPathStatus = ({
     }
   }
   const { Icon, iconClassName, label } = status()
+  const canShowFrame = !isLoading && !error && onShowFrame
 
   return (
     <span
-      className="absolute top-2 left-2 flex items-center gap-2 px-2.5 py-1 rounded-full bg-neutral-900/70 text-generic-white text-xs pointer-events-none select-none"
+      className="absolute top-2 left-2 flex items-center gap-2 pl-2.5 pr-1.5 py-1 rounded-full bg-neutral-900/70 text-generic-white text-xs pointer-events-none select-none"
       role="status"
     >
       <Icon className={`w-3 h-3 ${iconClassName}`} />
-      <span>{label}</span>
+      {canShowFrame ? (
+        <span>
+          {translate(STRING.TRACK_PATH_STATUS_SHOWN_FOR)}{' '}
+          <button
+            className="underline underline-offset-2 pointer-events-auto hover:text-primary-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-generic-white rounded-sm"
+            onClick={onShowFrame}
+            title={translate(STRING.TRACK_PATH_GO_TO_NEAREST)}
+            type="button"
+          >
+            {translate(STRING.TRACK_PATH_OCCURRENCE, { id: occurrenceId })}
+          </button>
+        </span>
+      ) : (
+        <span>{label}</span>
+      )}
+      {onDismiss ? (
+        <button
+          aria-label={translate(STRING.TRACK_HIDE_PATH)}
+          className="p-0.5 rounded-full pointer-events-auto hover:bg-generic-white/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-generic-white"
+          onClick={onDismiss}
+          title={translate(STRING.TRACK_HIDE_PATH)}
+          type="button"
+        >
+          <XIcon className="w-3 h-3" />
+        </button>
+      ) : null}
     </span>
   )
 }
