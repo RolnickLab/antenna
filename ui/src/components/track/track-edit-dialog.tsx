@@ -61,7 +61,13 @@ export const TrackEditDialog = ({
   resultLink?: string
   title: string
 }) => {
-  const errorMessage = error ? parseServerError(error).message : undefined
+  // Track edits have no form fields, so a field error from the server is the reason itself.
+  const parsedError = error ? parseServerError(error) : undefined
+  const errorMessage = parsedError
+    ? parsedError.fieldErrors
+        .map((fieldError) => fieldError.message)
+        .join(' ') || parsedError.message
+    : undefined
 
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
