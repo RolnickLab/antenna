@@ -11,7 +11,13 @@ const convertServerRecord = (record: ServerOccurrenceDetails) =>
   new OccurrenceDetails(record)
 
 export const useOccurrenceDetails = (
-  id: string
+  id: string,
+  {
+    skipDefaultFilters,
+  }: {
+    /** Load the occurrence even when the project's default filters would hide it. */
+    skipDefaultFilters?: boolean
+  } = {}
 ): {
   occurrence?: OccurrenceDetails
   isLoading: boolean
@@ -22,7 +28,9 @@ export const useOccurrenceDetails = (
   // opens it. Such an occurrence can score under the project's default threshold, which
   // hides machine guesses but should not hide a record a person deliberately made.
   const [searchParams] = useSearchParams()
-  const applyDefaults = searchParams.get('apply_defaults')
+  const applyDefaults = skipDefaultFilters
+    ? 'false'
+    : searchParams.get('apply_defaults')
   const url =
     applyDefaults === 'false'
       ? `${API_URL}/${API_ROUTES.OCCURRENCES}/${id}/?apply_defaults=false`
@@ -30,6 +38,7 @@ export const useOccurrenceDetails = (
 
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<ServerOccurrenceDetails>({
+      enabled: !!id,
       queryKey: [API_ROUTES.OCCURRENCES, id, applyDefaults],
       url,
     })

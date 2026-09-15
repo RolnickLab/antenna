@@ -14,8 +14,13 @@ export interface ToolbarOccurrence {
   id: string
   label: string
   score: number
-  scoreLabel: string
+  scoreLabel?: string
 }
+
+const describeFrames = (count: number) =>
+  count === 1
+    ? translate(STRING.TRACK_FRAMES_ONE)
+    : translate(STRING.TRACK_FRAMES_COUNT, { count })
 
 /**
  * The control anchored under a selected occurrence's box.
@@ -25,8 +30,10 @@ export interface ToolbarOccurrence {
  * available throughout: a stray single frame joins a chain that way.
  */
 export const OccurrenceToolbar = ({
+  isExtended,
   isLoadingPath,
   occurrence,
+  onExtend,
   onHidePath,
   onMerge,
   onOpenOccurrence,
@@ -37,8 +44,11 @@ export const OccurrenceToolbar = ({
   pathError,
   shownFrames,
 }: {
+  /** This occurrence is the one extend mode is already adding frames to. */
+  isExtended?: boolean
   isLoadingPath?: boolean
   occurrence: ToolbarOccurrence
+  onExtend: () => void
   onHidePath: () => void
   onMerge: () => void
   onOpenOccurrence: () => void
@@ -58,7 +68,7 @@ export const OccurrenceToolbar = ({
     if (!pathShown) {
       return singleFrame
         ? translate(STRING.TRACK_SINGLE_FRAME_NO_PATH)
-        : translate(STRING.TRACK_FRAMES_COUNT, { count: occurrence.frameCount })
+        : describeFrames(occurrence.frameCount)
     }
 
     const times = path
@@ -66,12 +76,12 @@ export const OccurrenceToolbar = ({
       .filter((timestamp): timestamp is Date => !!timestamp)
 
     if (!times.length) {
-      return translate(STRING.TRACK_FRAMES_COUNT, { count: path.length })
+      return describeFrames(path.length)
     }
 
     return translate(STRING.TRACK_PATH_RANGE, {
-      count: path.length,
       end: getFormatedTimeString({ date: times[times.length - 1] }),
+      frames: describeFrames(path.length),
       start: getFormatedTimeString({ date: times[0] }),
     })
   }
@@ -160,6 +170,12 @@ export const OccurrenceToolbar = ({
         <Button onClick={onMerge} size="small" variant="ghost">
           <span>{translate(STRING.TRACK_MERGE)}</span>
         </Button>
+
+        {!isExtended ? (
+          <Button onClick={onExtend} size="small" variant="ghost">
+            <span>{translate(STRING.TRACK_EXTEND_HERE)}</span>
+          </Button>
+        ) : null}
 
         {pathShown ? (
           <Button onClick={onVerify} size="small" variant="ghost">

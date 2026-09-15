@@ -1,17 +1,25 @@
 import { FormError } from 'components/form/layout/layout'
 import { useMergeOccurrences } from 'data-services/hooks/occurrences/track/useMergeOccurrences'
 import { useSetGroupingVerified } from 'data-services/hooks/occurrences/track/useSetGroupingVerified'
-import { useMergeCandidates } from 'data-services/hooks/occurrences/useMergeCandidates'
+import {
+  MERGE_SCOPES,
+  MergeScopeKey,
+  useMergeCandidates,
+} from 'data-services/hooks/occurrences/useMergeCandidates'
 import { OccurrenceDetails } from 'data-services/models/occurrence-details'
-import { GitMergeIcon, Loader2Icon } from 'lucide-react'
-import { Badge, Button } from 'nova-ui-kit'
+import { GitMergeIcon, Loader2Icon, PlusIcon } from 'lucide-react'
+import { Badge, Button, buttonVariants } from 'nova-ui-kit'
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
+import { APP_ROUTES } from 'utils/constants'
 import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/getFormatedDateTimeString'
+import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
 import { OccurrencePicker } from 'components/track/occurrence-picker'
 import { TrackEditDialog } from 'components/track/track-edit-dialog'
+
+const DEFAULT_SCOPE: MergeScopeKey = 'next'
 
 export const GroupingActions = ({
   canRestructure,
@@ -24,7 +32,8 @@ export const GroupingActions = ({
 }) => {
   const { projectId } = useParams()
   const [mergeOpen, setMergeOpen] = useState(false)
-  const [sourceId, setSourceId] = useState<string>()
+  const [sourceIds, setSourceIds] = useState<string[]>([])
+  const [scope, setScope] = useState<MergeScopeKey>(DEFAULT_SCOPE)
 
   const merge = useMergeOccurrences(occurrence.id)
   const {
@@ -33,15 +42,30 @@ export const GroupingActions = ({
     isLoading: verifyLoading,
   } = useSetGroupingVerified(occurrence.id)
 
-  const {
-    candidates,
-    isLoading: candidatesLoading,
-    minutes,
-  } = useMergeCandidates({
+  const mergeScope =
+    MERGE_SCOPES.find((option) => option.key === scope) ?? MERGE_SCOPES[0]
+
+  const { candidates, isLoading: candidatesLoading } = useMergeCandidates({
+    captures: mergeScope.captures,
     enabled: mergeOpen,
+    minutes: mergeScope.minutes,
     occurrenceId: occurrence.id,
     projectId: projectId as string,
   })
+
+  // Extending opens the session view on the track's newest frame, where the next
+  // capture is a click away.
+  const lastCaptureId = occurrence.frames[0]?.captureId
+  const extendRoute =
+    occurrence.sessionId && lastCaptureId
+      ? getAppRoute({
+          to: APP_ROUTES.SESSION_DETAILS({
+            projectId: projectId as string,
+            sessionId: occurrence.sessionId,
+          }),
+          filters: { capture: lastCaptureId, extend: occurrence.id },
+        })
+      : undefined
 
   const verifiedBy = occurrence.groupingVerifiedBy
   const verifiedAt = occurrence.groupingVerifiedAt
@@ -49,9 +73,19 @@ export const GroupingActions = ({
     ? parseServerError(verifyError).message
     : undefined
 
+  const toggleSource = (id: string) =>
+    setSourceIds((ids) =>
+      ids.includes(id) ? ids.filter((other) => other !== id) : [...ids, id]
+    )
+
+  const changeScope = (key: MergeScopeKey) => {
+    setScope(key)
+    setSourceIds([])
+  }
+
   const closeMerge = () => {
     setMergeOpen(false)
-    setSourceId(undefined)
+    setSourceIds([])
     merge.reset()
   }
 
@@ -85,6 +119,15 @@ export const GroupingActions = ({
             <span>{translate(STRING.TRACK_MERGE)}</span>
           </Button>
         )}
+        {canRestructure && extendRoute ? (
+          <Link
+            className={buttonVariants({ size: 'small', variant: 'outline' })}
+            to={extendRoute}
+          >
+            <PlusIcon className="w-4 h-4" />
+            <span>{translate(STRING.TRACK_EXTEND_IN_SESSION)}</span>
+          </Link>
+        ) : null}
         {canVerify && (
           <Button
             disabled={verifyLoading}
@@ -106,13 +149,17 @@ export const GroupingActions = ({
       {verifyErrorMessage ? <FormError message={verifyErrorMessage} /> : null}
 
       <TrackEditDialog
-        confirmDisabled={!sourceId}
-        confirmLabel={translate(STRING.TRACK_MERGE)}
-        description={translate(STRING.TRACK_MERGE_DESCRIPTION)}
+        confirmDisabled={!sourceIds.length}
+        confirmLabel={
+          sourceIds.length === 1
+            ? translate(STRING.TRACK_MERGE_ONE)
+            : translate(STRING.TRACK_MERGE_COUNT, { count: sourceIds.length })
+        }
+        description={translate(STRING.TRACK_MERGE_MANY_DESCRIPTION)}
         error={merge.error}
         isLoading={merge.isLoading}
         isWide
-        onConfirm={() => merge.mergeOccurrences([sourceId as string])}
+        onConfirm={() => merge.mergeOccurrences(sourceIds)}
         onOpenChange={(open) => (open ? undefined : closeMerge())}
         open={mergeOpen}
         result={
@@ -127,16 +174,16 @@ export const GroupingActions = ({
         {merge.result ? null : (
           <OccurrencePicker
             candidates={candidates}
-            description={translate(STRING.TRACK_MERGE_CANDIDATES_SCOPE, {
-              minutes,
+            description={translate(STRING.TRACK_MERGE_SCOPE_DESCRIPTION, {
+              scope: translate(mergeScope.label).toLowerCase(),
             })}
-            emptyMessage={translate(STRING.TRACK_NO_MERGE_CANDIDATES, {
-              minutes,
-            })}
+            emptyMessage={translate(STRING.TRACK_NO_MERGE_CANDIDATES_SCOPE)}
             isLoading={candidatesLoading}
-            onSelect={setSourceId}
-            selectedId={sourceId}
-            title={translate(STRING.TRACK_MERGE_CANDIDATES, { minutes })}
+            onScopeChange={changeScope}
+            onToggle={toggleSource}
+            scope={scope}
+            selectedIds={sourceIds}
+            title={translate(STRING.TRACK_MERGE_CANDIDATES_TITLE)}
           />
         )}
       </TrackEditDialog>

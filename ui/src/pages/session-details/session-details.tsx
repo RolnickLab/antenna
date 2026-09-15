@@ -24,6 +24,7 @@ import { ActivityPlot } from './activity-plot/lazy-activity-plot'
 import { CaptureInfo } from './capture-info'
 import { CaptureNavigation } from './capture-navigation'
 import { Capture } from './capture/capture'
+import { ExtendTrackBanner, useExtendTrack } from './capture/extend-track'
 import { useActiveCaptureId } from './hooks/useActiveCapture'
 import { useActiveOccurrences } from './hooks/useActiveOccurrences'
 import { Process } from './process/process'
@@ -31,6 +32,7 @@ import { SessionInfo } from './session-info'
 import { SessionPlots } from './session-plots'
 import { StarButton } from './star-button'
 import { TimelineSlider } from './timeline-slider/timeline-slider'
+import { findNextCaptureWithDetections } from './utils'
 import { ViewSettings } from './view-settings'
 import { ZoomSettings } from './zoom-settings'
 
@@ -103,6 +105,13 @@ const Content = ({ session }: { session: SessionDetails }) => {
     projectId: projectId as string,
   })
   const { timeline = [] } = useSessionTimeline(session.id)
+  const extend = useExtendTrack({
+    captureId: activeCaptureId,
+    nextCaptureId: activeCapture
+      ? findNextCaptureWithDetections({ date: activeCapture.date, timeline })
+      : undefined,
+    onSelectCapture: setActiveCaptureId,
+  })
 
   useEffect(() => {
     // If the active capture has a job in progress, we want to poll the endpoint so we can show job updates
@@ -163,11 +172,21 @@ const Content = ({ session }: { session: SessionDetails }) => {
           </Tabs.Root>
         </Box>
         <div className="grow flex flex-col bg-background rounded-lg border border-border overflow-hidden md:rounded-xl">
+          {extend.occurrenceId ? (
+            <ExtendTrackBanner
+              captureDate={activeCapture?.date}
+              captureId={activeCapture?.id}
+              extend={extend}
+              occurrenceId={extend.occurrenceId}
+              onSelectCapture={setActiveCaptureId}
+            />
+          ) : null}
           <div className="grow flex items-center justify-center bg-foreground">
             <Capture
               captureId={activeCaptureId}
               defaultFilters={settings.defaultFilters}
               detections={activeCapture?.detections ?? []}
+              extend={extend}
               height={activeCapture?.height ?? session.firstCapture.height}
               showDetections={settings.showDetections}
               sources={

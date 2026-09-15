@@ -35,7 +35,12 @@ from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
-from ami.main.models_future.merge_candidates import DEFAULT_WINDOW_MINUTES, MAX_WINDOW_MINUTES, rank_merge_candidates
+from ami.main.models_future.merge_candidates import (
+    DEFAULT_ADJACENT_CAPTURES,
+    MAX_ADJACENT_CAPTURES,
+    MAX_WINDOW_MINUTES,
+    rank_merge_candidates,
+)
 from ami.main.models_future.occurrence import (
     model_agreement_for_project,
     occurrence_path,
@@ -1557,9 +1562,36 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         else:
             return OccurrenceSerializer
 
+    # Actions that repair how detections are grouped, rather than show occurrences.
+    # They reach past both viewing filters; see get_queryset.
+    TRACK_EDIT_ACTIONS = (
+        "merge_candidates",
+        "merge",
+        "add_detections",
+        "split_track",
+        "remove_detection",
+        "verify_grouping",
+        "unverify_grouping",
+    )
+    # Actions that open one occurrence. They keep the project's default filters but
+    # not the determination requirement; see get_queryset.
+    SINGLE_OCCURRENCE_ACTIONS = ("retrieve", "path")
+
     def get_queryset(self) -> QuerySet["Occurrence"]:
+        """Occurrences this request may see, which is wider outside the list.
+
+        The list shows determined occurrences that pass the project's default filters.
+        Opening one occurrence keeps those filters but not the determination, and
+        repairing a track keeps neither. On a project where only a detector ran every
+        occurrence is undetermined until a person identifies it, and a low-score or
+        excluded-taxon occurrence is still part of the animal's track. See
+        OccurrenceQuerySet.with_real_detections.
+        """
         project = self.get_active_project()
-        qs = super().get_queryset().valid()  # type: ignore
+        track_edit = self.action in self.TRACK_EDIT_ACTIONS
+        allow_undetermined = track_edit or self.action in self.SINGLE_OCCURRENCE_ACTIONS
+        qs = super().get_queryset()
+        qs = qs.with_real_detections() if allow_undetermined else qs.valid()  # type: ignore
         if project:
             qs = qs.filter(project=project)
         qs = qs.select_related(
@@ -1569,7 +1601,10 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         )
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
-        qs = qs.apply_default_filters(project, self.request)  # type: ignore
+        if not track_edit:
+            qs = qs.apply_default_filters(  # type: ignore
+                project, self.request, include_undetermined=allow_undetermined
+            )
         if self.action == "list":
             qs = qs.with_list_prefetches()  # type: ignore
         elif self.action not in ("path", "merge_candidates"):
@@ -1750,9 +1785,18 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         parameters=[
             project_id_doc_param,
             OpenApiParameter(
+                name="captures",
+                description=f"How many captures before this occurrence's first frame and after its last frame "
+                f"to search, besides the captures inside its span, 1 to {MAX_ADJACENT_CAPTURES}. Default "
+                f"{DEFAULT_ADJACENT_CAPTURES}. Cannot be combined with `minutes`.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
                 name="minutes",
-                description=f"How far from this occurrence's first and last frame to look, 1 to "
-                f"{MAX_WINDOW_MINUTES}. Default {DEFAULT_WINDOW_MINUTES}.",
+                description=f"Search from this many minutes before this occurrence's first frame to this many "
+                f"minutes after its last, instead of the adjacent captures, 1 to {MAX_WINDOW_MINUTES}. Cannot be "
+                "combined with `captures`.",
                 required=False,
                 type=OpenApiTypes.INT,
             ),
@@ -1763,20 +1807,38 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     def merge_candidates(self, request: Request, pk=None) -> Response:
         """Occurrences of this session that this one could be merged with, best fit first.
 
-        Ranked by the tracking method's matching cost between the two frames nearest
-        in time, so the occurrence tracking most nearly linked comes first. Drawn from
-        the same queryset the merge action resolves its sources from, so everything
-        offered here can be merged.
+        Searches the captures adjacent to this occurrence, or a time window around it,
+        and ranks what it finds by the tracking method's matching cost between the two
+        frames nearest in time, so the occurrence tracking most nearly linked comes
+        first. Candidates before or after this occurrence are ranked together with
+        those in a gap of it, on captures inside its span that it has no frame on.
+        Occurrences with a frame on one of its captures are other animals and are left
+        out. Drawn from the same queryset the merge action resolves its sources from,
+        so everything offered here can be merged.
         """
         occurrence = self.get_object()
-        minutes = SingleParamSerializer[int].clean(
-            param_name="minutes",
+        if "captures" in request.query_params and "minutes" in request.query_params:
+            raise api_exceptions.ValidationError(
+                {"minutes": "Pass either `captures` or `minutes` to choose where to search, not both."}
+            )
+        captures = SingleParamSerializer[int].clean(
+            param_name="captures",
             field=serializers.IntegerField(
-                required=False, min_value=1, max_value=MAX_WINDOW_MINUTES, default=DEFAULT_WINDOW_MINUTES
+                required=False, min_value=1, max_value=MAX_ADJACENT_CAPTURES, default=DEFAULT_ADJACENT_CAPTURES
             ),
             data=request.query_params,
         )
-        candidates = rank_merge_candidates(occurrence, self.get_queryset().prefetch_related(None), minutes=minutes)
+        minutes = SingleParamSerializer[int].clean(
+            param_name="minutes",
+            field=serializers.IntegerField(required=False, min_value=1, max_value=MAX_WINDOW_MINUTES),
+            data=request.query_params,
+        )
+        candidates = rank_merge_candidates(
+            occurrence,
+            self.get_queryset().prefetch_related(None),
+            minutes=minutes,
+            captures=captures,
+        )
         return Response(MergeCandidatesResponseSerializer({"candidates": candidates}).data)
 
     @extend_schema(request=OccurrenceAddDetectionsSerializer, responses=OccurrenceGroupingSerializer)
@@ -1784,18 +1846,21 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
     def add_detections(self, request: Request, pk=None) -> Response:
         """Move individual detections into this occurrence.
 
-        Use when a frame belongs to this animal but was left on its own or attached
-        to the wrong occurrence. An occurrence emptied by the move is absorbed, so
-        identifications on it are kept.
+        Use when a frame belongs to this animal but was left on its own, attached to
+        the wrong occurrence, or never grouped into one at all. An occurrence emptied
+        by the move is absorbed, so identifications on it are kept.
         """
         occurrence = self.get_object()
         body = OccurrenceAddDetectionsSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         requested = body.validated_data["detection_ids"]
+        # Scoped through the capture rather than the occurrence: a detection that was
+        # never grouped has no occurrence to read a project from, and those are the
+        # ones a hand-built track is assembled from.
         detections = list(
-            Detection.objects.filter(pk__in=requested, occurrence__project=occurrence.project).select_related(
-                "source_image"
-            )
+            Detection.objects.valid()
+            .filter(pk__in=requested, source_image__project=occurrence.project)
+            .select_related("source_image")
         )
         missing = sorted(set(requested) - {d.pk for d in detections})
         if missing:

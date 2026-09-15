@@ -1,6 +1,6 @@
 import { STRING, translate } from 'utils/language'
 
-export type MergeRelation = 'before' | 'after' | 'overlapping'
+export type MergeRelation = 'before' | 'after' | 'gap'
 
 export interface ServerMergeCandidate {
   id: number
@@ -14,6 +14,10 @@ export interface ServerMergeCandidate {
   similarity: number | null
   cost: number | null
   image: string | null
+  capture_id: number | null
+  image_timestamp: string | null
+  edge_image: string | null
+  edge_timestamp: string | null
 }
 
 /** An occurrence that could be merged with another, scored against it by the tracking method. */
@@ -23,14 +27,23 @@ export interface MergeCandidate {
   images: { src: string }[]
   numDetections: number
   relation: MergeRelation
-  /** Negative when the candidate ends first, positive when it starts later, 0 when they overlap. */
+  /** Negative when the candidate ends first, positive when it starts later, 0 in a gap of the track. */
   timeOffsetSeconds: number
   /** Centre-to-centre gap of the two nearest frames as a fraction of the frame; null without a box. */
   distance: number | null
   /** Cosine similarity of the two nearest frames; null when either has no feature vector. */
   similarity: number | null
   cost: number | null
+  /** The capture holding the candidate's nearest frame, the one its crop is cut from. */
+  captureId: string | null
+  imageTimestamp: Date | null
+  /** Crop of this occurrence's own frame in the scored pair: its first frame for a "before" candidate, its last for an "after" one. */
+  edgeImage: string | null
+  edgeTimestamp: Date | null
 }
+
+const toDate = (timestamp: string | null | undefined): Date | null =>
+  timestamp ? new Date(timestamp) : null
 
 export const convertMergeCandidate = (
   candidate: ServerMergeCandidate
@@ -46,9 +59,13 @@ export const convertMergeCandidate = (
   distance: candidate.distance,
   similarity: candidate.similarity,
   cost: candidate.cost,
+  captureId: candidate.capture_id != null ? `${candidate.capture_id}` : null,
+  imageTimestamp: toDate(candidate.image_timestamp),
+  edgeImage: candidate.edge_image ?? null,
+  edgeTimestamp: toDate(candidate.edge_timestamp),
 })
 
-const getOffsetLabel = (seconds: number): string => {
+export const getOffsetLabel = (seconds: number): string => {
   const total = Math.round(Math.abs(seconds))
 
   if (total < 60) {
@@ -67,18 +84,68 @@ const getOffsetLabel = (seconds: number): string => {
   })
 }
 
-export const getWhenLabel = (
-  relation: MergeRelation,
-  timeOffsetSeconds: number
-): string => {
-  if (relation === 'overlapping') {
-    return translate(STRING.TRACK_WHEN_OVERLAPS)
-  }
-
-  return translate(
-    relation === 'before' ? STRING.TRACK_WHEN_EARLIER : STRING.TRACK_WHEN_LATER,
+export const getWhenLabel = (timeOffsetSeconds: number): string =>
+  translate(
+    timeOffsetSeconds < 0 ? STRING.TRACK_WHEN_EARLIER : STRING.TRACK_WHEN_LATER,
     { time: getOffsetLabel(timeOffsetSeconds) }
   )
+
+export interface ComparisonSide {
+  src: string | null
+  timestamp: Date | null
+}
+
+/** The two crops of a scored pair in time order, with the gap between them as a signed label. */
+export interface ComparisonSides {
+  left: ComparisonSide
+  right: ComparisonSide
+  gapLabel: string
+}
+
+/**
+ * Seconds from the track frame a candidate is scored against to the candidate's own
+ * frame: negative when the candidate is earlier. A gap candidate is measured from the
+ * nearest track frame, which can lie on either side of it.
+ */
+export const getWhenOffsetSeconds = (
+  candidate: Pick<
+    MergeCandidate,
+    'relation' | 'timeOffsetSeconds' | 'imageTimestamp' | 'edgeTimestamp'
+  >
+): number =>
+  candidate.relation === 'gap' &&
+  candidate.imageTimestamp &&
+  candidate.edgeTimestamp
+    ? (candidate.imageTimestamp.getTime() - candidate.edgeTimestamp.getTime()) /
+      1000
+    : candidate.timeOffsetSeconds
+
+export const getComparisonSides = (
+  candidate: MergeCandidate
+): ComparisonSides => {
+  const candidateSide: ComparisonSide = {
+    src: candidate.images[0]?.src ?? null,
+    timestamp: candidate.imageTimestamp,
+  }
+  const edgeSide: ComparisonSide = {
+    src: candidate.edgeImage,
+    timestamp: candidate.edgeTimestamp,
+  }
+
+  const offsetSeconds = getWhenOffsetSeconds(candidate)
+  const time = getOffsetLabel(offsetSeconds)
+
+  return offsetSeconds < 0
+    ? {
+        left: candidateSide,
+        right: edgeSide,
+        gapLabel: translate(STRING.TRACK_GAP_BEFORE, { time }),
+      }
+    : {
+        left: edgeSide,
+        right: candidateSide,
+        gapLabel: translate(STRING.TRACK_GAP_AFTER, { time }),
+      }
 }
 
 export const getDistanceLabel = (distance: number | null): string =>
@@ -105,7 +172,7 @@ const sortValue = (
   column: MergeCandidateSortColumn
 ): number | null =>
   column === 'when'
-    ? candidate.timeOffsetSeconds
+    ? getWhenOffsetSeconds(candidate)
     : column === 'distance'
     ? candidate.distance
     : candidate.similarity

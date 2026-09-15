@@ -1,5 +1,6 @@
 import {
   convertMergeCandidate,
+  getComparisonSides,
   getDistanceLabel,
   getSimilarityLabel,
   getWhenLabel,
@@ -22,6 +23,10 @@ const serverCandidate = (
   similarity: 0.987,
   cost: 0.5,
   image: 'https://example.com/crop.jpg',
+  capture_id: 11,
+  image_timestamp: '2026-09-09T02:03:00',
+  edge_image: 'https://example.com/edge.jpg',
+  edge_timestamp: '2026-09-09T02:01:00',
   ...overrides,
 })
 
@@ -45,12 +50,66 @@ describe('merge candidate conversion', () => {
   })
 })
 
+describe('comparison sides', () => {
+  const candidateCrop = 'https://example.com/crop.jpg'
+  const edgeCrop = 'https://example.com/edge.jpg'
+  const srcs = (server: Partial<ServerMergeCandidate>) => {
+    const sides = getComparisonSides(
+      convertMergeCandidate(serverCandidate(server))
+    )
+    return [sides.left.src, sides.right.src, sides.gapLabel]
+  }
+
+  test('a "before" candidate sits on the left with a negative gap', () => {
+    expect(srcs({ relation: 'before', time_offset_seconds: -40 })).toEqual([
+      candidateCrop,
+      edgeCrop,
+      '−40 s',
+    ])
+  })
+
+  test('an "after" candidate sits on the right with a positive gap', () => {
+    expect(srcs({ relation: 'after', time_offset_seconds: 120 })).toEqual([
+      edgeCrop,
+      candidateCrop,
+      '+2 min',
+    ])
+  })
+
+  test('a gap candidate sits on the side its frame falls, with the time between the frames', () => {
+    const gap: Partial<ServerMergeCandidate> = {
+      relation: 'gap',
+      time_offset_seconds: 0,
+      edge_timestamp: '2026-09-09T02:01:00',
+    }
+
+    expect(srcs({ ...gap, image_timestamp: '2026-09-09T02:00:30' })).toEqual([
+      candidateCrop,
+      edgeCrop,
+      '−30 s',
+    ])
+    expect(srcs({ ...gap, image_timestamp: '2026-09-09T02:01:40' })).toEqual([
+      edgeCrop,
+      candidateCrop,
+      '+40 s',
+    ])
+  })
+
+  test('a missing edge crop leaves that side empty rather than failing', () => {
+    expect(srcs({ relation: 'after', edge_image: null })).toEqual([
+      null,
+      candidateCrop,
+      '+2 min',
+    ])
+  })
+})
+
 describe('merge candidate labels', () => {
   test('when reads as a direction in time', () => {
-    expect(getWhenLabel('before', -240)).toBe('4 min earlier')
-    expect(getWhenLabel('after', 20)).toBe('20 s later')
-    expect(getWhenLabel('after', 3900)).toBe('1 h 5 min later')
-    expect(getWhenLabel('overlapping', 0)).toBe('Overlaps')
+    expect(getWhenLabel(-240)).toBe('4 min earlier')
+    expect(getWhenLabel(20)).toBe('20 s later')
+    expect(getWhenLabel(3900)).toBe('1 h 5 min later')
+    expect(getWhenLabel(-4)).toBe('4 s earlier')
   })
 
   test('distance and similarity are percentages, or n/a without a value', () => {
@@ -73,10 +132,13 @@ describe('merge candidate sorting', () => {
     }),
     serverCandidate({
       id: 3,
-      relation: 'overlapping',
+      relation: 'gap',
       time_offset_seconds: 0,
       distance: null,
       similarity: 0.9,
+      // Ten seconds after the track frame it is paired with.
+      image_timestamp: '2024-06-01T22:00:10',
+      edge_timestamp: '2024-06-01T22:00:00',
     }),
   ].map(convertMergeCandidate)
 

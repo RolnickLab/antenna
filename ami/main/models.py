@@ -3397,9 +3397,24 @@ class OccurrenceQuerySet(BaseQuerySet):
             them)
           - Occurrences with determination__isnull=True (no taxonomic identification,
             same field bug shape)
+
+        Opening or repairing one occurrence needs the wider set that keeps
+        undetermined ones: see with_real_detections().
+        """
+        return self.with_real_detections().exclude(determination__isnull=True)
+
+    def with_real_detections(self):
+        """
+        Occurrences backed by at least one real bounding box, determined or not.
+
+        This is what the occurrence detail and the track-edit endpoints work over. A
+        reviewer opening or repairing a track has to reach occurrences the list hides,
+        and on a project where only a detector ran every occurrence is undetermined.
+        Null-marker sentinels stay excluded exactly as in valid(), since they carry no
+        box to put in a track.
         """
         has_valid_detection = Exists(Detection.objects.valid().filter(occurrence_id=OuterRef("pk")))
-        return self.filter(has_valid_detection).exclude(determination__isnull=True)
+        return self.filter(has_valid_detection)
 
     def with_detections_count(self):
         return self.annotate(detections_count=models.Count("detections", distinct=True))
@@ -3630,7 +3645,12 @@ class OccurrenceQuerySet(BaseQuerySet):
 
         return qs
 
-    def apply_default_filters(self, project: Project | None = None, request: Request | None = None):
+    def apply_default_filters(
+        self,
+        project: Project | None = None,
+        request: Request | None = None,
+        include_undetermined: bool = False,
+    ):
         """
         Apply all default filters to occurrences based on project settings.
 
@@ -3640,6 +3660,10 @@ class OccurrenceQuerySet(BaseQuerySet):
         Args:
             project: The project whose default filters should be applied
             request: The request object (optional, used to check for apply_defaults=false)
+            include_undetermined: Keep occurrences with no determination, which every
+                default filter would otherwise drop: an undetermined occurrence has
+                neither a score nor a taxon to test against, and on a project where
+                only a detector ran that is all of them.
 
         Returns:
             Filtered queryset with both score and taxa filters applied
@@ -3660,6 +3684,8 @@ class OccurrenceQuerySet(BaseQuerySet):
 
         # Use build_occurrence_default_filters_q to get the combined filter and apply it
         filter_q = build_occurrence_default_filters_q(project, request, occurrence_accessor="")
+        if include_undetermined:
+            filter_q |= models.Q(determination__isnull=True)
         return self.filter(filter_q)
 
 

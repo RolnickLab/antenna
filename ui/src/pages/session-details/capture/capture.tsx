@@ -4,6 +4,7 @@ import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurre
 import { useOccurrencePath } from 'data-services/hooks/occurrences/useOccurrencePath'
 import { CaptureDetection } from 'data-services/models/capture'
 import { PathFrame } from 'data-services/models/occurrence-path'
+import _ from 'lodash'
 import { Dialog, LoadingSpinner, Tooltip } from 'nova-ui-kit'
 import {
   OccurrenceDetails,
@@ -22,6 +23,7 @@ import { useActiveOccurrences } from '../hooks/useActiveOccurrences'
 import { BoxStyle, bboxToPercentStyle } from './bbox'
 import { buildTrail, CaptureGhostTrail } from './capture-ghost-trail'
 import { TierSources } from './capture-tiers'
+import { ExtendTrackDialog, ExtendTrackState } from './extend-track'
 import { OccurrenceToolbar } from './occurrence-toolbar'
 import {
   SessionPathStatus,
@@ -42,6 +44,7 @@ interface CaptureProps {
   captureId?: string
   defaultFilters: boolean
   detections: CaptureDetection[]
+  extend: ExtendTrackState
   height: number | null
   showDetections?: boolean
   sources?: TierSources
@@ -53,13 +56,14 @@ export const Capture = ({
   captureId,
   defaultFilters,
   detections,
+  extend,
   height,
   showDetections,
   sources,
   transformRef,
   width,
 }: CaptureProps) => {
-  const { activeOccurrences } = useActiveOccurrences()
+  const { activeOccurrences, setActiveOccurrences } = useActiveOccurrences()
   // Which occurrence the operator asked to see the path of. Kept while that
   // occurrence stays selected, so stepping between captures redraws the same path.
   const [pathOccurrenceId, setPathOccurrenceId] = useState<string>()
@@ -75,6 +79,21 @@ export const Capture = ({
     refetch: refetchPath,
   } = useOccurrencePath(shownPathId, !!shownPathId)
   const isLoadingPath = pathLoading || pathFetching
+
+  useEffect(() => {
+    // The occurrence being extended stays selected with its path drawn, so every
+    // capture stepped through shows where the track has reached.
+    if (!extend.occurrenceId) {
+      return
+    }
+
+    setPathOccurrenceId(extend.occurrenceId)
+
+    if (!activeOccurrences.includes(extend.occurrenceId)) {
+      setActiveOccurrences([...activeOccurrences, extend.occurrenceId])
+    }
+  }, [extend.occurrenceId, activeOccurrences, setActiveOccurrences])
+
   const trail = useMemo(
     () => (path?.length ? buildTrail(path, captureId) : undefined),
     [path, captureId]
@@ -237,6 +256,7 @@ export const Capture = ({
               boxStyles={boxStyles}
               defaultFilters={defaultFilters}
               detections={detections}
+              extend={extend}
               isLoadingPath={isLoadingPath}
               onHidePath={() => setPathOccurrenceId(undefined)}
               onShowPath={(occurrenceId) =>
@@ -253,11 +273,18 @@ export const Capture = ({
           </div>
         </TransformComponent>
       </TransformWrapper>
-      {shownPathId ? (
+      {shownPathId && !extend.occurrenceId ? (
         <SessionPathStatus
           error={!!pathError}
           isLoading={isLoadingPath}
           occurrenceId={shownPathId}
+        />
+      ) : null}
+      {extend.occurrenceId && extend.choice ? (
+        <ExtendTrackDialog
+          choice={extend.choice}
+          extend={extend}
+          occurrenceId={extend.occurrenceId}
         />
       ) : null}
       {zoomPercent !== null ? (
@@ -318,6 +345,7 @@ const CaptureDetections = ({
   boxStyles,
   defaultFilters,
   detections,
+  extend,
   isLoadingPath,
   onHidePath,
   onShowPath,
@@ -330,6 +358,7 @@ const CaptureDetections = ({
   boxStyles: { [key: number]: BoxStyle }
   defaultFilters: boolean
   detections: CaptureDetection[]
+  extend: ExtendTrackState
   isLoadingPath?: boolean
   onHidePath: () => void
   onShowPath: (occurrenceId: string) => void
@@ -344,7 +373,19 @@ const CaptureDetections = ({
   const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const [activeOccurrence, setActiveOccurrence] = useState<string>()
   const [trackEdit, setTrackEdit] = useState<SessionTrackEdit>()
+  // Selected occurrences whose popover was closed with Escape; they stay selected.
+  const [dismissedToolbars, setDismissedToolbars] = useState<string[]>([])
+  const [hoveredBox, setHoveredBox] = useState<string>()
   const { activeOccurrences, setActiveOccurrences } = useActiveOccurrences()
+  const detailsHidden = !!extend.occurrenceId && !extend.showDetails
+
+  useEffect(() => {
+    setDismissedToolbars([])
+  }, [extend.showDetails])
+
+  useEffect(() => {
+    setHoveredBox(undefined)
+  }, [detailsHidden])
 
   // Worded while the path is still the one on screen: the split moves the boundary
   // frame off this occurrence, so the refreshed path can no longer describe it.
@@ -362,8 +403,15 @@ const CaptureDetections = ({
     }
   }
 
+  const setDismissed = (occurrenceId: string, dismissed: boolean) =>
+    setDismissedToolbars((ids) => [
+      ...ids.filter((id) => id !== occurrenceId),
+      ...(dismissed ? [occurrenceId] : []),
+    ])
+
   const toggleActiveState = (occurrenceId: string) => {
     const isActive = activeOccurrences.includes(occurrenceId)
+    setDismissed(occurrenceId, false)
 
     if (isActive) {
       setActiveOccurrences(
@@ -389,17 +437,43 @@ const CaptureDetections = ({
         {Object.entries(boxStyles).map(([id, style]) => {
           const detection = detections.find((d) => d.id === id)
 
-          const isActive = detection?.occurrenceId
-            ? activeOccurrences.includes(detection.occurrenceId)
-            : false
+          const isExtended =
+            !!detection?.occurrenceId &&
+            detection.occurrenceId === extend.occurrenceId
+          const isActive =
+            isExtended ||
+            (detection?.occurrenceId
+              ? activeOccurrences.includes(detection.occurrenceId)
+              : false)
 
           if (!detection || (!showDetections && !isActive)) {
             return null
           }
 
+          const isDismissed =
+            !!detection.occurrenceId &&
+            dismissedToolbars.includes(detection.occurrenceId)
+          // Hover is recorded only while it decides: Radix reports no close for a
+          // popover already held shut, so a hover recorded then would go stale.
+          const opensOnHover = !detailsHidden && !isActive
+          const popoverOpen = opensOnHover
+            ? hoveredBox === detection.id
+            : !detailsHidden && !isDismissed
+
           return (
             <Tooltip.Provider key={detection.id} delayDuration={0}>
-              <Tooltip.Root open={isActive ? isActive : undefined}>
+              <Tooltip.Root
+                open={popoverOpen}
+                onOpenChange={(open) => {
+                  if (!open) {
+                    setHoveredBox((box) =>
+                      box === detection.id ? undefined : box
+                    )
+                  } else if (opensOnHover) {
+                    setHoveredBox(detection.id)
+                  }
+                }}
+              >
                 <Tooltip.Trigger asChild>
                   <div
                     style={style}
@@ -411,11 +485,16 @@ const CaptureDetections = ({
                       [styles.alert]: detection.score < SCORE_THRESHOLDS.ALERT,
                       [styles.warning]:
                         detection.score < SCORE_THRESHOLDS.WARNING,
-                      [styles.clickable]: !!detection.occurrenceId,
+                      [styles.clickable]:
+                        !!detection.occurrenceId || !!extend.occurrenceId,
                     })}
                     onClick={() => {
-                      if (detection.occurrenceId) {
-                        toggleActiveState(detection?.occurrenceId)
+                      if (extend.occurrenceId) {
+                        extend.clickBox(detection)
+                      } else if (isActive && isDismissed) {
+                        setDismissed(detection.occurrenceId as string, false)
+                      } else if (detection.occurrenceId) {
+                        toggleActiveState(detection.occurrenceId)
                       }
                     }}
                   />
@@ -424,10 +503,16 @@ const CaptureDetections = ({
                   className="p-3 z-[1]"
                   collisionBoundary={container}
                   collisionPadding={8}
+                  onEscapeKeyDown={() => {
+                    if (isActive && detection.occurrenceId) {
+                      setDismissed(detection.occurrenceId, true)
+                    }
+                  }}
                   side="bottom"
                 >
                   {detection.occurrenceId ? (
                     <OccurrenceToolbar
+                      isExtended={isExtended}
                       isLoadingPath={
                         isLoadingPath &&
                         pathOccurrenceId === detection.occurrenceId
@@ -442,6 +527,9 @@ const CaptureDetections = ({
                         score: detection.score,
                         scoreLabel: detection.scoreLabel,
                       }}
+                      onExtend={() =>
+                        extend.start(detection.occurrenceId as string)
+                      }
                       onHidePath={onHidePath}
                       onMerge={() =>
                         setTrackEdit({
@@ -529,6 +617,9 @@ const OccurrenceDetailsDialog = ({
     TABS.FIELDS
   )
   const { occurrence, isLoading, error } = useOccurrenceDetails(id)
+  const detailsLabel = translate(STRING.ENTITY_DETAILS, {
+    type: _.capitalize(translate(STRING.ENTITY_TYPE_OCCURRENCE)),
+  })
 
   return (
     <Dialog.Root
@@ -544,6 +635,11 @@ const OccurrenceDetailsDialog = ({
         isLoading={isLoading}
         error={error}
       >
+        <div className="sr-only">
+          <Dialog.Header title={occurrence?.displayName ?? detailsLabel}>
+            <Dialog.Description>{detailsLabel}</Dialog.Description>
+          </Dialog.Header>
+        </div>
         {occurrence ? (
           <OccurrenceDetails
             occurrence={occurrence}

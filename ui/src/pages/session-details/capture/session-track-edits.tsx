@@ -3,7 +3,11 @@ import { TrackEditDialog } from 'components/track/track-edit-dialog'
 import { useMergeOccurrences } from 'data-services/hooks/occurrences/track/useMergeOccurrences'
 import { useSetGroupingVerified } from 'data-services/hooks/occurrences/track/useSetGroupingVerified'
 import { useSplitTrack } from 'data-services/hooks/occurrences/track/useSplitTrack'
-import { useMergeCandidates } from 'data-services/hooks/occurrences/useMergeCandidates'
+import {
+  MERGE_SCOPES,
+  MergeScopeKey,
+  useMergeCandidates,
+} from 'data-services/hooks/occurrences/useMergeCandidates'
 import { AlertCircleIcon, Loader2Icon, RouteIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
@@ -89,7 +93,8 @@ export const SessionTrackEdits = ({
   onClose: () => void
 }) => {
   const { projectId } = useParams()
-  const [sourceId, setSourceId] = useState<string>()
+  const [sourceIds, setSourceIds] = useState<string[]>([])
+  const [scope, setScope] = useState<MergeScopeKey>('next')
 
   const occurrenceId = edit?.occurrenceId ?? ''
   const split = useSplitTrack(occurrenceId)
@@ -101,18 +106,29 @@ export const SessionTrackEdits = ({
   } = useSetGroupingVerified(occurrenceId)
   const [verifyDone, setVerifyDone] = useState(false)
 
-  const {
-    candidates,
-    isLoading: candidatesLoading,
-    minutes,
-  } = useMergeCandidates({
+  const mergeScope =
+    MERGE_SCOPES.find((option) => option.key === scope) ?? MERGE_SCOPES[0]
+  const { candidates, isLoading: candidatesLoading } = useMergeCandidates({
+    captures: mergeScope.captures,
     enabled: edit?.action === 'merge',
+    minutes: mergeScope.minutes,
     occurrenceId,
     projectId: projectId as string,
   })
 
+  const toggleSource = (id: string) =>
+    setSourceIds((ids) =>
+      ids.includes(id) ? ids.filter((other) => other !== id) : [...ids, id]
+    )
+
+  // A new scope lists different rows, so ticks from the old list are dropped.
+  const changeScope = (key: MergeScopeKey) => {
+    setScope(key)
+    setSourceIds([])
+  }
+
   const close = () => {
-    setSourceId(undefined)
+    setSourceIds([])
     setVerifyDone(false)
     split.reset()
     merge.reset()
@@ -160,13 +176,17 @@ export const SessionTrackEdits = ({
       />
 
       <TrackEditDialog
-        confirmDisabled={!sourceId}
-        confirmLabel={translate(STRING.TRACK_MERGE)}
-        description={translate(STRING.TRACK_MERGE_DESCRIPTION)}
+        confirmDisabled={!sourceIds.length}
+        confirmLabel={
+          sourceIds.length === 1
+            ? translate(STRING.TRACK_MERGE_ONE)
+            : translate(STRING.TRACK_MERGE_COUNT, { count: sourceIds.length })
+        }
+        description={translate(STRING.TRACK_MERGE_MANY_DESCRIPTION)}
         error={merge.error}
         isLoading={merge.isLoading}
         isWide
-        onConfirm={() => merge.mergeOccurrences([sourceId as string])}
+        onConfirm={() => merge.mergeOccurrences(sourceIds)}
         onOpenChange={(open) => (open ? undefined : close())}
         open={edit.action === 'merge'}
         result={
@@ -181,16 +201,16 @@ export const SessionTrackEdits = ({
         {merge.result ? null : (
           <OccurrencePicker
             candidates={candidates}
-            description={translate(STRING.TRACK_MERGE_CANDIDATES_SCOPE, {
-              minutes,
+            description={translate(STRING.TRACK_MERGE_SCOPE_DESCRIPTION, {
+              scope: translate(mergeScope.label).toLowerCase(),
             })}
-            emptyMessage={translate(STRING.TRACK_NO_MERGE_CANDIDATES, {
-              minutes,
-            })}
+            emptyMessage={translate(STRING.TRACK_NO_MERGE_CANDIDATES_SCOPE)}
             isLoading={candidatesLoading}
-            onSelect={setSourceId}
-            selectedId={sourceId}
-            title={translate(STRING.TRACK_MERGE_CANDIDATES, { minutes })}
+            onScopeChange={changeScope}
+            onToggle={toggleSource}
+            scope={scope}
+            selectedIds={sourceIds}
+            title={translate(STRING.TRACK_MERGE_CANDIDATES_TITLE)}
           />
         )}
       </TrackEditDialog>
