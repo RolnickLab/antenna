@@ -8,6 +8,7 @@ import {
   getDistanceLabel,
   getSimilarityLabel,
   getWhenLabel,
+  getWhenOffsetSeconds,
   MergeCandidate,
   MergeCandidateSort,
   MergeCandidateSortColumn,
@@ -19,7 +20,6 @@ import {
   ArrowRightIcon,
   ArrowUpDownIcon,
   ArrowUpIcon,
-  BetweenHorizontalStartIcon,
 } from 'lucide-react'
 import { BasicTooltip, LoadingSpinner, Select } from 'nova-ui-kit'
 import { CSSProperties, useRef, useState } from 'react'
@@ -59,12 +59,6 @@ const isRanked = (
 // The first click on a column gives its natural order: earliest first, closest
 // first, or most alike first.
 const DESCENDING_FIRST: MergeCandidateSortColumn[] = ['similarity']
-
-const RELATION_ICONS = {
-  before: ArrowLeftIcon,
-  after: ArrowRightIcon,
-  gap: BetweenHorizontalStartIcon,
-}
 
 const SORT_COLUMNS: { column: MergeCandidateSortColumn; label: STRING }[] = [
   { column: 'when', label: STRING.TRACK_COLUMN_WHEN },
@@ -299,9 +293,16 @@ export const OccurrencePicker = ({
                 const selected = multi
                   ? selectedIds.includes(candidate.id)
                   : candidate.id === selectedId
-                const RelationIcon = candidate.relation
-                  ? RELATION_ICONS[candidate.relation]
-                  : undefined
+                const whenOffset =
+                  candidate.relation !== undefined
+                    ? getWhenOffsetSeconds(candidate as MergeCandidate)
+                    : undefined
+                const RelationIcon =
+                  whenOffset === undefined
+                    ? undefined
+                    : whenOffset < 0
+                    ? ArrowLeftIcon
+                    : ArrowRightIcon
                 const whenLabel = (
                   <span className="inline-flex items-center gap-1">
                     {RelationIcon ? (
@@ -311,11 +312,8 @@ export const OccurrencePicker = ({
                       />
                     ) : null}
                     <span>
-                      {candidate.relation
-                        ? getWhenLabel(
-                            candidate.relation,
-                            candidate.timeOffsetSeconds ?? 0
-                          )
+                      {whenOffset !== undefined
+                        ? getWhenLabel(whenOffset)
                         : null}
                     </span>
                   </span>

@@ -421,21 +421,17 @@ export enum STRING {
   TRACK_GROUPING_CONFIRMED,
   TRACK_GROUPING_NOT_CONFIRMED,
   TRACK_GROUPING_UNCONFIRMED,
-  TRACK_MERGE_CANDIDATES_SCOPE,
   TRACK_MERGE_CANDIDATES_TITLE,
   TRACK_MERGE_COUNT,
   TRACK_MERGE_MANY_DESCRIPTION,
   TRACK_MERGE_ONE,
   TRACK_MERGE_SCOPE_DESCRIPTION,
-  TRACK_MERGE_CANDIDATES,
-  TRACK_MERGE_DESCRIPTION,
   TRACK_MERGE_RESULT,
   TRACK_MERGE,
   TRACK_MOVE_DESCRIPTION,
   TRACK_MOVE_FRAME,
   TRACK_MOVE_RESULT,
   TRACK_NEXT_FRAME,
-  TRACK_NO_MERGE_CANDIDATES,
   TRACK_NO_MERGE_CANDIDATES_SCOPE,
   TRACK_OFFSET_HOURS,
   TRACK_OFFSET_MINUTES,
@@ -490,7 +486,6 @@ export enum STRING {
   TRACK_UNDO_CONFIRMATION_RESULT,
   TRACK_UNDO_CONFIRMATION,
   TRACK_WHEN_EARLIER,
-  TRACK_WHEN_IN_GAP,
   TRACK_WHEN_LATER,
   UNIDENTIFIED,
   UNKNOWN_ERROR,
@@ -931,7 +926,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TABLE_COLUMNS]: 'Table columns',
   [STRING.TERMINAL_CLASSIFICATION]: 'Terminal classification',
   [STRING.TIP]: 'Tip',
-  [STRING.TRACK_CANDIDATE_IN_GAP]: 'Falls in a gap of this track.',
+  [STRING.TRACK_CANDIDATE_IN_GAP]:
+    "Falls inside this track's time span, in a gap between its frames. The time is measured from the nearest track frame.",
   [STRING.TRACK_CLEARS_CONFIRMATION]:
     'This clears the confirmation that the grouping is correct.',
   [STRING.TRACK_COLUMN_DISTANCE]: 'Distance',
@@ -988,9 +984,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_GROUPING_NOT_CONFIRMED]:
     'Grouping not yet confirmed by a person',
   [STRING.TRACK_GROUPING_UNCONFIRMED]: 'Grouping not confirmed',
-  [STRING.TRACK_MERGE_CANDIDATES_SCOPE]:
-    'Occurrences from this session with a frame within {{minutes}} minutes of this one, best match by the tracking method first. Distance and similarity compare the two frames nearest in time.',
-  [STRING.TRACK_MERGE_CANDIDATES]: 'Candidates within {{minutes}} minutes',
   [STRING.TRACK_MERGE_CANDIDATES_TITLE]: 'Candidates to merge',
   [STRING.TRACK_MERGE_COUNT]: 'Merge {{count}} occurrences',
   [STRING.TRACK_MERGE_MANY_DESCRIPTION]:
@@ -998,8 +991,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_MERGE_ONE]: 'Merge 1 occurrence',
   [STRING.TRACK_MERGE_SCOPE_DESCRIPTION]:
     'Searching {{scope}}. Lists occurrences seen just before or after this one, or in a gap in its track, best match by the tracking method first. Distance and similarity compare the two frames nearest in time.',
-  [STRING.TRACK_MERGE_DESCRIPTION]:
-    'The detections and identifications of the occurrence you pick move here, and that occurrence is deleted. Only occurrences from this session can be merged.',
   [STRING.TRACK_MERGE_RESULT]:
     'Merged. This occurrence now holds {{count}} frames.',
   [STRING.TRACK_MERGE]: 'Merge with another occurrence',
@@ -1009,8 +1000,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TRACK_MOVE_RESULT]:
     'Moved. Occurrence #{{id}} now holds {{count}} frames.',
   [STRING.TRACK_NEXT_FRAME]: 'Next track frame',
-  [STRING.TRACK_NO_MERGE_CANDIDATES]:
-    'No other occurrence of this session has a frame within {{minutes}} minutes of this one.',
   [STRING.TRACK_NO_MERGE_CANDIDATES_SCOPE]:
     'No other occurrence of this session was found in this scope. Try a wider scope.',
   [STRING.TRACK_OFFSET_HOURS]: '{{hours}} h {{minutes}} min',
@@ -1079,7 +1068,6 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.UNKNOWN]: 'Unknown',
   [STRING.UPDATING_DATA]: 'Updating data',
   [STRING.TRACK_WHEN_EARLIER]: '{{time}} earlier',
-  [STRING.TRACK_WHEN_IN_GAP]: 'In a gap',
   [STRING.TRACK_WHEN_LATER]: '{{time}} later',
   [STRING.UPLOAD_CAPTURES]: 'Upload captures',
   [STRING.USER_INFO]: 'User info',

@@ -84,19 +84,11 @@ export const getOffsetLabel = (seconds: number): string => {
   })
 }
 
-export const getWhenLabel = (
-  relation: MergeRelation,
-  timeOffsetSeconds: number
-): string => {
-  if (relation === 'gap') {
-    return translate(STRING.TRACK_WHEN_IN_GAP)
-  }
-
-  return translate(
-    relation === 'before' ? STRING.TRACK_WHEN_EARLIER : STRING.TRACK_WHEN_LATER,
+export const getWhenLabel = (timeOffsetSeconds: number): string =>
+  translate(
+    timeOffsetSeconds < 0 ? STRING.TRACK_WHEN_EARLIER : STRING.TRACK_WHEN_LATER,
     { time: getOffsetLabel(timeOffsetSeconds) }
   )
-}
 
 export interface ComparisonSide {
   src: string | null
@@ -110,11 +102,23 @@ export interface ComparisonSides {
   gapLabel: string
 }
 
-const getFrameOffsetSeconds = (candidate: MergeCandidate): number =>
-  candidate.imageTimestamp && candidate.edgeTimestamp
+/**
+ * Seconds from the track frame a candidate is scored against to the candidate's own
+ * frame: negative when the candidate is earlier. A gap candidate is measured from the
+ * nearest track frame, which can lie on either side of it.
+ */
+export const getWhenOffsetSeconds = (
+  candidate: Pick<
+    MergeCandidate,
+    'relation' | 'timeOffsetSeconds' | 'imageTimestamp' | 'edgeTimestamp'
+  >
+): number =>
+  candidate.relation === 'gap' &&
+  candidate.imageTimestamp &&
+  candidate.edgeTimestamp
     ? (candidate.imageTimestamp.getTime() - candidate.edgeTimestamp.getTime()) /
       1000
-    : 0
+    : candidate.timeOffsetSeconds
 
 export const getComparisonSides = (
   candidate: MergeCandidate
@@ -128,11 +132,7 @@ export const getComparisonSides = (
     timestamp: candidate.edgeTimestamp,
   }
 
-  // A gap candidate can fall either side of the track frame it is paired with, so the frame times decide.
-  const offsetSeconds =
-    candidate.relation === 'gap'
-      ? getFrameOffsetSeconds(candidate)
-      : candidate.timeOffsetSeconds
+  const offsetSeconds = getWhenOffsetSeconds(candidate)
   const time = getOffsetLabel(offsetSeconds)
 
   return offsetSeconds < 0
@@ -172,7 +172,7 @@ const sortValue = (
   column: MergeCandidateSortColumn
 ): number | null =>
   column === 'when'
-    ? candidate.timeOffsetSeconds
+    ? getWhenOffsetSeconds(candidate)
     : column === 'distance'
     ? candidate.distance
     : candidate.similarity

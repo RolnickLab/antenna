@@ -106,10 +106,10 @@ describe('comparison sides', () => {
 
 describe('merge candidate labels', () => {
   test('when reads as a direction in time', () => {
-    expect(getWhenLabel('before', -240)).toBe('4 min earlier')
-    expect(getWhenLabel('after', 20)).toBe('20 s later')
-    expect(getWhenLabel('after', 3900)).toBe('1 h 5 min later')
-    expect(getWhenLabel('gap', 0)).toBe('In a gap')
+    expect(getWhenLabel(-240)).toBe('4 min earlier')
+    expect(getWhenLabel(20)).toBe('20 s later')
+    expect(getWhenLabel(3900)).toBe('1 h 5 min later')
+    expect(getWhenLabel(-4)).toBe('4 s earlier')
   })
 
   test('distance and similarity are percentages, or n/a without a value', () => {
@@ -136,6 +136,9 @@ describe('merge candidate sorting', () => {
       time_offset_seconds: 0,
       distance: null,
       similarity: 0.9,
+      // Ten seconds after the track frame it is paired with.
+      image_timestamp: '2024-06-01T22:00:10',
+      edge_timestamp: '2024-06-01T22:00:00',
     }),
   ].map(convertMergeCandidate)
 
