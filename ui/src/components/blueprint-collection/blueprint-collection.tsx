@@ -56,10 +56,7 @@ export const BlueprintItem = ({
 
   return (
     <div className={classNames(styles.blueprintItem, 'group')}>
-      {caption ? (
-        // The caption carries the time under the crop, so the top row holds only the actions.
-        <div className="flex items-center justify-end">{actions}</div>
-      ) : (
+      {caption ? null : (
         <div className="flex items-center gap-1">
           <div className={styles.blueprintInfo} style={{ width: size.width }}>
             <span className="grow text-muted-foreground text-right">
@@ -83,15 +80,19 @@ export const BlueprintItem = ({
           }}
         />
         {caption ? <div style={{ width: size.width }}>{caption}</div> : null}
-        {item.to ? (
-          <Link
-            className={buttonVariants({ size: 'small', variant: 'ghost' })}
-            to={item.to}
-          >
-            <span>{translate(STRING.VIEW_IN_SESSION)}</span>
-            <ChevronRightIcon className="w-4 h-4" />
-          </Link>
-        ) : null}
+        {/* With a caption, the actions sit beside the link so nothing floats above the crop. */}
+        <div className="flex items-center gap-1">
+          {item.to ? (
+            <Link
+              className={buttonVariants({ size: 'small', variant: 'ghost' })}
+              to={item.to}
+            >
+              <span>{translate(STRING.VIEW_IN_SESSION)}</span>
+              <ChevronRightIcon className="w-4 h-4" />
+            </Link>
+          ) : null}
+          {caption ? actions : null}
+        </div>
       </div>
     </div>
   )
