@@ -128,7 +128,7 @@ export const getComparisonSides = (
     timestamp: candidate.edgeTimestamp,
   }
 
-  // A gap candidate can fall either side of the track's edge frame, so the frame times decide.
+  // A gap candidate can fall either side of the track frame it is paired with, so the frame times decide.
   const offsetSeconds =
     candidate.relation === 'gap'
       ? getFrameOffsetSeconds(candidate)

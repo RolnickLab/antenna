@@ -4,6 +4,7 @@ import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurre
 import { useOccurrencePath } from 'data-services/hooks/occurrences/useOccurrencePath'
 import { CaptureDetection } from 'data-services/models/capture'
 import { PathFrame } from 'data-services/models/occurrence-path'
+import _ from 'lodash'
 import { Dialog, LoadingSpinner, Tooltip } from 'nova-ui-kit'
 import {
   OccurrenceDetails,
@@ -374,12 +375,17 @@ const CaptureDetections = ({
   const [trackEdit, setTrackEdit] = useState<SessionTrackEdit>()
   // Selected occurrences whose popover was closed with Escape; they stay selected.
   const [dismissedToolbars, setDismissedToolbars] = useState<string[]>([])
+  const [hoveredBox, setHoveredBox] = useState<string>()
   const { activeOccurrences, setActiveOccurrences } = useActiveOccurrences()
   const detailsHidden = !!extend.occurrenceId && !extend.showDetails
 
   useEffect(() => {
     setDismissedToolbars([])
   }, [extend.showDetails])
+
+  useEffect(() => {
+    setHoveredBox(undefined)
+  }, [detailsHidden])
 
   // Worded while the path is still the one on screen: the split moves the boundary
   // frame off this occurrence, so the refreshed path can no longer describe it.
@@ -447,17 +453,27 @@ const CaptureDetections = ({
           const isDismissed =
             !!detection.occurrenceId &&
             dismissedToolbars.includes(detection.occurrenceId)
-          // Undefined leaves the popover to open on hover.
-          let popoverOpen: boolean | undefined
-          if (detailsHidden) {
-            popoverOpen = false
-          } else if (isActive) {
-            popoverOpen = !isDismissed
-          }
+          // Hover is recorded only while it decides: Radix reports no close for a
+          // popover already held shut, so a hover recorded then would go stale.
+          const opensOnHover = !detailsHidden && !isActive
+          const popoverOpen = opensOnHover
+            ? hoveredBox === detection.id
+            : !detailsHidden && !isDismissed
 
           return (
             <Tooltip.Provider key={detection.id} delayDuration={0}>
-              <Tooltip.Root open={popoverOpen}>
+              <Tooltip.Root
+                open={popoverOpen}
+                onOpenChange={(open) => {
+                  if (!open) {
+                    setHoveredBox((box) =>
+                      box === detection.id ? undefined : box
+                    )
+                  } else if (opensOnHover) {
+                    setHoveredBox(detection.id)
+                  }
+                }}
+              >
                 <Tooltip.Trigger asChild>
                   <div
                     style={style}
@@ -601,6 +617,9 @@ const OccurrenceDetailsDialog = ({
     TABS.FIELDS
   )
   const { occurrence, isLoading, error } = useOccurrenceDetails(id)
+  const detailsLabel = translate(STRING.ENTITY_DETAILS, {
+    type: _.capitalize(translate(STRING.ENTITY_TYPE_OCCURRENCE)),
+  })
 
   return (
     <Dialog.Root
@@ -616,6 +635,11 @@ const OccurrenceDetailsDialog = ({
         isLoading={isLoading}
         error={error}
       >
+        <div className="sr-only">
+          <Dialog.Header title={occurrence?.displayName ?? detailsLabel}>
+            <Dialog.Description>{detailsLabel}</Dialog.Description>
+          </Dialog.Header>
+        </div>
         {occurrence ? (
           <OccurrenceDetails
             occurrence={occurrence}
