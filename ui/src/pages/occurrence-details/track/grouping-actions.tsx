@@ -6,6 +6,7 @@ import {
   MergeScopeKey,
   useMergeCandidates,
 } from 'data-services/hooks/occurrences/useMergeCandidates'
+import { isMergeable } from 'data-services/models/merge-candidate'
 import { OccurrenceDetails } from 'data-services/models/occurrence-details'
 import { GitMergeIcon, Loader2Icon, PlusIcon } from 'lucide-react'
 import { Badge, Button, buttonVariants } from 'nova-ui-kit'
@@ -78,6 +79,12 @@ export const GroupingActions = ({
   const verifyErrorMessage = verifyError
     ? parseServerError(verifyError).message
     : undefined
+
+  // A ticked row that turns out to share a capture with the track is never sent.
+  const blockedIds = candidates
+    .filter((candidate) => !isMergeable(candidate))
+    .map((candidate) => candidate.id)
+  const mergeIds = sourceIds.filter((id) => !blockedIds.includes(id))
 
   const toggleSource = (id: string) =>
     setSourceIds((ids) =>
@@ -167,17 +174,17 @@ export const GroupingActions = ({
       {verifyErrorMessage ? <FormError message={verifyErrorMessage} /> : null}
 
       <TrackEditDialog
-        confirmDisabled={!sourceIds.length}
+        confirmDisabled={!mergeIds.length}
         confirmLabel={
-          sourceIds.length === 1
+          mergeIds.length === 1
             ? translate(STRING.TRACK_MERGE_ONE)
-            : translate(STRING.TRACK_MERGE_COUNT, { count: sourceIds.length })
+            : translate(STRING.TRACK_MERGE_COUNT, { count: mergeIds.length })
         }
         description={translate(STRING.TRACK_MERGE_MANY_DESCRIPTION)}
         error={merge.error}
         isLoading={merge.isLoading}
         isWide
-        onConfirm={() => merge.mergeOccurrences(sourceIds)}
+        onConfirm={() => merge.mergeOccurrences(mergeIds)}
         onOpenChange={(open) => (open ? undefined : closeMerge())}
         open={mergeOpen}
         result={

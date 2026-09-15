@@ -18,6 +18,7 @@ export interface ServerMergeCandidate {
   image_timestamp: string | null
   edge_image: string | null
   edge_timestamp: string | null
+  shared_captures: number
 }
 
 /** An occurrence that could be merged with another, scored against it by the tracking method. */
@@ -40,6 +41,8 @@ export interface MergeCandidate {
   /** Crop of this occurrence's own frame in the scored pair: its first frame for a "before" candidate, its last for an "after" one. */
   edgeImage: string | null
   edgeTimestamp: Date | null
+  /** Captures holding a frame of both this candidate and the track, among those searched. */
+  sharedCaptures: number
 }
 
 const toDate = (timestamp: string | null | undefined): Date | null =>
@@ -63,7 +66,13 @@ export const convertMergeCandidate = (
   imageTimestamp: toDate(candidate.image_timestamp),
   edgeImage: candidate.edge_image ?? null,
   edgeTimestamp: toDate(candidate.edge_timestamp),
+  sharedCaptures: candidate.shared_captures,
 })
+
+/** One animal cannot appear twice in one capture, so a candidate sharing one with the track is another animal. */
+export const isMergeable = (
+  candidate: Partial<Pick<MergeCandidate, 'sharedCaptures'>>
+): boolean => (candidate.sharedCaptures ?? 0) === 0
 
 export const getOffsetLabel = (seconds: number): string => {
   const total = Math.round(Math.abs(seconds))

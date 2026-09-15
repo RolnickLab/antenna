@@ -4,6 +4,7 @@ import {
   getDistanceLabel,
   getSimilarityLabel,
   getWhenLabel,
+  isMergeable,
   MergeCandidate,
   ServerMergeCandidate,
   sortMergeCandidates,
@@ -27,6 +28,7 @@ const serverCandidate = (
   image_timestamp: '2026-09-09T02:03:00',
   edge_image: 'https://example.com/edge.jpg',
   edge_timestamp: '2026-09-09T02:01:00',
+  shared_captures: 0,
   ...overrides,
 })
 
@@ -47,6 +49,15 @@ describe('merge candidate conversion', () => {
 
     expect(candidate.displayName).toBe('#7')
     expect(candidate.images).toEqual([])
+  })
+
+  test('a candidate sharing a capture with the track cannot be merged', () => {
+    const merge = (shared_captures: number) =>
+      isMergeable(convertMergeCandidate(serverCandidate({ shared_captures })))
+
+    expect(merge(1)).toBe(false)
+    expect(merge(0)).toBe(true)
+    expect(isMergeable({})).toBe(true)
   })
 })
 

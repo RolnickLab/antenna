@@ -369,6 +369,8 @@ export enum STRING {
   TABLE_COLUMNS,
   TERMINAL_CLASSIFICATION,
   TIP,
+  TRACK_CANDIDATE_IN_GAP,
+  TRACK_CANDIDATE_SAME_CAPTURE,
   TRACK_CLEARS_CONFIRMATION,
   TRACK_COLUMN_DISTANCE,
   TRACK_COLUMN_FRAMES,
@@ -899,6 +901,9 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.TABLE_COLUMNS]: 'Table columns',
   [STRING.TERMINAL_CLASSIFICATION]: 'Terminal classification',
   [STRING.TIP]: 'Tip',
+  [STRING.TRACK_CANDIDATE_IN_GAP]: 'Falls in a gap of this track.',
+  [STRING.TRACK_CANDIDATE_SAME_CAPTURE]:
+    'In the same capture as this track, so it cannot be the same animal.',
   [STRING.TRACK_CLEARS_CONFIRMATION]:
     'This clears the confirmation that the grouping is correct.',
   [STRING.TRACK_COLUMN_DISTANCE]: 'Distance',

@@ -8,6 +8,7 @@ import {
   getDistanceLabel,
   getSimilarityLabel,
   getWhenLabel,
+  isMergeable,
   MergeCandidate,
   MergeCandidateSort,
   MergeCandidateSortColumn,
@@ -21,7 +22,7 @@ import {
   ArrowUpDownIcon,
   ArrowUpIcon,
 } from 'lucide-react'
-import { Checkbox, LoadingSpinner, Select } from 'nova-ui-kit'
+import { BasicTooltip, Checkbox, LoadingSpinner, Select } from 'nova-ui-kit'
 import { CSSProperties, useRef, useState } from 'react'
 import { STRING, translate } from 'utils/language'
 import {
@@ -47,6 +48,7 @@ export type OccurrencePickerCandidate = Pick<
       | 'imageTimestamp'
       | 'edgeImage'
       | 'edgeTimestamp'
+      | 'sharedCaptures'
     >
   >
 
@@ -77,7 +79,8 @@ const PANEL_GAP = 8
 const headerClassName = 'px-2 py-1 font-normal text-muted-foreground'
 const cellClassName = 'px-2 py-1'
 const numberClassName = 'text-right tabular-nums whitespace-nowrap'
-const checkboxClassName = 'w-4 h-4 accent-primary-500 cursor-pointer'
+const checkboxClassName =
+  'w-4 h-4 accent-primary-500 cursor-pointer disabled:cursor-not-allowed'
 
 /** Beside the table when the viewport has room, otherwise clamped into view over it. */
 const getPanelStyle = (
@@ -141,7 +144,8 @@ export const OccurrencePicker = ({
   const multi = !!onToggle
   const ranked = isRanked(candidates)
   const rows = ranked ? sortMergeCandidates(candidates, sort) : candidates
-  const numSelectedShown = rows.filter((row) =>
+  const selectableRows = rows.filter((row) => isMergeable(row))
+  const numSelectedShown = selectableRows.filter((row) =>
     selectedIds.includes(row.id)
   ).length
 
@@ -152,12 +156,18 @@ export const OccurrencePicker = ({
         : { column, descending: DESCENDING_FIRST.includes(column) }
     )
 
-  const pick = (id: string) => (multi ? onToggle?.(id) : onSelect?.(id))
+  const pick = (candidate: OccurrencePickerCandidate) => {
+    if (!isMergeable(candidate)) {
+      return
+    }
+
+    return multi ? onToggle?.(candidate.id) : onSelect?.(candidate.id)
+  }
 
   const toggleAll = () =>
-    rows
+    selectableRows
       .filter((row) =>
-        numSelectedShown === rows.length
+        numSelectedShown === selectableRows.length
           ? selectedIds.includes(row.id)
           : !selectedIds.includes(row.id)
       )
@@ -249,15 +259,17 @@ export const OccurrencePicker = ({
                     <input
                       aria-label={translate(STRING.TRACK_SELECT_ALL)}
                       checked={
-                        numSelectedShown > 0 && numSelectedShown === rows.length
+                        numSelectedShown > 0 &&
+                        numSelectedShown === selectableRows.length
                       }
                       className={checkboxClassName}
+                      disabled={!selectableRows.length}
                       onChange={toggleAll}
                       ref={(input) => {
                         if (input) {
                           input.indeterminate =
                             numSelectedShown > 0 &&
-                            numSelectedShown < rows.length
+                            numSelectedShown < selectableRows.length
                         }
                       }}
                       type="checkbox"
@@ -317,110 +329,158 @@ export const OccurrencePicker = ({
             </thead>
             <tbody>
               {rows.map((candidate) => {
-                const selected = multi
-                  ? selectedIds.includes(candidate.id)
-                  : candidate.id === selectedId
+                const mergeable = isMergeable(candidate)
+                const selected =
+                  mergeable &&
+                  (multi
+                    ? selectedIds.includes(candidate.id)
+                    : candidate.id === selectedId)
+                const inGap =
+                  candidate.relation === 'overlapping' &&
+                  candidate.sharedCaptures === 0
                 const RelationIcon = candidate.relation
                   ? RELATION_ICONS[candidate.relation]
                   : undefined
+                const whenLabel = (
+                  <span className="inline-flex items-center gap-1">
+                    {RelationIcon ? (
+                      <RelationIcon
+                        aria-hidden
+                        className="w-3 h-3 text-muted-foreground"
+                      />
+                    ) : null}
+                    <span>
+                      {candidate.relation
+                        ? getWhenLabel(
+                            candidate.relation,
+                            candidate.timeOffsetSeconds ?? 0
+                          )
+                        : null}
+                    </span>
+                  </span>
+                )
 
                 return (
-                  <tr
-                    aria-selected={selected}
-                    className={classNames(
-                      'cursor-pointer',
-                      selected
-                        ? 'bg-primary-100 ring-1 ring-inset ring-primary-500'
-                        : 'hover:bg-muted'
-                    )}
-                    key={candidate.id}
-                    onClick={() => pick(candidate.id)}
-                    onMouseEnter={(e) =>
-                      showComparison(candidate, e.currentTarget)
+                  <BasicTooltip
+                    asChild
+                    content={
+                      mergeable
+                        ? undefined
+                        : translate(STRING.TRACK_CANDIDATE_SAME_CAPTURE)
                     }
+                    key={candidate.id}
                   >
-                    {multi ? (
-                      <td
-                        className={classNames(cellClassName, 'w-6')}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <input
-                          aria-label={translate(STRING.TRACK_SELECT_ROW, {
-                            name: candidate.displayName,
-                          })}
-                          checked={selected}
-                          className={checkboxClassName}
-                          onChange={() => onToggle?.(candidate.id)}
-                          type="checkbox"
-                        />
-                      </td>
-                    ) : null}
-                    <td className={classNames(cellClassName, 'w-10')}>
-                      {candidate.images[0] ? (
-                        <img
-                          alt=""
-                          className="w-8 h-8 object-contain"
-                          onError={(e) => (e.currentTarget.hidden = true)}
-                          src={candidate.images[0].src}
-                        />
+                    <tr
+                      aria-disabled={!mergeable || undefined}
+                      aria-selected={selected}
+                      className={classNames(
+                        !mergeable
+                          ? 'cursor-not-allowed text-muted-foreground opacity-50'
+                          : selected
+                          ? 'cursor-pointer bg-primary-100 ring-1 ring-inset ring-primary-500'
+                          : 'cursor-pointer hover:bg-muted'
+                      )}
+                      onClick={() => pick(candidate)}
+                      onMouseEnter={(e) =>
+                        showComparison(candidate, e.currentTarget)
+                      }
+                    >
+                      {multi ? (
+                        <td
+                          className={classNames(cellClassName, 'w-6')}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <input
+                            aria-label={translate(STRING.TRACK_SELECT_ROW, {
+                              name: candidate.displayName,
+                            })}
+                            checked={selected}
+                            className={checkboxClassName}
+                            disabled={!mergeable}
+                            onChange={() => pick(candidate)}
+                            type="checkbox"
+                          />
+                        </td>
                       ) : null}
-                    </td>
-                    <td className={cellClassName}>
-                      <button
-                        aria-pressed={selected}
-                        className="text-left"
-                        onBlur={hideComparison}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          pick(candidate.id)
-                        }}
-                        onFocus={(e) =>
-                          showComparison(
-                            candidate,
-                            e.currentTarget.closest('tr') ?? e.currentTarget
-                          )
-                        }
-                        type="button"
+                      <td className={classNames(cellClassName, 'w-10')}>
+                        {candidate.images[0] ? (
+                          <img
+                            alt=""
+                            className="w-8 h-8 object-contain"
+                            onError={(e) => (e.currentTarget.hidden = true)}
+                            src={candidate.images[0].src}
+                          />
+                        ) : null}
+                      </td>
+                      <td className={cellClassName}>
+                        <button
+                          aria-disabled={!mergeable || undefined}
+                          aria-pressed={selected}
+                          className={classNames('text-left', {
+                            'cursor-not-allowed': !mergeable,
+                          })}
+                          onBlur={hideComparison}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            pick(candidate)
+                          }}
+                          onFocus={(e) =>
+                            showComparison(
+                              candidate,
+                              e.currentTarget.closest('tr') ?? e.currentTarget
+                            )
+                          }
+                          type="button"
+                        >
+                          {candidate.displayName}
+                        </button>
+                      </td>
+                      <td
+                        className={classNames(cellClassName, numberClassName)}
                       >
-                        {candidate.displayName}
-                      </button>
-                    </td>
-                    <td className={classNames(cellClassName, numberClassName)}>
-                      {candidate.numDetections}
-                    </td>
-                    {ranked && candidate.relation !== undefined ? (
-                      <>
-                        <td
-                          className={classNames(cellClassName, numberClassName)}
-                        >
-                          <span className="inline-flex items-center gap-1">
-                            {RelationIcon ? (
-                              <RelationIcon
-                                aria-hidden
-                                className="w-3 h-3 text-muted-foreground"
-                              />
-                            ) : null}
-                            <span>
-                              {getWhenLabel(
-                                candidate.relation,
-                                candidate.timeOffsetSeconds ?? 0
-                              )}
-                            </span>
-                          </span>
-                        </td>
-                        <td
-                          className={classNames(cellClassName, numberClassName)}
-                        >
-                          {getDistanceLabel(candidate.distance ?? null)}
-                        </td>
-                        <td
-                          className={classNames(cellClassName, numberClassName)}
-                        >
-                          {getSimilarityLabel(candidate.similarity ?? null)}
-                        </td>
-                      </>
-                    ) : null}
-                  </tr>
+                        {candidate.numDetections}
+                      </td>
+                      {ranked && candidate.relation !== undefined ? (
+                        <>
+                          <td
+                            className={classNames(
+                              cellClassName,
+                              numberClassName
+                            )}
+                          >
+                            {inGap ? (
+                              <BasicTooltip
+                                asChild
+                                content={translate(
+                                  STRING.TRACK_CANDIDATE_IN_GAP
+                                )}
+                              >
+                                {whenLabel}
+                              </BasicTooltip>
+                            ) : (
+                              whenLabel
+                            )}
+                          </td>
+                          <td
+                            className={classNames(
+                              cellClassName,
+                              numberClassName
+                            )}
+                          >
+                            {getDistanceLabel(candidate.distance ?? null)}
+                          </td>
+                          <td
+                            className={classNames(
+                              cellClassName,
+                              numberClassName
+                            )}
+                          >
+                            {getSimilarityLabel(candidate.similarity ?? null)}
+                          </td>
+                        </>
+                      ) : null}
+                    </tr>
+                  </BasicTooltip>
                 )
               })}
             </tbody>
