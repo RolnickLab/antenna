@@ -21,7 +21,7 @@ export const FrameTaxonName = ({ taxon }: { taxon?: Taxon }) => {
   )
 }
 
-/** Under a frame's crop: which detection and when, then the classifier's name for it, never cut off. */
+/** Beside a frame's crop: which detection and when, then the classifier's name for it. */
 export const FrameCaption = ({
   detectionId,
   label,
@@ -31,14 +31,16 @@ export const FrameCaption = ({
   label: FrameLabel
   timeLabel: string
 }) => (
-  <div className="flex flex-col items-center gap-0.5 text-center body-small">
-    <span
-      className="text-muted-foreground tabular-nums"
-      title={translate(STRING.TRACK_FRAME_DETECTION, { id: detectionId })}
-    >
-      #{detectionId} · {timeLabel}
-    </span>
-    <span>
+  <div className="flex flex-col gap-0.5 body-small">
+    <div className="flex items-baseline justify-between gap-2 text-muted-foreground tabular-nums whitespace-nowrap">
+      <span
+        title={translate(STRING.TRACK_FRAME_DETECTION, { id: detectionId })}
+      >
+        #{detectionId}
+      </span>
+      <span>{timeLabel}</span>
+    </div>
+    <span className="font-medium">
       <FrameTaxonName taxon={label.taxon} />
       {label.taxon || label.score !== undefined ? (
         <>

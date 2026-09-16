@@ -358,7 +358,10 @@ export const OccurrenceDetails = ({
                 occurrence={occurrence}
               />
             )}
-            <BlueprintCollection showLicenseInfo={blueprintItems.length > 0}>
+            <BlueprintCollection
+              filmStrip
+              showLicenseInfo={blueprintItems.length > 0}
+            >
               {blueprintItems.map((item, index) => (
                 <BlueprintItem
                   actions={

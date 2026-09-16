@@ -2,7 +2,8 @@ import classNames from 'classnames'
 import { LicenseInfo } from 'components/license-info/license-info'
 import { ChevronRightIcon } from 'lucide-react'
 import { buttonVariants } from 'nova-ui-kit'
-import { ReactNode, useState } from 'react'
+import { cn } from 'nova-ui-kit/utils'
+import { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import styles from './blueprint-collection.module.scss'
@@ -18,9 +19,12 @@ export interface BlueprintItem {
 
 export const BlueprintCollection = ({
   children,
+  filmStrip,
   showLicenseInfo,
 }: {
   children: ReactNode
+  /** Lay the children out as a divided vertical run; pick this for lists of frames. */
+  filmStrip?: boolean
   showLicenseInfo?: boolean
 }) => (
   <div className={classNames(styles.blueprint)}>
@@ -29,7 +33,13 @@ export const BlueprintCollection = ({
         <LicenseInfo />
       </div>
     ) : null}
-    <div className={styles.blueprintContent}>{children}</div>
+    <div
+      className={classNames(styles.blueprintContent, {
+        [styles.filmStrip]: filmStrip,
+      })}
+    >
+      {children}
+    </div>
   </div>
 )
 
@@ -50,53 +60,39 @@ export const BlueprintItem = ({
     countLabel: string
     to?: string
   }
-}) => {
-  const [size, setSize] = useState({
-    width: item.image.width,
-    height: item.image.height,
-  })
-
-  return (
-    <div className={classNames(styles.blueprintItem, 'group')}>
-      {caption ? null : (
-        <div className="flex items-center gap-1">
-          <div className={styles.blueprintInfo} style={{ width: size.width }}>
-            <span className="grow text-muted-foreground text-right">
-              {item.timeLabel}
-            </span>
-          </div>
-          {actions}
-        </div>
+}) => (
+  <div className={classNames(styles.blueprintItem, 'group')}>
+    <div className={styles.crop}>
+      <img
+        src={item.image.src}
+        alt=""
+        width={item.image.width}
+        height={item.image.height}
+      />
+    </div>
+    {/* The details take the rest of the row, so their width never follows the crop's. */}
+    <div className="flex flex-col grow min-w-0 gap-1">
+      {caption ?? (
+        <span className="body-small text-muted-foreground">
+          {item.timeLabel}
+        </span>
       )}
-      <div className="flex flex-col items-center gap-2">
-        <img
-          src={item.image.src}
-          alt=""
-          width={size.width}
-          height={size.height}
-          onLoad={(e) => {
-            setSize({
-              width: e.currentTarget.width,
-              height: e.currentTarget.height,
-            })
-          }}
-        />
-        {caption ? <div style={{ width: size.width }}>{caption}</div> : null}
-        {/* With a caption, the actions sit beside the link so nothing floats above the crop. */}
-        <div className="flex items-center gap-1">
-          {item.to ? (
-            <Link
-              className={buttonVariants({ size: 'small', variant: 'ghost' })}
-              onClick={onLinkClick}
-              to={item.to}
-            >
-              <span>{translate(STRING.VIEW_IN_SESSION)}</span>
-              <ChevronRightIcon className="w-4 h-4" />
-            </Link>
-          ) : null}
-          {caption ? actions : null}
-        </div>
+      <div className="flex items-center gap-1">
+        {item.to ? (
+          <Link
+            className={cn(
+              buttonVariants({ size: 'small', variant: 'ghost' }),
+              'px-2 -ml-2'
+            )}
+            onClick={onLinkClick}
+            to={item.to}
+          >
+            <span>{translate(STRING.VIEW_IN_SESSION)}</span>
+            <ChevronRightIcon className="w-4 h-4" />
+          </Link>
+        ) : null}
+        {actions}
       </div>
     </div>
-  )
-}
+  </div>
+)
