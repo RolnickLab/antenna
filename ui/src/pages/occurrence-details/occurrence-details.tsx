@@ -123,6 +123,7 @@ export const OccurrenceDetails = ({
               ): item is BlueprintItem & {
                 captureId: string
                 frameLabel: FrameLabel
+                hasVector: boolean | undefined
               } => !!item
             )
             .map((item) => {
@@ -454,6 +455,7 @@ export const OccurrenceDetails = ({
                   caption={
                     <FrameCaption
                       detectionId={item.id}
+                      hasVector={item.hasVector}
                       label={item.frameLabel}
                       timeLabel={item.timeLabel}
                     />

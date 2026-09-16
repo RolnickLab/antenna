@@ -8635,6 +8635,24 @@ class TrackEditTestCase(APITestCase):
         self.assertIn("width", first["capture"])
         self.assertIn("height", first["capture"])
 
+    def test_path_carries_each_frame_crop_and_stays_null_when_there_is_none(self):
+        """A reviewer reading the animal in a frame they are not viewing needs its crop.
+
+        Crops are generated after detection, so a frame without one must come back as
+        null rather than a URL to nothing.
+        """
+        with_crop, without_crop = self.detections[0], self.detections[1]
+        with_crop.path = f"crops/{with_crop.pk}.jpg"
+        with_crop.save(update_fields=["path"])
+
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/path/")
+        self.assertEqual(response.status_code, 200, response.data)
+
+        crops = {frame["detection_id"]: frame["crop_url"] for frame in response.data}
+        self.assertIn(with_crop.path, crops[with_crop.pk])
+        self.assertIsNone(crops[without_crop.pk])
+
     def test_path_order_matches_the_order_a_split_acts_on(self):
         """A split moves the chosen detection and every later one.
 
@@ -10318,7 +10336,30 @@ class FeatureVectorPresenceTestCase(APITestCase):
 
         response, queries = self._get(f"/api/v2/captures/{capture.pk}/?project_id={self.project.pk}")
         self.assertEqual(response.data["detections_with_features"], 2)
+        self.assertEqual(response.data["detections_valid"], 4, "The total the count is out of skips the marker")
         self.assertFalse(self._reads_the_vector(queries))
 
         listed, _ = self._get(f"/api/v2/captures/?project_id={self.project.pk}")
         self.assertNotIn("detections_with_features", listed.data["results"][0], "Counted on the detail only")
+
+    def test_the_capture_counts_ride_on_the_capture_row(self):
+        """Both counts are subqueries on the capture's own SELECT: five detections, one query."""
+        from cachalot.api import cachalot_disabled
+
+        capture = self.captures[0]
+        occurrence = Occurrence.objects.create(event=self.event, deployment=self.deployment, project=self.project)
+        for with_vector in [True, False, True, False, True]:
+            detection = Detection.objects.create(
+                source_image=capture, timestamp=capture.timestamp, bbox=[10, 10, 40, 40], occurrence=occurrence
+            )
+            detection.classifications.create(
+                taxon=self.taxon,
+                score=0.9,
+                timestamp=capture.timestamp,
+                features_2048=self.vector if with_vector else None,
+            )
+
+        with cachalot_disabled(), self.assertNumQueries(1):
+            annotated = SourceImage.objects.filter(pk=capture.pk).with_detections_with_features().get()
+            self.assertEqual(annotated.detections_valid, 5)  # type: ignore[attr-defined]
+            self.assertEqual(annotated.detections_with_features, 3)  # type: ignore[attr-defined]

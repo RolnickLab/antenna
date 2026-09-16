@@ -1,6 +1,7 @@
 export interface ServerOccurrencePathFrame {
   detection_id: number
   bbox: number[] | null
+  crop_url: string | null
   capture: {
     id: number
     timestamp: string | null
@@ -19,6 +20,8 @@ export interface PathFrame {
   captureHeight: number | null
   captureId: string
   captureWidth: number | null
+  /** The detection's crop, absent until one has been generated. */
+  cropUrl?: string
   detectionId: string
   timestamp: Date | null
 }
@@ -30,6 +33,7 @@ export const convertPathFrame = (
   captureHeight: frame.capture.height,
   captureId: `${frame.capture.id}`,
   captureWidth: frame.capture.width,
+  cropUrl: frame.crop_url ?? undefined,
   detectionId: `${frame.detection_id}`,
   timestamp: frame.capture.timestamp ? new Date(frame.capture.timestamp) : null,
 })

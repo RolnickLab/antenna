@@ -34,7 +34,7 @@ import { SessionPlots } from './session-plots'
 import { StarButton } from './star-button'
 import { TimelineSlider } from './timeline-slider/timeline-slider'
 import { getNextCaptureWithDetectionsId, showSessionTimeline } from './utils'
-import { ViewSettings } from './view-settings'
+import { ViewSettings, ViewSettingsValues } from './view-settings'
 import { ZoomSettings } from './zoom-settings'
 
 const TABS = {
@@ -89,9 +89,10 @@ const Content = ({ session }: { session: SessionDetails }) => {
   // Settings
   const [poll, setPoll] = useState(false)
   const transformRef = useRef<ReactZoomPanPinchRef>(null)
-  const [settings, setSettings] = useState({
+  const [settings, setSettings] = useState<ViewSettingsValues>({
     defaultFilters: true,
     showDetections: true,
+    showPathCrops: false,
   })
 
   // Data
@@ -196,6 +197,7 @@ const Content = ({ session }: { session: SessionDetails }) => {
               extend={extend}
               height={activeCapture?.height ?? session.firstCapture.height}
               showDetections={settings.showDetections}
+              showPathCrops={settings.showPathCrops}
               sources={
                 activeCapture
                   ? {

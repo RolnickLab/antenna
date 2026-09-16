@@ -1333,7 +1333,11 @@ class SourceImageSerializer(SourceImageListSerializer):
     jobs = JobStatusSerializer(many=True, read_only=True)
     collections = SourceImageCollectionNestedSerializer(many=True, read_only=True)
     # Annotated by SourceImageQuerySet.with_detections_with_features() on the detail
-    # queryset only; the key is omitted wherever it is not annotated.
+    # queryset only; the keys are omitted wherever they are not annotated.
+    detections_valid = serializers.IntegerField(
+        read_only=True,
+        help_text="Valid detections on this capture, the total detections_with_features is out of.",
+    )
     detections_with_features = serializers.IntegerField(
         read_only=True,
         help_text="Valid detections with at least one classification that stored a feature embedding.",
@@ -1347,6 +1351,7 @@ class SourceImageSerializer(SourceImageListSerializer):
             "test_image",
             "jobs",
             "collections",
+            "detections_valid",
             "detections_with_features",
             "event_next_capture_id",
             "event_prev_capture_id",
@@ -2219,6 +2224,11 @@ class OccurrencePathFrameSerializer(serializers.Serializer):
 
     detection_id = serializers.IntegerField()
     bbox = serializers.ListField(child=serializers.FloatField(), allow_null=True)
+    crop_url = serializers.CharField(
+        allow_null=True,
+        help_text="The detection's cropped image, drawn inside the box so a reviewer can "
+        "read the animal in a frame they are not viewing. Null until the crop is generated.",
+    )
     capture = OccurrencePathCaptureSerializer()
 
 

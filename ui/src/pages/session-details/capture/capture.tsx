@@ -37,6 +37,7 @@ import {
   SessionTrackEdits,
 } from './session-track-edits'
 import styles from './capture.module.scss'
+import { useCapturePreload } from './useCapturePreload'
 import { useCaptureTiers } from './useCaptureTiers'
 
 const FALLBACK_RATIO = 16 / 9
@@ -54,6 +55,7 @@ interface CaptureProps {
   extend: ExtendTrackState
   height: number | null
   showDetections?: boolean
+  showPathCrops?: boolean
   sources?: TierSources
   transformRef: React.RefObject<ReactZoomPanPinchRef>
   width: number | null
@@ -67,6 +69,7 @@ export const Capture = ({
   extend,
   height,
   showDetections,
+  showPathCrops,
   sources,
   transformRef,
   width,
@@ -156,11 +159,13 @@ export const Capture = ({
     return () => observer.disconnect()
   }, [])
 
+  const demand = containerWidth * dpr * scale
+
   useEffect(() => {
     if (containerWidth) {
-      updateDemand(containerWidth * dpr * scale)
+      updateDemand(demand)
     }
-  }, [containerWidth, dpr, scale, updateDemand])
+  }, [containerWidth, demand, updateDemand])
 
   useEffect(() => {
     // Show the spinner whenever the active capture changes; the previous
@@ -168,6 +173,12 @@ export const Capture = ({
     setIsLoading(true)
     setNaturalSize(undefined)
   }, [sources?.original])
+
+  useCapturePreload({
+    captureId,
+    demand,
+    enabled: isLoading === false && !!displayed,
+  })
 
   useLayoutEffect(() => {
     // Ugly hack to make overlay correct on first render
@@ -274,7 +285,13 @@ export const Capture = ({
             })}
           >
             {renderOverlay ? <CaptureOverlay boxStyles={boxStyles} /> : null}
-            {trail ? <CaptureGhostTrail trail={trail} /> : null}
+            {trail ? (
+              <CaptureGhostTrail
+                onSelectFrame={setActiveCaptureId}
+                showCrops={showPathCrops}
+                trail={trail}
+              />
+            ) : null}
             <CaptureDetections
               boxStyles={boxStyles}
               defaultFilters={defaultFilters}
