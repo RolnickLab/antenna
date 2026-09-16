@@ -389,6 +389,9 @@ export enum STRING {
   TRACK_CONFIRM_GROUPING_DESCRIPTION,
   TRACK_CONFIRM_GROUPING_RESULT,
   TRACK_CONFIRM_GROUPING,
+  TRACK_GROUPING_FILTER_NO,
+  TRACK_GROUPING_FILTER_TOOLTIP,
+  TRACK_GROUPING_FILTER_YES,
   TRACK_EXTEND_CAPTURE_COVERED,
   TRACK_EXTEND_CHOICE_DESCRIPTION,
   TRACK_EXTEND_CLICKED_FRAME,
@@ -971,6 +974,10 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'Records that you checked this occurrence holds the right detections, and no others. This is a separate judgement from the species it was identified as, and any later change to its frames clears it.',
   [STRING.TRACK_CONFIRM_GROUPING_RESULT]: 'Grouping confirmed.',
   [STRING.TRACK_CONFIRM_GROUPING]: 'Mark grouping correct',
+  [STRING.TRACK_GROUPING_FILTER_NO]: 'Not confirmed',
+  [STRING.TRACK_GROUPING_FILTER_TOOLTIP]:
+    'Whether a person has confirmed that this occurrence holds the right detections. A separate judgement from the species it was identified as.',
+  [STRING.TRACK_GROUPING_FILTER_YES]: 'Confirmed',
   [STRING.TRACK_EXTEND_CAPTURE_COVERED]:
     'This capture already has a frame of this track',
   [STRING.TRACK_EXTEND_CHOICE_DESCRIPTION]:
