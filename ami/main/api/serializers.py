@@ -2181,6 +2181,11 @@ class OccurrencePathFrameSerializer(serializers.Serializer):
 
     detection_id = serializers.IntegerField()
     bbox = serializers.ListField(child=serializers.FloatField(), allow_null=True)
+    crop_url = serializers.CharField(
+        allow_null=True,
+        help_text="The detection's cropped image, drawn inside the box so a reviewer can "
+        "read the animal in a frame they are not viewing. Null until the crop is generated.",
+    )
     capture = OccurrencePathCaptureSerializer()
 
 

@@ -54,6 +54,7 @@ interface CaptureProps {
   extend: ExtendTrackState
   height: number | null
   showDetections?: boolean
+  showPathCrops?: boolean
   sources?: TierSources
   transformRef: React.RefObject<ReactZoomPanPinchRef>
   width: number | null
@@ -67,6 +68,7 @@ export const Capture = ({
   extend,
   height,
   showDetections,
+  showPathCrops,
   sources,
   transformRef,
   width,
@@ -274,7 +276,13 @@ export const Capture = ({
             })}
           >
             {renderOverlay ? <CaptureOverlay boxStyles={boxStyles} /> : null}
-            {trail ? <CaptureGhostTrail trail={trail} /> : null}
+            {trail ? (
+              <CaptureGhostTrail
+                onSelectFrame={setActiveCaptureId}
+                showCrops={showPathCrops}
+                trail={trail}
+              />
+            ) : null}
             <CaptureDetections
               boxStyles={boxStyles}
               defaultFilters={defaultFilters}

@@ -8375,6 +8375,24 @@ class TrackEditTestCase(APITestCase):
         self.assertIn("width", first["capture"])
         self.assertIn("height", first["capture"])
 
+    def test_path_carries_each_frame_crop_and_stays_null_when_there_is_none(self):
+        """A reviewer reading the animal in a frame they are not viewing needs its crop.
+
+        Crops are generated after detection, so a frame without one must come back as
+        null rather than a URL to nothing.
+        """
+        with_crop, without_crop = self.detections[0], self.detections[1]
+        with_crop.path = f"crops/{with_crop.pk}.jpg"
+        with_crop.save(update_fields=["path"])
+
+        self.client.force_authenticate(user=self.curator)
+        response = self.client.get(f"/api/v2/occurrences/{self.occurrence.pk}/path/")
+        self.assertEqual(response.status_code, 200, response.data)
+
+        crops = {frame["detection_id"]: frame["crop_url"] for frame in response.data}
+        self.assertIn(with_crop.path, crops[with_crop.pk])
+        self.assertIsNone(crops[without_crop.pk])
+
     def test_path_order_matches_the_order_a_split_acts_on(self):
         """A split moves the chosen detection and every later one.
 

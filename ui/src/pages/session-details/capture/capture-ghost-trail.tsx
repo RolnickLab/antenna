@@ -1,5 +1,6 @@
 import { PathFrame } from 'data-services/models/occurrence-path'
 import { bboxToPercentCentre, bboxToPercentStyle } from './bbox'
+import { getGhostFrame } from './ghost-frame'
 import styles from './capture.module.scss'
 
 // Enough neighbouring frames to read the animal's movement, few enough that a long
@@ -15,10 +16,13 @@ const OPACITY_FALLOFF = 0.11
 // who cannot separate the two hues. Live detection boxes are always solid.
 const LATER_DASH = '3 3'
 const EARLIER_DASH = undefined
+// A crop needs a floor the stroke falloff does not: a thumbnail at 0.15 cannot be read.
+const MIN_CROP_OPACITY = 0.5
 
 interface Ghost {
   color: string
   dash?: string
+  frame: PathFrame
   height: number
   id: string
   opacity: number
@@ -86,6 +90,7 @@ export const buildTrail = (
       color: earlier ? EARLIER_COLOR : LATER_COLOR,
       dash: earlier ? EARLIER_DASH : LATER_DASH,
       ...box,
+      frame,
       id: frame.detectionId,
       opacity: Math.max(MIN_GHOST_OPACITY, 1 - distance * OPACITY_FALLOFF),
     })
@@ -101,46 +106,92 @@ export const buildTrail = (
   }
 }
 
-export const CaptureGhostTrail = ({ trail }: { trail: Trail }) => (
-  <svg
-    className={styles.ghostTrail}
-    preserveAspectRatio="none"
-    viewBox="0 0 100 100"
-  >
-    <polyline
-      fill="none"
-      points={trail.points}
-      stroke="#000000"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeOpacity={0.4}
-      strokeWidth={4}
-      vectorEffect="non-scaling-stroke"
-    />
-    <polyline
-      fill="none"
-      points={trail.points}
-      stroke="#FFFFFF"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      strokeWidth={1.5}
-      vectorEffect="non-scaling-stroke"
-    />
-    {trail.ghosts.map((ghost) => (
-      <rect
+/** How strongly a ghost is drawn; a box holding a crop is lifted to a readable floor. */
+const ghostOpacity = (ghost: Ghost, showCrops?: boolean) =>
+  showCrops && ghost.frame.cropUrl
+    ? Math.max(MIN_CROP_OPACITY, ghost.opacity)
+    : ghost.opacity
+
+export const CaptureGhostTrail = ({
+  onSelectFrame,
+  showCrops,
+  trail,
+}: {
+  /** Steps the viewer to the frame a ghost box was measured in, keeping the selection. */
+  onSelectFrame: (captureId: string) => void
+  showCrops?: boolean
+  trail: Trail
+}) => (
+  <>
+    <div className={styles.ghostFrames}>
+      {trail.ghosts.map((ghost) => {
+        const frame = getGhostFrame(ghost.frame, !!showCrops)
+
+        return (
+          <button
+            aria-label={frame.label}
+            className={styles.ghostFrame}
+            key={ghost.id}
+            onClick={() => onSelectFrame(frame.captureId)}
+            style={{
+              height: `${ghost.height}%`,
+              left: `${ghost.x}%`,
+              top: `${ghost.y}%`,
+              width: `${ghost.width}%`,
+            }}
+            type="button"
+          >
+            {frame.cropUrl ? (
+              <img
+                alt=""
+                src={frame.cropUrl}
+                style={{ opacity: ghostOpacity(ghost, showCrops) }}
+              />
+            ) : null}
+          </button>
+        )
+      })}
+    </div>
+    <svg
+      className={styles.ghostTrail}
+      preserveAspectRatio="none"
+      viewBox="0 0 100 100"
+    >
+      <polyline
         fill="none"
-        height={ghost.height}
-        key={ghost.id}
-        rx={0.4}
-        stroke={ghost.color}
-        strokeDasharray={ghost.dash}
-        strokeOpacity={ghost.opacity}
+        points={trail.points}
+        stroke="#000000"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeOpacity={0.4}
+        strokeWidth={4}
+        vectorEffect="non-scaling-stroke"
+      />
+      <polyline
+        fill="none"
+        points={trail.points}
+        stroke="#FFFFFF"
+        strokeLinecap="round"
+        strokeLinejoin="round"
         strokeWidth={1.5}
         vectorEffect="non-scaling-stroke"
-        width={ghost.width}
-        x={ghost.x}
-        y={ghost.y}
       />
-    ))}
-  </svg>
+      {trail.ghosts.map((ghost) => (
+        <rect
+          fill="none"
+          height={ghost.height}
+          key={ghost.id}
+          rx={0.4}
+          stroke={ghost.color}
+          strokeDasharray={ghost.dash}
+          strokeOpacity={ghostOpacity(ghost, showCrops)}
+          strokeWidth={1.5}
+          vectorEffect="non-scaling-stroke"
+          width={ghost.width}
+          x={ghost.x}
+          y={ghost.y}
+        />
+      ))}
+    </svg>
+  </>
 )

@@ -5,18 +5,18 @@ import { BasicTooltip, Button, Checkbox, Popover } from 'nova-ui-kit'
 import { useParams } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 
+export interface ViewSettingsValues {
+  defaultFilters: boolean
+  showDetections: boolean
+  showPathCrops: boolean
+}
+
 export const ViewSettings = ({
   onSettingsChange,
   settings,
 }: {
-  onSettingsChange: (settings: {
-    defaultFilters: boolean
-    showDetections: boolean
-  }) => void
-  settings: {
-    defaultFilters: boolean
-    showDetections: boolean
-  }
+  onSettingsChange: (settings: ViewSettingsValues) => void
+  settings: ViewSettingsValues
 }) => {
   const { projectId } = useParams()
   const { project } = useProjectDetails(projectId as string, true)
@@ -47,6 +47,17 @@ export const ViewSettings = ({
               onSettingsChange({
                 ...settings,
                 showDetections: !settings.showDetections,
+              })
+            }
+          />
+          <Checkbox
+            id="show-path-crops"
+            label={translate(STRING.SHOW_PATH_CROPS)}
+            checked={settings.showPathCrops}
+            onCheckedChange={() =>
+              onSettingsChange({
+                ...settings,
+                showPathCrops: !settings.showPathCrops,
               })
             }
           />
