@@ -1,5 +1,9 @@
 import { TrackFrame } from 'data-services/models/occurrence-details'
-import { getTrackNavigation, getNearestPathFrame } from './track-navigation'
+import {
+  getMergedTrackExtent,
+  getNearestPathFrame,
+  getTrackNavigation,
+} from './track-navigation'
 
 const at = (minute: number) => new Date(2026, 8, 1, 22, minute)
 
@@ -63,6 +67,38 @@ describe('getTrackNavigation', () => {
     expect(navigation.position).toEqual({ kind: 'after-last' })
     expect(navigation.previous?.id).toBe('d30')
     expect(navigation.next).toBeUndefined()
+  })
+})
+
+describe('getMergedTrackExtent', () => {
+  test('a track added after the last frame leaves off at its own last frame', () => {
+    expect(
+      getMergedTrackExtent({
+        addedFrames: [frame(40), frame(50)],
+        clickedDetectionId: 'd40',
+        trackFrames: FRAMES,
+      })
+    ).toEqual({ boundaryCaptureId: 'c50', direction: 'forward' })
+  })
+
+  test('a track added before the first frame leaves off at its own first frame', () => {
+    expect(
+      getMergedTrackExtent({
+        addedFrames: [frame(1), frame(5)],
+        clickedDetectionId: 'd5',
+        trackFrames: FRAMES,
+      })
+    ).toEqual({ boundaryCaptureId: 'c1', direction: 'backward' })
+  })
+
+  test('a merge with nothing to read the direction from goes forwards', () => {
+    expect(
+      getMergedTrackExtent({
+        addedFrames: [frame(40)],
+        clickedDetectionId: 'unknown',
+        trackFrames: [],
+      })
+    ).toEqual({ boundaryCaptureId: 'c40', direction: 'forward' })
   })
 })
 

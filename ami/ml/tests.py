@@ -889,6 +889,24 @@ class TestPipeline(TestCase):
         final_config = self.pipeline.get_config(self.project.pk)
         self.assertEqual(final_config["test_param"], "project_value")
 
+        # The project's overrides stay out of the pipeline default and out of the next call.
+        self.assertNotIn("project_value", self.pipeline.default_config.values())
+        self.assertEqual(self.pipeline.get_config()["test_param"], "test_value")
+
+    def test_feature_vectors_are_requested_unless_a_config_opts_out(self):
+        """Every request asks the service for classification feature vectors, since tracking and
+        the merge picker compare detections by them; a project config can still turn them off."""
+        from ami.ml.models import ProjectPipelineConfig
+
+        self.assertIs(self.pipeline.get_config()["include_features"], True)
+        self.assertIs(self.pipeline.get_config(self.project.pk)["include_features"], True)
+
+        ProjectPipelineConfig.objects.create(
+            project=self.project, pipeline=self.pipeline, config={"include_features": False}
+        )
+        self.assertIs(self.pipeline.get_config(self.project.pk)["include_features"], False)
+        self.assertIs(self.pipeline.get_config()["include_features"], True)
+
     def test_image_with_null_detection(self):
         """
         Test saving results for a pipeline that returns null detections for some images.

@@ -2,6 +2,7 @@ import {
   DisabledReason,
   TrackEditDialog,
 } from 'components/track/track-edit-dialog'
+import { useFetchCaptureDetails } from 'data-services/hooks/captures/useFetchCaptureDetails'
 import { useAddDetections } from 'data-services/hooks/occurrences/track/useAddDetections'
 import { useMergeOccurrences } from 'data-services/hooks/occurrences/track/useMergeOccurrences'
 import { useRemoveDetection } from 'data-services/hooks/occurrences/track/useRemoveDetection'
@@ -33,7 +34,12 @@ import {
   ExtendPending,
   getExtendClick,
 } from './extend-click'
-import { getTrackNavigation, TrackPosition } from './track-navigation'
+import {
+  getMergedTrackExtent,
+  getTrackNavigation,
+  MergedTrackExtent,
+  TrackPosition,
+} from './track-navigation'
 
 /** Why the last box click changed nothing, or why a successful edit did not move on. */
 export type ExtendNote = 'no-later-capture' | 'only-frame'
@@ -85,12 +91,19 @@ export const useExtendTrack = ({
   nextCaptureId?: string
   onSelectCapture: (captureId: string) => void
 }): ExtendTrackState => {
+  const { projectId } = useParams()
   const { extendOccurrenceId, setExtendOccurrenceId } = useExtendOccurrenceId()
   const { occurrence: track } = useOccurrenceDetails(
     extendOccurrenceId ?? '',
     EXTEND_FETCH_OPTIONS
   )
   const [choice, setChoice] = useState<ExtendChoice>()
+  // The merge deletes the clicked occurrence, so its frames are read while it still exists.
+  const { occurrence: clickedTrack } = useOccurrenceDetails(
+    choice?.occurrenceId ?? '',
+    EXTEND_FETCH_OPTIONS
+  )
+  const fetchCaptureDetails = useFetchCaptureDetails(projectId as string)
   const [note, setNote] = useState<ExtendNote>()
   const [pending, setPending] = useState<ExtendPending>()
   const [orphanOccurrenceId, setOrphanOccurrenceId] = useState<string>()
@@ -135,6 +148,49 @@ export const useExtendTrack = ({
     if (latest.current.nextCaptureId) {
       onSelectCapture(latest.current.nextCaptureId)
     } else {
+      setNote('no-later-capture')
+    }
+  }
+
+  /**
+   * A merge adds a whole track at once, so it carries on from the merged track's far
+   * end instead of the clicked frame, which the reviewer has already seen.
+   */
+  const finishMerge = async (
+    editedCaptureId: string | undefined,
+    extent: MergedTrackExtent
+  ) => {
+    setChoice(undefined)
+
+    if (latest.current.captureId !== editedCaptureId) {
+      return
+    }
+
+    const { boundaryCaptureId, direction } = extent
+    const boundary = boundaryCaptureId
+      ? // A failure here only costs the smarter landing spot.
+        await fetchCaptureDetails(boundaryCaptureId).catch(() => undefined)
+      : undefined
+
+    if (latest.current.captureId !== editedCaptureId) {
+      return
+    }
+
+    if (!boundary || !boundaryCaptureId) {
+      finish(editedCaptureId)
+      return
+    }
+
+    const neighbourId =
+      direction === 'backward'
+        ? boundary.prevCaptureWithDetectionsId
+        : boundary.nextCaptureWithDetectionsId
+
+    if (neighbourId) {
+      onSelectCapture(neighbourId)
+    } else if (boundaryCaptureId !== editedCaptureId) {
+      onSelectCapture(boundaryCaptureId)
+    } else if (direction === 'forward') {
       setNote('no-later-capture')
     }
   }
@@ -217,9 +273,15 @@ export const useExtendTrack = ({
     isLoading,
     mergeChoice: () => {
       if (choice) {
+        const extent = getMergedTrackExtent({
+          addedFrames: clickedTrack?.frames ?? [],
+          clickedDetectionId: choice.detectionId,
+          trackFrames: track?.frames ?? [],
+        })
+
         merge
           .mergeOccurrences([choice.occurrenceId])
-          .then(() => finish(captureId))
+          .then(() => finishMerge(captureId, extent))
           .catch(() => undefined)
       }
     },

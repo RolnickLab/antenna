@@ -76,6 +76,56 @@ export const getTrackNavigation = ({
   }
 }
 
+export interface MergedTrackExtent {
+  /** The merged track's outermost frame in the direction of travel. */
+  boundaryCaptureId?: string
+  direction: 'backward' | 'forward'
+}
+
+const nearestFrame = (frames: TrackFrame[], date: Date) => {
+  const distance = (frame: TrackFrame) =>
+    Math.abs(frame.timestamp.getTime() - date.getTime())
+
+  return frames.reduce<TrackFrame | undefined>(
+    (nearest, frame) =>
+      !nearest || distance(frame) < distance(nearest) ? frame : nearest,
+    undefined
+  )
+}
+
+/**
+ * Where a merge leaves the reviewer: past the merged track's last frame when the click
+ * carried on forwards in time, before its first frame when they were working backwards.
+ * Absorbed frames are read before the merge, which deletes the occurrence holding them.
+ */
+export const getMergedTrackExtent = ({
+  addedFrames,
+  clickedDetectionId,
+  trackFrames,
+}: {
+  addedFrames: TrackFrame[]
+  clickedDetectionId: string
+  trackFrames: TrackFrame[]
+}): MergedTrackExtent => {
+  const clicked = addedFrames.find((frame) => frame.id === clickedDetectionId)
+  const reference = clicked
+    ? nearestFrame(trackFrames, clicked.timestamp)
+    : undefined
+  const direction =
+    clicked &&
+    reference &&
+    clicked.timestamp.getTime() < reference.timestamp.getTime()
+      ? 'backward'
+      : 'forward'
+  const ordered = [...trackFrames, ...addedFrames].sort(
+    (f1, f2) => f1.timestamp.getTime() - f2.timestamp.getTime()
+  )
+  const boundary =
+    direction === 'backward' ? ordered[0] : ordered[ordered.length - 1]
+
+  return { boundaryCaptureId: boundary?.captureId, direction }
+}
+
 /** The path frame closest in time to a capture, so the operator can jump back onto the track. */
 export const getNearestPathFrame = (frames: PathFrame[], date?: Date) => {
   const dated = frames.filter(
