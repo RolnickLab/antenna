@@ -1243,8 +1243,13 @@ class Pipeline(BaseModel):
 
         This will be the same as pipeline.default_config, but if a project ID is provided,
         the project's pipeline config will be used to override the default config.
+
+        Classification feature vectors are requested unless a config says otherwise:
+        tracking and the merge picker compare detections by them, and a service that
+        cannot produce them ignores the key.
         """
-        config = self.default_config
+        # A copy, so a project's overrides never leak into the pipeline default or another project.
+        config = PipelineRequestConfigParameters({"include_features": True, **self.default_config})
         if project_id:
             try:
                 project_pipeline_config = self.project_pipeline_configs.get(project_id=project_id)
