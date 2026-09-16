@@ -2129,20 +2129,27 @@ class SourceImageQuerySet(BaseQuerySet):
         return self.annotate(was_processed=processed_exists)
 
     def with_detections_with_features(self):
-        """Annotate ``detections_with_features``: valid detections on the capture with at
-        least one classification that stored a feature embedding. Counted in SQL so the
-        vectors themselves are never loaded.
+        """Annotate ``detections_with_features`` and the ``detections_valid`` it is out of:
+        valid detections on the capture, and how many of them have a classification that
+        stored a feature embedding. Counted in SQL so the vectors themselves are never
+        loaded. Both come from the same population, so a caller can show one as a share of
+        the other; the cached ``detections_count`` is a different, default-filtered count.
         """
-        subquery = (
-            Detection.objects.valid()
-            .filter(source_image_id=models.OuterRef("pk"), classifications__features_2048__isnull=False)
-            .order_by()
-            .values("source_image_id")
-            .annotate(count=models.Count("id", distinct=True))
-            .values("count")
-        )
+
+        def count_valid(**extra):
+            return models.Subquery(
+                Detection.objects.valid()
+                .filter(source_image_id=models.OuterRef("pk"), **extra)
+                .order_by()
+                .values("source_image_id")
+                .annotate(count=models.Count("id", distinct=True))
+                .values("count"),
+                output_field=models.IntegerField(),
+            )
+
         return self.annotate(
-            detections_with_features=Coalesce(models.Subquery(subquery, output_field=models.IntegerField()), 0)
+            detections_valid=Coalesce(count_valid(), 0),
+            detections_with_features=Coalesce(count_valid(classifications__features_2048__isnull=False), 0),
         )
 
     def with_thumbnails(self):
