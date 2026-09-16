@@ -40,6 +40,11 @@ export class CaptureDetails extends Capture {
     return this._capture.detections_with_features ?? undefined
   }
 
+  /** The total detectionsWithFeatures is out of, counted over the same detections. */
+  get detectionsValid(): number | undefined {
+    return this._capture.detections_valid ?? undefined
+  }
+
   get hasJobInProgress(): boolean {
     return this._jobs.some(
       (job) =>
