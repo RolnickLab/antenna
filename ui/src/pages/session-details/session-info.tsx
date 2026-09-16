@@ -9,11 +9,8 @@ import { STRING, translate } from 'utils/language'
 export const SessionInfo = ({ session }: { session: SessionDetails }) => {
   const { projectId } = useParams()
 
+  // The id sits in the "Session #" row above, beside the copy-link button.
   const fields = [
-    {
-      label: translate(STRING.FIELD_LABEL_ID),
-      value: session.id,
-    },
     {
       label: translate(STRING.FIELD_LABEL_DEPLOYMENT),
       value: session.deploymentLabel,
