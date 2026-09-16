@@ -28,33 +28,37 @@
   padding-bottom: 4px;
 }
 
+// A film strip: one item per row, each divided from the one above it.
+.filmStrip {
+  align-items: stretch;
+  gap: 0;
+
+  .blueprintItem + .blueprintItem {
+    border-top: 1px solid var(--color-border);
+  }
+}
+
 .blueprintItem {
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
+  gap: 16px;
   max-width: 100%;
+  padding: 16px 0;
+  box-sizing: border-box;
 
-  img {
-    max-width: 100%;
-    height: inherit;
-    vertical-align: middle;
-  }
-
-  .blueprintInfo {
+  .crop {
+    flex: 0 0 96px;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 16px;
-    max-width: 100%;
-    color: var(--color-foreground);
-    padding: 8px;
-    box-sizing: border-box;
-    @include body-small;
-    line-height: 12px;
+  }
 
-    span {
-      white-space: nowrap;
-    }
+  img {
+    max-width: 100%;
+    max-height: 120px;
+    width: auto;
+    height: auto;
+    vertical-align: middle;
   }
 
   .count {
