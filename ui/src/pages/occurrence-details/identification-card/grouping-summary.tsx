@@ -10,6 +10,7 @@ import {
 } from 'data-services/models/track-stats'
 import { RouteIcon } from 'lucide-react'
 import { BasicTooltip, IdentificationCard } from 'nova-ui-kit'
+import { cn } from 'nova-ui-kit/utils'
 import { Fragment } from 'react'
 import { STRING, translate } from 'utils/language'
 import { FrameTaxonName } from '../track/frame-caption'
@@ -30,8 +31,26 @@ export const GroupingSummary = ({
         })}`
       : `${summary.frames}`
 
-  const stats = [
+  const stats: {
+    isWarning?: boolean
+    label: string
+    tooltip?: string
+    value: string
+  }[] = [
     { label: translate(STRING.TRACK_SUMMARY_FRAMES), value: frames },
+    ...(summary.framesWithVectors !== undefined
+      ? [
+          {
+            isWarning: summary.framesWithVectors < summary.frames,
+            label: translate(STRING.TRACK_SUMMARY_FRAMES_WITH_VECTORS),
+            tooltip: translate(STRING.TRACK_SUMMARY_VECTORS_TOOLTIP),
+            value: translate(STRING.VALUE_COUNT_OF_TOTAL, {
+              count: summary.framesWithVectors,
+              total: summary.frames,
+            }),
+          },
+        ]
+      : []),
     {
       label: translate(STRING.FIELD_LABEL_DURATION),
       value: getDurationLabel(summary.durationSeconds) ?? notAvailable,
@@ -73,10 +92,27 @@ export const GroupingSummary = ({
       }
     >
       <div className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 px-4 py-4 border-border border-t body-small">
-        {stats.map(({ label, value }) => (
+        {stats.map(({ isWarning, label, tooltip, value }) => (
           <Fragment key={label}>
-            <span className="text-muted-foreground">{label}</span>
-            <span className="text-foreground tabular-nums">{value}</span>
+            <span className="text-muted-foreground">
+              {tooltip ? (
+                <BasicTooltip content={tooltip}>
+                  <span className="cursor-default underline decoration-dotted underline-offset-4">
+                    {label}
+                  </span>
+                </BasicTooltip>
+              ) : (
+                label
+              )}
+            </span>
+            <span
+              className={cn(
+                'tabular-nums',
+                isWarning ? 'text-warning-700' : 'text-foreground'
+              )}
+            >
+              {value}
+            </span>
           </Fragment>
         ))}
       </div>
