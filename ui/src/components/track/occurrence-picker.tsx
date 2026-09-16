@@ -60,11 +60,20 @@ const isRanked = (
 // first, or most alike first.
 const DESCENDING_FIRST: MergeCandidateSortColumn[] = ['similarity']
 
-const SORT_COLUMNS: { column: MergeCandidateSortColumn; label: STRING }[] = [
-  { column: 'when', label: STRING.TRACK_COLUMN_WHEN },
-  { column: 'distance', label: STRING.TRACK_COLUMN_DISTANCE },
-  { column: 'similarity', label: STRING.TRACK_COLUMN_SIMILARITY },
+const COLUMN_LABELS: Record<MergeCandidateSortColumn, STRING> = {
+  when: STRING.TRACK_COLUMN_WHEN,
+  distance: STRING.TRACK_COLUMN_DISTANCE,
+  similarity: STRING.TRACK_COLUMN_SIMILARITY,
+}
+
+const SORT_COLUMNS: MergeCandidateSortColumn[] = [
+  'when',
+  'distance',
+  'similarity',
 ]
+
+const BEST_MATCH = 'best'
+const CUMULATIVE = 'cumulative'
 
 const PANEL_GAP = 8
 
@@ -158,12 +167,17 @@ export const OccurrencePicker = ({
     selectedIds.includes(row.id)
   ).length
 
+  const columnSort = sort && 'column' in sort ? sort : undefined
+
   const toggleSort = (column: MergeCandidateSortColumn) =>
     setSort(
-      sort?.column === column
-        ? { column, descending: !sort.descending }
+      columnSort?.column === column
+        ? { column, descending: !columnSort.descending }
         : { column, descending: DESCENDING_FIRST.includes(column) }
     )
+
+  const chooseOrder = (value: string) =>
+    setSort(value === CUMULATIVE ? { cumulative: true } : undefined)
 
   const pick = (candidate: OccurrencePickerCandidate) =>
     multi ? onToggle?.(candidate.id) : onSelect?.(candidate.id)
@@ -197,30 +211,62 @@ export const OccurrencePicker = ({
     <div className="flex flex-col gap-1">
       <span className="body-small">{title}</span>
       <span className="body-small text-muted-foreground">{description}</span>
-      {scope && onScopeChange ? (
+      {(scope && onScopeChange) || ranked ? (
         <div className="flex flex-wrap items-center gap-4 py-1">
-          <Select.Root
-            value={scope}
-            onValueChange={(value) => onScopeChange(value as MergeScopeKey)}
-          >
-            <Select.Trigger
-              aria-label={translate(STRING.TRACK_SCOPE_LABEL)}
-              className="h-8 w-auto gap-2 px-3 body-small text-foreground"
+          {scope && onScopeChange ? (
+            <Select.Root
+              value={scope}
+              onValueChange={(value) => onScopeChange(value as MergeScopeKey)}
             >
-              <Select.Value />
-            </Select.Trigger>
-            <Select.Content>
-              {MERGE_SCOPES.map((option) => (
-                <Select.Item
-                  className="h-8 body-small"
-                  key={option.key}
-                  value={option.key}
-                >
-                  {translate(option.label)}
+              <Select.Trigger
+                aria-label={translate(STRING.TRACK_SCOPE_LABEL)}
+                className="h-8 w-auto gap-2 px-3 body-small text-foreground"
+              >
+                <Select.Value />
+              </Select.Trigger>
+              <Select.Content>
+                {MERGE_SCOPES.map((option) => (
+                  <Select.Item
+                    className="h-8 body-small"
+                    key={option.key}
+                    value={option.key}
+                  >
+                    {translate(option.label)}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+          ) : null}
+          {ranked ? (
+            <Select.Root
+              value={columnSort?.column ?? (sort ? CUMULATIVE : BEST_MATCH)}
+              onValueChange={chooseOrder}
+            >
+              <Select.Trigger
+                aria-label={translate(STRING.TRACK_SORT_LABEL)}
+                className="h-8 w-auto gap-2 px-3 body-small text-foreground"
+              >
+                <Select.Value />
+              </Select.Trigger>
+              <Select.Content>
+                <Select.Item className="h-8 body-small" value={BEST_MATCH}>
+                  {translate(STRING.TRACK_SORT_BEST)}
                 </Select.Item>
-              ))}
-            </Select.Content>
-          </Select.Root>
+                <Select.Item className="h-8 body-small" value={CUMULATIVE}>
+                  {translate(STRING.TRACK_SORT_CUMULATIVE)}
+                </Select.Item>
+                {/* Named so the control still reads true after a column header sets the order. */}
+                {columnSort ? (
+                  <Select.Item
+                    className="h-8 body-small"
+                    value={columnSort.column}
+                  >
+                    {translate(COLUMN_LABELS[columnSort.column])}
+                  </Select.Item>
+                ) : null}
+              </Select.Content>
+            </Select.Root>
+          ) : null}
         </div>
       ) : null}
       {isLoading ? (
@@ -271,11 +317,12 @@ export const OccurrencePicker = ({
                   {translate(STRING.TRACK_COLUMN_FRAMES)}
                 </th>
                 {ranked &&
-                  SORT_COLUMNS.map(({ column, label }) => {
-                    const active = sort?.column === column
+                  SORT_COLUMNS.map((column) => {
+                    const label = COLUMN_LABELS[column]
+                    const active = columnSort?.column === column
                     const DirectionIcon = !active
                       ? ArrowUpDownIcon
-                      : sort.descending
+                      : columnSort.descending
                       ? ArrowDownIcon
                       : ArrowUpIcon
 
@@ -283,7 +330,7 @@ export const OccurrencePicker = ({
                       <th
                         aria-sort={
                           active
-                            ? sort.descending
+                            ? columnSort.descending
                               ? 'descending'
                               : 'ascending'
                             : 'none'
@@ -442,7 +489,9 @@ export const OccurrencePicker = ({
       {hovered ? (
         <CandidateComparison
           displayName={hovered.candidate.displayName}
+          distance={hovered.candidate.distance}
           sides={getComparisonSides(hovered.candidate)}
+          similarity={hovered.candidate.similarity}
           style={hovered.style}
         />
       ) : null}

@@ -1,6 +1,8 @@
 import {
   ComparisonSide,
   ComparisonSides,
+  getDistanceLabel,
+  getSimilarityLabel,
 } from 'data-services/models/merge-candidate'
 import { ArrowRightIcon } from 'lucide-react'
 import { CSSProperties } from 'react'
@@ -8,7 +10,7 @@ import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getForma
 import { STRING, translate } from 'utils/language'
 
 export const COMPARISON_PANEL_WIDTH = 400
-export const COMPARISON_PANEL_HEIGHT = 240
+export const COMPARISON_PANEL_HEIGHT = 280
 
 const Crop = ({ side, size }: { side: ComparisonSide; size: string }) => (
   <div className="flex flex-col items-center gap-1">
@@ -28,16 +30,27 @@ const Crop = ({ side, size }: { side: ComparisonSide; size: string }) => (
   </div>
 )
 
+const Metric = ({ label, value }: { label: STRING; value: string }) => (
+  <span className="inline-flex items-center gap-1 whitespace-nowrap">
+    <span className="text-muted-foreground">{translate(label)}</span>
+    <span className="tabular-nums">{value}</span>
+  </span>
+)
+
 /**
- * Hover preview of one scored pair: the earlier crop on the left, the later on
- * the right, the gap between them. Decorative, so it never takes the pointer.
+ * Hover preview of one scored pair: the earlier crop on the left, the later on the
+ * right, and every score the row carries. Decorative, so it never takes the pointer.
  */
 export const CandidateComparison = ({
   displayName,
+  distance,
+  similarity,
   sides,
   style,
 }: {
   displayName: string
+  distance: number | null
+  similarity: number | null
   sides: ComparisonSides
   style: CSSProperties
 }) => {
@@ -54,12 +67,10 @@ export const CandidateComparison = ({
       {paired ? (
         <div className="flex items-center justify-between gap-3">
           <Crop side={sides.left} size="w-40 h-40" />
-          <div className="flex flex-col items-center gap-1 text-muted-foreground">
-            <ArrowRightIcon aria-hidden className="w-4 h-4" />
-            <span className="body-small tabular-nums whitespace-nowrap">
-              {sides.gapLabel}
-            </span>
-          </div>
+          <ArrowRightIcon
+            aria-hidden
+            className="w-4 h-4 text-muted-foreground"
+          />
           <Crop side={sides.right} size="w-40 h-40" />
         </div>
       ) : (
@@ -67,6 +78,17 @@ export const CandidateComparison = ({
           <Crop side={single} size="w-48 h-48" />
         </div>
       )}
+      <div className="flex items-center justify-center gap-4 body-small">
+        <Metric label={STRING.TRACK_COLUMN_WHEN} value={sides.gapLabel} />
+        <Metric
+          label={STRING.TRACK_COLUMN_DISTANCE}
+          value={getDistanceLabel(distance)}
+        />
+        <Metric
+          label={STRING.TRACK_COLUMN_SIMILARITY}
+          value={getSimilarityLabel(similarity)}
+        />
+      </div>
     </div>
   )
 }

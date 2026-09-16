@@ -157,6 +157,32 @@ describe('merge candidate sorting', () => {
     ).toEqual(['1', '3', '2'])
   })
 
+  test('the cumulative order ranks on time, then distance, then similarity', () => {
+    // Row 2 is 30 s away, row 3 is 10 s away, row 1 is 60 s away.
+    expect(ids(sortMergeCandidates(rows, { cumulative: true }))).toEqual([
+      '3',
+      '2',
+      '1',
+    ])
+  })
+
+  // All four are the same distance in time, so the later keys decide the order.
+  test('each cumulative key only breaks the tie the one before it left', () => {
+    const tied = [
+      serverCandidate({ id: 1, distance: 0.2, similarity: 0.6 }),
+      serverCandidate({ id: 2, distance: 0.2, similarity: 0.9 }),
+      serverCandidate({ id: 3, distance: 0.3, similarity: 0.99 }),
+      serverCandidate({ id: 4, distance: null, similarity: 0.99 }),
+    ].map(convertMergeCandidate)
+
+    expect(ids(sortMergeCandidates(tied, { cumulative: true }))).toEqual([
+      '2',
+      '1',
+      '3',
+      '4',
+    ])
+  })
+
   test('rows without a value go last in either direction', () => {
     expect(
       ids(sortMergeCandidates(rows, { column: 'distance', descending: false }))

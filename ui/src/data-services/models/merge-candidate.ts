@@ -162,10 +162,10 @@ export const getSimilarityLabel = (similarity: number | null): string =>
 
 export type MergeCandidateSortColumn = 'when' | 'distance' | 'similarity'
 
-export interface MergeCandidateSort {
-  column: MergeCandidateSortColumn
-  descending: boolean
-}
+/** One column the reviewer clicked, or all three applied in turn. */
+export type MergeCandidateSort =
+  | { column: MergeCandidateSortColumn; descending: boolean }
+  | { cumulative: true }
 
 const sortValue = (
   candidate: MergeCandidate,
@@ -177,9 +177,32 @@ const sortValue = (
     ? candidate.distance
     : candidate.similarity
 
+const compare = (
+  valueA: number | null,
+  valueB: number | null,
+  descending: boolean
+): number => {
+  if (valueA === null || valueB === null) {
+    return valueA === valueB ? 0 : valueA === null ? 1 : -1
+  }
+
+  return (valueA - valueB) * (descending ? -1 : 1)
+}
+
+// Nearest in time first, then closest, then most alike. Time is unsigned here:
+// a candidate half a minute either side of the track is equally near it.
+const CUMULATIVE_KEYS: {
+  descending: boolean
+  value: (candidate: MergeCandidate) => number | null
+}[] = [
+  { descending: false, value: (c) => Math.abs(getWhenOffsetSeconds(c)) },
+  { descending: false, value: (c) => c.distance },
+  { descending: true, value: (c) => c.similarity },
+]
+
 /**
- * Reorder loaded candidates for one column, keeping the server's cost order when
- * no sort is chosen. Rows without a value for the column go last either way.
+ * Reorder loaded candidates, keeping the server's cost order when no sort is chosen
+ * and for rows a sort cannot separate. Rows without a value go last on every key.
  */
 export const sortMergeCandidates = (
   candidates: MergeCandidate[],
@@ -189,16 +212,25 @@ export const sortMergeCandidates = (
     return candidates
   }
 
-  const direction = sort.descending ? -1 : 1
+  if ('cumulative' in sort) {
+    return [...candidates].sort((a, b) => {
+      for (const key of CUMULATIVE_KEYS) {
+        const result = compare(key.value(a), key.value(b), key.descending)
 
-  return [...candidates].sort((a, b) => {
-    const valueA = sortValue(a, sort.column)
-    const valueB = sortValue(b, sort.column)
+        if (result !== 0) {
+          return result
+        }
+      }
 
-    if (valueA === null || valueB === null) {
-      return valueA === valueB ? 0 : valueA === null ? 1 : -1
-    }
+      return 0
+    })
+  }
 
-    return (valueA - valueB) * direction
-  })
+  return [...candidates].sort((a, b) =>
+    compare(
+      sortValue(a, sort.column),
+      sortValue(b, sort.column),
+      sort.descending
+    )
+  )
 }
