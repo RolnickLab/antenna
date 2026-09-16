@@ -6,6 +6,7 @@ import {
 import {
   getComparisonSides,
   getDistanceLabel,
+  getRatioLabel,
   getSimilarityLabel,
   getWhenLabel,
   getWhenOffsetSeconds,
@@ -20,9 +21,12 @@ import {
   ArrowRightIcon,
   ArrowUpDownIcon,
   ArrowUpIcon,
+  CheckIcon,
+  ExternalLinkIcon,
 } from 'lucide-react'
 import { BasicTooltip, LoadingSpinner, Select } from 'nova-ui-kit'
 import { CSSProperties, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import {
   CandidateComparison,
@@ -43,6 +47,10 @@ export type OccurrencePickerCandidate = Pick<
       | 'distance'
       | 'similarity'
       | 'cost'
+      | 'iou'
+      | 'sizeRatio'
+      | 'likelihood'
+      | 'wouldLink'
       | 'captureId'
       | 'imageTimestamp'
       | 'edgeImage'
@@ -58,18 +66,20 @@ const isRanked = (
 
 // The first click on a column gives its natural order: earliest first, closest
 // first, or most alike first.
-const DESCENDING_FIRST: MergeCandidateSortColumn[] = ['similarity']
+const DESCENDING_FIRST: MergeCandidateSortColumn[] = ['similarity', 'match']
 
 const COLUMN_LABELS: Record<MergeCandidateSortColumn, STRING> = {
   when: STRING.TRACK_COLUMN_WHEN,
   distance: STRING.TRACK_COLUMN_DISTANCE,
   similarity: STRING.TRACK_COLUMN_SIMILARITY,
+  match: STRING.TRACK_COLUMN_MATCH,
 }
 
 const SORT_COLUMNS: MergeCandidateSortColumn[] = [
   'when',
   'distance',
   'similarity',
+  'match',
 ]
 
 const BEST_MATCH = 'best'
@@ -128,18 +138,23 @@ const getPanelStyle = (
 
 export const OccurrencePicker = ({
   candidates,
+  costThreshold,
   description = translate(STRING.TRACK_PICK_OCCURRENCE_SCOPE),
   emptyMessage = translate(STRING.TRACK_NO_OTHER_OCCURRENCES),
   isLoading,
   onScopeChange,
   onSelect,
   onToggle,
+  requiresFeatures,
   scope,
   selectedId,
   selectedIds = [],
+  sessionLink,
   title = translate(STRING.TRACK_PICK_OCCURRENCE),
 }: {
   candidates: OccurrencePickerCandidate[]
+  /** Tracking links a pair only under this cost; shown beside each cost in the preview. */
+  costThreshold?: number
   description?: string
   emptyMessage?: string
   isLoading?: boolean
@@ -148,9 +163,13 @@ export const OccurrencePicker = ({
   onSelect?: (id: string) => void
   /** Multi-select: rows get checkboxes. Select-all calls this once per row, so update state functionally. */
   onToggle?: (id: string) => void
+  /** Tracking skips a pair with no vector on both sides instead of matching it on geometry. */
+  requiresFeatures?: boolean
   scope?: MergeScopeKey
   selectedId?: string
   selectedIds?: string[]
+  /** Where to open a candidate in its session; rows get a link when this returns a route. */
+  sessionLink?: (candidate: MergeCandidate) => string | undefined
   title?: string
 }) => {
   const [sort, setSort] = useState<MergeCandidateSort>()
@@ -355,6 +374,13 @@ export const OccurrencePicker = ({
                       </th>
                     )
                   })}
+                {ranked && sessionLink ? (
+                  <th className={classNames(headerClassName, 'w-8')}>
+                    <span className="sr-only">
+                      {translate(STRING.VIEW_IN_SESSION)}
+                    </span>
+                  </th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
@@ -477,6 +503,60 @@ export const OccurrencePicker = ({
                         >
                           {getSimilarityLabel(candidate.similarity ?? null)}
                         </td>
+                        <td
+                          className={classNames(cellClassName, numberClassName)}
+                        >
+                          <span className="inline-flex items-center justify-end gap-1">
+                            {candidate.wouldLink ? (
+                              <BasicTooltip
+                                asChild
+                                content={translate(
+                                  STRING.TRACK_MATCH_WOULD_LINK
+                                )}
+                              >
+                                <CheckIcon
+                                  aria-label={translate(
+                                    STRING.TRACK_MATCH_WOULD_LINK
+                                  )}
+                                  className="w-3 h-3 text-success"
+                                  role="img"
+                                />
+                              </BasicTooltip>
+                            ) : null}
+                            <span>
+                              {getRatioLabel(candidate.likelihood ?? null)}
+                            </span>
+                          </span>
+                        </td>
+                        {sessionLink ? (
+                          <td className={classNames(cellClassName, 'w-8')}>
+                            {(() => {
+                              const route = sessionLink(
+                                candidate as MergeCandidate
+                              )
+
+                              return route ? (
+                                <Link
+                                  aria-label={translate(
+                                    STRING.TRACK_VIEW_CANDIDATE_IN_SESSION,
+                                    { name: candidate.displayName }
+                                  )}
+                                  className="inline-flex text-muted-foreground hover:text-foreground"
+                                  onClick={(e) => e.stopPropagation()}
+                                  rel="noreferrer"
+                                  target="_blank"
+                                  title={translate(STRING.VIEW_IN_SESSION)}
+                                  to={route}
+                                >
+                                  <ExternalLinkIcon
+                                    aria-hidden
+                                    className="w-3.5 h-3.5"
+                                  />
+                                </Link>
+                              ) : null
+                            })()}
+                          </td>
+                        ) : null}
                       </>
                     ) : null}
                   </tr>
@@ -488,10 +568,10 @@ export const OccurrencePicker = ({
       )}
       {hovered ? (
         <CandidateComparison
-          displayName={hovered.candidate.displayName}
-          distance={hovered.candidate.distance}
+          candidate={hovered.candidate}
+          costThreshold={costThreshold}
+          requiresFeatures={requiresFeatures}
           sides={getComparisonSides(hovered.candidate)}
-          similarity={hovered.candidate.similarity}
           style={hovered.style}
         />
       ) : null}

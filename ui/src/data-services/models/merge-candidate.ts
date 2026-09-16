@@ -1,4 +1,5 @@
 import { STRING, translate } from 'utils/language'
+import { getMatchLevel } from './capture-match'
 
 export type MergeRelation = 'before' | 'after' | 'gap'
 
@@ -13,11 +14,22 @@ export interface ServerMergeCandidate {
   distance: number | null
   similarity: number | null
   cost: number | null
+  iou: number | null
+  size_ratio: number | null
+  likelihood: number | null
+  would_link: boolean
   image: string | null
   capture_id: number | null
   image_timestamp: string | null
   edge_image: string | null
   edge_timestamp: string | null
+}
+
+/** The candidates plus the tracker settings they were judged by. */
+export interface ServerMergeCandidates {
+  candidates: ServerMergeCandidate[]
+  cost_threshold: number
+  requires_features: boolean
 }
 
 /** An occurrence that could be merged with another, scored against it by the tracking method. */
@@ -33,7 +45,16 @@ export interface MergeCandidate {
   distance: number | null
   /** Cosine similarity of the two nearest frames; null when either has no feature vector. */
   similarity: number | null
+  /** The tracking method's matching cost for the nearest pair; lower fits better. */
   cost: number | null
+  /** Overlap of the two nearest boxes, intersection over union. */
+  iou: number | null
+  /** Area of the smaller box over the larger. */
+  sizeRatio: number | null
+  /** 0 to 1, 1 the best match: one minus the mean term of the cost. */
+  likelihood: number | null
+  /** The pair passes the tracker's own rule: under its threshold, with vectors where it requires them. */
+  wouldLink: boolean
   /** The capture holding the candidate's nearest frame, the one its crop is cut from. */
   captureId: string | null
   imageTimestamp: Date | null
@@ -59,6 +80,10 @@ export const convertMergeCandidate = (
   distance: candidate.distance,
   similarity: candidate.similarity,
   cost: candidate.cost,
+  iou: candidate.iou ?? null,
+  sizeRatio: candidate.size_ratio ?? null,
+  likelihood: candidate.likelihood ?? null,
+  wouldLink: !!candidate.would_link,
   captureId: candidate.capture_id != null ? `${candidate.capture_id}` : null,
   imageTimestamp: toDate(candidate.image_timestamp),
   edgeImage: candidate.edge_image ?? null,
@@ -160,7 +185,34 @@ export const getSimilarityLabel = (similarity: number | null): string =>
         percent: `${Math.round(similarity * 100)}`,
       })
 
-export type MergeCandidateSortColumn = 'when' | 'distance' | 'similarity'
+/** Overlap and size ratio read as whole percentages, like similarity. */
+export const getRatioLabel = getSimilarityLabel
+
+/** The match band and percentage the extend view shows for the same score. */
+export const getLikelihoodLabel = (likelihood: number | null): string =>
+  likelihood === null
+    ? translate(STRING.VALUE_NOT_AVAILABLE)
+    : translate(STRING.TRACK_MATCH_SCORE, {
+        level: translate(getMatchLevel(likelihood)),
+        percent: `${Math.round(likelihood * 100)}`,
+      })
+
+/** The cost against the threshold tracking links under, so a reader sees how close the pair came. */
+export const getCostLabel = (cost: number | null, threshold?: number): string =>
+  cost === null
+    ? translate(STRING.VALUE_NOT_AVAILABLE)
+    : threshold === undefined
+    ? cost.toFixed(2)
+    : translate(STRING.TRACK_COST_OF_THRESHOLD, {
+        cost: cost.toFixed(2),
+        threshold: threshold.toFixed(2),
+      })
+
+export type MergeCandidateSortColumn =
+  | 'when'
+  | 'distance'
+  | 'similarity'
+  | 'match'
 
 /** One column the reviewer clicked, or all three applied in turn. */
 export type MergeCandidateSort =
@@ -175,7 +227,9 @@ const sortValue = (
     ? getWhenOffsetSeconds(candidate)
     : column === 'distance'
     ? candidate.distance
-    : candidate.similarity
+    : column === 'similarity'
+    ? candidate.similarity
+    : candidate.likelihood
 
 const compare = (
   valueA: number | null,

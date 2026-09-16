@@ -1,7 +1,9 @@
 import {
   convertMergeCandidate,
   getComparisonSides,
+  getCostLabel,
   getDistanceLabel,
+  getLikelihoodLabel,
   getSimilarityLabel,
   getWhenLabel,
   MergeCandidate,
@@ -22,6 +24,10 @@ const serverCandidate = (
   distance: 0.0123,
   similarity: 0.987,
   cost: 0.5,
+  iou: 0.8,
+  size_ratio: 0.9,
+  likelihood: 0.875,
+  would_link: false,
   image: 'https://example.com/crop.jpg',
   capture_id: 11,
   image_timestamp: '2026-09-09T02:03:00',
@@ -118,6 +124,29 @@ describe('merge candidate labels', () => {
     expect(getSimilarityLabel(0.987)).toBe('99%')
     expect(getSimilarityLabel(null)).toBe('n/a')
   })
+
+  test('the match reads as the band and percentage the extend view uses', () => {
+    expect(getLikelihoodLabel(0.875)).toBe('Likely (88%)')
+    expect(getLikelihoodLabel(0.61)).toBe('Possible (61%)')
+    expect(getLikelihoodLabel(null)).toBe('n/a')
+  })
+
+  test('the cost is read against the threshold tracking links under', () => {
+    expect(getCostLabel(0.1234, 0.2)).toBe('0.12 of 0.20')
+    expect(getCostLabel(0.1234)).toBe('0.12')
+    expect(getCostLabel(null, 0.2)).toBe('n/a')
+  })
+
+  test('the tracker verdict and terms are carried as given', () => {
+    const candidate = convertMergeCandidate(
+      serverCandidate({ would_link: true, iou: null })
+    )
+
+    expect(candidate.wouldLink).toBe(true)
+    expect(candidate.iou).toBeNull()
+    expect(candidate.sizeRatio).toBe(0.9)
+    expect(candidate.likelihood).toBe(0.875)
+  })
 })
 
 describe('merge candidate sorting', () => {
@@ -181,6 +210,21 @@ describe('merge candidate sorting', () => {
       '3',
       '4',
     ])
+  })
+
+  test('match sorts best first on the first click and keeps unscored rows last', () => {
+    const scored = [
+      serverCandidate({ id: 1, likelihood: 0.6 }),
+      serverCandidate({ id: 2, likelihood: null }),
+      serverCandidate({ id: 3, likelihood: 0.95 }),
+    ].map(convertMergeCandidate)
+
+    expect(
+      ids(sortMergeCandidates(scored, { column: 'match', descending: true }))
+    ).toEqual(['3', '1', '2'])
+    expect(
+      ids(sortMergeCandidates(scored, { column: 'match', descending: false }))
+    ).toEqual(['1', '3', '2'])
   })
 
   test('rows without a value go last in either direction', () => {
