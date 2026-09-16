@@ -1417,6 +1417,30 @@ class OccurrenceVerifiedByMeFilter(filters.BaseFilterBackend):
         return queryset
 
 
+class OccurrenceGroupingVerifiedFilter(filters.BaseFilterBackend):
+    """Filter occurrences by whether a person has confirmed how their detections are grouped.
+
+    Absent leaves every occurrence in, true keeps only confirmed tracks and false only
+    unconfirmed ones. An unparseable value is a 400 rather than a silent "unconfirmed".
+    """
+
+    query_param = "grouping_verified"
+
+    def filter_queryset(self, request: Request, queryset, view):
+        # A boolean field reads a parameter missing from a query string as False, so the
+        # presence check is what keeps an absent parameter meaning "leave both in".
+        if self.query_param not in request.query_params:
+            return queryset
+        grouping_verified: bool | None = SingleParamSerializer[bool].clean(
+            param_name=self.query_param,
+            field=serializers.BooleanField(required=False, allow_null=True),
+            data=request.query_params,
+        )
+        if grouping_verified is None:
+            return queryset
+        return queryset.filter(grouping_verified_at__isnull=not grouping_verified)
+
+
 class DateRangeFilterSerializer(FilterParamsSerializer):
     date_start = serializers.DateField(required=False)
     date_end = serializers.DateField(required=False)
@@ -1510,6 +1534,7 @@ OCCURRENCE_FILTER_BACKENDS = (
     OccurrenceDateFilter,
     OccurrenceVerified,
     OccurrenceVerifiedByMeFilter,
+    OccurrenceGroupingVerifiedFilter,
     OccurrenceTaxaListFilter,
 )
 
@@ -1655,6 +1680,13 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
                 description="Filter occurrences by the capture set their detections' captures belong to.",
                 required=False,
                 type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="grouping_verified",
+                description="Filter occurrences by whether a person has confirmed how their detections are "
+                "grouped into a track. Omit to show both.",
+                required=False,
+                type=OpenApiTypes.BOOL,
             ),
         ]
     )
