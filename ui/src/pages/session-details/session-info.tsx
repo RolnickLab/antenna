@@ -1,5 +1,6 @@
+import { CopyLinkButton } from 'components/copy-link-button/copy-link-button'
 import { SessionDetails } from 'data-services/models/session-details'
-import { InfoBlock } from 'nova-ui-kit'
+import { InfoBlock, InfoBlockField } from 'nova-ui-kit'
 import { useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
@@ -59,5 +60,16 @@ export const SessionInfo = ({ session }: { session: SessionDetails }) => {
       : []),
   ]
 
-  return <InfoBlock fields={fields} />
+  return (
+    <div className="grid gap-6">
+      <InfoBlockField
+        label={translate(STRING.FIELD_LABEL_SESSION_NUMBER, {
+          id: session.id,
+        })}
+      >
+        <CopyLinkButton value={window.location.href} />
+      </InfoBlockField>
+      <InfoBlock fields={fields} />
+    </div>
+  )
 }

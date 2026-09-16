@@ -2,6 +2,7 @@ import {
   BlueprintCollection,
   BlueprintItem,
 } from 'components/blueprint-collection/blueprint-collection'
+import { CopyLinkButton } from 'components/copy-link-button/copy-link-button'
 import { TaxonDetails } from 'components/taxon-details/taxon-details'
 import {
   FrameLabel,
@@ -310,6 +311,13 @@ export const OccurrenceDetails = ({
                 </Tabs.List>
                 <Tabs.Content value={TABS.FIELDS}>
                   <div className="grid gap-6">
+                    <InfoBlockField
+                      label={translate(STRING.FIELD_LABEL_OCCURRENCE_NUMBER, {
+                        id: occurrence.id,
+                      })}
+                    >
+                      <CopyLinkButton value={window.location.href} />
+                    </InfoBlockField>
                     {fields.map((field, index) => (
                       <InfoBlockField key={index} label={field.label}>
                         <InfoBlockFieldValue
