@@ -3,10 +3,11 @@ import { LicenseInfo } from 'components/license-info/license-info'
 import { ChevronRightIcon } from 'lucide-react'
 import { buttonVariants } from 'nova-ui-kit'
 import { cn } from 'nova-ui-kit/utils'
-import { ReactNode } from 'react'
+import { ReactNode, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import styles from './blueprint-collection.module.scss'
+import { missingCropSize } from './crop-size'
 
 export interface BlueprintItem {
   id: string
@@ -43,6 +44,40 @@ export const BlueprintCollection = ({
   </div>
 )
 
+/**
+ * The frame's crop, or an empty box with the bounding box's proportions when the crop
+ * was never made or no longer loads, so the frame still reads as a detection.
+ */
+const CropImage = ({
+  image,
+}: {
+  image: { src?: string | null; width: number; height: number }
+}) => {
+  const [failed, setFailed] = useState(false)
+
+  if (image.src && !failed) {
+    return (
+      <img
+        src={image.src}
+        alt=""
+        width={image.width}
+        height={image.height}
+        onError={() => setFailed(true)}
+      />
+    )
+  }
+
+  return (
+    <div
+      className={styles.missingCrop}
+      role="img"
+      aria-label={translate(STRING.TRACK_FRAME_NO_CROP)}
+      title={translate(STRING.TRACK_FRAME_NO_CROP)}
+      style={missingCropSize(image.width, image.height)}
+    />
+  )
+}
+
 export const BlueprintItem = ({
   actions,
   caption,
@@ -63,12 +98,7 @@ export const BlueprintItem = ({
 }) => (
   <div className={classNames(styles.blueprintItem, 'group')}>
     <div className={styles.crop}>
-      <img
-        src={item.image.src}
-        alt=""
-        width={item.image.width}
-        height={item.image.height}
-      />
+      <CropImage image={item.image} />
     </div>
     {/* The details take the rest of the row, so their width never follows the crop's. */}
     <div className="flex flex-col grow min-w-0 gap-1">

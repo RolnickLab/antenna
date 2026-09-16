@@ -61,6 +61,14 @@
     vertical-align: middle;
   }
 
+  // Stands in for a crop that never existed or failed to load: the bounding box, empty.
+  .missingCrop {
+    box-sizing: border-box;
+    border: 2px dashed var(--color-neutral-300);
+    border-radius: 2px;
+    background-color: var(--color-generic-white);
+  }
+
   .count {
     display: flex;
     align-items: center;
