@@ -81,6 +81,8 @@ export interface TrackFrame {
 
 export interface ServerFrameClassification {
   created_at?: string
+  /** Null when the endpoint did not annotate the flag, which is not the same as no vector. */
+  has_features?: boolean | null
   score?: number | null
   taxon?: ServerTaxon | null
   terminal?: boolean | null
@@ -123,6 +125,22 @@ export const getFrameClassification = <T extends ServerFrameClassification>(
     },
     undefined
   )
+}
+
+/**
+ * Whether tracking can compare this frame: true if any classification stored a vector,
+ * undefined when every classification left the flag unset, false otherwise.
+ */
+export const frameHasVector = (
+  classifications: ServerFrameClassification[] | null | undefined
+): boolean | undefined => {
+  const flags = (classifications ?? []).map((c) => c.has_features)
+
+  if (flags.some((flag) => flag === true)) {
+    return true
+  }
+
+  return flags.length && flags.every((flag) => flag == null) ? undefined : false
 }
 
 export const getFrameNames = (labels: FrameLabel[]): FrameName[] => {
@@ -372,6 +390,7 @@ export class OccurrenceDetails extends Occurrence {
         height: detection.height ?? bboxSize(detection.bbox)[1],
       },
       frameLabel,
+      hasVector: frameHasVector(detection.classifications),
       label,
       timeLabel: getFormatedTimeString({
         date: new Date(detection.timestamp),

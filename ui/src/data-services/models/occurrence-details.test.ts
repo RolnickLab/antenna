@@ -1,5 +1,6 @@
 import {
   FrameLabel,
+  frameHasVector,
   getFrameClassification,
   getFrameNames,
   OccurrenceDetails,
@@ -65,6 +66,31 @@ describe('frame classification', () => {
   })
 })
 
+describe('frame feature vectors', () => {
+  test('one classification with a vector makes the frame comparable', () => {
+    expect(
+      frameHasVector([
+        classification({ has_features: false }),
+        classification({ has_features: true }),
+      ])
+    ).toBe(true)
+  })
+
+  test('a frame nothing stored a vector for is marked, even with no classifications', () => {
+    expect(frameHasVector([classification({ has_features: false })])).toBe(
+      false
+    )
+    expect(frameHasVector([])).toBe(false)
+  })
+
+  test('an unset flag stays unknown, so a payload without it marks nothing', () => {
+    expect(
+      frameHasVector([classification({ has_features: null })])
+    ).toBeUndefined()
+    expect(frameHasVector([classification()])).toBeUndefined()
+  })
+})
+
 describe('frame names', () => {
   test('counts frames per label, most frames first, with the highest score', () => {
     const noctua = new Taxon(NOCTUA)
@@ -110,7 +136,7 @@ describe('occurrence details', () => {
     detections: [
       detection(1, [
         classification({ score: 0.95, taxon: MOTH, terminal: false }),
-        classification({ score: 0.12 }),
+        classification({ has_features: true, score: 0.12 }),
       ]),
       detection(2, []),
     ],
@@ -135,5 +161,10 @@ describe('occurrence details', () => {
       'Noctua pronuba',
       undefined,
     ])
+  })
+
+  test('each frame reports whether the payload stored a vector for it', () => {
+    expect(occurrence.getDetectionInfo('1').hasVector).toBe(true)
+    expect(occurrence.getDetectionInfo('2').hasVector).toBe(false)
   })
 })
