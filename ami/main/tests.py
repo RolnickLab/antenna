@@ -9112,6 +9112,49 @@ class OccurrenceGroupingTestCase(TrackEditTestCase):
         self.assertNotIn("email", after.data["grouping_verified_by"])
 
 
+class OccurrenceGroupingVerifiedFilterTestCase(APITestCase):
+    """Finding the tracks nobody has signed off on yet.
+
+    Building a verified test set means working through a session confirming groupings
+    one at a time, which only works if the list can show what is left to do.
+    """
+
+    def setUp(self) -> None:
+        from ami.main.models_future.tracks import verify_grouping
+
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(project=self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=4, interval_minutes=1)
+        create_occurrences(deployment=self.deployment, num=2)
+
+        self.verified, self.unverified = Occurrence.objects.filter(project=self.project).order_by("pk")
+        self.curator = User.objects.create_user(email="grouping-filter@insectai.org")  # type: ignore[attr-defined]
+        MLDataManager.assign_user(self.curator, self.project)
+        verify_grouping(self.verified, self.curator)
+        self.client.force_authenticate(user=self.curator)
+        return super().setUp()
+
+    def _listed(self, **params) -> set[int]:
+        query = "".join(f"&{key}={value}" for key, value in params.items())
+        response = self.client.get(f"/api/v2/occurrences/?project_id={self.project.pk}&limit=100{query}")
+        self.assertEqual(response.status_code, 200, response.data)
+        return {row["id"] for row in response.data["results"]}
+
+    def test_true_keeps_only_confirmed_tracks(self):
+        self.assertEqual(self._listed(grouping_verified="true"), {self.verified.pk})
+
+    def test_false_keeps_only_unconfirmed_tracks(self):
+        self.assertEqual(self._listed(grouping_verified="false"), {self.unverified.pk})
+
+    def test_omitting_the_parameter_keeps_both(self):
+        self.assertEqual(self._listed(), {self.verified.pk, self.unverified.pk})
+
+    def test_an_unparseable_value_is_refused(self):
+        """A typo must not quietly read as "unconfirmed" and hide half the session."""
+        response = self.client.get(f"/api/v2/occurrences/?project_id={self.project.pk}&grouping_verified=abc")
+        self.assertEqual(response.status_code, 400, response.data)
+
+
 class MergeCandidatesTestCase(TrackEditTestCase):
     """Offering the right occurrence to merge with.
 
