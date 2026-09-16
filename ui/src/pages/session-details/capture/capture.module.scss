@@ -9,10 +9,16 @@
   vertical-align: middle;
 }
 
-// Only the frame buttons take clicks, so a ghost never covers the live boxes drawn above it.
+// Only boxes and frame buttons take clicks: the full-size layers are transparent to the
+// pointer, so a ghost below the live boxes is still reachable where no live box covers it.
+.detections,
 .ghostFrames,
 .ghostTrail {
   pointer-events: none;
+}
+
+.detection {
+  pointer-events: auto;
 }
 
 .ghostFrame {
