@@ -104,6 +104,31 @@ export const getPrevCaptureWithDetectionsId = ({
     ? findPrevCaptureWithDetections({ date: capture.date, timeline })
     : capture.prevCaptureWithDetectionsId ?? undefined
 
+// The timeline resolves to one tick per minute, so a shorter session collapses
+// into a single tick with nothing to scrub. An unknown span stays visible.
+const MIN_TIMELINE_SPAN_MS = 60 * 1000
+
+export const showSessionTimeline = ({
+  startDate,
+  endDate,
+}: {
+  startDate?: Date
+  endDate?: Date
+}) => {
+  const start = startDate?.getTime()
+  const end = endDate?.getTime()
+
+  if (start === undefined || end === undefined) {
+    return true
+  }
+
+  if (Number.isNaN(start) || Number.isNaN(end)) {
+    return true
+  }
+
+  return end - start >= MIN_TIMELINE_SPAN_MS
+}
+
 export const dateToValue = ({
   date,
   startDate,
