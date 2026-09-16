@@ -6,6 +6,7 @@ import {
 import {
   getComparisonSides,
   getDistanceLabel,
+  getRatioLabel,
   getSimilarityLabel,
   getWhenLabel,
   getWhenOffsetSeconds,
@@ -20,9 +21,12 @@ import {
   ArrowRightIcon,
   ArrowUpDownIcon,
   ArrowUpIcon,
+  CheckIcon,
+  ExternalLinkIcon,
 } from 'lucide-react'
 import { BasicTooltip, LoadingSpinner, Select } from 'nova-ui-kit'
 import { CSSProperties, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { STRING, translate } from 'utils/language'
 import {
   CandidateComparison,
@@ -43,6 +47,10 @@ export type OccurrencePickerCandidate = Pick<
       | 'distance'
       | 'similarity'
       | 'cost'
+      | 'iou'
+      | 'sizeRatio'
+      | 'likelihood'
+      | 'wouldLink'
       | 'captureId'
       | 'imageTimestamp'
       | 'edgeImage'
@@ -58,13 +66,24 @@ const isRanked = (
 
 // The first click on a column gives its natural order: earliest first, closest
 // first, or most alike first.
-const DESCENDING_FIRST: MergeCandidateSortColumn[] = ['similarity']
+const DESCENDING_FIRST: MergeCandidateSortColumn[] = ['similarity', 'match']
 
-const SORT_COLUMNS: { column: MergeCandidateSortColumn; label: STRING }[] = [
-  { column: 'when', label: STRING.TRACK_COLUMN_WHEN },
-  { column: 'distance', label: STRING.TRACK_COLUMN_DISTANCE },
-  { column: 'similarity', label: STRING.TRACK_COLUMN_SIMILARITY },
+const COLUMN_LABELS: Record<MergeCandidateSortColumn, STRING> = {
+  when: STRING.TRACK_COLUMN_WHEN,
+  distance: STRING.TRACK_COLUMN_DISTANCE,
+  similarity: STRING.TRACK_COLUMN_SIMILARITY,
+  match: STRING.TRACK_COLUMN_MATCH,
+}
+
+const SORT_COLUMNS: MergeCandidateSortColumn[] = [
+  'when',
+  'distance',
+  'similarity',
+  'match',
 ]
+
+const BEST_MATCH = 'best'
+const CUMULATIVE = 'cumulative'
 
 const PANEL_GAP = 8
 
@@ -119,18 +138,23 @@ const getPanelStyle = (
 
 export const OccurrencePicker = ({
   candidates,
+  costThreshold,
   description = translate(STRING.TRACK_PICK_OCCURRENCE_SCOPE),
   emptyMessage = translate(STRING.TRACK_NO_OTHER_OCCURRENCES),
   isLoading,
   onScopeChange,
   onSelect,
   onToggle,
+  requiresFeatures,
   scope,
   selectedId,
   selectedIds = [],
+  sessionLink,
   title = translate(STRING.TRACK_PICK_OCCURRENCE),
 }: {
   candidates: OccurrencePickerCandidate[]
+  /** Tracking links a pair only under this cost; shown beside each cost in the preview. */
+  costThreshold?: number
   description?: string
   emptyMessage?: string
   isLoading?: boolean
@@ -139,9 +163,13 @@ export const OccurrencePicker = ({
   onSelect?: (id: string) => void
   /** Multi-select: rows get checkboxes. Select-all calls this once per row, so update state functionally. */
   onToggle?: (id: string) => void
+  /** Tracking skips a pair with no vector on both sides instead of matching it on geometry. */
+  requiresFeatures?: boolean
   scope?: MergeScopeKey
   selectedId?: string
   selectedIds?: string[]
+  /** Where to open a candidate in its session; rows get a link when this returns a route. */
+  sessionLink?: (candidate: MergeCandidate) => string | undefined
   title?: string
 }) => {
   const [sort, setSort] = useState<MergeCandidateSort>()
@@ -158,12 +186,17 @@ export const OccurrencePicker = ({
     selectedIds.includes(row.id)
   ).length
 
+  const columnSort = sort && 'column' in sort ? sort : undefined
+
   const toggleSort = (column: MergeCandidateSortColumn) =>
     setSort(
-      sort?.column === column
-        ? { column, descending: !sort.descending }
+      columnSort?.column === column
+        ? { column, descending: !columnSort.descending }
         : { column, descending: DESCENDING_FIRST.includes(column) }
     )
+
+  const chooseOrder = (value: string) =>
+    setSort(value === CUMULATIVE ? { cumulative: true } : undefined)
 
   const pick = (candidate: OccurrencePickerCandidate) =>
     multi ? onToggle?.(candidate.id) : onSelect?.(candidate.id)
@@ -197,30 +230,62 @@ export const OccurrencePicker = ({
     <div className="flex flex-col gap-1">
       <span className="body-small">{title}</span>
       <span className="body-small text-muted-foreground">{description}</span>
-      {scope && onScopeChange ? (
+      {(scope && onScopeChange) || ranked ? (
         <div className="flex flex-wrap items-center gap-4 py-1">
-          <Select.Root
-            value={scope}
-            onValueChange={(value) => onScopeChange(value as MergeScopeKey)}
-          >
-            <Select.Trigger
-              aria-label={translate(STRING.TRACK_SCOPE_LABEL)}
-              className="h-8 w-auto gap-2 px-3 body-small text-foreground"
+          {scope && onScopeChange ? (
+            <Select.Root
+              value={scope}
+              onValueChange={(value) => onScopeChange(value as MergeScopeKey)}
             >
-              <Select.Value />
-            </Select.Trigger>
-            <Select.Content>
-              {MERGE_SCOPES.map((option) => (
-                <Select.Item
-                  className="h-8 body-small"
-                  key={option.key}
-                  value={option.key}
-                >
-                  {translate(option.label)}
+              <Select.Trigger
+                aria-label={translate(STRING.TRACK_SCOPE_LABEL)}
+                className="h-8 w-auto gap-2 px-3 body-small text-foreground"
+              >
+                <Select.Value />
+              </Select.Trigger>
+              <Select.Content>
+                {MERGE_SCOPES.map((option) => (
+                  <Select.Item
+                    className="h-8 body-small"
+                    key={option.key}
+                    value={option.key}
+                  >
+                    {translate(option.label)}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+          ) : null}
+          {ranked ? (
+            <Select.Root
+              value={columnSort?.column ?? (sort ? CUMULATIVE : BEST_MATCH)}
+              onValueChange={chooseOrder}
+            >
+              <Select.Trigger
+                aria-label={translate(STRING.TRACK_SORT_LABEL)}
+                className="h-8 w-auto gap-2 px-3 body-small text-foreground"
+              >
+                <Select.Value />
+              </Select.Trigger>
+              <Select.Content>
+                <Select.Item className="h-8 body-small" value={BEST_MATCH}>
+                  {translate(STRING.TRACK_SORT_BEST)}
                 </Select.Item>
-              ))}
-            </Select.Content>
-          </Select.Root>
+                <Select.Item className="h-8 body-small" value={CUMULATIVE}>
+                  {translate(STRING.TRACK_SORT_CUMULATIVE)}
+                </Select.Item>
+                {/* Named so the control still reads true after a column header sets the order. */}
+                {columnSort ? (
+                  <Select.Item
+                    className="h-8 body-small"
+                    value={columnSort.column}
+                  >
+                    {translate(COLUMN_LABELS[columnSort.column])}
+                  </Select.Item>
+                ) : null}
+              </Select.Content>
+            </Select.Root>
+          ) : null}
         </div>
       ) : null}
       {isLoading ? (
@@ -271,11 +336,12 @@ export const OccurrencePicker = ({
                   {translate(STRING.TRACK_COLUMN_FRAMES)}
                 </th>
                 {ranked &&
-                  SORT_COLUMNS.map(({ column, label }) => {
-                    const active = sort?.column === column
+                  SORT_COLUMNS.map((column) => {
+                    const label = COLUMN_LABELS[column]
+                    const active = columnSort?.column === column
                     const DirectionIcon = !active
                       ? ArrowUpDownIcon
-                      : sort.descending
+                      : columnSort.descending
                       ? ArrowDownIcon
                       : ArrowUpIcon
 
@@ -283,7 +349,7 @@ export const OccurrencePicker = ({
                       <th
                         aria-sort={
                           active
-                            ? sort.descending
+                            ? columnSort.descending
                               ? 'descending'
                               : 'ascending'
                             : 'none'
@@ -308,6 +374,13 @@ export const OccurrencePicker = ({
                       </th>
                     )
                   })}
+                {ranked && sessionLink ? (
+                  <th className={classNames(headerClassName, 'w-8')}>
+                    <span className="sr-only">
+                      {translate(STRING.VIEW_IN_SESSION)}
+                    </span>
+                  </th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
@@ -430,6 +503,60 @@ export const OccurrencePicker = ({
                         >
                           {getSimilarityLabel(candidate.similarity ?? null)}
                         </td>
+                        <td
+                          className={classNames(cellClassName, numberClassName)}
+                        >
+                          <span className="inline-flex items-center justify-end gap-1">
+                            {candidate.wouldLink ? (
+                              <BasicTooltip
+                                asChild
+                                content={translate(
+                                  STRING.TRACK_MATCH_WOULD_LINK
+                                )}
+                              >
+                                <CheckIcon
+                                  aria-label={translate(
+                                    STRING.TRACK_MATCH_WOULD_LINK
+                                  )}
+                                  className="w-3 h-3 text-success"
+                                  role="img"
+                                />
+                              </BasicTooltip>
+                            ) : null}
+                            <span>
+                              {getRatioLabel(candidate.likelihood ?? null)}
+                            </span>
+                          </span>
+                        </td>
+                        {sessionLink ? (
+                          <td className={classNames(cellClassName, 'w-8')}>
+                            {(() => {
+                              const route = sessionLink(
+                                candidate as MergeCandidate
+                              )
+
+                              return route ? (
+                                <Link
+                                  aria-label={translate(
+                                    STRING.TRACK_VIEW_CANDIDATE_IN_SESSION,
+                                    { name: candidate.displayName }
+                                  )}
+                                  className="inline-flex text-muted-foreground hover:text-foreground"
+                                  onClick={(e) => e.stopPropagation()}
+                                  rel="noreferrer"
+                                  target="_blank"
+                                  title={translate(STRING.VIEW_IN_SESSION)}
+                                  to={route}
+                                >
+                                  <ExternalLinkIcon
+                                    aria-hidden
+                                    className="w-3.5 h-3.5"
+                                  />
+                                </Link>
+                              ) : null
+                            })()}
+                          </td>
+                        ) : null}
                       </>
                     ) : null}
                   </tr>
@@ -441,7 +568,9 @@ export const OccurrencePicker = ({
       )}
       {hovered ? (
         <CandidateComparison
-          displayName={hovered.candidate.displayName}
+          candidate={hovered.candidate}
+          costThreshold={costThreshold}
+          requiresFeatures={requiresFeatures}
           sides={getComparisonSides(hovered.candidate)}
           style={hovered.style}
         />

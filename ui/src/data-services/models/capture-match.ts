@@ -1,5 +1,20 @@
+import { STRING } from 'utils/language'
+
 /** Where the track frame the scores compare against sits relative to the capture. */
 export type CaptureMatchRelation = 'same' | 'before' | 'after' | 'gap'
+
+// Best guess from local data: unrelated boxes scored up to about 0.5, continuations above 0.9.
+export const MATCH_GRAY_UNTIL = 0.5
+export const MATCH_POSSIBLE_FROM = 0.6
+export const MATCH_LIKELY_FROM = 0.8
+
+/** The band a likelihood falls in, shared by the extend view and the merge picker. */
+export const getMatchLevel = (likelihood: number): STRING =>
+  likelihood >= MATCH_LIKELY_FROM
+    ? STRING.TRACK_MATCH_LIKELY
+    : likelihood >= MATCH_POSSIBLE_FROM
+    ? STRING.TRACK_MATCH_POSSIBLE
+    : STRING.TRACK_MATCH_UNLIKELY
 
 export interface ServerCaptureMatch {
   detection_id: number

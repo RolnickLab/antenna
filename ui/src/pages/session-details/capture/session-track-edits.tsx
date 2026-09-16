@@ -1,3 +1,4 @@
+import { getCandidateSessionRoute } from 'components/track/candidate-session-route'
 import { OccurrencePicker } from 'components/track/occurrence-picker'
 import { TrackEditDialog } from 'components/track/track-edit-dialog'
 import { useMergeOccurrences } from 'data-services/hooks/occurrences/track/useMergeOccurrences'
@@ -8,6 +9,7 @@ import {
   MergeScopeKey,
   useMergeCandidates,
 } from 'data-services/hooks/occurrences/useMergeCandidates'
+import { MergeCandidate } from 'data-services/models/merge-candidate'
 import { AlertCircleIcon, Loader2Icon, RouteIcon, XIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
@@ -123,7 +125,7 @@ export const SessionTrackEdits = ({
   edit?: SessionTrackEdit
   onClose: () => void
 }) => {
-  const { projectId } = useParams()
+  const { id: sessionId, projectId } = useParams()
   const [sourceIds, setSourceIds] = useState<string[]>([])
   const [scope, setScope] = useState<MergeScopeKey>('next')
 
@@ -139,13 +141,31 @@ export const SessionTrackEdits = ({
 
   const mergeScope =
     MERGE_SCOPES.find((option) => option.key === scope) ?? MERGE_SCOPES[0]
-  const { candidates, isLoading: candidatesLoading } = useMergeCandidates({
+  const {
+    candidates,
+    costThreshold,
+    isLoading: candidatesLoading,
+    requiresFeatures,
+  } = useMergeCandidates({
     captures: mergeScope.captures,
     enabled: edit?.action === 'merge',
     minutes: mergeScope.minutes,
     occurrenceId,
     projectId: projectId as string,
   })
+
+  // Opened in a new tab, so the current selection is left alone.
+  const candidateSessionLink = (candidate: MergeCandidate) =>
+    sessionId && candidate.captureId
+      ? getCandidateSessionRoute({
+          captureId: candidate.captureId,
+          occurrenceIds: [occurrenceId, candidate.id],
+          sessionRoute: APP_ROUTES.SESSION_DETAILS({
+            projectId: projectId as string,
+            sessionId,
+          }),
+        })
+      : undefined
 
   const toggleSource = (id: string) =>
     setSourceIds((ids) =>
@@ -232,6 +252,7 @@ export const SessionTrackEdits = ({
         {merge.result ? null : (
           <OccurrencePicker
             candidates={candidates}
+            costThreshold={costThreshold}
             description={translate(STRING.TRACK_MERGE_SCOPE_DESCRIPTION, {
               scope: translate(mergeScope.label).toLowerCase(),
             })}
@@ -239,8 +260,10 @@ export const SessionTrackEdits = ({
             isLoading={candidatesLoading}
             onScopeChange={changeScope}
             onToggle={toggleSource}
+            requiresFeatures={requiresFeatures}
             scope={scope}
             selectedIds={sourceIds}
+            sessionLink={candidateSessionLink}
             title={translate(STRING.TRACK_MERGE_CANDIDATES_TITLE)}
           />
         )}

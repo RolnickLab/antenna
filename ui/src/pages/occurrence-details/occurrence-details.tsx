@@ -17,10 +17,12 @@ import {
   InfoBlockField,
   InfoBlockFieldValue,
   Tabs,
+  buttonVariants,
 } from 'nova-ui-kit'
+import { cn } from 'nova-ui-kit/utils'
 import { useMemo, useRef, useState } from 'react'
 import { Helmet } from 'react-helmet-async'
-import { useLocation, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
@@ -47,6 +49,28 @@ export const TABS = {
   IDENTIFICATION: 'identification',
   RAW: 'raw',
 }
+
+const JumpToFrame = ({
+  label,
+  onClick,
+  to,
+}: {
+  label: string
+  onClick?: () => void
+  to?: string
+}) =>
+  to ? (
+    <Link
+      className={cn(
+        buttonVariants({ size: 'small', variant: 'ghost' }),
+        'px-2'
+      )}
+      onClick={onClick}
+      to={to}
+    >
+      <span>{label}</span>
+    </Link>
+  ) : null
 
 export const OccurrenceDetails = ({
   occurrence,
@@ -131,6 +155,10 @@ export const OccurrenceDetails = ({
         : [],
     [occurrence, pathname, search, sessionRoute]
   )
+
+  // The strip runs newest first, so the track's earliest frame is its last row.
+  const newestFrame = blueprintItems[0]
+  const earliestFrame = blueprintItems[blueprintItems.length - 1]
 
   const fields = [
     {
@@ -362,6 +390,39 @@ export const OccurrenceDetails = ({
               filmStrip
               showLicenseInfo={blueprintItems.length > 0}
             >
+              {blueprintItems.length ? (
+                <div className="flex flex-wrap items-center justify-between gap-1 pb-2">
+                  <span className="body-small text-muted-foreground">
+                    {blueprintItems.length === 1
+                      ? translate(STRING.TRACK_FRAMES_ONE)
+                      : translate(STRING.TRACK_FRAMES_COUNT, {
+                          count: blueprintItems.length,
+                        })}
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1">
+                    {blueprintItems.length === 1 ? (
+                      <JumpToFrame
+                        label={translate(STRING.TRACK_JUMP_ONLY_FRAME)}
+                        onClick={onNavigate}
+                        to={newestFrame.to}
+                      />
+                    ) : (
+                      <>
+                        <JumpToFrame
+                          label={translate(STRING.TRACK_JUMP_FIRST_FRAME)}
+                          onClick={onNavigate}
+                          to={earliestFrame.to}
+                        />
+                        <JumpToFrame
+                          label={translate(STRING.TRACK_JUMP_LAST_FRAME)}
+                          onClick={onNavigate}
+                          to={newestFrame.to}
+                        />
+                      </>
+                    )}
+                  </div>
+                </div>
+              ) : null}
               {blueprintItems.map((item, index) => (
                 <BlueprintItem
                   actions={

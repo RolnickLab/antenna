@@ -2262,6 +2262,22 @@ class MergeCandidateSerializer(serializers.Serializer):
         help_text="The tracking method's matching cost for the nearest pair; lower fits better. Uses the geometry "
         "terms only when similarity is null.",
     )
+    iou = serializers.FloatField(
+        allow_null=True, help_text="Overlap of the nearest pair of boxes, intersection over union."
+    )
+    size_ratio = serializers.FloatField(
+        allow_null=True, help_text="Area of the smaller of the two boxes over that of the larger."
+    )
+    likelihood = serializers.FloatField(
+        allow_null=True,
+        help_text="1 minus the mean term of the tracking cost, from 0 to 1, higher fits better. The tracker's own "
+        "decision is would_link.",
+    )
+    would_link = serializers.BooleanField(
+        help_text="Whether the pair passes the tracker's pairing rule: a cost under cost_threshold, with a feature "
+        "vector on both frames when requires_features is set. The rule alone; tracking only pairs adjacent "
+        "captures and claims each box once."
+    )
     image = serializers.CharField(allow_null=True, help_text="A crop of the candidate, nearest frame first.")
     capture_id = serializers.IntegerField(
         allow_null=True,
@@ -2283,6 +2299,10 @@ class MergeCandidatesResponseSerializer(serializers.Serializer):
         many=True,
         help_text=f"At most {MAX_MERGE_CANDIDATES}. Occurrences with a frame on one of the requested occurrence's "
         "captures are other animals and are left out.",
+    )
+    cost_threshold = serializers.FloatField(help_text="Tracking links a pair only below this cost.")
+    requires_features = serializers.BooleanField(
+        help_text="Whether tracking skips detections without an embedding rather than matching them on geometry."
     )
 
 

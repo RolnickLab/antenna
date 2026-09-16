@@ -2,7 +2,7 @@ import { API_ROUTES, API_URL } from 'data-services/constants'
 import {
   convertMergeCandidate,
   MergeCandidate,
-  ServerMergeCandidate,
+  ServerMergeCandidates,
 } from 'data-services/models/merge-candidate'
 import { useMemo } from 'react'
 import { STRING } from 'utils/language'
@@ -47,6 +47,10 @@ export const useMergeCandidates = ({
   projectId: string
 }): {
   candidates: MergeCandidate[]
+  /** Tracking links a pair only under this cost; undefined until the list has loaded. */
+  costThreshold?: number
+  /** Tracking skips a pair with no vector on both sides instead of matching it on geometry. */
+  requiresFeatures?: boolean
   isLoading: boolean
   error?: unknown
   captures?: number
@@ -61,9 +65,7 @@ export const useMergeCandidates = ({
     params.set('minutes', `${minutes}`)
   }
 
-  const { data, isLoading, error } = useAuthorizedQuery<{
-    candidates: ServerMergeCandidate[]
-  }>({
+  const { data, isLoading, error } = useAuthorizedQuery<ServerMergeCandidates>({
     enabled: !!occurrenceId && !!enabled,
     queryKey: [
       API_ROUTES.OCCURRENCES,
@@ -81,6 +83,8 @@ export const useMergeCandidates = ({
 
   return {
     candidates,
+    costThreshold: data?.cost_threshold,
+    requiresFeatures: data?.requires_features,
     // A disabled query still reports itself as loading, so guard on the inputs.
     isLoading: !!occurrenceId && !!enabled && isLoading,
     error,

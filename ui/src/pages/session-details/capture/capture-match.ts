@@ -1,7 +1,15 @@
 import { CaptureDetection } from 'data-services/models/capture'
-import { CaptureMatch } from 'data-services/models/capture-match'
+import {
+  CaptureMatch,
+  getMatchLevel,
+  MATCH_GRAY_UNTIL as GRAY_UNTIL,
+  MATCH_LIKELY_FROM as LIKELY_FROM,
+  MATCH_POSSIBLE_FROM as POSSIBLE_FROM,
+} from 'data-services/models/capture-match'
 import { CONSTANTS } from 'nova-ui-kit/constants'
 import { STRING } from 'utils/language'
+
+export { getMatchLevel }
 
 const BEST_MATCH_COLOR = CONSTANTS.COLORS.success[500]
 const UNLIKELY_MATCH_COLOR = CONSTANTS.COLORS.neutral[400]
@@ -14,10 +22,6 @@ const MAX_RIM_ALPHA = 0.5
 const LINK_GAP_PX = 4
 const LINK_RING_PX = 6
 const LINK_GLOW_PX = 12
-// Best guess from local data: unrelated boxes scored up to about 0.5, continuations above 0.9.
-const GRAY_UNTIL = 0.5
-const LIKELY_FROM = 0.8
-const POSSIBLE_FROM = 0.6
 // How far from gray to emerald each band starts, so a Possible box already reads green.
 const COLOR_STOPS: [likelihood: number, amount: number][] = [
   [GRAY_UNTIL, 0],
@@ -102,13 +106,6 @@ export const getMatchBoxStyle = (
     boxShadow: `0 0 0 ${RIM_SPREAD_PX}px ${rim}, 0 0 ${glowBlur}px ${glow}`,
   }
 }
-
-export const getMatchLevel = (likelihood: number): STRING =>
-  likelihood >= LIKELY_FROM
-    ? STRING.TRACK_MATCH_LIKELY
-    : likelihood >= POSSIBLE_FROM
-    ? STRING.TRACK_MATCH_POSSIBLE
-    : STRING.TRACK_MATCH_UNLIKELY
 
 /** Lines under a candidate's scores: what the tracker itself would do, and when the preview is only indicative. */
 export const getMatchNotes = (

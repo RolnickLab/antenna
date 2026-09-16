@@ -49,7 +49,14 @@ from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.pipeline import Pipeline
 from ami.ml.models.processing_service import ProcessingService
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
-from ami.ml.post_processing.tracking_task import TrackingConfig, image_diagonal, iou, pair_detections, total_cost
+from ami.ml.post_processing.tracking_task import (
+    TrackingConfig,
+    box_ratio,
+    image_diagonal,
+    iou,
+    pair_detections,
+    total_cost,
+)
 from ami.tests.fixtures.main import (
     create_captures,
     create_captures_from_files,
@@ -9252,6 +9259,39 @@ class MergeCandidatesTestCase(TrackEditTestCase):
         )
         self.assertAlmostEqual(by_id[unembedded.pk]["cost"], geometry_only, places=4)
         self.assertAlmostEqual(by_id[matching.pk]["cost"], geometry_only, places=4)
+
+    def test_candidates_carry_every_term_of_the_cost_and_the_trackers_decision(self):
+        """The picker shows the numbers tracking decides on: each term of the cost, the
+        likelihood, the threshold, and whether the pair falls under it. A candidate with
+        no vector never would link while tracking requires embeddings, however close
+        its box, and the terms are those of the tracking method, not a UI estimate."""
+        extractor = Algorithm.objects.create(name="Feature extractor", key="feature-extractor")
+        vector = [1.0] + [0.0] * 2047
+        self._give_target_vectors(vector, extractor)
+        track_box, far_box = [10, 10, 40, 40], [500, 500, 560, 560]
+        same_box = self._make_occurrence([self.after_capture], bbox=track_box, vector=vector, algorithm=extractor)
+        unembedded = self._make_occurrence([self.after_capture], bbox=track_box)
+        far = self._make_occurrence([self.after_capture], bbox=far_box, vector=vector, algorithm=extractor)
+
+        response = self.get_candidates()
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["cost_threshold"], TrackingConfig(event_ids=[self.event.pk]).cost_threshold)
+        self.assertTrue(response.data["requires_features"])
+        by_id = {row["id"]: row for row in response.data["candidates"]}
+
+        self.assertEqual(by_id[same_box.pk]["cost"], 0.0)
+        self.assertEqual(by_id[same_box.pk]["iou"], 1.0)
+        self.assertEqual(by_id[same_box.pk]["size_ratio"], 1.0)
+        self.assertEqual(by_id[same_box.pk]["likelihood"], 1.0)
+        self.assertTrue(by_id[same_box.pk]["would_link"])
+
+        self.assertEqual(by_id[unembedded.pk]["cost"], 0.0, "Geometry alone scores a perfect fit")
+        self.assertFalse(by_id[unembedded.pk]["would_link"], "Tracking skips a frame without a vector")
+
+        self.assertEqual(by_id[far.pk]["iou"], 0.0)
+        self.assertAlmostEqual(by_id[far.pk]["size_ratio"], box_ratio(track_box, far_box), places=4)
+        self.assertLess(by_id[far.pk]["likelihood"], by_id[same_box.pk]["likelihood"])
+        self.assertFalse(by_id[far.pk]["would_link"])
 
     def test_adjacent_captures_are_searched_by_default(self):
         """The default search is the one capture on either side of the track, since that is

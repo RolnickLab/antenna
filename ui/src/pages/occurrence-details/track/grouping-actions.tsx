@@ -6,6 +6,7 @@ import {
   MergeScopeKey,
   useMergeCandidates,
 } from 'data-services/hooks/occurrences/useMergeCandidates'
+import { MergeCandidate } from 'data-services/models/merge-candidate'
 import { OccurrenceDetails } from 'data-services/models/occurrence-details'
 import { GitMergeIcon, Loader2Icon, PlusIcon } from 'lucide-react'
 import { Badge, Button, buttonVariants } from 'nova-ui-kit'
@@ -16,6 +17,7 @@ import { getFormatedDateTimeString } from 'utils/date/getFormatedDateTimeString/
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { parseServerError } from 'utils/parseServerError/parseServerError'
+import { getCandidateSessionRoute } from 'components/track/candidate-session-route'
 import { OccurrencePicker } from 'components/track/occurrence-picker'
 import { TrackEditDialog } from 'components/track/track-edit-dialog'
 
@@ -45,7 +47,12 @@ export const GroupingActions = ({
   const mergeScope =
     MERGE_SCOPES.find((option) => option.key === scope) ?? MERGE_SCOPES[0]
 
-  const { candidates, isLoading: candidatesLoading } = useMergeCandidates({
+  const {
+    candidates,
+    costThreshold,
+    isLoading: candidatesLoading,
+    requiresFeatures,
+  } = useMergeCandidates({
     captures: mergeScope.captures,
     enabled: mergeOpen,
     minutes: mergeScope.minutes,
@@ -53,17 +60,30 @@ export const GroupingActions = ({
     projectId: projectId as string,
   })
 
+  const sessionRoute = occurrence.sessionId
+    ? APP_ROUTES.SESSION_DETAILS({
+        projectId: projectId as string,
+        sessionId: occurrence.sessionId,
+      })
+    : undefined
+
   // Extending opens the session view on the track's newest frame, where the next
   // capture is a click away.
   const lastCaptureId = occurrence.frames[0]?.captureId
   const extendRoute =
-    occurrence.sessionId && lastCaptureId
+    sessionRoute && lastCaptureId
       ? getAppRoute({
-          to: APP_ROUTES.SESSION_DETAILS({
-            projectId: projectId as string,
-            sessionId: occurrence.sessionId,
-          }),
+          to: sessionRoute,
           filters: { capture: lastCaptureId, extend: occurrence.id },
+        })
+      : undefined
+
+  const candidateSessionLink = (candidate: MergeCandidate) =>
+    sessionRoute && candidate.captureId
+      ? getCandidateSessionRoute({
+          captureId: candidate.captureId,
+          occurrenceIds: [occurrence.id, candidate.id],
+          sessionRoute,
         })
       : undefined
 
@@ -174,6 +194,7 @@ export const GroupingActions = ({
         {merge.result ? null : (
           <OccurrencePicker
             candidates={candidates}
+            costThreshold={costThreshold}
             description={translate(STRING.TRACK_MERGE_SCOPE_DESCRIPTION, {
               scope: translate(mergeScope.label).toLowerCase(),
             })}
@@ -181,8 +202,10 @@ export const GroupingActions = ({
             isLoading={candidatesLoading}
             onScopeChange={changeScope}
             onToggle={toggleSource}
+            requiresFeatures={requiresFeatures}
             scope={scope}
             selectedIds={sourceIds}
+            sessionLink={candidateSessionLink}
             title={translate(STRING.TRACK_MERGE_CANDIDATES_TITLE)}
           />
         )}

@@ -30,6 +30,10 @@ Each candidate is described by:
 - ``cost``: the tracking method's matching cost for the pair. Geometry only when
   similarity is null, which lowers the total, so a candidate without a vector can
   outrank one with a poor vector match. Null when either box is malformed.
+- ``iou``, ``size_ratio`` and ``likelihood``: the remaining terms of that cost and
+  one minus its mean term, the same numbers the capture preview reports.
+- ``would_link``: whether the pair passes the tracker's pairing rule, a cost under
+  its threshold with a vector on both frames when it requires one.
 - ``capture_id`` and ``image_timestamp``: the candidate's frame in the scored pair,
   the one its ``image`` is a crop of.
 - ``edge_image`` and ``edge_timestamp``: the track frame in the scored pair: its first
@@ -56,6 +60,7 @@ from ami.main.models_future.track_stats import bbox_corners, frame_diagonal
 
 if TYPE_CHECKING:
     from ami.main.models import Occurrence, SourceImage
+    from ami.ml.post_processing.tracking_task import TrackingConfig
 
 DEFAULT_WINDOW_MINUTES = 5
 MAX_WINDOW_MINUTES = 30
@@ -148,26 +153,23 @@ def _latest_vectors(classifications) -> dict[tuple[int, int], Any]:
     return vectors
 
 
-def _score_pair(
-    track_frame: dict, frame: dict, track_vector, frame_vector
-) -> tuple[float | None, float | None, float | None]:
-    """(distance, similarity, cost) for one pair, or Nones for a box that cannot be read."""
-    from ami.ml.post_processing.tracking_task import cosine_similarity, distance_ratio, total_cost
-
+def _score_pair(track_frame: dict, frame: dict, track_vector, frame_vector) -> dict[str, float | None]:
+    """The cost terms for one pair of frames, all None for a box that cannot be read."""
     corners_a = bbox_corners(track_frame["bbox"])
     corners_b = bbox_corners(frame["bbox"])
     if corners_a is None or corners_b is None:
-        return None, None, None
-
+        return dict.fromkeys(_PAIR_SCORE_FIELDS)
     diagonal = _pair_diagonal(track_frame, frame, corners_a, corners_b)
-    distance = round(distance_ratio(corners_a, corners_b, diagonal), _ROUND_TO)
-    similarity = (
-        round(cosine_similarity(track_vector, frame_vector), _ROUND_TO)
-        if track_vector is not None and frame_vector is not None
-        else None
-    )
-    cost = round(total_cost(track_vector, frame_vector, corners_a, corners_b, diagonal), _ROUND_TO)
-    return distance, similarity, cost
+    return _pair_scores(corners_a, corners_b, track_vector, frame_vector, diagonal)
+
+
+def _would_link(scores: dict[str, float | None], config: TrackingConfig) -> bool:
+    """Whether the pair passes the tracker's pairing rule: a cost under its threshold, and a
+    vector on both frames when it requires them. A preview of the rule, not of a run: the
+    matcher only pairs adjacent captures and claims each box once."""
+    if scores["cost"] is None or (config.require_features and scores["similarity"] is None):
+        return False
+    return scores["cost"] < config.cost_threshold
 
 
 def _rank_key(row: dict[str, Any]) -> tuple:
@@ -206,6 +208,7 @@ def rank_merge_candidates(
     """
     from ami.main.models import Classification, Detection, get_media_url
 
+    config = tracking_config_for(occurrence)
     target_frames = _timed_frames(Detection.objects.valid().filter(occurrence_id=occurrence.pk))
     if not target_frames:
         return []
@@ -279,7 +282,7 @@ def rank_merge_candidates(
         track_frame, frame = pairs[candidate.pk]
         algorithm_id, track_vector = vector_by_track_frame.get(track_frame["pk"], (None, None))
         frame_vector = frame_vectors.get((frame["pk"], algorithm_id)) if algorithm_id is not None else None
-        distance, similarity, cost = _score_pair(track_frame, frame, track_vector, frame_vector)
+        scores = _score_pair(track_frame, frame, track_vector, frame_vector)
         crop = frame["path"] or next((f["path"] for f in frames_by_occurrence[candidate.pk] if f["path"]), None)
         rows.append(
             {
@@ -294,9 +297,8 @@ def rank_merge_candidates(
                 "last_appearance_timestamp": candidate.last_appearance_timestamp,
                 "relation": relation,
                 "time_offset_seconds": offset,
-                "distance": distance,
-                "similarity": similarity,
-                "cost": cost,
+                **scores,
+                "would_link": _would_link(scores, config),
                 "image": get_media_url(crop) if crop else None,
                 "capture_id": frame["source_image_id"],
                 "image_timestamp": frame["timestamp"],
@@ -309,9 +311,18 @@ def rank_merge_candidates(
     return rows[:limit]
 
 
-_MATCH_SCORE_FIELDS = ("likelihood", "cost", "distance", "iou", "size_ratio", "similarity", "time_offset_seconds")
+_PAIR_SCORE_FIELDS = ("likelihood", "cost", "distance", "iou", "size_ratio", "similarity")
+_MATCH_SCORE_FIELDS = _PAIR_SCORE_FIELDS + ("time_offset_seconds",)
 SKIPPED_NO_VECTOR = "no_vector"
 SKIPPED_REASONS = (SKIPPED_NO_VECTOR,)
+
+
+def tracking_config_for(occurrence: Occurrence) -> TrackingConfig:
+    """The settings tracking runs with on the occurrence's session: the threshold and the
+    feature requirement the previews here judge pairs by."""
+    from ami.ml.post_processing.tracking_task import TrackingConfig
+
+    return TrackingConfig(event_ids=[occurrence.event_id])
 
 
 def _likelihood(cost: float, similarity: float | None) -> float:
@@ -322,20 +333,20 @@ def _likelihood(cost: float, similarity: float | None) -> float:
     return round(min(max(1 - cost / terms, 0.0), 1.0), _ROUND_TO)
 
 
-def _pair_scores(reference, box, reference_vector, box_vector, diag: float) -> dict:
-    """The tracking cost between the reference frame and one box, its terms, and its likelihood."""
+def _pair_scores(bbox_a, bbox_b, vector_a, vector_b, diag: float) -> dict[str, float | None]:
+    """The tracking cost between two boxes, each of its terms, and the likelihood."""
     from ami.ml.post_processing.tracking_task import box_ratio, cosine_similarity, distance_ratio, iou, total_cost
 
-    cost = total_cost(reference_vector, box_vector, reference.bbox, box.bbox, diag)
+    cost = total_cost(vector_a, vector_b, bbox_a, bbox_b, diag)
     similarity = None
-    if reference_vector is not None and box_vector is not None:
-        similarity = round(cosine_similarity(reference_vector, box_vector), _ROUND_TO)
+    if vector_a is not None and vector_b is not None:
+        similarity = round(cosine_similarity(vector_a, vector_b), _ROUND_TO)
     return {
         "likelihood": _likelihood(cost, similarity),
         "cost": round(cost, _ROUND_TO),
-        "distance": round(distance_ratio(reference.bbox, box.bbox, diag), _ROUND_TO),
-        "iou": round(iou(reference.bbox, box.bbox), _ROUND_TO),
-        "size_ratio": round(box_ratio(reference.bbox, box.bbox), _ROUND_TO),
+        "distance": round(distance_ratio(bbox_a, bbox_b, diag), _ROUND_TO),
+        "iou": round(iou(bbox_a, bbox_b), _ROUND_TO),
+        "size_ratio": round(box_ratio(bbox_a, bbox_b), _ROUND_TO),
         "similarity": similarity,
     }
 
@@ -377,14 +388,13 @@ def match_capture_detections(occurrence: Occurrence, capture: SourceImage) -> di
     from ami.main.models import Classification, Detection, SourceImage
     from ami.ml.models import Algorithm
     from ami.ml.post_processing.tracking_task import (
-        TrackingConfig,
         image_diagonal,
         latest_feature_vectors,
         resolve_feature_algorithm,
         select_links,
     )
 
-    config = TrackingConfig(event_ids=[occurrence.event_id])
+    config = tracking_config_for(occurrence)
     reference, relation = _reference_frame(occurrence.pk, capture) if capture.timestamp else (None, None)
     reference_capture_id = reference["source_image_id"] if reference is not None else None
     detections = list(
@@ -467,8 +477,8 @@ def match_capture_detections(occurrence: Occurrence, capture: SourceImage) -> di
             if diag is not None:
                 row.update(
                     _pair_scores(
-                        reference_detection,
-                        box,
+                        reference_detection.bbox,
+                        box.bbox,
                         vectors.get(reference["pk"]),
                         vectors.get(box.pk),
                         diag,

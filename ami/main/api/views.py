@@ -41,6 +41,7 @@ from ami.main.models_future.merge_candidates import (
     MAX_WINDOW_MINUTES,
     match_capture_detections,
     rank_merge_candidates,
+    tracking_config_for,
 )
 from ami.main.models_future.occurrence import (
     model_agreement_for_project,
@@ -1871,7 +1872,16 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
             minutes=minutes,
             captures=captures,
         )
-        return Response(MergeCandidatesResponseSerializer({"candidates": candidates}).data)
+        config = tracking_config_for(occurrence)
+        return Response(
+            MergeCandidatesResponseSerializer(
+                {
+                    "candidates": candidates,
+                    "cost_threshold": config.cost_threshold,
+                    "requires_features": config.require_features,
+                }
+            ).data
+        )
 
     @extend_schema(
         parameters=[
