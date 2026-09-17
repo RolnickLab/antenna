@@ -471,7 +471,6 @@ class JobType:
 class MLJob(JobType):
     name = "ML pipeline"
     key = "ml"
-    required_fields = ("pipeline",)
     user_creatable = True
 
     @classmethod
