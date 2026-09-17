@@ -3418,7 +3418,7 @@ class TestTrainingCallback(APITestCase):
             f"/api/v2/jobs/{other.pk}/training-result/",
             self.payload,
             format="json",
-            HTTP_AUTHORIZATION=f"Token {make_callback_token(other)}",
+            headers={"authorization": f"Token {make_callback_token(other)}"},
         )
         self.assertEqual(response.status_code, 400)
 

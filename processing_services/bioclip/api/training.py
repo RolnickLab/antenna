@@ -51,7 +51,9 @@ class TrainingRow:
     features: np.ndarray
 
 
-def fetch_dataset(url: str, timeout: int = 300, session: requests.Session | None = None) -> tuple[list[TrainingRow], dict]:
+def fetch_dataset(
+    url: str, timeout: int = 300, session: requests.Session | None = None
+) -> tuple[list[TrainingRow], dict]:
     """
     Download the training set Antenna prepared and unpack it.
 
@@ -328,9 +330,7 @@ def retrain(
     candidate = evaluate(weights, bias, x_test, y_test)
     incumbent_metrics = None
     if incumbent:
-        incumbent_metrics = score_incumbent(
-            incumbent["weights"], incumbent["bias"], incumbent["labels"], test_rows
-        )
+        incumbent_metrics = score_incumbent(incumbent["weights"], incumbent["bias"], incumbent["labels"], test_rows)
 
     if incumbent_metrics is None:
         promote = False

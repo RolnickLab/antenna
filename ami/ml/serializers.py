@@ -60,7 +60,7 @@ class AlgorithmSerializer(DefaultSerializer):
             "updated_at",
         ]
 
-    def get_evaluations(self, obj):
+    def get_evaluations(self, obj) -> list[dict]:
         """How this algorithm has scored on each evaluation set. Empty until one is scored."""
         from ami.ml import reporting
 

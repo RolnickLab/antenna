@@ -10,8 +10,8 @@ import torch
 from .schemas import (
     AlgorithmCategoryMapResponse,
     AlgorithmConfigResponse,
-    AlgorithmTrainingConfig,
     AlgorithmReference,
+    AlgorithmTrainingConfig,
     BoundingBox,
     ClassificationResponse,
     Detection,
@@ -631,8 +631,7 @@ class BioCLIP25LogRegClassifier(Algorithm):
 
         # Build description
         description_text = (
-            f"Logistic-regression head over frozen {self.model_name} embeddings. "
-            f"Contains {len(labels)} classes."
+            f"Logistic-regression head over frozen {self.model_name} embeddings. " f"Contains {len(labels)} classes."
         )
 
         return AlgorithmCategoryMapResponse(
