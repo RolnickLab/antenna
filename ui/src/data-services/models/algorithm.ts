@@ -20,6 +20,7 @@ export interface AlgorithmEvaluation {
   accuracy?: number
   accuracyBySpecies?: number
   occurrencesScored: number
+  occurrencesSkipped: number
 }
 
 export class Algorithm extends Entity {
@@ -76,6 +77,7 @@ export class Algorithm extends Entity {
       accuracy: row.accuracy ?? undefined,
       accuracyBySpecies: row.accuracy_by_species ?? undefined,
       occurrencesScored: row.occurrences_scored,
+      occurrencesSkipped: row.occurrences_skipped,
     }))
   }
 }
