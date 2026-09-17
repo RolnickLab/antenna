@@ -5762,6 +5762,50 @@ class TaxaListDraftProjectVisibilityTestCase(TestCase):
         self.assertIn(self.scoped_list.pk, ids)
 
 
+class TaxaListTaxonDraftProjectVisibilityTestCase(TestCase):
+    """
+    A manage_public_taxalist holder bypasses the project-membership check at
+    has_permission() (the target might turn out to be public), but a
+    project-scoped list in an unrelated draft project is neither public nor
+    theirs — get_taxa_list() must still hide it via visible_for_user() rather
+    than leaking that it exists. A genuine project member can still read/write.
+
+    A plain non-member (no platform permission) never reaches this check at
+    all: IsProjectMemberOrPublicListManager.has_permission() already denies
+    them with 403 for not being a member of the active project, regardless of
+    draft status — that's a separate, pre-existing gate, not this fix.
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(email="taxon-draft-owner@example.com", password="testpass")
+        self.member = User.objects.create_user(email="taxon-draft-member@example.com", password="testpass")
+        self.public_list_manager = User.objects.create_user(
+            email="taxon-draft-manager@example.com", password="testpass"
+        )
+        perm = Permission.objects.get(codename="manage_public_taxalist", content_type__app_label="main")
+        self.public_list_manager.user_permissions.add(perm)
+        self.draft_project = Project.objects.create(name="Taxon Draft Project", owner=self.owner, draft=True)
+        self.draft_project.members.add(self.member)
+        self.scoped_list = TaxaList.objects.create(name="Taxon Draft List")
+        self.scoped_list.projects.add(self.draft_project)
+        self.taxon = Taxon.objects.create(name="Taxon Draft Species", rank="SPECIES")
+        self.client = APIClient()
+
+    def _taxa_url(self):
+        return f"/api/v2/taxa/lists/{self.scoped_list.pk}/taxa/?project_id={self.draft_project.pk}"
+
+    def test_public_list_manager_cannot_see_scoped_list_in_unrelated_draft_project(self):
+        self.client.force_authenticate(self.public_list_manager)
+        response = self.client.post(self._taxa_url(), {"taxon_id": self.taxon.pk})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertFalse(self.scoped_list.taxa.filter(pk=self.taxon.pk).exists())
+
+    def test_member_can_add_taxon_to_list_in_draft_project(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.post(self._taxa_url(), {"taxon_id": self.taxon.pk})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+
 @override_settings(CACHALOT_ENABLED=False)
 class TaxaListQueryCountTestCase(APITestCase):
     """Audit TaxaListViewSet.list for N+1 across a mixed public/scoped, multi-row fixture."""

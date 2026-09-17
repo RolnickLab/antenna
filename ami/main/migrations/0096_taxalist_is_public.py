@@ -1,15 +1,11 @@
 """
-Add ``TaxaList.is_public`` and backfill it for existing rows.
-
-A TaxaList with no project was previously treated as an ad hoc "global" list by
-convention (see ``get_or_create_for_project``); this migration makes that status an
-explicit, queryable field instead. Every existing zero-project list becomes public,
-except a per-algorithm category-map list (name starting with "Taxa returned by"),
-which stays hidden as it is today — those lists are an internal bookkeeping detail,
-not something meant for every project to browse or attach.
-
-``projects`` becomes optional (``blank=True``) since a public list no longer needs
-a project association to exist.
+``TaxaList.is_public`` marks a list as available to every project, not just the
+ones in its ``projects`` M2M. This backfills it: every existing list with no
+project becomes public, except a "Taxa returned by <algorithm>" list — the
+running set of taxa that algorithm has returned as a top prediction — which
+stays non-public, since what a project should see or do with that list is
+still undecided. ``projects`` becomes ``blank=True`` since a public list no
+longer needs one.
 """
 
 from django.db import migrations, models
