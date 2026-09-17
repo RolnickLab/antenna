@@ -77,25 +77,44 @@ def add_collection_level_permissions(user: User | None, response_data: dict, mod
     return response_data
 
 
-def user_can_manage_public_taxalist(user: AbstractBaseUser | AnonymousUser) -> bool:
-    """A superuser, or a user holding the platform-wide manage_public_taxalist permission."""
+def user_can_manage_public(user: AbstractBaseUser | AnonymousUser, model_or_instance) -> bool:
+    """
+    A superuser, or a user holding <app_label>.manage_public_<model_name> for
+    the given model (or an instance of it) — the platform permission gating
+    write access to a public row, in place of project membership or staff status.
+    """
     if not user or not user.is_authenticated:
         return False
-    return bool(user.is_superuser or user.has_perm("main.manage_public_taxalist"))  # type: ignore[union-attr]
+    if user.is_superuser:  # type: ignore[union-attr]
+        return True
+    meta = model_or_instance._meta
+    return user.has_perm(f"{meta.app_label}.manage_public_{meta.model_name}")  # type: ignore[union-attr]
 
 
 def check_taxalist_write_permission(user, taxa_list, project) -> bool:
     """
-    True if `user` may update/delete `taxa_list` or change its taxa.
-
-    A public list requires the platform-wide manage_public_taxalist permission
-    (superusers always pass); a project-scoped list requires membership of `project`.
+    True if `user` may update/delete `taxa_list` or change its taxa: a public
+    list needs manage_public_taxalist, a project-scoped one needs membership of
+    `project`. Kept TaxaList-specific rather than folded into a generic helper —
+    ProcessingService's non-public fallback is active-staff status, not project
+    membership, so the two checks don't share a body.
     """
-    if user.is_superuser:
-        return True
     if getattr(taxa_list, "is_public", False):
-        return user.has_perm("main.manage_public_taxalist")
-    return bool(project and project.members.filter(pk=user.pk).exists())
+        return user_can_manage_public(user, taxa_list)
+    return bool(user.is_superuser or (project and project.members.filter(pk=user.pk).exists()))
+
+
+def check_processingservice_write_permission(user, processing_service) -> bool:
+    """
+    True if `user` may update/delete `processing_service`, or register its
+    pipelines: a public service needs manage_public_processingservice; a
+    project-scoped one only needs active-staff status, unchanged from before
+    is_public existed (the broader project-scoped permission model belongs to
+    #1120, not here).
+    """
+    if getattr(processing_service, "is_public", False):
+        return user_can_manage_public(user, processing_service)
+    return bool(user.is_superuser or is_active_staff(user))
 
 
 def add_m2m_object_permissions(user, instance, project, response_data: dict) -> dict:
@@ -110,7 +129,7 @@ def add_m2m_object_permissions(user, instance, project, response_data: dict) -> 
     Validates that the instance actually belongs to the given project before
     granting any permissions (prevents cross-project permission leaks). A public
     instance is the one exception: its update/delete permissions come from the
-    platform-wide manage_public_taxalist permission, not project membership.
+    model's manage_public_<model> permission, not project membership.
 
     This is a temporary approach for the M2M permission gap described in #1120.
     Once that issue is resolved, this should be replaced by a generic permission
@@ -120,7 +139,7 @@ def add_m2m_object_permissions(user, instance, project, response_data: dict) -> 
     perms = set(response_data.get("user_permissions", []))
 
     if getattr(instance, "is_public", False):
-        if user_can_manage_public_taxalist(user):
+        if user_can_manage_public(user, instance):
             perms.update(["update", "delete"])
         response_data["user_permissions"] = list(perms)
         return response_data
@@ -175,10 +194,10 @@ class IsProjectMemberOrReadOnly(permissions.BasePermission):
 
 class IsProjectMemberOrPublicListManager(permissions.BasePermission):
     """
-    Like IsProjectMemberOrReadOnly, but a user holding the platform-wide
-    manage_public_taxalist permission also passes, regardless of project
-    membership — for actions that can only ever land on a public list (adding
-    or removing a taxon from an existing TaxaList via the nested route).
+    Safe methods are open to everyone. Unsafe methods need membership of the
+    active project, or the manage_public_taxalist permission — used by the
+    nested add/remove-taxon route, which serves both public and project-scoped
+    lists and has no object to check yet at has_permission() time.
     """
 
     def has_permission(self, request, view):
@@ -188,7 +207,9 @@ class IsProjectMemberOrPublicListManager(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
 
-        if request.user.is_superuser or user_can_manage_public_taxalist(request.user):  # type: ignore[union-attr]
+        from ami.main.models import TaxaList
+
+        if request.user.is_superuser or user_can_manage_public(request.user, TaxaList):  # type: ignore[union-attr]
             return True
 
         get_active_project = getattr(view, "get_active_project", None)
@@ -204,12 +225,11 @@ class IsProjectMemberOrPublicListManager(permissions.BasePermission):
 
 class IsProjectMemberOrPublicListManagerOrReadOnly(IsProjectMemberOrPublicListManager):
     """
-    For TaxaListViewSet: creating a brand-new list is always project-scoped and
-    needs real project membership (there's no object yet to tell whether it will
-    be public). Update/delete defer to the object-level check below, which grants
-    the manage_public_taxalist bypass only once the target list's is_public flag
-    is known — closing the gap where a project member could edit a public list
-    just by supplying their own project_id.
+    For TaxaListViewSet: creating a brand-new list always needs real project
+    membership (there's no object yet to tell whether it will be public).
+    Update/delete defer to check_taxalist_write_permission, which grants the
+    manage_public_taxalist bypass only once the target list's is_public flag
+    is known.
     """
 
     def has_permission(self, request, view):
@@ -222,6 +242,49 @@ class IsProjectMemberOrPublicListManagerOrReadOnly(IsProjectMemberOrPublicListMa
             return True
         project = view.get_active_project() if hasattr(view, "get_active_project") else None
         return check_taxalist_write_permission(request.user, obj, project)
+
+
+class IsActiveStaffOrPublicManager(permissions.BasePermission):
+    """
+    Safe methods are open to everyone. Unsafe methods need active-staff status,
+    or the manage_public_processingservice permission — used where there is no
+    object yet to check at has_permission() time.
+    """
+
+    def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        if not request.user or not request.user.is_authenticated:
+            return False
+
+        from ami.ml.models.processing_service import ProcessingService
+
+        if request.user.is_superuser or user_can_manage_public(request.user, ProcessingService):  # type: ignore
+            return True
+
+        return is_active_staff(request.user)  # type: ignore[arg-type]
+
+
+class IsActiveStaffOrPublicManagerOrReadOnly(IsActiveStaffOrPublicManager):
+    """
+    For ProcessingServiceViewSet: creating a brand-new service always needs
+    active-staff status (there's no object yet to tell whether it will be
+    public). Update/delete/register_pipelines defer to
+    check_processingservice_write_permission, which grants the
+    manage_public_processingservice bypass only once the target's is_public
+    flag is known.
+    """
+
+    def has_permission(self, request, view):
+        if getattr(view, "action", None) == "create":
+            return IsActiveStaffOrReadOnly.has_permission(self, request, view)
+        return super().has_permission(request, view)
+
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return check_processingservice_write_permission(request.user, obj)
 
 
 class ObjectPermission(permissions.BasePermission):
