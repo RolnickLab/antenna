@@ -38,7 +38,7 @@ from ami.base.permissions import (
 )
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
-from ami.main.api.schemas import limit_doc_param, project_id_doc_param
+from ami.main.api.schemas import include_public_doc_param, limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
@@ -2225,25 +2225,9 @@ class TaxaListViewSet(DefaultViewSet, ProjectMixin):
         project = self.get_active_project()
         if not project:
             return qs
-        include_public = SingleParamSerializer[bool].clean(
-            param_name="include_public",
-            field=serializers.BooleanField(required=False, default=True),
-            data=self.request.query_params,
-        )
-        return qs.for_project(project, include_public=include_public)
+        return qs.for_project(project, include_public=self.get_include_public())
 
-    @extend_schema(
-        parameters=[
-            project_id_doc_param,
-            OpenApiParameter(
-                name="include_public",
-                description="Include taxa lists that are public (available to every project), "
-                "not just the ones belonging to this project. Defaults to true.",
-                required=False,
-                type=OpenApiTypes.BOOL,
-            ),
-        ]
-    )
+    @extend_schema(parameters=[project_id_doc_param, include_public_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
