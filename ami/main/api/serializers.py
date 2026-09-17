@@ -708,6 +708,7 @@ class TaxaListSerializer(DefaultSerializer):
     taxa = serializers.SerializerMethodField()
     taxa_count = serializers.SerializerMethodField()
     projects = serializers.SerializerMethodField()
+    is_public = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = TaxaList
@@ -718,6 +719,7 @@ class TaxaListSerializer(DefaultSerializer):
             "taxa",
             "taxa_count",
             "projects",
+            "is_public",
             "created_at",
             "updated_at",
         ]
