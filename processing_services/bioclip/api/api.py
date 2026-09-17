@@ -5,13 +5,13 @@ Fast API interface for processing images through the localization and classifica
 import datetime
 import inspect
 import logging
-import os
 import pathlib
 
 import fastapi
 import pydantic
 import requests
 
+from . import algorithms, trained_heads, training
 from .pipelines import (
     BioCLIP25LogRegPipeline,
     BioCLIPPanamaPipeline,
@@ -31,7 +31,6 @@ from .schemas import (
     ProcessingServiceInfoResponse,
     SourceImage,
 )
-from . import algorithms, trained_heads, training
 from .utils import is_base64, is_url
 
 # Configure root logger
@@ -176,7 +175,7 @@ def create_detections(
 
     # Process each source image and its detection requests
     detections = []
-    for source_image_id, requests in grouped_detection_requests.items():
+    for source_image_id, detection_requests in grouped_detection_requests.items():
         if source_image_id not in source_image_map:
             raise ValueError(
                 f"A detection request for source image {source_image_id} was received, "
@@ -185,7 +184,7 @@ def create_detections(
 
         logger.info(f"Processing existing detections for source image {source_image_id}.")
 
-        for request in requests:
+        for request in detection_requests:
             source_image = source_image_map[source_image_id]
             cropped_image_id = (
                 f"{source_image.id}-crop-{request.bbox.x1}-{request.bbox.y1}-{request.bbox.x2}-{request.bbox.y2}"
@@ -254,9 +253,7 @@ if __name__ == "__main__":
 class TrainRequest(pydantic.BaseModel):
     """Retrain a classifier head from a dataset Antenna has already prepared."""
 
-    dataset_url: str = pydantic.Field(
-        description="URL of the npz training set Antenna wrote to storage."
-    )
+    dataset_url: str = pydantic.Field(description="URL of the npz training set Antenna wrote to storage.")
     algorithm_key: str = pydantic.Field(
         description="Which head to retrain. Its current weights are the baseline the new head must beat."
     )

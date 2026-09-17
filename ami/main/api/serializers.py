@@ -735,7 +735,7 @@ class TaxaListSerializer(DefaultSerializer):
             "updated_at",
         ]
 
-    def get_best_model(self, obj):
+    def get_best_model(self, obj) -> dict | None:
         """The algorithm scoring highest on this list's species, or null if none has been scored."""
         from ami.ml import reporting
 
@@ -1086,7 +1086,7 @@ class TaxonSerializer(DefaultSerializer):
         """
         return getattr(obj, "training_crops_count", None)
 
-    def get_algorithm_performance(self, obj):
+    def get_algorithm_performance(self, obj) -> list[dict]:
         """How each scored algorithm has done on this species. Empty until one is evaluated."""
         from ami.ml import reporting
 
