@@ -6511,6 +6511,23 @@ class TestTaxaVerification(APITestCase):
         self.assertEqual(detail["verified_count"], 2)
         self.assertEqual(detail["training_crops_ready"], 3)
 
+    def test_training_crops_ready_ignores_the_project_score_threshold(self):
+        """
+        The count must match what a retrain would actually use.
+
+        The score threshold hides predictions the model was unsure about, but these rows
+        are human answers. Someone correcting a low-confidence prediction is the most
+        useful crop there is, so filtering on the model's confidence would hide exactly
+        the data worth training on — and make the column disagree with the training set.
+        """
+        self.project.default_filters_score_threshold = 0.5
+        self.project.save()
+        Occurrence.objects.filter(pk=self.occ_pred.pk).update(determination_score=0.1)
+
+        detail = self._detail(self.cardui, "&with_training_crop_counts=true")
+
+        self.assertEqual(detail["training_crops_ready"], 2)
+
     def test_training_crops_ready_does_not_roll_up_to_ancestors(self):
         """A head is fit on the label itself, so species crops are not genus training data."""
         for ancestor in (self.genus, self.family, self.order):
