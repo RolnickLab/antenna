@@ -35,7 +35,29 @@ from ami.base.views import ProjectMixin
 from ami.main.api.schemas import limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
-from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
+from ami.main.models_future.merge_candidates import (
+    DEFAULT_ADJACENT_CAPTURES,
+    MAX_ADJACENT_CAPTURES,
+    MAX_WINDOW_MINUTES,
+    match_capture_detections,
+    rank_merge_candidates,
+    tracking_config_for,
+)
+from ami.main.models_future.occurrence import (
+    model_agreement_for_project,
+    occurrence_path,
+    prefetch_nested_classifications,
+    top_identifiers_for_project,
+)
+from ami.main.models_future.tracks import (
+    TrackEditError,
+    add_detections,
+    detach_detection,
+    merge_occurrences,
+    split_track,
+    unverify_grouping,
+    verify_grouping,
+)
 from ami.ml.models.algorithm import Algorithm
 from ami.ml.serializers import AlgorithmSerializer
 from ami.utils.requests import get_default_classification_threshold
@@ -68,6 +90,7 @@ from ..models import (
 from .serializers import (
     BulkIdentificationRequestSerializer,
     BulkIdentificationResponseSerializer,
+    CaptureMatchesResponseSerializer,
     ClassificationListSerializer,
     ClassificationSerializer,
     ClassificationWithTaxaSerializer,
@@ -81,8 +104,13 @@ from .serializers import (
     EventTimelineSerializer,
     ExampleOccurrenceSerializer,
     IdentificationSerializer,
+    MergeCandidatesResponseSerializer,
     ModelAgreementSerializer,
+    OccurrenceAddDetectionsSerializer,
+    OccurrenceGroupingSerializer,
     OccurrenceListSerializer,
+    OccurrenceMergeSerializer,
+    OccurrencePathFrameSerializer,
     OccurrenceSerializer,
     PageListSerializer,
     PageSerializer,
@@ -103,6 +131,8 @@ from .serializers import (
     TaxonSearchResultSerializer,
     TaxonSerializer,
     TopIdentifiersResponseSerializer,
+    TrackEditResultSerializer,
+    TrackEditSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -700,6 +730,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             queryset = queryset.prefetch_related("jobs", "collections")
             queryset = self.add_adjacent_captures(queryset)
             queryset = self.annotate_last_processed(queryset)
+            queryset = queryset.with_detections_with_features()  # type: ignore
             with_detections_default = True
 
         with_detections = self.request.query_params.get("with_detections", with_detections_default)
@@ -803,8 +834,7 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
         score = get_default_classification_threshold(project, self.request)
 
         prefetch_queryset = (
-            Detection.objects.valid()
-            .annotate(
+            Detection.objects.valid().annotate(
                 determination_score=models.Max("occurrence__detections__classifications__score"),
                 # Store whether this occurrence should be included based on default filters
                 occurrence_meets_criteria=models.Case(
@@ -817,7 +847,17 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
                 ),
                 score_threshold=models.Value(score, output_field=models.FloatField()),
             )
-            .select_related("occurrence", "occurrence__determination")
+            # Prefetch rather than select_related the occurrence: the session toolbar
+            # needs its detections_count to say "9 frames" or "one frame only" before
+            # asking for a path, and an annotation cannot ride along on a join.
+            .prefetch_related(
+                Prefetch(
+                    "occurrence",
+                    queryset=Occurrence.objects.with_detections_count().select_related(  # type: ignore
+                        "determination", "grouping_verified_by"
+                    ),
+                )
+            )
         )
 
         related_detections = Prefetch(
@@ -867,9 +907,34 @@ class SourceImageViewSet(DefaultViewSet, ProjectMixin):
             .values("total")
         )
 
+        # Nearest capture on each side with a real box, by (timestamp, id), so a burst seconds apart
+        # is walked frame by frame. The gte + exclude tie-break lets the (event, timestamp) index walk
+        # stop at the first hit, where an OR of the two cases reads every capture on that side.
+        boxed_in_event = SourceImage.objects.filter(event=models.OuterRef("event")).filter(
+            models.Exists(Detection.objects.valid().filter(source_image_id=models.OuterRef("pk")))
+        )
+        next_with_detections = (
+            boxed_in_event.filter(timestamp__gte=models.OuterRef("timestamp"))
+            .exclude(timestamp=models.OuterRef("timestamp"), pk__lte=models.OuterRef("pk"))
+            .order_by("timestamp", "pk")
+            .values("id")[:1]
+        )
+        prev_with_detections = (
+            boxed_in_event.filter(timestamp__lte=models.OuterRef("timestamp"))
+            .exclude(timestamp=models.OuterRef("timestamp"), pk__gte=models.OuterRef("pk"))
+            .order_by("-timestamp", "-pk")
+            .values("id")[:1]
+        )
+
         return queryset.annotate(
             event_next_capture_id=models.Subquery(next_image, output_field=models.IntegerField()),
             event_prev_capture_id=models.Subquery(previous_image, output_field=models.IntegerField()),
+            event_next_capture_with_detections_id=models.Subquery(
+                next_with_detections, output_field=models.IntegerField()
+            ),
+            event_prev_capture_with_detections_id=models.Subquery(
+                prev_with_detections, output_field=models.IntegerField()
+            ),
             event_current_capture_index=models.Subquery(index_subquery, output_field=models.IntegerField()),
             event_total_captures=models.Subquery(total_subquery, output_field=models.IntegerField()),
         )
@@ -1214,6 +1279,10 @@ class DetectionViewSet(DefaultViewSet, ProjectMixin):
         project = self.get_active_project()
         if project:
             qs = qs.filter(source_image__project=project)
+        if self.action == "retrieve":
+            # The detail serializer nests classifications; the prefetch the occurrence
+            # detail uses joins their relations and annotates has_features.
+            qs = qs.prefetch_related(prefetch_nested_classifications())
         return qs
 
     @extend_schema(parameters=[project_id_doc_param])
@@ -1362,6 +1431,30 @@ class OccurrenceVerifiedByMeFilter(filters.BaseFilterBackend):
         return queryset
 
 
+class OccurrenceGroupingVerifiedFilter(filters.BaseFilterBackend):
+    """Filter occurrences by whether a person has confirmed how their detections are grouped.
+
+    Absent leaves every occurrence in, true keeps only confirmed tracks and false only
+    unconfirmed ones. An unparseable value is a 400 rather than a silent "unconfirmed".
+    """
+
+    query_param = "grouping_verified"
+
+    def filter_queryset(self, request: Request, queryset, view):
+        # A boolean field reads a parameter missing from a query string as False, so the
+        # presence check is what keeps an absent parameter meaning "leave both in".
+        if self.query_param not in request.query_params:
+            return queryset
+        grouping_verified: bool | None = SingleParamSerializer[bool].clean(
+            param_name=self.query_param,
+            field=serializers.BooleanField(required=False, allow_null=True),
+            data=request.query_params,
+        )
+        if grouping_verified is None:
+            return queryset
+        return queryset.filter(grouping_verified_at__isnull=not grouping_verified)
+
+
 class DateRangeFilterSerializer(FilterParamsSerializer):
     date_start = serializers.DateField(required=False)
     date_end = serializers.DateField(required=False)
@@ -1455,6 +1548,7 @@ OCCURRENCE_FILTER_BACKENDS = (
     OccurrenceDateFilter,
     OccurrenceVerified,
     OccurrenceVerifiedByMeFilter,
+    OccurrenceGroupingVerifiedFilter,
     OccurrenceTaxaListFilter,
 )
 
@@ -1505,6 +1599,11 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         "determination_score",
         "event",
         "detections_count",
+        # Stored by models_future.track_stats.refresh_track_stats; null rows sort last.
+        "track_motion",
+        "track_size_ratio",
+        "track_distinct_taxa",
+        "track_id_agreement",
     ]
 
     def get_serializer_class(self):
@@ -1516,9 +1615,40 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         else:
             return OccurrenceSerializer
 
+    # Actions that repair how detections are grouped, rather than show occurrences.
+    # They reach past both viewing filters; see get_queryset.
+    TRACK_EDIT_ACTIONS = (
+        "merge_candidates",
+        "capture_matches",
+        "merge",
+        "add_detections",
+        "split_track",
+        "remove_detection",
+        "verify_grouping",
+        "unverify_grouping",
+    )
+    # Actions that open one occurrence. They drop the determination requirement; see
+    # get_queryset.
+    SINGLE_OCCURRENCE_ACTIONS = ("retrieve", "path")
+    # Actions the project's default filters never hide an occurrence from. The session
+    # view selects occurrences with those filters off and draws their paths.
+    UNFILTERED_ACTIONS = (*TRACK_EDIT_ACTIONS, "path")
+
     def get_queryset(self) -> QuerySet["Occurrence"]:
+        """Occurrences this request may see, which is wider outside the list.
+
+        The list shows determined occurrences that pass the project's default filters.
+        Opening one occurrence keeps those filters but not the determination, and
+        reading or repairing a track keeps neither. On a project where only a detector
+        ran every occurrence is undetermined until a person identifies it, and a
+        low-score or excluded-taxon occurrence is still part of the animal's track. See
+        OccurrenceQuerySet.with_real_detections.
+        """
         project = self.get_active_project()
-        qs = super().get_queryset().valid()  # type: ignore
+        track_edit = self.action in self.TRACK_EDIT_ACTIONS
+        allow_undetermined = track_edit or self.action in self.SINGLE_OCCURRENCE_ACTIONS
+        qs = super().get_queryset()
+        qs = qs.with_real_detections() if allow_undetermined else qs.valid()  # type: ignore
         if project:
             qs = qs.filter(project=project)
         qs = qs.select_related(
@@ -1528,10 +1658,17 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
         )
         qs = qs.with_detections_count().with_timestamps()  # type: ignore
         qs = qs.with_identifications()  # type: ignore
-        qs = qs.apply_default_filters(project, self.request)  # type: ignore
+        if self.action not in self.UNFILTERED_ACTIONS:
+            qs = qs.apply_default_filters(  # type: ignore
+                project, self.request, include_undetermined=allow_undetermined
+            )
         if self.action == "list":
             qs = qs.with_list_prefetches()  # type: ignore
-        else:
+        elif self.action not in ("path", "merge_candidates", "capture_matches"):
+            # `path` and the track-edit pickers build their own values() queries and never
+            # serialize the occurrence, so the detail prefetch would only be waste:
+            # measured at 249ms/4 queries against 6ms/2 for the same object without
+            # it, on a 37-detection occurrence.
             qs = qs.with_detail_prefetches()  # type: ignore
 
         return qs
@@ -1558,10 +1695,318 @@ class OccurrenceViewSet(DefaultViewSet, ProjectMixin):
                 required=False,
                 type=OpenApiTypes.INT,
             ),
+            OpenApiParameter(
+                name="grouping_verified",
+                description="Filter occurrences by whether a person has confirmed how their detections are "
+                "grouped into a track. Omit to show both.",
+                required=False,
+                type=OpenApiTypes.BOOL,
+            ),
         ]
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        parameters=[project_id_doc_param],
+        responses=OccurrencePathFrameSerializer(many=True),
+    )
+    @action(detail=True, methods=["get"], name="path")
+    def path(self, request: Request, pk=None) -> Response:
+        """Where this occurrence was in every frame it appears in, earliest first.
+
+        Enough to draw the whole path of one animal over any single capture of the
+        session: each frame's box plus the dimensions of the capture that box was
+        measured against, which no other payload carries. Reading a grouping from
+        the frame is what makes a wrong merge visible, since two individuals of the
+        same species are indistinguishable as cropped thumbnails.
+
+        Fetched on request rather than with the session, because a session holds
+        thousands of occurrences and an operator looks at one.
+        """
+        occurrence = self.get_object()
+        return Response(OccurrencePathFrameSerializer(occurrence_path(occurrence), many=True).data)
+
+    def get_permissions(self):
+        # The viewset as a whole is staff-only for writes. Track edits are the
+        # exception: they are a curation tool, gated per object by
+        # Occurrence.check_custom_permission on the project's occurrence rights.
+        if self.action in (
+            "split_track",
+            "remove_detection",
+            "merge",
+            "merge_candidates",
+            "capture_matches",
+            "add_detections",
+            "verify_grouping",
+            "unverify_grouping",
+        ):
+            return [ObjectPermission()]
+        return super().get_permissions()
+
+    def _detection_in_track(self, request: Request, occurrence: Occurrence) -> Detection:
+        """Resolve the detection named in the request body, or raise a 400."""
+        body = TrackEditSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        detection = occurrence.detections.filter(pk=body.validated_data["detection_id"]).first()
+        if detection is None:
+            raise api_exceptions.ValidationError(
+                {"detection_id": f"Detection {body.validated_data['detection_id']} is not in this occurrence."}
+            )
+        return detection
+
+    @staticmethod
+    def _track_edit_response(occurrence: Occurrence, new_occurrence: Occurrence) -> Response:
+        # Count against the database rather than occurrence.detections: the detail
+        # queryset prefetches the detections, and the related manager answers .count()
+        # from that cache, which still holds the detections the edit just moved away.
+        counts = dict(
+            Detection.objects.filter(occurrence_id__in=[occurrence.pk, new_occurrence.pk])
+            .values_list("occurrence_id")
+            .annotate(total=models.Count("pk"))
+        )
+        return Response(
+            TrackEditResultSerializer(
+                {
+                    "occurrence_id": occurrence.pk,
+                    "occurrence_detections_count": counts.get(occurrence.pk, 0),
+                    "new_occurrence_id": new_occurrence.pk,
+                    "new_occurrence_detections_count": counts.get(new_occurrence.pk, 0),
+                }
+            ).data
+        )
+
+    @extend_schema(request=TrackEditSerializer, responses=TrackEditResultSerializer)
+    @action(detail=True, methods=["post"], name="split-track", url_path="split-track")
+    def split_track(self, request: Request, pk=None) -> Response:
+        """Split this occurrence at a detection: that detection and every later one move to a new occurrence.
+
+        Use when tracking ran two insects together and you can point at the frame
+        where the second one takes over.
+        """
+        occurrence = self.get_object()
+        detection = self._detection_in_track(request, occurrence)
+        try:
+            new_occurrence = split_track(occurrence, detection)
+        except TrackEditError as e:
+            raise api_exceptions.ValidationError({"detection_id": str(e)})
+        return self._track_edit_response(occurrence, new_occurrence)
+
+    @extend_schema(request=TrackEditSerializer, responses=TrackEditResultSerializer)
+    @action(detail=True, methods=["post"], name="remove-detection", url_path="remove-detection")
+    def remove_detection(self, request: Request, pk=None) -> Response:
+        """Move one detection out of this occurrence into an occurrence of its own.
+
+        The rest of the track is stitched back together, so removing a frame from
+        the middle does not also split what remains.
+        """
+        occurrence = self.get_object()
+        detection = self._detection_in_track(request, occurrence)
+        try:
+            new_occurrence = detach_detection(occurrence, detection)
+        except TrackEditError as e:
+            raise api_exceptions.ValidationError({"detection_id": str(e)})
+        return self._track_edit_response(occurrence, new_occurrence)
+
+    @staticmethod
+    def _grouping_response(occurrence: Occurrence) -> Response:
+        occurrence.refresh_from_db()
+        verified_by = occurrence.grouping_verified_by
+        return Response(
+            OccurrenceGroupingSerializer(
+                {
+                    "occurrence_id": occurrence.pk,
+                    "detections_count": occurrence.detections.count(),
+                    "grouping_verified": occurrence.grouping_verified,
+                    "grouping_verified_at": occurrence.grouping_verified_at,
+                    "grouping_verified_by": verified_by.name if verified_by else None,
+                }
+            ).data
+        )
+
+    @extend_schema(request=OccurrenceMergeSerializer, responses=OccurrenceGroupingSerializer)
+    @action(detail=True, methods=["post"], name="merge")
+    def merge(self, request: Request, pk=None) -> Response:
+        """Fold other occurrences into this one: one animal that tracking recorded as several.
+
+        Their detections and identifications move here and the emptied occurrences
+        are removed. All of them must belong to this occurrence's session.
+        """
+        occurrence = self.get_object()
+        body = OccurrenceMergeSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        requested = body.validated_data["occurrence_ids"]
+        sources = list(self.get_queryset().filter(pk__in=requested))
+        missing = sorted(set(requested) - {o.pk for o in sources} - {occurrence.pk})
+        if missing:
+            raise api_exceptions.ValidationError({"occurrence_ids": f"Occurrence(s) {missing} were not found."})
+        try:
+            merge_occurrences(occurrence, sources)
+        except TrackEditError as e:
+            raise api_exceptions.ValidationError({"occurrence_ids": str(e)})
+        return self._grouping_response(occurrence)
+
+    @extend_schema(
+        parameters=[
+            project_id_doc_param,
+            OpenApiParameter(
+                name="captures",
+                description=f"How many captures before this occurrence's first frame and after its last frame "
+                f"to search, besides the captures inside its span, 1 to {MAX_ADJACENT_CAPTURES}. Default "
+                f"{DEFAULT_ADJACENT_CAPTURES}. Cannot be combined with `minutes`.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+            OpenApiParameter(
+                name="minutes",
+                description=f"Search from this many minutes before this occurrence's first frame to this many "
+                f"minutes after its last, instead of the adjacent captures, 1 to {MAX_WINDOW_MINUTES}. Cannot be "
+                "combined with `captures`.",
+                required=False,
+                type=OpenApiTypes.INT,
+            ),
+        ],
+        responses=MergeCandidatesResponseSerializer,
+    )
+    @action(detail=True, methods=["get"], name="merge-candidates", url_path="merge-candidates")
+    def merge_candidates(self, request: Request, pk=None) -> Response:
+        """Occurrences of this session that this one could be merged with, best fit first.
+
+        Searches the captures adjacent to this occurrence, or a time window around it,
+        and ranks what it finds by the tracking method's matching cost between the two
+        frames nearest in time, so the occurrence tracking most nearly linked comes
+        first. Candidates before or after this occurrence are ranked together with
+        those in a gap of it, on captures inside its span that it has no frame on.
+        Occurrences with a frame on one of its captures are other animals and are left
+        out. Drawn from the same queryset the merge action resolves its sources from,
+        so everything offered here can be merged.
+        """
+        occurrence = self.get_object()
+        if "captures" in request.query_params and "minutes" in request.query_params:
+            raise api_exceptions.ValidationError(
+                {"minutes": "Pass either `captures` or `minutes` to choose where to search, not both."}
+            )
+        captures = SingleParamSerializer[int].clean(
+            param_name="captures",
+            field=serializers.IntegerField(
+                required=False, min_value=1, max_value=MAX_ADJACENT_CAPTURES, default=DEFAULT_ADJACENT_CAPTURES
+            ),
+            data=request.query_params,
+        )
+        minutes = SingleParamSerializer[int].clean(
+            param_name="minutes",
+            field=serializers.IntegerField(required=False, min_value=1, max_value=MAX_WINDOW_MINUTES),
+            data=request.query_params,
+        )
+        candidates = rank_merge_candidates(
+            occurrence,
+            self.get_queryset().prefetch_related(None),
+            minutes=minutes,
+            captures=captures,
+        )
+        config = tracking_config_for(occurrence)
+        return Response(
+            MergeCandidatesResponseSerializer(
+                {
+                    "candidates": candidates,
+                    "cost_threshold": config.cost_threshold,
+                    "requires_features": config.require_features,
+                }
+            ).data
+        )
+
+    @extend_schema(
+        parameters=[
+            project_id_doc_param,
+            OpenApiParameter(
+                name="capture_id",
+                description="The capture whose boxes to score. Must belong to this occurrence's session.",
+                required=True,
+                type=OpenApiTypes.INT,
+            ),
+        ],
+        responses=CaptureMatchesResponseSerializer,
+    )
+    @action(detail=True, methods=["get"], name="capture-matches", url_path="capture-matches")
+    def capture_matches(self, request: Request, pk=None) -> Response:
+        """How likely each box on one capture of the session is to be this occurrence's animal.
+
+        For extending a track capture by capture: every real box on the capture, grouped
+        or not, is scored with the tracking method's matching cost against the track
+        frame nearest in time on another capture, and the cost is read as a likelihood
+        that is comparable from one capture to the next. The query count is fixed, so it
+        can run on every step.
+        """
+        occurrence = self.get_object()
+        capture_id = SingleParamSerializer[int].clean(
+            param_name="capture_id",
+            field=serializers.IntegerField(required=True, min_value=1),
+            data=request.query_params,
+        )
+        # Ungrouped captures are excluded first, since event_id=None would match all of them.
+        try:
+            capture = (
+                SourceImage.objects.exclude(event=None)
+                .only("pk", "timestamp", "width", "height")
+                .get(pk=capture_id, event_id=occurrence.event_id)
+            )
+        except SourceImage.DoesNotExist:
+            raise api_exceptions.ValidationError({"capture_id": "Not a capture of this occurrence's session."})
+        return Response(CaptureMatchesResponseSerializer(match_capture_detections(occurrence, capture)).data)
+
+    @extend_schema(request=OccurrenceAddDetectionsSerializer, responses=OccurrenceGroupingSerializer)
+    @action(detail=True, methods=["post"], name="add-detections", url_path="add-detections")
+    def add_detections(self, request: Request, pk=None) -> Response:
+        """Move individual detections into this occurrence.
+
+        Use when a frame belongs to this animal but was left on its own, attached to
+        the wrong occurrence, or never grouped into one at all. An occurrence emptied
+        by the move is absorbed, so identifications on it are kept.
+        """
+        occurrence = self.get_object()
+        body = OccurrenceAddDetectionsSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        requested = body.validated_data["detection_ids"]
+        # Scoped through the capture rather than the occurrence: a detection that was
+        # never grouped has no occurrence to read a project from, and those are the
+        # ones a hand-built track is assembled from.
+        detections = list(
+            Detection.objects.valid()
+            .filter(pk__in=requested, source_image__project=occurrence.project)
+            .select_related("source_image")
+        )
+        missing = sorted(set(requested) - {d.pk for d in detections})
+        if missing:
+            raise api_exceptions.ValidationError(
+                {"detection_ids": f"Detection(s) {missing} were not found in this project."}
+            )
+        try:
+            add_detections(occurrence, detections)
+        except TrackEditError as e:
+            raise api_exceptions.ValidationError({"detection_ids": str(e)})
+        return self._grouping_response(occurrence)
+
+    @extend_schema(request=None, responses=OccurrenceGroupingSerializer)
+    @action(detail=True, methods=["post"], name="verify-grouping", url_path="verify-grouping")
+    def verify_grouping(self, request: Request, pk=None) -> Response:
+        """Confirm that this occurrence holds the right detections.
+
+        Separate from identifying the taxon. Confirmed occurrences are the ground
+        truth the tracking methods are measured against, so this is only ever set
+        deliberately — no other operation sets it as a side effect, and any later
+        change to the detections clears it.
+        """
+        occurrence = self.get_object()
+        verify_grouping(occurrence, request.user)
+        return self._grouping_response(occurrence)
+
+    @extend_schema(request=None, responses=OccurrenceGroupingSerializer)
+    @action(detail=True, methods=["post"], name="unverify-grouping", url_path="unverify-grouping")
+    def unverify_grouping(self, request: Request, pk=None) -> Response:
+        """Withdraw a previous confirmation. The detections are left untouched."""
+        occurrence = self.get_object()
+        unverify_grouping(occurrence)
+        return self._grouping_response(occurrence)
 
     @extend_schema(parameters=[project_id_doc_param], responses=AlgorithmSerializer(many=True))
     @action(detail=False, methods=["get"], name="algorithms")

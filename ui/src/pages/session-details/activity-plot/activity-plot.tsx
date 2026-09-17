@@ -1,7 +1,7 @@
 import { SessionDetails } from 'data-services/models/session-details'
 import { TimelineTick } from 'data-services/models/timeline-tick'
 import { CONSTANTS } from 'nova-ui-kit'
-import { useRef } from 'react'
+import { ReactNode, useRef } from 'react'
 import Plot from 'react-plotly.js'
 import { getCompactTimespanString } from 'utils/date/getCompactTimespanString/getCompactTimespanString'
 import { findClosestCaptureId } from '../utils'
@@ -17,12 +17,15 @@ const tooltipBgColor = CONSTANTS.COLOR_THEME.background
 const tooltipBorderColor = CONSTANTS.COLOR_THEME.border
 
 export interface ActivityPlotProps {
+  /** Drawn over the plot, which spans the session from start to end. */
+  children?: ReactNode
   session: SessionDetails
   setActiveCaptureId: (captureId: string) => void
   timeline: TimelineTick[]
 }
 
 export const ActivityPlot = ({
+  children,
   session,
   timeline,
   setActiveCaptureId,
@@ -45,7 +48,7 @@ export const ActivityPlot = ({
 
   return (
     <div style={{ margin: '0 14px -10px' }}>
-      <div ref={containerRef}>
+      <div className="relative" ref={containerRef}>
         <Plot
           style={{ display: 'block' }}
           data={[
@@ -167,6 +170,7 @@ export const ActivityPlot = ({
             }
           }}
         />
+        {children}
       </div>
     </div>
   )

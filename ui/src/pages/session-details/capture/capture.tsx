@@ -1,7 +1,12 @@
 import classNames from 'classnames'
 import { DeterminationScore } from 'components/determination-score'
+import { useCaptureMatches } from 'data-services/hooks/occurrences/useCaptureMatches'
 import { useOccurrenceDetails } from 'data-services/hooks/occurrences/useOccurrenceDetails'
+import { useOccurrencePath } from 'data-services/hooks/occurrences/useOccurrencePath'
 import { CaptureDetection } from 'data-services/models/capture'
+import { CaptureMatch } from 'data-services/models/capture-match'
+import { PathFrame } from 'data-services/models/occurrence-path'
+import _ from 'lodash'
 import { Dialog, LoadingSpinner, Tooltip } from 'nova-ui-kit'
 import {
   OccurrenceDetails,
@@ -14,10 +19,25 @@ import {
   TransformWrapper,
 } from 'react-zoom-pan-pinch'
 import { SCORE_THRESHOLDS } from 'utils/constants'
+import { getFormatedTimeString } from 'utils/date/getFormatedTimeString/getFormatedTimeString'
 import { STRING, translate } from 'utils/language'
 import { useActiveOccurrences } from '../hooks/useActiveOccurrences'
+import { getNearestPathFrame } from './track-navigation'
+import { useActiveCaptureId } from '../hooks/useActiveCapture'
+import { BoxStyle, bboxToPercentStyle } from './bbox'
+import { buildTrail, CaptureGhostTrail } from './capture-ghost-trail'
+import { getMatchBoxStyle } from './capture-match'
+import { CaptureMatchTooltip } from './capture-match-tooltip'
 import { TierSources } from './capture-tiers'
+import { ExtendTrackDialog, ExtendTrackState } from './extend-track'
+import { OccurrenceToolbar } from './occurrence-toolbar'
+import {
+  SessionPathStatus,
+  SessionTrackEdit,
+  SessionTrackEdits,
+} from './session-track-edits'
 import styles from './capture.module.scss'
+import { useCapturePreload } from './useCapturePreload'
 import { useCaptureTiers } from './useCaptureTiers'
 
 const FALLBACK_RATIO = 16 / 9
@@ -27,32 +47,83 @@ const FALLBACK_RATIO = 16 / 9
 const DEFAULT_MAX_SCALE = 8
 const MAX_OVERZOOM = 2
 
-interface BoxStyle {
-  width: string
-  height: string
-  top: string
-  left: string
-}
-
 interface CaptureProps {
+  captureDate?: Date
+  captureId?: string
   defaultFilters: boolean
   detections: CaptureDetection[]
+  extend: ExtendTrackState
   height: number | null
   showDetections?: boolean
+  showPathCrops?: boolean
   sources?: TierSources
   transformRef: React.RefObject<ReactZoomPanPinchRef>
   width: number | null
 }
 
 export const Capture = ({
+  captureDate,
+  captureId,
   defaultFilters,
   detections,
+  extend,
   height,
   showDetections,
+  showPathCrops,
   sources,
   transformRef,
   width,
 }: CaptureProps) => {
+  const { activeOccurrences, setActiveOccurrences } = useActiveOccurrences()
+  const { setActiveCaptureId } = useActiveCaptureId()
+  // Which occurrence the operator asked to see the path of. Kept while that
+  // occurrence stays selected, so stepping between captures redraws the same path.
+  const [pathOccurrenceId, setPathOccurrenceId] = useState<string>()
+  const shownPathId =
+    pathOccurrenceId && activeOccurrences.includes(pathOccurrenceId)
+      ? pathOccurrenceId
+      : undefined
+  const {
+    path,
+    isLoading: pathLoading,
+    isFetching: pathFetching,
+    error: pathError,
+    refetch: refetchPath,
+  } = useOccurrencePath(shownPathId, !!shownPathId)
+  const isLoadingPath = pathLoading || pathFetching
+  const { matches } = useCaptureMatches({
+    captureId,
+    enabled: !!extend.occurrenceId,
+    occurrenceId: extend.occurrenceId,
+  })
+
+  useEffect(() => {
+    // The occurrence being extended is the only one selected, with its path drawn,
+    // so every capture stepped through shows where the track has reached and no
+    // other selection competes with the match colours.
+    if (!extend.occurrenceId) {
+      return
+    }
+
+    setPathOccurrenceId(extend.occurrenceId)
+
+    if (
+      activeOccurrences.length !== 1 ||
+      activeOccurrences[0] !== extend.occurrenceId
+    ) {
+      setActiveOccurrences([extend.occurrenceId])
+    }
+  }, [extend.occurrenceId, activeOccurrences, setActiveOccurrences])
+
+  const nearestFrame = useMemo(
+    () => (path?.length ? getNearestPathFrame(path, captureDate) : undefined),
+    [path, captureDate]
+  )
+
+  const trail = useMemo(
+    () => (path?.length ? buildTrail(path, captureId) : undefined),
+    [path, captureId]
+  )
   const wrapperRef = useRef<HTMLDivElement>(null)
   const [naturalSize, setNaturalSize] = useState<{
     width: number
@@ -88,11 +159,13 @@ export const Capture = ({
     return () => observer.disconnect()
   }, [])
 
+  const demand = containerWidth * dpr * scale
+
   useEffect(() => {
     if (containerWidth) {
-      updateDemand(containerWidth * dpr * scale)
+      updateDemand(demand)
     }
-  }, [containerWidth, dpr, scale, updateDemand])
+  }, [containerWidth, demand, updateDemand])
 
   useEffect(() => {
     // Show the spinner whenever the active capture changes; the previous
@@ -100,6 +173,12 @@ export const Capture = ({
     setIsLoading(true)
     setNaturalSize(undefined)
   }, [sources?.original])
+
+  useCapturePreload({
+    captureId,
+    demand,
+    enabled: isLoading === false && !!displayed,
+  })
 
   useLayoutEffect(() => {
     // Ugly hack to make overlay correct on first render
@@ -109,21 +188,10 @@ export const Capture = ({
   const boxStyles = useMemo(
     () =>
       detections.reduce((result: { [key: string]: BoxStyle }, detection) => {
-        const [boxLeft, boxTop, boxRight, boxBottom] = detection.bbox
-        const boxWidth = boxRight - boxLeft
-        const boxHeight = boxBottom - boxTop
+        const style = bboxToPercentStyle(detection.bbox, width, height)
 
-        // Boxes are in the original image's pixel space and the rendered image
-        // may be a downscaled thumbnail, so only stored dimensions can scale them.
-        if (!width || !height) {
-          return result
-        }
-
-        result[detection.id] = {
-          width: `${(boxWidth / width) * 100}%`,
-          height: `${(boxHeight / height) * 100}%`,
-          top: `${(boxTop / height) * 100}%`,
-          left: `${(boxLeft / width) * 100}%`,
+        if (style) {
+          result[detection.id] = style
         }
 
         return result
@@ -217,15 +285,55 @@ export const Capture = ({
             })}
           >
             {renderOverlay ? <CaptureOverlay boxStyles={boxStyles} /> : null}
+            {trail ? (
+              <CaptureGhostTrail
+                onSelectFrame={setActiveCaptureId}
+                showCrops={showPathCrops}
+                trail={trail}
+              />
+            ) : null}
             <CaptureDetections
               boxStyles={boxStyles}
               defaultFilters={defaultFilters}
               detections={detections}
+              extend={extend}
+              isLoadingPath={isLoadingPath}
+              matches={matches}
+              onHidePath={() => setPathOccurrenceId(undefined)}
+              onShowPath={(occurrenceId) =>
+                occurrenceId === shownPathId
+                  ? refetchPath()
+                  : setPathOccurrenceId(occurrenceId)
+              }
+              path={path}
+              pathError={!!pathError}
+              pathOccurrenceId={shownPathId}
+              shownFrames={trail?.shownCount}
               showDetections={showDetections}
             />
           </div>
         </TransformComponent>
       </TransformWrapper>
+      {shownPathId && !extend.occurrenceId ? (
+        <SessionPathStatus
+          error={!!pathError}
+          isLoading={isLoadingPath}
+          occurrenceId={shownPathId}
+          onDismiss={() => setPathOccurrenceId(undefined)}
+          onShowFrame={
+            nearestFrame
+              ? () => setActiveCaptureId(nearestFrame.captureId)
+              : undefined
+          }
+        />
+      ) : null}
+      {extend.occurrenceId && extend.choice ? (
+        <ExtendTrackDialog
+          choice={extend.choice}
+          extend={extend}
+          occurrenceId={extend.occurrenceId}
+        />
+      ) : null}
       {zoomPercent !== null ? (
         <span className="absolute bottom-2 left-2 px-2.5 py-1 rounded-full bg-neutral-900/70 text-generic-white text-xs tabular-nums pointer-events-none select-none">
           {zoomPercent}%
@@ -284,19 +392,76 @@ const CaptureDetections = ({
   boxStyles,
   defaultFilters,
   detections,
+  extend,
+  isLoadingPath,
+  matches,
+  onHidePath,
+  onShowPath,
+  path,
+  pathError,
+  pathOccurrenceId,
   showDetections,
+  shownFrames,
 }: {
   boxStyles: { [key: number]: BoxStyle }
   defaultFilters: boolean
   detections: CaptureDetection[]
+  extend: ExtendTrackState
+  isLoadingPath?: boolean
+  matches?: Record<string, CaptureMatch>
+  onHidePath: () => void
+  onShowPath: (occurrenceId: string) => void
+  path?: PathFrame[]
+  pathError?: boolean
+  pathOccurrenceId?: string
   showDetections?: boolean
+  shownFrames?: number
 }) => {
-  const containerRef = useRef(null)
+  // Held in state, not a ref: Radix needs the element itself to keep a toolbar inside
+  // the image, and a ref assignment does not re-render to hand it over.
+  const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const [activeOccurrence, setActiveOccurrence] = useState<string>()
+  const [trackEdit, setTrackEdit] = useState<SessionTrackEdit>()
+  // Selected occurrences whose popover was closed with Escape; they stay selected.
+  const [dismissedToolbars, setDismissedToolbars] = useState<string[]>([])
+  const [hoveredBox, setHoveredBox] = useState<string>()
   const { activeOccurrences, setActiveOccurrences } = useActiveOccurrences()
+  const isExtending = !!extend.occurrenceId
+  const detailsHidden = isExtending && !extend.showDetails
+
+  useEffect(() => {
+    setDismissedToolbars([])
+  }, [extend.showDetails])
+
+  useEffect(() => {
+    setHoveredBox(undefined)
+  }, [detailsHidden])
+
+  // Worded while the path is still the one on screen: the split moves the boundary
+  // frame off this occurrence, so the refreshed path can no longer describe it.
+  const describeSplit = (detectionId: string) => {
+    const index =
+      path?.findIndex((frame) => frame.detectionId === detectionId) ?? -1
+    const timestamp = index >= 0 ? path?.[index].timestamp : undefined
+
+    return {
+      movedBySplit: path && index >= 0 ? path.length - index : 0,
+      timeLabel: timestamp
+        ? getFormatedTimeString({ date: timestamp, options: { second: true } })
+        : translate(STRING.VALUE_NOT_AVAILABLE),
+      total: path?.length ?? 0,
+    }
+  }
+
+  const setDismissed = (occurrenceId: string, dismissed: boolean) =>
+    setDismissedToolbars((ids) => [
+      ...ids.filter((id) => id !== occurrenceId),
+      ...(dismissed ? [occurrenceId] : []),
+    ])
 
   const toggleActiveState = (occurrenceId: string) => {
     const isActive = activeOccurrences.includes(occurrenceId)
+    setDismissed(occurrenceId, false)
 
     if (isActive) {
       setActiveOccurrences(
@@ -307,64 +472,198 @@ const CaptureDetections = ({
     }
   }
 
+  // A path is only fetched for a selected occurrence, so asking for one from a
+  // hovered box selects it first.
+  const showPath = (occurrenceId: string) => {
+    if (!activeOccurrences.includes(occurrenceId)) {
+      setActiveOccurrences([...activeOccurrences, occurrenceId])
+    }
+    onShowPath(occurrenceId)
+  }
+
   return (
     <>
-      <div className={styles.detections} ref={containerRef}>
+      <div className={styles.detections} ref={setContainer}>
         {Object.entries(boxStyles).map(([id, style]) => {
           const detection = detections.find((d) => d.id === id)
 
-          const isActive = detection?.occurrenceId
-            ? activeOccurrences.includes(detection.occurrenceId)
-            : false
+          const isExtended =
+            !!detection?.occurrenceId &&
+            detection.occurrenceId === extend.occurrenceId
+          const isActive =
+            isExtended ||
+            (detection?.occurrenceId
+              ? activeOccurrences.includes(detection.occurrenceId)
+              : false)
 
           if (!detection || (!showDetections && !isActive)) {
             return null
           }
 
+          const isDismissed =
+            !!detection.occurrenceId &&
+            dismissedToolbars.includes(detection.occurrenceId)
+          // Hover is recorded only while it decides: Radix reports no close for a
+          // popover already held shut, so a hover recorded then would go stale.
+          const opensOnHover = detailsHidden || !isActive
+          const popoverOpen = opensOnHover
+            ? hoveredBox === detection.id
+            : !detailsHidden && !isDismissed
+
           return (
-            <Tooltip.Provider key={detection.id} delayDuration={0}>
-              <Tooltip.Root open={isActive ? isActive : undefined}>
+            <Tooltip.Provider
+              key={detection.id}
+              delayDuration={0}
+              disableHoverableContent={detailsHidden}
+            >
+              <Tooltip.Root
+                open={popoverOpen}
+                onOpenChange={(open) => {
+                  if (!open) {
+                    setHoveredBox((box) =>
+                      box === detection.id ? undefined : box
+                    )
+                  } else if (opensOnHover) {
+                    setHoveredBox(detection.id)
+                  }
+                }}
+              >
                 <Tooltip.Trigger asChild>
                   <div
-                    style={style}
+                    style={
+                      isExtending && !isExtended
+                        ? {
+                            ...style,
+                            ...getMatchBoxStyle(matches?.[detection.id]),
+                          }
+                        : style
+                    }
                     className={classNames(styles.detection, {
-                      [styles.active]: isActive,
-                      [styles.filtered]: defaultFilters
-                        ? !detection.occurrenceMeetsCriteria
-                        : false,
-                      [styles.alert]: detection.score < SCORE_THRESHOLDS.ALERT,
+                      [styles.active]: isExtending ? isExtended : isActive,
+                      [styles.extended]: isExtended,
+                      [styles.filtered]:
+                        !isExtending &&
+                        defaultFilters &&
+                        !detection.occurrenceMeetsCriteria,
+                      [styles.alert]:
+                        !isExtending &&
+                        detection.score < SCORE_THRESHOLDS.ALERT,
                       [styles.warning]:
+                        !isExtending &&
                         detection.score < SCORE_THRESHOLDS.WARNING,
-                      [styles.clickable]: !!detection.occurrenceId,
+                      [styles.clickable]:
+                        !!detection.occurrenceId || !!extend.occurrenceId,
                     })}
                     onClick={() => {
-                      if (detection.occurrenceId) {
-                        toggleActiveState(detection?.occurrenceId)
+                      if (extend.occurrenceId) {
+                        extend.clickBox(detection)
+                      } else if (isActive && isDismissed) {
+                        setDismissed(detection.occurrenceId as string, false)
+                      } else if (detection.occurrenceId) {
+                        toggleActiveState(detection.occurrenceId)
                       }
                     }}
                   />
                 </Tooltip.Trigger>
                 <Tooltip.Content
-                  className="p-3 z-[1]"
-                  collisionBoundary={containerRef?.current}
+                  className={
+                    detailsHidden
+                      ? 'px-3 py-2 z-[1] pointer-events-none'
+                      : 'p-3 z-[1]'
+                  }
+                  collisionBoundary={container}
+                  collisionPadding={8}
+                  onEscapeKeyDown={() => {
+                    if (isActive && detection.occurrenceId) {
+                      setDismissed(detection.occurrenceId, true)
+                    }
+                  }}
                   side="bottom"
                 >
-                  <div className="flex flex-col items-start gap-1">
-                    <button
-                      className="body-base text-primary font-medium"
-                      disabled={!detection.occurrenceId}
-                      onClick={() =>
+                  {detailsHidden ? (
+                    <CaptureMatchTooltip
+                      click={extend.previewClick(detection)}
+                      detection={detection}
+                      detections={detections}
+                      isTrackFrame={isExtended}
+                      match={matches?.[detection.id]}
+                    />
+                  ) : detection.occurrenceId ? (
+                    <OccurrenceToolbar
+                      isExtended={isExtended}
+                      isLoadingPath={
+                        isLoadingPath &&
+                        pathOccurrenceId === detection.occurrenceId
+                      }
+                      occurrence={{
+                        frameCount: detection.frameCount,
+                        groupingVerified: detection.groupingVerified,
+                        groupingVerifiedAt: detection.groupingVerifiedAt,
+                        groupingVerifiedBy: detection.groupingVerifiedBy,
+                        id: detection.occurrenceId,
+                        label: detection.label,
+                        score: detection.score,
+                        scoreLabel: detection.scoreLabel,
+                      }}
+                      onExtend={() =>
+                        extend.start(detection.occurrenceId as string)
+                      }
+                      onHidePath={onHidePath}
+                      onMerge={() =>
+                        setTrackEdit({
+                          action: 'merge',
+                          detectionId: detection.id,
+                          occurrenceId: detection.occurrenceId as string,
+                        })
+                      }
+                      onOpenOccurrence={() =>
                         setActiveOccurrence(detection.occurrenceId)
                       }
-                    >
-                      <span>{detection.label}</span>
-                    </button>
-                    <DeterminationScore
-                      score={detection.score}
-                      scoreLabel={detection.scoreLabel}
-                      verified={detection.score === 1}
+                      onShowPath={() =>
+                        showPath(detection.occurrenceId as string)
+                      }
+                      onSplit={() =>
+                        setTrackEdit({
+                          action: 'split',
+                          detectionId: detection.id,
+                          occurrenceId: detection.occurrenceId as string,
+                          ...describeSplit(detection.id),
+                        })
+                      }
+                      onVerify={() =>
+                        setTrackEdit({
+                          action: 'verify',
+                          detectionId: detection.id,
+                          occurrenceId: detection.occurrenceId as string,
+                          verified: detection.groupingVerified,
+                        })
+                      }
+                      path={
+                        pathOccurrenceId === detection.occurrenceId
+                          ? path
+                          : undefined
+                      }
+                      pathError={
+                        pathError && pathOccurrenceId === detection.occurrenceId
+                      }
+                      shownFrames={
+                        pathOccurrenceId === detection.occurrenceId
+                          ? shownFrames
+                          : undefined
+                      }
                     />
-                  </div>
+                  ) : (
+                    <div className="flex flex-col items-start gap-1">
+                      <span className="body-base font-medium">
+                        {detection.label}
+                      </span>
+                      <DeterminationScore
+                        score={detection.score}
+                        scoreLabel={detection.scoreLabel}
+                        verified={detection.score === 1}
+                      />
+                    </div>
+                  )}
                 </Tooltip.Content>
               </Tooltip.Root>
             </Tooltip.Provider>
@@ -376,6 +675,10 @@ const CaptureDetections = ({
             onClose={() => setActiveOccurrence(undefined)}
           />
         ) : null}
+        <SessionTrackEdits
+          edit={trackEdit}
+          onClose={() => setTrackEdit(undefined)}
+        />
       </div>
     </>
   )
@@ -392,6 +695,9 @@ const OccurrenceDetailsDialog = ({
     TABS.FIELDS
   )
   const { occurrence, isLoading, error } = useOccurrenceDetails(id)
+  const detailsLabel = translate(STRING.ENTITY_DETAILS, {
+    type: _.capitalize(translate(STRING.ENTITY_TYPE_OCCURRENCE)),
+  })
 
   return (
     <Dialog.Root
@@ -407,9 +713,15 @@ const OccurrenceDetailsDialog = ({
         isLoading={isLoading}
         error={error}
       >
+        <div className="sr-only">
+          <Dialog.Header title={occurrence?.displayName ?? detailsLabel}>
+            <Dialog.Description>{detailsLabel}</Dialog.Description>
+          </Dialog.Header>
+        </div>
         {occurrence ? (
           <OccurrenceDetails
             occurrence={occurrence}
+            onNavigate={onClose}
             selectedTab={selectedView}
             setSelectedTab={setSelectedView}
           />

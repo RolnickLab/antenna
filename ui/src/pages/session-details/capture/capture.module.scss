@@ -1,10 +1,48 @@
 .overlay,
 .details,
-.detections {
+.detections,
+.ghostFrames,
+.ghostTrail {
   position: absolute;
   width: 100%;
   height: 100%;
   vertical-align: middle;
+}
+
+// Only boxes and frame buttons take clicks: the full-size layers are transparent to the
+// pointer, so a ghost below the live boxes is still reachable where no live box covers it.
+.detections,
+.ghostFrames,
+.ghostTrail {
+  pointer-events: none;
+}
+
+.detection {
+  pointer-events: auto;
+}
+
+.ghostFrame {
+  position: absolute;
+  box-sizing: border-box;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: none;
+  overflow: hidden;
+  cursor: pointer;
+  pointer-events: auto;
+
+  &:focus-visible {
+    outline: 2px solid var(--color-secondary-400);
+    outline-offset: 1px;
+  }
+
+  img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
 }
 
 .details {
@@ -40,6 +78,11 @@
 
   &.active {
     outline: 2px solid var(--color-secondary-400);
+  }
+
+  &.extended {
+    box-shadow: 0 0 8px 2px
+      color-mix(in srgb, var(--color-secondary-400) 80%, transparent);
   }
 
   &.clickable {
