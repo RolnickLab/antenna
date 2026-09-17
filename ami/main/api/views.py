@@ -2105,13 +2105,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
             verified_counts=verified_counts,
         )
 
-        qs = self.annotate_training_crop_counts(
-            qs,
-            project,
-            occurrence_filters=direct_filters,
-            apply_default_score_filter=apply_default_score_filter,
-            apply_default_taxa_filter=apply_default_taxa_filter,
-        )
+        qs = self.annotate_training_crop_counts(qs, project, occurrence_filters=direct_filters)
 
         return self.annotate_example_occurrences(
             qs,
@@ -2128,8 +2122,6 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         project: Project,
         *,
         occurrence_filters: models.Q,
-        apply_default_score_filter=True,
-        apply_default_taxa_filter=True,
     ) -> QuerySet:
         """Add the ``training_crops_count`` annotation behind the ``with_training_crop_counts``
         opt-in param.
@@ -2146,13 +2138,7 @@ class TaxonViewSet(DefaultViewSet, ProjectMixin):
         )
         if not include_counts:
             return qs.annotate(training_crops_count=models.Value(None, output_field=models.IntegerField()))
-        return qs.with_training_crop_counts(
-            project,
-            self.request,
-            occurrence_filters=occurrence_filters,
-            apply_default_score_filter=apply_default_score_filter,
-            apply_default_taxa_filter=apply_default_taxa_filter,
-        )
+        return qs.with_training_crop_counts(project, occurrence_filters=occurrence_filters)
 
     def annotate_example_occurrences(
         self,

@@ -4147,11 +4147,8 @@ class TaxonQuerySet(BaseQuerySet):
     def with_training_crop_counts(
         self,
         project: Project,
-        request: Request | None,
         *,
         occurrence_filters: models.Q,
-        apply_default_score_filter: bool = True,
-        apply_default_taxa_filter: bool = True,
     ):
         """Annotate ``training_crops_count``: verified crops a classifier head can be fit on.
 
@@ -4160,17 +4157,15 @@ class TaxonQuerySet(BaseQuerySet):
         verified as a species is not training data for its genus. Crops still need an
         embedding from the chosen feature extractor before a job can use them; this is the
         upper bound, not the row count of the next training set.
+
+        The project's default filters are deliberately not applied, so that this matches what
+        a retrain would actually use (``ami.ml.training_data``). The score threshold hides
+        predictions the model was unsure about, but these rows are human answers — and a
+        person correcting a low-confidence prediction is the most useful crop there is, so
+        filtering on the model's confidence would hide exactly the data worth training on.
         """
-        default_q = build_occurrence_default_filters_q(
-            project,
-            request,
-            occurrence_accessor="",
-            apply_default_score_filter=apply_default_score_filter,
-            apply_default_taxa_filter=apply_default_taxa_filter,
-        )
         verified_occurrences = (
             Occurrence.objects.filter(occurrence_filters)
-            .filter(default_q)
             .filter(determination_id__isnull=False)
             .filter(Exists(Identification.objects.filter(occurrence=OuterRef("pk"), withdrawn=False)))
         )
