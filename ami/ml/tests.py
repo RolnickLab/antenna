@@ -1795,6 +1795,91 @@ class TestAlgorithmCategoryMaps(TestCase):
         self.assertEqual(test_labels, converted_labels)
 
 
+class TestTaxaListFromCategoryMap(TestCase):
+    """
+    A category map can be written into a global taxa list of every taxon the model can predict.
+    Labels resolve by taxon name or search name; missing taxa are created with the map's rank
+    or reported; a second run adds nothing twice.
+    """
+
+    def setUp(self):
+        from ami.ml.models import AlgorithmCategoryMap
+
+        self.by_name = Taxon.objects.create(name="Testmoth alpha", rank=TaxonRank.SPECIES.name)
+        self.by_alias = Taxon.objects.create(
+            name="Testmoth beta", rank=TaxonRank.SPECIES.name, search_names=["Testmoth beta-old"]
+        )
+        data = [
+            {"index": 0, "label": "Testmoth alpha", "taxon_rank": "SPECIES"},
+            {"index": 1, "label": "Testmoth beta-old", "taxon_rank": "SPECIES"},
+            {"index": 2, "label": "Testgenus", "taxon_rank": "GENUS"},
+        ]
+        self.category_map = AlgorithmCategoryMap.objects.create(
+            data=data, labels=AlgorithmCategoryMap.labels_from_data(data), version="test"
+        )
+        self.algorithm = Algorithm.objects.create(
+            name="Test butterflies", key="test-butterflies", category_map=self.category_map
+        )
+
+    def test_labels_resolve_by_name_or_search_name(self):
+        resolved, unresolved = self.category_map.resolve_taxa()
+
+        self.assertEqual(resolved, {"Testmoth alpha": self.by_name, "Testmoth beta-old": self.by_alias})
+        self.assertEqual(unresolved, ["Testgenus"])
+
+    def test_missing_taxa_are_created_with_the_maps_rank(self):
+        result = self.algorithm.get_or_create_taxa_list()
+
+        self.assertTrue(result.created_list)
+        self.assertEqual((result.labels, result.matched, result.created_taxa, result.unresolved), (3, 2, 1, []))
+        self.assertEqual(result.taxa_list.name, "Category map of Test butterflies")
+        self.assertEqual(result.taxa_list.projects.count(), 0)
+        created = Taxon.objects.get(name="Testgenus")
+        self.assertEqual(created.rank, TaxonRank.GENUS.name)
+        self.assertEqual(set(result.taxa_list.taxa.all()), {self.by_name, self.by_alias, created})
+
+    def test_missing_taxa_can_be_reported_instead_of_created(self):
+        result = self.algorithm.get_or_create_taxa_list(create_missing_taxa=False)
+
+        self.assertEqual((result.matched, result.created_taxa, result.unresolved), (2, 0, ["Testgenus"]))
+        self.assertFalse(Taxon.objects.filter(name="Testgenus").exists())
+        self.assertEqual(set(result.taxa_list.taxa.all()), {self.by_name, self.by_alias})
+
+    def test_second_run_reuses_the_list_and_adds_nothing_twice(self):
+        first = self.algorithm.get_or_create_taxa_list()
+        second = self.algorithm.get_or_create_taxa_list()
+
+        self.assertEqual(second.taxa_list.pk, first.taxa_list.pk)
+        self.assertFalse(second.created_list)
+        self.assertEqual((second.matched, second.created_taxa), (3, 0))
+        self.assertEqual(second.taxa_list.taxa.count(), 3)
+
+    def test_algorithm_without_category_map_is_refused(self):
+        bare = Algorithm.objects.create(name="Bare", key="bare")
+
+        with self.assertRaises(ValueError):
+            bare.get_or_create_taxa_list()
+
+    def test_management_command_dry_run_writes_nothing(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        from ami.main.models import TaxaList
+
+        out = StringIO()
+        call_command(
+            "create_taxa_lists_from_category_maps", "--algorithm", "test-butterflies", "--dry-run", stdout=out
+        )
+
+        self.assertIn("3 labels, 2 matched existing taxa, 1 taxa created", out.getvalue())
+        self.assertFalse(TaxaList.objects.filter(name="Category map of Test butterflies").exists())
+        self.assertFalse(Taxon.objects.filter(name="Testgenus").exists())
+
+        call_command("create_taxa_lists_from_category_maps", "--algorithm", "test-butterflies", stdout=out)
+        self.assertEqual(TaxaList.objects.get(name="Category map of Test butterflies").taxa.count(), 3)
+
+
 class TestPostProcessingTasks(TestCase):
     @classmethod
     def setUpTestData(cls):
