@@ -11,6 +11,8 @@ export type ServerTaxaListBestModel = {
 export interface TaxaListBestModel {
   id: string
   name: string
+  accuracyBySpecies?: number
+  occurrenceSetName: string
 }
 
 export type ServerTaxaList = ServerEntity & {
@@ -32,7 +34,16 @@ export class TaxaList extends Entity {
   get bestModel(): TaxaListBestModel | undefined {
     const model = this._taxaList.best_model
 
-    return model ? { id: `${model.id}`, name: model.name } : undefined
+    if (!model) {
+      return undefined
+    }
+
+    return {
+      id: `${model.id}`,
+      name: model.name,
+      accuracyBySpecies: model.accuracy_by_species ?? undefined,
+      occurrenceSetName: model.occurrence_set,
+    }
   }
 
   get taxaCount() {

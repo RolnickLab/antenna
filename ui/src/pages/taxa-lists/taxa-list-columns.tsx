@@ -1,5 +1,5 @@
 import { API_ROUTES } from 'data-services/constants'
-import { TaxaList } from 'data-services/models/taxa-list'
+import { TaxaList, TaxaListBestModel } from 'data-services/models/taxa-list'
 import {
   BasicTableCell,
   CellTheme,
@@ -15,6 +15,19 @@ import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { AddTaxaListTaxonPopover } from '../taxa-list-details/add-taxa-list-taxon/add-taxa-list-taxon-popover'
+
+const ACCURACY_DECIMALS = 2
+
+// Lists are ranked on the per-species average, so that is the number worth showing.
+const bestModelDetails = (bestModel: TaxaListBestModel) =>
+  [
+    bestModel.accuracyBySpecies !== undefined
+      ? `${translate(
+          STRING.FIELD_LABEL_ACCURACY_BY_SPECIES
+        )}: ${bestModel.accuracyBySpecies.toFixed(ACCURACY_DECIMALS)}`
+      : undefined,
+    bestModel.occurrenceSetName,
+  ].filter((detail): detail is string => detail !== undefined)
 
 export const columns = ({
   projectId,
@@ -88,6 +101,7 @@ export const columns = ({
           })}
         >
           <BasicTableCell
+            details={bestModelDetails(item.bestModel)}
             style={{ width: '240px', whiteSpace: 'normal' }}
             theme={CellTheme.Primary}
             value={item.bestModel.name}

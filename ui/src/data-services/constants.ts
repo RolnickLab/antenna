@@ -32,6 +32,7 @@ export const API_ROUTES = {
   SUMMARY: 'status/summary',
   TAGS: 'tags',
   TAXA_LISTS: 'taxa/lists',
+  TRAINING_DATA: 'ml/training-data',
   USERS: 'users',
 }
 

@@ -63,6 +63,10 @@ export class Algorithm extends Entity {
       : undefined
   }
 
+  get trainable(): boolean {
+    return this._algorithm.trainable ?? false
+  }
+
   get evaluations(): AlgorithmEvaluation[] {
     const rows: ServerAlgorithmEvaluation[] = this._algorithm.evaluations ?? []
 
