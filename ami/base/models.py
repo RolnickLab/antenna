@@ -1,6 +1,7 @@
 from django.contrib.auth.models import AbstractUser, AnonymousUser
+from django.core.exceptions import FieldDoesNotExist
 from django.db import models
-from django.db.models import Q, QuerySet
+from django.db.models import Exists, OuterRef, Q, QuerySet
 from guardian.shortcuts import get_perms
 
 import ami.tasks
@@ -85,7 +86,36 @@ class BaseQuerySet(QuerySet):
         if not is_anonymous:
             filter_condition |= Q(**{f"{project_field}owner": user}) | Q(**{f"{project_field}members": user})
 
+        # Public rows (e.g. public TaxaLists) are visible to everyone, draft or not.
+        if hasattr(model, "is_public"):
+            filter_condition |= Q(is_public=True)
+
         return self.filter(filter_condition).distinct()
+
+    def for_project(self, project: models.Model, include_public: bool = True) -> QuerySet:
+        """
+        Filter to rows in the model's M2M ``projects`` field for the given project,
+        plus every public row when the model defines ``is_public`` and ``include_public``
+        is set.
+
+        Membership is checked with an ``Exists`` subquery against the M2M through table
+        instead of filtering on ``projects=project`` directly, so a row linked to the
+        project through multiple paths cannot appear twice and no ``.distinct()`` is
+        needed downstream.
+        """
+        model = self.model
+        try:
+            field = model._meta.get_field("projects")
+        except FieldDoesNotExist:
+            field = None
+        if not isinstance(field, models.ManyToManyField):
+            raise TypeError(f"{model.__name__} has no ManyToMany 'projects' field; for_project() is not applicable.")
+
+        condition = Q(Exists(model._default_manager.filter(pk=OuterRef("pk"), projects=project)))
+        if include_public and hasattr(model, "is_public"):
+            condition |= Q(is_public=True)
+
+        return self.filter(condition)
 
 
 class BaseModel(models.Model):
