@@ -49,6 +49,7 @@ from ..models import (
     Event,
     Identification,
     Occurrence,
+    OccurrenceSet,
     Page,
     Project,
     ProjectQuerySet,
@@ -84,6 +85,7 @@ from .serializers import (
     ModelAgreementSerializer,
     OccurrenceListSerializer,
     OccurrenceSerializer,
+    OccurrenceSetSerializer,
     PageListSerializer,
     PageSerializer,
     ProjectListSerializer,
@@ -951,6 +953,29 @@ class CaptureSetChoicesPagination(LimitOffsetPaginationWithPermissions):
 
     default_limit = 100
     max_limit = 100
+
+
+class OccurrenceSetViewSet(DefaultViewSet, ProjectMixin):
+    """
+    API endpoint listing the fixed occurrence sets a model can be scored against.
+
+    Read-only: membership is built deliberately, not edited in passing, because two models
+    can only be compared if they were scored on exactly the same occurrences.
+    """
+
+    queryset = OccurrenceSet.objects.all()
+    serializer_class = OccurrenceSetSerializer
+    http_method_names = ["get", "head", "options"]
+    ordering_fields = ["name", "created_at", "updated_at"]
+    search_fields = ["name"]
+
+    def get_queryset(self) -> QuerySet["OccurrenceSet"]:
+        qs = super().get_queryset().annotate(annotated_occurrences_count=models.Count("occurrences"))
+        project = self.get_active_project()
+        if project:
+            # A set with no project is global, so it is offered everywhere.
+            return qs.for_project(project)
+        return qs
 
 
 class SourceImageCollectionViewSet(DefaultViewSet, ProjectMixin):
