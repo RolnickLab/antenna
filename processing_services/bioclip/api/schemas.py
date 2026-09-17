@@ -2,7 +2,6 @@
 import datetime
 import logging
 import pathlib
-import typing
 
 import PIL.Image
 import pydantic
