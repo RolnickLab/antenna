@@ -77,6 +77,27 @@ def add_collection_level_permissions(user: User | None, response_data: dict, mod
     return response_data
 
 
+def user_can_manage_public_taxalist(user: AbstractBaseUser | AnonymousUser) -> bool:
+    """A superuser, or a user holding the platform-wide manage_public_taxalist permission."""
+    if not user or not user.is_authenticated:
+        return False
+    return bool(user.is_superuser or user.has_perm("main.manage_public_taxalist"))  # type: ignore[union-attr]
+
+
+def check_taxalist_write_permission(user, taxa_list, project) -> bool:
+    """
+    True if `user` may update/delete `taxa_list` or change its taxa.
+
+    A public list requires the platform-wide manage_public_taxalist permission
+    (superusers always pass); a project-scoped list requires membership of `project`.
+    """
+    if user.is_superuser:
+        return True
+    if getattr(taxa_list, "is_public", False):
+        return user.has_perm("main.manage_public_taxalist")
+    return bool(project and project.members.filter(pk=user.pk).exists())
+
+
 def add_m2m_object_permissions(user, instance, project, response_data: dict) -> dict:
     """
     Add object-level permissions for models with an M2M relationship to Project.
@@ -87,7 +108,9 @@ def add_m2m_object_permissions(user, instance, project, response_data: dict) -> 
     against a specific project from the request context instead.
 
     Validates that the instance actually belongs to the given project before
-    granting any permissions (prevents cross-project permission leaks).
+    granting any permissions (prevents cross-project permission leaks). A public
+    instance is the one exception: its update/delete permissions come from the
+    platform-wide manage_public_taxalist permission, not project membership.
 
     This is a temporary approach for the M2M permission gap described in #1120.
     Once that issue is resolved, this should be replaced by a generic permission
@@ -95,6 +118,12 @@ def add_m2m_object_permissions(user, instance, project, response_data: dict) -> 
     Pipeline, and other M2M-to-Project models uniformly.
     """
     perms = set(response_data.get("user_permissions", []))
+
+    if getattr(instance, "is_public", False):
+        if user_can_manage_public_taxalist(user):
+            perms.update(["update", "delete"])
+        response_data["user_permissions"] = list(perms)
+        return response_data
 
     if not project or not instance.projects.filter(pk=project.pk).exists():
         response_data["user_permissions"] = list(perms)
@@ -142,6 +171,57 @@ class IsProjectMemberOrReadOnly(permissions.BasePermission):
             return False
 
         return project.members.filter(pk=request.user.pk).exists()
+
+
+class IsProjectMemberOrPublicListManager(permissions.BasePermission):
+    """
+    Like IsProjectMemberOrReadOnly, but a user holding the platform-wide
+    manage_public_taxalist permission also passes, regardless of project
+    membership — for actions that can only ever land on a public list (adding
+    or removing a taxon from an existing TaxaList via the nested route).
+    """
+
+    def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        if not request.user or not request.user.is_authenticated:
+            return False
+
+        if request.user.is_superuser or user_can_manage_public_taxalist(request.user):  # type: ignore[union-attr]
+            return True
+
+        get_active_project = getattr(view, "get_active_project", None)
+        if not get_active_project:
+            return False
+
+        project = get_active_project()
+        if not project:
+            return False
+
+        return project.members.filter(pk=request.user.pk).exists()
+
+
+class IsProjectMemberOrPublicListManagerOrReadOnly(IsProjectMemberOrPublicListManager):
+    """
+    For TaxaListViewSet: creating a brand-new list is always project-scoped and
+    needs real project membership (there's no object yet to tell whether it will
+    be public). Update/delete defer to the object-level check below, which grants
+    the manage_public_taxalist bypass only once the target list's is_public flag
+    is known — closing the gap where a project member could edit a public list
+    just by supplying their own project_id.
+    """
+
+    def has_permission(self, request, view):
+        if getattr(view, "action", None) == "create":
+            return IsProjectMemberOrReadOnly.has_permission(self, request, view)
+        return super().has_permission(request, view)
+
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        project = view.get_active_project() if hasattr(view, "get_active_project") else None
+        return check_taxalist_write_permission(request.user, obj, project)
 
 
 class ObjectPermission(permissions.BasePermission):
