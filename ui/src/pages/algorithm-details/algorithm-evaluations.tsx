@@ -53,7 +53,18 @@ export const columns: TableColumn<AlgorithmEvaluation>[] = [
       textAlign: TextAlign.Right,
     },
     renderCell: (item: AlgorithmEvaluation) => (
-      <BasicTableCell value={item.occurrencesScored} />
+      <BasicTableCell
+        details={
+          item.occurrencesSkipped
+            ? [
+                translate(STRING.FIELD_LABEL_OCCURRENCES_SKIPPED, {
+                  count: `${item.occurrencesSkipped}`,
+                }),
+              ]
+            : undefined
+        }
+        value={item.occurrencesScored}
+      />
     ),
   },
 ]
