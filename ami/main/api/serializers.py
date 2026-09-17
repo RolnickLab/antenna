@@ -26,6 +26,7 @@ from ..models import (
     Event,
     Identification,
     Occurrence,
+    OccurrenceSet,
     Page,
     Project,
     ProjectSettingsMixin,
@@ -778,6 +779,27 @@ class TaxaListSerializer(DefaultSerializer):
         This is read-only and managed by the server.
         """
         return list(obj.projects.values_list("id", flat=True))
+
+
+class OccurrenceSetSerializer(DefaultSerializer):
+    """The evaluation sets a project can score a model against."""
+
+    occurrences_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OccurrenceSet
+        fields = [
+            "id",
+            "details",
+            "name",
+            "description",
+            "occurrences_count",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_occurrences_count(self, obj) -> int:
+        return getattr(obj, "annotated_occurrences_count", None) or obj.occurrences.count()
 
 
 class TaxaListTaxonInputSerializer(serializers.Serializer):

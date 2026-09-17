@@ -1071,8 +1071,9 @@ class EvaluateAlgorithmJob(JobType):
 
     @classmethod
     def run(cls, job: "Job"):
+        from ami.main.models import OccurrenceSet
         from ami.ml import evaluation
-        from ami.ml.models import Algorithm, OccurrenceSet
+        from ami.ml.models import Algorithm
 
         params = job.params or {}
         algorithm_key = params.get("algorithm_key")

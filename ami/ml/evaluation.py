@@ -17,9 +17,8 @@ import typing
 
 from django.db.models import QuerySet
 
-from ami.main.models import Classification, Occurrence
+from ami.main.models import Classification, Occurrence, OccurrenceSet
 from ami.ml.models.algorithm import Algorithm
-from ami.ml.models.evaluation import OccurrenceSet
 
 logger = logging.getLogger(__name__)
 
