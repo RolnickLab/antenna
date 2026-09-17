@@ -11,9 +11,9 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from ami.base.permissions import ProjectPipelineConfigPermission
+from ami.base.permissions import IsActiveStaffOrPublicManagerOrReadOnly, ProjectPipelineConfigPermission
 from ami.base.views import ProjectMixin
-from ami.main.api.schemas import project_id_doc_param
+from ami.main.api.schemas import include_public_doc_param, project_id_doc_param
 from ami.main.api.views import DefaultViewSet
 from ami.main.models import Project, SourceImage
 from ami.ml.schemas import PipelineRegistrationResponse
@@ -168,16 +168,17 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
     serializer_class = ProcessingServiceSerializer
     filterset_fields = ["projects"]
     ordering_fields = ["id", "created_at", "updated_at"]
+    permission_classes = [IsActiveStaffOrPublicManagerOrReadOnly]
     require_project = True
 
     def get_queryset(self) -> QuerySet:
         qs: QuerySet = super().get_queryset()
         project = self.get_active_project()
-        if project:
-            qs = qs.filter(projects=project)
-        return qs
+        if not project:
+            return qs
+        return qs.for_project(project, include_public=self.get_include_public())
 
-    @extend_schema(parameters=[project_id_doc_param])
+    @extend_schema(parameters=[project_id_doc_param, include_public_doc_param])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
@@ -214,13 +215,13 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
         """
         Test the connection to the processing service.
         """
-        processing_service = ProcessingService.objects.get(pk=pk)
+        processing_service = self.get_object()
         response = processing_service.get_status()
         return Response(response.dict())
 
     @action(detail=True, methods=["post"])
     def register_pipelines(self, request: Request, pk=None) -> Response:
-        processing_service = ProcessingService.objects.get(pk=pk)
+        processing_service = self.get_object()
         response = processing_service.create_pipelines()
         processing_service.save()
         return Response(response.dict())

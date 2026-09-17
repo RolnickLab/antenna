@@ -1,6 +1,8 @@
 from django_pydantic_field.rest_framework import SchemaField
 from rest_framework import serializers
 
+from ami.base.permissions import add_m2m_object_permissions
+from ami.base.views import get_active_project
 from ami.main.api.serializers import DefaultSerializer, MinimalNestedModelSerializer
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
@@ -138,6 +140,7 @@ class ProcessingServiceSerializer(DefaultSerializer):
     pipelines = PipelineNestedSerializer(many=True, read_only=True)
     projects = serializers.SerializerMethodField()
     is_async = serializers.BooleanField(read_only=True)
+    is_public = serializers.BooleanField(read_only=True)
     endpoint_url = serializers.CharField(required=False, allow_null=True, allow_blank=False, max_length=1024)
 
     class Meta:
@@ -150,6 +153,7 @@ class ProcessingServiceSerializer(DefaultSerializer):
             "projects",
             "endpoint_url",
             "is_async",
+            "is_public",
             "pipelines",
             "created_at",
             "updated_at",
@@ -163,6 +167,11 @@ class ProcessingServiceSerializer(DefaultSerializer):
         This is read-only and managed by the server.
         """
         return list(obj.projects.values_list("id", flat=True))
+
+    def get_permissions(self, instance, instance_data):
+        request = self.context["request"]
+        project = get_active_project(request=request)
+        return add_m2m_object_permissions(request.user, instance, project, instance_data)
 
 
 class PipelineRegistrationSerializer(serializers.Serializer):

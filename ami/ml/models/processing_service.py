@@ -70,6 +70,10 @@ class ProcessingService(BaseModel):
     last_seen = models.DateTimeField(null=True)
     last_seen_live = models.BooleanField(null=True)
     last_seen_latency = models.FloatField(null=True)
+    is_public = models.BooleanField(
+        default=False,
+        help_text="Public processing services are available to every project, not just the ones in 'projects'.",
+    )
 
     objects = ProcessingServiceManager()
 
@@ -89,6 +93,7 @@ class ProcessingService(BaseModel):
     class Meta:
         verbose_name = "Processing Service"
         verbose_name_plural = "Processing Services"
+        permissions = [("manage_public_processingservice", "Can create, edit and delete public processing services")]
 
     def create_pipelines(
         self,
