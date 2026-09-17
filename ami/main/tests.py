@@ -18,6 +18,7 @@ from rest_framework import status
 from rest_framework.test import APIClient, APIRequestFactory, APITestCase
 from rich import print
 
+from ami.base.permissions import add_m2m_object_permissions
 from ami.exports.models import DataExport
 from ami.jobs.models import VALID_JOB_TYPES, Job
 from ami.main.api.serializers import MAX_BULK_IDENTIFICATIONS
@@ -4418,6 +4419,65 @@ class TestTaxonListQueryCount(APITestCase):
             self.assertNotIn("main_identification", sql.lower(), "example subqueries leaked into the COUNT")
 
 
+@override_settings(CACHALOT_ENABLED=False)
+class TestTaxaListListQueryCount(APITestCase):
+    """Guard against N+1 regressions in TaxaListViewSet.list.
+
+    TaxaListSerializer resolved the active project and the requesting member's
+    project permissions once per row instead of once per request
+    (get_projects, get_permissions -> add_m2m_object_permissions). Query count
+    must stay flat as the number of taxa lists returned grows. Uses a project
+    member (not a superuser) because the superuser branch of
+    add_m2m_object_permissions skips the guardian lookup entirely.
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(email="taxalist-qcount-owner@insectai.org")
+        self.member = User.objects.create_user(email="taxalist-qcount-member@insectai.org")
+        self.taxon = Taxon.objects.create(name="Query Count Taxon", rank=TaxonRank.SPECIES.name)
+        self.client.force_authenticate(self.member)
+
+    def _make_project_with_lists(self, name: str, count: int) -> Project:
+        project = Project.objects.create(name=name, owner=self.owner)
+        project.members.add(self.member)
+        for i in range(count):
+            taxa_list = TaxaList.objects.create(name=f"{name} List {i}")
+            taxa_list.projects.add(project)
+            taxa_list.taxa.add(self.taxon)
+        return project
+
+    def _list_query_count(self, project: Project, expected_rows: int) -> int:
+        from django.core.cache import caches
+
+        url = f"/api/v2/taxa/lists/?project_id={project.pk}&limit=25"
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res.data["results"]), expected_rows)
+        return len(ctx.captured_queries)
+
+    def test_list_query_count_does_not_scale_with_row_count(self):
+        # Each measurement targets its own project, so cachalot's per-query
+        # cache (keyed on SQL text + params, not row counts) can't serve one
+        # measurement's result to the other and mask a real regression: every
+        # project_id is queried exactly once across the whole test.
+        small_project = self._make_project_with_lists("Small", 3)
+        large_project = self._make_project_with_lists("Large", 10)
+
+        # Warm up process-global caches (ContentType, guardian's content-type
+        # lookups) on a throwaway project first, so neither measurement below
+        # pays a one-time setup cost that the other doesn't.
+        warmup_project = self._make_project_with_lists("Warmup", 1)
+        self._list_query_count(warmup_project, expected_rows=1)
+
+        small = self._list_query_count(small_project, expected_rows=3)
+        large = self._list_query_count(large_project, expected_rows=10)
+
+        print(f"\n[AUDIT] TaxaList list: 3 rows -> {small}q, 10 rows -> {large}q")
+        self.assertEqual(small, large, f"Query count scaled with row count: {small} -> {large} (N+1 regression)")
+
+
 class TestProjectDefaultTaxaFilter(APITestCase):
     """
     Tests for project default taxa filtering (include/exclude lists).
@@ -5227,6 +5287,48 @@ class TaxaListViewSetPermissionTestCase(TestCase):
         self.client.force_authenticate(self.non_member)
         response = self.client.patch(self.detail_url, {"name": "Hacked"})
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class TaxaListPermissionScopingTestCase(TestCase):
+    """Guard the membership check in add_m2m_object_permissions against the
+    prefetch-based fast path added to fix per-row queries (see #1120)."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(email="scoping-owner@example.com", password="testpass")
+        self.member = User.objects.create_user(email="scoping-member@example.com", password="testpass")
+        self.project = Project.objects.create(name="Scoping Project", owner=self.owner)
+        self.project.members.add(self.member)
+        self.client = APIClient()
+
+    def test_prefetched_non_member_list_gets_no_write_permissions(self):
+        """A taxa list outside the active project must still report no update/delete
+        permissions when `instance.projects` was prefetched by the caller, not queried."""
+        other_project = Project.objects.create(name="Other Project", owner=self.owner)
+        outside_list = TaxaList.objects.create(name="Outside List")
+        outside_list.projects.add(other_project)
+
+        instance = TaxaList.objects.filter(pk=outside_list.pk).prefetch_related("projects").get()
+        self.assertIn("projects", instance._prefetched_objects_cache)
+
+        data = add_m2m_object_permissions(self.member, instance, self.project, {})
+        self.assertNotIn("update", data["user_permissions"])
+        self.assertNotIn("delete", data["user_permissions"])
+
+    def test_permissions_scoped_to_requested_project_not_other_memberships(self):
+        """A member of project A must not see project A's write permissions on a
+        taxa list shared with project B when the request is scoped to project B,
+        even though the same list belongs to both."""
+        project_b = Project.objects.create(name="Project B", owner=self.owner)
+        shared_list = TaxaList.objects.create(name="Shared List")
+        shared_list.projects.add(self.project, project_b)
+
+        self.client.force_authenticate(self.member)
+        response = self.client.get(f"/api/v2/taxa/lists/?project_id={project_b.pk}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        row = next(r for r in response.data["results"] if r["id"] == shared_list.pk)
+        self.assertNotIn("update", row["user_permissions"])
+        self.assertNotIn("delete", row["user_permissions"])
 
 
 class TaxaListTaxonAPITestCase(TestCase):
