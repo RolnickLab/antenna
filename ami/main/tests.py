@@ -6,7 +6,7 @@ from io import BytesIO
 from unittest import mock
 
 from django.conf import settings
-from django.contrib.auth.models import AnonymousUser
+from django.contrib.auth.models import AnonymousUser, Permission
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, connection, models
 from django.test import TestCase, override_settings
@@ -5415,6 +5415,377 @@ class TaxaListGetOrCreateForProjectTestCase(TestCase):
         self.assertFalse(created)
         self.assertEqual(taxa_list_again.pk, taxa_list.pk)
         self.assertEqual(taxa_list_again.description, "Initial description")
+
+    def test_creates_new_public_list(self):
+        taxa_list, created = TaxaList.objects.get_or_create_for_project(
+            name="Public Moths", project=None, is_public=True
+        )
+        self.assertTrue(created)
+        self.assertTrue(taxa_list.is_public)
+        self.assertEqual(taxa_list.projects.count(), 0)
+
+    def test_retrieves_existing_public_list(self):
+        existing = TaxaList.objects.create(name="Public Moths", is_public=True)
+        taxa_list, created = TaxaList.objects.get_or_create_for_project(
+            name="Public Moths", project=None, is_public=True
+        )
+        self.assertFalse(created)
+        self.assertEqual(taxa_list.pk, existing.pk)
+
+    def test_public_and_non_public_no_project_lists_with_same_name_do_not_collide(self):
+        """A public list and a hidden (non-public, no-project) list can share a name."""
+        public_list, public_created = TaxaList.objects.get_or_create_for_project(
+            name="Moths No Project", project=None, is_public=True
+        )
+        hidden_list, hidden_created = TaxaList.objects.get_or_create_for_project(
+            name="Moths No Project", project=None, is_public=False
+        )
+        self.assertTrue(public_created)
+        self.assertTrue(hidden_created)
+        self.assertNotEqual(public_list.pk, hidden_list.pk)
+        self.assertTrue(public_list.is_public)
+        self.assertFalse(hidden_list.is_public)
+
+
+class TaxaListForProjectQuerySetTestCase(TestCase):
+    """Direct unit tests for BaseQuerySet.for_project(), independent of the API layer."""
+
+    def setUp(self):
+        self.project_a = Project.objects.create(name="FP Project A")
+        self.project_b = Project.objects.create(name="FP Project B")
+        self.scoped = TaxaList.objects.create(name="FP Scoped")
+        self.scoped.projects.add(self.project_a)
+        self.public = TaxaList.objects.create(name="FP Public", is_public=True)
+        self.hidden = TaxaList.objects.create(name="FP Hidden")  # is_public=False, no projects
+
+    def test_returns_project_scoped_and_public_by_default(self):
+        ids = set(TaxaList.objects.for_project(self.project_a).values_list("pk", flat=True))
+        self.assertEqual(ids, {self.scoped.pk, self.public.pk})
+
+    def test_excludes_public_when_include_public_false(self):
+        ids = set(TaxaList.objects.for_project(self.project_a, include_public=False).values_list("pk", flat=True))
+        self.assertEqual(ids, {self.scoped.pk})
+
+    def test_excludes_lists_scoped_to_other_projects(self):
+        ids = set(TaxaList.objects.for_project(self.project_b).values_list("pk", flat=True))
+        self.assertNotIn(self.scoped.pk, ids)
+
+    def test_public_list_linked_to_project_is_not_duplicated(self):
+        self.public.projects.add(self.project_a)
+        rows = list(TaxaList.objects.for_project(self.project_a).filter(pk=self.public.pk))
+        self.assertEqual(len(rows), 1)
+
+    def test_raises_on_model_without_m2m_projects_field(self):
+        with self.assertRaises(TypeError):
+            list(Event.objects.for_project(self.project_a))
+
+
+class TaxaListIsPublicBackfillTestCase(TestCase):
+    """Unit test for the 0096 migration's is_public backfill rule."""
+
+    def _backfill(self):
+        from importlib import import_module
+
+        from django.apps import apps as real_apps
+
+        mod = import_module("ami.main.migrations.0096_taxalist_is_public")
+        mod.backfill_is_public(real_apps, None)
+
+    def test_zero_project_list_becomes_public(self):
+        taxa_list = TaxaList.objects.create(name="No Project List")
+        self._backfill()
+        taxa_list.refresh_from_db()
+        self.assertTrue(taxa_list.is_public)
+
+    def test_project_scoped_list_stays_non_public(self):
+        project = Project.objects.create(name="Backfill Project")
+        taxa_list = TaxaList.objects.create(name="Scoped List")
+        taxa_list.projects.add(project)
+        self._backfill()
+        taxa_list.refresh_from_db()
+        self.assertFalse(taxa_list.is_public)
+
+    def test_algorithm_category_map_list_stays_non_public(self):
+        taxa_list = TaxaList.objects.create(name="Taxa returned by Some Algorithm")
+        self._backfill()
+        taxa_list.refresh_from_db()
+        self.assertFalse(taxa_list.is_public)
+
+
+class TaxaListPublicPermissionsTestCase(TestCase):
+    """Permission matrix for public vs. project-scoped TaxaLists.
+
+    The key regression this protects against: a project member passing their own
+    project_id must not be able to modify, delete, or change the taxa of a public
+    list. Only the manage_public_taxalist platform permission (or a superuser) can.
+    A project-scoped list keeps its existing member-can-write behavior.
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(email="owner-pub@example.com", password="testpass")
+        self.member = User.objects.create_user(email="member-pub@example.com", password="testpass")
+        self.non_member = User.objects.create_user(email="nonmember-pub@example.com", password="testpass")
+        self.superuser = User.objects.create_superuser(email="super-pub@example.com", password="testpass")
+        self.public_manager = User.objects.create_user(email="manager-pub@example.com", password="testpass")
+        perm = Permission.objects.get(codename="manage_public_taxalist", content_type__app_label="main")
+        self.public_manager.user_permissions.add(perm)
+
+        self.project = Project.objects.create(name="Test Project", owner=self.owner)
+        self.project.members.add(self.member)
+
+        self.public_list = TaxaList.objects.create(name="Public List", is_public=True)
+        self.scoped_list = TaxaList.objects.create(name="Scoped List")
+        self.scoped_list.projects.add(self.project)
+
+        self.taxon = Taxon.objects.create(name="Test Taxon", rank="SPECIES")
+
+        self.client = APIClient()
+
+    def _detail_url(self, taxa_list):
+        return f"/api/v2/taxa/lists/{taxa_list.pk}/?project_id={self.project.pk}"
+
+    def _taxa_url(self, taxa_list):
+        return f"/api/v2/taxa/lists/{taxa_list.pk}/taxa/?project_id={self.project.pk}"
+
+    def _taxon_detail_url(self, taxa_list, taxon):
+        return f"/api/v2/taxa/lists/{taxa_list.pk}/taxa/{taxon.pk}/?project_id={self.project.pk}"
+
+    # -- Update --
+
+    def test_member_cannot_update_public_list(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.patch(self._detail_url(self.public_list), {"name": "Hacked"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_non_member_cannot_update_public_list(self):
+        self.client.force_authenticate(self.non_member)
+        response = self.client.patch(self._detail_url(self.public_list), {"name": "Hacked"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_anonymous_cannot_update_public_list(self):
+        response = self.client.patch(self._detail_url(self.public_list), {"name": "Hacked"})
+        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+
+    def test_public_list_manager_can_update_public_list(self):
+        self.client.force_authenticate(self.public_manager)
+        response = self.client.patch(self._detail_url(self.public_list), {"name": "Renamed"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_superuser_can_update_public_list(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.patch(self._detail_url(self.public_list), {"name": "Renamed by super"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_member_can_still_update_scoped_list(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.patch(self._detail_url(self.scoped_list), {"name": "Renamed"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_public_list_manager_without_membership_cannot_update_scoped_list(self):
+        """Holding manage_public_taxalist does not grant control over project-scoped lists."""
+        self.client.force_authenticate(self.public_manager)
+        response = self.client.patch(self._detail_url(self.scoped_list), {"name": "Hacked"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    # -- Delete --
+
+    def test_member_cannot_delete_public_list(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.delete(self._detail_url(self.public_list))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_public_list_manager_can_delete_public_list(self):
+        self.client.force_authenticate(self.public_manager)
+        response = self.client.delete(self._detail_url(self.public_list))
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    def test_member_can_still_delete_scoped_list(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.delete(self._detail_url(self.scoped_list))
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+    # -- Retrieve / list visibility --
+
+    def test_anonymous_can_retrieve_public_list(self):
+        response = self.client.get(self._detail_url(self.public_list))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_non_member_can_see_public_list(self):
+        """A public list is visible even to a user with no connection to the active project.
+
+        The project here is non-draft, so its own scoped_list is also visible to
+        anyone by the platform's general draft-visibility rule — that is separate
+        from is_public and is covered by TaxaListDraftProjectVisibilityTestCase.
+        """
+        self.client.force_authenticate(self.non_member)
+        response = self.client.get(f"/api/v2/taxa/lists/?project_id={self.project.pk}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {row["id"] for row in response.json()["results"]}
+        self.assertIn(self.public_list.pk, ids)
+
+    def test_is_public_field_is_read_only_and_reported(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.get(self._detail_url(self.public_list))
+        self.assertTrue(response.json()["is_public"])
+
+        response = self.client.patch(self._detail_url(self.scoped_list), {"is_public": True})
+        self.scoped_list.refresh_from_db()
+        self.assertFalse(self.scoped_list.is_public)
+
+    def test_user_permissions_include_update_delete_for_public_manager_only(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.get(self._detail_url(self.public_list))
+        self.assertNotIn("update", response.json()["user_permissions"])
+
+        self.client.force_authenticate(self.public_manager)
+        response = self.client.get(self._detail_url(self.public_list))
+        perms = response.json()["user_permissions"]
+        self.assertIn("update", perms)
+        self.assertIn("delete", perms)
+
+    # -- Add / remove taxon (nested route) --
+
+    def test_member_cannot_add_taxon_to_public_list(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.post(self._taxa_url(self.public_list), {"taxon_id": self.taxon.pk})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(self.public_list.taxa.filter(pk=self.taxon.pk).exists())
+
+    def test_public_list_manager_can_add_taxon_to_public_list(self):
+        self.client.force_authenticate(self.public_manager)
+        response = self.client.post(self._taxa_url(self.public_list), {"taxon_id": self.taxon.pk})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(self.public_list.taxa.filter(pk=self.taxon.pk).exists())
+
+    def test_member_cannot_remove_taxon_from_public_list(self):
+        self.public_list.taxa.add(self.taxon)
+        self.client.force_authenticate(self.member)
+        response = self.client.delete(self._taxon_detail_url(self.public_list, self.taxon))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(self.public_list.taxa.filter(pk=self.taxon.pk).exists())
+
+    def test_public_list_manager_can_remove_taxon_from_public_list(self):
+        self.public_list.taxa.add(self.taxon)
+        self.client.force_authenticate(self.public_manager)
+        response = self.client.delete(self._taxon_detail_url(self.public_list, self.taxon))
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(self.public_list.taxa.filter(pk=self.taxon.pk).exists())
+
+    def test_member_can_still_add_taxon_to_scoped_list(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.post(self._taxa_url(self.scoped_list), {"taxon_id": self.taxon.pk})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_public_list_manager_without_membership_cannot_add_taxon_to_scoped_list(self):
+        self.client.force_authenticate(self.public_manager)
+        response = self.client.post(self._taxa_url(self.scoped_list), {"taxon_id": self.taxon.pk})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class TaxaListIncludePublicParamTestCase(TestCase):
+    """?include_public toggles whether public lists appear alongside a project's own lists."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(email="scope-user@example.com", password="testpass")
+        self.project = Project.objects.create(name="Scope Project", owner=self.user)
+        self.other_project = Project.objects.create(name="Other Scope Project")
+
+        self.scoped_list = TaxaList.objects.create(name="Scoped")
+        self.scoped_list.projects.add(self.project)
+        self.public_list = TaxaList.objects.create(name="Public", is_public=True)
+        # A public list can also be linked to an unrelated project without appearing twice.
+        self.public_list.projects.add(self.other_project)
+
+        self.hidden_list = TaxaList.objects.create(name="Hidden with no project")
+
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _list_ids(self, **params):
+        params["project_id"] = self.project.pk
+        query = "&".join(f"{k}={v}" for k, v in params.items())
+        response = self.client.get(f"/api/v2/taxa/lists/?{query}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.json()["results"]
+
+    def test_public_lists_included_by_default(self):
+        ids = {row["id"] for row in self._list_ids()}
+        self.assertEqual(ids, {self.scoped_list.pk, self.public_list.pk})
+
+    def test_include_public_false_hides_public_lists(self):
+        ids = {row["id"] for row in self._list_ids(include_public="false")}
+        self.assertEqual(ids, {self.scoped_list.pk})
+
+    def test_include_public_invalid_value_returns_400(self):
+        response = self.client.get(f"/api/v2/taxa/lists/?project_id={self.project.pk}&include_public=notabool")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_public_list_linked_to_multiple_projects_appears_once(self):
+        """A public list attached to several projects must not be duplicated by the M2M join."""
+        self.public_list.projects.add(self.project)
+        rows = self._list_ids()
+        matches = [row for row in rows if row["id"] == self.public_list.pk]
+        self.assertEqual(len(matches), 1)
+
+    def test_hidden_zero_project_list_is_invisible(self):
+        ids = {row["id"] for row in self._list_ids()}
+        self.assertNotIn(self.hidden_list.pk, ids)
+
+
+class TaxaListDraftProjectVisibilityTestCase(TestCase):
+    """A non-public list in a draft project follows the same visibility rule as any
+    other draft-project object: only members, owners and superusers can see it."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(email="draft-owner@example.com", password="testpass")
+        self.member = User.objects.create_user(email="draft-member@example.com", password="testpass")
+        self.outsider = User.objects.create_user(email="draft-outsider@example.com", password="testpass")
+        self.draft_project = Project.objects.create(name="Draft Project", owner=self.owner, draft=True)
+        self.draft_project.members.add(self.member)
+        self.scoped_list = TaxaList.objects.create(name="Draft List")
+        self.scoped_list.projects.add(self.draft_project)
+        self.client = APIClient()
+
+    def _list_url(self):
+        return f"/api/v2/taxa/lists/?project_id={self.draft_project.pk}"
+
+    def test_outsider_cannot_see_list_in_draft_project(self):
+        self.client.force_authenticate(self.outsider)
+        response = self.client.get(self._list_url())
+        ids = {row["id"] for row in response.json()["results"]}
+        self.assertNotIn(self.scoped_list.pk, ids)
+
+    def test_member_can_see_list_in_draft_project(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.get(self._list_url())
+        ids = {row["id"] for row in response.json()["results"]}
+        self.assertIn(self.scoped_list.pk, ids)
+
+
+@override_settings(CACHALOT_ENABLED=False)
+class TaxaListQueryCountTestCase(APITestCase):
+    """Audit TaxaListViewSet.list for N+1 across a mixed public/scoped, multi-row fixture."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(email="qc-user@example.com", password="testpass")
+        self.project = Project.objects.create(name="QC Project", owner=self.user)
+        for i in range(3):
+            scoped = TaxaList.objects.create(name=f"Scoped {i}")
+            scoped.projects.add(self.project)
+        for i in range(2):
+            TaxaList.objects.create(name=f"Public {i}", is_public=True)
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def test_list_query_count(self):
+        from cachalot.api import cachalot_disabled
+
+        url = f"/api/v2/taxa/lists/?project_id={self.project.pk}"
+        with cachalot_disabled(), CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.json()["results"]), 5)
+        self.assertEqual(len(ctx.captured_queries), 34)
 
 
 class TaxaListDedupeMigrationTestCase(TestCase):
