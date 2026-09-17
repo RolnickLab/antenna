@@ -2,6 +2,7 @@ import collections
 import datetime
 
 from django.db.models import QuerySet
+from drf_spectacular.utils import extend_schema_field
 from guardian.shortcuts import get_perms
 from rest_framework import serializers
 from rest_framework.request import Request
@@ -35,6 +36,7 @@ from ..models import (
     SourceImageUpload,
     TaxaList,
     Taxon,
+    get_media_url,
 )
 
 
@@ -618,6 +620,27 @@ class TagSerializer(DefaultSerializer):
         return [{"id": taxon.id, "name": taxon.name} for taxon in obj.taxa.all()]
 
 
+class ExampleOccurrenceSerializer(serializers.Serializer):
+    """One representative occurrence for a taxon's presence-verification Example column (#1320).
+
+    Read-only and not bound to a plain Occurrence: the view hydrates a page of example
+    occurrences with ``with_best_detection()`` plus an ``is_verified`` annotation and then
+    serializes them through this class. It is the single source of truth for the nested
+    shape the frontend renders (thumbnail + deep-link) and for the field's OpenAPI schema,
+    so the shape is declared here once rather than rebuilt as a dict literal in the view.
+    """
+
+    id = serializers.IntegerField(read_only=True)
+    detection_id = serializers.IntegerField(source="best_detection_id", read_only=True, allow_null=True)
+    image_url = serializers.SerializerMethodField()
+    score = serializers.FloatField(source="determination_score", read_only=True, allow_null=True)
+    verified = serializers.BooleanField(source="is_verified", read_only=True)
+
+    def get_image_url(self, obj) -> str | None:
+        path = getattr(obj, "best_detection_path", None)
+        return get_media_url(path) if path else None
+
+
 class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
@@ -625,10 +648,23 @@ class TaxonListSerializer(DefaultSerializer):
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent")
     tags = serializers.SerializerMethodField()
+    # Presence-verification Example column (#1320). Populated only when the request sets
+    # ?with_example_occurrences=true; otherwise the annotations are NULL. The nested object
+    # is hydrated for the whole page in one query and passed via serializer context.
+    example_occurrence = serializers.SerializerMethodField()
+    best_scoring_occurrence_id = serializers.IntegerField(read_only=True, allow_null=True)
+    last_detected_occurrence_id = serializers.IntegerField(read_only=True, allow_null=True)
 
     def get_tags(self, obj):
         tag_list = getattr(obj, "prefetched_tags", [])
         return TagSerializer(tag_list, many=True, context=self.context).data
+
+    @extend_schema_field(ExampleOccurrenceSerializer)
+    def get_example_occurrence(self, obj) -> dict | None:
+        occurrence_id = getattr(obj, "example_occurrence_id", None)
+        if occurrence_id is None:
+            return None
+        return self.context.get("example_occurrence_map", {}).get(occurrence_id)
 
     class Meta:
         model = Taxon
@@ -643,6 +679,9 @@ class TaxonListSerializer(DefaultSerializer):
             "verified_count",
             "training_crops_ready",
             "occurrences",
+            "example_occurrence",
+            "best_scoring_occurrence_id",
+            "last_detected_occurrence_id",
             "tags",
             "last_detected",
             "best_determination_score",
@@ -651,9 +690,14 @@ class TaxonListSerializer(DefaultSerializer):
             "updated_at",
         ]
 
-    def get_training_crops_ready(self, obj):
-        """Verified crops of this species, which is what a head can be trained on."""
-        return getattr(obj, "training_crops_count", None) or 0
+    def get_training_crops_ready(self, obj) -> int | None:
+        """
+        Verified crops of this species, which is what a head can be trained on.
+
+        Null when the caller did not ask for it: counting is opt-in, and a zero would read
+        as a species with nothing to train on.
+        """
+        return getattr(obj, "training_crops_count", None)
 
     def get_occurrences(self, obj):
         """
@@ -1033,9 +1077,14 @@ class TaxonSerializer(DefaultSerializer):
             "algorithm_performance",
         ]
 
-    def get_training_crops_ready(self, obj):
-        """Verified crops of this species, which is what a head can be trained on."""
-        return getattr(obj, "training_crops_count", None) or 0
+    def get_training_crops_ready(self, obj) -> int | None:
+        """
+        Verified crops of this species, which is what a head can be trained on.
+
+        Null when the caller did not ask for it: counting is opt-in, and a zero would read
+        as a species with nothing to train on.
+        """
+        return getattr(obj, "training_crops_count", None)
 
     def get_algorithm_performance(self, obj):
         """How each scored algorithm has done on this species. Empty until one is evaluated."""
@@ -1979,14 +2028,14 @@ class ModelAgreementSerializer(serializers.Serializer):
         max_value=1.0,
         allow_null=True,
         required=False,
-        help_text="Wilson 95% CI lower bound for agreed_exact_pct. Null when verified_with_prediction_count is 0.",
+        help_text="Wilson 95% CI lower bound for agreed_exact_pct. Null when comparable_count is 0.",
     )
     agreed_exact_ci_high = serializers.FloatField(
         min_value=0.0,
         max_value=1.0,
         allow_null=True,
         required=False,
-        help_text="Wilson 95% CI upper bound for agreed_exact_pct. Null when verified_with_prediction_count is 0.",
+        help_text="Wilson 95% CI upper bound for agreed_exact_pct. Null when comparable_count is 0.",
     )
     agreed_any_rank_count = serializers.IntegerField(
         help_text="Exact matches plus disagreements whose LCA is at any real rank (UNKNOWN excluded)."
@@ -1994,21 +2043,21 @@ class ModelAgreementSerializer(serializers.Serializer):
     agreed_any_rank_pct = serializers.FloatField(
         min_value=0.0,
         max_value=1.0,
-        help_text="agreed_any_rank_count / verified_with_prediction_count",
+        help_text="agreed_any_rank_count / comparable_count",
     )
     agreed_any_rank_ci_low = serializers.FloatField(
         min_value=0.0,
         max_value=1.0,
         allow_null=True,
         required=False,
-        help_text="Wilson 95% CI lower bound for agreed_any_rank_pct. Null when verified_with_prediction_count is 0.",
+        help_text="Wilson 95% CI lower bound for agreed_any_rank_pct. Null when comparable_count is 0.",
     )
     agreed_any_rank_ci_high = serializers.FloatField(
         min_value=0.0,
         max_value=1.0,
         allow_null=True,
         required=False,
-        help_text="Wilson 95% CI upper bound for agreed_any_rank_pct. Null when verified_with_prediction_count is 0.",
+        help_text="Wilson 95% CI upper bound for agreed_any_rank_pct. Null when comparable_count is 0.",
     )
     cohens_kappa = serializers.FloatField(
         min_value=-1.0,
@@ -2039,5 +2088,5 @@ class ModelAgreementSerializer(serializers.Serializer):
         max_value=1.0,
         allow_null=True,
         required=False,
-        help_text="agreed_coarser_rank_count / verified_with_prediction_count. Null when no threshold supplied.",
+        help_text="agreed_coarser_rank_count / comparable_count. Null when no threshold supplied.",
     )
