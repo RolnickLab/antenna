@@ -2,48 +2,9 @@ import logging
 
 from django.db import models
 
-from ami.base.models import BaseModel, BaseQuerySet
+from ami.base.models import BaseModel
 
 logger = logging.getLogger(__name__)
-
-
-class OccurrenceSetQuerySet(BaseQuerySet):
-    def for_project(self, project) -> models.QuerySet:
-        """Sets this project can use: its own, plus any that belong to no project."""
-        return self.filter(models.Q(projects=project) | models.Q(projects__isnull=True)).distinct()
-
-
-class OccurrenceSet(BaseModel):
-    """
-    A fixed list of occurrences to score models against.
-
-    Two models can only be compared if they were scored on the same occurrences, so the
-    membership is stored rather than re-sampled. A set with no projects is global, which is
-    how one set compares models across the platform; that follows how TaxaList already
-    treats a list with no project.
-    """
-
-    name = models.CharField(max_length=255)
-    description = models.TextField(blank=True)
-    occurrences = models.ManyToManyField("main.Occurrence", related_name="evaluation_sets", blank=True)
-    projects = models.ManyToManyField(
-        "main.Project",
-        related_name="occurrence_sets",
-        blank=True,
-        help_text="Projects this set belongs to. A set with none is available everywhere.",
-    )
-
-    objects = OccurrenceSetQuerySet.as_manager()
-
-    class Meta:
-        ordering = ["name"]
-
-    def __str__(self) -> str:
-        return f"{self.name} ({self.occurrences.count()} occurrences)"
-
-    @property
-    def is_global(self) -> bool:
-        return not self.projects.exists()
 
 
 class AlgorithmEvaluation(BaseModel):
@@ -56,7 +17,7 @@ class AlgorithmEvaluation(BaseModel):
     """
 
     algorithm = models.ForeignKey("ml.Algorithm", on_delete=models.CASCADE, related_name="evaluations")
-    occurrence_set = models.ForeignKey(OccurrenceSet, on_delete=models.CASCADE, related_name="evaluations")
+    occurrence_set = models.ForeignKey("main.OccurrenceSet", on_delete=models.CASCADE, related_name="evaluations")
     job = models.ForeignKey("jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="evaluations")
 
     micro_accuracy = models.FloatField(null=True, help_text="Share of occurrences the algorithm named correctly.")
