@@ -1,19 +1,37 @@
 from __future__ import annotations
 
+import dataclasses
 import enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ami.main.models import Classification
+    from ami.main.models import Classification, TaxaList, Taxon
     from ami.ml.models import Pipeline
 
 import typing
 
 from django.contrib.postgres.fields import ArrayField
-from django.db import models
+from django.db import models, transaction
 from django.utils.text import slugify
 
 from ami.base.models import BaseModel, BaseQuerySet
+
+
+@dataclasses.dataclass
+class TaxaListSyncResult:
+    """
+    What happened when a category map was written into a taxa list.
+
+    ``unresolved`` holds the labels that matched no taxon and were not created,
+    so a caller can report or fix them; it is empty when missing taxa are created.
+    """
+
+    taxa_list: TaxaList
+    created_list: bool
+    labels: int
+    matched: int
+    created_taxa: int
+    unresolved: list[str]
 
 
 @typing.final
@@ -139,6 +157,83 @@ class AlgorithmCategoryMap(BaseModel):
             category["taxon"] = taxon
 
         return labels_data
+
+    def resolve_taxa(self, label_field: str = "label") -> tuple[dict[str, Taxon], list[str]]:
+        """
+        Map every label of this category map to the active taxon it names.
+
+        A label matches a taxon by its name or by one of its search names, the same rule
+        used when a classification result is saved. Returns the matches keyed by label,
+        and the labels that matched nothing, in category order.
+        """
+        from ami.main.models import Taxon
+
+        labels = list(dict.fromkeys(self.labels))
+        if not labels:
+            raise ValueError("Category map has no labels")
+
+        taxa = Taxon.objects.filter(
+            models.Q(name__in=labels) | models.Q(search_names__overlap=labels),
+            active=True,
+        )
+        by_label: dict[str, Taxon] = {}
+        for taxon in taxa:
+            by_label.setdefault(taxon.name, taxon)
+            for alias in taxon.search_names or []:
+                by_label.setdefault(alias, taxon)
+
+        resolved = {label: by_label[label] for label in labels if label in by_label}
+        unresolved = [label for label in labels if label not in by_label]
+        return resolved, unresolved
+
+    def get_or_create_taxa_list(
+        self,
+        name: str,
+        *,
+        description: str = "",
+        create_missing_taxa: bool = True,
+    ) -> TaxaListSyncResult:
+        """
+        Put every label of this category map into a global taxa list, so the full set of
+        taxa a model can predict exists as a list that projects can filter by or copy and
+        curate. Safe to run again: the list is found by name and the taxa are added, never
+        removed, so a curated copy is unaffected.
+
+        With ``create_missing_taxa`` a label with no taxon gets one, with the rank recorded
+        in the category map, like a classification result does for its top label. Without
+        it, those labels are reported in the result and left out of the list.
+        """
+        from ami.main.models import TaxaList, Taxon, TaxonRank
+
+        resolved, unresolved = self.resolve_taxa()
+        created_taxa = 0
+
+        with transaction.atomic():
+            if unresolved and create_missing_taxa:
+                rank_by_label = {category["label"]: category.get("taxon_rank") for category in self.data}
+                for label in unresolved:
+                    resolved[label] = Taxon.objects.create(
+                        name=label,
+                        rank=rank_by_label.get(label) or TaxonRank.UNKNOWN.name,
+                    )
+                    created_taxa += 1
+                unresolved = []
+
+            taxa_list, created_list = TaxaList.objects.get_or_create_for_project(
+                name=name,
+                project=None,
+                description=description,
+            )
+            taxa_list.taxa.add(*resolved.values())
+
+        return TaxaListSyncResult(
+            taxa_list=taxa_list,
+            created_list=created_list,
+            labels=len(self.labels),
+            matched=len(resolved) - created_taxa,
+            created_taxa=created_taxa,
+            unresolved=unresolved,
+        )
 
     def save(self, *args, **kwargs):
         if not self.labels_hash:
@@ -307,4 +402,27 @@ class Algorithm(BaseModel):
             (self.category_map is not None)
             and (self.category_map.data is not None)
             and (len(self.category_map.data) > 0)
+        )
+
+    def taxa_list_name(self) -> str:
+        """Name of the global taxa list that holds every taxon this algorithm can predict."""
+        return f"Category map of {self.name}"
+
+    def get_or_create_taxa_list(self, create_missing_taxa: bool = True) -> TaxaListSyncResult:
+        """
+        Create or refresh the global taxa list of everything this algorithm can predict.
+
+        Distinct from the list named "Taxa returned by ..." that grows as results are saved:
+        that one holds only taxa the model has predicted so far, this one holds all of them.
+        """
+        category_map = self.category_map
+        if category_map is None or not self.has_valid_category_map():
+            raise ValueError(f"Algorithm {self} has no category map")
+        return category_map.get_or_create_taxa_list(
+            name=self.taxa_list_name(),
+            description=(
+                f"Every label of the category map of the algorithm {self.name} "
+                f"(key {self.key}, version {self.version}, {len(category_map.labels)} labels)."
+            ),
+            create_missing_taxa=create_missing_taxa,
         )

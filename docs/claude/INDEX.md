@@ -10,6 +10,7 @@ archived.
 | File | Description |
 |---|---|
 | `reference/canonical-patterns.md` | Existing helpers/patterns to reuse before writing new ones, with file:line refs (SingleParamSerializer, ProjectMixin, permissions, schemas, fixtures). Keywords: reuse, helpers, conventions, DRF |
+| `reference/species-lists-and-category-maps.md` | Which species list is which: regional checklist (Drive sheets with GBIF keys) vs the model's category map (= `AlgorithmCategoryMap.labels`, `--num_classes`) vs "Taxa returned by" lists vs "Category map of" TaxaLists; how the UK & Denmark 2,603 list was verified end to end (object store, ADC cache, prod, dev); joining labels to GBIF keys; Drive/gws gotchas. Created 2026-09-17 (agent). Keywords: TaxaList, category map, GBIF, species list, UK Denmark, `Algorithm.get_or_create_taxa_list`, `create_taxa_lists_from_category_maps` |
 | `reference/query-patterns.md` | DB model relationship table, composite indexes, prefetch/select_related patterns, full custom QuerySet method catalog, query anti-patterns. Keywords: N+1, indexes, ORM, performance |
 | `reference/api-stats-pattern.md` | How to add aggregate/leaderboard/chart endpoints (`/<entity>/stats/<kind>/`): GenericViewSet + @action, pure querysets in models_future. Keywords: stats, charts, aggregation |
 | `reference/monitoring-async-jobs.md` | Monitoring/debugging async_api (NATS JetStream) jobs: ORM, REST, consumer state, Redis counters, worker logs. Keywords: NATS, async, jobs, monitoring |
