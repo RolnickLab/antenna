@@ -1,6 +1,7 @@
 import { DefaultFiltersControl } from 'components/filtering/default-filter-control'
 import { FilterControl } from 'components/filtering/filter-control'
 import { FilterSection } from 'components/filtering/filter-section'
+import { someActive } from 'components/filtering/utils'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
 import { useSpecies } from 'data-services/hooks/species/useSpecies'
 import { useSpeciesDetails } from 'data-services/hooks/species/useSpeciesDetails'
@@ -17,15 +18,18 @@ import {
   Table,
   ToggleGroup,
 } from 'nova-ui-kit'
+import { OccurrenceDetailsDialog } from 'pages/occurrences/occurrence-details-dialog'
+import { TABS as OCCURRENCE_TABS } from 'pages/occurrence-details/occurrence-details'
 import { SpeciesDetails, TABS } from 'pages/species-details/species-details'
-import { useContext, useEffect, useMemo } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useContext, useEffect, useMemo, useRef } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { BreadcrumbContext } from 'utils/breadcrumbContext'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
 import { useColumnSettings } from 'utils/useColumnSettings'
-import { useFilters } from 'utils/useFilters'
+import { useCarryOverFilters, useFilters } from 'utils/useFilters'
+import { FILTERS_TO_OCCURRENCES } from 'pages/occurrences/occurrence-filters'
 import { usePagination } from 'utils/usePagination'
 import { useSelectedView } from 'utils/useSelectedView'
 import { useSort } from 'utils/useSort'
@@ -34,9 +38,14 @@ import { SpeciesGallery } from './species-gallery'
 
 export const Species = () => {
   const { projectId, id } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  // Occurrence to verify in a modal over the taxa list. Keyed off a search
+  // param (not the :id path segment, which already means taxon detail).
+  const verifyOccurrenceId = searchParams.get('verifyOccurrence') ?? undefined
   const { project } = useProjectDetails(projectId as string, true)
   const { columnSettings, setColumnSettings } = useColumnSettings('species', {
     'cover-image': true,
+    example: true,
     name: true,
     rank: false,
     'last-seen': true,
@@ -49,16 +58,80 @@ export const Species = () => {
   })
   const { sort, setSort } = useSort({ field: 'name', order: 'asc' })
   const { pagination, setPage } = usePagination()
-  const { filters } = useFilters()
+  const { activeFilters, filters } = useFilters()
   const { species, total, isLoading, isFetching, error } = useSpecies({
     projectId,
     sort,
     pagination,
     filters,
+    // This list renders the Example column and links Last-seen / Best-score to an occurrence.
+    withExampleOccurrences: true,
+    withTrainingCropCounts: columnSettings['training-images-ready'],
   })
+  // Ordered example occurrences, one per taxon row that has one, so the modal's
+  // prev/next steps to the next taxon's example (rows without an example are skipped).
+  const exampleNavItems = useMemo(
+    () =>
+      (species ?? []).flatMap((item) =>
+        item.verificationExample
+          ? [{ id: String(item.verificationExample.id) }]
+          : []
+      ),
+    [species]
+  )
+  // Remember where the open example sits in the list so the sweep can continue if it
+  // drops out. After verifying, that row's example rolls to a different occurrence (or,
+  // under ?verified=false, the row leaves the list), so the open ?verifyOccurrence id is
+  // no longer in exampleNavItems. Advance to whatever example now occupies that position
+  // instead of dead-ending with both nav buttons disabled.
+  const verifyIndexRef = useRef(-1)
+  useEffect(() => {
+    if (!verifyOccurrenceId) {
+      return
+    }
+    if (exampleNavItems.length === 0) {
+      // The list emptied after a verification (not a fetch in flight or a fresh deep
+      // link), so the sweep is finished: close the modal instead of leaving it open on
+      // an occurrence that is no longer listed.
+      if (!isFetching && verifyIndexRef.current >= 0) {
+        verifyIndexRef.current = -1
+        setSearchParams(
+          (prev) => {
+            const next = new URLSearchParams(prev)
+            next.delete('verifyOccurrence')
+            return next
+          },
+          { replace: true }
+        )
+      }
+      return
+    }
+    const index = exampleNavItems.findIndex(
+      (item) => item.id === verifyOccurrenceId
+    )
+    if (index >= 0) {
+      verifyIndexRef.current = index
+      return
+    }
+    const nextId =
+      exampleNavItems[
+        Math.min(verifyIndexRef.current, exampleNavItems.length - 1)
+      ]?.id
+    if (nextId) {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.set('verifyOccurrence', nextId)
+          return next
+        },
+        { replace: true }
+      )
+    }
+  }, [exampleNavItems, verifyOccurrenceId, isFetching, setSearchParams])
   const { selectedView, setSelectedView } = useSelectedView('table')
   const { taxaLists = [] } = useTaxaLists({ projectId: projectId as string })
   const { tags = [] } = useTags({ projectId: projectId as string })
+  const carryFilters = useCarryOverFilters(FILTERS_TO_OCCURRENCES)
   const pageTitle = useMemo(() => {
     const taxaListFilter = filters.find(
       (filter) => filter.field === 'taxa_list_id'
@@ -75,26 +148,44 @@ export const Species = () => {
   return (
     <>
       <div className="flex flex-col gap-6 md:flex-row">
-        <FilterSection defaultOpen>
-          <FilterControl field="event" readonly />
-          <FilterControl field="deployment" />
-          <FilterControl field="taxon" />
-          {taxaLists.length > 0 && (
-            <>
-              <FilterControl data={taxaLists} field="taxa_list_id" />
-              <FilterControl data={taxaLists} field="not_taxa_list_id" />
-            </>
-          )}
-          <FilterControl field="include_unobserved" />
-          <FilterControl field="verified" />
-          {project?.featureFlags.tags ? (
-            <>
-              <FilterControl data={tags} field="tag_id" />
-              <FilterControl data={tags} field="not_tag_id" />
-            </>
-          ) : null}
-          <DefaultFiltersControl field="apply_defaults" />
-        </FilterSection>
+        <div className="space-y-6">
+          <FilterSection defaultOpen>
+            <FilterControl field="event" readonly />
+            <FilterControl field="taxon" />
+            {taxaLists.length > 0 && (
+              <>
+                <FilterControl data={taxaLists} field="taxa_list_id" />
+                <FilterControl data={taxaLists} field="not_taxa_list_id" />
+              </>
+            )}
+            <FilterControl field="verified" />
+            <FilterControl field="include_unobserved" />
+            <DefaultFiltersControl field="apply_defaults" />
+          </FilterSection>
+          <FilterSection
+            title={translate(STRING.MORE_FILTERS)}
+            defaultOpen={someActive(
+              [
+                'deployment',
+                'deployment__device',
+                'deployment__research_site',
+                'tag_id',
+                'not_tag_id',
+              ],
+              activeFilters
+            )}
+          >
+            <FilterControl field="deployment" />
+            <FilterControl field="deployment__device" />
+            <FilterControl field="deployment__research_site" />
+            {project?.featureFlags.tags ? (
+              <>
+                <FilterControl data={tags} field="tag_id" />
+                <FilterControl data={tags} field="not_tag_id" />
+              </>
+            ) : null}
+          </FilterSection>
+        </div>
         <div className="w-full overflow-hidden">
           <PageHeader
             isFetching={isFetching}
@@ -136,11 +227,15 @@ export const Species = () => {
               columns={columns({
                 projectId: projectId as string,
                 featureFlags: project?.featureFlags,
+                carryFilters,
               }).filter((column) => !!columnSettings[column.id])}
               error={error}
-              isLoading={!id && isLoading}
+              isLoading={!id && !verifyOccurrenceId && isLoading}
               items={species}
               onSortSettingsChange={setSort}
+              rowClassName={(item) =>
+                item.numVerified > 0 ? 'opacity-50' : undefined
+              }
               sortable
               sortSettings={sort}
             />
@@ -148,7 +243,7 @@ export const Species = () => {
           {selectedView === 'gallery' && (
             <SpeciesGallery
               error={error}
-              isLoading={!id && isLoading}
+              isLoading={!id && !verifyOccurrenceId && isLoading}
               species={species}
             />
           )}
@@ -164,6 +259,23 @@ export const Species = () => {
         ) : null}
       </PageFooter>
       {id ? <SpeciesDetailsDialog id={id} /> : null}
+      {verifyOccurrenceId ? (
+        <OccurrenceDetailsDialog
+          id={verifyOccurrenceId}
+          occurrences={exampleNavItems}
+          defaultTab={OCCURRENCE_TABS.IDENTIFICATION}
+          onNavigate={(occurrenceId) => {
+            const nextParams = new URLSearchParams(searchParams)
+            nextParams.set('verifyOccurrence', occurrenceId)
+            setSearchParams(nextParams)
+          }}
+          onClose={() => {
+            const nextParams = new URLSearchParams(searchParams)
+            nextParams.delete('verifyOccurrence')
+            setSearchParams(nextParams)
+          }}
+        />
+      ) : null}
     </>
   )
 }

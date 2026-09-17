@@ -18,6 +18,7 @@ from rest_framework.filters import BaseFilterBackend
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
+from ami.base.filters import RelatedIdFilter
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
 from ami.base.permissions import ObjectPermission
 from ami.base.serializers import SingleParamSerializer
@@ -144,6 +145,8 @@ class JobFilterSet(filters.FilterSet):
 
     pipeline__slug = filters.CharFilter(field_name="pipeline__slug", lookup_expr="exact")
     pipeline__slug__in = filters.BaseInFilter(field_name="pipeline__slug", lookup_expr="in")
+    # Declared so the browsable API form does not enumerate the source image table.
+    source_image_single = RelatedIdFilter()
 
     class Meta:
         model = Job

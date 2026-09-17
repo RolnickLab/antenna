@@ -1,5 +1,7 @@
 import { isBefore, isValid } from 'date-fns'
+import { useMemo } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
+import { buildCarryOverFilters } from './buildCarryOverFilters'
 import { APP_ROUTES } from './constants'
 import { STRING, translate } from './language'
 import { SEARCH_PARAM_KEY_PAGE } from './usePagination'
@@ -75,6 +77,14 @@ export const AVAILABLE_FILTERS = (projectId: string): FilterConfig[] => [
         to: APP_ROUTES.DEPLOYMENTS({ projectId }),
       },
     },
+  },
+  {
+    label: 'Device',
+    field: 'deployment__device',
+  },
+  {
+    label: 'Site',
+    field: 'deployment__research_site',
   },
   {
     label: 'End date',
@@ -274,4 +284,17 @@ export const useFilters = (defaultFilters?: { [field: string]: string }) => {
     clearFilter,
     filters,
   }
+}
+
+// Hook form of buildCarryOverFilters: pass the destination's carry contract (e.g.
+// FILTERS_TO_OCCURRENCES). Reads the active filters of the current view, so any link into
+// that destination — from any source view — carries a consistent set.
+export const useCarryOverFilters = (
+  fields: string[]
+): Record<string, string> => {
+  const { filters } = useFilters()
+  return useMemo(
+    () => buildCarryOverFilters(filters, fields),
+    [filters, fields]
+  )
 }

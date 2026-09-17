@@ -1,6 +1,22 @@
 from django.db.models import F, OrderBy
-from django.forms import FloatField
+from django.forms import FloatField, IntegerField
+from django_filters.rest_framework import NumberFilter
 from rest_framework.filters import BaseFilterBackend, OrderingFilter
+
+
+class RelatedIdFilter(NumberFilter):
+    """Filter a foreign key by integer id without enumerating the related table.
+
+    django-filter's auto-generated ``ModelChoiceFilter`` renders the browsable API's
+    filter form as a ``<select>`` with one option per row of the related table, which
+    times out on production-sized tables. A plain number input accepts the same
+    ``?<field>=<id>`` query parameter. The form field is an ``IntegerField`` rather than
+    ``NumberFilter``'s ``DecimalField`` so a fractional value is rejected with 400 instead
+    of being truncated to a different, valid id. See #1391 and
+    https://www.django-rest-framework.org/topics/browsable-api/#handling-choicefield-with-large-numbers-of-items
+    """
+
+    field_class = IntegerField
 
 
 class NullsLastOrderingFilter(OrderingFilter):
