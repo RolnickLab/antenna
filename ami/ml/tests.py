@@ -873,9 +873,10 @@ class TestPipeline(TestCase):
         from ami.ml.models import ProjectPipelineConfig
         from ami.ml.schemas import PipelineRequestConfigParameters
 
-        # Add config to the pipeline & project
-        self.pipeline.default_config = PipelineRequestConfigParameters({"test_param": "test_value"})
+        # Add config to the pipeline & project. Keys the schema does not declare are kept.
+        self.pipeline.default_config = PipelineRequestConfigParameters(test_param="test_value")
         self.pipeline.save()
+        self.pipeline.refresh_from_db()
         self.project_pipeline_config = ProjectPipelineConfig.objects.create(
             project=self.project,
             pipeline=self.pipeline,
@@ -885,27 +886,60 @@ class TestPipeline(TestCase):
 
         # Check the final config
         default_config = self.pipeline.get_config()
-        self.assertEqual(default_config["test_param"], "test_value")
+        self.assertEqual(default_config.dict()["test_param"], "test_value")
         final_config = self.pipeline.get_config(self.project.pk)
-        self.assertEqual(final_config["test_param"], "project_value")
+        self.assertEqual(final_config.dict()["test_param"], "project_value")
 
         # The project's overrides stay out of the pipeline default and out of the next call.
-        self.assertNotIn("project_value", self.pipeline.default_config.values())
-        self.assertEqual(self.pipeline.get_config()["test_param"], "test_value")
+        self.assertNotIn("project_value", self.pipeline.default_config.dict().values())
+        self.assertEqual(self.pipeline.get_config().dict()["test_param"], "test_value")
 
     def test_feature_vectors_are_requested_unless_a_config_opts_out(self):
         """Every request asks the service for classification feature vectors, since tracking and
         the merge picker compare detections by them; a project config can still turn them off."""
-        from ami.ml.models import ProjectPipelineConfig
+        from ami.ml.models import Pipeline, ProjectPipelineConfig
 
-        self.assertIs(self.pipeline.get_config()["include_features"], True)
-        self.assertIs(self.pipeline.get_config(self.project.pk)["include_features"], True)
+        self.assertIs(self.pipeline.get_config().include_features, True)
+        self.assertIs(self.pipeline.get_config(self.project.pk).include_features, True)
+        # A pipeline that was never given a config, saved or not, still asks for them.
+        self.assertIs(Pipeline(name="bare", slug="bare").get_config().include_features, True)
+        self.assertIs(Pipeline.objects.create(name="stored", slug="stored").get_config().include_features, True)
 
         ProjectPipelineConfig.objects.create(
             project=self.project, pipeline=self.pipeline, config={"include_features": False}
         )
-        self.assertIs(self.pipeline.get_config(self.project.pk)["include_features"], False)
-        self.assertIs(self.pipeline.get_config()["include_features"], True)
+        self.assertIs(self.pipeline.get_config(self.project.pk).include_features, False)
+        self.assertIs(self.pipeline.get_config().include_features, True)
+
+    def test_request_batch_size_comes_from_the_config_with_a_floor_of_one(self):
+        """The job splits its images by the configured batch size; the schema default is one image
+        per request and a size below one is rejected instead of producing empty batches."""
+        import pydantic
+
+        from ami.ml.models import ProjectPipelineConfig
+
+        self.assertEqual(self.pipeline.get_config().request_source_image_batch_size, 1)
+        project_config = ProjectPipelineConfig.objects.create(
+            project=self.project, pipeline=self.pipeline, config={"request_source_image_batch_size": 8}
+        )
+        self.assertEqual(self.pipeline.get_config(self.project.pk).request_source_image_batch_size, 8)
+
+        # The project config is a plain JSON field, so the check happens when the request config is built.
+        project_config.config = {"request_source_image_batch_size": 0}
+        project_config.save()
+        with self.assertRaises(pydantic.ValidationError):
+            self.pipeline.get_config(self.project.pk)
+
+    def test_request_config_is_sent_to_the_service_with_extra_keys(self):
+        """The processing service receives the resolved config, defaults and pass-through keys alike,
+        under the request's config key."""
+        from ami.ml.schemas import PipelineRequest
+
+        self.pipeline.default_config = {"auth_token": "abc123"}
+        request = PipelineRequest(pipeline=self.pipeline.slug, source_images=[], config=self.pipeline.get_config())
+        sent = request.dict()["config"]
+        self.assertEqual(sent["include_features"], True)
+        self.assertEqual(sent["auth_token"], "abc123")
 
     def test_image_with_null_detection(self):
         """
