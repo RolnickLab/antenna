@@ -86,11 +86,14 @@ class TestProcessingServiceAPI(APITestCase):
         self.assertEqual(resp.status_code, 204)
         return resp
 
-    def _register_pipelines(self, processing_service_id):
+    def _register_pipelines(self, processing_service_id, with_project_id=False):
+        """
+        Pins the frontend's call shape: usePopulateProcessingService.ts POSTs this
+        endpoint with no project_id. with_project_id=True exercises the other shape.
+        """
+        params = {"project_id": self.project.pk} if with_project_id else {}
         processing_services_register_pipelines_url = reverse_with_params(
-            "api:processingservice-register-pipelines",
-            args=[processing_service_id],
-            params={"project_id": self.project.pk},
+            "api:processingservice-register-pipelines", args=[processing_service_id], params=params
         )
         self.client.force_authenticate(user=self.user)
         resp = self.client.post(processing_services_register_pipelines_url)
@@ -114,6 +117,8 @@ class TestProcessingServiceAPI(APITestCase):
         self.assertIn(self.project, processing_service.projects.all())
 
     def test_processing_service_pipeline_registration(self):
+        """Pins the frontend's call shape: usePopulateProcessingService.ts POSTs register_pipelines
+        with no project_id, relying on the endpoint resolving the user-visible set instead."""
         # register a processing service
         response = self._create_processing_service(
             name="Processing Service Test",
@@ -127,6 +132,43 @@ class TestProcessingServiceAPI(APITestCase):
         pipelines_queryset = processing_service.pipelines.all()
 
         self.assertEqual(pipelines_queryset.count(), len(response["pipelines"]))
+
+    def test_processing_service_pipeline_registration_with_project_id(self):
+        """The other call shape: register_pipelines also works when project_id is supplied."""
+        response = self._create_processing_service(
+            name="Processing Service Test With Project", endpoint_url="http://processing_service:2000"
+        )
+        processing_service_id = response["id"]
+
+        response = self._register_pipelines(processing_service_id, with_project_id=True)
+        processing_service = ProcessingService.objects.get(pk=processing_service_id)
+
+        self.assertEqual(processing_service.pipelines.count(), len(response["pipelines"]))
+
+    def test_check_status_without_project_id(self):
+        """Pins the frontend's call shape: useTestProcessingServiceConnection.ts GETs status
+        with no project_id."""
+        service = ProcessingService.objects.create(name="Status Check Service", endpoint_url=None)
+        service.projects.add(self.project)
+        url = reverse_with_params("api:processingservice-status", args=[service.pk])
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_check_status_with_project_id(self):
+        """The other call shape: status also works when project_id is supplied."""
+        service = ProcessingService.objects.create(name="Status Check Service With Project", endpoint_url=None)
+        service.projects.add(self.project)
+        url = reverse_with_params(
+            "api:processingservice-status", args=[service.pk], params={"project_id": self.project.pk}
+        )
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(url)
+
+        self.assertEqual(response.status_code, 200)
 
     def test_create_processing_service_without_endpoint_url(self):
         """Test creating a ProcessingService without endpoint_url (pull mode)"""
@@ -276,6 +318,10 @@ class ProcessingServicePublicPermissionsTestCase(TestCase):
     def _register_url(self, service):
         return f"/api/v2/ml/processing_services/{service.pk}/register_pipelines/?project_id={self.project.pk}"
 
+    def _register_url_no_project(self, service):
+        """Pins the frontend's call shape: usePopulateProcessingService.ts POSTs with no project_id."""
+        return f"/api/v2/ml/processing_services/{service.pk}/register_pipelines/"
+
     # -- Update --
 
     def test_staff_can_update_scoped_service(self):
@@ -402,6 +448,17 @@ class ProcessingServicePublicPermissionsTestCase(TestCase):
         self.client.force_authenticate(self.member)
         response = self.client.post(self._register_url(self.scoped_service))
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_staff_cannot_register_pipelines_on_public_service_without_project_id(self):
+        """The platform-permission gate applies the same whether or not project_id is supplied."""
+        self.client.force_authenticate(self.staff)
+        response = self.client.post(self._register_url_no_project(self.public_service))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_public_manager_can_register_pipelines_on_public_service_without_project_id(self):
+        self.client.force_authenticate(self.public_manager)
+        response = self.client.post(self._register_url_no_project(self.public_service))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
 
 class ProcessingServiceIncludePublicParamTestCase(TestCase):
