@@ -2278,7 +2278,11 @@ class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):
         taxa_list_id = self.kwargs.get("taxalist_pk")
         project = self.get_active_project()
         try:
-            return TaxaList.objects.for_project(project, include_public=True).get(pk=taxa_list_id)
+            return (
+                TaxaList.objects.visible_for_user(self.request.user)
+                .for_project(project, include_public=True)
+                .get(pk=taxa_list_id)
+            )
         except TaxaList.DoesNotExist:
             raise api_exceptions.NotFound("Taxa list not found.") from None
 
