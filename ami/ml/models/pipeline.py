@@ -723,7 +723,7 @@ def get_or_create_taxon_for_classification(
     """
     taxa_list, created = TaxaList.objects.get_or_create_for_project(
         name=f"Taxa returned by {algorithm.name}",
-        project=None,  # Algorithm taxa lists are global
+        project=None,  # Algorithm taxa lists have no project and stay hidden, not public
     )
     if created:
         logger.info(f"Created new taxa list {taxa_list}")

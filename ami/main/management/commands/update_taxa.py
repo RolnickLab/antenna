@@ -127,11 +127,14 @@ class Command(BaseCommand):
         incoming_taxa = read_csv(fname)
 
         # Get or create taxa list if specified
-        # Uses get_or_create_for_project with project=None to create a global list
+        # Uses get_or_create_for_project with project=None to create a public list
+        # available to every project.
         taxalist = None
         if options["list"]:
             list_name = options["list"]
-            taxalist, created = TaxaList.objects.get_or_create_for_project(name=list_name, project=None)
+            taxalist, created = TaxaList.objects.get_or_create_for_project(
+                name=list_name, project=None, is_public=True
+            )
             if created:
                 self.stdout.write(self.style.SUCCESS(f"Created new taxa list '{list_name}'"))
             else:
