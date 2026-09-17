@@ -12,7 +12,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from ami.base.permissions import IsActiveStaffOrPublicManagerOrReadOnly, ProjectPipelineConfigPermission
-from ami.base.views import ProjectMixin
+from ami.base.views import ProjectMixin, get_active_project
 from ami.main.api.schemas import include_public_doc_param, project_id_doc_param
 from ami.main.api.views import DefaultViewSet
 from ami.main.models import Project, SourceImage
@@ -170,6 +170,15 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
     ordering_fields = ["id", "created_at", "updated_at"]
     permission_classes = [IsActiveStaffOrPublicManagerOrReadOnly]
     require_project = True
+
+    def get_active_project(self) -> Project | None:
+        """
+        project_id is optional for status/register_pipelines — the frontend calls both
+        without one — but stays required for every other action, as declared above.
+        """
+        if self.action in ("status", "register_pipelines"):
+            return get_active_project(request=self.request, kwargs=self.kwargs, required=False)
+        return super().get_active_project()
 
     def get_queryset(self) -> QuerySet:
         qs: QuerySet = super().get_queryset()
