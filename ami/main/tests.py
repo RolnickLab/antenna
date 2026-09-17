@@ -2158,6 +2158,86 @@ class TestProjectRequiredOnListEndpoints(APITestCase):
                 self.assertEqual(response.status_code, status.HTTP_200_OK, path)
 
 
+class TestProjectScopingOnListEndpoints(APITestCase):
+    """Every list endpoint that requires a project_id must also filter its results by it.
+
+    Requiring the parameter without applying it accepts the request but mixes in other
+    projects' rows and counts the whole table, which the status-code tests above cannot
+    see. Expected rows resolve through each model's ``get_project_accessor()``. See #1390.
+    """
+
+    def setUp(self) -> None:
+        self.project_a, deployment_a = setup_test_project(reuse=False)
+        self.project_b, deployment_b = setup_test_project(reuse=False)
+        for project, deployment in [
+            (self.project_a, deployment_a),
+            (self.project_b, deployment_b),
+        ]:
+            create_captures(deployment=deployment)
+            create_taxa(project=project)
+            create_occurrences(deployment=deployment, num=5)
+        self.user = User.objects.create_user(email="scopingtestuser@insectai.org", is_staff=True)  # type: ignore
+        self.client.force_authenticate(user=self.user)
+        return super().setUp()
+
+    def test_list_results_are_scoped_to_requested_project(self):
+        endpoints: list[tuple[str, type[models.Model]]] = [
+            ("/api/v2/captures/", SourceImage),
+            ("/api/v2/detections/", Detection),
+            ("/api/v2/occurrences/", Occurrence),
+            ("/api/v2/classifications/", Classification),
+        ]
+
+        for path, model in endpoints:
+            accessor = model.get_project_accessor()
+            assert accessor, f"{model.__name__} has no project accessor"
+            for project in [self.project_a, self.project_b]:
+                with self.subTest(path=path, project=project.pk):
+                    expected_ids = set(model.objects.filter(**{accessor: project}).values_list("id", flat=True))
+                    other_ids = set(model.objects.exclude(**{accessor: project}).values_list("id", flat=True))
+                    # Both projects must have rows, otherwise the scoping
+                    # assertions below would pass vacuously.
+                    self.assertTrue(expected_ids, f"No {model.__name__} rows in the requested project")
+                    self.assertTrue(other_ids, f"No {model.__name__} rows outside the requested project")
+
+                    response = self.client.get(f"{path}?project_id={project.pk}&limit=200")
+                    self.assertEqual(response.status_code, status.HTTP_200_OK, path)
+                    data = response.json()
+
+                    returned_ids = {result["id"] for result in data["results"]}
+                    leaked_ids = returned_ids & other_ids
+                    self.assertFalse(
+                        leaked_ids,
+                        f"{path} returned rows from other projects: {sorted(leaked_ids)}",
+                    )
+                    # Exact equality, not a subset: a subset check passes when the
+                    # response silently omits rows that belong to the project. The
+                    # fixtures are far smaller than the requested page size, so every
+                    # expected row must appear.
+                    self.assertSetEqual(returned_ids, expected_ids, path)
+                    self.assertEqual(
+                        data["count"],
+                        len(expected_ids),
+                        f"{path} count spans more than the requested project",
+                    )
+
+    def test_detail_route_rejects_a_project_it_does_not_belong_to(self):
+        """A detail request naming the wrong project returns 404 rather than the object.
+
+        Scoping lives in ``get_queryset()``, which every action reads, so it reaches detail
+        routes too, matching occurrences and classifications. See #1390.
+        """
+        detection = Detection.objects.filter(source_image__project=self.project_a).first()
+        assert detection, "fixture produced no detections in the first project"
+
+        same_project = self.client.get(f"/api/v2/detections/{detection.pk}/?project_id={self.project_a.pk}")
+        self.assertEqual(same_project.status_code, status.HTTP_200_OK)
+        self.assertEqual(same_project.json()["id"], detection.pk)
+
+        other_project = self.client.get(f"/api/v2/detections/{detection.pk}/?project_id={self.project_b.pk}")
+        self.assertEqual(other_project.status_code, status.HTTP_404_NOT_FOUND)
+
+
 class TestCapturesProcessedFilter(APITestCase):
     """
     The captures list distinguishes two related filters:
@@ -4299,6 +4379,44 @@ class TestTaxonListQueryCount(APITestCase):
         print(f"\n[AUDIT] Taxon list: limit=5 -> {small}q, limit=25 -> {large}q")
         self.assertLessEqual(large, small + 5, f"Taxon list scaling: {small} -> {large} (likely N+1)")
 
+    def _list_query_count_with_examples(self, limit: int) -> int:
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/v2/taxa/?project_id={self.project.pk}&limit={limit}&with_example_occurrences=true"
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return len(ctx.captured_queries)
+
+    def test_example_hydration_does_not_scale_with_page_size(self):
+        # Hydrating the example thumbnails must be one batched query for the whole page,
+        # not one per row — the query count must not grow with page size (#1320).
+        small = self._list_query_count_with_examples(limit=5)
+        large = self._list_query_count_with_examples(limit=25)
+        print(f"\n[AUDIT] Taxon list w/ examples: limit=5 -> {small}q, limit=25 -> {large}q")
+        self.assertLessEqual(large, small + 5, f"Example hydration scaling: {small} -> {large} (likely N+1)")
+
+    def test_example_subqueries_stripped_from_pagination_count(self):
+        # The pagination COUNT must not carry the example correlated subqueries — in
+        # particular the best-unverified NOT EXISTS anti-join over main_identification —
+        # or the COUNT would evaluate them for every taxon in the project, not just the
+        # page (TagInverseFilter's .distinct() would otherwise pull them in). See
+        # TaxonPagination.get_count.
+        from django.core.cache import caches
+        from django.test.utils import CaptureQueriesContext
+
+        url = f"/api/v2/taxa/?project_id={self.project.pk}&limit=5&with_example_occurrences=true"
+        caches["default"].clear()
+        with CaptureQueriesContext(connection) as ctx:
+            res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        count_sqls = [q["sql"] for q in ctx.captured_queries if q["sql"].lower().startswith("select count(")]
+        self.assertTrue(count_sqls, "expected a pagination COUNT query")
+        for sql in count_sqls:
+            self.assertNotIn("main_identification", sql.lower(), "example subqueries leaked into the COUNT")
+
 
 class TestProjectDefaultTaxaFilter(APITestCase):
     """
@@ -6020,6 +6138,28 @@ class TestModelAgreementForProject(APITestCase):
         # 1 exact agreement out of 1 comparable → 100%, not 50%.
         self.assertEqual(result["agreed_exact_count"], 1)
         self.assertAlmostEqual(result["agreed_exact_pct"], 1.0)
+        self.assertAlmostEqual(result["agreed_any_rank_pct"], 1.0)
+
+    def test_confidence_intervals_null_when_nothing_is_comparable(self):
+        """Wilson bounds are null once nothing is comparable, even though every
+        verified occurrence here carries a machine prediction.
+
+        comparable_count falls below verified_with_prediction_count whenever a
+        verification has no taxon, and the intervals key off the former.
+        """
+        from ami.main.models_future.occurrence import model_agreement_for_project
+
+        occurrences = list(Occurrence.objects.filter(project=self.project).order_by("pk"))
+        for occurrence in occurrences[:2]:
+            Identification.objects.create(user=self.user, occurrence=occurrence, taxon=None)
+
+        result = model_agreement_for_project(Occurrence.objects.filter(project=self.project))
+        self.assertEqual(result["verified_with_prediction_count"], 2)
+        self.assertEqual(result["comparable_count"], 0)
+        self.assertIsNone(result["agreed_exact_ci_low"])
+        self.assertIsNone(result["agreed_exact_ci_high"])
+        self.assertIsNone(result["agreed_any_rank_ci_low"])
+        self.assertIsNone(result["agreed_any_rank_ci_high"])
 
 
 class TestOccurrenceStatsViewSet(APITestCase):
@@ -6318,8 +6458,8 @@ class TestTaxaVerification(APITestCase):
         self.itea_occ = Occurrence.objects.get(project=self.project, determination=self.itea)
         self.list_url = f"/api/v2/taxa/?project_id={self.project.pk}&limit=1000"
 
-    def _detail(self, taxon):
-        res = self.client.get(f"/api/v2/taxa/{taxon.pk}/?project_id={self.project.pk}")
+    def _detail(self, taxon, params=""):
+        res = self.client.get(f"/api/v2/taxa/{taxon.pk}/?project_id={self.project.pk}{params}")
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         return res.json()
 
@@ -6351,6 +6491,10 @@ class TestTaxaVerification(APITestCase):
 
     # --- training_crops_ready (verified crops, no rollup) ---
 
+    def test_training_crops_ready_is_null_unless_asked_for(self):
+        """Counting is opt-in, and a zero would read as a species with nothing to train on."""
+        self.assertIsNone(self._detail(self.cardui)["training_crops_ready"])
+
     def test_training_crops_ready_counts_crops_not_occurrences(self):
         """A second frame of the same insect is a second crop a head can be fit on."""
         first_detection = self.occ_pred.detections.first()
@@ -6363,17 +6507,18 @@ class TestTaxaVerification(APITestCase):
             path="detections/second_frame.jpg",
         )
 
-        detail = self._detail(self.cardui)
+        detail = self._detail(self.cardui, "&with_training_crop_counts=true")
         self.assertEqual(detail["verified_count"], 2)
         self.assertEqual(detail["training_crops_ready"], 3)
 
     def test_training_crops_ready_does_not_roll_up_to_ancestors(self):
         """A head is fit on the label itself, so species crops are not genus training data."""
         for ancestor in (self.genus, self.family, self.order):
-            self.assertEqual(self._detail(ancestor)["training_crops_ready"], 0, ancestor.name)
+            row = self._detail(ancestor, "&with_training_crop_counts=true")
+            self.assertEqual(row["training_crops_ready"], 0, ancestor.name)
 
     def test_training_crops_ready_in_list(self):
-        rows = self._list_by_name()
+        rows = self._list_by_name(self.list_url + "&with_training_crop_counts=true")
         self.assertEqual(rows["Vanessa cardui"]["training_crops_ready"], 2)
         self.assertEqual(rows["Vanessa atalanta"]["training_crops_ready"], 1)
         self.assertEqual(rows["Vanessa itea"]["training_crops_ready"], 0)
@@ -6387,7 +6532,9 @@ class TestTaxaVerification(APITestCase):
             # Cold cache on both runs, or a warm one hides the scaling.
             caches["default"].clear()
             with CaptureQueriesContext(connection) as ctx:
-                res = self.client.get(f"/api/v2/taxa/?project_id={self.project.pk}&limit={limit}")
+                res = self.client.get(
+                    f"/api/v2/taxa/?project_id={self.project.pk}&limit={limit}&with_training_crop_counts=true"
+                )
             self.assertEqual(res.status_code, status.HTTP_200_OK)
             return len(ctx.captured_queries)
 
@@ -6445,6 +6592,324 @@ class TestTaxaVerification(APITestCase):
         rows = self._list_by_name(f"{self.list_url}&collection={collection.pk}")
         # 2 verified cardui occurrences, not 3 — the duplicate detection must not double-count.
         self.assertEqual(rows["Vanessa cardui"]["verified_count"], 2)
+
+
+class TestTaxaExampleOccurrence(APITestCase):
+    """Presence-verification Example column (#1320).
+
+    The taxa list can surface, per taxon, one example occurrence to verify (hybrid:
+    best-scoring *unverified* for unverified rows, latest for verified rows) plus the
+    source-occurrence ids behind the Last-seen / Best-score cells. The whole feature is
+    gated behind ``?with_example_occurrences=true`` so the default list keeps its latency
+    budget on the ``?collection=`` (detections-join) path.
+
+    The fixture deliberately decouples score from recency: each test taxon has an
+    early high-scoring occurrence and a late low-scoring one, so "best-scoring" and
+    "latest" resolve to different occurrences and the hybrid dispatch is genuinely pinned.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(self.project)
+        self.genus = Taxon.objects.get(name="Vanessa")
+        self.cardui = Taxon.objects.get(name="Vanessa cardui")
+        self.itea = Taxon.objects.get(name="Vanessa itea")
+
+        # Don't let the default score threshold drop the low-scoring occurrences.
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=3)
+        self.images = list(SourceImage.objects.filter(deployment=self.deployment).order_by("timestamp"))
+        self.assertGreaterEqual(len(self.images), 3)
+
+        self.user = User.objects.create_user(email="verifier1320@insectai.org", is_staff=True, is_superuser=True)
+        self.client.force_authenticate(user=self.user)
+
+        # cardui: a VERIFIED taxon whose latest occurrence is NOT its best-scoring one.
+        # Verifying an occurrence overrides its ML determination_score, so we keep the
+        # early/late occurrences unverified (to preserve distinct scores) and mark the
+        # taxon verified via a separate middle occurrence. The example must then resolve
+        # to "latest" (cardui_late_low), not "best-scoring-unverified" (cardui_early_high).
+        self.cardui_early_high = self._make_occurrence(self.cardui, self.images[0], score=0.95)
+        self.cardui_late_low = self._make_occurrence(self.cardui, self.images[2], score=0.70)
+        self.cardui_verified = self._make_occurrence(self.cardui, self.images[1], score=0.80)
+        Identification.objects.create(occurrence=self.cardui_verified, taxon=self.cardui, user=self.user)
+
+        # itea: an UNVERIFIED taxon whose best-scoring occurrence differs from its latest
+        # one, so the example must resolve to "best-scoring unverified", not "latest".
+        self.itea_high_early = self._make_occurrence(self.itea, self.images[0], score=0.95)
+        self.itea_low_late = self._make_occurrence(self.itea, self.images[2], score=0.70)
+
+        self.base_url = f"/api/v2/taxa/?project_id={self.project.pk}&limit=1000"
+
+    def _make_occurrence(self, taxon, source_image, score) -> Occurrence:
+        """Create one occurrence for ``taxon`` on ``source_image`` (which fixes its
+        timestamp) with the given determination score, so score and recency vary
+        independently."""
+        detection = Detection.objects.create(
+            source_image=source_image,
+            timestamp=source_image.timestamp,
+            bbox=[0.1, 0.1, 0.2, 0.2],
+            path=f"detections/ex_{taxon.pk}_{int(score * 100)}.jpg",
+        )
+        detection.classifications.create(taxon=taxon, score=score, timestamp=datetime.datetime.now())
+        return detection.associate_new_occurrence()
+
+    def _rows(self, url):
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_200_OK, res.content)
+        return {row["name"]: row for row in res.json()["results"]}
+
+    def test_fields_null_without_flag(self):
+        # Default list omits the (potentially expensive) selection — the fields are null.
+        itea = self._rows(self.base_url)["Vanessa itea"]
+        self.assertIsNone(itea["example_occurrence"])
+        self.assertIsNone(itea["best_scoring_occurrence_id"])
+        self.assertIsNone(itea["last_detected_occurrence_id"])
+
+    def test_unverified_row_returns_best_scoring_unverified(self):
+        # Unverified row -> the best-scoring occurrence (fastest clean ID), NOT the latest.
+        row = self._rows(self.base_url + "&with_example_occurrences=true")["Vanessa itea"]
+        example = row["example_occurrence"]
+        self.assertEqual(example["id"], self.itea_high_early.id)
+        self.assertFalse(example["verified"])
+        self.assertAlmostEqual(example["score"], 0.95, places=5)
+        # The nested shape the frontend renders the thumbnail + deep-link from.
+        self.assertEqual(set(example), {"id", "detection_id", "image_url", "score", "verified"})
+        # Pin the dispatch: the example is best-scoring, distinct from the latest occurrence.
+        self.assertEqual(row["best_scoring_occurrence_id"], self.itea_high_early.id)
+        self.assertEqual(row["last_detected_occurrence_id"], self.itea_low_late.id)
+        self.assertNotEqual(example["id"], row["last_detected_occurrence_id"])
+
+    def test_null_score_occurrence_is_never_the_best_example(self):
+        """A NULL determination_score sorts after real scores (Postgres puts NULLs first under
+        DESC), so ``?apply_defaults=false``, which stops filtering NULLs out, still picks the
+        highest real score."""
+        unscored = self._make_occurrence(self.itea, self.images[1], score=0.50)
+        Occurrence.objects.filter(pk=unscored.pk).update(determination_score=None)
+        row = self._rows(self.base_url + "&with_example_occurrences=true&apply_defaults=false")["Vanessa itea"]
+        self.assertEqual(row["best_scoring_occurrence_id"], self.itea_high_early.id)
+        self.assertEqual(row["example_occurrence"]["id"], self.itea_high_early.id)
+
+    def test_unclassified_detection_is_never_the_best_detection(self):
+        """A detection with no classification sorts after classified ones (Postgres puts its
+        NULL score first under DESC), so the example's detection id and image stay the
+        highest-scoring detection."""
+        occurrence = self.itea_high_early
+        scored = occurrence.detections.get()
+        unclassified = Detection.objects.create(
+            source_image=scored.source_image,
+            timestamp=scored.timestamp,
+            bbox=[0.3, 0.3, 0.4, 0.4],
+            path="detections/ex_unclassified.jpg",
+            occurrence=occurrence,
+        )
+        self.assertGreater(unclassified.pk, scored.pk)
+        row = self._rows(self.base_url + "&with_example_occurrences=true")["Vanessa itea"]
+        self.assertEqual(row["example_occurrence"]["detection_id"], scored.pk)
+        self.assertNotIn("ex_unclassified", row["example_occurrence"]["image_url"])
+
+    def test_verified_row_returns_latest(self):
+        # Verified row -> the latest occurrence (is it still showing up?), NOT the
+        # best-scoring-unverified one that an unverified row would surface.
+        row = self._rows(self.base_url + "&with_example_occurrences=true")["Vanessa cardui"]
+        example = row["example_occurrence"]
+        self.assertEqual(example["id"], self.cardui_late_low.id)  # latest by timestamp
+        self.assertNotEqual(example["id"], self.cardui_early_high.id)  # the best-scoring-unverified pick
+        self.assertEqual(row["last_detected_occurrence_id"], self.cardui_late_low.id)
+
+    def test_verified_false_filter_with_examples(self):
+        rows = self._rows(self.base_url + "&verified=false&with_example_occurrences=true")
+        self.assertIn("Vanessa itea", rows)
+        self.assertNotIn("Vanessa cardui", rows)
+        self.assertEqual(rows["Vanessa itea"]["example_occurrence"]["id"], self.itea_high_early.id)
+
+    def test_deployment_filter_scopes_example(self):
+        # A second deployment holds the globally highest-scoring cardui occurrence. When
+        # filtering by the original deployment, the example and both source ids must stay
+        # within that deployment (the subqueries honor occurrence_filters).
+        other_deployment = Deployment.objects.create(project=self.project, name="Other Station 1320")
+        create_captures(deployment=other_deployment, num_nights=1, images_per_night=1)
+        other_image = SourceImage.objects.filter(deployment=other_deployment).first()
+        other = self._make_occurrence(self.cardui, other_image, score=0.99)  # highest score overall
+        Identification.objects.create(occurrence=other, taxon=self.cardui, user=self.user)
+
+        url = f"{self.base_url}&deployment={self.deployment.pk}&with_example_occurrences=true"
+        row = self._rows(url)["Vanessa cardui"]
+        dep1_ids = {self.cardui_early_high.id, self.cardui_late_low.id, self.cardui_verified.id}
+        self.assertIn(row["example_occurrence"]["id"], dep1_ids)
+        self.assertIn(row["best_scoring_occurrence_id"], dep1_ids)
+        self.assertIn(row["last_detected_occurrence_id"], dep1_ids)
+        # The out-of-scope, higher-scoring occurrence must not leak in.
+        self.assertNotEqual(row["best_scoring_occurrence_id"], other.id)
+
+    def test_higher_rank_row_has_no_example(self):
+        # example / best-scoring / last-detected are exact-determination; only verified_count
+        # rolls up to ancestors. A genus row is verified via rollup but has no direct-
+        # determination occurrence, so its example resolves to NULL.
+        url = f"{self.base_url}&include_unobserved=true&with_example_occurrences=true"
+        row = self._rows(url)["Vanessa"]
+        self.assertGreater(row["verified_count"], 0)  # rolled up from cardui
+        self.assertIsNone(row["example_occurrence"])
+        self.assertIsNone(row["best_scoring_occurrence_id"])
+        self.assertIsNone(row["last_detected_occurrence_id"])
+
+    def test_collection_path_example_deduped_and_correct(self):
+        # ?collection= joins detections (fan-out). Give the best-scoring itea occurrence a
+        # second detection; the example must still be that single occurrence, correctly
+        # selected through the double detections join and not inflated to a wrong row.
+        Detection.objects.create(
+            source_image=self.itea_high_early.best_detection.source_image,
+            occurrence=self.itea_high_early,
+            timestamp=self.itea_high_early.best_detection.timestamp,
+            bbox=[0.5, 0.5, 0.6, 0.6],
+            path="detections/itea_dup_1320.jpg",
+        )
+        collection = SourceImageCollection.objects.create(project=self.project, name="ex-1320")
+        collection.images.set(SourceImage.objects.filter(deployment=self.deployment))
+        row = self._rows(f"{self.base_url}&collection={collection.pk}&with_example_occurrences=true")["Vanessa itea"]
+        self.assertEqual(row["example_occurrence"]["id"], self.itea_high_early.id)
+        self.assertEqual(row["best_scoring_occurrence_id"], self.itea_high_early.id)
+        self.assertEqual(row["last_detected_occurrence_id"], self.itea_low_late.id)
+        # The example is drawn from the same collection-scoped set the count reports: itea has
+        # exactly its two occurrences here, and the extra detection must not inflate that count.
+        # This pins example/count consistency on the aggregation (collection) path, which uses
+        # a different SQL shape (GROUP BY) than the default correlated-subquery path.
+        self.assertEqual(row["occurrences_count"], 2)
+
+    def test_higher_rank_with_direct_determination_has_example(self):
+        # A higher-rank taxon that is *itself* used for identifications (occurrences
+        # determined directly to the genus, not rolled up from a species) does get an
+        # example. Exact-determination selection applies at every rank; only pure roll-up
+        # ancestors with no direct occurrence resolve to NULL (see the test above).
+        genus_direct = self._make_occurrence(self.genus, self.images[1], score=0.88)
+        row = self._rows(self.base_url + "&with_example_occurrences=true")["Vanessa"]
+        self.assertEqual(row["example_occurrence"]["id"], genus_direct.id)
+        self.assertEqual(row["best_scoring_occurrence_id"], genus_direct.id)
+        self.assertEqual(row["last_detected_occurrence_id"], genus_direct.id)
+
+    def test_draft_project_examples_hidden_from_non_members(self):
+        # Example occurrences expose occurrence ids and detection crop URLs, so on a draft
+        # project they must not reach a non-member. A project member still sees them.
+        self.project.draft = True
+        self.project.save()
+        member = User.objects.create_user(email="member1320@insectai.org")
+        self.project.members.add(member)
+        stranger = User.objects.create_user(email="stranger1320@insectai.org")
+
+        url = self.base_url + "&with_example_occurrences=true"
+
+        self.client.force_authenticate(user=member)
+        member_rows = self._rows(url)
+        self.assertIn("Vanessa itea", member_rows)
+        self.assertIsNotNone(member_rows["Vanessa itea"]["example_occurrence"])
+
+        # A non-member is refused the draft project outright (same 404 the other
+        # project-scoped taxa endpoints return), so no counts, ids or crop URLs leak.
+        self.client.force_authenticate(user=stranger)
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND, res.content)
+
+    def test_bad_flag_returns_400(self):
+        res = self.client.get(self.base_url + "&with_example_occurrences=notabool")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class TestDeviceAndSiteFilters(APITestCase):
+    """Filtering occurrences and taxa by the deployment's device and research site.
+
+    A deployment records both a ``device`` (the camera/hardware configuration) and a
+    ``research_site``. Users can scope the occurrence and taxa lists to one device or
+    one site so they can, for example, build a presence matrix per site. These tests
+    pin that the occurrence list filters exactly to the chosen device/site, that the
+    taxa list restricts membership the same way (not just its annotated counts), and
+    that an unknown or foreign-project device/site id is rejected with a 404 on the taxa
+    endpoint.
+    """
+
+    def setUp(self):
+        self.project, self.deployment_a = setup_test_project(reuse=False)
+        create_taxa(self.project)
+        self.cardui = Taxon.objects.get(name="Vanessa cardui")
+        self.atalanta = Taxon.objects.get(name="Vanessa atalanta")
+
+        # Two devices and two sites, each pinned to its own deployment.
+        self.device_a = Device.objects.create(name="Device A", project=self.project)
+        self.device_b = Device.objects.create(name="Device B", project=self.project)
+        self.site_a = Site.objects.create(name="Site A", project=self.project)
+        self.site_b = Site.objects.create(name="Site B", project=self.project)
+
+        self.deployment_a.device = self.device_a
+        self.deployment_a.research_site = self.site_a
+        self.deployment_a.save()
+        self.deployment_b = Deployment.objects.create(
+            name="Deployment B",
+            project=self.project,
+            device=self.device_b,
+            research_site=self.site_b,
+        )
+
+        # Deployment A only sees cardui; deployment B only sees atalanta. This lets the
+        # device/site filter be checked by both the occurrence count and the taxa membership.
+        create_captures(deployment=self.deployment_a, num_nights=1, images_per_night=2)
+        create_captures(deployment=self.deployment_b, num_nights=1, images_per_night=2)
+        create_occurrences(deployment=self.deployment_a, num=3, taxon=self.cardui, determination_score=0.9)
+        create_occurrences(deployment=self.deployment_b, num=2, taxon=self.atalanta, determination_score=0.9)
+
+    def _occurrence_count(self, **params):
+        query = "&".join(f"{k}={v}" for k, v in params.items())
+        res = self.client.get(f"/api/v2/occurrences/?project_id={self.project.pk}&{query}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return res.json()["count"]
+
+    def _taxa_names(self, **params):
+        query = "&".join(f"{k}={v}" for k, v in params.items())
+        res = self.client.get(f"/api/v2/taxa/?project_id={self.project.pk}&limit=1000&{query}")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        return {row["name"] for row in res.json()["results"]}
+
+    def test_occurrences_filtered_by_device(self):
+        self.assertEqual(self._occurrence_count(), 5)
+        self.assertEqual(self._occurrence_count(deployment__device=self.device_a.pk), 3)
+        self.assertEqual(self._occurrence_count(deployment__device=self.device_b.pk), 2)
+
+    def test_occurrences_filtered_by_site(self):
+        self.assertEqual(self._occurrence_count(deployment__research_site=self.site_a.pk), 3)
+        self.assertEqual(self._occurrence_count(deployment__research_site=self.site_b.pk), 2)
+
+    def test_taxa_membership_restricted_by_device(self):
+        # The taxa list must drop to only the taxa observed on the chosen device, not
+        # merely re-scope the counts of the full taxa set.
+        self.assertEqual(self._taxa_names(deployment__device=self.device_a.pk), {"Vanessa cardui"})
+        self.assertEqual(self._taxa_names(deployment__device=self.device_b.pk), {"Vanessa atalanta"})
+
+    def test_taxa_membership_restricted_by_site(self):
+        self.assertEqual(self._taxa_names(deployment__research_site=self.site_a.pk), {"Vanessa cardui"})
+        self.assertEqual(self._taxa_names(deployment__research_site=self.site_b.pk), {"Vanessa atalanta"})
+
+    def test_unknown_device_or_site_returns_404_on_taxa(self):
+        for param in ("deployment__device", "deployment__research_site"):
+            res = self.client.get(f"/api/v2/taxa/?project_id={self.project.pk}&{param}=999999")
+            self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND, param)
+
+    def test_other_projects_device_or_site_returns_404_on_taxa(self):
+        """A foreign project's id is rejected like an unknown one, not answered with an empty list."""
+        other_project, _ = setup_test_project(reuse=False)
+        other_device = Device.objects.create(name="Other device", project=other_project)
+        other_site = Site.objects.create(name="Other site", project=other_project)
+        for param, obj in (("deployment__device", other_device), ("deployment__research_site", other_site)):
+            res = self.client.get(f"/api/v2/taxa/?project_id={self.project.pk}&{param}={obj.pk}")
+            self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND, param)
+
+    def test_non_integer_id_returns_400_not_500(self):
+        # A malformed id must be a client error on both endpoints, not an unhandled 500.
+        # The taxa view validates the id before the existence lookup; the occurrence view
+        # gets the same 400 from django-filter. Both must agree.
+        for endpoint in ("taxa", "occurrences"):
+            for param in ("deployment__device", "deployment__research_site"):
+                res = self.client.get(f"/api/v2/{endpoint}/?project_id={self.project.pk}&{param}=abc")
+                self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST, f"{endpoint}?{param}=abc")
 
 
 class TestDetectionNullMarker(TestCase):
@@ -7698,3 +8163,178 @@ class TestBulkIdentificationQueryCount(BulkIdentificationTestCase):
             f"({queries_small} queries for {small} items, {queries_large} for {large}). "
             f"A jump here usually means something started querying per item.",
         )
+
+
+class TestHugeTableFilterParams(APITestCase):
+    """Pin the query-parameter contract for ``RelatedIdFilter`` params on huge related tables.
+
+    Each param in ``ENDPOINT_PARAMS`` must filter by id exactly as the auto-generated
+    ``ModelChoiceFilter`` did. One deliberate difference: an id with no matching row
+    returns an empty page instead of a validation error, because a plain number filter
+    does not check that the id exists. Non-integer values are still rejected.
+    """
+
+    ENDPOINT_PARAMS = [
+        ("/api/v2/detections/", "source_image"),
+        ("/api/v2/occurrences/", "detections__source_image"),
+        ("/api/v2/classifications/", "taxon"),
+        ("/api/v2/taxa/", "parent"),
+        ("/api/v2/identifications/", "occurrence"),
+        ("/api/v2/identifications/", "taxon"),
+    ]
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=10)
+        taxa = list(Taxon.objects.filter(projects=self.project)[:2])
+        assert len(taxa) == 2
+        self.taxon_a, self.taxon_b = taxa
+        create_occurrences(deployment=self.deployment, num=4, taxon=self.taxon_a)
+        create_occurrences(deployment=self.deployment, num=4, taxon=self.taxon_b)
+
+        # Let every occurrence through the project's default score filters so
+        # the ORM mirrors below match the list endpoints row for row.
+        self.project.default_filters_score_threshold = 0.0
+        self.project.save()
+
+        self.user = User.objects.create_user(  # type: ignore
+            email="hugetablefilters@insectai.org",
+            is_staff=True,
+            is_superuser=True,
+        )
+        self.client.force_authenticate(user=self.user)
+
+        self.capture = SourceImage.objects.filter(deployment=self.deployment, detections__isnull=False).first()
+        assert self.capture is not None
+
+        occurrences = list(Occurrence.objects.filter(project=self.project)[:2])
+        assert len(occurrences) == 2
+        self.identification_a = Identification.objects.create(
+            user=self.user, occurrence=occurrences[0], taxon=self.taxon_a
+        )
+        self.identification_b = Identification.objects.create(
+            user=self.user, occurrence=occurrences[1], taxon=self.taxon_b
+        )
+
+    def _get_ids(self, path: str, params: dict) -> set[int]:
+        query = "&".join(f"{key}={value}" for key, value in params.items())
+        response = self.client.get(f"{path}?{query}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return {row["id"] for row in response.json()["results"]}
+
+    def _assert_filters_by_id(self, path: str, param: str, value: int, expected_pks: set[int]):
+        """The filtered page must equal the unfiltered page restricted to expected_pks."""
+        base_params = {"project_id": self.project.pk, "limit": 200}
+        unfiltered = self._get_ids(path, base_params)
+        filtered = self._get_ids(path, {**base_params, param: value})
+        self.assertEqual(filtered, unfiltered & expected_pks)
+        # Guard against a filter that silently stops restricting anything.
+        self.assertTrue(filtered)
+        self.assertLess(len(filtered), len(unfiltered))
+
+    def test_detections_filter_by_source_image(self):
+        expected = set(Detection.objects.filter(source_image=self.capture).values_list("pk", flat=True))
+        self._assert_filters_by_id("/api/v2/detections/", "source_image", self.capture.pk, expected)
+
+    def test_occurrences_filter_by_source_image(self):
+        expected = set(Occurrence.objects.filter(detections__source_image=self.capture).values_list("pk", flat=True))
+        self._assert_filters_by_id("/api/v2/occurrences/", "detections__source_image", self.capture.pk, expected)
+
+    def test_classifications_filter_by_taxon(self):
+        expected = set(Classification.objects.filter(taxon=self.taxon_a).values_list("pk", flat=True))
+        self._assert_filters_by_id("/api/v2/classifications/", "taxon", self.taxon_a.pk, expected)
+
+    def test_taxa_filter_by_parent(self):
+        parent = Taxon.objects.filter(direct_children__isnull=False).first()
+        assert parent is not None
+        expected = set(Taxon.objects.filter(parent=parent).values_list("pk", flat=True))
+        self._assert_filters_by_id("/api/v2/taxa/", "parent", parent.pk, expected)
+
+    def test_identifications_filter_by_occurrence(self):
+        expected = {self.identification_a.pk}
+        self._assert_filters_by_id(
+            "/api/v2/identifications/", "occurrence", self.identification_a.occurrence.pk, expected
+        )
+
+    def test_identifications_filter_by_taxon(self):
+        expected = {self.identification_a.pk}
+        self._assert_filters_by_id("/api/v2/identifications/", "taxon", self.taxon_a.pk, expected)
+
+    def test_unknown_id_returns_empty_page(self):
+        """A well-formed id that matches nothing filters everything out rather than erroring."""
+        for path, param in self.ENDPOINT_PARAMS:
+            with self.subTest(path=path, param=param):
+                ids = self._get_ids(path, {"project_id": self.project.pk, "limit": 200, param: 99999999})
+                self.assertEqual(ids, set())
+
+    def test_non_numeric_id_is_rejected(self):
+        for path, param in self.ENDPOINT_PARAMS:
+            with self.subTest(path=path, param=param):
+                response = self.client.get(f"{path}?project_id={self.project.pk}&{param}=abc")
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_fractional_id_is_rejected(self):
+        """``?taxon=1.5`` must 400 rather than be truncated to id 1 and filter by the wrong row."""
+        for path, param in self.ENDPOINT_PARAMS:
+            with self.subTest(path=path, param=param):
+                response = self.client.get(f"{path}?project_id={self.project.pk}&{param}=1.5")
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_out_of_range_id_returns_empty_page(self):
+        """An id wider than a bigint is an unknown id, not a server error: Postgres compares
+        it as numeric and matches nothing."""
+        for path, param in self.ENDPOINT_PARAMS:
+            with self.subTest(path=path, param=param):
+                ids = self._get_ids(path, {"project_id": self.project.pk, "limit": 200, param: "9" * 20})
+                self.assertEqual(ids, set())
+
+
+class TestBrowsableApiFilterFormsStayLightweight(APITestCase):
+    """The browsable API's filter form must not enumerate huge related tables.
+
+    For each list endpoint whose filterset touches the source image or taxon
+    tables, the HTML page must render those filters as number inputs. A
+    ``<select>`` for one of these fields means django-filter regenerated a
+    ``ModelChoiceFilter``, which builds an option per row of the related table
+    and times out against production-sized tables.
+    """
+
+    def setUp(self):
+        self.project, self.deployment = setup_test_project(reuse=False)
+        create_taxa(self.project)
+        create_captures(deployment=self.deployment, num_nights=1, images_per_night=3)
+        create_occurrences(deployment=self.deployment, num=3)
+        # A regular authenticated user sees the page but gets no create forms,
+        # so the only form fields on the page belong to the filter form.
+        self.user = User.objects.create_user(email="browsableforms@insectai.org")  # type: ignore
+        self.client.force_authenticate(user=self.user)
+
+    def _get_html(self, path: str) -> str:
+        response = self.client.get(f"{path}?project_id={self.project.pk}", headers={"accept": "text/html"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.content.decode()
+
+    def _assert_number_input(self, html: str, field_name: str):
+        self.assertNotIn(f'<select name="{field_name}"', html)
+        self.assertIn(f'<input type="number" name="{field_name}"', html)
+
+    def test_detections_browsable_page(self):
+        self._assert_number_input(self._get_html("/api/v2/detections/"), "source_image")
+
+    def test_occurrences_browsable_page(self):
+        self._assert_number_input(self._get_html("/api/v2/occurrences/"), "detections__source_image")
+
+    def test_classifications_browsable_page(self):
+        self._assert_number_input(self._get_html("/api/v2/classifications/"), "taxon")
+
+    def test_taxa_browsable_page(self):
+        self._assert_number_input(self._get_html("/api/v2/taxa/"), "parent")
+
+    def test_identifications_browsable_page(self):
+        # Unauthenticated so no create form is rendered; the identification
+        # create form would itself contain selects for these field names.
+        self.client.force_authenticate(user=None)
+        html = self._get_html("/api/v2/identifications/")
+        self._assert_number_input(html, "occurrence")
+        self._assert_number_input(html, "taxon")
