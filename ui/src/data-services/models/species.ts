@@ -119,6 +119,10 @@ export class Species extends Taxon {
     return this._species.occurrences_count ?? 0
   }
 
+  get numTrainingCrops(): number | undefined {
+    return this._species.training_crops_ready ?? undefined
+  }
+
   get numVerified(): number {
     return this._species.verified_count ?? 0
   }

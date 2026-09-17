@@ -3,6 +3,25 @@ import { Entity } from './entity'
 
 export type ServerAlgorithm = any // TODO: Update this type
 
+export interface ServerAlgorithmEvaluation {
+  id: number
+  occurrence_set: { id: number; name: string }
+  accuracy: number | null
+  accuracy_by_species: number | null
+  occurrences_scored: number
+  occurrences_skipped: number
+  species_scored: number
+  created_at: string
+}
+
+export interface AlgorithmEvaluation {
+  id: string
+  occurrenceSetName: string
+  accuracy?: number
+  accuracyBySpecies?: number
+  occurrencesScored: number
+}
+
 export class Algorithm extends Entity {
   protected readonly _algorithm: ServerAlgorithm
 
@@ -42,5 +61,21 @@ export class Algorithm extends Entity {
     return this._algorithm.category_count
       ? this._algorithm.category_count
       : undefined
+  }
+
+  get trainable(): boolean {
+    return this._algorithm.trainable ?? false
+  }
+
+  get evaluations(): AlgorithmEvaluation[] {
+    const rows: ServerAlgorithmEvaluation[] = this._algorithm.evaluations ?? []
+
+    return rows.map((row) => ({
+      id: `${row.id}`,
+      occurrenceSetName: row.occurrence_set.name,
+      accuracy: row.accuracy ?? undefined,
+      accuracyBySpecies: row.accuracy_by_species ?? undefined,
+      occurrencesScored: row.occurrences_scored,
+    }))
   }
 }
