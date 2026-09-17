@@ -4729,16 +4729,19 @@ class Taxon(BaseModel):
 
 class TaxaListQuerySet(BaseQuerySet):
     def get_or_create_for_project(
-        self, name: str, project: "Project | None" = None, **defaults
+        self, name: str, project: "Project | None" = None, is_public: bool = False, **defaults
     ) -> tuple["TaxaList", bool]:
         """
         Get or create a TaxaList with uniqueness scoped to project.
 
-        - If project is None: looks for/creates a global list (no project associations)
-        - If project is provided: looks for/creates a list associated with that project
+        - project is given: looks for/creates a list associated with that project (``is_public`` is ignored)
+        - project is None, is_public=True: looks for/creates the public list with this name
+        - project is None, is_public=False: looks for/creates a hidden list with no project
 
         :param name: Name of the taxa list.
-        :param project: Project to scope the list to, or None for a global list.
+        :param project: Project to scope the list to, or None for a list with no project.
+        :param is_public: When ``project`` is None, whether the list is the public list of this
+            name or a hidden one (e.g. a per-algorithm category-map list). Ignored otherwise.
         :param defaults: Extra field values applied only when creating a new list
             (ignored on the get path, matching Django's ``get_or_create`` semantics).
 
@@ -4749,18 +4752,23 @@ class TaxaListQuerySet(BaseQuerySet):
         Returns:
             Tuple of (TaxaList, created: bool)
         """
-        if project is None:
-            # Global list: find list with this name that has no project associations
-            qs = self.filter(name=name).annotate(project_count=models.Count("projects")).filter(project_count=0)
-        else:
+        if project is not None:
             # Project-specific: find list with this name in this project
             qs = self.filter(name=name, projects=project)
+        else:
+            # No project: find a list with this name and no project associations,
+            # matching the requested public/hidden state.
+            qs = (
+                self.filter(name=name, is_public=is_public)
+                .annotate(project_count=models.Count("projects"))
+                .filter(project_count=0)
+            )
 
         try:
             return qs.get(), False
         except self.model.DoesNotExist:
             with transaction.atomic():
-                taxa_list = self.create(name=name, **defaults)
+                taxa_list = self.create(name=name, is_public=is_public if project is None else False, **defaults)
                 if project:
                     taxa_list.projects.add(project)
             return taxa_list, True
@@ -4783,13 +4791,18 @@ class TaxaList(BaseModel):
     description = models.TextField(blank=True)
 
     taxa = models.ManyToManyField(Taxon, related_name="lists")
-    projects = models.ManyToManyField("Project", related_name="taxa_lists")
+    projects = models.ManyToManyField("Project", related_name="taxa_lists", blank=True)
+    is_public = models.BooleanField(
+        default=False,
+        help_text="Public lists are available to every project, not just the ones in 'projects'.",
+    )
 
     objects: TaxaListManager = TaxaListManager()
 
     class Meta:
         ordering = ["-created_at"]
         verbose_name_plural = "Taxa Lists"
+        permissions = [("manage_public_taxalist", "Can create, edit and delete public taxa lists")]
 
 
 @final
