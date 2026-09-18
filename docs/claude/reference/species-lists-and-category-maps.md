@@ -27,9 +27,9 @@ All four copies of the model's list were byte-for-byte or entry-for-entry identi
   (URL form: `https://object-arbutus.alliancecan.ca/swift/v1/AUTH_3c987b8fc90743469d42899b1fdb48eb/ami-models/...`;
   the `object-arbutus.cloud.computecanada.ca/ami-models/...` form in the map's `uri` field
   returns 403 anonymously; the swift URL is public). A name → index dict, md5 `00ded5ad7ac25855068f040dc3f73be8`.
-- The cached copy on the arctia dev server ADC, same md5.
+- The cached copy on the development server's ADC, same md5.
 - Production Antenna `GET /api/v2/ml/labels/52/` (algorithm 12), 2,603 labels, same order.
-- Dev server (arctia) category map id 12, exported as `docs/claude/sessions/2026-09-16-uk-denmark-species-list.csv`.
+- Development server category map id 12, exported as `docs/claude/sessions/2026-09-16-uk-denmark-species-list.csv`.
 
 Training run: wandb `moth-ai/ami-gbif-fine-grained/runs/x5u7jcbf` (`w-europe_resnet50_baseline_run3`,
 `--num_classes=2603`, category map `final_lists_eccv2024/02_ami-gbif_fine-grained_w-europe_category_map.json`).
@@ -52,7 +52,7 @@ Outputs: `docs/claude/sessions/2026-09-16-uk-denmark-species-list-augmented.csv`
 `antenna_taxon_*` + GBIF columns) and `...-comparison.md` (partner-readable). Both are on Drive
 in the species-lists folder as a Sheet (`1OFLOQibMB4liz7CEFfJl2sf9H3dgG4OaLCUfrEM61MQ`) and a
 Doc (`1_fh6jaiMVi7A1H9tX_vE9dFGhC9rbrUmvKcwEAYVnno`). Join script:
-session scratchpad `species-lists/join_gbif.py` (not committed).
+a helper script, not committed.
 
 ## Gotchas met on the way
 
@@ -69,7 +69,7 @@ session scratchpad `species-lists/join_gbif.py` (not committed).
 - A Django shell export of a category map from a dev box over SSH needs `python -u` and
   `ServerAliveInterval`, or the block-buffered output kills the connection (see memory
   `ssh-django-shell-buffering-drops-long-runs`).
-- The arctia dev server carries a second registration of this model, "UK & Denmark Species
+- The development server carries a second registration of this model, "UK & Denmark Species
   Classifier" v2 (algorithm id 4), with no category map and no pipeline. A stub; ignore it.
 
 ## Related
