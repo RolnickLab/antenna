@@ -8,7 +8,7 @@ import requests
 from django.conf import settings
 from django.db import models
 
-from ami.base.models import BaseQuerySet
+from ami.base.models import BaseQuerySet, PublicScopedModel
 from ami.main.models import BaseModel, Project
 from ami.ml.models.pipeline import Pipeline, get_or_create_algorithm_and_category_map
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
@@ -59,7 +59,7 @@ class ProcessingServiceManager(models.Manager.from_queryset(ProcessingServiceQue
 
 
 @typing.final
-class ProcessingService(BaseModel):
+class ProcessingService(BaseModel, PublicScopedModel):
     """An ML processing service"""
 
     name = models.CharField(max_length=255)
@@ -70,9 +70,16 @@ class ProcessingService(BaseModel):
     last_seen = models.DateTimeField(null=True)
     last_seen_live = models.BooleanField(null=True)
     last_seen_latency = models.FloatField(null=True)
+    # Overrides PublicScopedModel.is_public with wording specific to this model:
+    # unlike TaxaList, job dispatch and the async heartbeat still filter processing
+    # services by project link regardless of is_public, so "shown" is the accurate
+    # claim here, not "available".
     is_public = models.BooleanField(
         default=False,
-        help_text="Public processing services are available to every project, not just the ones in 'projects'.",
+        help_text=(
+            "Public services are shown to every project, not just the ones linked via 'projects'; "
+            "running a job still requires the service to be linked to the project."
+        ),
     )
 
     objects = ProcessingServiceManager()

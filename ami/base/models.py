@@ -40,6 +40,23 @@ def has_many_to_many_project_relation(model: type[models.Model]) -> bool:
     return False
 
 
+class PublicScopedModel(models.Model):
+    """
+    Base for M2M-to-project models that can be marked public. for_project() and
+    visible_for_user() check issubclass(model, PublicScopedModel) for their
+    public-row bypass, instead of duck-typing an `is_public` attribute that any
+    model could grow by coincidence and silently pick up that behavior.
+    """
+
+    is_public = models.BooleanField(
+        default=False,
+        help_text="Public rows are shown to every project, not just the ones linked via 'projects'.",
+    )
+
+    class Meta:
+        abstract = True
+
+
 class BaseQuerySet(QuerySet):
     def visible_for_user(self, user: User | AnonymousUser) -> QuerySet:
         """
@@ -87,7 +104,7 @@ class BaseQuerySet(QuerySet):
             filter_condition |= Q(**{f"{project_field}owner": user}) | Q(**{f"{project_field}members": user})
 
         # Public rows (e.g. public TaxaLists) are visible to everyone, draft or not.
-        if hasattr(model, "is_public"):
+        if issubclass(model, PublicScopedModel):
             filter_condition |= Q(is_public=True)
 
         return self.filter(filter_condition).distinct()
@@ -112,7 +129,7 @@ class BaseQuerySet(QuerySet):
             raise TypeError(f"{model.__name__} has no ManyToMany 'projects' field; for_project() is not applicable.")
 
         condition = Q(Exists(model._default_manager.filter(pk=OuterRef("pk"), projects=project)))
-        if include_public and hasattr(model, "is_public"):
+        if include_public and issubclass(model, PublicScopedModel):
             condition |= Q(is_public=True)
 
         return self.filter(condition)
