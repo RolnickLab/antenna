@@ -704,6 +704,20 @@ class TaxonListSerializer(DefaultSerializer):
         )
 
 
+class TaxaListCopiedFromSerializer(serializers.ModelSerializer):
+    """Minimal id/name reference to the source list a TaxaList was copied from.
+
+    A plain ModelSerializer, not DefaultSerializer: nesting DefaultSerializer here
+    would run its per-object permission check (and guardian lookups) a second time
+    for every row of a list response, one of the two things TaxaListQueryCountTestCase
+    guards against.
+    """
+
+    class Meta:
+        model = TaxaList
+        fields = ["id", "name"]
+
+
 class TaxaListSerializer(DefaultSerializer):
     taxa = serializers.SerializerMethodField()
     taxa_count = serializers.SerializerMethodField()
@@ -711,6 +725,7 @@ class TaxaListSerializer(DefaultSerializer):
     is_public = serializers.BooleanField(read_only=True)
     is_managed = serializers.BooleanField(read_only=True)
     algorithms = AlgorithmNestedSerializer(many=True, read_only=True)
+    copied_from = TaxaListCopiedFromSerializer(read_only=True)
 
     class Meta:
         model = TaxaList
@@ -724,6 +739,7 @@ class TaxaListSerializer(DefaultSerializer):
             "is_public",
             "is_managed",
             "algorithms",
+            "copied_from",
             "created_at",
             "updated_at",
         ]
@@ -764,6 +780,13 @@ class TaxaListSerializer(DefaultSerializer):
                 Project.objects.visible_for_user(request.user).values_list("id", flat=True)
             )
         return [pid for pid in obj.projects.values_list("id", flat=True) if pid in self._visible_project_ids]
+
+
+class TaxaListCopySerializer(serializers.Serializer):
+    """Body for POST /taxa/lists/{id}/copy/: optional name/description overrides for the new list."""
+
+    name = serializers.CharField(max_length=255, required=False, allow_blank=False)
+    description = serializers.CharField(required=False, allow_blank=True)
 
 
 class TaxaListTaxonInputSerializer(serializers.Serializer):
