@@ -28,10 +28,13 @@ export const RegisterPipelinesStep = ({
   const { populateProcessingService, result, isLoading, error } =
     usePopulateProcessingService(projectId)
 
+  // The rejection is swallowed on purpose: the failure is already rendered from the
+  // hook's error state, and an unhandled rejection would add nothing for the user.
+  const register = () =>
+    populateProcessingService(processingServiceId).catch(() => undefined)
+
   useEffect(() => {
-    populateProcessingService(processingServiceId).catch(() => {
-      // Error is surfaced below via the hook's error state.
-    })
+    register()
   }, [processingServiceId])
 
   const errorMessage = error
@@ -71,7 +74,7 @@ export const RegisterPipelinesStep = ({
             </Button>
             <Button
               disabled={isLoading}
-              onClick={() => populateProcessingService(processingServiceId)}
+              onClick={register}
               size="small"
               variant="success"
             >

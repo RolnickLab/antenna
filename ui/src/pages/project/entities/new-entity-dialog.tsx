@@ -35,7 +35,9 @@ export const NewEntityDialog = ({
   const { createEntity, isLoading, isSuccess, error } = useCreateEntity(
     collection,
     (created) => {
-      if (type === REQUIRES_REGISTRATION_TYPE) {
+      // Falling back to closing keeps the dialog usable if the id is ever missing,
+      // rather than opening a registration step that would call an invalid URL.
+      if (type === REQUIRES_REGISTRATION_TYPE && created.id !== undefined) {
         setCreatedServiceId(`${created.id}`)
         return
       }
