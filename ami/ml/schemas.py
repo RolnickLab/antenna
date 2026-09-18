@@ -353,6 +353,22 @@ class ProcessingServiceStatusResponse(pydantic.BaseModel):
     latency: float
 
 
+class TaxaListSyncSummary(pydantic.BaseModel):
+    """What registration did to one classifier's taxa list. See Algorithm.sync_taxa_list()."""
+
+    algorithm_key: str
+    algorithm_name: str
+    status: str  # "synced", "queued" or "skipped"
+    labels: int = 0
+    taxa_list_id: int | None = None
+    taxa_list_name: str | None = None
+    matched: int = 0
+    created_taxa: int = 0
+    removed: int = 0
+    unresolved: int = 0
+    error: str | None = None
+
+
 class PipelineRegistrationResponse(pydantic.BaseModel):
     timestamp: datetime.datetime
     success: bool
@@ -360,6 +376,7 @@ class PipelineRegistrationResponse(pydantic.BaseModel):
     pipelines: list[PipelineConfigResponse] = []
     pipelines_created: list[str] = []
     algorithms_created: list[str] = []
+    taxa_lists: list[TaxaListSyncSummary] = []
 
 
 class AsyncPipelineRegistrationRequest(pydantic.BaseModel):
