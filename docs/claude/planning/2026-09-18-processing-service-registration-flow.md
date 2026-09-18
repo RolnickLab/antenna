@@ -49,6 +49,21 @@ On success it closed itself after a one-second delay. `usePopulateProcessingServ
 hook behind the "Register pipelines" row action; it POSTs to `register_pipelines` and
 previously discarded the response body.
 
+**The two modes in the current flow.** Both modes go through the same create form and the
+same dialog, and both closed it on save. What differs is what happens next.
+
+- *Push mode* (an endpoint URL is given). Nothing further happens until the user finds the
+  "Register pipelines" row action. The service has no pipelines until they do, which is the
+  gap this work closes.
+- *Pull mode* (the endpoint left empty). The service itself posts to
+  `ProjectPipelineViewSet.create` when it comes up, which registers its pipelines and marks
+  it seen. Nothing is missing, but nothing is shown either: the user has no indication of
+  whether the service has ever connected.
+
+The create response reports the mode as `is_async` on the nested `instance`, which
+`ProcessingService.is_async` derives from the endpoint URL being empty. Two tests in
+`ami/ml/tests.py` pin that field for both modes, because the dialog's behaviour depends on it.
+
 ## The proposed flow
 
 For a push-mode service, saving the create form no longer closes the dialog. The dialog
@@ -62,8 +77,15 @@ button closes the dialog. On failure the step shows the error with a "Retry" but
 registered without being deleted and recreated.
 
 Saving a pull-mode service — one left with no endpoint URL — closes the dialog exactly as it
-does today. The mode is read from `is_async` on the created service, which the create response
-already carries.
+does today. Offering it a registration step would be meaningless: Antenna has no endpoint to
+call, so `create_pipelines()` has no `/info` to fetch. The mode is read from `is_async` on the
+created service, which the create response already carries.
+
+Rather than flash a note during the one second before the dialog closes, where nobody would
+read it, the explanation sits on the endpoint field itself, which is where the user chooses
+the mode: leaving it empty means the service registers its own pipelines when it connects.
+The eventual pull-mode experience — prompt for a token, then show registration status as the
+service checks in — is sketched below and is not built.
 
 The "Register pipelines" row action is unchanged, and remains the way to re-register a
 service after its pipelines change.
