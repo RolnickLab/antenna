@@ -662,6 +662,52 @@ def get_presigned_url(config: S3Config, key: str, expires_in: int = 60 * 60 * 24
     return str(url)
 
 
+def get_presigned_put_url(
+    config: S3Config,
+    key: str,
+    content_type: str | None = None,
+    checksum_sha256_b64: str | None = None,
+    expires_in: int = 60 * 60,
+) -> tuple[str, dict[str, str]]:
+    """Generate a presigned PUT URL for a direct-to-storage upload.
+
+    Returns ``(url, headers)`` where ``headers`` are the request headers the
+    client MUST send for the signature to validate. Unlike ``get_presigned_url``
+    (GET) this is deliberately NOT cached: each URL is per-file and short-lived.
+
+    ``checksum_sha256_b64`` is the base64-encoded raw SHA-256 digest (not hex).
+    The AWS flexible-checksum header (``x-amz-checksum-sha256``) is only emitted
+    against real AWS (``endpoint_url is None``); MinIO tolerates it but Swift's
+    s3api rejects it, so it is gated off for any custom endpoint. See #1379.
+    """
+    client = get_s3_client(config)
+    params: dict[str, typing.Any] = {"Bucket": config.bucket_name, "Key": key}
+    headers: dict[str, str] = {}
+    if content_type:
+        params["ContentType"] = content_type
+        headers["Content-Type"] = content_type
+    if checksum_sha256_b64 and config.endpoint_url is None:
+        params["ChecksumSHA256"] = checksum_sha256_b64
+        headers["x-amz-checksum-sha256"] = checksum_sha256_b64
+    url = client.generate_presigned_url("put_object", Params=params, ExpiresIn=expires_in)
+    return str(url), headers
+
+
+def derive_upload_key(config: S3Config, filename: str, subdirs: list[str | None] | None = None) -> str:
+    """Build the full object key for a direct upload.
+
+    Deliberately NOT ``key_with_prefix``: that helper has a
+    ``key.split(subdir, 1)[-1]`` dedup heuristic that mangles filenames
+    containing the subdir string (e.g. subdir ``2024`` + file ``20240101...jpg``).
+    Here we join the config prefix, the (cleaned) subdir parts, and the filename
+    directly so the result is exactly the object Key that ``sync_captures`` will
+    later store as ``SourceImage.path``. See #1379.
+    """
+    parts = [p.strip("/") for p in (subdirs or []) if p and p.strip("/")]
+    full_prefix = make_full_prefix(config, "/".join(parts) or None)
+    return pathlib.Path(full_prefix, filename).as_posix()
+
+
 # Methods to resize all images under a prefix
 def resize_images(config: S3Config, prefix: str, width: int, height: int):
     bucket = get_bucket(config)
