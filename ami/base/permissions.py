@@ -77,6 +77,67 @@ def add_collection_level_permissions(user: User | None, response_data: dict, mod
     return response_data
 
 
+def user_can_manage_public(user: AbstractBaseUser | AnonymousUser, model_or_instance) -> bool:
+    """
+    A superuser, or a user holding <app_label>.manage_public_<model_name> for
+    the given model (or an instance of it) — the platform permission gating
+    write access to a public row, in place of project membership or staff status.
+    """
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser:  # type: ignore[union-attr]
+        return True
+    meta = model_or_instance._meta
+    return user.has_perm(f"{meta.app_label}.manage_public_{meta.model_name}")  # type: ignore[union-attr]
+
+
+def check_public_scoped_write_permission(user, instance, non_public_fallback) -> bool:
+    """
+    True if `user` may write to `instance`: a public row needs the platform
+    manage_public_<model> permission (superusers always pass, via
+    user_can_manage_public); a non-public row falls back to `non_public_fallback()`,
+    the model's own write rule (project membership, active-staff status, ...).
+    """
+    if getattr(instance, "is_public", False):
+        return user_can_manage_public(user, instance)
+    return non_public_fallback()
+
+
+def check_taxalist_write_permission(user, taxa_list, project) -> bool:
+    """Thin alias kept so branches stacked on this one still import this name."""
+    return check_public_scoped_write_permission(
+        user, taxa_list, lambda: bool(user.is_superuser or (project and project.members.filter(pk=user.pk).exists()))
+    )
+
+
+def check_processingservice_write_permission(user, processing_service) -> bool:
+    """Thin alias kept so branches stacked on this one still import this name."""
+    return check_public_scoped_write_permission(
+        user, processing_service, lambda: bool(user.is_superuser or is_active_staff(user))
+    )
+
+
+def add_processingservice_permissions(user, instance, response_data: dict) -> dict:
+    """
+    Add update/delete to user_permissions for a ProcessingService.
+
+    Unlike add_m2m_object_permissions, this skips the M2M membership check and
+    the guardian lookup entirely: no per-project *_processingservice guardian
+    permission exists anywhere in this codebase (see Project.Permissions and
+    ami/users/roles.py), so that branch could only ever fire for a superuser,
+    which a plain attribute check already covers for free. A public instance
+    still checks the platform manage_public_processingservice permission.
+    """
+    perms = set(response_data.get("user_permissions", []))
+    if getattr(instance, "is_public", False):
+        if user_can_manage_public(user, instance):
+            perms.update(["update", "delete"])
+    elif user.is_superuser:
+        perms.update(["update", "delete"])
+    response_data["user_permissions"] = list(perms)
+    return response_data
+
+
 def add_m2m_object_permissions(user, instance, project, response_data: dict) -> dict:
     """
     Add object-level permissions for models with an M2M relationship to Project.
@@ -87,7 +148,9 @@ def add_m2m_object_permissions(user, instance, project, response_data: dict) -> 
     against a specific project from the request context instead.
 
     Validates that the instance actually belongs to the given project before
-    granting any permissions (prevents cross-project permission leaks).
+    granting any permissions (prevents cross-project permission leaks). A public
+    instance is the one exception: its update/delete permissions come from the
+    model's manage_public_<model> permission, not project membership.
 
     This is a temporary approach for the M2M permission gap described in #1120.
     Once that issue is resolved, this should be replaced by a generic permission
@@ -95,6 +158,12 @@ def add_m2m_object_permissions(user, instance, project, response_data: dict) -> 
     Pipeline, and other M2M-to-Project models uniformly.
     """
     perms = set(response_data.get("user_permissions", []))
+
+    if getattr(instance, "is_public", False):
+        if user_can_manage_public(user, instance):
+            perms.update(["update", "delete"])
+        response_data["user_permissions"] = list(perms)
+        return response_data
 
     if not project or not instance.projects.filter(pk=project.pk).exists():
         response_data["user_permissions"] = list(perms)
@@ -142,6 +211,92 @@ class IsProjectMemberOrReadOnly(permissions.BasePermission):
             return False
 
         return project.members.filter(pk=request.user.pk).exists()
+
+
+class _BaseGateOrPublicManager(permissions.BasePermission):
+    """
+    Shared shape for M2M-to-project models with a public flag: safe methods are
+    open to everyone; unsafe methods need the model's own base gate (project
+    membership, active-staff status, ...) or the manage_public_<model> platform
+    permission. `exclude_create_from_bypass` forces a plain "create a new row"
+    action through the base gate only, since there's no object yet to tell
+    whether it will be public. Subclasses implement get_model() and
+    get_base_gate() — get_model() does a local import to avoid a module-level
+    circular import between this file and the app that owns the model.
+    """
+
+    exclude_create_from_bypass = False
+
+    def get_model(self):
+        raise NotImplementedError
+
+    def get_base_gate(self, request, view) -> bool:
+        raise NotImplementedError
+
+    def has_permission(self, request, view):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        if not request.user or not request.user.is_authenticated:
+            return False
+
+        if request.user.is_superuser:  # type: ignore[union-attr]
+            return True
+
+        if self.exclude_create_from_bypass and getattr(view, "action", None) == "create":
+            return self.get_base_gate(request, view)
+
+        if user_can_manage_public(request.user, self.get_model()):
+            return True
+
+        return self.get_base_gate(request, view)
+
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return check_public_scoped_write_permission(request.user, obj, lambda: self.get_base_gate(request, view))
+
+
+class IsProjectMemberOrPublicListManager(_BaseGateOrPublicManager):
+    """
+    Used by the nested add/remove-taxon route: serves both public and
+    project-scoped lists, and has no object to check yet at has_permission()
+    time.
+    """
+
+    def get_model(self):
+        from ami.main.models import TaxaList
+
+        return TaxaList
+
+    def get_base_gate(self, request, view):
+        get_active_project = getattr(view, "get_active_project", None)
+        project = get_active_project() if get_active_project else None
+        return bool(project and project.members.filter(pk=request.user.pk).exists())
+
+
+class IsProjectMemberOrPublicListManagerOrReadOnly(IsProjectMemberOrPublicListManager):
+    """For TaxaListViewSet: creating a brand-new list always needs real project membership."""
+
+    exclude_create_from_bypass = True
+
+
+class IsActiveStaffOrPublicManager(_BaseGateOrPublicManager):
+    """Used by ProcessingServiceViewSet's non-create actions and any future nested route."""
+
+    def get_model(self):
+        from ami.ml.models.processing_service import ProcessingService
+
+        return ProcessingService
+
+    def get_base_gate(self, request, view):
+        return is_active_staff(request.user)
+
+
+class IsActiveStaffOrPublicManagerOrReadOnly(IsActiveStaffOrPublicManager):
+    """For ProcessingServiceViewSet: creating a brand-new service always needs active-staff status."""
+
+    exclude_create_from_bypass = True
 
 
 class ObjectPermission(permissions.BasePermission):

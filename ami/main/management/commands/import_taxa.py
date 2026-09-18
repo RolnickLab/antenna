@@ -236,8 +236,9 @@ class Command(BaseCommand):
         else:
             list_name = pathlib.Path(fname).stem
 
-        # Uses get_or_create_for_project with project=None to create a global list
-        taxalist, created = TaxaList.objects.get_or_create_for_project(name=list_name, project=None)
+        # Uses get_or_create_for_project with project=None to create a public list
+        # available to every project.
+        taxalist, created = TaxaList.objects.get_or_create_for_project(name=list_name, project=None, is_public=True)
         if created:
             self.stdout.write(self.style.SUCCESS('Successfully created taxa list "%s"' % taxalist))
 

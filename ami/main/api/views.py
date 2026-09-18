@@ -29,10 +29,16 @@ from ami.base.filters import NullsLastOrderingFilter, RelatedIdFilter, Threshold
 from ami.base.metadata import ResponseSchemaMetadata
 from ami.base.models import BaseQuerySet
 from ami.base.pagination import LimitOffsetPaginationWithPermissions
-from ami.base.permissions import IsActiveStaffOrReadOnly, IsProjectMemberOrReadOnly, ObjectPermission
+from ami.base.permissions import (
+    IsActiveStaffOrReadOnly,
+    IsProjectMemberOrPublicListManager,
+    IsProjectMemberOrPublicListManagerOrReadOnly,
+    ObjectPermission,
+    check_taxalist_write_permission,
+)
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
 from ami.base.views import ProjectMixin
-from ami.main.api.schemas import limit_doc_param, project_id_doc_param
+from ami.main.api.schemas import include_public_doc_param, limit_doc_param, project_id_doc_param
 from ami.main.api.serializers import TagSerializer
 from ami.main.models_future.identifications import create_identifications_batch, resolve_occurrences
 from ami.main.models_future.occurrence import model_agreement_for_project, top_identifiers_for_project
@@ -2209,7 +2215,7 @@ class TaxaListViewSet(DefaultViewSet, ProjectMixin):
         "created_at",
         "updated_at",
     ]
-    permission_classes = [IsProjectMemberOrReadOnly]
+    permission_classes = [IsProjectMemberOrPublicListManagerOrReadOnly]
     require_project = True
 
     def get_queryset(self):
@@ -2217,9 +2223,17 @@ class TaxaListViewSet(DefaultViewSet, ProjectMixin):
         # Annotate with taxa count for better performance
         qs = qs.annotate(annotated_taxa_count=models.Count("taxa"))
         project = self.get_active_project()
-        if project:
-            return qs.filter(projects=project)
-        return qs
+        if not project:
+            return qs
+        # include_public governs the list action's default scope, not whether a
+        # specific row is reachable: a detail/update/delete on a public list must
+        # still resolve it even under ?include_public=false.
+        include_public = self.get_include_public() if self.action == "list" else True
+        return qs.for_project(project, include_public=include_public)
+
+    @extend_schema(parameters=[project_id_doc_param, include_public_doc_param])
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
     def perform_create(self, serializer):
         """
@@ -2244,17 +2258,31 @@ class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):
     """
 
     serializer_class = TaxaListTaxonSerializer
-    permission_classes = [IsProjectMemberOrReadOnly]
+    permission_classes = [IsProjectMemberOrPublicListManager]
     require_project = True
 
     def get_taxa_list(self):
-        """Get the parent taxa list from URL parameters, scoped to the active project."""
+        """Get the parent taxa list, scoped to the active project or public."""
         taxa_list_id = self.kwargs.get("taxalist_pk")
         project = self.get_active_project()
         try:
-            return TaxaList.objects.get(pk=taxa_list_id, projects=project)
+            return (
+                TaxaList.objects.visible_for_user(self.request.user)
+                .for_project(project, include_public=True)
+                .get(pk=taxa_list_id)
+            )
         except TaxaList.DoesNotExist:
             raise api_exceptions.NotFound("Taxa list not found.") from None
+
+    def check_write_permission(self, taxa_list):
+        """
+        Re-check against the actual list: IsProjectMemberOrPublicListManager only
+        gates coarsely at has_permission() time, before the target list (and its
+        is_public flag) is known.
+        """
+        project = self.get_active_project()
+        if not check_taxalist_write_permission(self.request.user, taxa_list, project):
+            raise api_exceptions.PermissionDenied("You do not have permission to modify this taxa list.")
 
     def get_queryset(self):
         """Return taxa in the specified taxa list."""
@@ -2264,6 +2292,7 @@ class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):
     def create(self, request, taxalist_pk=None):
         """Add a taxon to the taxa list."""
         taxa_list = self.get_taxa_list()
+        self.check_write_permission(taxa_list)
 
         # Validate input
         input_serializer = TaxaListTaxonInputSerializer(data=request.data)
@@ -2292,6 +2321,7 @@ class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):
         DELETE /taxa/lists/{taxa_list_id}/taxa/{taxon_id}/
         """
         taxa_list = self.get_taxa_list()
+        self.check_write_permission(taxa_list)
 
         # Check if taxon exists in list
         if not taxa_list.taxa.filter(pk=taxon_id).exists():
