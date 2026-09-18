@@ -177,11 +177,26 @@ class TestProcessingServiceAPI(APITestCase):
 
         # Check that endpoint_url is null
         self.assertIsNone(data["instance"]["endpoint_url"])
+        # The create dialog reads is_async off the nested instance to decide whether to
+        # offer the registration step, which is meaningless without an endpoint to call.
+        self.assertTrue(data["instance"]["is_async"])
 
         # Check that status indicates service is not yet live (no heartbeat received)
         self.assertFalse(data["status"]["request_successful"])
         self.assertFalse(data["status"]["server_live"])
         self.assertIsNone(data["status"]["endpoint_url"])
+
+    def test_create_response_reports_push_mode_for_a_service_with_an_endpoint(self):
+        """
+        The mirror of the pull-mode case: a service with an endpoint reports is_async
+        false, which is what makes the create dialog offer the registration step.
+        """
+        response = self._create_processing_service(
+            name="Push Mode Service",
+            endpoint_url="http://processing_service:2000",
+        )
+
+        self.assertFalse(response["is_async"])
 
     def test_get_status_with_null_endpoint_url(self):
         """Test get_status method when endpoint_url is None"""
