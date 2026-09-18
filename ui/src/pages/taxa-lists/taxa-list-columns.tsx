@@ -93,7 +93,9 @@ export const columns = ({
     sticky: true,
     renderCell: (item: TaxaList) => (
       <Toolbar>
-        {item.canUpdate ? (
+        {/* A managed list's membership mirrors a classifier's category map
+            and can't be edited directly; adding a taxon would 403. See #1420. */}
+        {item.canUpdate && !item.isManaged ? (
           <AddTaxaListTaxonPopover compact taxaListId={item.id} />
         ) : null}
         {item.canUpdate ? (
