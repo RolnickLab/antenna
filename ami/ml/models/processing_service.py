@@ -210,10 +210,13 @@ class ProcessingService(BaseModel, PublicScopedModel):
         small maps or via a Celery task for large ones. Returns None for detectors and for
         algorithms with no category map or an empty one — there is nothing to report.
         """
-        if algorithm.task_type not in Algorithm.classification_task_types or not algorithm.has_valid_category_map():
+        # Gate on labels rather than has_valid_category_map(): labels is what sync_taxa_list()
+        # reconciles against, so a map with data but no labels would produce an empty report.
+        if algorithm.task_type not in Algorithm.classification_task_types:
             return None
-
         label_count = len(algorithm.category_map.labels) if algorithm.category_map else 0
+        if not label_count:
+            return None
 
         if label_count > TAXA_LIST_SYNC_INLINE_MAX_LABELS:
             # Bind the pk at lambda-definition time, not call time, so every queued

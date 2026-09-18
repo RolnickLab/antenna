@@ -358,7 +358,7 @@ class TaxaListSyncSummary(pydantic.BaseModel):
 
     algorithm_key: str
     algorithm_name: str
-    status: str  # "synced", "queued" or "skipped"
+    status: str  # "synced", "queued" (large map, handed to a task) or "failed"
     labels: int = 0
     taxa_list_id: int | None = None
     taxa_list_name: str | None = None
