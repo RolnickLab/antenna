@@ -15,6 +15,14 @@ Registration matters more on this branch than it used to. It is now also the mom
 each classifier's taxa list is built from its category map, so skipping it leaves both the
 pipelines and the taxa lists missing.
 
+This gap belongs to push-mode services only. A service is push mode when it has an endpoint
+URL, which is what `ProcessingService.is_async` reports (`is_async` is true when the URL is
+empty) and what the create form's own help text already describes: "Leave empty for pull-mode
+services that register themselves." A pull-mode service calls Antenna rather than the other
+way round, reaching `ProjectPipelineViewSet.create`, so its pipelines appear on their own and
+there is nothing for the user to trigger. The work below therefore gates the new step on push
+mode, and the pull-mode experience is described as a design sketch rather than built.
+
 ## The current flow
 
 **Backend.** `ProcessingServiceViewSet.create` (`ami/ml/views.py`) saves the service, links
@@ -43,7 +51,8 @@ previously discarded the response body.
 
 ## The proposed flow
 
-Saving the create form no longer closes the dialog. The dialog switches to a second step,
+For a push-mode service, saving the create form no longer closes the dialog. The dialog
+switches to a second step,
 "Registering pipelines", which fires the registration call straight away for the service
 that was just created, shows a spinner while it runs, and then shows what happened: how many
 pipelines and algorithms were registered, and one line per classifier saying which taxa list
@@ -51,6 +60,10 @@ it was synced into and how many of its labels matched a taxon Antenna already kn
 button closes the dialog. On failure the step shows the error with a "Retry" button beside a
 "Close" button, so a service saved against a temporarily unreachable endpoint can be
 registered without being deleted and recreated.
+
+Saving a pull-mode service — one left with no endpoint URL — closes the dialog exactly as it
+does today. The mode is read from `is_async` on the created service, which the create response
+already carries.
 
 The "Register pipelines" row action is unchanged, and remains the way to re-register a
 service after its pipelines change.
@@ -71,7 +84,7 @@ The new field is `taxa_lists`, a list of `TaxaListSyncSummary`:
 | `labels` | how many labels the category map holds |
 | `taxa_list_id`, `taxa_list_name` | the list the algorithm is linked to, once synced |
 | `matched` | labels that resolved to a taxon already in Antenna |
-| `created_taxa` | always 0 on this path, see the decision below |
+| `created_taxa` | labels that named no known taxon and were created, see the decision below |
 | `removed` | taxa dropped because the category map no longer lists them |
 | `unresolved` | labels that match no taxon in Antenna yet |
 | `error` | the failure message when `status` is `failed` |
@@ -108,30 +121,72 @@ That 2,000 figure is conservative: it was measured with taxon creation enabled, 
 registration path no longer does, so the real inline cost is now lower. Lowering the constant
 later is a one-line change and needs no migration.
 
-## Registration links taxa, it does not create them
+## Registration creates the taxa its labels name
 
-`Algorithm.sync_taxa_list()` creates a `Taxon` for every unmatched label by default, and the
-`create_taxa_lists_from_category_maps` management command keeps that default. The registration
-path deliberately does not.
+Registration creates a `Taxon` for every label that does not already match one, which is
+`Algorithm.sync_taxa_list()`'s default and the same behaviour as the
+`create_taxa_lists_from_category_maps` management command. The list then covers everything
+the classifier can predict, rather than only the overlap with whatever taxonomy happens to be
+loaded, and `unresolved` stays at zero on this path.
 
-The taxa it would create carry only the label as a name and whatever rank the category map
-declares, with no parent and no GBIF key. Because taxa are matched by name, those bare rows
-then shadow the properly structured taxon that a later taxonomy import brings in, and the
-import silently leaves the placeholder in place. This is not hypothetical: it was caught in
-this branch by fourteen failing class-masking tests in a module that never touched this code.
-Creating a default project ran the default processing service's registration, which created
-three parentless species, which `create_taxa()` then found by name and never gave a genus.
+The cost is that such a taxon carries only the name and rank the category map gives it, with
+no parent and no GBIF key. Because taxa match by name, anything that later merges a richer
+taxonomy in has to fill those fields on the existing row rather than treat it as already
+present and skip it.
 
-So registration links the labels the taxonomy already knows and reports the rest as
-`unresolved`. The operator sees the count in the dialog and can run the management command,
-which creates them deliberately. Linking is reversible; polluting the shared taxonomy is not.
+That is not hypothetical. It broke fourteen class-masking tests in a module that never touches
+this code: creating a default project registers the default processing service, which created
+three parentless species, and the `create_taxa()` fixture then found them by name. Because
+`get_or_create(name=..., defaults=dict(parent=...))` ignores `defaults` for an existing row,
+the fixture never gave them a genus. The fixture now sets the parent whichever step created
+the row, which is what it always meant to do.
+
+**The production version of that hazard is open.** Whatever imports the real taxonomy has the
+same `get_or_create`-shaped risk, and nobody has checked it. Worth doing before a large
+classifier is registered against a project that will later get a full taxonomy import.
+
+## Pull mode: design sketch, not built
+
+A pull-mode service has no endpoint URL, so Antenna cannot call it. Today the user saves the
+service and the dialog simply closes, which leaves the same silence the push-mode gap had: the
+user has no idea whether the service ever checked in.
+
+The intended shape is that the same dialog serves both modes, differing only in what it waits
+for. Push mode triggers registration and reports what it did. Pull mode issues the credential
+the service needs, then waits for the service to register itself and reports what arrived.
+Both end in the same summary: pipelines, algorithms, and per-classifier taxa lists.
+
+The taxa-list sync already covers both modes and needs no further work. `ProjectPipelineViewSet.create`,
+the endpoint a pull-mode service posts to, calls the same `ProcessingService.create_pipelines()`
+as the push-mode action, inside a `transaction.atomic()` block. Its response is the same
+`PipelineRegistrationResponse`, so the pull-mode service receives the `taxa_lists` summary too.
+
+Three pieces are missing, and the first is the real question:
+
+1. **A credential for the service.** Authentication today is user-scoped: djoser issues a token
+   per user (`ami/users`), and there is no per-service token, no scoping of a token to one
+   processing service, and no way to revoke one service's access without affecting a user. A
+   service currently has to be handed a user's token. Issuing a credential from this dialog
+   means introducing a service-token concept first, including what it is allowed to do and how
+   it is rotated and revoked. That is a security design task, not a UI task, and it should be
+   settled before the dialog is built.
+2. **A way to wait.** The dialog needs to know the service has checked in. `ProcessingService.mark_seen()`
+   already records the heartbeat and `last_seen` / `last_seen_live` are already serialized, so
+   polling the existing detail endpoint would work without new backend surface. A service that
+   never appears needs a timeout and a message saying the service has not checked in yet,
+   rather than an indefinite spinner.
+3. **A result to show.** The registration result currently goes back to the service that posted
+   it, not to the waiting browser. The dialog would have to read the outcome from the service's
+   own record — its pipelines, and each classifier's linked taxa list — rather than from a
+   response body. That is a different query, though it renders into the same summary.
+
+Until these exist, pull mode keeps today's behaviour and the dialog closes on save.
 
 ## Open questions for the product owner
 
-1. **Is "unresolved" actionable enough as a number?** A fresh Antenna with an empty taxonomy
-   will register a 29,000-label classifier and see "0 of 29,000 labels matched". That is
-   honest but it is not a next step. The dialog could link to the taxa list, or offer to run
-   the import, but neither exists yet.
+1. **Who repairs a placeholder taxon?** Registering a classifier against a project with no
+   taxonomy loaded creates a bare row per label. Nothing yet guarantees that a later taxonomy
+   import fills in the parent and GBIF key instead of skipping the row as already present.
 2. **Should the dialog wait for a queued sync?** A large classifier currently shows "being
    built in the background" and the user has no signal when it finishes. Polling would need a
    status endpoint or a Job; neither is built. It may be acceptable to leave it, since the
@@ -149,7 +204,8 @@ which creates them deliberately. Linking is reversible; polluting the shared tax
 Backend, in `ami/ml/tests.py`:
 
 - a small classifier syncs inline, links a real taxa list, and reports matched counts
-- registration links known taxa and creates none, leaving the rest unresolved
+- registration creates the taxa its labels name, reuses the ones that already match, and
+  leaves nothing unresolved
 - a detector, and a classifier with an empty category map, produce no row
 - an algorithm shared by two pipelines is reported once
 - a category map above the threshold is queued and dispatches the task with that algorithm's id
@@ -160,7 +216,9 @@ Backend, in `ami/ml/tests.py`:
 - a newly registered algorithm lands in `algorithms_created`, not `pipelines_created`
 
 Not covered, and worth adding if the flow grows: the frontend has no test for the dialog's
-second step, since this area has no component tests to follow.
+second step, nor for the push/pull gate, since this area has no component tests to follow.
+The push/pull gate is therefore verified by reading alone, which is the weakest part of this
+work.
 
 ## Fixed along the way
 
