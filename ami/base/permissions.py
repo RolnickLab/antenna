@@ -91,30 +91,30 @@ def user_can_manage_public(user: AbstractBaseUser | AnonymousUser, model_or_inst
     return user.has_perm(f"{meta.app_label}.manage_public_{meta.model_name}")  # type: ignore[union-attr]
 
 
+def check_public_scoped_write_permission(user, instance, non_public_fallback) -> bool:
+    """
+    True if `user` may write to `instance`: a public row needs the platform
+    manage_public_<model> permission (superusers always pass, via
+    user_can_manage_public); a non-public row falls back to `non_public_fallback()`,
+    the model's own write rule (project membership, active-staff status, ...).
+    """
+    if getattr(instance, "is_public", False):
+        return user_can_manage_public(user, instance)
+    return non_public_fallback()
+
+
 def check_taxalist_write_permission(user, taxa_list, project) -> bool:
-    """
-    True if `user` may update/delete `taxa_list` or change its taxa: a public
-    list needs manage_public_taxalist, a project-scoped one needs membership of
-    `project`. Kept TaxaList-specific rather than folded into a generic helper —
-    ProcessingService's non-public fallback is active-staff status, not project
-    membership, so the two checks don't share a body.
-    """
-    if getattr(taxa_list, "is_public", False):
-        return user_can_manage_public(user, taxa_list)
-    return bool(user.is_superuser or (project and project.members.filter(pk=user.pk).exists()))
+    """Thin alias kept so branches stacked on this one still import this name."""
+    return check_public_scoped_write_permission(
+        user, taxa_list, lambda: bool(user.is_superuser or (project and project.members.filter(pk=user.pk).exists()))
+    )
 
 
 def check_processingservice_write_permission(user, processing_service) -> bool:
-    """
-    True if `user` may update/delete `processing_service`, or register its
-    pipelines: a public service needs manage_public_processingservice; a
-    project-scoped one only needs active-staff status, unchanged from before
-    is_public existed (the broader project-scoped permission model belongs to
-    #1120, not here).
-    """
-    if getattr(processing_service, "is_public", False):
-        return user_can_manage_public(user, processing_service)
-    return bool(user.is_superuser or is_active_staff(user))
+    """Thin alias kept so branches stacked on this one still import this name."""
+    return check_public_scoped_write_permission(
+        user, processing_service, lambda: bool(user.is_superuser or is_active_staff(user))
+    )
 
 
 def add_processingservice_permissions(user, instance, response_data: dict) -> dict:
@@ -213,13 +213,25 @@ class IsProjectMemberOrReadOnly(permissions.BasePermission):
         return project.members.filter(pk=request.user.pk).exists()
 
 
-class IsProjectMemberOrPublicListManager(permissions.BasePermission):
+class _BaseGateOrPublicManager(permissions.BasePermission):
     """
-    Safe methods are open to everyone. Unsafe methods need membership of the
-    active project, or the manage_public_taxalist permission — used by the
-    nested add/remove-taxon route, which serves both public and project-scoped
-    lists and has no object to check yet at has_permission() time.
+    Shared shape for M2M-to-project models with a public flag: safe methods are
+    open to everyone; unsafe methods need the model's own base gate (project
+    membership, active-staff status, ...) or the manage_public_<model> platform
+    permission. `exclude_create_from_bypass` forces a plain "create a new row"
+    action through the base gate only, since there's no object yet to tell
+    whether it will be public. Subclasses implement get_model() and
+    get_base_gate() — get_model() does a local import to avoid a module-level
+    circular import between this file and the app that owns the model.
     """
+
+    exclude_create_from_bypass = False
+
+    def get_model(self):
+        raise NotImplementedError
+
+    def get_base_gate(self, request, view) -> bool:
+        raise NotImplementedError
 
     def has_permission(self, request, view):
         if request.method in permissions.SAFE_METHODS:
@@ -228,84 +240,63 @@ class IsProjectMemberOrPublicListManager(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
 
-        from ami.main.models import TaxaList
-
-        if request.user.is_superuser or user_can_manage_public(request.user, TaxaList):  # type: ignore[union-attr]
+        if request.user.is_superuser:  # type: ignore[union-attr]
             return True
 
+        if self.exclude_create_from_bypass and getattr(view, "action", None) == "create":
+            return self.get_base_gate(request, view)
+
+        if user_can_manage_public(request.user, self.get_model()):
+            return True
+
+        return self.get_base_gate(request, view)
+
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return check_public_scoped_write_permission(request.user, obj, lambda: self.get_base_gate(request, view))
+
+
+class IsProjectMemberOrPublicListManager(_BaseGateOrPublicManager):
+    """
+    Used by the nested add/remove-taxon route: serves both public and
+    project-scoped lists, and has no object to check yet at has_permission()
+    time.
+    """
+
+    def get_model(self):
+        from ami.main.models import TaxaList
+
+        return TaxaList
+
+    def get_base_gate(self, request, view):
         get_active_project = getattr(view, "get_active_project", None)
-        if not get_active_project:
-            return False
-
-        project = get_active_project()
-        if not project:
-            return False
-
-        return project.members.filter(pk=request.user.pk).exists()
+        project = get_active_project() if get_active_project else None
+        return bool(project and project.members.filter(pk=request.user.pk).exists())
 
 
 class IsProjectMemberOrPublicListManagerOrReadOnly(IsProjectMemberOrPublicListManager):
-    """
-    For TaxaListViewSet: creating a brand-new list always needs real project
-    membership (there's no object yet to tell whether it will be public).
-    Update/delete defer to check_taxalist_write_permission, which grants the
-    manage_public_taxalist bypass only once the target list's is_public flag
-    is known.
-    """
+    """For TaxaListViewSet: creating a brand-new list always needs real project membership."""
 
-    def has_permission(self, request, view):
-        if getattr(view, "action", None) == "create":
-            return IsProjectMemberOrReadOnly.has_permission(self, request, view)
-        return super().has_permission(request, view)
-
-    def has_object_permission(self, request, view, obj):
-        if request.method in permissions.SAFE_METHODS:
-            return True
-        project = view.get_active_project() if hasattr(view, "get_active_project") else None
-        return check_taxalist_write_permission(request.user, obj, project)
+    exclude_create_from_bypass = True
 
 
-class IsActiveStaffOrPublicManager(permissions.BasePermission):
-    """
-    Safe methods are open to everyone. Unsafe methods need active-staff status,
-    or the manage_public_processingservice permission — used where there is no
-    object yet to check at has_permission() time.
-    """
+class IsActiveStaffOrPublicManager(_BaseGateOrPublicManager):
+    """Used by ProcessingServiceViewSet's non-create actions and any future nested route."""
 
-    def has_permission(self, request, view):
-        if request.method in permissions.SAFE_METHODS:
-            return True
-
-        if not request.user or not request.user.is_authenticated:
-            return False
-
+    def get_model(self):
         from ami.ml.models.processing_service import ProcessingService
 
-        if request.user.is_superuser or user_can_manage_public(request.user, ProcessingService):  # type: ignore
-            return True
+        return ProcessingService
 
-        return is_active_staff(request.user)  # type: ignore[arg-type]
+    def get_base_gate(self, request, view):
+        return is_active_staff(request.user)
 
 
 class IsActiveStaffOrPublicManagerOrReadOnly(IsActiveStaffOrPublicManager):
-    """
-    For ProcessingServiceViewSet: creating a brand-new service always needs
-    active-staff status (there's no object yet to tell whether it will be
-    public). Update/delete/register_pipelines defer to
-    check_processingservice_write_permission, which grants the
-    manage_public_processingservice bypass only once the target's is_public
-    flag is known.
-    """
+    """For ProcessingServiceViewSet: creating a brand-new service always needs active-staff status."""
 
-    def has_permission(self, request, view):
-        if getattr(view, "action", None) == "create":
-            return IsActiveStaffOrReadOnly.has_permission(self, request, view)
-        return super().has_permission(request, view)
-
-    def has_object_permission(self, request, view, obj):
-        if request.method in permissions.SAFE_METHODS:
-            return True
-        return check_processingservice_write_permission(request.user, obj)
+    exclude_create_from_bypass = True
 
 
 class ObjectPermission(permissions.BasePermission):
