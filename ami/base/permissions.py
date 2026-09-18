@@ -117,6 +117,27 @@ def check_processingservice_write_permission(user, processing_service) -> bool:
     return bool(user.is_superuser or is_active_staff(user))
 
 
+def add_processingservice_permissions(user, instance, response_data: dict) -> dict:
+    """
+    Add update/delete to user_permissions for a ProcessingService.
+
+    Unlike add_m2m_object_permissions, this skips the M2M membership check and
+    the guardian lookup entirely: no per-project *_processingservice guardian
+    permission exists anywhere in this codebase (see Project.Permissions and
+    ami/users/roles.py), so that branch could only ever fire for a superuser,
+    which a plain attribute check already covers for free. A public instance
+    still checks the platform manage_public_processingservice permission.
+    """
+    perms = set(response_data.get("user_permissions", []))
+    if getattr(instance, "is_public", False):
+        if user_can_manage_public(user, instance):
+            perms.update(["update", "delete"])
+    elif user.is_superuser:
+        perms.update(["update", "delete"])
+    response_data["user_permissions"] = list(perms)
+    return response_data
+
+
 def add_m2m_object_permissions(user, instance, project, response_data: dict) -> dict:
     """
     Add object-level permissions for models with an M2M relationship to Project.
