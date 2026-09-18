@@ -20,17 +20,20 @@ from ami.base.models import BaseModel, BaseQuerySet
 @dataclasses.dataclass
 class TaxaListSyncResult:
     """
-    What happened when a category map was written into a taxa list.
+    What happened the last time ``Algorithm.sync_taxa_list()`` ran.
 
-    ``unresolved`` holds the labels that matched no taxon and were not created,
-    so a caller can report or fix them; it is empty when missing taxa are created.
+    ``taxa_list`` is ``None`` only when the algorithm has no category map or the map has
+    no labels — the one case where nothing is written. ``unresolved`` holds the labels
+    that matched no taxon and were left out of the list, so a caller can report or fix
+    them; it is only non-empty when ``create_missing_taxa`` is False.
     """
 
-    taxa_list: TaxaList
+    taxa_list: TaxaList | None
     created_list: bool
     labels: int
     matched: int
     created_taxa: int
+    removed: int
     unresolved: list[str]
 
 
@@ -186,55 +189,6 @@ class AlgorithmCategoryMap(BaseModel):
         unresolved = [label for label in labels if label not in by_label]
         return resolved, unresolved
 
-    def get_or_create_taxa_list(
-        self,
-        name: str,
-        *,
-        description: str = "",
-        create_missing_taxa: bool = True,
-    ) -> TaxaListSyncResult:
-        """
-        Put every label of this category map into a global taxa list, so the full set of
-        taxa a model can predict exists as a list that projects can filter by or copy and
-        curate. Safe to run again: the list is found by name and the taxa are added, never
-        removed, so a curated copy is unaffected.
-
-        With ``create_missing_taxa`` a label with no taxon gets one, with the rank recorded
-        in the category map, like a classification result does for its top label. Without
-        it, those labels are reported in the result and left out of the list.
-        """
-        from ami.main.models import TaxaList, Taxon, TaxonRank
-
-        resolved, unresolved = self.resolve_taxa()
-        created_taxa = 0
-
-        with transaction.atomic():
-            if unresolved and create_missing_taxa:
-                rank_by_label = {category["label"]: category.get("taxon_rank") for category in self.data}
-                for label in unresolved:
-                    resolved[label] = Taxon.objects.create(
-                        name=label,
-                        rank=rank_by_label.get(label) or TaxonRank.UNKNOWN.name,
-                    )
-                    created_taxa += 1
-                unresolved = []
-
-            taxa_list, created_list = TaxaList.objects.get_or_create_for_project(
-                name=name,
-                project=None,
-                description=description,
-            )
-            taxa_list.taxa.add(*resolved.values())
-
-        return TaxaListSyncResult(
-            taxa_list=taxa_list,
-            created_list=created_list,
-            labels=len(self.labels),
-            matched=len(resolved) - created_taxa,
-            created_taxa=created_taxa,
-            unresolved=unresolved,
-        )
-
     def save(self, *args, **kwargs):
         if not self.labels_hash:
             self.labels_hash = self.make_labels_hash(self.labels)
@@ -352,6 +306,14 @@ class Algorithm(BaseModel):
         related_name="algorithms",
         default=None,
     )
+    taxa_list = models.ForeignKey(
+        "main.TaxaList",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="algorithms",
+        help_text="The taxa list that mirrors this algorithm's category map. See sync_taxa_list().",
+    )
 
     # api_base_url = models.URLField(blank=True)
     # api = models.CharField(max_length=255, blank=True)
@@ -408,21 +370,125 @@ class Algorithm(BaseModel):
         """Name of the global taxa list that holds every taxon this algorithm can predict."""
         return f"Category map of {self.name}"
 
-    def get_or_create_taxa_list(self, create_missing_taxa: bool = True) -> TaxaListSyncResult:
+    def sync_taxa_list(self, create_missing_taxa: bool = True) -> TaxaListSyncResult:
         """
-        Create or refresh the global taxa list of everything this algorithm can predict.
+        Make this algorithm's taxa list mirror its category map: membership becomes exactly
+        the taxa the labels resolve to (added or removed to match), visibility follows which
+        processing services currently offer the algorithm, and the description is refreshed.
 
-        Distinct from the list named "Taxa returned by ..." that grows as results are saved:
-        that one holds only taxa the model has predicted so far, this one holds all of them.
+        Algorithms sharing the same category map share one list. A list an algorithm points
+        at is "managed" (see TaxaList.is_managed): the API refuses hand edits to it (see
+        ami.base.permissions.check_taxalist_not_managed), because the next sync would
+        silently overwrite them. Distinct from the list named "Taxa returned by ..." that
+        grows as results are saved: that one holds only taxa the model has predicted so
+        far, this one holds everything it can predict.
+
+        Does nothing and returns a result with ``taxa_list=None`` when the algorithm has no
+        category map or the map has no labels.
         """
+        from ami.main.models import Taxon, TaxonRank
+
         category_map = self.category_map
-        if category_map is None or not self.has_valid_category_map():
-            raise ValueError(f"Algorithm {self} has no category map")
-        return category_map.get_or_create_taxa_list(
-            name=self.taxa_list_name(),
-            description=(
-                f"Every label of the category map of the algorithm {self.name} "
-                f"(key {self.key}, version {self.version}, {len(category_map.labels)} labels)."
-            ),
-            create_missing_taxa=create_missing_taxa,
+        if category_map is None or not category_map.labels:
+            return TaxaListSyncResult(
+                taxa_list=None, created_list=False, labels=0, matched=0, created_taxa=0, removed=0, unresolved=[]
+            )
+
+        with transaction.atomic():
+            resolved, unresolved = category_map.resolve_taxa()
+            created_taxa = 0
+            if unresolved and create_missing_taxa:
+                rank_by_label = {category["label"]: category.get("taxon_rank") for category in category_map.data}
+                new_taxa = []
+                for label in unresolved:
+                    taxon = Taxon(name=label, rank=rank_by_label.get(label) or TaxonRank.UNKNOWN.name)
+                    taxon.display_name = taxon.get_display_name()
+                    new_taxa.append(taxon)
+                Taxon.objects.bulk_create(new_taxa)
+                for label, taxon in zip(unresolved, new_taxa):
+                    resolved[label] = taxon
+                created_taxa = len(new_taxa)
+                unresolved = []
+
+            taxa_list, created_list = self._get_or_create_shared_taxa_list(category_map)
+
+            desired_ids = {taxon.pk for taxon in resolved.values()}
+            current_ids = set(taxa_list.taxa.values_list("pk", flat=True))
+            to_add = desired_ids - current_ids
+            to_remove = current_ids - desired_ids
+            if to_add:
+                taxa_list.taxa.add(*to_add)
+            if to_remove:
+                taxa_list.taxa.remove(*to_remove)
+
+            matched = len(resolved) - created_taxa
+            self._sync_taxa_list_visibility_and_description(taxa_list, category_map, matched, unresolved)
+
+        return TaxaListSyncResult(
+            taxa_list=taxa_list,
+            created_list=created_list,
+            labels=len(category_map.labels),
+            matched=matched,
+            created_taxa=created_taxa,
+            removed=len(to_remove),
+            unresolved=unresolved,
         )
+
+    def _get_or_create_shared_taxa_list(self, category_map: AlgorithmCategoryMap) -> tuple[TaxaList, bool]:
+        """
+        Find the list this algorithm should sync into: its own if it already has one, else a
+        sibling algorithm's list for the same category map (so both share one list), else a
+        new one. Links the list to this algorithm before returning.
+        """
+        from ami.main.models import TaxaList
+
+        if self.taxa_list_id:
+            return self.taxa_list, False
+
+        sibling_list_id = (
+            Algorithm.objects.filter(category_map_id=category_map.pk)
+            .exclude(pk=self.pk)
+            .exclude(taxa_list=None)
+            .values_list("taxa_list_id", flat=True)
+            .first()
+        )
+        if sibling_list_id:
+            taxa_list = TaxaList.objects.get(pk=sibling_list_id)
+            created_list = False
+        else:
+            taxa_list = TaxaList.objects.create(name=self.taxa_list_name())
+            created_list = True
+
+        self.taxa_list = taxa_list
+        self.save(update_fields=["taxa_list"])
+        return taxa_list, created_list
+
+    def _sync_taxa_list_visibility_and_description(
+        self,
+        taxa_list: TaxaList,
+        category_map: AlgorithmCategoryMap,
+        matched: int,
+        unresolved: list[str],
+    ) -> None:
+        """
+        A managed list's visibility follows the processing services that currently offer any
+        algorithm sharing it (public if any offering service is public; otherwise scoped to
+        the union of their projects; visible to superusers only if none offer it).
+        """
+        from ami.ml.models.processing_service import ProcessingService
+
+        describing = list(Algorithm.objects.filter(taxa_list=taxa_list).order_by("pk"))
+        services = ProcessingService.objects.filter(pipelines__algorithms__in=describing).distinct()
+
+        taxa_list.is_public = services.filter(is_public=True).exists()
+        if taxa_list.is_public:
+            taxa_list.projects.clear()
+        else:
+            taxa_list.projects.set(services.values_list("projects", flat=True))
+
+        names = ", ".join(f"{algorithm.name} (key {algorithm.key})" for algorithm in describing)
+        taxa_list.description = (
+            f"Every taxon predicted by the category map used by {names}: "
+            f"{len(category_map.labels)} labels, {matched} resolved, {len(unresolved)} unresolved."
+        )
+        taxa_list.save(update_fields=["is_public", "description"])

@@ -1797,9 +1797,10 @@ class TestAlgorithmCategoryMaps(TestCase):
 
 class TestTaxaListFromCategoryMap(TestCase):
     """
-    A category map can be written into a global taxa list of every taxon the model can predict.
-    Labels resolve by taxon name or search name; missing taxa are created with the map's rank
-    or reported; a second run adds nothing twice.
+    Algorithm.sync_taxa_list() writes a category map into a global TaxaList of every taxon
+    the model can predict. Labels resolve by taxon name or search name; missing taxa are
+    created with the map's rank, or reported; membership is reconciled exactly on every run,
+    so a label that stops resolving drops its taxon from the list on the next sync.
     """
 
     def setUp(self):
@@ -1827,38 +1828,86 @@ class TestTaxaListFromCategoryMap(TestCase):
         self.assertEqual(resolved, {"Testmoth alpha": self.by_name, "Testmoth beta-old": self.by_alias})
         self.assertEqual(unresolved, ["Testgenus"])
 
-    def test_missing_taxa_are_created_with_the_maps_rank(self):
-        result = self.algorithm.get_or_create_taxa_list()
+    def test_sync_creates_a_list_and_links_the_algorithm_to_it(self):
+        result = self.algorithm.sync_taxa_list()
 
         self.assertTrue(result.created_list)
-        self.assertEqual((result.labels, result.matched, result.created_taxa, result.unresolved), (3, 2, 1, []))
+        self.assertEqual(
+            (result.labels, result.matched, result.created_taxa, result.removed, result.unresolved),
+            (3, 2, 1, 0, []),
+        )
         self.assertEqual(result.taxa_list.name, "Category map of Test butterflies")
         self.assertEqual(result.taxa_list.projects.count(), 0)
+        self.algorithm.refresh_from_db()
+        self.assertEqual(self.algorithm.taxa_list_id, result.taxa_list.pk)
         created = Taxon.objects.get(name="Testgenus")
         self.assertEqual(created.rank, TaxonRank.GENUS.name)
         self.assertEqual(set(result.taxa_list.taxa.all()), {self.by_name, self.by_alias, created})
 
     def test_missing_taxa_can_be_reported_instead_of_created(self):
-        result = self.algorithm.get_or_create_taxa_list(create_missing_taxa=False)
+        result = self.algorithm.sync_taxa_list(create_missing_taxa=False)
 
         self.assertEqual((result.matched, result.created_taxa, result.unresolved), (2, 0, ["Testgenus"]))
         self.assertFalse(Taxon.objects.filter(name="Testgenus").exists())
         self.assertEqual(set(result.taxa_list.taxa.all()), {self.by_name, self.by_alias})
 
-    def test_second_run_reuses_the_list_and_adds_nothing_twice(self):
-        first = self.algorithm.get_or_create_taxa_list()
-        second = self.algorithm.get_or_create_taxa_list()
+    def test_second_run_reuses_the_list_and_changes_nothing(self):
+        first = self.algorithm.sync_taxa_list()
+        second = self.algorithm.sync_taxa_list()
 
         self.assertEqual(second.taxa_list.pk, first.taxa_list.pk)
         self.assertFalse(second.created_list)
-        self.assertEqual((second.matched, second.created_taxa), (3, 0))
+        self.assertEqual((second.matched, second.created_taxa, second.removed), (3, 0, 0))
         self.assertEqual(second.taxa_list.taxa.count(), 3)
 
-    def test_algorithm_without_category_map_is_refused(self):
+    def test_membership_drops_a_taxon_whose_label_stops_resolving(self):
+        first = self.algorithm.sync_taxa_list()
+        self.assertEqual(first.taxa_list.taxa.count(), 3)
+
+        # The alias is what made "Testmoth beta-old" resolve; removing it, without
+        # touching the taxon's name, isolates a label that stops resolving from a
+        # taxon that stops existing (a separate, already-covered case).
+        self.by_alias.search_names = []
+        self.by_alias.save()
+
+        second = self.algorithm.sync_taxa_list(create_missing_taxa=False)
+
+        self.assertEqual((second.matched, second.created_taxa, second.removed), (2, 0, 1))
+        self.assertEqual(second.unresolved, ["Testmoth beta-old"])
+        self.assertEqual(second.taxa_list.pk, first.taxa_list.pk)
+        self.assertFalse(second.taxa_list.taxa.filter(pk=self.by_alias.pk).exists())
+
+    def test_two_algorithms_sharing_a_category_map_share_one_list(self):
+        sibling = Algorithm.objects.create(
+            name="Test butterflies v2", key="test-butterflies-v2", category_map=self.category_map
+        )
+
+        first = self.algorithm.sync_taxa_list()
+        second = sibling.sync_taxa_list()
+
+        self.assertEqual(second.taxa_list.pk, first.taxa_list.pk)
+        self.assertFalse(second.created_list)
+        sibling.refresh_from_db()
+        self.algorithm.refresh_from_db()
+        self.assertEqual(sibling.taxa_list_id, self.algorithm.taxa_list_id)
+
+    def test_algorithm_without_a_category_map_does_nothing(self):
         bare = Algorithm.objects.create(name="Bare", key="bare")
 
-        with self.assertRaises(ValueError):
-            bare.get_or_create_taxa_list()
+        result = bare.sync_taxa_list()
+
+        self.assertIsNone(result.taxa_list)
+        self.assertEqual((result.labels, result.matched, result.created_taxa, result.removed), (0, 0, 0, 0))
+
+    def test_category_map_with_no_labels_does_nothing(self):
+        from ami.ml.models import AlgorithmCategoryMap
+
+        empty_map = AlgorithmCategoryMap.objects.create(data=[], labels=[], version="empty")
+        empty_algorithm = Algorithm.objects.create(name="Empty Map Algo", key="empty-map-algo", category_map=empty_map)
+
+        result = empty_algorithm.sync_taxa_list()
+
+        self.assertIsNone(result.taxa_list)
 
     def test_management_command_dry_run_writes_nothing(self):
         from io import StringIO
@@ -1877,7 +1926,98 @@ class TestTaxaListFromCategoryMap(TestCase):
         self.assertFalse(Taxon.objects.filter(name="Testgenus").exists())
 
         call_command("create_taxa_lists_from_category_maps", "--algorithm", "test-butterflies", stdout=out)
-        self.assertEqual(TaxaList.objects.get(name="Category map of Test butterflies").taxa.count(), 3)
+        taxa_list = TaxaList.objects.get(name="Category map of Test butterflies")
+        self.assertEqual(taxa_list.taxa.count(), 3)
+        self.algorithm.refresh_from_db()
+        self.assertEqual(self.algorithm.taxa_list_id, taxa_list.pk)
+
+
+class TestAlgorithmTaxaListVisibility(TestCase):
+    """
+    A managed list's visibility follows the processing services offering the algorithm:
+    public if any of them is public, else scoped to the union of their projects, else
+    visible to superusers only (no service offers the algorithm at all).
+    """
+
+    def setUp(self):
+        from ami.ml.models import AlgorithmCategoryMap
+
+        self.taxon = Taxon.objects.create(name="Visibility Testmoth", rank=TaxonRank.SPECIES.name)
+        data = [{"index": 0, "label": "Visibility Testmoth", "taxon_rank": "SPECIES"}]
+        self.category_map = AlgorithmCategoryMap.objects.create(
+            data=data, labels=AlgorithmCategoryMap.labels_from_data(data), version="test"
+        )
+        self.algorithm = Algorithm.objects.create(
+            name="Visibility Test Algo", key="visibility-test-algo", category_map=self.category_map
+        )
+        self.pipeline = Pipeline.objects.create(name="Visibility Test Pipeline")
+        self.pipeline.algorithms.add(self.algorithm)
+
+    def test_no_offering_service_gives_a_superuser_only_list(self):
+        result = self.algorithm.sync_taxa_list()
+
+        self.assertFalse(result.taxa_list.is_public)
+        self.assertEqual(result.taxa_list.projects.count(), 0)
+
+    def test_a_public_offering_service_makes_the_list_public(self):
+        service = ProcessingService.objects.create(name="Public PS", endpoint_url=None, is_public=True)
+        service.pipelines.add(self.pipeline)
+
+        result = self.algorithm.sync_taxa_list()
+
+        self.assertTrue(result.taxa_list.is_public)
+        self.assertEqual(result.taxa_list.projects.count(), 0)
+
+    def test_project_scoped_offering_services_scope_the_list_to_their_projects(self):
+        project_a = Project.objects.create(name="Visibility Project A")
+        project_b = Project.objects.create(name="Visibility Project B")
+        service_a = ProcessingService.objects.create(name="Service A", endpoint_url=None)
+        service_a.projects.add(project_a)
+        service_a.pipelines.add(self.pipeline)
+        # A service offering a different pipeline must not widen the list's scope.
+        other_pipeline = Pipeline.objects.create(name="Unrelated Pipeline")
+        service_b = ProcessingService.objects.create(name="Service B", endpoint_url=None)
+        service_b.projects.add(project_b)
+        service_b.pipelines.add(other_pipeline)
+
+        result = self.algorithm.sync_taxa_list()
+
+        self.assertFalse(result.taxa_list.is_public)
+        self.assertEqual(set(result.taxa_list.projects.all()), {project_a})
+
+
+@override_settings(CACHALOT_ENABLED=False)
+class TestSyncTaxaListQueryCost(TestCase):
+    """
+    sync_taxa_list() resolves and reconciles membership with a fixed number of queries:
+    every step (resolve, sibling lookup, membership diff, visibility) issues one query
+    per algorithm run regardless of how many labels the category map holds, using
+    ``__in``/bulk operations rather than a query per label.
+    """
+
+    def _build_algorithm(self, key: str, label_count: int) -> Algorithm:
+        from ami.ml.models import AlgorithmCategoryMap
+
+        data = []
+        for i in range(label_count):
+            name = f"{key} species {i}"
+            Taxon.objects.create(name=name, rank=TaxonRank.SPECIES.name)
+            data.append({"index": i, "label": name, "taxon_rank": "SPECIES"})
+        category_map = AlgorithmCategoryMap.objects.create(
+            data=data, labels=AlgorithmCategoryMap.labels_from_data(data), version=key
+        )
+        return Algorithm.objects.create(name=key, key=key, category_map=category_map)
+
+    def test_query_count_is_the_same_for_5_and_50_labels(self):
+        small = self._build_algorithm("qc-small", 5)
+        large = self._build_algorithm("qc-large", 50)
+
+        with CaptureQueriesContext(connection) as small_ctx:
+            small.sync_taxa_list()
+        with CaptureQueriesContext(connection) as large_ctx:
+            large.sync_taxa_list()
+
+        self.assertEqual(len(small_ctx.captured_queries), len(large_ctx.captured_queries))
 
 
 class TestPostProcessingTasks(TestCase):

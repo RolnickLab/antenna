@@ -45,12 +45,16 @@ class Command(BaseCommand):
                 if not algorithm.has_valid_category_map():
                     self.stdout.write(f"Skipping {algorithm}: empty category map")
                     continue
-                result = algorithm.get_or_create_taxa_list(create_missing_taxa=not options["no_create_taxa"])
+                result = algorithm.sync_taxa_list(create_missing_taxa=not options["no_create_taxa"])
+                if result.taxa_list is None:
+                    self.stdout.write(f"Skipping {algorithm}: empty category map")
+                    continue
                 verb = "Created" if result.created_list else "Updated"
                 self.stdout.write(
                     f"{verb} taxa list '{result.taxa_list.name}' (#{result.taxa_list.pk}): "
                     f"{result.labels} labels, {result.matched} matched existing taxa, "
-                    f"{result.created_taxa} taxa created, {len(result.unresolved)} unresolved"
+                    f"{result.created_taxa} taxa created, {result.removed} removed, "
+                    f"{len(result.unresolved)} unresolved"
                 )
                 for label in result.unresolved:
                     self.stdout.write(f"  unresolved: {label}")
