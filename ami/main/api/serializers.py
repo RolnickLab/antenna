@@ -756,7 +756,7 @@ class TaxaListSerializer(DefaultSerializer):
         project_perms = None
         if project and not request.user.is_superuser:
             if not hasattr(self, "_project_perms"):
-                self._project_perms = get_perms(request.user, project)
+                self._project_perms = set(get_perms(request.user, project))
             project_perms = self._project_perms
 
         return add_m2m_object_permissions(request.user, instance, project, instance_data, project_perms=project_perms)

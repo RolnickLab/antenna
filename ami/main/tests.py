@@ -5291,18 +5291,26 @@ class TaxaListViewSetPermissionTestCase(TestCase):
 
 class TaxaListPermissionScopingTestCase(TestCase):
     """Guard the membership check in add_m2m_object_permissions against the
-    prefetch-based fast path added to fix per-row queries (see #1120)."""
+    prefetch-based fast path added to fix per-row queries (see #1120).
+
+    The member holds the ProjectManager role, the only role granting
+    update_taxalist/delete_taxalist (ami/users/roles.py) — a plain BasicMember
+    never has those permissions on any project, so the negative-only guards
+    below would pass even if the scoping check were removed entirely.
+    """
 
     def setUp(self):
         self.owner = User.objects.create_user(email="scoping-owner@example.com", password="testpass")
         self.member = User.objects.create_user(email="scoping-member@example.com", password="testpass")
         self.project = Project.objects.create(name="Scoping Project", owner=self.owner)
         self.project.members.add(self.member)
+        ProjectManager.assign_user(self.member, self.project)
         self.client = APIClient()
 
     def test_prefetched_non_member_list_gets_no_write_permissions(self):
         """A taxa list outside the active project must still report no update/delete
-        permissions when `instance.projects` was prefetched by the caller, not queried."""
+        permissions when `instance.projects` was prefetched by the caller, not queried,
+        even though the member holds update/delete_taxalist on the active project."""
         other_project = Project.objects.create(name="Other Project", owner=self.owner)
         outside_list = TaxaList.objects.create(name="Outside List")
         outside_list.projects.add(other_project)
@@ -5314,21 +5322,40 @@ class TaxaListPermissionScopingTestCase(TestCase):
         self.assertNotIn("update", data["user_permissions"])
         self.assertNotIn("delete", data["user_permissions"])
 
+    def test_prefetched_member_list_gets_write_permissions(self):
+        """Positive counterpart to the guard above: a list that does belong to
+        the active project reports update/delete for a ProjectManager member,
+        so the negative case isn't just a permission set that's always empty."""
+        member_list = TaxaList.objects.create(name="Member List")
+        member_list.projects.add(self.project)
+
+        instance = TaxaList.objects.filter(pk=member_list.pk).prefetch_related("projects").get()
+        data = add_m2m_object_permissions(self.member, instance, self.project, {})
+        self.assertIn("update", data["user_permissions"])
+        self.assertIn("delete", data["user_permissions"])
+
     def test_permissions_scoped_to_requested_project_not_other_memberships(self):
-        """A member of project A must not see project A's write permissions on a
-        taxa list shared with project B when the request is scoped to project B,
-        even though the same list belongs to both."""
+        """A member with write permissions on project A must not see those
+        permissions on a taxa list shared with project B when the request is
+        scoped to project B, where they hold no role, even though the same
+        list belongs to both."""
         project_b = Project.objects.create(name="Project B", owner=self.owner)
         shared_list = TaxaList.objects.create(name="Shared List")
         shared_list.projects.add(self.project, project_b)
 
         self.client.force_authenticate(self.member)
-        response = self.client.get(f"/api/v2/taxa/lists/?project_id={project_b.pk}")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-        row = next(r for r in response.data["results"] if r["id"] == shared_list.pk)
-        self.assertNotIn("update", row["user_permissions"])
-        self.assertNotIn("delete", row["user_permissions"])
+        response_a = self.client.get(f"/api/v2/taxa/lists/?project_id={self.project.pk}")
+        self.assertEqual(response_a.status_code, status.HTTP_200_OK)
+        row_a = next(r for r in response_a.data["results"] if r["id"] == shared_list.pk)
+        self.assertIn("update", row_a["user_permissions"])
+        self.assertIn("delete", row_a["user_permissions"])
+
+        response_b = self.client.get(f"/api/v2/taxa/lists/?project_id={project_b.pk}")
+        self.assertEqual(response_b.status_code, status.HTTP_200_OK)
+        row_b = next(r for r in response_b.data["results"] if r["id"] == shared_list.pk)
+        self.assertNotIn("update", row_b["user_permissions"])
+        self.assertNotIn("delete", row_b["user_permissions"])
 
 
 class TaxaListTaxonAPITestCase(TestCase):
