@@ -29,7 +29,7 @@ class Migration(migrations.Migration):
             name="is_public",
             field=models.BooleanField(
                 default=False,
-                help_text="Public processing services are available to every project, not just the ones in 'projects'.",
+                help_text="Public services are shown to every project, not just the ones linked via 'projects'; running a job still requires the service to be linked to the project.",
             ),
         ),
     ]

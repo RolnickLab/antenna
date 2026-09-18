@@ -42,7 +42,7 @@ class Migration(migrations.Migration):
             name="is_public",
             field=models.BooleanField(
                 default=False,
-                help_text="Public lists are available to every project, not just the ones in 'projects'.",
+                help_text="Public rows are shown to every project, not just the ones linked via 'projects'.",
             ),
         ),
         migrations.AlterField(
