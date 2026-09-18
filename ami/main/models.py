@@ -50,7 +50,7 @@ from ami.utils.schemas import OrderedEnum
 
 if typing.TYPE_CHECKING:
     from ami.jobs.models import Job
-    from ami.ml.models import Pipeline, ProcessingService
+    from ami.ml.models import Algorithm, Pipeline, ProcessingService
 
 logger = logging.getLogger(__name__)
 
@@ -4784,6 +4784,18 @@ class TaxaListQuerySet(BaseQuerySet):
             assert taxa_list is not None  # We know there's at least one
             return taxa_list, False
 
+    def with_is_managed(self) -> "TaxaListQuerySet":
+        """
+        Annotate whether at least one algorithm links to each list, so a list endpoint's
+        ``is_managed`` field costs one query for the whole page rather than one per row.
+        See ``Algorithm.sync_taxa_list()``.
+        """
+        from ami.ml.models import Algorithm
+
+        return self.annotate(
+            annotated_is_managed=models.Exists(Algorithm.objects.filter(taxa_list=models.OuterRef("pk")))
+        )
+
 
 class TaxaListManager(models.Manager.from_queryset(TaxaListQuerySet)):
     pass
@@ -4800,11 +4812,25 @@ class TaxaList(BaseModel, PublicScopedModel):
     projects = models.ManyToManyField("Project", related_name="taxa_lists", blank=True)
 
     objects: TaxaListManager = TaxaListManager()
+    algorithms: models.QuerySet["Algorithm"]
 
     class Meta:
         ordering = ["-created_at"]
         verbose_name_plural = "Taxa Lists"
         permissions = [("manage_public_taxalist", "Can create, edit and delete public taxa lists")]
+
+    @property
+    def is_managed(self) -> bool:
+        """
+        True when at least one algorithm points at this list. Its membership then belongs
+        to ``Algorithm.sync_taxa_list()``, and the API refuses hand edits to it (adding or
+        removing a taxon, deleting the list) because the next sync would overwrite them.
+        Reads the ``with_is_managed()`` annotation when present to avoid a query per row.
+        """
+        annotated = getattr(self, "annotated_is_managed", None)
+        if annotated is not None:
+            return annotated
+        return self.algorithms.exists()
 
 
 @final
