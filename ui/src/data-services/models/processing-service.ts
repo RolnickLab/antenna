@@ -4,6 +4,32 @@ import { Pipeline, ServerPipeline } from './pipeline'
 
 export type ServerProcessingService = any // TODO: Update this type
 
+// Mirrors ami/ml/schemas.py::TaxaListSyncSummary — what registering pipelines did to one
+// classifier's taxa list.
+export interface ServerTaxaListSyncResult {
+  algorithm_key: string
+  algorithm_name: string
+  status: 'synced' | 'queued' | 'failed'
+  labels: number
+  taxa_list_id: number | null
+  taxa_list_name: string | null
+  matched: number
+  created_taxa: number
+  removed: number
+  unresolved: number
+  error: string | null
+}
+
+// Mirrors ami/ml/schemas.py::PipelineRegistrationResponse, minus the full pipeline
+// configs — the register-pipelines dialog only summarizes what changed.
+export interface ServerRegisterPipelinesResponse {
+  success: boolean
+  error: string | null
+  pipelines_created: string[]
+  algorithms_created: string[]
+  taxa_lists: ServerTaxaListSyncResult[]
+}
+
 export const SERVER_PROCESSING_SERVICE_STATUS_CODES = [
   'OFFLINE',
   'ONLINE',
