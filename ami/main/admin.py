@@ -736,10 +736,14 @@ class TaxonAdmin(admin.ModelAdmin[Taxon]):
 class TaxaListAdmin(admin.ModelAdmin[TaxaList]):
     """Admin panel example for ``TaxaList`` model."""
 
-    list_display = ("name", "is_public", "taxa_count", "created_at", "updated_at")
+    list_display = ("name", "is_public", "is_managed", "taxa_count", "created_at", "updated_at")
 
     def taxa_count(self, obj) -> int:
         return obj.taxa.count()
+
+    @admin.display(boolean=True)
+    def is_managed(self, obj) -> bool:
+        return obj.is_managed
 
     autocomplete_fields = (
         "taxa",

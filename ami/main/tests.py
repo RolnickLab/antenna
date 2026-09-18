@@ -5728,6 +5728,155 @@ class TaxaListPublicPermissionsTestCase(TestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
+class TaxaListManagedLockTestCase(TestCase):
+    """
+    A managed list (``Algorithm.sync_taxa_list()`` points an algorithm at it, see
+    ``ami.ml.tests.TestTaxaListFromCategoryMap``) refuses every hand edit to its taxa or
+    its existence — add taxon, remove taxon, delete — for every caller, including a
+    superuser and a manage_public_taxalist holder, because the next sync would silently
+    overwrite the edit. Renaming stays governed by the ordinary public/scoped rules from
+    TaxaListPublicPermissionsTestCase, which this does not change.
+
+    ``managed_scoped_list`` is scoped to a project the plain member belongs to, and
+    ``managed_public_list`` is public: each is built so that, if it were not managed,
+    the actor tested against it would otherwise be allowed to write — proving the lock
+    is what blocks the request rather than an unrelated permission gap.
+    """
+
+    def setUp(self):
+        from ami.ml.models import Algorithm, AlgorithmCategoryMap
+
+        self.owner = User.objects.create_user(email="lock-owner@example.com", password="testpass")
+        self.member = User.objects.create_user(email="lock-member@example.com", password="testpass")
+        self.superuser = User.objects.create_superuser(email="lock-super@example.com", password="testpass")
+        self.public_manager = User.objects.create_user(email="lock-manager@example.com", password="testpass")
+        perm = Permission.objects.get(codename="manage_public_taxalist", content_type__app_label="main")
+        self.public_manager.user_permissions.add(perm)
+
+        self.project = Project.objects.create(name="Lock Test Project", owner=self.owner)
+        self.project.members.add(self.member)
+
+        taxon = Taxon.objects.create(name="Lock Testmoth", rank="SPECIES")
+
+        def make_managed_list(key: str, is_public: bool) -> TaxaList:
+            data = [{"index": 0, "label": taxon.name, "taxon_rank": "SPECIES"}]
+            category_map = AlgorithmCategoryMap.objects.create(
+                data=data, labels=AlgorithmCategoryMap.labels_from_data(data), version=key
+            )
+            algorithm = Algorithm.objects.create(name=f"{key} algo", key=key, category_map=category_map)
+            pipeline = Pipeline.objects.create(name=f"{key} pipeline")
+            pipeline.algorithms.add(algorithm)
+            service = ProcessingService.objects.create(name=f"{key} service", endpoint_url=None, is_public=is_public)
+            if not is_public:
+                service.projects.add(self.project)
+            service.pipelines.add(pipeline)
+            result = algorithm.sync_taxa_list()
+            assert result.taxa_list is not None
+            return result.taxa_list
+
+        self.managed_scoped_list = make_managed_list("lock-scoped", is_public=False)
+        self.managed_public_list = make_managed_list("lock-public", is_public=True)
+        self.taxon = Taxon.objects.create(name="Lock Extra Taxon", rank="SPECIES")
+        self.client = APIClient()
+
+    def _detail_url(self, taxa_list):
+        return f"/api/v2/taxa/lists/{taxa_list.pk}/?project_id={self.project.pk}"
+
+    def _taxa_url(self, taxa_list):
+        return f"/api/v2/taxa/lists/{taxa_list.pk}/taxa/?project_id={self.project.pk}"
+
+    def _taxon_detail_url(self, taxa_list, taxon):
+        return f"/api/v2/taxa/lists/{taxa_list.pk}/taxa/{taxon.pk}/?project_id={self.project.pk}"
+
+    # -- A plain project member would otherwise be able to write to a scoped list --
+
+    def test_member_cannot_add_taxon_to_a_managed_scoped_list(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.post(self._taxa_url(self.managed_scoped_list), {"taxon_id": self.taxon.pk})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertFalse(self.managed_scoped_list.taxa.filter(pk=self.taxon.pk).exists())
+
+    def test_member_cannot_remove_taxon_from_a_managed_scoped_list(self):
+        self.managed_scoped_list.taxa.add(self.taxon)
+        self.client.force_authenticate(self.member)
+        response = self.client.delete(self._taxon_detail_url(self.managed_scoped_list, self.taxon))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(self.managed_scoped_list.taxa.filter(pk=self.taxon.pk).exists())
+
+    def test_member_cannot_delete_a_managed_scoped_list(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.delete(self._detail_url(self.managed_scoped_list))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(TaxaList.objects.filter(pk=self.managed_scoped_list.pk).exists())
+
+    def test_member_can_still_rename_a_managed_scoped_list(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.patch(self._detail_url(self.managed_scoped_list), {"name": "Renamed"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    # -- A superuser would otherwise be able to write to any list --
+
+    def test_superuser_cannot_add_taxon_to_a_managed_list(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.post(self._taxa_url(self.managed_scoped_list), {"taxon_id": self.taxon.pk})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_superuser_cannot_remove_taxon_from_a_managed_list(self):
+        self.managed_scoped_list.taxa.add(self.taxon)
+        self.client.force_authenticate(self.superuser)
+        response = self.client.delete(self._taxon_detail_url(self.managed_scoped_list, self.taxon))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_superuser_cannot_delete_a_managed_list(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.delete(self._detail_url(self.managed_public_list))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(TaxaList.objects.filter(pk=self.managed_public_list.pk).exists())
+
+    # -- A manage_public_taxalist holder would otherwise be able to write to a public list --
+
+    def test_public_list_manager_cannot_add_taxon_to_a_managed_public_list(self):
+        self.client.force_authenticate(self.public_manager)
+        response = self.client.post(self._taxa_url(self.managed_public_list), {"taxon_id": self.taxon.pk})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_public_list_manager_cannot_remove_taxon_from_a_managed_public_list(self):
+        self.managed_public_list.taxa.add(self.taxon)
+        self.client.force_authenticate(self.public_manager)
+        response = self.client.delete(self._taxon_detail_url(self.managed_public_list, self.taxon))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_public_list_manager_cannot_delete_a_managed_public_list(self):
+        self.client.force_authenticate(self.public_manager)
+        response = self.client.delete(self._detail_url(self.managed_public_list))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_public_list_manager_can_still_rename_a_managed_public_list(self):
+        self.client.force_authenticate(self.public_manager)
+        response = self.client.patch(self._detail_url(self.managed_public_list), {"name": "Renamed"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    # -- Serializer fields --
+
+    def test_managed_list_reports_is_managed_and_its_algorithms(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.get(self._detail_url(self.managed_scoped_list))
+        body = response.json()
+        self.assertTrue(body["is_managed"])
+        self.assertEqual([algo["key"] for algo in body["algorithms"]], ["lock-scoped"])
+        self.assertNotIn("delete", body["user_permissions"])
+
+    def test_unmanaged_list_reports_is_managed_false_and_no_algorithms(self):
+        scoped_list = TaxaList.objects.create(name="Plain Scoped List")
+        scoped_list.projects.add(self.project)
+        self.client.force_authenticate(self.superuser)
+        response = self.client.get(self._detail_url(scoped_list))
+        body = response.json()
+        self.assertFalse(body["is_managed"])
+        self.assertEqual(body["algorithms"], [])
+        self.assertIn("delete", body["user_permissions"])
+
+
 class TaxaListIncludePublicParamTestCase(TestCase):
     """?include_public toggles whether public lists appear alongside a project's own lists."""
 
@@ -5908,13 +6057,14 @@ class TaxaListTaxonDraftProjectVisibilityTestCase(TestCase):
 @override_settings(CACHALOT_ENABLED=False)
 class TaxaListQueryCountTestCase(APITestCase):
     """
-    Pins the current query count for TaxaListViewSet.list on a mixed public/scoped,
-    multi-row fixture, so a regression that adds queries is noticed. This does not
-    certify the absence of per-row queries — see the N+1 sources documented in the
-    handoff notes; it only catches a further increase from where things stand today.
+    Pins the current query count for TaxaListViewSet.list on a mixed public/scoped/managed,
+    multi-row fixture, so a regression that adds queries is noticed. This does not certify
+    the absence of per-row queries (see #1428); it only catches a further increase.
     """
 
     def setUp(self):
+        from ami.ml.models import Algorithm, AlgorithmCategoryMap
+
         self.user = User.objects.create_user(email="qc-user@example.com", password="testpass")
         self.project = Project.objects.create(name="QC Project", owner=self.user)
         for i in range(3):
@@ -5922,6 +6072,27 @@ class TaxaListQueryCountTestCase(APITestCase):
             scoped.projects.add(self.project)
         for i in range(2):
             TaxaList.objects.create(name=f"Public {i}", is_public=True)
+
+        def make_managed_list(key: str, is_public: bool) -> None:
+            taxon = Taxon.objects.create(name=f"QC {key} taxon", rank="SPECIES")
+            data = [{"index": 0, "label": taxon.name, "taxon_rank": "SPECIES"}]
+            category_map = AlgorithmCategoryMap.objects.create(
+                data=data, labels=AlgorithmCategoryMap.labels_from_data(data), version=key
+            )
+            algorithm = Algorithm.objects.create(name=f"{key} algo", key=key, category_map=category_map)
+            pipeline = Pipeline.objects.create(name=f"{key} pipeline")
+            pipeline.algorithms.add(algorithm)
+            service = ProcessingService.objects.create(name=f"{key} service", endpoint_url=None, is_public=is_public)
+            if not is_public:
+                service.projects.add(self.project)
+            service.pipelines.add(pipeline)
+            algorithm.sync_taxa_list()
+
+        # One managed list scoped to the project, one public managed list — both must
+        # show up in the page and cost no extra query per row for is_managed/algorithms.
+        make_managed_list("qc-managed-scoped", is_public=False)
+        make_managed_list("qc-managed-public", is_public=True)
+
         self.client = APIClient()
         self.client.force_authenticate(self.user)
 
@@ -5932,11 +6103,10 @@ class TaxaListQueryCountTestCase(APITestCase):
         with cachalot_disabled(), CaptureQueriesContext(connection) as ctx:
             response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.json()["results"]), 5)
-        # 34 (previous baseline) + 1: get_projects() now resolves Project.objects
-        # .visible_for_user(request.user) once per request (cached on the
-        # serializer instance) to filter draft-project ids out of the response.
-        self.assertEqual(len(ctx.captured_queries), 35)
+        self.assertEqual(len(response.json()["results"]), 7)
+        # Measured on this branch; one of these is the once-per-request visible-projects
+        # lookup that filters draft ids out of get_projects().
+        self.assertEqual(len(ctx.captured_queries), 45)
 
 
 class TaxaListDedupeMigrationTestCase(TestCase):
