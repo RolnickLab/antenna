@@ -2035,6 +2035,79 @@ class TestSyncTaxaListQueryCost(TestCase):
         self.assertEqual(len(small_ctx.captured_queries), len(large_ctx.captured_queries))
 
 
+class TestAlgorithmSerializerTaxaList(APITestCase):
+    """The algorithm API exposes the taxa list an algorithm is synced to, or null before
+    any sync has happened. See Algorithm.sync_taxa_list()."""
+
+    def setUp(self):
+        from ami.ml.models import AlgorithmCategoryMap
+
+        self.user = User.objects.create_user(email="algo-taxalist-user@example.com", password="testpass")
+        taxon = Taxon.objects.create(name="Serializer Test Taxon", rank=TaxonRank.SPECIES.name)
+        data = [{"index": 0, "label": taxon.name, "taxon_rank": "SPECIES"}]
+        self.category_map = AlgorithmCategoryMap.objects.create(
+            data=data, labels=AlgorithmCategoryMap.labels_from_data(data), version="serializer-test"
+        )
+        self.algorithm = Algorithm.objects.create(
+            name="Serializer Test Algo", key="serializer-test-algo", category_map=self.category_map
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def _detail_url(self):
+        return f"/api/v2/ml/algorithms/{self.algorithm.pk}/"
+
+    def test_taxa_list_is_null_before_a_sync(self):
+        response = self.client.get(self._detail_url())
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(response.json()["taxa_list"])
+
+    def test_taxa_list_is_id_and_name_after_a_sync(self):
+        result = self.algorithm.sync_taxa_list()
+
+        response = self.client.get(self._detail_url())
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["taxa_list"], {"id": result.taxa_list.pk, "name": result.taxa_list.name})
+
+
+@override_settings(CACHALOT_ENABLED=False)
+class AlgorithmQueryCountTestCase(APITestCase):
+    """Audit AlgorithmViewSet.list for N+1 from the nested taxa_list field, across a
+    fixture mixing algorithms with and without a synced list."""
+
+    def setUp(self):
+        from ami.ml.models import AlgorithmCategoryMap
+
+        self.user = User.objects.create_user(email="algo-qc-user@example.com", password="testpass")
+        for i in range(3):
+            Algorithm.objects.create(name=f"QC Bare Algo {i}", key=f"qc-bare-algo-{i}")
+        for i in range(2):
+            taxon = Taxon.objects.create(name=f"QC Linked Taxon {i}", rank=TaxonRank.SPECIES.name)
+            data = [{"index": 0, "label": taxon.name, "taxon_rank": "SPECIES"}]
+            category_map = AlgorithmCategoryMap.objects.create(
+                data=data, labels=AlgorithmCategoryMap.labels_from_data(data), version=f"qc-linked-{i}"
+            )
+            algorithm = Algorithm.objects.create(
+                name=f"QC Linked Algo {i}", key=f"qc-linked-algo-{i}", category_map=category_map
+            )
+            algorithm.sync_taxa_list()
+
+        self.client = APIClient()
+        self.client.force_authenticate(self.user)
+
+    def test_list_query_count(self):
+        from cachalot.api import cachalot_disabled
+
+        # Scoped to this fixture's own rows with ?search=, so pre-existing demo
+        # algorithms created by other signals don't skew the row/query count.
+        with cachalot_disabled(), CaptureQueriesContext(connection) as ctx:
+            response = self.client.get("/api/v2/ml/algorithms/", {"search": "QC "})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.json()["results"]), 5)
+        self.assertEqual(len(ctx.captured_queries), 4)
+
+
 class TestPostProcessingTasks(TestCase):
     @classmethod
     def setUpTestData(cls):

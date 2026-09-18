@@ -30,8 +30,20 @@ class AlgorithmCategoryMapSerializer(DefaultSerializer):
 MinimalCategoryMapNestedSerializer = MinimalNestedModelSerializer.create_for_model(AlgorithmCategoryMap)
 
 
+class TaxaListMinimalSerializer(serializers.Serializer):
+    """
+    id + name only, for embedding a TaxaList on another serializer. A plain Serializer
+    rather than DefaultSerializer: the latter's to_representation() always runs an
+    object-permission check, which would cost a query per row here.
+    """
+
+    id = serializers.IntegerField(read_only=True)
+    name = serializers.CharField(read_only=True)
+
+
 class AlgorithmSerializer(DefaultSerializer):
     category_map = MinimalCategoryMapNestedSerializer(read_only=True, source="category_map_id")
+    taxa_list = TaxaListMinimalSerializer(read_only=True)
 
     class Meta:
         model = Algorithm
@@ -47,6 +59,7 @@ class AlgorithmSerializer(DefaultSerializer):
             "task_type",
             "category_map",
             "category_count",
+            "taxa_list",
             "created_at",
             "updated_at",
         ]
