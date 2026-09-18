@@ -221,6 +221,13 @@ def create_taxa(project: Project) -> TaxaList:
                 rank=TaxonRank.SPECIES.name,
             ),
         )
+        # get_or_create ignores defaults for a row that already exists, and registering a
+        # classifier creates these species from its category map with no parent. Setting
+        # the parent here gives the fixture its genus whichever step created the row.
+        if taxon.parent_id != genus_taxon.pk:
+            taxon.parent = genus_taxon
+            taxon.rank = TaxonRank.SPECIES.name
+            taxon.save()
         species_taxa.append(taxon)
         taxon.projects.add(project)
     taxa_list.taxa.set([root, family_taxon, genus_taxon] + species_taxa)

@@ -2155,11 +2155,11 @@ class TestTaxaListSyncOnRegistration(TestCase):
         self.assertEqual(algorithm.taxa_list_id, summary.taxa_list_id)
         self.assertEqual(algorithm.taxa_list.taxa.count(), 3)
 
-    def test_registration_links_known_taxa_and_never_invents_new_ones(self):
+    def test_registration_creates_the_taxa_its_labels_name_and_leaves_none_unresolved(self):
         """
-        A label the taxonomy does not know is reported as unresolved and left out of the
-        list. Creating it here would store a rankless, parentless row that shadows the real
-        taxon a later import brings in, so only the management command creates taxa.
+        A label naming a taxon Antenna does not hold is created, so the list covers
+        everything the classifier can predict rather than only the overlap with whatever
+        taxonomy happens to be loaded. Labels that already match are reused, not duplicated.
         """
         classifier = _classifier_algorithm("partial-match-classifier", label_count=3)
         known_label = classifier.category_map.labels[0]
@@ -2171,9 +2171,12 @@ class TestTaxaListSyncOnRegistration(TestCase):
 
         summary = response.taxa_lists[0]
         self.assertEqual(summary.matched, 1)
-        self.assertEqual(summary.created_taxa, 0)
-        self.assertEqual(summary.unresolved, 2)
-        self.assertEqual(Taxon.objects.count(), taxa_before)
+        self.assertEqual(summary.created_taxa, 2)
+        self.assertEqual(summary.unresolved, 0)
+        self.assertEqual(Taxon.objects.count(), taxa_before + 2)
+
+        algorithm = Algorithm.objects.get(key="partial-match-classifier")
+        self.assertEqual(algorithm.taxa_list.taxa.count(), 3)
 
     def test_detector_produces_no_taxa_list_entry(self):
         detector = AlgorithmConfigResponse(

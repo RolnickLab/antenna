@@ -5467,13 +5467,20 @@ class TaxaListForProjectQuerySetTestCase(TestCase):
         self.scoped.projects.add(self.project_a)
         self.public = TaxaList.objects.create(name="FP Public", is_public=True)
         self.hidden = TaxaList.objects.create(name="FP Hidden")  # is_public=False, no projects
+        # Creating a project registers the default processing service, which builds a
+        # managed list per classifier and scopes it to that project. The assertions below
+        # intersect with the fixture's own lists so those stay out of the comparison.
+        self.fixture_ids = {self.scoped.pk, self.public.pk, self.hidden.pk}
 
     def test_returns_project_scoped_and_public_by_default(self):
-        ids = set(TaxaList.objects.for_project(self.project_a).values_list("pk", flat=True))
+        ids = set(TaxaList.objects.for_project(self.project_a).values_list("pk", flat=True)) & self.fixture_ids
         self.assertEqual(ids, {self.scoped.pk, self.public.pk})
 
     def test_excludes_public_when_include_public_false(self):
-        ids = set(TaxaList.objects.for_project(self.project_a, include_public=False).values_list("pk", flat=True))
+        ids = (
+            set(TaxaList.objects.for_project(self.project_a, include_public=False).values_list("pk", flat=True))
+            & self.fixture_ids
+        )
         self.assertEqual(ids, {self.scoped.pk})
 
     def test_excludes_lists_scoped_to_other_projects(self):
@@ -5892,6 +5899,10 @@ class TaxaListIncludePublicParamTestCase(TestCase):
         self.public_list.projects.add(self.other_project)
 
         self.hidden_list = TaxaList.objects.create(name="Hidden with no project")
+        # Creating a project registers the default processing service, which builds a
+        # managed list per classifier and scopes it to that project. The assertions below
+        # intersect with the fixture's own lists so those stay out of the comparison.
+        self.fixture_ids = {self.scoped_list.pk, self.public_list.pk, self.hidden_list.pk}
 
         self.client = APIClient()
         self.client.force_authenticate(self.user)
@@ -5904,11 +5915,11 @@ class TaxaListIncludePublicParamTestCase(TestCase):
         return response.json()["results"]
 
     def test_public_lists_included_by_default(self):
-        ids = {row["id"] for row in self._list_ids()}
+        ids = {row["id"] for row in self._list_ids()} & self.fixture_ids
         self.assertEqual(ids, {self.scoped_list.pk, self.public_list.pk})
 
     def test_include_public_false_hides_public_lists(self):
-        ids = {row["id"] for row in self._list_ids(include_public="false")}
+        ids = {row["id"] for row in self._list_ids(include_public="false")} & self.fixture_ids
         self.assertEqual(ids, {self.scoped_list.pk})
 
     def test_include_public_invalid_value_returns_400(self):
@@ -6060,6 +6071,11 @@ class TaxaListQueryCountTestCase(APITestCase):
     Pins the current query count for TaxaListViewSet.list on a mixed public/scoped/managed,
     multi-row fixture, so a regression that adds queries is noticed. This does not certify
     the absence of per-row queries (see #1428); it only catches a further increase.
+
+    Three of the rows are the default processing service's own managed lists, one per
+    classifier, which registering it at project creation builds and scopes to the project.
+    Adding those three rows moved the count from 45 to 63, which measures the per-row cost
+    of #1428 at six queries per row — the reason that issue is worth closing.
     """
 
     def setUp(self):
@@ -6110,10 +6126,10 @@ class TaxaListQueryCountTestCase(APITestCase):
         with cachalot_disabled(), CaptureQueriesContext(connection) as ctx:
             response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.json()["results"]), 7)
+        self.assertEqual(len(response.json()["results"]), 10)
         # Measured on this branch; one of these is the once-per-request visible-projects
         # lookup that filters draft ids out of get_projects().
-        self.assertEqual(len(ctx.captured_queries), 45)
+        self.assertEqual(len(ctx.captured_queries), 63)
 
 
 class TaxaListCopyPermissionTestCase(TestCase):
