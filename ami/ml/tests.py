@@ -1985,6 +1985,21 @@ class TestAlgorithmTaxaListVisibility(TestCase):
         self.assertFalse(result.taxa_list.is_public)
         self.assertEqual(set(result.taxa_list.projects.all()), {project_a})
 
+    def test_an_offering_service_with_no_projects_does_not_break_scoping(self):
+        """A service can offer a pipeline with no projects attached (``projects`` is
+        blank=True); it must not contribute a null project to the list's scope."""
+        project_a = Project.objects.create(name="Visibility Project A")
+        service_a = ProcessingService.objects.create(name="Service A", endpoint_url=None)
+        service_a.projects.add(project_a)
+        service_a.pipelines.add(self.pipeline)
+        orphan_service = ProcessingService.objects.create(name="Orphan Service", endpoint_url=None)
+        orphan_service.pipelines.add(self.pipeline)
+
+        result = self.algorithm.sync_taxa_list()
+
+        self.assertFalse(result.taxa_list.is_public)
+        self.assertEqual(set(result.taxa_list.projects.all()), {project_a})
+
 
 @override_settings(CACHALOT_ENABLED=False)
 class TestSyncTaxaListQueryCost(TestCase):
