@@ -2813,6 +2813,28 @@ class TestTrainingDatasetAndJob(TestCase):
             self.assertEqual(np.load(f, allow_pickle=True)["features"].dtype, np.float16)
         default_storage.delete(result["path"])
 
+    def test_the_dataset_names_the_url_it_was_written_to(self):
+        """
+        The version a retrain produces has to name the exact set it was fitted on.
+
+        The service echoes this metadata back in its result, and that is where
+        ``Algorithm.training_info.dataset_url`` comes from, so a missing url leaves every
+        retrained version with no record of its training data.
+        """
+        from ami.ml.training_dataset import build_training_dataset
+
+        self._verify_all()
+        result = build_training_dataset(
+            project=self.project, algorithm=self.classifier, min_per_species=1, test_fraction=0.5
+        )
+
+        with default_storage.open(result["path"], "rb") as f:
+            metadata = json.loads(str(np.load(f, allow_pickle=True)["metadata"]))
+
+        self.assertEqual(metadata["url"], result["url"])
+        self.assertIn(result["path"], metadata["url"])
+        default_storage.delete(result["path"])
+
     def test_nothing_verified_means_no_file_is_written(self):
         from ami.ml.training_dataset import NotEnoughVerifiedData, build_training_dataset
 
