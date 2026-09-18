@@ -35,6 +35,7 @@ from ami.ml.schemas import (
     BoundingBox,
     ClassificationResponse,
     DetectionResponse,
+    PipelineConfigResponse,
     PipelineResultsResponse,
     SourceImageResponse,
 )
@@ -2033,6 +2034,75 @@ class TestSyncTaxaListQueryCost(TestCase):
             large.sync_taxa_list()
 
         self.assertEqual(len(small_ctx.captured_queries), len(large_ctx.captured_queries))
+
+
+def _pipeline_config(slug: str, algorithms: list[AlgorithmConfigResponse]) -> PipelineConfigResponse:
+    return PipelineConfigResponse(
+        name=slug.replace("-", " ").title(),
+        slug=slug,
+        version=1,
+        algorithms=algorithms,
+    )
+
+
+class TestCreatePipelinesCreatedFlags(TestCase):
+    """
+    create_pipelines() must report each pipeline/algorithm's own creation status, not the
+    status of the last per-project ProjectPipelineConfig it happened to touch. See the
+    inner ``config_created`` rename in ProcessingService.create_pipelines().
+    """
+
+    def setUp(self):
+        self.service = ProcessingService.objects.create(name="Created Flags Service", endpoint_url=None)
+
+    def test_existing_pipeline_new_project_config_is_not_reported_as_created(self):
+        project_a = Project.objects.create(name="Created Flags Project A")
+        project_b = Project.objects.create(name="Created Flags Project B")
+        config = _pipeline_config("existing-pipeline", [])
+
+        self.service.create_pipelines(pipeline_configs=[config], projects=Project.objects.filter(pk=project_a.pk))
+
+        # Register the same pipeline again, this time only to configure it for project_b.
+        # The pipeline itself is not new, so it must not show up as created.
+        response = self.service.create_pipelines(
+            pipeline_configs=[config], projects=Project.objects.filter(pk=project_b.pk)
+        )
+
+        self.assertNotIn("existing-pipeline", response.pipelines_created)
+
+    def test_newly_created_pipeline_is_reported_as_created_despite_a_duplicated_project_row(self):
+        project = Project.objects.create(name="Created Flags Project C")
+        config = _pipeline_config("brand-new-pipeline", [])
+
+        # Duplicate the same project row via UNION ALL so the inner per-project loop runs
+        # twice for one project: the first pass creates the ProjectPipelineConfig, the
+        # second pass finds it already there (config_created=False). The pipeline itself
+        # is still newly created and must be reported as such regardless of loop order.
+        duplicated_projects = Project.objects.filter(pk=project.pk).union(
+            Project.objects.filter(pk=project.pk), all=True
+        )
+
+        response = self.service.create_pipelines(pipeline_configs=[config], projects=duplicated_projects)
+
+        self.assertIn("brand-new-pipeline", response.pipelines_created)
+
+    def test_new_algorithm_is_reported_in_algorithms_created_not_pipelines_created(self):
+        project = Project.objects.create(name="Created Flags Project D")
+        algorithm = AlgorithmConfigResponse(
+            name="New Algo Flag Test",
+            key="new-algo-flag-test",
+            task_type="detection",
+            version=1,
+            category_map=None,
+        )
+        config = _pipeline_config("algo-flags-pipeline", [algorithm])
+
+        response = self.service.create_pipelines(
+            pipeline_configs=[config], projects=Project.objects.filter(pk=project.pk)
+        )
+
+        self.assertIn("new-algo-flag-test", response.algorithms_created)
+        self.assertNotIn("new-algo-flag-test", response.pipelines_created)
 
 
 class TestAlgorithmSerializerTaxaList(APITestCase):

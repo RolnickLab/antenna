@@ -138,12 +138,12 @@ class ProcessingService(BaseModel, PublicScopedModel):
                     enabled = False
                 else:
                     enabled = True
-                project_pipeline_config, created = ProjectPipelineConfig.objects.get_or_create(
+                project_pipeline_config, config_created = ProjectPipelineConfig.objects.get_or_create(
                     pipeline=pipeline,
                     project=project,
                     defaults={"enabled": enabled, "config": {}},
                 )
-                if created:
+                if config_created:
                     logger.debug(
                         f"Created project pipeline config for {project.name} and {pipeline.name} (enabled: {enabled})."
                     )
@@ -165,7 +165,7 @@ class ProcessingService(BaseModel, PublicScopedModel):
                 if algorithm not in existing_algorithms:
                     logger.debug(f"Registered new algorithm {algorithm.name} to pipeline {pipeline.name}.")
                     pipeline.algorithms.add(algorithm)
-                    pipelines_created.append(algorithm.key)
+                    algorithms_created.append(algorithm.key)
                 else:
                     logger.debug(f"Using existing algorithm {algorithm.name}.")
 
