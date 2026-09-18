@@ -14,7 +14,7 @@ from ami.base.views import get_active_project
 from ami.jobs.models import Job
 from ami.main.models import Tag
 from ami.ml.models import Algorithm, Pipeline
-from ami.ml.serializers import AlgorithmSerializer, PipelineNestedSerializer
+from ami.ml.serializers import AlgorithmNestedSerializer, AlgorithmSerializer, PipelineNestedSerializer
 from ami.users.models import User
 from ami.users.roles import ProjectManager
 
@@ -709,6 +709,8 @@ class TaxaListSerializer(DefaultSerializer):
     taxa_count = serializers.SerializerMethodField()
     projects = serializers.SerializerMethodField()
     is_public = serializers.BooleanField(read_only=True)
+    is_managed = serializers.BooleanField(read_only=True)
+    algorithms = AlgorithmNestedSerializer(many=True, read_only=True)
 
     class Meta:
         model = TaxaList
@@ -720,6 +722,8 @@ class TaxaListSerializer(DefaultSerializer):
             "taxa_count",
             "projects",
             "is_public",
+            "is_managed",
+            "algorithms",
             "created_at",
             "updated_at",
         ]

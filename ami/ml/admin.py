@@ -15,6 +15,7 @@ class AlgorithmAdmin(AdminBase):
         "version",
         "version_name",
         "task_type",
+        "taxa_list",
         "created_at",
         "updated_at",
     ]

@@ -34,6 +34,7 @@ from ami.base.permissions import (
     IsProjectMemberOrPublicListManager,
     IsProjectMemberOrPublicListManagerOrReadOnly,
     ObjectPermission,
+    check_taxalist_not_managed,
     check_taxalist_write_permission,
 )
 from ami.base.serializers import FilterParamsSerializer, SingleParamSerializer
@@ -2222,6 +2223,8 @@ class TaxaListViewSet(DefaultViewSet, ProjectMixin):
         qs = super().get_queryset()
         # Annotate with taxa count for better performance
         qs = qs.annotate(annotated_taxa_count=models.Count("taxa"))
+        # is_managed and the nested algorithms list must not cost a query per row.
+        qs = qs.with_is_managed().prefetch_related("algorithms")
         project = self.get_active_project()
         if not project:
             return qs
@@ -2278,8 +2281,10 @@ class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):
         """
         Re-check against the actual list: IsProjectMemberOrPublicListManager only
         gates coarsely at has_permission() time, before the target list (and its
-        is_public flag) is known.
+        is_public flag) is known. A managed list refuses everyone, ahead of the
+        usual project/public-manager check.
         """
+        check_taxalist_not_managed(taxa_list)
         project = self.get_active_project()
         if not check_taxalist_write_permission(self.request.user, taxa_list, project):
             raise api_exceptions.PermissionDenied("You do not have permission to modify this taxa list.")

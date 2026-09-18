@@ -4,7 +4,7 @@ import logging
 
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser, User
 from guardian.shortcuts import get_perms
-from rest_framework import permissions
+from rest_framework import exceptions, permissions
 
 from ami.main.models import BaseModel
 
@@ -110,6 +110,21 @@ def check_taxalist_write_permission(user, taxa_list, project) -> bool:
     )
 
 
+def check_taxalist_not_managed(taxa_list) -> None:
+    """
+    Raise 403 if `taxa_list` is managed (at least one algorithm points at it — see
+    `Algorithm.sync_taxa_list()`). Applies to every caller, including superusers and
+    manage_public_taxalist holders, because the next sync would silently overwrite a
+    hand edit. Guards taxon add/remove and list delete; renaming a managed list still
+    goes through `check_taxalist_write_permission` as normal.
+    """
+    if getattr(taxa_list, "is_managed", False):
+        raise exceptions.PermissionDenied(
+            "This list mirrors a classifier's category map and is kept in sync automatically. "
+            "Copy it to a new list to make changes."
+        )
+
+
 def check_processingservice_write_permission(user, processing_service) -> bool:
     """Thin alias kept so branches stacked on this one still import this name."""
     return check_public_scoped_write_permission(
@@ -156,12 +171,19 @@ def add_m2m_object_permissions(user, instance, project, response_data: dict) -> 
     Once that issue is resolved, this should be replaced by a generic permission
     class (Pattern B: Bare M2M) that handles TaxaList, Taxon, ProcessingService,
     Pipeline, and other M2M-to-Project models uniformly.
+
+    A managed instance (see TaxaList.is_managed) never advertises "delete": its
+    membership belongs to an automatic sync, and the API refuses to delete it
+    for anyone regardless of the permissions computed below.
     """
     perms = set(response_data.get("user_permissions", []))
+    is_managed = getattr(instance, "is_managed", False)
 
     if getattr(instance, "is_public", False):
         if user_can_manage_public(user, instance):
             perms.update(["update", "delete"])
+        if is_managed:
+            perms.discard("delete")
         response_data["user_permissions"] = list(perms)
         return response_data
 
@@ -180,6 +202,8 @@ def add_m2m_object_permissions(user, instance, project, response_data: dict) -> 
                 if action in {"update", "delete"}:
                     perms.add(action)
 
+    if is_managed:
+        perms.discard("delete")
     response_data["user_permissions"] = list(perms)
     return response_data
 
@@ -279,6 +303,12 @@ class IsProjectMemberOrPublicListManagerOrReadOnly(IsProjectMemberOrPublicListMa
     """For TaxaListViewSet: creating a brand-new list always needs real project membership."""
 
     exclude_create_from_bypass = True
+
+    def has_object_permission(self, request, view, obj):
+        # A managed list refuses DELETE for everyone before the usual write check.
+        if request.method == "DELETE":
+            check_taxalist_not_managed(obj)
+        return super().has_object_permission(request, view, obj)
 
 
 class IsActiveStaffOrPublicManager(_BaseGateOrPublicManager):
