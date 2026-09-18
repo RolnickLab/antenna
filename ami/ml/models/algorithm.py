@@ -372,19 +372,12 @@ class Algorithm(BaseModel):
 
     def sync_taxa_list(self, create_missing_taxa: bool = True) -> TaxaListSyncResult:
         """
-        Make this algorithm's taxa list mirror its category map: membership becomes exactly
-        the taxa the labels resolve to (added or removed to match), visibility follows which
-        processing services currently offer the algorithm, and the description is refreshed.
-
-        Algorithms sharing the same category map share one list. A list an algorithm points
-        at is "managed" (see TaxaList.is_managed): the API refuses hand edits to it (see
-        ami.base.permissions.check_taxalist_not_managed), because the next sync would
-        silently overwrite them. Distinct from the list named "Taxa returned by ..." that
-        grows as results are saved: that one holds only taxa the model has predicted so
-        far, this one holds everything it can predict.
-
-        Does nothing and returns a result with ``taxa_list=None`` when the algorithm has no
-        category map or the map has no labels.
+        Make this algorithm's taxa list mirror its category map exactly (taxa added or
+        removed to match), safe to call repeatedly. Algorithms sharing a category map
+        share one list, which becomes "managed" (see TaxaList.is_managed) and refuses
+        hand edits, since the next sync would overwrite them. Does nothing and returns
+        a result with ``taxa_list=None`` when the algorithm has no category map, or the
+        map has no labels.
         """
         from ami.main.models import Taxon, TaxonRank
 
@@ -471,9 +464,9 @@ class Algorithm(BaseModel):
         unresolved: list[str],
     ) -> None:
         """
-        A managed list's visibility follows the processing services that currently offer any
-        algorithm sharing it (public if any offering service is public; otherwise scoped to
-        the union of their projects; visible to superusers only if none offer it).
+        Visibility follows the processing services currently offering any algorithm that
+        shares this list: public if any of them is public, else scoped to the union of
+        their projects, else superuser-only.
         """
         from ami.ml.models.processing_service import ProcessingService
 
@@ -484,7 +477,11 @@ class Algorithm(BaseModel):
         if taxa_list.is_public:
             taxa_list.projects.clear()
         else:
-            taxa_list.projects.set(services.values_list("projects", flat=True))
+            # A service's projects M2M is blank=True: one with none produces a null
+            # in this column via the LEFT JOIN, which .set() would try to insert as
+            # a through-row's project_id and fail a NOT NULL constraint.
+            project_ids = [pid for pid in services.values_list("projects", flat=True) if pid is not None]
+            taxa_list.projects.set(project_ids)
 
         names = ", ".join(f"{algorithm.name} (key {algorithm.key})" for algorithm in describing)
         taxa_list.description = (
