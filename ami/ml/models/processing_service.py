@@ -6,10 +6,11 @@ from urllib.parse import urljoin
 
 import requests
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 
 from ami.base.models import BaseQuerySet, PublicScopedModel
 from ami.main.models import BaseModel, Project
+from ami.ml.models.algorithm import Algorithm
 from ami.ml.models.pipeline import Pipeline, get_or_create_algorithm_and_category_map
 from ami.ml.models.project_pipeline_config import ProjectPipelineConfig
 from ami.ml.schemas import (
@@ -17,7 +18,9 @@ from ami.ml.schemas import (
     PipelineRegistrationResponse,
     ProcessingServiceInfoResponse,
     ProcessingServiceStatusResponse,
+    TaxaListSyncSummary,
 )
+from ami.ml.tasks import sync_algorithm_taxa_list
 from ami.utils.requests import create_session
 
 logger = logging.getLogger(__name__)
@@ -25,6 +28,12 @@ logger = logging.getLogger(__name__)
 # Max age of last_seen before a pull-mode (no-endpoint) service is considered offline.
 # Pull-mode workers poll every ~5s, so 60s gives 12x buffer for transient failures.
 PROCESSING_SERVICE_LAST_SEEN_MAX = datetime.timedelta(seconds=60)
+
+# Category maps at or below this size sync inline during registration; larger ones are
+# handed to a Celery task so the request doesn't block on bulk Taxon creation. Measured
+# ~0.36ms/label for a worst-case all-new-taxa sync (500 labels: 0.17s, 5000 labels: 1.8s),
+# so this keeps the inline path comfortably under a second.
+TAXA_LIST_SYNC_INLINE_MAX_LABELS = 2000
 
 
 class ProcessingServiceQuerySet(BaseQuerySet):
@@ -117,6 +126,8 @@ class ProcessingService(BaseModel, PublicScopedModel):
         pipelines = []
         pipelines_created = []
         algorithms_created = []
+        taxa_lists: list[TaxaListSyncSummary] = []
+        synced_algorithm_ids: set[int] = set()
         projects = projects or self.projects.all()
 
         for pipeline_data in pipelines_to_add:
@@ -169,6 +180,12 @@ class ProcessingService(BaseModel, PublicScopedModel):
                 else:
                     logger.debug(f"Using existing algorithm {algorithm.name}.")
 
+                if algorithm.pk not in synced_algorithm_ids:
+                    synced_algorithm_ids.add(algorithm.pk)
+                    summary = self._sync_or_queue_taxa_list(algorithm)
+                    if summary is not None:
+                        taxa_lists.append(summary)
+
             logger.info(
                 f"Pipeline '{pipeline.name}' (slug: {pipeline.slug}, version: {pipeline.version}) "
                 f"{'created' if created else 'updated'}, "
@@ -184,6 +201,58 @@ class ProcessingService(BaseModel, PublicScopedModel):
             pipelines=pipelines_to_add,
             pipelines_created=pipelines_created,
             algorithms_created=algorithms_created,
+            taxa_lists=taxa_lists,
+        )
+
+    def _sync_or_queue_taxa_list(self, algorithm: Algorithm) -> TaxaListSyncSummary | None:
+        """
+        Sync a classifier's taxa list to its category map during registration, inline for
+        small maps or via a Celery task for large ones. Returns None for detectors and for
+        algorithms with no category map or an empty one — there is nothing to report.
+        """
+        if algorithm.task_type not in Algorithm.classification_task_types or not algorithm.has_valid_category_map():
+            return None
+
+        label_count = len(algorithm.category_map.labels) if algorithm.category_map else 0
+
+        if label_count > TAXA_LIST_SYNC_INLINE_MAX_LABELS:
+            # Bind the pk at lambda-definition time, not call time, so every queued
+            # algorithm in this loop dispatches its own id instead of the loop's last one.
+            transaction.on_commit(lambda algorithm_id=algorithm.pk: sync_algorithm_taxa_list.delay(algorithm_id))
+            return TaxaListSyncSummary(
+                algorithm_key=algorithm.key,
+                algorithm_name=algorithm.name,
+                status="queued",
+                labels=label_count,
+            )
+
+        try:
+            result = algorithm.sync_taxa_list()
+        except Exception as e:
+            # The pipeline and algorithm are already registered by this point, so a failed
+            # taxa list sync is a partial success, not a reason to fail the whole
+            # registration. This deliberately returns a per-algorithm error report instead
+            # of raising, unlike the rest of this codebase's "raise, don't return sentinels" rule.
+            logger.exception(f"Failed to sync taxa list for algorithm {algorithm}")
+            return TaxaListSyncSummary(
+                algorithm_key=algorithm.key,
+                algorithm_name=algorithm.name,
+                status="failed",
+                labels=label_count,
+                error=str(e),
+            )
+
+        return TaxaListSyncSummary(
+            algorithm_key=algorithm.key,
+            algorithm_name=algorithm.name,
+            status="synced",
+            labels=result.labels,
+            taxa_list_id=result.taxa_list.pk if result.taxa_list else None,
+            taxa_list_name=result.taxa_list.name if result.taxa_list else None,
+            matched=result.matched,
+            created_taxa=result.created_taxa,
+            removed=result.removed,
+            unresolved=len(result.unresolved),
         )
 
     def mark_seen(self, live: bool = True) -> None:

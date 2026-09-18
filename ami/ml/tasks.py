@@ -50,6 +50,25 @@ def process_source_images_async(pipeline_choice: str, endpoint_url: str, image_i
 
 
 @celery_app.task(soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
+def sync_algorithm_taxa_list(algorithm_id: int) -> None:
+    """
+    Sync one algorithm's taxa list with its category map out of the request path.
+
+    Registration dispatches this for category maps too large to sync inline
+    (see TAXA_LIST_SYNC_INLINE_MAX_LABELS in ami.ml.models.processing_service).
+    """
+    from ami.ml.models import Algorithm
+
+    algorithm = Algorithm.objects.get(pk=algorithm_id)
+    result = algorithm.sync_taxa_list()
+    logger.info(
+        f"Synced taxa list for algorithm {algorithm}: "
+        f"labels={result.labels} matched={result.matched} created_taxa={result.created_taxa} "
+        f"removed={result.removed} unresolved={len(result.unresolved)}"
+    )
+
+
+@celery_app.task(soft_time_limit=default_soft_time_limit, time_limit=default_time_limit)
 def create_detection_images(source_image_ids: list[int]):
     from ami.main.models import SourceImage
 

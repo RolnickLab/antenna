@@ -3,6 +3,7 @@ import datetime
 import pathlib
 import unittest
 import uuid
+from unittest import mock
 
 from django.contrib.auth.models import Permission
 from django.db import connection
@@ -2045,6 +2046,19 @@ def _pipeline_config(slug: str, algorithms: list[AlgorithmConfigResponse]) -> Pi
     )
 
 
+def _classifier_algorithm(key: str, label_count: int) -> AlgorithmConfigResponse:
+    from ami.ml.schemas import AlgorithmCategoryMapResponse
+
+    data = [{"index": i, "label": f"{key} species {i}", "taxon_rank": "SPECIES"} for i in range(label_count)]
+    return AlgorithmConfigResponse(
+        name=key,
+        key=key,
+        task_type="classification",
+        version=1,
+        category_map=AlgorithmCategoryMapResponse(data=data, labels=[d["label"] for d in data]),
+    )
+
+
 class TestCreatePipelinesCreatedFlags(TestCase):
     """
     create_pipelines() must report each pipeline/algorithm's own creation status, not the
@@ -2103,6 +2117,146 @@ class TestCreatePipelinesCreatedFlags(TestCase):
 
         self.assertIn("new-algo-flag-test", response.algorithms_created)
         self.assertNotIn("new-algo-flag-test", response.pipelines_created)
+
+
+@override_settings(CACHALOT_ENABLED=False)
+class TestTaxaListSyncOnRegistration(TestCase):
+    """
+    create_pipelines() syncs each classifier's taxa list as part of registration: inline
+    for small category maps, queued to a Celery task for large ones. See
+    ProcessingService._sync_or_queue_taxa_list() and TAXA_LIST_SYNC_INLINE_MAX_LABELS.
+    """
+
+    def setUp(self):
+        self.service = ProcessingService.objects.create(name="Taxa Sync Registration Service", endpoint_url=None)
+        self.project = Project.objects.create(name="Taxa Sync Registration Project")
+        self.projects = Project.objects.filter(pk=self.project.pk)
+
+    def test_small_classifier_syncs_inline_and_links_a_real_taxa_list(self):
+        classifier = _classifier_algorithm("inline-sync-classifier", label_count=3)
+        config = _pipeline_config("inline-sync-pipeline", [classifier])
+
+        response = self.service.create_pipelines(pipeline_configs=[config], projects=self.projects)
+
+        self.assertEqual(len(response.taxa_lists), 1)
+        summary = response.taxa_lists[0]
+        self.assertEqual(summary.algorithm_key, "inline-sync-classifier")
+        self.assertEqual(summary.status, "synced")
+        self.assertEqual(summary.labels, 3)
+        self.assertEqual(summary.matched, 0)
+        self.assertEqual(summary.created_taxa, 3)
+        self.assertIsNotNone(summary.taxa_list_id)
+
+        algorithm = Algorithm.objects.get(key="inline-sync-classifier")
+        self.assertIsNotNone(algorithm.taxa_list_id)
+        self.assertEqual(algorithm.taxa_list_id, summary.taxa_list_id)
+
+    def test_detector_produces_no_taxa_list_entry(self):
+        detector = AlgorithmConfigResponse(
+            name="Detector",
+            key="registration-detector",
+            task_type="detection",
+            version=1,
+            category_map=None,
+        )
+        config = _pipeline_config("detector-only-pipeline", [detector])
+
+        response = self.service.create_pipelines(pipeline_configs=[config], projects=self.projects)
+
+        self.assertEqual(response.taxa_lists, [])
+
+    def test_classifier_with_empty_category_map_produces_no_taxa_list_entry(self):
+        from ami.ml.schemas import AlgorithmCategoryMapResponse
+
+        classifier = AlgorithmConfigResponse(
+            name="Empty Map Classifier",
+            key="empty-map-classifier",
+            task_type="classification",
+            version=1,
+            category_map=AlgorithmCategoryMapResponse(data=[], labels=[]),
+        )
+        config = _pipeline_config("empty-map-pipeline", [classifier])
+
+        response = self.service.create_pipelines(pipeline_configs=[config], projects=self.projects)
+
+        self.assertEqual(response.taxa_lists, [])
+
+    def test_algorithm_shared_by_two_pipelines_is_reported_once(self):
+        classifier = _classifier_algorithm("shared-classifier", label_count=2)
+        pipeline_one = _pipeline_config("shared-pipeline-one", [classifier])
+        pipeline_two = _pipeline_config("shared-pipeline-two", [classifier])
+
+        response = self.service.create_pipelines(pipeline_configs=[pipeline_one, pipeline_two], projects=self.projects)
+
+        keys = [summary.algorithm_key for summary in response.taxa_lists]
+        self.assertEqual(keys.count("shared-classifier"), 1)
+
+    @mock.patch("ami.ml.models.processing_service.sync_algorithm_taxa_list.delay")
+    def test_large_category_map_is_queued_instead_of_synced_inline(self, mock_delay):
+        from ami.ml.models import processing_service as processing_service_module
+
+        with mock.patch.object(processing_service_module, "TAXA_LIST_SYNC_INLINE_MAX_LABELS", 2):
+            classifier = _classifier_algorithm("queued-classifier", label_count=5)
+            config = _pipeline_config("queued-pipeline", [classifier])
+
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.service.create_pipelines(pipeline_configs=[config], projects=self.projects)
+
+        self.assertEqual(len(response.taxa_lists), 1)
+        summary = response.taxa_lists[0]
+        self.assertEqual(summary.status, "queued")
+        self.assertEqual(summary.labels, 5)
+
+        algorithm = Algorithm.objects.get(key="queued-classifier")
+        mock_delay.assert_called_once_with(algorithm.pk)
+        # Queuing must not do the work inline: no taxa list gets linked.
+        algorithm.refresh_from_db()
+        self.assertIsNone(algorithm.taxa_list_id)
+
+    def test_inline_sync_query_count_does_not_scale_with_label_count(self):
+        """Inline registration issues the same number of queries regardless of category map
+        size, using bulk/__in operations rather than a query per label."""
+        small_classifier = _classifier_algorithm("qc-small-registration", label_count=3)
+        large_classifier = _classifier_algorithm("qc-large-registration", label_count=30)
+
+        # override_settings(CACHALOT_ENABLED=False) does not bypass cachalot's
+        # per-transaction cache layer inside a TestCase, so an identical read (e.g. the
+        # project lookup) can be served from cache on the second call and hide a query.
+        # cachalot_disabled() is the actual bypass; rebuild the queryset for each call too,
+        # since a reused queryset instance would serve from its own _result_cache instead.
+        from cachalot.api import cachalot_disabled
+
+        with cachalot_disabled(), CaptureQueriesContext(connection) as small_ctx:
+            self.service.create_pipelines(
+                pipeline_configs=[_pipeline_config("qc-small-pipeline", [small_classifier])],
+                projects=Project.objects.filter(pk=self.project.pk),
+            )
+        with cachalot_disabled(), CaptureQueriesContext(connection) as large_ctx:
+            self.service.create_pipelines(
+                pipeline_configs=[_pipeline_config("qc-large-pipeline", [large_classifier])],
+                projects=Project.objects.filter(pk=self.project.pk),
+            )
+
+        self.assertEqual(len(small_ctx.captured_queries), len(large_ctx.captured_queries))
+
+
+class TestRegisterPipelinesEndpointReturnsTaxaLists(APITestCase):
+    """The register_pipelines HTTP action surfaces the taxa_lists summary in its JSON body."""
+
+    def setUp(self):
+        self.project = Project.objects.create(name="Register Pipelines Taxa Lists Project")
+        self.user = User.objects.create_user(email="register-taxa-lists@example.com", is_staff=True)  # type: ignore
+
+    def test_response_includes_taxa_lists_key(self):
+        service = ProcessingService.objects.create(name="Register Endpoint Service", endpoint_url=None)
+        service.projects.add(self.project)
+        url = reverse_with_params("api:processingservice-register-pipelines", args=[service.pk])
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(url)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("taxa_lists", response.json())
 
 
 class TestAlgorithmSerializerTaxaList(APITestCase):
