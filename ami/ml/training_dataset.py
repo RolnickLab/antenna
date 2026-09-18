@@ -124,7 +124,12 @@ def build_training_dataset(
             "before a new head can be compared against the current one."
         )
 
+    file_path = dataset_path(project, algorithm, job.pk if job else None)
     metadata = {
+        # The file records where it was written. A retrain is only auditable if the
+        # version it produced can name the exact set it was fitted on, and the service
+        # echoes this metadata back in its result.
+        "url": f"{settings.MEDIA_URL}{file_path}",
         "project": {"id": project.pk, "name": project.name},
         "algorithm": {"key": algorithm.key, "name": algorithm.name, "version": algorithm.version},
         "dimensions": EMBEDDING_DIMENSIONS,
@@ -148,9 +153,7 @@ def build_training_dataset(
     }
 
     file_path = _save(
-        project=project,
-        algorithm=algorithm,
-        job_id=job.pk if job else None,
+        file_path=file_path,
         arrays={
             "features": features,
             "labels": labels,
@@ -167,15 +170,20 @@ def build_training_dataset(
         # decided. A run that fails later still consumed these occurrences.
         record_training_set(occurrence_ids=[int(pk) for pk in occurrence_ids[:kept]], job=job)
 
-    file_url = f"{settings.MEDIA_URL}{file_path}"
+    file_url = metadata["url"]
     logger.info(f"Wrote training dataset with {kept} rows over {len(classes)} species to {file_path}")
     return {"path": file_path, "url": file_url, "metadata": metadata}
 
 
+def dataset_path(project: Project, algorithm: Algorithm, job_id: int | None) -> str:
+    """Where this project's training set for this algorithm is written."""
+    stem = f"{slugify(project.name)}-{slugify(algorithm.key)}"
+    suffix = f"job-{job_id}" if job_id else "manual"
+    return f"{DATASET_DIRECTORY}/{stem}-{suffix}.npz"
+
+
 def _save(
-    project: Project,
-    algorithm: Algorithm,
-    job_id: int | None,
+    file_path: str,
     arrays: dict[str, np.ndarray],
     metadata: dict[str, typing.Any],
 ) -> str:
@@ -185,10 +193,6 @@ def _save(
     default_storage is the local filesystem in development and the project's S3 bucket in
     production, so this follows wherever captures already live without a special case.
     """
-    stem = f"{slugify(project.name)}-{slugify(algorithm.key)}"
-    suffix = f"job-{job_id}" if job_id else "manual"
-    file_path = f"{DATASET_DIRECTORY}/{stem}-{suffix}.npz"
-
     with tempfile.TemporaryDirectory() as tmp:
         local = pathlib.Path(tmp) / "dataset.npz"
         # Uncompressed: embeddings are close to random, so compression buys about 10 per
@@ -198,6 +202,10 @@ def _save(
             # A re-run of the same job replaces its dataset instead of piling up copies.
             default_storage.delete(file_path)
         with open(local, "rb") as f:
-            file_path = default_storage.save(file_path, f)
+            saved_path = default_storage.save(file_path, f)
 
-    return file_path
+    if saved_path != file_path:
+        # The metadata inside the archive records the URL it was written to, so a rename
+        # by the storage backend would leave the file describing somewhere it is not.
+        logger.warning(f"Storage wrote the training set to {saved_path}, not {file_path}.")
+    return saved_path
