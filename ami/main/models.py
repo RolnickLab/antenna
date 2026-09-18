@@ -34,7 +34,7 @@ from rest_framework.request import Request
 import ami.tasks
 import ami.utils
 from ami.base.fields import DateStringField
-from ami.base.models import BaseModel, BaseQuerySet
+from ami.base.models import BaseModel, BaseQuerySet, PublicScopedModel
 from ami.main import charts
 from ami.main.models_future.filters import (
     build_occurrence_default_filters_q,
@@ -4734,14 +4734,15 @@ class TaxaListQuerySet(BaseQuerySet):
         """
         Get or create a TaxaList with uniqueness scoped to project.
 
-        - project is given: looks for/creates a list associated with that project (``is_public`` is ignored)
+        - project is given: looks for/creates a list associated with that project
         - project is None, is_public=True: looks for/creates the public list with this name
         - project is None, is_public=False: looks for/creates a hidden list with no project
 
         :param name: Name of the taxa list.
         :param project: Project to scope the list to, or None for a list with no project.
         :param is_public: When ``project`` is None, whether the list is the public list of this
-            name or a hidden one (e.g. a per-algorithm category-map list). Ignored otherwise.
+            name or a hidden one (e.g. a per-algorithm category-map list). Raises when combined
+            with a ``project``, since a project-scoped list can't also be a public one.
         :param defaults: Extra field values applied only when creating a new list
             (ignored on the get path, matching Django's ``get_or_create`` semantics).
 
@@ -4752,6 +4753,9 @@ class TaxaListQuerySet(BaseQuerySet):
         Returns:
             Tuple of (TaxaList, created: bool)
         """
+        if project is not None and is_public:
+            raise ValueError("get_or_create_for_project() cannot create a public list scoped to a single project.")
+
         if project is not None:
             # Project-specific: find list with this name in this project
             qs = self.filter(name=name, projects=project)
@@ -4768,7 +4772,9 @@ class TaxaListQuerySet(BaseQuerySet):
             return qs.get(), False
         except self.model.DoesNotExist:
             with transaction.atomic():
-                taxa_list = self.create(name=name, is_public=is_public if project is None else False, **defaults)
+                # is_public is guaranteed False here whenever project is set — the guard above
+                # already rejects the combination that would make this ambiguous.
+                taxa_list = self.create(name=name, is_public=is_public, **defaults)
                 if project:
                     taxa_list.projects.add(project)
             return taxa_list, True
@@ -4784,7 +4790,7 @@ class TaxaListManager(models.Manager.from_queryset(TaxaListQuerySet)):
 
 
 @final
-class TaxaList(BaseModel):
+class TaxaList(BaseModel, PublicScopedModel):
     """A checklist of taxa"""
 
     name = models.CharField(max_length=255)
@@ -4792,10 +4798,6 @@ class TaxaList(BaseModel):
 
     taxa = models.ManyToManyField(Taxon, related_name="lists")
     projects = models.ManyToManyField("Project", related_name="taxa_lists", blank=True)
-    is_public = models.BooleanField(
-        default=False,
-        help_text="Public lists are available to every project, not just the ones in 'projects'.",
-    )
 
     objects: TaxaListManager = TaxaListManager()
 

@@ -185,7 +185,11 @@ class ProcessingServiceViewSet(DefaultViewSet, ProjectMixin):
         project = self.get_active_project()
         if not project:
             return qs
-        return qs.for_project(project, include_public=self.get_include_public())
+        # include_public governs the list action's default scope, not whether a
+        # specific row is reachable: a detail/update/delete/status/register_pipelines
+        # on a public service must still resolve it even under ?include_public=false.
+        include_public = self.get_include_public() if self.action == "list" else True
+        return qs.for_project(project, include_public=include_public)
 
     @extend_schema(parameters=[project_id_doc_param, include_public_doc_param])
     def list(self, request, *args, **kwargs):

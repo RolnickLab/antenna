@@ -1,9 +1,9 @@
 from django_pydantic_field.rest_framework import SchemaField
 from rest_framework import serializers
 
-from ami.base.permissions import add_m2m_object_permissions
-from ami.base.views import get_active_project
+from ami.base.permissions import add_processingservice_permissions
 from ami.main.api.serializers import DefaultSerializer, MinimalNestedModelSerializer
+from ami.main.models import Project
 
 from .models.algorithm import Algorithm, AlgorithmCategoryMap
 from .models.pipeline import Pipeline, PipelineStage
@@ -163,15 +163,21 @@ class ProcessingServiceSerializer(DefaultSerializer):
 
     def get_projects(self, obj):
         """
-        Return list of project IDs this processing service belongs to.
-        This is read-only and managed by the server.
+        Return the ids of this service's linked projects that are visible to the
+        requester. A public service can be linked to a draft project it's
+        otherwise not visible in; without this filter, an outsider retrieving the
+        public service would learn that draft project's id even though they
+        can't see the project itself.
         """
-        return list(obj.projects.values_list("id", flat=True))
+        request = self.context["request"]
+        if not hasattr(self, "_visible_project_ids"):
+            self._visible_project_ids = set(
+                Project.objects.visible_for_user(request.user).values_list("id", flat=True)
+            )
+        return [pid for pid in obj.projects.values_list("id", flat=True) if pid in self._visible_project_ids]
 
     def get_permissions(self, instance, instance_data):
-        request = self.context["request"]
-        project = get_active_project(request=request)
-        return add_m2m_object_permissions(request.user, instance, project, instance_data)
+        return add_processingservice_permissions(self.context["request"].user, instance, instance_data)
 
 
 class PipelineRegistrationSerializer(serializers.Serializer):
