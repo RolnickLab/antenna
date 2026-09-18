@@ -10,6 +10,7 @@ from rest_framework.test import APIRequestFactory, APITestCase
 from ami.base.serializers import reverse_with_params
 from ami.jobs.models import (
     DataStorageSyncJob,
+    EvaluateAlgorithmJob,
     Job,
     JobDispatchMode,
     JobLog,
@@ -327,6 +328,61 @@ class TestJobView(APITestCase):
         # @TODO This should be CREATED as well, but it is SUCCESS!
         # progress = JobProgress(**data["progress"])
         # self.assertEqual(progress.summary.status, JobState.CREATED)
+
+    def test_creating_a_job_of_an_unknown_type_is_refused(self):
+        jobs_create_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk})
+        self.client.force_authenticate(user=self.user)
+
+        resp = self.client.post(
+            jobs_create_url,
+            {"project_id": self.project.pk, "name": "Nonsense", "delay": 0, "job_type_key": "not-a-job-type"},
+        )
+
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("job_type_key", resp.json())
+
+    def test_a_job_missing_what_its_type_needs_is_refused(self):
+        """
+        The gap is reported while the form is still open, rather than as a job that fails
+        minutes later for want of an algorithm.
+        """
+        jobs_create_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk})
+        self.client.force_authenticate(user=self.user)
+
+        resp = self.client.post(
+            jobs_create_url,
+            {
+                "project_id": self.project.pk,
+                "name": "Evaluate nothing in particular",
+                "delay": 0,
+                "job_type_key": EvaluateAlgorithmJob.key,
+            },
+            format="json",
+        )
+
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("params", resp.json())
+
+    def test_a_job_carrying_what_its_type_needs_is_created(self):
+        jobs_create_url = reverse_with_params("api:job-list", params={"project_id": self.project.pk})
+        self.client.force_authenticate(user=self.user)
+
+        resp = self.client.post(
+            jobs_create_url,
+            {
+                "project_id": self.project.pk,
+                "name": "Evaluate a head",
+                "delay": 0,
+                "job_type_key": EvaluateAlgorithmJob.key,
+                "params": {"algorithm_key": "some-head", "occurrence_set_id": 1},
+            },
+            format="json",
+        )
+
+        self.assertEqual(resp.status_code, 201)
+        job = Job.objects.get(pk=resp.json()["id"])
+        self.assertEqual(job.job_type_key, EvaluateAlgorithmJob.key)
+        self.assertEqual(job.params["algorithm_key"], "some-head")
 
     def test_run_job(self):
         data = self._create_job("Test run job", start_now=False)

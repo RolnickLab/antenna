@@ -7,6 +7,7 @@ from asgiref.sync import async_to_sync
 from django.core.cache import cache
 from django.db.models import Q
 from django.db.models.query import QuerySet
+from django.http import Http404
 from django.utils import timezone
 from django_filters import rest_framework as filters
 from drf_spectacular.utils import extend_schema, extend_schema_view
@@ -14,6 +15,7 @@ from rest_framework import serializers
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.filters import BaseFilterBackend
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from ami.base.filters import RelatedIdFilter
@@ -300,8 +302,6 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         """
         If the ``start_now`` parameter is passed, enqueue the job immediately.
         """
-        # All jobs created from the Jobs UI are ML jobs.
-        # @TODO Remove this when the UI is updated pass a job type
         # Get an instance for the model without saving
         obj = serializer.Meta.model(**serializer.validated_data)
         # Check permissions before saving
@@ -489,6 +489,50 @@ class JobViewSet(DefaultViewSet, ProjectMixin):
         responses={200: MLJobResultsResponseSerializer},
         parameters=[project_id_doc_param],
     )
+    @extend_schema(exclude=True)
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="training-result",
+        name="training-result",
+        # A processing service has no Antenna account. It proves itself with the signed
+        # token Antenna issued when it dispatched the job, checked below.
+        permission_classes=[AllowAny],
+        authentication_classes=[],
+    )
+    def training_result(self, request, pk=None):
+        """
+        Receive the outcome of a retraining run from a processing service.
+
+        Training can outlast the request that started it, so the service reports back here
+        instead of holding the connection open.
+        """
+        from ami.jobs.models import TrainClassifierJob
+        from ami.ml.training_dispatch import verify_callback_token
+
+        # get_object() applies project visibility, which an unauthenticated service fails.
+        # The token is what authorises this call, so look the job up directly.
+        job = Job.objects.filter(pk=pk).first()
+        if not job:
+            raise Http404("Job not found.")
+
+        token = request.headers.get("Authorization", "").removeprefix("Token ").strip()
+        if not verify_callback_token(token, job):
+            raise PermissionDenied("Invalid or expired training callback token.")
+
+        if job.job_type_key != TrainClassifierJob.key:
+            raise ValidationError(f"Job #{job.pk} is not a training job.")
+
+        if job.status in JobState.final_states():
+            # The service answered inline and the result is already recorded, or a retry
+            # arrived late. Either way the first answer stands.
+            logger.info("Ignoring a training result for job %s, which already finished", job.pk)
+            return Response({"status": "already recorded"})
+
+        TrainClassifierJob.record_result(job=job, payload=request.data)
+        logger.info("Recorded a training result for job %s", job.pk)
+        return Response({"status": "recorded"})
+
     @action(detail=True, methods=["post"], name="result")
     def result(self, request, pk=None):
         """

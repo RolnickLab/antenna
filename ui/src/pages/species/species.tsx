@@ -51,6 +51,7 @@ export const Species = () => {
     'last-seen': true,
     occurrences: true,
     verified: true,
+    'training-images-ready': true,
     'best-determination-score': true,
     'created-at': false,
     'updated-at': false,
@@ -65,6 +66,7 @@ export const Species = () => {
     filters,
     // This list renders the Example column and links Last-seen / Best-score to an occurrence.
     withExampleOccurrences: true,
+    withTrainingCropCounts: columnSettings['training-images-ready'],
   })
   // Ordered example occurrences, one per taxon row that has one, so the modal's
   // prev/next steps to the next taxon's example (rows without an example are skipped).

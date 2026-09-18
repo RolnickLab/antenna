@@ -26,6 +26,7 @@ from ..models import (
     Event,
     Identification,
     Occurrence,
+    OccurrenceSet,
     Page,
     Project,
     ProjectSettingsMixin,
@@ -644,6 +645,7 @@ class ExampleOccurrenceSerializer(serializers.Serializer):
 class TaxonListSerializer(DefaultSerializer):
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = serializers.SerializerMethodField()
+    training_crops_ready = serializers.SerializerMethodField()
     parents = TaxonParentSerializer(many=True, read_only=True, source="parents_json")
     parent_id = serializers.PrimaryKeyRelatedField(queryset=Taxon.objects.all(), source="parent")
     tags = serializers.SerializerMethodField()
@@ -676,6 +678,7 @@ class TaxonListSerializer(DefaultSerializer):
             "details",
             "occurrences_count",
             "verified_count",
+            "training_crops_ready",
             "occurrences",
             "example_occurrence",
             "best_scoring_occurrence_id",
@@ -687,6 +690,15 @@ class TaxonListSerializer(DefaultSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def get_training_crops_ready(self, obj) -> int | None:
+        """
+        Verified crops of this species, which is what a head can be trained on.
+
+        Null when the caller did not ask for it: counting is opt-in, and a zero would read
+        as a species with nothing to train on.
+        """
+        return getattr(obj, "training_crops_count", None)
 
     def get_occurrences(self, obj):
         """
@@ -708,6 +720,7 @@ class TaxaListSerializer(DefaultSerializer):
     taxa = serializers.SerializerMethodField()
     taxa_count = serializers.SerializerMethodField()
     projects = serializers.SerializerMethodField()
+    best_model = serializers.SerializerMethodField()
 
     class Meta:
         model = TaxaList
@@ -718,9 +731,25 @@ class TaxaListSerializer(DefaultSerializer):
             "taxa",
             "taxa_count",
             "projects",
+            "best_model",
             "created_at",
             "updated_at",
         ]
+
+    def get_best_model(self, obj) -> dict | None:
+        """The algorithm scoring highest on this list's species, or null if none has been scored."""
+        from ami.ml import reporting
+
+        evaluation = reporting.best_evaluation_for_taxa_list(obj)
+        if not evaluation:
+            return None
+        return {
+            "id": evaluation.algorithm_id,
+            "name": evaluation.algorithm.name,
+            "accuracy": evaluation.micro_accuracy,
+            "accuracy_by_species": evaluation.macro_accuracy,
+            "occurrence_set": evaluation.occurrence_set.name,
+        }
 
     def get_taxa(self, obj):
         """
@@ -750,6 +779,27 @@ class TaxaListSerializer(DefaultSerializer):
         This is read-only and managed by the server.
         """
         return list(obj.projects.values_list("id", flat=True))
+
+
+class OccurrenceSetSerializer(DefaultSerializer):
+    """The evaluation sets a project can score a model against."""
+
+    occurrences_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OccurrenceSet
+        fields = [
+            "id",
+            "details",
+            "name",
+            "description",
+            "occurrences_count",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_occurrences_count(self, obj) -> int:
+        return getattr(obj, "annotated_occurrences_count", None) or obj.occurrences.count()
 
 
 class TaxaListTaxonInputSerializer(serializers.Serializer):
@@ -1002,6 +1052,8 @@ class TaxonOccurrenceNestedSerializer(DefaultSerializer):
 
 
 class TaxonSerializer(DefaultSerializer):
+    training_crops_ready = serializers.SerializerMethodField()
+    algorithm_performance = serializers.SerializerMethodField()
     # latest_detection = DetectionNestedSerializer(read_only=True)
     occurrences = TaxonOccurrenceNestedSerializer(many=True, read_only=True, source="example_occurrences")
     parent = TaxonNoParentNestedSerializer(read_only=True)
@@ -1043,7 +1095,24 @@ class TaxonSerializer(DefaultSerializer):
             "cover_image_credit",
             "summary_data",
             "common_name_en",
+            "training_crops_ready",
+            "algorithm_performance",
         ]
+
+    def get_training_crops_ready(self, obj) -> int | None:
+        """
+        Verified crops of this species, which is what a head can be trained on.
+
+        Null when the caller did not ask for it: counting is opt-in, and a zero would read
+        as a species with nothing to train on.
+        """
+        return getattr(obj, "training_crops_count", None)
+
+    def get_algorithm_performance(self, obj) -> list[dict]:
+        """How each scored algorithm has done on this species. Empty until one is evaluated."""
+        from ami.ml import reporting
+
+        return reporting.performance_for_taxon(obj)
 
 
 class CaptureOccurrenceSerializer(DefaultSerializer):
