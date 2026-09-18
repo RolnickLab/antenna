@@ -9,7 +9,7 @@ from category maps (todo A17 in `docs/claude/planning/2026-09-16-tracking-todos-
 
 | List | What it is | Where it lives | Size (UK & Denmark Apr 2024) |
 |---|---|---|---|
-| **Regional checklist** | Every species someone decided belongs to the region, matched to GBIF. Input to the training pipeline, not its output. | Google Drive sheets (Michael's "species lists" folder, id `1ZKnJMP3_CV_m5sZKSDG_AaC21xyj8LTe`): `UK-Denmark_Moth-List_14Sep2023` (id `1T16hy18EOpTB6s1RPWrhGgyrpXj9oDrDMS0PcS1riRU`), combined `Quebec-Vermont-UK-Denmark_Moth-List_24Aug2023` | 3,022 (combined sheet 5,912) |
+| **Regional checklist** | Every species someone decided belongs to the region, matched to GBIF. Input to the training pipeline, not its output. | Google Drive sheets (Michael's "species lists" folder; folder id in the session notes): `UK-Denmark_Moth-List_14Sep2023` (id, combined `Quebec-Vermont-UK-Denmark_Moth-List_24Aug2023` | 3,022 (combined sheet 5,912) |
 | **Category map = the model's list** | The exact ordered label set of the trained network. `--num_classes` of the training run. The only list the model "knows". | The JSON file the ADC serves (`labels_path` of the classifier class in `trapdata/ml/models/classification.py`), fetched from the model object store; cached on each ADC box under `~/.cache/torch/hub/models/`; registered into Antenna as `AlgorithmCategoryMap` when the service's `/info` is read | 2,603 |
 | **Antenna's copy** | `AlgorithmCategoryMap.labels` (ordered) + `.data` (index, label, taxon_rank, sometimes gbif_key). Each label is resolved to a `Taxon` row by name or `search_names` when a result is saved. | `ami/ml/models/algorithm.py:38` (model), `ami/ml/models/pipeline.py:440` (registration), `pipeline.py:712` (label → Taxon on save) | 2,603, identical to the file |
 | **"Taxa returned by <algorithm>"** | Global `TaxaList` that grows as results are saved: only the top-1 label of each saved classification. What the model *has* predicted so far, not what it *can* predict. | Created in `get_or_create_taxon_for_classification` (`pipeline.py:723`) | grows over time |
@@ -50,9 +50,7 @@ is ambiguous in the sheet itself.
 
 Outputs: `docs/claude/sessions/2026-09-16-uk-denmark-species-list-augmented.csv` (label +
 `antenna_taxon_*` + GBIF columns) and `...-comparison.md` (partner-readable). Both are on Drive
-in the species-lists folder as a Sheet (`1OFLOQibMB4liz7CEFfJl2sf9H3dgG4OaLCUfrEM61MQ`) and a
-Doc (`1_fh6jaiMVi7A1H9tX_vE9dFGhC9rbrUmvKcwEAYVnno`). Join script:
-a helper script, not committed.
+in the species-lists folder as a Sheet and a Doc (ids in the session notes). The join script is a helper, not committed.
 
 ## Gotchas met on the way
 
