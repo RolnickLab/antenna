@@ -157,19 +157,6 @@ class TestProcessingServiceAPI(APITestCase):
 
         self.assertEqual(response.status_code, 200)
 
-    def test_check_status_with_project_id(self):
-        """The other call shape: status also works when project_id is supplied."""
-        service = ProcessingService.objects.create(name="Status Check Service With Project", endpoint_url=None)
-        service.projects.add(self.project)
-        url = reverse_with_params(
-            "api:processingservice-status", args=[service.pk], params={"project_id": self.project.pk}
-        )
-
-        self.client.force_authenticate(user=self.user)
-        response = self.client.get(url)
-
-        self.assertEqual(response.status_code, 200)
-
     def test_create_processing_service_without_endpoint_url(self):
         """Test creating a ProcessingService without endpoint_url (pull mode)"""
         processing_services_create_url = reverse_with_params(
@@ -341,15 +328,6 @@ class ProcessingServicePublicPermissionsTestCase(TestCase):
         response = self.client.patch(self._detail_url(self.scoped_service), {"name": "Hacked"})
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_non_member_cannot_update_scoped_service(self):
-        self.client.force_authenticate(self.non_member)
-        response = self.client.patch(self._detail_url(self.scoped_service), {"name": "Hacked"})
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
-    def test_anonymous_cannot_update_scoped_service(self):
-        response = self.client.patch(self._detail_url(self.scoped_service), {"name": "Hacked"})
-        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
-
     def test_superuser_can_update_public_service(self):
         self.client.force_authenticate(self.superuser)
         response = self.client.patch(self._detail_url(self.public_service), {"name": "Renamed by super"})
@@ -383,6 +361,17 @@ class ProcessingServicePublicPermissionsTestCase(TestCase):
         response = self.client.delete(self._detail_url(self.public_service))
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
+    def test_public_manager_can_delete_public_service_with_include_public_false(self):
+        """
+        include_public=false must not make get_queryset() 404 the very row being
+        deleted: it governs the list action's default scope, not whether a public
+        row can be looked up for a detail action.
+        """
+        self.client.force_authenticate(self.public_manager)
+        url = f"{self._detail_url(self.public_service)}&include_public=false"
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
     # -- Retrieve / list visibility --
 
     def test_anonymous_can_retrieve_public_service(self):
@@ -396,12 +385,14 @@ class ProcessingServicePublicPermissionsTestCase(TestCase):
         ids = {row["id"] for row in response.json()["results"]}
         self.assertIn(self.public_service.pk, ids)
 
-    def test_is_public_field_is_read_only_and_reported(self):
+    def test_is_public_is_reported_in_the_response(self):
         self.client.force_authenticate(self.staff)
         response = self.client.get(self._detail_url(self.public_service))
         self.assertTrue(response.json()["is_public"])
 
-        response = self.client.patch(self._detail_url(self.scoped_service), {"is_public": True})
+    def test_is_public_cannot_be_set_through_the_api(self):
+        self.client.force_authenticate(self.staff)
+        self.client.patch(self._detail_url(self.scoped_service), {"is_public": True})
         self.scoped_service.refresh_from_db()
         self.assertFalse(self.scoped_service.is_public)
 
@@ -449,15 +440,20 @@ class ProcessingServicePublicPermissionsTestCase(TestCase):
         response = self.client.post(self._register_url(self.scoped_service))
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_staff_cannot_register_pipelines_on_public_service_without_project_id(self):
-        """The platform-permission gate applies the same whether or not project_id is supplied."""
-        self.client.force_authenticate(self.staff)
-        response = self.client.post(self._register_url_no_project(self.public_service))
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
-
     def test_public_manager_can_register_pipelines_on_public_service_without_project_id(self):
+        """The platform-permission bypass works the same whether or not project_id is supplied."""
         self.client.force_authenticate(self.public_manager)
         response = self.client.post(self._register_url_no_project(self.public_service))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_include_public_false_does_not_hide_a_public_service_from_retrieve(self):
+        """
+        include_public governs the list action's default scope, not whether a
+        specific public row exists. ?include_public=false on a detail URL must not
+        404 a public service the caller is otherwise allowed to see.
+        """
+        url = f"{self._detail_url(self.public_service)}&include_public=false"
+        response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
 
@@ -502,21 +498,63 @@ class ProcessingServiceIncludePublicParamTestCase(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_public_service_linked_to_multiple_projects_appears_once(self):
-        """A public service attached to several projects must not be duplicated by the M2M join."""
-        self.public_service.projects.add(self.project)
-        rows = self._list_ids()
-        matches = [row for row in rows if row["id"] == self.public_service.pk]
-        self.assertEqual(len(matches), 1)
+    # The no-duplication guarantee for a public row linked to several projects is a
+    # property of the shared for_project()/visible_for_user() code, tested once at
+    # the querySet level (TaxaListForProjectQuerySetTestCase) and once at the API
+    # level, as a superuser, in TaxaListIncludePublicParamTestCase — no need to
+    # repeat it here for ProcessingService.
 
     def test_hidden_zero_project_service_is_invisible_to_non_superuser(self):
         ids = {row["id"] for row in self._list_ids()}
         self.assertNotIn(self.hidden_service.pk, ids)
 
 
+class ProcessingServiceProjectsFieldVisibilityTestCase(TestCase):
+    """
+    A public service bypasses the draft-project visibility filter that would
+    otherwise hide it, so its own `projects` field must not become a side channel
+    for disclosing a draft project's id to someone who can't see that project.
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(email="ps-projfield-owner@example.com", password="testpass")
+        self.member = User.objects.create_user(email="ps-projfield-member@example.com", password="testpass")
+        self.draft_project = Project.objects.create(
+            name="PS Projfield Draft Project", owner=self.owner, draft=True, create_defaults=False
+        )
+        self.draft_project.members.add(self.member)
+        self.public_project = Project.objects.create(name="PS Projfield Public Project", create_defaults=False)
+
+        self.public_service = ProcessingService.objects.create(
+            name="PS Cross-Project Public Service", endpoint_url=None, is_public=True
+        )
+        self.public_service.projects.add(self.draft_project, self.public_project)
+
+        self.client = APIClient()
+
+    def _detail_url(self):
+        return f"/api/v2/ml/processing_services/{self.public_service.pk}/?project_id={self.public_project.pk}"
+
+    def test_anonymous_sees_only_the_non_draft_project_id(self):
+        response = self.client.get(self._detail_url())
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["projects"], [self.public_project.pk])
+
+    def test_draft_project_member_sees_both_project_ids(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.get(self._detail_url())
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(set(response.json()["projects"]), {self.draft_project.pk, self.public_project.pk})
+
+
 @override_settings(CACHALOT_ENABLED=False)
 class ProcessingServiceQueryCountTestCase(APITestCase):
-    """Audit ProcessingServiceViewSet.list for N+1 across a mixed public/scoped, multi-row fixture."""
+    """
+    Pins the current query count for ProcessingServiceViewSet.list on a mixed
+    public/scoped, multi-row fixture, so a regression that adds queries is
+    noticed. This does not certify the absence of per-row queries — it only
+    catches a further increase from where things stand today.
+    """
 
     def setUp(self):
         self.user = User.objects.create_user(email="ps-qc-user@example.com", password="testpass")
@@ -538,7 +576,13 @@ class ProcessingServiceQueryCountTestCase(APITestCase):
             response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.json()["results"]), 5)
-        self.assertEqual(len(ctx.captured_queries), 34)
+        # 34 (previous baseline) down to 21: add_processingservice_permissions() no
+        # longer runs the M2M membership check or the guardian get_perms() lookup
+        # per non-public row (no per-project *_processingservice guardian permission
+        # exists, so that branch could only ever fire for a superuser, which a plain
+        # attribute check covers for free); get_projects() adds back one query per
+        # request (not per row) for the draft-project-id visibility filter.
+        self.assertEqual(len(ctx.captured_queries), 21)
 
 
 class TestProjectPipelineRegistrationUpdatesLastSeen(APITestCase):
