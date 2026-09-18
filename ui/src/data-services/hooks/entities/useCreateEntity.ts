@@ -6,16 +6,20 @@ import { useUser } from 'utils/user/userContext'
 import { EntityFieldValues } from './types'
 import { convertToServerFieldValues } from './utils'
 
-// Most collections return the created entity itself. Processing services wrap it,
-// returning the connection status alongside it, so the id lives one level down.
-type CreateEntityResponse = { id?: number; instance?: { id: number } }
+// The created entity, as the server returns it. Callers read the fields their own
+// collection defines; `is_async` is how a processing service reports its mode.
+export type CreatedEntity = { id?: number; is_async?: boolean }
 
-const getCreatedId = (data: CreateEntityResponse) =>
-  data.instance?.id ?? data.id
+// Most collections return the created entity itself. Processing services wrap it,
+// returning the connection status alongside it, so the entity lives one level down.
+type CreateEntityResponse = CreatedEntity & { instance?: CreatedEntity }
+
+const getCreatedEntity = (data: CreateEntityResponse): CreatedEntity =>
+  data.instance ?? data
 
 export const useCreateEntity = (
   collection: string,
-  onSuccess?: (created: { id?: number }) => void
+  onSuccess?: (created: CreatedEntity) => void
 ) => {
   const { user } = useUser()
   const queryClient = useQueryClient()
@@ -31,7 +35,7 @@ export const useCreateEntity = (
       ),
     onSuccess: (response) => {
       queryClient.invalidateQueries([collection])
-      onSuccess?.({ id: getCreatedId(response.data) })
+      onSuccess?.(getCreatedEntity(response.data))
       setTimeout(reset, SUCCESS_TIMEOUT)
     },
   })

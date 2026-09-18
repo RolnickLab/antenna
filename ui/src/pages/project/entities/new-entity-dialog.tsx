@@ -12,8 +12,10 @@ import styles from './styles.module.scss'
 
 const CLOSE_TIMEOUT = 1000
 
-// A newly created processing service still has to be registered before its pipelines
-// exist, so its dialog stays open on a "Register pipelines" step instead of closing.
+// A newly created push-mode processing service still has to be registered before its
+// pipelines exist, so its dialog stays open on a "Register pipelines" step instead of
+// closing. A pull-mode service (no endpoint URL, `is_async`) registers itself when it
+// checks in, so there is nothing for the user to trigger and the dialog just closes.
 const REQUIRES_REGISTRATION_TYPE = 'service'
 
 export const NewEntityDialog = ({
@@ -37,7 +39,11 @@ export const NewEntityDialog = ({
     (created) => {
       // Falling back to closing keeps the dialog usable if the id is ever missing,
       // rather than opening a registration step that would call an invalid URL.
-      if (type === REQUIRES_REGISTRATION_TYPE && created.id !== undefined) {
+      if (
+        type === REQUIRES_REGISTRATION_TYPE &&
+        created.id !== undefined &&
+        !created.is_async
+      ) {
         setCreatedServiceId(`${created.id}`)
         return
       }
