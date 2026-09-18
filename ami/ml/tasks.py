@@ -56,11 +56,12 @@ def sync_algorithm_taxa_list(algorithm_id: int) -> None:
 
     Registration dispatches this for category maps too large to sync inline
     (see TAXA_LIST_SYNC_INLINE_MAX_LABELS in ami.ml.models.processing_service).
+    Like the inline path, it links known taxa only and never creates new ones.
     """
     from ami.ml.models import Algorithm
 
     algorithm = Algorithm.objects.get(pk=algorithm_id)
-    result = algorithm.sync_taxa_list()
+    result = algorithm.sync_taxa_list(create_missing_taxa=False)
     logger.info(
         f"Synced taxa list for algorithm {algorithm}: "
         f"labels={result.labels} matched={result.matched} created_taxa={result.created_taxa} "

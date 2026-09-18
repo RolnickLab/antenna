@@ -2134,6 +2134,8 @@ class TestTaxaListSyncOnRegistration(TestCase):
 
     def test_small_classifier_syncs_inline_and_links_a_real_taxa_list(self):
         classifier = _classifier_algorithm("inline-sync-classifier", label_count=3)
+        for label in classifier.category_map.labels:
+            Taxon.objects.create(name=label, rank=TaxonRank.SPECIES.name)
         config = _pipeline_config("inline-sync-pipeline", [classifier])
 
         response = self.service.create_pipelines(pipeline_configs=[config], projects=self.projects)
@@ -2143,13 +2145,35 @@ class TestTaxaListSyncOnRegistration(TestCase):
         self.assertEqual(summary.algorithm_key, "inline-sync-classifier")
         self.assertEqual(summary.status, "synced")
         self.assertEqual(summary.labels, 3)
-        self.assertEqual(summary.matched, 0)
-        self.assertEqual(summary.created_taxa, 3)
+        self.assertEqual(summary.matched, 3)
+        self.assertEqual(summary.created_taxa, 0)
+        self.assertEqual(summary.unresolved, 0)
         self.assertIsNotNone(summary.taxa_list_id)
 
         algorithm = Algorithm.objects.get(key="inline-sync-classifier")
         self.assertIsNotNone(algorithm.taxa_list_id)
         self.assertEqual(algorithm.taxa_list_id, summary.taxa_list_id)
+        self.assertEqual(algorithm.taxa_list.taxa.count(), 3)
+
+    def test_registration_links_known_taxa_and_never_invents_new_ones(self):
+        """
+        A label the taxonomy does not know is reported as unresolved and left out of the
+        list. Creating it here would store a rankless, parentless row that shadows the real
+        taxon a later import brings in, so only the management command creates taxa.
+        """
+        classifier = _classifier_algorithm("partial-match-classifier", label_count=3)
+        known_label = classifier.category_map.labels[0]
+        Taxon.objects.create(name=known_label, rank=TaxonRank.SPECIES.name)
+        taxa_before = Taxon.objects.count()
+        config = _pipeline_config("partial-match-pipeline", [classifier])
+
+        response = self.service.create_pipelines(pipeline_configs=[config], projects=self.projects)
+
+        summary = response.taxa_lists[0]
+        self.assertEqual(summary.matched, 1)
+        self.assertEqual(summary.created_taxa, 0)
+        self.assertEqual(summary.unresolved, 2)
+        self.assertEqual(Taxon.objects.count(), taxa_before)
 
     def test_detector_produces_no_taxa_list_entry(self):
         detector = AlgorithmConfigResponse(

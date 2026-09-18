@@ -209,6 +209,12 @@ class ProcessingService(BaseModel, PublicScopedModel):
         Sync a classifier's taxa list to its category map during registration, inline for
         small maps or via a Celery task for large ones. Returns None for detectors and for
         algorithms with no category map or an empty one — there is nothing to report.
+
+        Registration links only labels that already name a taxon. It never invents taxa:
+        a label the taxonomy does not know would be stored as a rankless, parentless row
+        that shadows the real taxon a later import creates. The unresolved count in the
+        summary tells the operator how many labels need the create_taxa_lists_from_category_maps
+        command, which creates them deliberately.
         """
         # Gate on labels rather than has_valid_category_map(): labels is what sync_taxa_list()
         # reconciles against, so a map with data but no labels would produce an empty report.
@@ -230,7 +236,7 @@ class ProcessingService(BaseModel, PublicScopedModel):
             )
 
         try:
-            result = algorithm.sync_taxa_list()
+            result = algorithm.sync_taxa_list(create_missing_taxa=False)
         except Exception as e:
             # The pipeline and algorithm are already registered by this point, so a failed
             # taxa list sync is a partial success, not a reason to fail the whole
