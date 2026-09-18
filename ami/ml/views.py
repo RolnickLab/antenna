@@ -56,6 +56,8 @@ class AlgorithmViewSet(DefaultViewSet, ProjectMixin):
     def get_queryset(self) -> QuerySet["Algorithm"]:
         qs: QuerySet["Algorithm"] = super().get_queryset()
         qs = qs.with_category_count()  # type: ignore[union-attr] # Custom queryset method
+        # The nested taxa_list field must not cost a query per row.
+        qs = qs.select_related("taxa_list")
         # Only scope the list by project. Detail stays unscoped so links from historical
         # classifications whose pipeline is no longer enabled still resolve.
         if getattr(self, "action", None) == "list":
