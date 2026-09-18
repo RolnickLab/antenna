@@ -242,14 +242,16 @@ class _BaseGateOrPublicManager(permissions.BasePermission):
     Shared shape for M2M-to-project models with a public flag: safe methods are
     open to everyone; unsafe methods need the model's own base gate (project
     membership, active-staff status, ...) or the manage_public_<model> platform
-    permission. `exclude_create_from_bypass` forces a plain "create a new row"
-    action through the base gate only, since there's no object yet to tell
-    whether it will be public. Subclasses implement get_model() and
+    permission. Actions named in `base_gate_only_actions` (creating a new row,
+    copying into the active project) go through the base gate only, since the
+    row being written does not exist yet to tell whether it will be public. Subclasses implement get_model() and
     get_base_gate() — get_model() does a local import to avoid a module-level
     circular import between this file and the app that owns the model.
     """
 
-    exclude_create_from_bypass = False
+    base_gate_only_actions: frozenset[str] = frozenset()
+    # Actions that only read the object (e.g. copying it) skip the object-level write check.
+    read_only_object_actions: frozenset[str] = frozenset()
 
     def get_model(self):
         raise NotImplementedError
@@ -267,7 +269,7 @@ class _BaseGateOrPublicManager(permissions.BasePermission):
         if request.user.is_superuser:  # type: ignore[union-attr]
             return True
 
-        if self.exclude_create_from_bypass and getattr(view, "action", None) == "create":
+        if getattr(view, "action", None) in self.base_gate_only_actions:
             return self.get_base_gate(request, view)
 
         if user_can_manage_public(request.user, self.get_model()):
@@ -277,6 +279,8 @@ class _BaseGateOrPublicManager(permissions.BasePermission):
 
     def has_object_permission(self, request, view, obj):
         if request.method in permissions.SAFE_METHODS:
+            return True
+        if getattr(view, "action", None) in self.read_only_object_actions:
             return True
         return check_public_scoped_write_permission(request.user, obj, lambda: self.get_base_gate(request, view))
 
@@ -300,9 +304,14 @@ class IsProjectMemberOrPublicListManager(_BaseGateOrPublicManager):
 
 
 class IsProjectMemberOrPublicListManagerOrReadOnly(IsProjectMemberOrPublicListManager):
-    """For TaxaListViewSet: creating a brand-new list always needs real project membership."""
+    """
+    For TaxaListViewSet. Creating a list, or copying one into the active project, needs
+    real project membership. `copy` only reads its source, which get_object() has already
+    limited to lists the caller can see, so the write check does not apply to it.
+    """
 
-    exclude_create_from_bypass = True
+    base_gate_only_actions = frozenset({"create", "copy"})
+    read_only_object_actions = frozenset({"copy"})
 
     def has_object_permission(self, request, view, obj):
         # A managed list refuses DELETE for everyone before the usual write check.
@@ -326,7 +335,7 @@ class IsActiveStaffOrPublicManager(_BaseGateOrPublicManager):
 class IsActiveStaffOrPublicManagerOrReadOnly(IsActiveStaffOrPublicManager):
     """For ProcessingServiceViewSet: creating a brand-new service always needs active-staff status."""
 
-    exclude_create_from_bypass = True
+    base_gate_only_actions = frozenset({"create"})
 
 
 class ObjectPermission(permissions.BasePermission):

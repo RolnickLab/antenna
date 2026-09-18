@@ -6,7 +6,7 @@ from django.conf import settings
 from django.contrib.postgres.search import TrigramSimilarity
 from django.core import exceptions
 from django.core.files.storage import default_storage
-from django.db import models
+from django.db import models, transaction
 from django.db.models import OuterRef, Prefetch, Q, Subquery
 from django.db.models.query import QuerySet
 from django.forms import BooleanField, CharField, IntegerField
@@ -103,6 +103,7 @@ from .serializers import (
     SourceImageUploadSerializer,
     StorageSourceSerializer,
     StorageStatusSerializer,
+    TaxaListCopySerializer,
     TaxaListSerializer,
     TaxaListTaxonInputSerializer,
     TaxaListTaxonSerializer,
@@ -2223,8 +2224,8 @@ class TaxaListViewSet(DefaultViewSet, ProjectMixin):
         qs = super().get_queryset()
         # Annotate with taxa count for better performance
         qs = qs.annotate(annotated_taxa_count=models.Count("taxa"))
-        # is_managed and the nested algorithms list must not cost a query per row.
-        qs = qs.with_is_managed().prefetch_related("algorithms")
+        # is_managed, the nested algorithms list and copied_from must not cost a query per row.
+        qs = qs.with_is_managed().prefetch_related("algorithms").select_related("copied_from")
         project = self.get_active_project()
         if not project:
             return qs
@@ -2249,6 +2250,53 @@ class TaxaListViewSet(DefaultViewSet, ProjectMixin):
         project = self.get_active_project()
         if project:
             instance.projects.add(project)
+
+    @extend_schema(parameters=[project_id_doc_param], request=TaxaListCopySerializer, responses=TaxaListSerializer)
+    @action(detail=True, methods=["post"])
+    def copy(self, request, pk=None):
+        """
+        Copy this taxa list into the active project as a new, independently editable list.
+
+        Reading the source only requires it to be visible to the caller (their own
+        project's list, or any public one) — get_object() already enforces that.
+        Copying does not require write access to the source itself, since nothing
+        about the source changes; see IsProjectMemberOrPublicListManagerOrReadOnly.
+        """
+        source = self.get_object()
+        project = self.get_active_project()
+        if project is None:
+            raise api_exceptions.ValidationError({"project_id": "A project_id is required to copy a taxa list."})
+
+        body = TaxaListCopySerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        name = body.validated_data.get("name") or f"{source.name} (copy)"
+        description = body.validated_data.get("description", source.description)
+
+        if TaxaList.objects.filter(name=name, projects=project).exists():
+            raise api_exceptions.ValidationError(
+                {"name": "A taxa list with this name already exists in this project."}
+            )
+
+        with transaction.atomic():
+            new_list = TaxaList.objects.create(
+                name=name,
+                description=description,
+                copied_from=source,
+                is_public=False,
+            )
+            new_list.projects.add(project)
+
+            # Copy M2M membership with one batched bulk_create instead of one
+            # .add() call per taxon — the largest real list has ~29k taxa.
+            through_model = TaxaList.taxa.through
+            taxon_ids = list(source.taxa.values_list("pk", flat=True))
+            through_model.objects.bulk_create(
+                [through_model(taxalist_id=new_list.pk, taxon_id=taxon_id) for taxon_id in taxon_ids],
+                batch_size=1000,
+            )
+
+        serializer = self.get_serializer(new_list)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class TaxaListTaxonViewSet(viewsets.GenericViewSet, ProjectMixin):

@@ -749,6 +749,7 @@ class TaxaListAdmin(admin.ModelAdmin[TaxaList]):
         "taxa",
         "projects",
     )
+    raw_id_fields = ("copied_from",)
 
     list_filter = ("is_public", "projects")
 
