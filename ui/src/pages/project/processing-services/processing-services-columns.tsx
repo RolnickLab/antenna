@@ -1,6 +1,7 @@
 import { API_ROUTES } from 'data-services/constants'
 import { ProcessingService } from 'data-services/models/processing-service'
 import {
+  Badge,
   BasicTableCell,
   CellTheme,
   DateTableCell,
@@ -41,6 +42,18 @@ export const columns = ({
         <BasicTableCell value={item.name} theme={CellTheme.Primary} />
       </Link>
     ),
+  },
+  {
+    id: 'badges',
+    name: '',
+    renderCell: (item: ProcessingService) =>
+      item.isPublic ? (
+        <BasicTableCell>
+          <Badge label={translate(STRING.PUBLIC)} />
+        </BasicTableCell>
+      ) : (
+        <></>
+      ),
   },
   {
     id: 'status',

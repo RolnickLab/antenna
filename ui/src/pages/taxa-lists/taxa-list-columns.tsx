@@ -1,3 +1,4 @@
+import { TaxaListBadges } from 'components/taxa-list-badges/taxa-list-badges'
 import { API_ROUTES } from 'data-services/constants'
 import { TaxaList } from 'data-services/models/taxa-list'
 import {
@@ -36,6 +37,15 @@ export const columns = ({
       >
         <BasicTableCell value={item.name} theme={CellTheme.Primary} />
       </Link>
+    ),
+  },
+  {
+    id: 'badges',
+    name: '',
+    renderCell: (item: TaxaList) => (
+      <BasicTableCell>
+        <TaxaListBadges projectId={projectId} taxaList={item} />
+      </BasicTableCell>
     ),
   },
   {
