@@ -6067,8 +6067,15 @@ class TaxaListQueryCountTestCase(APITestCase):
 
         self.user = User.objects.create_user(email="qc-user@example.com", password="testpass")
         self.project = Project.objects.create(name="QC Project", owner=self.user)
+        other_project = Project.objects.create(name="QC Other Project")
+        # A source list outside the fixture's own visible rows, so setting
+        # copied_from on a result row doesn't change the expected result count.
+        hidden_source = TaxaList.objects.create(name="Hidden Source")
+        hidden_source.projects.add(other_project)
         for i in range(3):
-            scoped = TaxaList.objects.create(name=f"Scoped {i}")
+            # One row carries copied_from so the fixture exercises the extra
+            # select_related join, not just rows where it's null.
+            scoped = TaxaList.objects.create(name=f"Scoped {i}", copied_from=hidden_source if i == 0 else None)
             scoped.projects.add(self.project)
         for i in range(2):
             TaxaList.objects.create(name=f"Public {i}", is_public=True)
@@ -6107,6 +6114,214 @@ class TaxaListQueryCountTestCase(APITestCase):
         # Measured on this branch; one of these is the once-per-request visible-projects
         # lookup that filters draft ids out of get_projects().
         self.assertEqual(len(ctx.captured_queries), 45)
+
+
+class TaxaListCopyPermissionTestCase(TestCase):
+    """Permission matrix for POST /taxa/lists/{id}/copy/?project_id=<P>.
+
+    `copy` only reads the source list (see the `copy` branch of
+    IsProjectMemberOrPublicListManagerOrReadOnly.has_object_permission) but always
+    needs real membership of the destination project P, the same rule `create`
+    already applies — holding manage_public_taxalist is neither necessary nor
+    sufficient on its own.
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(email="copy-owner@example.com", password="testpass")
+        self.member = User.objects.create_user(email="copy-member@example.com", password="testpass")
+        self.non_member = User.objects.create_user(email="copy-nonmember@example.com", password="testpass")
+        self.superuser = User.objects.create_superuser(email="copy-super@example.com", password="testpass")
+        self.public_manager = User.objects.create_user(email="copy-manager@example.com", password="testpass")
+        perm = Permission.objects.get(codename="manage_public_taxalist", content_type__app_label="main")
+        self.public_manager.user_permissions.add(perm)
+
+        self.project = Project.objects.create(name="Copy Destination Project", owner=self.owner)
+        self.project.members.add(self.member)
+        self.other_project = Project.objects.create(name="Copy Other Project")
+
+        self.public_source = TaxaList.objects.create(name="Public Source", is_public=True)
+        self.own_project_source = TaxaList.objects.create(name="Own Project Source")
+        self.own_project_source.projects.add(self.project)
+        self.other_project_source = TaxaList.objects.create(name="Other Project Source")
+        self.other_project_source.projects.add(self.other_project)
+
+        self.client = APIClient()
+
+    def _copy_url(self, source):
+        return f"/api/v2/taxa/lists/{source.pk}/copy/?project_id={self.project.pk}"
+
+    def test_member_can_copy_public_and_own_project_sources(self):
+        self.client.force_authenticate(self.member)
+        for source in (self.public_source, self.own_project_source):
+            with self.subTest(source=source.name):
+                response = self.client.post(self._copy_url(source), {"name": f"Member copy of {source.name}"})
+                self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_member_gets_404_for_non_public_source_in_another_project(self):
+        self.client.force_authenticate(self.member)
+        response = self.client.post(self._copy_url(self.other_project_source), {"name": "Should not be created"})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_superuser_can_copy_public_and_own_project_sources(self):
+        self.client.force_authenticate(self.superuser)
+        for source in (self.public_source, self.own_project_source):
+            with self.subTest(source=source.name):
+                response = self.client.post(self._copy_url(source), {"name": f"Super copy of {source.name}"})
+                self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_superuser_gets_404_for_non_public_source_in_another_project(self):
+        self.client.force_authenticate(self.superuser)
+        response = self.client.post(self._copy_url(self.other_project_source), {"name": "Should not be created"})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_non_member_cannot_copy_any_source(self):
+        self.client.force_authenticate(self.non_member)
+        for source in (self.public_source, self.own_project_source, self.other_project_source):
+            with self.subTest(source=source.name):
+                response = self.client.post(self._copy_url(source), {"name": f"Non-member attempt {source.name}"})
+                self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_public_list_manager_without_membership_cannot_copy(self):
+        """manage_public_taxalist is not a substitute for destination-project membership."""
+        self.client.force_authenticate(self.public_manager)
+        response = self.client.post(self._copy_url(self.public_source), {"name": "Manager attempt"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_anonymous_cannot_copy(self):
+        response = self.client.post(self._copy_url(self.public_source), {"name": "Anonymous attempt"})
+        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+
+
+class TaxaListCopyTestCase(TestCase):
+    """Copying a taxa list produces a new, independently editable list with the same taxa."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(email="copydata-owner@example.com", password="testpass")
+        self.project = Project.objects.create(name="Copy Data Project", owner=self.owner)
+        self.source = TaxaList.objects.create(name="Source List", description="Source description", is_public=True)
+        self.taxon1 = Taxon.objects.create(name="Copy Taxon 1", rank="SPECIES")
+        self.taxon2 = Taxon.objects.create(name="Copy Taxon 2", rank="SPECIES")
+        self.source.taxa.add(self.taxon1, self.taxon2)
+        self.client = APIClient()
+        self.client.force_authenticate(self.owner)
+
+    def _copy_url(self):
+        return f"/api/v2/taxa/lists/{self.source.pk}/copy/?project_id={self.project.pk}"
+
+    def test_default_name_is_source_name_plus_copy_suffix(self):
+        response = self.client.post(self._copy_url(), {})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.json()["name"], "Source List (copy)")
+
+    def test_custom_name_is_used(self):
+        response = self.client.post(self._copy_url(), {"name": "My Custom Copy"})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.json()["name"], "My Custom Copy")
+
+    def test_description_defaults_to_source_description(self):
+        response = self.client.post(self._copy_url(), {})
+        self.assertEqual(response.json()["description"], "Source description")
+
+    def test_custom_description_is_used(self):
+        response = self.client.post(self._copy_url(), {"description": "Overridden description"})
+        self.assertEqual(response.json()["description"], "Overridden description")
+
+    def test_duplicate_name_in_project_returns_400(self):
+        existing = TaxaList.objects.create(name="Existing In Project")
+        existing.projects.add(self.project)
+        response = self.client.post(self._copy_url(), {"name": "Existing In Project"})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_overlong_name_returns_400(self):
+        response = self.client.post(self._copy_url(), {"name": "x" * 256})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_copy_is_not_public_and_scoped_to_destination_project_only(self):
+        response = self.client.post(self._copy_url(), {})
+        new_list = TaxaList.objects.get(pk=response.json()["id"])
+        self.assertFalse(new_list.is_public)
+        self.assertEqual(list(new_list.projects.values_list("pk", flat=True)), [self.project.pk])
+
+    def test_copy_has_same_taxa_as_source(self):
+        response = self.client.post(self._copy_url(), {})
+        new_list = TaxaList.objects.get(pk=response.json()["id"])
+        self.assertEqual(
+            set(new_list.taxa.values_list("pk", flat=True)),
+            set(self.source.taxa.values_list("pk", flat=True)),
+        )
+
+    def test_copy_is_independent_of_source(self):
+        response = self.client.post(self._copy_url(), {})
+        new_list = TaxaList.objects.get(pk=response.json()["id"])
+
+        taxon3 = Taxon.objects.create(name="Copy Taxon 3", rank="SPECIES")
+        new_list.taxa.add(taxon3)
+        self.assertFalse(self.source.taxa.filter(pk=taxon3.pk).exists())
+
+        new_list.taxa.remove(self.taxon1)
+        self.assertTrue(self.source.taxa.filter(pk=self.taxon1.pk).exists())
+
+    def test_member_can_edit_copy_even_though_source_is_public(self):
+        """The copy is an ordinary project-scoped list: editing it needs project
+        membership only, never manage_public_taxalist, even though its source is public."""
+        response = self.client.post(self._copy_url(), {})
+        detail_url = f"/api/v2/taxa/lists/{response.json()['id']}/?project_id={self.project.pk}"
+        patch_response = self.client.patch(detail_url, {"name": "Renamed Copy"})
+        self.assertEqual(patch_response.status_code, status.HTTP_200_OK)
+
+    def test_copied_from_is_reported_in_the_response(self):
+        response = self.client.post(self._copy_url(), {})
+        self.assertEqual(response.json()["copied_from"], {"id": self.source.pk, "name": self.source.name})
+
+    def test_copied_from_is_null_and_taxa_intact_after_source_is_deleted(self):
+        response = self.client.post(self._copy_url(), {})
+        new_list_id = response.json()["id"]
+        self.source.delete()
+
+        new_list = TaxaList.objects.get(pk=new_list_id)
+        self.assertIsNone(new_list.copied_from)
+        self.assertEqual(new_list.taxa.count(), 2)
+
+    def test_nonexistent_source_returns_404(self):
+        url = f"/api/v2/taxa/lists/999999/copy/?project_id={self.project.pk}"
+        response = self.client.post(url, {})
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+
+@override_settings(CACHALOT_ENABLED=False)
+class TaxaListCopyQueryCountTestCase(APITestCase):
+    """The copy action's query count must not scale with the source list's taxa count.
+
+    Copying used to risk one query per taxon; bulk_create on the M2M through model
+    keeps the count flat regardless of how many taxa the source list holds.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(email="copy-qc@example.com", password="testpass")
+        self.project = Project.objects.create(name="Copy QC Project", owner=self.user)
+
+    def _copy_and_count_queries(self, taxa_count: int) -> int:
+        from cachalot.api import cachalot_disabled
+
+        source = TaxaList.objects.create(name=f"QC Source {taxa_count}")
+        source.projects.add(self.project)
+        taxa = Taxon.objects.bulk_create(
+            [Taxon(name=f"QC Taxon {taxa_count}-{i}", rank="SPECIES") for i in range(taxa_count)]
+        )
+        source.taxa.add(*taxa)
+
+        client = APIClient()
+        client.force_authenticate(self.user)
+        url = f"/api/v2/taxa/lists/{source.pk}/copy/?project_id={self.project.pk}"
+        with cachalot_disabled(), CaptureQueriesContext(connection) as ctx:
+            response = client.post(url, {"name": f"QC Copy {taxa_count}"})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        return len(ctx.captured_queries)
+
+    def test_query_count_is_independent_of_source_size(self):
+        small_list_queries = self._copy_and_count_queries(5)
+        large_list_queries = self._copy_and_count_queries(200)
+        self.assertEqual(small_list_queries, large_list_queries)
 
 
 class TaxaListDedupeMigrationTestCase(TestCase):
