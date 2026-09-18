@@ -179,6 +179,7 @@ export enum STRING {
   FIELD_LABEL_VERSION,
 
   /* MESSAGE */
+  MESSAGE_ALGORITHMS_REGISTERED,
   MESSAGE_CAPTURE_FILENAME,
   MESSAGE_CAPTURE_LIMIT,
   MESSAGE_CAPTURE_SET_FORM_INTRO,
@@ -190,6 +191,7 @@ export enum STRING {
   MESSAGE_CAPTURE_UPLOAD_HIDDEN,
   MESSAGE_CHANGE_PASSWORD,
   MESSAGE_CONFIGURE_LOCATION,
+  MESSAGE_COULD_NOT_REGISTER_PIPELINES,
   MESSAGE_COULD_NOT_SAVE,
   MESSAGE_DATA_SOURCE_NOT_CONFIGURED,
   MESSAGE_DEFAULT_FILTERS,
@@ -206,6 +208,8 @@ export enum STRING {
   MESSAGE_LEAVE_TEAM_CONFIRM,
   MESSAGE_NO_ACCOUNT_YET,
   MESSAGE_NO_IMAGE,
+  MESSAGE_NO_NEW_ALGORITHMS,
+  MESSAGE_NO_NEW_PIPELINES,
   MESSAGE_NO_RESULTS_FOR_FILTERING,
   MESSAGE_NO_RESULTS_FOR_PAGE,
   MESSAGE_NO_RESULTS_TO_SHOW,
@@ -213,7 +217,9 @@ export enum STRING {
   MESSAGE_PASSWORD_FORMAT,
   MESSAGE_PASSWORD_UPDATED,
   MESSAGE_PERMISSIONS_MISSING,
+  MESSAGE_PIPELINES_REGISTERED,
   MESSAGE_PROCESS_NOW_TOOLTIP,
+  MESSAGE_REGISTERING_PIPELINES,
   MESSAGE_REMOVE_MEMBER_CONFIRM,
   MESSAGE_REMOVE_TAXA_LIST_TAXON_CONFIRM,
   MESSAGE_RESET_INSTRUCTIONS_SENT,
@@ -222,6 +228,9 @@ export enum STRING {
   MESSAGE_STATS_NO_COMPARABLE,
   MESSAGE_SYNC_ALL_CONFIRM,
   MESSAGE_SYNC_CONFIRM,
+  MESSAGE_TAXA_LIST_QUEUED,
+  MESSAGE_TAXA_LIST_SYNCED,
+  MESSAGE_TAXA_LIST_UNRESOLVED,
   MESSAGE_VALUE_INVALID,
   MESSAGE_VALUE_MISSING,
 
@@ -563,6 +572,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.ENTITY_VIEW]: 'View {{type}}',
 
   /* MESSAGE */
+  [STRING.MESSAGE_ALGORITHMS_REGISTERED]:
+    '{{count}} new algorithm(s) registered',
   [STRING.MESSAGE_CAPTURE_FILENAME]:
     'Image filename must contain a timestamp with year, month, day, hours, minutes and seconds (e.g. 20210101120000-snapshot.jpg).',
   [STRING.MESSAGE_CAPTURE_LIMIT]:
@@ -583,6 +594,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'Contact an administrator to change your email or password.',
   [STRING.MESSAGE_CONFIGURE_LOCATION]:
     'Configure location for stations to see them on the map.',
+  [STRING.MESSAGE_COULD_NOT_REGISTER_PIPELINES]: 'Could not register pipelines',
   [STRING.MESSAGE_COULD_NOT_SAVE]: 'Could not save',
   [STRING.MESSAGE_DATA_SOURCE_NOT_CONFIGURED]:
     'A data source must be configured and saved before syncing captures.',
@@ -608,6 +620,10 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'Are you sure you want to leave the team? This is permanent.',
   [STRING.MESSAGE_NO_ACCOUNT_YET]: 'No account yet?',
   [STRING.MESSAGE_NO_IMAGE]: 'No image',
+  [STRING.MESSAGE_NO_NEW_ALGORITHMS]:
+    'No new algorithms — all algorithms were already registered.',
+  [STRING.MESSAGE_NO_NEW_PIPELINES]:
+    'No new pipelines — all pipelines were already registered.',
   [STRING.MESSAGE_NO_RESULTS_FOR_FILTERING]:
     'There are no results to show for the current filtering.',
   [STRING.MESSAGE_NO_RESULTS_FOR_PAGE]:
@@ -619,8 +635,11 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_PASSWORD_UPDATED]: 'Your password has been updated!',
   [STRING.MESSAGE_PERMISSIONS_MISSING]:
     'Permissions missing to perform the action',
+  [STRING.MESSAGE_PIPELINES_REGISTERED]: '{{count}} new pipeline(s) registered',
   [STRING.MESSAGE_PROCESS_NOW_TOOLTIP]:
     'Process this single capture with presets',
+  [STRING.MESSAGE_REGISTERING_PIPELINES]:
+    "Registering pipelines. This can take a while — Antenna is fetching the service's pipeline info and syncing classifier taxa lists.",
   [STRING.MESSAGE_REMOVE_MEMBER_CONFIRM]:
     'Are you sure you want to remove {{user}} from the team?',
   [STRING.MESSAGE_REMOVE_TAXA_LIST_TAXON_CONFIRM]:
@@ -636,6 +655,12 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
     'This starts a background sync job for each of the {{count}} station(s) with a storage source.',
   [STRING.MESSAGE_SYNC_CONFIRM]:
     'This scans the connected storage source and imports any new captures as a background job.',
+  [STRING.MESSAGE_TAXA_LIST_QUEUED]:
+    'Taxa list is being built in the background because the category map is large.',
+  [STRING.MESSAGE_TAXA_LIST_SYNCED]:
+    '{{matched}} of {{labels}} labels matched a known taxon.',
+  [STRING.MESSAGE_TAXA_LIST_UNRESOLVED]:
+    '{{count}} label(s) did not match a taxon in Antenna yet.',
   [STRING.MESSAGE_VALUE_INVALID]: 'Please provide a valid value',
   [STRING.MESSAGE_VALUE_MISSING]: 'Please provide a value',
 
