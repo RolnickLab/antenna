@@ -55,6 +55,10 @@ export class ProcessingService extends Entity {
     return this._processingService.is_async ?? false
   }
 
+  get isPublic(): boolean {
+    return this._processingService.is_public ?? false
+  }
+
   get description(): string {
     return `${this._processingService.description}`
   }

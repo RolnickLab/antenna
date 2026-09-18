@@ -12,6 +12,7 @@ export enum STRING {
   COLLAPSE,
   CONFIRM,
   CONFIRMED,
+  COPY_TO_PROJECT,
   CREATE_NEW,
   CURRENT_LOCATION,
   DELETE,
@@ -219,9 +220,11 @@ export enum STRING {
   MESSAGE_RESET_INSTRUCTIONS_SENT,
   MESSAGE_RESULT_RANGE,
   MESSAGE_SIGNED_UP,
+  MESSAGE_SPECIES_LIST_TAXA_COUNT,
   MESSAGE_STATS_NO_COMPARABLE,
   MESSAGE_SYNC_ALL_CONFIRM,
   MESSAGE_SYNC_CONFIRM,
+  MESSAGE_TAXA_LIST_MANAGED,
   MESSAGE_VALUE_INVALID,
   MESSAGE_VALUE_MISSING,
 
@@ -340,6 +343,7 @@ export enum STRING {
   PIPELINES,
   PROCESS,
   PROCESSED,
+  PUBLIC,
   RECENT,
   REJECT_ID_SHORT,
   REJECT_ID,
@@ -365,6 +369,7 @@ export enum STRING {
   STATS,
   SUMMARY,
   TABLE_COLUMNS,
+  TAXA_LIST_MANAGED_BADGE,
   TERMINAL_CLASSIFICATION,
   TIP,
   UNKNOWN_ERROR,
@@ -395,6 +400,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.COLLAPSE]: 'Collapse',
   [STRING.CONFIRM]: 'Confirm',
   [STRING.CONFIRMED]: 'Confirmed',
+  [STRING.COPY_TO_PROJECT]: 'Copy to project',
   [STRING.CREATE_NEW]: 'Create new',
   [STRING.CURRENT_LOCATION]: 'Use current location',
   [STRING.DELETE]: 'Delete',
@@ -632,10 +638,13 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_STATS_NO_COMPARABLE]:
     'None of the verified occurrences matching the current filters have both a model prediction and a confirmed taxon, so there is nothing to compare.',
   [STRING.MESSAGE_SIGNED_UP]: 'Signed up successfully!',
+  [STRING.MESSAGE_SPECIES_LIST_TAXA_COUNT]: 'Species list ({{count}} taxa)',
   [STRING.MESSAGE_SYNC_ALL_CONFIRM]:
     'This starts a background sync job for each of the {{count}} station(s) with a storage source.',
   [STRING.MESSAGE_SYNC_CONFIRM]:
     'This scans the connected storage source and imports any new captures as a background job.',
+  [STRING.MESSAGE_TAXA_LIST_MANAGED]:
+    'This list mirrors every species a classifier can predict and is kept in sync with it automatically. Copy it to a project to add or remove species.',
   [STRING.MESSAGE_VALUE_INVALID]: 'Please provide a valid value',
   [STRING.MESSAGE_VALUE_MISSING]: 'Please provide a value',
 
@@ -772,6 +781,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.OVERVIEW]: 'Overview',
   [STRING.PIPELINES]: 'Pipelines',
   [STRING.PROCESSED]: 'Processed',
+  [STRING.PUBLIC]: 'Public',
   [STRING.RECENT]: 'Recent',
   [STRING.REJECT_ID_SHORT]: 'Reject',
   [STRING.REJECT_ID]: 'Reject ID',
@@ -797,6 +807,7 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.STATS]: 'Stats',
   [STRING.SUMMARY]: 'Summary',
   [STRING.TABLE_COLUMNS]: 'Table columns',
+  [STRING.TAXA_LIST_MANAGED_BADGE]: 'Classifier list',
   [STRING.TERMINAL_CLASSIFICATION]: 'Terminal classification',
   [STRING.TIP]: 'Tip',
   [STRING.UNKNOWN_ERROR]: 'Unknown error',

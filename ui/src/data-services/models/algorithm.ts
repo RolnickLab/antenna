@@ -43,4 +43,15 @@ export class Algorithm extends Entity {
       ? this._algorithm.category_count
       : undefined
   }
+
+  // The taxa list mirroring this algorithm's category map, when it has one.
+  get taxaListId(): string | undefined {
+    return this._algorithm.taxa_list
+      ? `${this._algorithm.taxa_list.id}`
+      : undefined
+  }
+
+  get taxaListName(): string | undefined {
+    return this._algorithm.taxa_list?.name
+  }
 }
