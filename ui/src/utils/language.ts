@@ -226,6 +226,7 @@ export enum STRING {
   MESSAGE_RESULT_RANGE,
   MESSAGE_SIGNED_UP,
   MESSAGE_STATS_NO_COMPARABLE,
+  MESSAGE_PULL_MODE_SERVICE_ENDPOINT,
   MESSAGE_SYNC_ALL_CONFIRM,
   MESSAGE_SYNC_CONFIRM,
   MESSAGE_TAXA_LIST_QUEUED,
@@ -651,6 +652,8 @@ const ENGLISH_STRINGS: { [key in STRING]: string } = {
   [STRING.MESSAGE_STATS_NO_COMPARABLE]:
     'None of the verified occurrences matching the current filters have both a model prediction and a confirmed taxon, so there is nothing to compare.',
   [STRING.MESSAGE_SIGNED_UP]: 'Signed up successfully!',
+  [STRING.MESSAGE_PULL_MODE_SERVICE_ENDPOINT]:
+    'Processing service endpoint. Leave empty for a pull-mode service, which registers its own pipelines when it connects.',
   [STRING.MESSAGE_SYNC_ALL_CONFIRM]:
     'This starts a background sync job for each of the {{count}} station(s) with a storage source.',
   [STRING.MESSAGE_SYNC_CONFIRM]:
