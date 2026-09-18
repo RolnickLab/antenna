@@ -4810,6 +4810,14 @@ class TaxaList(BaseModel, PublicScopedModel):
 
     taxa = models.ManyToManyField(Taxon, related_name="lists")
     projects = models.ManyToManyField("Project", related_name="taxa_lists", blank=True)
+    copied_from = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="copies",
+        help_text="The list this one was copied from, for provenance. Cleared if the source list is deleted.",
+    )
 
     objects: TaxaListManager = TaxaListManager()
     algorithms: models.QuerySet["Algorithm"]
