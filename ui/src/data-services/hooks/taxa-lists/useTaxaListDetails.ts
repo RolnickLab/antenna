@@ -7,7 +7,8 @@ const convertServerRecord = (record: ServerTaxaList) => new TaxaList(record)
 
 export const useTaxaListDetails = (
   id: string,
-  projectId: string
+  projectId: string,
+  enabled = true
 ): {
   taxaList?: TaxaList
   isLoading: boolean
@@ -16,6 +17,7 @@ export const useTaxaListDetails = (
 } => {
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<ServerTaxaList>({
+      enabled,
       queryKey: [API_ROUTES.TAXA_LISTS, projectId, id],
       url: `${API_URL}/${API_ROUTES.TAXA_LISTS}/${id}/?project_id=${projectId}`,
     })

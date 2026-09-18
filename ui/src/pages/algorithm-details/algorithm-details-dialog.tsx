@@ -1,10 +1,11 @@
 import { FormRow, FormSection } from 'components/form/layout/layout'
 import { useAlgorithmDetails } from 'data-services/hooks/algorithm/useAlgorithmDetails'
+import { useTaxaListDetails } from 'data-services/hooks/taxa-lists/useTaxaListDetails'
 import { Algorithm } from 'data-services/models/algorithm'
 import _ from 'lodash'
 import { ExternalLinkIcon } from 'lucide-react'
 import { buttonVariants, Dialog, InputValue } from 'nova-ui-kit'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { APP_ROUTES } from 'utils/constants'
 import { getAppRoute } from 'utils/getAppRoute'
 import { STRING, translate } from 'utils/language'
@@ -47,83 +48,116 @@ export const AlgorithmDetailsDialog = ({ id }: { id: string }) => {
   )
 }
 
-const AlgorithmDetailsContent = ({ algorithm }: { algorithm: Algorithm }) => (
-  <>
-    <FormSection title={translate(STRING.SUMMARY)}>
-      <FormRow>
-        <InputValue
-          label={translate(STRING.FIELD_LABEL_ID)}
-          value={algorithm.id}
-        />
-        <InputValue
-          label={translate(STRING.FIELD_LABEL_VERSION)}
-          value={algorithm.version}
-        />
-      </FormRow>
-      <FormRow>
-        <InputValue
-          label={translate(STRING.FIELD_LABEL_NAME)}
-          value={algorithm.name}
-        />
-        <InputValue
-          label={translate(STRING.FIELD_LABEL_DESCRIPTION)}
-          value={algorithm.description}
-        />
-      </FormRow>
-      <FormRow>
-        <InputValue
-          label={translate(STRING.FIELD_LABEL_TASK_TYPE)}
-          value={algorithm.taskType}
-        />
-        <InputValue
-          label={translate(STRING.FIELD_LABEL_CATEGORY_COUNT)}
-          value={algorithm.categoryCount}
-        />
-      </FormRow>
-      <FormRow>
-        <InputValue
-          label={translate(STRING.FIELD_LABEL_CREATED_AT)}
-          value={algorithm.createdAt}
-        />
-        <InputValue
-          label={translate(STRING.FIELD_LABEL_UPDATED_AT)}
-          value={algorithm.updatedAt}
-        />
-      </FormRow>
-    </FormSection>
-    {algorithm.uri || algorithm.categoryMapURI ? (
-      <FormSection title={translate(STRING.EXTERNAL_RESOURCES)}>
-        <div className="flex flex-col items-start gap-3">
-          {algorithm.uri && (
-            <a
-              className={buttonVariants({
-                size: 'small',
-                variant: 'outline',
-              })}
-              href={algorithm.uri}
-              rel="noreferrer"
-              target="_blank"
-            >
-              <span>{translate(STRING.FIELD_LABEL_ALGORITHM_URI)}</span>
-              <ExternalLinkIcon className="w-4 h-4" />
-            </a>
-          )}
-          {algorithm.categoryMapURI && (
-            <a
-              className={buttonVariants({
-                size: 'small',
-                variant: 'outline',
-              })}
-              href={algorithm.categoryMapURI}
-              rel="noreferrer"
-              target="_blank"
-            >
-              <span>{translate(STRING.FIELD_LABEL_CATEGORY_MAP_DETAILS)}</span>
-              <ExternalLinkIcon className="w-4 h-4" />
-            </a>
-          )}
-        </div>
+const AlgorithmDetailsContent = ({ algorithm }: { algorithm: Algorithm }) => {
+  const { projectId } = useParams()
+  // Fetched only for its taxa count, to label the species list link below;
+  // the algorithm payload itself only carries the taxa list's id and name.
+  const { taxaList } = useTaxaListDetails(
+    algorithm.taxaListId ?? '',
+    projectId as string,
+    !!algorithm.taxaListId
+  )
+
+  return (
+    <>
+      <FormSection title={translate(STRING.SUMMARY)}>
+        <FormRow>
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_ID)}
+            value={algorithm.id}
+          />
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_VERSION)}
+            value={algorithm.version}
+          />
+        </FormRow>
+        <FormRow>
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_NAME)}
+            value={algorithm.name}
+          />
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_DESCRIPTION)}
+            value={algorithm.description}
+          />
+        </FormRow>
+        <FormRow>
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_TASK_TYPE)}
+            value={algorithm.taskType}
+          />
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_CATEGORY_COUNT)}
+            value={algorithm.categoryCount}
+          />
+        </FormRow>
+        <FormRow>
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_CREATED_AT)}
+            value={algorithm.createdAt}
+          />
+          <InputValue
+            label={translate(STRING.FIELD_LABEL_UPDATED_AT)}
+            value={algorithm.updatedAt}
+          />
+        </FormRow>
       </FormSection>
-    ) : null}
-  </>
-)
+      {algorithm.uri || algorithm.categoryMapURI || algorithm.taxaListId ? (
+        <FormSection title={translate(STRING.EXTERNAL_RESOURCES)}>
+          <div className="flex flex-col items-start gap-3">
+            {algorithm.uri && (
+              <a
+                className={buttonVariants({
+                  size: 'small',
+                  variant: 'outline',
+                })}
+                href={algorithm.uri}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <span>{translate(STRING.FIELD_LABEL_ALGORITHM_URI)}</span>
+                <ExternalLinkIcon className="w-4 h-4" />
+              </a>
+            )}
+            {algorithm.categoryMapURI && (
+              <a
+                className={buttonVariants({
+                  size: 'small',
+                  variant: 'outline',
+                })}
+                href={algorithm.categoryMapURI}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <span>
+                  {translate(STRING.FIELD_LABEL_CATEGORY_MAP_DETAILS)}
+                </span>
+                <ExternalLinkIcon className="w-4 h-4" />
+              </a>
+            )}
+            {algorithm.taxaListId && (
+              <Link
+                className={buttonVariants({
+                  size: 'small',
+                  variant: 'outline',
+                })}
+                to={APP_ROUTES.TAXA_LIST_DETAILS({
+                  projectId: projectId as string,
+                  taxaListId: algorithm.taxaListId,
+                })}
+              >
+                <span>
+                  {taxaList
+                    ? translate(STRING.MESSAGE_SPECIES_LIST_TAXA_COUNT, {
+                        count: taxaList.taxaCount,
+                      })
+                    : algorithm.taxaListName}
+                </span>
+              </Link>
+            )}
+          </div>
+        </FormSection>
+      ) : null}
+    </>
+  )
+}
