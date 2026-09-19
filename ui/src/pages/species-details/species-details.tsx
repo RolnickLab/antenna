@@ -5,7 +5,10 @@ import { TaxonDetails } from 'components/taxon-details/taxon-details'
 import { Tag } from 'components/taxon-tags/tag'
 import { TagsForm } from 'components/taxon-tags/tags-form'
 import { useProjectDetails } from 'data-services/hooks/projects/useProjectDetails'
-import { SpeciesDetails as Species } from 'data-services/models/species-details'
+import {
+  AlgorithmPerformance,
+  SpeciesDetails as Species,
+} from 'data-services/models/species-details'
 import { ExternalLinkIcon, LockIcon } from 'lucide-react'
 import {
   Box,
@@ -30,6 +33,19 @@ export const TABS = {
   FIELDS: 'fields',
   CHARTS: 'charts',
 }
+
+const ACCURACY_DECIMALS = 2
+
+const performanceLabel = ({
+  algorithmName,
+  accuracy,
+  correct,
+  occurrencesScored,
+  occurrenceSetName,
+}: AlgorithmPerformance) =>
+  `${algorithmName}: ${accuracy.toFixed(
+    ACCURACY_DECIMALS
+  )} (${correct}/${occurrencesScored}) on ${occurrenceSetName}`
 
 export const SpeciesDetails = ({
   species,
@@ -194,6 +210,26 @@ export const SpeciesDetails = ({
                       }
                     />
                   </div>
+                </InfoBlockField>
+                <InfoBlockField
+                  label={translate(STRING.ALGORITHMS_AND_PERFORMANCE)}
+                >
+                  {species.algorithmPerformance.length ? (
+                    species.algorithmPerformance.map((performance) => (
+                      <InfoBlockFieldValue
+                        key={performance.algorithmId}
+                        value={performanceLabel(performance)}
+                        to={getAppRoute({
+                          to: APP_ROUTES.ALGORITHM_DETAILS({
+                            projectId: projectId as string,
+                            algorithmId: performance.algorithmId,
+                          }),
+                        })}
+                      />
+                    ))
+                  ) : (
+                    <InfoBlockFieldValue value={undefined} />
+                  )}
                 </InfoBlockField>
                 <InfoBlockField
                   className="no-print"
