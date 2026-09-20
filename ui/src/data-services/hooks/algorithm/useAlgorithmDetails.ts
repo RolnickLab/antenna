@@ -6,7 +6,7 @@ import { useAuthorizedQuery } from '../auth/useAuthorizedQuery'
 const convertServerRecord = (record: ServerAlgorithm) => new Algorithm(record)
 
 export const useAlgorithmDetails = (
-  algorithmId: string
+  algorithmId: string | undefined
 ): {
   algorithm?: Algorithm
   isLoading: boolean
@@ -14,6 +14,7 @@ export const useAlgorithmDetails = (
   error?: unknown
 } => {
   const { data, isLoading, isFetching, error } = useAuthorizedQuery<Algorithm>({
+    enabled: !!algorithmId,
     queryKey: [API_ROUTES.ALGORITHM, algorithmId],
     url: `${API_URL}/${API_ROUTES.ALGORITHM}/${algorithmId}/`,
   })

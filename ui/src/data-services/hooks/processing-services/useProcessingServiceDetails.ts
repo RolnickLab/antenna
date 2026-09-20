@@ -10,7 +10,7 @@ const convertServerRecord = (record: ServerProcessingService) =>
   new ProcessingService(record)
 
 export const useProcessingServiceDetails = (
-  id: string,
+  id: string | undefined,
   projectId: string
 ): {
   processingService?: ProcessingService
@@ -20,6 +20,7 @@ export const useProcessingServiceDetails = (
 } => {
   const { data, isLoading, isFetching, error } =
     useAuthorizedQuery<ProcessingService>({
+      enabled: !!id,
       queryKey: [API_ROUTES.PROCESSING_SERVICES, id, projectId],
       url: `${API_URL}/${API_ROUTES.PROCESSING_SERVICES}/${id}/?project_id=${projectId}`,
     })
