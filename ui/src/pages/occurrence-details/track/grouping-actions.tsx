@@ -20,6 +20,7 @@ import { parseServerError } from 'utils/parseServerError/parseServerError'
 import { getCandidateSessionRoute } from 'components/track/candidate-session-route'
 import { OccurrencePicker } from 'components/track/occurrence-picker'
 import { TrackEditDialog } from 'components/track/track-edit-dialog'
+import { useMergeSelection } from 'components/track/use-merge-selection'
 
 const DEFAULT_SCOPE: MergeScopeKey = 'next'
 
@@ -34,7 +35,6 @@ export const GroupingActions = ({
 }) => {
   const { projectId } = useParams()
   const [mergeOpen, setMergeOpen] = useState(false)
-  const [sourceIds, setSourceIds] = useState<string[]>([])
   const [scope, setScope] = useState<MergeScopeKey>(DEFAULT_SCOPE)
 
   const merge = useMergeOccurrences(occurrence.id)
@@ -59,6 +59,12 @@ export const GroupingActions = ({
     occurrenceId: occurrence.id,
     projectId: projectId as string,
   })
+
+  const {
+    clear: clearSelection,
+    selectedIds: sourceIds,
+    toggle: toggleSource,
+  } = useMergeSelection({ candidates, isLoading: candidatesLoading })
 
   const sessionRoute = occurrence.sessionId
     ? APP_ROUTES.SESSION_DETAILS({
@@ -93,19 +99,9 @@ export const GroupingActions = ({
     ? parseServerError(verifyError).message
     : undefined
 
-  const toggleSource = (id: string) =>
-    setSourceIds((ids) =>
-      ids.includes(id) ? ids.filter((other) => other !== id) : [...ids, id]
-    )
-
-  const changeScope = (key: MergeScopeKey) => {
-    setScope(key)
-    setSourceIds([])
-  }
-
   const closeMerge = () => {
     setMergeOpen(false)
-    setSourceIds([])
+    clearSelection()
     merge.reset()
   }
 
@@ -200,7 +196,7 @@ export const GroupingActions = ({
             })}
             emptyMessage={translate(STRING.TRACK_NO_MERGE_CANDIDATES_SCOPE)}
             isLoading={candidatesLoading}
-            onScopeChange={changeScope}
+            onScopeChange={setScope}
             onToggle={toggleSource}
             requiresFeatures={requiresFeatures}
             scope={scope}
