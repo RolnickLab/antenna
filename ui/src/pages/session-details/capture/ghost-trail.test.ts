@@ -83,4 +83,24 @@ describe('buildTrail', () => {
     expect(ghosts.map((ghost) => ghost.id)).toContain('d0')
     expect(shownCount).toBe(ghosts.length)
   })
+
+  it('reads direction from the clock when no frame sits on the capture viewed', () => {
+    // Extending a track puts the viewer on captures the track does not cover, so the
+    // track's order cannot say which frames come before the one on screen.
+    const viewed = new Date(2026, 8, 1, 22, 2, 30)
+    const { ghosts } = buildTrail(path(5), 'elsewhere', viewed)
+
+    expect(ghosts.find((ghost) => ghost.id === 'd1')?.isEarlier).toBe(true)
+    expect(ghosts.find((ghost) => ghost.id === 'd4')?.isEarlier).toBe(false)
+  })
+
+  it('keeps the fade under its ceiling when no frame sits on the capture viewed', () => {
+    const { ghosts } = byId(path(6), 'elsewhere')
+
+    expect(ghosts.length).toBeGreaterThan(0)
+    ghosts.forEach((ghost) => {
+      expect(ghost.opacity).toBeLessThanOrEqual(0.75)
+      expect(ghost.distance).toBeGreaterThanOrEqual(1)
+    })
+  })
 })

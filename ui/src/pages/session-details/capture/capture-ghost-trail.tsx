@@ -12,10 +12,13 @@ const HOVERED_GHOST_OPACITY = 1
 
 /** Which frame this is, when it was captured, and what clicking it does. */
 const GhostReading = ({
+  cropMissing,
   ghost,
   time,
   total,
 }: {
+  /** The crop was offered but could not be fetched, so only the outline is drawn. */
+  cropMissing?: boolean
   ghost: Ghost
   time: string
   total: number
@@ -33,6 +36,11 @@ const GhostReading = ({
         { time }
       )}
     </span>
+    {cropMissing ? (
+      <span className="body-small text-muted-foreground">
+        {translate(STRING.TRACK_FRAME_NO_CROP)}
+      </span>
+    ) : null}
     <span className="body-small text-muted-foreground">
       {translate(STRING.TRACK_GHOST_HINT)}
     </span>
@@ -50,9 +58,15 @@ export const CaptureGhostTrail = ({
   trail: Trail
 }) => {
   const [hovered, setHovered] = useState<string>()
+  // A crop can be offered by the API and still be missing from storage. Falling back to
+  // the outline keeps the path readable; a broken image icon reads as a broken feature.
+  const [missingCrops, setMissingCrops] = useState<string[]>([])
 
   const leave = (id: string) =>
     setHovered((current) => (current === id ? undefined : current))
+
+  const markMissing = (id: string) =>
+    setMissingCrops((ids) => (ids.includes(id) ? ids : [...ids, id]))
 
   return (
     <>
@@ -60,6 +74,7 @@ export const CaptureGhostTrail = ({
         {trail.ghosts.map((ghost) => {
           const frame = getGhostFrame(ghost.frame, !!showCrops)
           const isHovered = hovered === ghost.id
+          const cropMissing = missingCrops.includes(ghost.id)
 
           return (
             <Tooltip.Provider
@@ -90,7 +105,13 @@ export const CaptureGhostTrail = ({
                     }}
                     type="button"
                   >
-                    {frame.cropUrl ? <img alt="" src={frame.cropUrl} /> : null}
+                    {frame.cropUrl && !cropMissing ? (
+                      <img
+                        alt=""
+                        onError={() => markMissing(ghost.id)}
+                        src={frame.cropUrl}
+                      />
+                    ) : null}
                   </button>
                 </Tooltip.Trigger>
                 <Tooltip.Content
@@ -99,6 +120,7 @@ export const CaptureGhostTrail = ({
                   side="bottom"
                 >
                   <GhostReading
+                    cropMissing={cropMissing}
                     ghost={ghost}
                     time={frame.time}
                     total={trail.total}
